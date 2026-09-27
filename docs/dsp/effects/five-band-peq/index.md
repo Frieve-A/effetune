@@ -71,11 +71,4 @@ A flexible 5-band equalizer for shaping music playback. Use it when bass feels b
     - Notch: Precise frequency removal
     - AllPass: Phase-focused frequency alignment
 
-### Visual Display
-- High-resolution frequency response visualization
-- Interactive control points with precise parameter display
-- Real-time curve updates as you adjust settings
-- Frequency and gain grid
-- Accurate numerical readouts for all parameters
-
 [Back to all effects](/dsp/effects/)

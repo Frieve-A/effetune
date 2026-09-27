@@ -442,6 +442,7 @@ class PowerAmpSagPlugin extends PluginBase {
     }
     
     drawGraphs(now = performance.now()) {
+        const frames = (this._readoutFrames ??= [{}, {}]);
         // Draw left graph - Input Envelope
         if (this.canvasCtxLeft) {
             this.drawSingleGraph(
@@ -455,6 +456,7 @@ class PowerAmpSagPlugin extends PluginBase {
                 100,
                 10,
                 '%',
+                frames[0],
                 now
             );
         }
@@ -472,12 +474,14 @@ class PowerAmpSagPlugin extends PluginBase {
                 2,
                 2,
                 'dB',
+                frames[1],
                 now
             );
         }
+        this._graphReadouts?.forEach(readout => readout?.refresh());
     }
     
-    drawSingleGraph(ctx, width, height, title, buffer, color, minValue, maxValue, step, unit, now = performance.now()) {
+    drawSingleGraph(ctx, width, height, title, buffer, color, minValue, maxValue, step, unit, frame, now = performance.now()) {
         const canvas = ctx.canvas;
         const cssWidth = canvas.clientWidth || width;
         const dpr = cssWidth > 0 ? width / cssWidth : 1;
@@ -554,6 +558,7 @@ class PowerAmpSagPlugin extends PluginBase {
         ctx.beginPath();
         let started = false;
         let lastY = 0;
+        let lastValue = NaN;
         let previousTime = null;
         const maxContinuousGap = 1;
         for (let i = 0; i < buffer.length; i++) {
@@ -573,6 +578,7 @@ class PowerAmpSagPlugin extends PluginBase {
                 ctx.lineTo(x, y);
             }
             lastY = y;
+            lastValue = value;
             previousTime = time;
         }
         if (started) {
@@ -589,9 +595,45 @@ class PowerAmpSagPlugin extends PluginBase {
         ctx.fillStyle = color;
         ctx.textAlign = 'right';
         ctx.font = `${valueFontSize}px Arial`;
-        if (Number.isFinite(currentValue)) {
-            ctx.fillText(currentValue.toFixed(1) + ' ' + unit, x, y);
+        const valueText = Number.isFinite(currentValue) ? currentValue.toFixed(1) + ' ' + unit : null;
+        if (valueText) {
+            ctx.fillText(valueText, x, y);
         }
+
+        frame.width = width;
+        frame.height = height;
+        frame.displayTime = displayTime;
+        frame.pixelsPerSecond = pixelsPerSecond;
+        frame.buffer = buffer;
+        frame.minValue = minValue;
+        frame.range = range;
+        frame.edgeValue = lastValue;
+        frame.valueLabel = valueText ? { text: valueText, right: x, baseline: y, fontSize: valueFontSize } : null;
+        frame.valid = started;
+    }
+
+    // Reads graph 0 (Input Envelope) or 1 (Gain Reduction) at canvas pixel x as time back from now.
+    _readGraph(index, x) {
+        const frame = this._readoutFrames?.[index];
+        if (!frame?.valid) return null;
+        const { format, historyValueAt } = window.GraphReadout;
+        const secondsBack = (x - frame.width) / frame.pixelsPerSecond;
+        const value = historyValueAt(this.historyTimes, frame.buffer, frame.displayTime + secondsBack, frame.edgeValue);
+        const y = frame.height * (1 - (value - frame.minValue) / frame.range);
+        const row = index === 0
+            ? { label: 'Input Envelope', color: 'var(--et-graph-trace)', value: format.percent(value / 100), y }
+            : { label: 'Gain Reduction', color: 'var(--et-text-primary)', value: format.db(value, { signed: true }), y };
+        return { cursor: format.time(secondsBack * 1000), rows: [row] };
+    }
+
+    // Rect of the current-value label drawn at the top right of graph 0 or 1.
+    _valueLabelRects(index, canvas) {
+        const label = this._readoutFrames?.[index]?.valueLabel;
+        if (!label) return [];
+        const ctx = canvas.getContext('2d');
+        ctx.font = `${label.fontSize}px Arial`;
+        const width = ctx.measureText(label.text).width;
+        return [{ left: label.right - width, top: label.baseline - label.fontSize, width, height: label.fontSize * 1.3 }];
     }
     
     createUI() {
@@ -698,6 +740,13 @@ class PowerAmpSagPlugin extends PluginBase {
         }
         this.observer.observe(this.canvasLeft);
         this.observer.observe(this.canvasRight);
+
+        this._graphReadouts = [leftGraph, rightGraph].map((graph, index) => window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: graph.canvas,
+            read: x => this._readGraph(index, x),
+            avoid: () => this._valueLabelRects(index, graph.canvas)
+        }));
 
         // Automation playback and preset recall change the model without touching the
         // DOM, so the controls this plugin builds by hand are refreshed here.

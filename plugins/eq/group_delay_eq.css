@@ -78,37 +78,6 @@ body.layout-mobile .group-delay-eq-plugin-ui .vertical-slider {
     margin-top: 0;
 }
 
-.group-delay-eq-plugin-ui .group-delay-eq-legend {
-    position: absolute;
-    z-index: 4;
-    top: 5px;
-    right: 7px;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    padding: 2px 6px;
-    color: var(--et-graph-label-strong);
-    background: var(--et-graph-base-veil);
-    border-radius: 3px;
-    font-size: 11px;
-    white-space: nowrap;
-}
-
-.group-delay-eq-plugin-ui .group-delay-eq-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    cursor: default;
-}
-
-.group-delay-eq-plugin-ui .group-delay-eq-legend-swatch {
-    width: 14px;
-    border-top: 2px solid currentColor;
-}
-
-.group-delay-eq-plugin-ui .group-delay-eq-legend-target { color: var(--et-graph-trace-secondary); opacity: 0.7; }
-.group-delay-eq-plugin-ui .group-delay-eq-legend-realized { color: var(--et-graph-trace); }
-
 .group-delay-eq-plugin-ui .eq-reset-button {
     position: absolute;
     right: 10px;

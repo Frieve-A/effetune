@@ -123,6 +123,7 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comp
 - Graphique interactif de la courbe de transfert montrant comment le déplacement est saturé
 - Retour visuel clair des caractéristiques de distorsion
 - Représentation visuelle de l'effet du Distortion Drive et du Bias sur le son
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Amélioration Musicale
 - Pour une Chaleur Subtile :
@@ -203,6 +204,7 @@ Un effet qui ajoute du contenu harmonique pour améliorer la clarté et la prés
 - Graphique de réponse en fréquence du filtre passe-haut
 - Visualisation de la courbe de transfert de saturation
 - Retour visuel clair pour le filtre et la saturation
+- Survolez l'un ou l'autre graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Amélioration Musicale
 - Pour des Voix Plus Claires dans les Morceaux, Podcasts ou Vidéos :
@@ -268,6 +270,7 @@ Un effet d'écrêtage numérique qui limite les crêtes au-dessus d'un seuil dé
 - Graphique en temps réel montrant comment le son est modelé
 - Retour visuel clair lors des ajustements
 - Lignes de référence pour guider vos ajustements
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Écoute
 - Pour une amélioration subtile :
@@ -320,6 +323,7 @@ Le plugin Harmonic Distortion façonne la forme d'onde avec des termes non liné
 - Courbe de transfert montrant comment les niveaux d'entrée sont façonnés en niveaux de sortie
 - Curseurs intuitifs et champs de saisie offrant un retour immédiat
 - Le graphique se met à jour lorsque les réglages harmoniques et Sensitivity changent
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Guide de démarrage rapide
 
@@ -374,6 +378,7 @@ Comme ce traitement agit par bande de fréquences, il affecte tous les sons de l
 - Onglets de sélection de bande interactifs
 - Graphique de courbe de transfert en temps réel pour chaque bande
 - Retour visuel clair lors des ajustements
+- Survolez le graphique d'une bande, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Amélioration Musicale
 - Pour l'Amélioration du Morceau Complet :
@@ -449,6 +454,7 @@ Un effet qui simule le son chaud et agréable des équipements à lampes vintage
 - Graphique clair montrant comment le son est modelé
 - Retour visuel en temps réel
 - Contrôles faciles à lire
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Amélioration Musicale
 - Classique & Jazz :
@@ -507,6 +513,7 @@ Un effet spécialisé qui renforce le bas du spectre en mélangeant un signal ba
 - Graphique interactif de réponse en fréquence
 - Visualisation claire des courbes de filtre
 - Retour visuel en temps réel
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Amélioration Musicale
 - Pour l'Amélioration Générale des Graves :
@@ -618,3 +625,6 @@ La modification des paramètres du circuit peut provoquer un saut important de n
 - L’état sous le graphique indique si l’effet est actif ou en bypass et affiche toute réduction automatique du niveau de sortie.
 
 Tube Simulator ajoute un bref délai de traitement d’environ 0.3 à 1.5ms selon la fréquence d’échantillonnage.
+
+### Affichage Visuel
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire la tension et le courant de plaque à cet endroit et, lorsque des courbes de plaque sont tracées, la tension de grille de la courbe la plus proche.

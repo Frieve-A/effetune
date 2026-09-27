@@ -84,6 +84,7 @@ lang: hi
 - सटीक नियंत्रण के साथ उपयोग में आसान स्लाइडर्स
 - डिफ़ॉल्ट सेटिंग्स पर एक-क्लिक रीसेट
 - किसी slider पर double-click करने से वह band 0dB पर लौट आती है
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## 15Band PEQ
 
@@ -140,6 +141,7 @@ listening के दौरान bass, vocals, presence और treble को fin
 - adjust करते समय real-time curve updates
 - frequency और gain grid
 - सभी पैरामीटर के लिए सटीक संख्यात्मक रीडआउट
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## 5Band Dynamic EQ
 
@@ -189,6 +191,7 @@ listening के दौरान bass, vocals, presence और treble को fin
 - आपके ध्वनि समायोजन दिखाने वाला रीयल-टाइम ग्राफ
 - सटीक नियंत्रण के साथ उपयोग में आसान स्लाइडर्स
 - वन-क्लिक डिफ़ॉल्ट सेटिंग्स रीसेट
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## 5Band FIR PEQ
 
@@ -224,6 +227,7 @@ listening के दौरान bass, vocals, presence और treble को fin
 - Numbered markers पाँच bands से मेल खाते हैं। Freq बदलने के लिए horizontal और Gain बदलने के लिए vertical drag करें; disabled bands धुंधली दिखती हैं।
 - Status line बताती है कि FIR design, prepare या use हो रहा है और total processing latency को samples तथा milliseconds में दिखाती है।
 - यदि चुने हुए Taps किसी extreme response को सटीक रूप से reproduce नहीं कर सकते, तो status Taps बढ़ाने या Q अथवा Slope घटाने की सलाह देता है।
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## 5Band PEQ
 
@@ -270,6 +274,7 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - adjust करते समय real-time curve updates
 - frequency और gain grid
 - सभी पैरामीटर के लिए सटीक संख्यात्मक रीडआउट
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Band Pass Filter
 
@@ -316,6 +321,7 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - दोनों फिल्टर स्लोप और कटऑफ बिंदुओं का स्पष्ट विज़ुअलाइज़ेशन
 - सटीक समायोजन के लिए इंटरैक्टिव नियंत्रण
 - प्रमुख संदर्भ बिंदुओं पर मार्कर के साथ आवृत्ति ग्रिड
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Comb Filter
 
@@ -364,6 +370,7 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - delay time दिखाने वाला Fundamental frequency marker
 - सटीक समायोजन के लिए इंटरैक्टिव नियंत्रण
 - मिलीमीटर में विलंब दूरी गणना
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Earphone Cable Sim
 
@@ -414,6 +421,7 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - grid labels 20Hz से 20kHz तक होते हैं; plotted curve पूरे 10Hz से 40kHz graph range में फैलती है
 - dark grid पर green response curve, normalized 0dB reference के आसपास auto-scaled dB axis के साथ
 - curve deviations जितनी बड़ी हों, model playback level को वहां उतना अधिक बदल रहा होता है
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Group Delay EQ
 
@@ -444,6 +452,7 @@ Group Delay EQ सामान्य equalizer का समकक्ष है:
 - धूसर curve लक्ष्य है: माँगी गई delay, जो 20 Hz से 20 kHz के logarithmic frequency axis पर interpolate करके दिखाई जाती है। Delay axis वर्तमान settings के अनुसार अपने आप scale होती है, न्यूनतम ±5 ms।
 - हरी curve वह है जो design किया गया filter वास्तव में करता है। जहाँ दोनों curves मिलती हैं वहाँ setting पूरी तरह साकार है; जहाँ अलग होती हैं वहाँ filter वर्तमान Taps के साथ अनुरोध का पालन नहीं कर पाता।
 - Status पंक्ति कुल latency को samples और milliseconds में तथा filter की magnitude ripple दिखाती है। Ripple बताती है कि साकार हुई magnitude response सपाट design लक्ष्य से कितनी अलग है: मान जितना छोटा होगा, response लक्ष्य के उतना ही करीब होगा, और 0.3 dB सटीकता की चेतावनी का threshold है।
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Group Delay PEQ
 
@@ -467,7 +476,7 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
   - **Low Shelf** - एक कोमल step जो Freq से नीचे Delay बनाए रखती है, Freq पर Delay का आधा मान देती है और उससे ऊपर शून्य तक गिरती है। Q संक्रमण की तीव्रता तय करता है: Q 1 पर यह first-order allpass की group delay संक्रमण से मेल खाता है, जबकि Q 2 से 4 लगभग एक octave चौड़ा व्यावहारिक step देता है, जो band-limited alignment में काम आता है।
   - **High Shelf** - Low Shelf का दर्पण प्रतिबिंब और उसका पूरक: समान Freq और Q वाले दोनों आकार जुड़कर स्थिर Delay बनाते हैं।
   - **Filter GD** - किसी एक analog filter stage (high-pass / crossover / resonance) की group delay के आकार को जैसा है वैसा जोड़ता या घटाता है। जिस filter को सुधारना है उसकी cutoff frequency और Q को Freq और Q में डालें, और मापी गई group delay curve की उभार की ऊँचाई Delay में डालें (रद्द करने के लिए ऋणात्मक मान)।
-- **Freq** - Band frequency को 20 Hz से 20 kHz तक set करता है।
+- **Freq** - Band frequency को 20 Hz से 20 kHz तक set करता है। लगभग 18 से 20 kHz के पास लक्ष्य सहजता से शून्य तक घटाया जाता है, इसलिए सीमा के पास रखी band का प्रभाव घट जाता है।
 - **Delay** - उस band की अपनी curve के चरम मान को milliseconds में set करता है। धनात्मक मान उस क्षेत्र को बाद में पहुँचाते हैं, ऋणात्मक पहले। सीमा उतनी ही है जितनी delay filter संभाल सकता है: 96 kHz पर 4096 taps के साथ ±18.6 ms और 32768 taps के साथ ±149.3 ms। Taps या sample rate बदलने पर सहेजे गए मान नई सीमा तक clamp हो जाते हैं।
 - **Q** - आकार की चौड़ाई या तीव्रता को 0.1 से 100 तक logarithmic slider पर set करता है और हर Type में उपयोग होता है। उपयोगी श्रेणियाँ अलग-अलग हैं: Low Shelf और High Shelf के लिए 0.25 से 16, Filter GD के लिए 0.1 से 10। व्यवहार में shelves Q 2 से 4 पर और Filter GD Q 0.5 से 8 पर उपयोग होते हैं — 0.5 first-order allpass या LR2 sum के, 0.7071 Butterworth या LR4 sum के, और 8 तीखे resonance के अनुरूप है। इन श्रेणियों से बाहर की settings भी स्वीकार्य हैं; जब मौजूदा Taps उन्हें साकार नहीं कर पाते तो status line यह बताती है।
 - **Enabled** - पाँचों bands को अलग-अलग चालू या बंद करता है। बंद bands target curve में कुछ नहीं जोड़तीं और graph पर धुंधली दिखती हैं।
@@ -480,9 +489,9 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 
 - धूसर curve लक्ष्य है: सक्रिय bands के आकारों का योग, जो logarithmic frequency axis पर दिखाया जाता है। Delay axis वर्तमान settings के अनुसार अपने आप scale होती है, न्यूनतम ±5 ms।
 - हरी curve वह है जो design किया गया filter वास्तव में करता है। जहाँ दोनों curves मिलती हैं वहाँ setting पूरी तरह साकार है; जहाँ अलग होती हैं वहाँ filter वर्तमान Taps के साथ अनुरोध का पालन नहीं कर पाता।
-- लगभग 18 से 20 kHz के पास लक्ष्य सहजता से शून्य तक घटाया जाता है। यह उच्च frequency taper design का हिस्सा है, इसलिए सीमा के पास रखी band घटे हुए प्रभाव के साथ ही दिखती और साकार होती है।
 - Numbered markers पाँच bands से मेल खाते हैं। Freq बदलने के लिए horizontal और Delay बदलने के लिए vertical drag करें। Marker केवल Peak में curve पर बैठता है: shelf, Freq पर Delay का आधा मान देती है और Filter GD का चरम मान Freq से नीचे आता है — Q ऊँचा हो तो Freq के ठीक नीचे, और Q घटने के साथ उत्तरोत्तर और नीचे, यहाँ तक कि लगभग 0.577 या उससे कम Q पर चरम मान graph के निम्न-आवृत्ति सिरे पर आ जाता है।
 - Status पंक्ति कुल latency को samples और milliseconds में तथा filter की magnitude ripple दिखाती है। Ripple बताती है कि साकार हुई magnitude response सपाट design लक्ष्य से कितनी अलग है: मान जितना छोटा होगा, response लक्ष्य के उतना ही करीब होगा, और 0.3 dB सटीकता की चेतावनी का threshold है।
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Hi Pass Filter
 
@@ -520,6 +529,7 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 - फिल्टर ढलान और कटऑफ बिंदु का स्पष्ट दृश्यीकरण
 - सटीक समायोजन के लिए इंटरैक्टिव नियंत्रण
 - महत्वपूर्ण संदर्भ बिंदुओं पर मार्करों के साथ आवृत्ति ग्रिड
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Lo Pass Filter
 
@@ -561,6 +571,7 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 - फिल्टर ढलान और कटऑफ बिंदु का स्पष्ट दृश्यीकरण
 - सटीक समायोजन के लिए इंटरैक्टिव नियंत्रण
 - महत्वपूर्ण संदर्भ बिंदुओं पर मार्करों के साथ आवृत्ति ग्रिड
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Loudness Equalizer
 
@@ -614,6 +625,7 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 - इंटरैक्टिव पैरामीटर नियंत्रण
 - वॉल्यूम के अनुसार बदलने वाला सुधार वक्र; Relative Volume से होने वाला समान स्तर परिवर्तन ग्राफ में शामिल नहीं है
 - सटीक संख्यात्मक रीडआउट
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Narrow Range
 
@@ -653,6 +665,7 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 - आवृत्ति प्रतिक्रिया दिखाने वाला स्पष्ट ग्राफ
 - आसानी से समायोजित होने वाले आवृत्ति नियंत्रण
 - सरल slope drop-down menus
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Room EQ
 
@@ -705,11 +718,11 @@ Measurement एक device-local reference है। URL या preset में 
 
 - Graph के बाहर दिए **Graph** radio buttons से **Frequency**, **Phase**, **Min Group Delay**, **Excess Group Delay** और **Impulse** views के बीच बदल सकते हैं।
 - **Phase** view में horizontal axis logarithmic frequency और vertical axis -180° से 180° तक phase दिखाता है। धूसर line correction से पहले की phase और हरी line वास्तविक FIR लगाने के बाद की calculated phase दिखाती है। दोनों से measured onset हटाया जाता है और corrected result से FIR का ज्ञात fixed delay भी हटाया जाता है, इसलिए graph इन fixed timing offsets के बिना filter से आया phase change दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
-- **Min Group Delay** magnitude response के minimum-phase हिस्से से बनने वाला delay दिखाता है। **Excess Group Delay** उस हिस्से को हटाने के बाद बचा delay अलग से दिखाता है, जिससे reflections और अन्य non-minimum-phase timing को समझना आसान होता है। दोनों views में horizontal axis logarithmic frequency और vertical axis milliseconds दिखाता है। हर line measured onset को हटाने के बाद उसके सापेक्ष absolute group delay दिखाती है; corrected result से FIR का known fixed delay भी हटाया जाता है। इन्हें 1kHz पर दोबारा reference नहीं किया जाता, इसलिए वहाँ value का 0 ms होना जरूरी नहीं है। धूसर line correction से पहले की और हरी line वास्तविक FIR लगाने के बाद की calculated स्थिति है। Group-delay analysis दिखाए गए points की spacing से स्वतंत्र है और phase unwrapping पर निर्भर नहीं करता। Smoothing एक fixed logarithmic-frequency analysis grid पर लागू होता है, इसलिए कम Smoothing अधिक detail दिखाता है। **Min Group Delay** का vertical range दिखाई गई curves के अनुसार अपने आप बदलता है। **Excess Group Delay** का range -100 से +100 ms पर fixed रहता है, लेकिन curve के इससे बाहर जाने पर hover readout unclipped value ही दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
+- **Min Group Delay** magnitude response के minimum-phase हिस्से से बनने वाला delay दिखाता है। **Excess Group Delay** उस हिस्से को हटाने के बाद बचा delay अलग से दिखाता है, जिससे reflections और अन्य non-minimum-phase timing को समझना आसान होता है। दोनों views में horizontal axis logarithmic frequency और vertical axis milliseconds दिखाता है। हर line measured onset को हटाने के बाद उसके सापेक्ष absolute group delay दिखाती है; corrected result से FIR का known fixed delay भी हटाया जाता है। इन्हें 1kHz पर दोबारा reference नहीं किया जाता, इसलिए वहाँ value का 0 ms होना जरूरी नहीं है। धूसर line correction से पहले की और हरी line वास्तविक FIR लगाने के बाद की calculated स्थिति है। Group-delay analysis दिखाए गए points की spacing से स्वतंत्र है और phase unwrapping पर निर्भर नहीं करता। Smoothing एक fixed logarithmic-frequency analysis grid पर लागू होता है, इसलिए कम Smoothing अधिक detail दिखाता है। **Min Group Delay** का vertical range दिखाई गई curves के अनुसार अपने आप बदलता है। **Excess Group Delay** का range -100 से +100 ms पर fixed रहता है, लेकिन curve के इससे बाहर जाने पर readout unclipped value ही दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
 - **Impulse** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms, Direct Window और Reverb Correction 0% से अधिक होने पर 50 ms तक सीमित Reverb Window में से जो सबसे अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और हरी line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Low-frequency Phase Extension और Reverb Correction इस view की सीमा से बाद की response का भी analysis कर सकती हैं। केवल display के लिए, 20 kHz और उससे ऊपर के components हटा दिए जाते हैं; इससे correction filter या audio processing प्रभावित नहीं होती। Impulse-response data न होने पर unavailable message दिखाई देता है।
 - **Frequency** view में horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
 - **Preview channel** selector तभी Graph के बाहर दिखता है जब एक से अधिक channels के लिए filters design हुए हों; यह चुनता है कि graph और अतिरिक्त EQ की base response किस channel की दिखाई जाए, और यह audio को प्रभावित नहीं करता।
-- Graph पर pointer घुमाने पर pointer की horizontal position पर हर curve पर एक dot दिखता है और उसका reading legend में उसके नाम के दाईं ओर आता है; pointer की अपनी frequency (Impulse view में समय) उनके ऊपर दिखती है। Pointer के graph से बाहर जाते ही यह display मिट जाता है।
+- Graph पर माउस घुमाएं या टच करके ड्रैग करें; उस बिंदु पर हर curve पर एक dot दिखेगा और उसका value legend में नाम के दाईं ओर दिखेगा, और उनके ऊपर frequency (Impulse view में समय) दिखेगी।
 - दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
 - Markers से हर band की frequency और gain बदली जा सकती है।
 - हल्की धूसर curve graph का common display offset लागू की गई smoothed measured frequency response दिखाती है।
@@ -758,6 +771,7 @@ Measurement एक device-local reference है। URL या preset में 
 - आपके समायोजनों को दिखाने वाला आसानी से पढ़ा जाने वाला ग्राफ
 - प्रत्येक नियंत्रण के लिए सरल स्लाइडर्स
 - त्वरित रीसेट बटन
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 ## Tilt EQ
 
 एक सरल पर प्रभावी इक्वलाइज़र जो संगीत की फ्रीक्वेंसी बैलेंस को धीरे से झुकाता है। यह सूक्ष्म समायोजन के लिए डिज़ाइन किया गया है जो बिना जटिल कंट्रोल्स के संगीत को गर्म या चमकदार बना सकता है। समग्र टोन को अपनी पसंद के अनुसार जल्दी से एडजस्ट करने के लिए आदर्श।
@@ -786,3 +800,4 @@ Measurement एक device-local reference है। URL या preset में 
 - आसान slope adjustment के लिए simple slider
 - रियल-टाइम फ़्रीक्वेंसी रिस्पांस कर्व
 - current slope value की clear indication
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।

@@ -520,8 +520,12 @@ test('5Band FIR PEQ source keeps phase, taps, latency, and narrow-Q UI choices v
   assert.match(pluginCss, /\.five-band-fir-peq-settings \.radio-group/);
   assert.match(pluginCss, /\.five-band-fir-peq-q-slider/);
   assert.match(pluginCss, /\.five-band-fir-peq-slope-slider/);
-  assert.match(pluginCss, /\.five-band-fir-peq-legend/);
-  assert.match(pluginCss, /\.five-band-fir-peq-legend-realized/);
+  assert.doesNotMatch(pluginCss, /legend/);
+  assert.match(pluginSource, /window\.GraphReadout\?\.attach\(\{[\s\S]*?legend: this\._responseSeries\(\)/);
+  assert.match(pluginSource,
+    /label: this\._t\('fiveBandFirPeq\.graph\.target', 'Target'\),\s*color: 'var\(--et-graph-trace-tertiary\)'/);
+  assert.match(pluginSource,
+    /label: this\._t\('fiveBandFirPeq\.graph\.realized', 'Realized'\),\s*color: 'var\(--et-graph-trace\)'/);
   assert.match(pluginCss, /\.five-band-fir-peq-slope-label \{\s*flex: 0 0 100%/);
   assert.match(
     pluginCss,

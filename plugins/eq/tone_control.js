@@ -370,10 +370,42 @@ class ToneControlPlugin extends PluginBase {
         // response curve does not.
         this.registerUIRefresh(() => this.drawGraph(canvas));
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x)
+        });
+
         return container;
     }
 
+    // Reads the drawn response curve at canvas pixel x, interpolating between plotted columns.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const cssX = x / frame.scale;
+        const db = window.GraphReadout.columnValueAt(frame.response, cssX);
+        if (db === null) return null;
+        return {
+            cursor: format.frequency(this._graphFrequencyAt(cssX, frame.width)),
+            rows: [{
+                label: 'Response',
+                color: (window.ThemePalette?.get('graph-trace') ?? ''),
+                value: format.db(db, { signed: true }),
+                y: frame.toY(db) * frame.scale
+            }]
+        };
+    }
+
+    // Log-frequency axis of the response curve: 20 Hz at x = 0 to 20 kHz at x = width (CSS px).
+    _graphFrequencyAt(x, width) {
+        return Math.pow(10, Math.log10(20) + (x / width) * (Math.log10(20000) - Math.log10(20)));
+    }
+
     drawGraph(canvas) {
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         const ctx = canvas.getContext('2d');
         const rect = canvas.getBoundingClientRect();
         const cssWidth = rect.width || canvas.clientWidth || canvas.width;
@@ -450,9 +482,10 @@ class ToneControlPlugin extends PluginBase {
             return numMag / denMag;
         }
         
+        const response = new Array(width);
         for (let i = 0; i < width; i++) {
             // Map frequency logarithmically from 20Hz to 20kHz
-            const freq = Math.pow(10, Math.log10(20) + (i/width)*(Math.log10(20000)-Math.log10(20)));
+            const freq = this._graphFrequencyAt(i, width);
             const w = 2 * Math.PI * freq / sr;
             
             // Low Shelf response
@@ -507,8 +540,9 @@ class ToneControlPlugin extends PluginBase {
             
             const H_total = H_b * H_m * H_t;
             const dB = 20 * Math.log10(H_total);
+            response[i] = dB;
             const yPos = height * (1 - (dB + 24) / 48);
-            
+
             if (i === 0) {
                 ctx.moveTo(i, yPos);
             } else {
@@ -516,6 +550,13 @@ class ToneControlPlugin extends PluginBase {
             }
         }
         ctx.stroke();
+
+        frame.valid = true;
+        frame.scale = dpr;
+        frame.width = width;
+        frame.response = response;
+        frame.toY = db => height * (1 - (db + 24) / 48);
+        this._graphReadout?.refresh();
     }
 }
 

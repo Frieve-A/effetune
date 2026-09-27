@@ -740,7 +740,69 @@ class FiveBandDynamicEQ extends PluginBase {
         });
         this.resizeObserver.observe(graphContainer);
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: this.canvas,
+            read: x => this._readGraph(x)
+        });
+
         return container;
+    }
+
+    // Reads the exact analytic curves drawn by _drawGraph at a given canvas-pixel x,
+    // returning the Sidechain/Static rows (only when the selected band is enabled)
+    // and the always-present Dynamic (combined) row, for the cursor readout overlay.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        if (x < 0 || x > frame.width) return null;
+        const { format } = window.GraphReadout;
+        const freq = Math.pow(10, frame.logMinFreq + (x / frame.width) * frame.logFreqSpan);
+        const toY = db => frame.height * (1 - (db - frame.minGain) / frame.gainRange);
+        const rows = [];
+
+        const band = (this.currentBandIndex >= 0 && this.currentBandIndex < this.numBands)
+            ? this.bs[this.currentBandIndex]
+            : null;
+        if (band && band.en) {
+            const scGain = this._calculateBandResponse(freq, band.scf, 0, band.scq, 'bp');
+            rows.push({
+                label: 'Sidechain',
+                color: (window.ThemePalette?.get('graph-tone-56') ?? ''),
+                value: format.db(scGain, { signed: true }),
+                y: toY(scGain)
+            });
+
+            const staticGain = band.r < 1 ? band.mg : -band.mg;
+            const staticResponse = this._calculateBandResponse(freq, band.f, staticGain, band.q, band.ft);
+            rows.push({
+                label: 'Static',
+                color: (window.ThemePalette?.get('graph-handle') ?? ''),
+                value: format.db(staticResponse, { signed: true }),
+                y: toY(staticResponse)
+            });
+        }
+
+        const currentGains = (this.latestSmoothedGains && this.latestSmoothedGains.length === this.numBands)
+            ? this.latestSmoothedGains
+            : this._zeroGains;
+        let totalResponse = 0;
+        for (let bandIdx = 0; bandIdx < this.numBands; bandIdx++) {
+            const b = this.bs[bandIdx];
+            if (!b.en) continue;
+            totalResponse += this._calculateBandResponse(freq, b.f, currentGains[bandIdx], b.q, b.ft);
+        }
+        rows.push({
+            label: 'Dynamic',
+            color: (window.ThemePalette?.get('graph-trace') ?? ''),
+            value: format.db(totalResponse, { signed: true }),
+            y: toY(totalResponse)
+        });
+
+        return {
+            cursor: format.frequency(freq),
+            rows
+        };
     }
 
     // Populates a container with parameter controls for a specific band
@@ -947,6 +1009,9 @@ class FiveBandDynamicEQ extends PluginBase {
 
     // --- Graph Drawing ---
     _drawGraph() {
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
+
         // Check if canvas context and dimensions are valid
         if (!this.ctx || !this.canvas || this.canvas.width <= 0 || this.canvas.height <= 0) {
             // Avoid drawing if canvas is not ready
@@ -1126,6 +1191,20 @@ class FiveBandDynamicEQ extends PluginBase {
         ctx.textAlign = 'center'; // Ensure text is centered after rotation
         ctx.fillText('Level (dB)', 0, 0);
         ctx.restore(); // Restore context state
+
+        // --- Finalize readout frame ---
+        // Drawing happens directly in canvas-pixel units (canvas.width/height,
+        // no ctx.setTransform(dpr) scaling), so the cursor readout's x/y arrive
+        // in the same units already: no CSS-to-device conversion is needed.
+        frame.valid = true;
+        frame.scale = 1;
+        frame.width = width;
+        frame.height = height;
+        frame.logMinFreq = logMinFreq;
+        frame.logFreqSpan = logFreqSpan;
+        frame.minGain = minGain;
+        frame.gainRange = gainRange;
+        this._graphReadout?.refresh();
     }
 
     updateUI() {

@@ -155,12 +155,6 @@ This configuration creates natural-sounding dynamic restoration:
 - Improved clarity and separation
 - Reduced flatness in over-compressed recordings
 
-### Visual Feedback
-- Interactive transfer function graphs for each band
-- Real-time expansion activity meters showing how much each band is being reduced or lifted
-- Frequency band activity visualization
-- Clear crossover point indicators
-
 ### Tips for Use
 - Start with the default settings for general dynamic restoration
 - Adjust crossover frequencies to match your material

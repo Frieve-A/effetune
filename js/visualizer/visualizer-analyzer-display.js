@@ -1,5 +1,6 @@
 import { paletteColor, paletteGradient } from './visualizer-effects.js';
 import { THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR } from './visualizer-model.js';
+import { createBallistics, stepBallistics } from './visualizer-ballistics.js';
 
 const ANALYZERS = {
     spectrum: ['SpectrumAnalyzerPlugin', 'handleDspSpectrumTelemetry', 'drawGraph'],
@@ -31,6 +32,73 @@ const themeColorCss = hex => hex.length === 9
     : `rgb(${hexRgb(hex).join(',')})`;
 const DEFAULT_THEME_PALETTE = Object.fromEntries(Object.entries({ ...DEFAULT_THEME_COLORS,
     'graph-trace': DEFAULT_TRACE_COLOR }).map(([role, color]) => [role, themeColorCss(color)]));
+// Non-finite coordinates make canvas path and rect calls no-ops, hiding a peak trace.
+const HIDDEN_STEREO_PEAKS = new Float32Array(360).fill(NaN);
+const DB_POWER = Math.LN10 / 10;
+const SPECTRUM_FLOOR_POWER = 10 ** -14.5;
+
+// Spectrum smoothing: a Gaussian in log2 frequency (FWHM = sm octaves) on power, as
+// three box passes of half-width sigma over prefix sums, so each frame costs O(n).
+// HQ cells are log-uniform and smoothed only within their valid range; linear FFT
+// bins use 1/k weights and bounds k*2^-sigma..k*2^sigma, skipping DC. sm = 0 returns
+// the input array itself. The prefix sums carry a Neumaier compensation term, so each
+// window sum is accurate relative to the window rather than to the running total, and
+// quiet high bands next to a loud low end keep their level.
+export function createSpectrumSmoother() {
+    let key, input, lower, upper, weight, weightSum, prefix, prefixError, power, next, output;
+    return (levels, sm, hqRange = null) => {
+        if (!(sm > 0)) return levels;
+        const count = levels.length;
+        const start = hqRange ? hqRange.start : 1;
+        const end = hqRange ? hqRange.end : count;
+        const sigma = sm / (2 * Math.sqrt(2 * Math.LN2));
+        const configKey = `${count}|${start}|${end}|${sigma}|${Boolean(hqRange)}`;
+        if (configKey === key && levels === input) return output;
+        if (configKey !== key) {
+            key = configKey;
+            lower = new Int32Array(count);
+            upper = new Int32Array(count);
+            weight = new Float64Array(count);
+            weightSum = new Float64Array(count + 1);
+            prefix = new Float64Array(count + 1);
+            prefixError = new Float64Array(count + 1);
+            power = new Float64Array(count);
+            next = new Float64Array(count);
+            output = new Float64Array(count);
+            const radius = hqRange ? Math.round(sigma * (count - 1) / Math.log2(2000)) : 0;
+            const ratio = 2 ** sigma;
+            for (let i = start; i < end; i++) {
+                const low = hqRange ? i - radius : Math.ceil(i / ratio);
+                const high = hqRange ? i + radius : Math.floor(i * ratio);
+                lower[i] = low < start ? start : low;
+                upper[i] = (high < end ? high : end - 1) + 1;
+                weight[i] = hqRange ? 1 : 1 / i;
+                weightSum[i + 1] = weightSum[i] + weight[i];
+            }
+        }
+        input = levels;
+        output.set(levels);
+        for (let i = start; i < end; i++) power[i] = Math.exp(levels[i] * DB_POWER);
+        for (let pass = 0; pass < 3; pass++) {
+            for (let i = start; i < end; i++) {
+                // Both terms are non-negative, so the larger one is the plain comparison.
+                const sum = prefix[i], term = power[i] * weight[i], total = sum + term;
+                prefix[i + 1] = total;
+                prefixError[i + 1] = prefixError[i] + (sum >= term ? sum - total + term : term - total + sum);
+            }
+            for (let i = start; i < end; i++) {
+                const low = lower[i], high = upper[i];
+                next[i] = (prefix[high] - prefix[low] + (prefixError[high] - prefixError[low])) /
+                    (weightSum[high] - weightSum[low]);
+            }
+            [power, next] = [next, power];
+        }
+        // Sums at or below the -145 dB spectrum floor, including non-positive ones, clamp to it.
+        for (let i = start; i < end; i++) output[i] = power[i] > SPECTRUM_FLOOR_POWER ? Math.log(power[i]) / DB_POWER : -145;
+        return output;
+    };
+}
+
 let heatmapStyles;
 const heatmapColor = intensity => {
     if (!heatmapStyles) {
@@ -70,7 +138,6 @@ class AnalyzerDisplay {
         this.plugin.displayOptions = {
             transparent: true,
             visualizerAxisLabels: true,
-            preserveKeyboardAspect: true,
             themePalette: { get: role => this.themeColors?.[role] ?? DEFAULT_THEME_PALETTE[role] },
             drawSignal: (context, draw, clip) => this.drawSignal(context, draw, clip),
             drawKeyboard: (context, draw, geometry) => this.drawKeyboard(context, draw, geometry),
@@ -81,6 +148,16 @@ class AnalyzerDisplay {
             }
         };
         this.plugin.initializeDisplayCanvas?.(canvas);
+        if (this.type === 'spectrum') {
+            this.smoothSpectrum = createSpectrumSmoother();
+            // Peak off: draw the peak trace with non-finite levels, which the canvas skips.
+            const { drawSpectrumLines, drawSpectrumBars } = Plugin.prototype;
+            const showPeaks = () => this.plugin.displayOptions.showPeaks !== false;
+            this.plugin.drawSpectrumLines = (context, levels, ...rest) => drawSpectrumLines.call(this.plugin, context,
+                showPeaks() ? levels : levels.map(([x, [level]]) => [x, [level, -Infinity]]), ...rest);
+            this.plugin.drawSpectrumBars = (context, bands, ...rest) => drawSpectrumBars.call(this.plugin, context,
+                showPeaks() ? bands : { ...bands, peaks: bands.peaks.map(() => -Infinity) }, ...rest);
+        }
         this.params = {};
         this.colors = [];
         this.update(item, 0, canvas.width);
@@ -99,7 +176,10 @@ class AnalyzerDisplay {
             this.channel = item.channel;
         }
         plugin.graphCssWidth = cssWidth;
-        plugin.graphDpr = cssWidth > 0 ? plugin.canvas.width / cssWidth : 1;
+        const graphDpr = cssWidth > 0 ? plugin.canvas.width / cssWidth : 1;
+        // The note volume history is cached with the old line width.
+        if (plugin.graphDpr !== graphDpr) plugin.volumeHistoryDirty = true;
+        plugin.graphDpr = graphDpr;
         const params = item.params;
         const changed = {};
         for (const [key, value] of Object.entries(params)) {
@@ -108,13 +188,24 @@ class AnalyzerDisplay {
         const options = plugin.displayOptions;
         options.showAxes = params.showAxes;
         options.showAxisNumbers = params.showAxisNumbers;
-        if (this.type === 'spectrum' || this.type === 'level-meter') options.orientation = params.orientation;
+        if (this.type === 'spectrum' || this.type === 'level-meter') {
+            options.orientation = params.orientation;
+            options.showPeaks = params.pk;
+        }
         if (this.type === 'spectrum') options.quantizeBars = params.quantizeBars;
+        if (this.type === 'spectrum' || this.type === 'spectrogram' || this.type === 'notes') {
+            options.keyboardLength = params.kl / 100;
+        }
         if (this.type === 'level-meter') {
             plugin.dbStart = params.dr ?? -96;
             plugin.dbRange = -plugin.dbStart;
             options.showLevelValues = params.showLevelValues;
             options.channel = item.channel;
+            // Fall times are seconds per 20 dB; reapplied after every initializeDisplayState().
+            // Instant fall uses the largest finite rate, so a zero time step never yields NaN.
+            plugin.FALL_RATE = params.cf > 0 ? 20 / params.cf : Number.MAX_VALUE;
+            plugin.PEAK_HOLD_TIME = params.ph;
+            plugin.PEAK_FALL_RATE = 20 / params.pf;
         }
         if (this.type === 'analog-meter') {
             options.channelLabels = channelNumbers(item.channel);
@@ -343,12 +434,78 @@ class AnalyzerDisplay {
         context.save();
         context.translate(this.flipX ? this.plugin.canvas.width : 0, this.flipY ? this.plugin.canvas.height : 0);
         context.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
+        const plugin = this.plugin;
+        let measurements = null;
         try {
             this.update(item, time, cssWidth);
-            this.plugin[this.drawMethod](time * 1000);
+            const dt = this.lastTime === undefined || time < this.lastTime ? 0 : time - this.lastTime;
+            this.lastTime = time;
+            if (this.type === 'spectrum') this.stepSpectrum(item, dt);
+            else if (this.type === 'chroma') this.stepChroma(item.params.cf, dt);
+            else if (this.type === 'stereo' && plugin.currentMeasurements) {
+                measurements = plugin.currentMeasurements;
+                plugin.currentMeasurements = { ...measurements,
+                    peakBuffer: item.params.pk === false ? HIDDEN_STEREO_PEAKS : this.stepStereo(measurements.peakBuffer, item.params, dt) };
+            }
+            plugin[this.drawMethod](time * 1000);
         } finally {
+            if (measurements) plugin.currentMeasurements = measurements;
             context.restore();
         }
+    }
+
+    // Replace the DSP's fixed 20 dB/s peak decay with the item's smoothing and ballistics.
+    stepSpectrum(item, dt) {
+        const plugin = this.plugin, params = item.params;
+        // Telemetry, point-count and scale changes assign fresh arrays; our own output stays assigned otherwise.
+        if (plugin.spectrum !== this.ballistics?.cur) this.rawSpectrum = plugin.spectrum;
+        const raw = this.rawSpectrum;
+        const key = `${raw.length}|${params.sc}|${item.channel}`;
+        if (this.ballisticsKey !== key) {
+            this.ballisticsKey = key;
+            this.ballistics = createBallistics(raw.length, true);
+        }
+        const snapshot = plugin.dspSpectrumSnapshot;
+        const hqRange = snapshot?.highQuality ? { start: snapshot.firstValidIndex,
+            end: snapshot.firstValidIndex + snapshot.validCellCount } : null;
+        stepBallistics(this.ballistics, this.smoothSpectrum(raw, params.sm, hqRange), dt, params.cf, params.ph, params.pf);
+        plugin.spectrum = this.ballistics.cur;
+        plugin.peaks = this.ballistics.peak;
+        plugin.peakDecayPaused = true;
+        plugin.peakDecayFrozenElapsed = 0;
+    }
+
+    // Hold and slow the DSP's peak envelope, which already falls 20 dB/s between telemetry frames.
+    stepStereo(envelope, params, dt) {
+        if (envelope !== this.stereoEnvelope) {
+            this.stereoEnvelope = envelope;
+            if (this.stereoRaw?.length !== envelope.length) {
+                this.stereoRaw = new Float64Array(envelope.length);
+                this.stereoPeaks = new Float32Array(envelope.length);
+                this.ballistics = createBallistics(envelope.length, true);
+            }
+            for (let i = 0; i < envelope.length; i++) this.stereoRaw[i] = envelope[i] > 0 ? 20 * Math.log10(envelope[i]) : -Infinity;
+        }
+        stepBallistics(this.ballistics, this.stereoRaw, dt, 0, params.ph, params.pf);
+        const peak = this.ballistics.peak;
+        for (let i = 0; i < peak.length; i++) this.stereoPeaks[i] = 10 ** (peak[i] / 20);
+        return this.stereoPeaks;
+    }
+
+    // Release the chroma cell levels; updateDisplay() assigns a fresh cell array per frame.
+    stepChroma(fallTime, dt) {
+        const cells = this.plugin.display;
+        if (!cells?.length) return;
+        if (cells !== this.chromaCells) {
+            this.chromaCells = cells;
+            if (this.rawChroma?.length !== cells.length) {
+                this.rawChroma = new Float64Array(cells.length);
+                this.ballistics = createBallistics(cells.length, false);
+            }
+            for (let i = 0; i < cells.length; i++) this.rawChroma[i] = cells[i].level;
+        }
+        stepBallistics(this.ballistics, this.rawChroma, dt, fallTime);
+        for (let i = 0; i < cells.length; i++) cells[i].level = this.ballistics.cur[i];
     }
 
     drawSignal(context, draw, clip) {

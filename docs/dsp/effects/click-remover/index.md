@@ -45,8 +45,4 @@ Click Remover repairs short, isolated faults such as record crackle, pops, brief
 - **Sensitivity** (0–100%, default 50%) controls how readily the effect treats a short change as a fault. Higher values repair more suspected clicks; lower values are more conservative and better preserve sharp musical attacks.
 - **Max Repair Length** (0.1–2 ms, default 1 ms) limits the duration of each repair. Raise it for slightly longer pops or dropouts; lower it when repairing ordinary short crackle.
 
-### Reading the Display
-
-**REPAIRS/S** shows the recent number of click repairs per second. A value near zero means no short faults are currently being repaired. A steady high value on normal music is a reason to lower **Sensitivity** or **Max Repair Length**.
-
 [Back to all effects](/dsp/effects/)

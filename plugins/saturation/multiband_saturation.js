@@ -609,10 +609,8 @@ class MultibandSaturationPlugin extends PluginBase {
             const mixRatio = band.mx / 100;
             const biasOffset = Math.tanh(band.dr * band.bs);
             for (let i = 0; i < width; i++) {
-                const x = (i / width) * 2 - 1;
-                const wet = Math.tanh(band.dr * (x + band.bs)) - biasOffset;
-                const y = ((1 - mixRatio) * x + mixRatio * wet) * Math.pow(10, band.gn / 20);
-                const canvasY = ((1 - y) / 2) * height;
+                const x = this._transferX(i, width);
+                const canvasY = this._transferY(x, height, band, mixRatio, biasOffset);
                 if (i === 0) {
                     ctx.moveTo(i, canvasY);
                 } else {
@@ -620,7 +618,47 @@ class MultibandSaturationPlugin extends PluginBase {
                 }
             }
             ctx.stroke();
+
+            const frames = (this._readoutFrames ??= []);
+            const frame = (frames[bandIndex] ??= {});
+            frame.width = width;
+            frame.height = height;
+            frame.mixRatio = mixRatio;
+            frame.biasOffset = biasOffset;
+            frame.dr = band.dr;
+            frame.bs = band.bs;
+            frame.gn = band.gn;
+            frame.valid = true;
         });
+        this._graphReadouts?.forEach(readout => readout?.refresh());
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -1..1 across the full width).
+    _transferX(x, width) {
+        return (x / width) * 2 - 1;
+    }
+
+    // Canvas y of the transfer curve's output for an input on the -1..1 axis.
+    _transferY(x, height, band, mixRatio, biasOffset) {
+        const wet = Math.tanh(band.dr * (x + band.bs)) - biasOffset;
+        const y = ((1 - mixRatio) * x + mixRatio * wet) * Math.pow(10, band.gn / 20);
+        return ((1 - y) / 2) * height;
+    }
+
+    // Reads the transfer curve of one band's graph at canvas pixel x.
+    _readBandGraph(bandIndex, x) {
+        const frame = this._readoutFrames?.[bandIndex];
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inValue = this._transferX(x, frame.width);
+        const band = { dr: frame.dr, bs: frame.bs, gn: frame.gn };
+        const y = this._transferY(inValue, frame.height, band, frame.mixRatio, frame.biasOffset);
+        const outValue = 1 - 2 * y / frame.height;
+        return {
+            cursor: `in ${format.number(inValue)}`,
+            rows: [{ label: 'out', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.number(outValue), y }],
+            at: { x, y }
+        };
     }
 
     _getCanvasDpr(canvas) {
@@ -633,12 +671,16 @@ class MultibandSaturationPlugin extends PluginBase {
         this.graphDisposers?.forEach(dispose => dispose());
         this.graphDisposers = null;
         this.canvases = null;
+        this._graphReadouts = null;
+        this._readoutFrames = null;
         super.cleanup();
     }
 
     createUI() {
         const container = document.createElement('div');
         this.instanceId = `mbs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this._graphReadouts = [];
+        this._readoutFrames = [];
         container.className = 'mbs-container plugin-parameter-ui';
         container.appendChild(this.createSelectControl(
             'Oversampling', [1, 2, 4, 8].map(value => ({ value, label: value + 'x' })),
@@ -816,6 +858,13 @@ class MultibandSaturationPlugin extends PluginBase {
             });
             canvas.style.backgroundColor = 'var(--et-graph-bg-deep)';
             this.graphDisposers.push(dispose);
+            const bandIndexForReadout = i;
+            (this._graphReadouts ??= [])[bandIndexForReadout] = window.GraphReadout?.attach({
+                mount: graphContainer,
+                surface: canvas,
+                read: x => this._readBandGraph(bandIndexForReadout, x),
+                crosshair: 'xy'
+            });
             const label = document.createElement('div');
             label.className = 'mbs-band-graph-label';
             label.textContent = bandNames[i];

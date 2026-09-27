@@ -82,10 +82,4 @@ Click **Effect Presets** in the effect header to start from a complete loudness-
   - Gain: Maximum treble boost (0dB to 15dB)
   - Q: Shape of treble enhancement (0.5 to 1.0)
 
-### Visual Display
-- Real-time EQ response graph
-- Interactive parameter controls
-- Volume-dependent correction curve; the uniform Relative Volume gain is not included in the graph
-- Precise numerical readouts
-
 [Back to all effects](/dsp/effects/)

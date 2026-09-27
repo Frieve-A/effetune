@@ -55,10 +55,4 @@ Only the differences between bands matter for the sound. A filter that delays ev
 
 Total latency is the Latency setting plus half the Taps count. It stays the same while you move the sliders, so only a change of Taps or Latency changes the delay of the whole chain.
 
-### Visual Display
-
-- The grey curve is the target: the delay you asked for, interpolated across a logarithmic frequency axis from 20 Hz to 20 kHz. The delay axis rescales itself to fit the current settings, starting at ±5 ms.
-- The green curve is what the designed filter really does. Where the two curves lie on top of each other the setting is fully realized; where they separate, the filter cannot follow the request with the current Taps.
-- The status line shows the total latency in samples and milliseconds, and the magnitude ripple of the filter. Ripple measures how far the realized magnitude response departs from the flat design target: smaller values are closer to the target, and 0.3 dB is the accuracy-warning threshold.
-
 [Back to all effects](/dsp/effects/)

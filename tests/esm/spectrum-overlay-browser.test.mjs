@@ -66,6 +66,7 @@ async function loadCssInApplicationOrder(page) {
     'css/effetune-library.css',
     'css/pipeline-analyzer.css',
     'plugins/spectrum-overlay.css',
+    'plugins/graph-readout.css',
     ...pluginCss.map(path => `plugins/${path}.css`)
   ]) {
     await page.addStyleTag({ content: await fs.readFile(path, 'utf8') });
@@ -79,6 +80,7 @@ async function loadTargetScripts(page) {
     'plugins/graph-point-interaction.js',
     'plugins/frequency-axis.js',
     'plugins/spectrum-overlay.js',
+    'plugins/graph-readout.js',
     ...Object.values(targets).map(target => `plugins/${target.path}.js`)
   ]) {
     await page.addScriptTag({ content: await fs.readFile(path, 'utf8') });
@@ -167,7 +169,7 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
                 }));
               const originalControls = graphControls();
               const originalLegendRight = name === 'RoomEqPlugin'
-                ? rect(root.querySelector('.room-eq-response-legend')).right
+                ? rect(root.querySelector('.graph-readout-legend')).right
                 : null;
               const instance = window.SpectrumOverlay.attach(plugin, root);
               instance.enable();
@@ -264,17 +266,23 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
               }
 
               const dpr = window.devicePixelRatio || 1;
+              const hoverRoomGraph = () => {
+                const graph = root.querySelector('.room-eq-additional-eq-graph');
+                const graphRect = rect(graph);
+                graph.dispatchEvent(new PointerEvent('pointermove', {
+                  bubbles: true,
+                  pointerType: 'mouse',
+                  clientX: (graphRect.left + graphRect.right) / 2,
+                  clientY: (graphRect.top + graphRect.bottom) / 2
+                }));
+                // The readout renders on the next animation frame.
+                return new Promise(resolve => requestAnimationFrame(resolve));
+              };
               const roomHover = name === 'RoomEqPlugin'
-                ? (() => {
-                    const graph = root.querySelector('.room-eq-additional-eq-graph');
-                    const graphRect = rect(graph);
-                    graph.dispatchEvent(new MouseEvent('mousemove', {
-                      bubbles: true,
-                      clientX: (graphRect.left + graphRect.right) / 2,
-                      clientY: (graphRect.top + graphRect.bottom) / 2
-                    }));
-                    const legend = root.querySelector('.room-eq-response-legend');
-                    return { legend: rect(legend), cursor: legend.querySelector('.room-eq-response-legend-cursor').textContent };
+                ? await (async () => {
+                    await hoverRoomGraph();
+                    const legend = root.querySelector('.graph-readout-legend');
+                    return { legend: rect(legend), cursor: legend.querySelector('.graph-readout-cursor').textContent };
                   })()
                 : null;
               const controls = graphControls();
@@ -312,14 +320,15 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
                       canvas: getComputedStyle(instance.canvas).display,
                       button: getComputedStyle(instance.button).display,
                       axisTitle: getComputedStyle(instance.axisTitle).display,
-                      legendRight: rect(root.querySelector('.room-eq-response-legend')).right
+                      legendRight: rect(root.querySelector('.graph-readout-legend')).right
                     };
                     plugin._setResponseView('frequency');
                     return hidden;
               })()
                 : null;
               if (name === 'RoomEqPlugin') {
-                root.querySelector('.room-eq-additional-eq-graph').dispatchEvent(new MouseEvent('mouseleave'));
+                root.querySelector('.room-eq-additional-eq-graph')
+                  .dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
               }
               instance.disable();
               await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -331,17 +340,11 @@ test('Spectrum Overlay follows every real graph through the complete plugin CSS 
               const removedWhenOff = !root.contains(instance.canvas);
               const axisTitleRemovedWhenOff = !overlayAxisTitle || !root.contains(overlayAxisTitle);
               const disposedLegendRight = name === 'RoomEqPlugin'
-                ? (() => {
+                ? await (async () => {
                     instance.enable();
-                    const graph = root.querySelector('.room-eq-additional-eq-graph');
-                    const graphRect = rect(graph);
-                    graph.dispatchEvent(new MouseEvent('mousemove', {
-                      bubbles: true,
-                      clientX: (graphRect.left + graphRect.right) / 2,
-                      clientY: (graphRect.top + graphRect.bottom) / 2
-                    }));
+                    await hoverRoomGraph();
                     instance.dispose();
-                    return rect(root.querySelector('.room-eq-response-legend')).right;
+                    return rect(root.querySelector('.graph-readout-legend')).right;
                   })()
                 : (() => { instance.dispose(); return null; })();
               plugin.cleanup?.();

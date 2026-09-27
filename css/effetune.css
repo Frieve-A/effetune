@@ -131,9 +131,27 @@ input[type="checkbox"] + label::before {
     margin-bottom: 2px;
 }
 
+/* When a caption leads the row, the options wrap inside their own box so wrapped
+   lines start under the first option instead of back at the row's left edge.
+   The box inherits the row's gaps, and baseline alignment keeps the caption on
+   the first line. */
+.parameter-row.radio-group:has(> .radio-options) {
+    align-items: baseline;
+}
+
+.radio-options {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: inherit;
+    row-gap: inherit;
+}
+
 /* A radio and its caption are one wrapping unit. Giving every unit the normal
    row height also keeps wrapped lines on the same vertical rhythm as the
    surrounding parameter rows. */
+.radio-options > :has(> input[type="radio"]),
 .radio-group > :has(> input[type="radio"]) {
     display: inline-flex;
     align-items: center;
@@ -794,6 +812,14 @@ body.layout-mobile #pipelineStats {
     cursor: not-allowed;
 }
 
+.undo-button:disabled,
+.redo-button:disabled,
+.cut-button:disabled,
+.copy-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .drag-message {
     display: none;
     position: absolute;
@@ -1300,6 +1326,7 @@ body.layout-mobile #pipelineStats {
 .move-up-button svg,
 .move-down-button svg,
 .visualizer-editor-actions svg,
+.visualizer-align-actions svg,
 .help-button svg,
 .delete-button svg,
 .column-control-button svg {
@@ -1347,8 +1374,16 @@ body.layout-mobile #pipelineStats {
     margin-right: 0;
 }
 
+/* Baseline alignment keeps the label on the group's first line when options wrap. */
 .plugin-parameter-ui .parameter-row:has(> .radio-group) {
+    align-items: baseline;
     row-gap: 4px;
+}
+
+/* Take the rest of the row so options wrap inside the group, aligned under the
+   first option instead of back at the row's left edge. */
+.plugin-parameter-ui .parameter-row > .radio-group {
+    flex: 1 1 0;
 }
 
 /* Analog Meter lays its parameters out in two columns on desktop. */
@@ -4294,14 +4329,15 @@ body.view-visualizer #libraryView,
 body.view-visualizer #mobileLibraryView,
 body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
-.visualizer-toolbar button, .visualizer-editor button, .visualizer-editor select, .visualizer-quality {
+.visualizer-toolbar > button, .visualizer-editor button, .visualizer-editor select, .visualizer-quality {
     background: var(--et-surface-8); color: var(--et-text-primary); border: 1px solid var(--et-surface-20); border-radius: 5px; padding: 6px 10px; font: inherit;
 }
-.visualizer-toolbar button, .visualizer-editor button { cursor: pointer; }
+.visualizer-toolbar > button, .visualizer-editor button { cursor: pointer; }
 .visualizer-toolbar > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .visualizer-toolbar > button svg { display: block; flex: 0 0 auto; }
+#visualizerView:not(.is-editing) .pipeline-header-right, #visualizerView.is-editing .visualizer-import { display: none; }
 .visualizer-quality-label { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.visualizer-editor-navigation .visualizer-quality-label { justify-content: space-between; min-height: 26px; margin: 2px 0; }
+.visualizer-editor-navigation .visualizer-quality-label { justify-content: space-between; min-height: 26px; margin: 2px 0 16px; }
 .visualizer-editor-navigation .visualizer-quality-label > span { font-weight: bold; }
 .visualizer-editor-navigation .visualizer-quality-label > select { height: 26px; padding: 2px 6px; }
 .visualizer-workspace { display: flex; align-items: stretch; min-height: 320px; height: calc(100vh - 250px); gap: 16px; }
@@ -4318,7 +4354,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
         linear-gradient(to bottom, #ffffff60 1px, transparent 1px), /* theme-allow: Fixed scene-editing grid, independent of the app theme. */
         linear-gradient(to right, #ffffff24 1px, transparent 1px), /* theme-allow: Fixed scene-editing grid, independent of the app theme. */
         linear-gradient(to bottom, #ffffff24 1px, transparent 1px); /* theme-allow: Fixed scene-editing grid, independent of the app theme. */
-    background-size: 100% 100%, 100% 100%, 25% 100%, 100% 25%, 2.5% 100%, 100% 2.5%;
+    background-size: 100% 100%, 100% 100%, 25% 100%, 100% 25%, var(--visualizer-grid-cell, 2.5%) 100%, 100% var(--visualizer-grid-cell, 2.5%);
 }
 .visualizer-expand { position: absolute; right: 12px; bottom: 12px; z-index: 3; display: flex; align-items: center; justify-content: center; padding: 0; color: #fff; background: #0008; border: 1px solid #fff8; border-radius: 6px; width: 42px; height: 42px; cursor: pointer; opacity: 0; transition: opacity .2s; } /* theme-allow: Contrasting controls over user-selected scene colors. */
 .visualizer-expand svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -4326,7 +4362,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-status { position: absolute; max-width: 80%; padding: 15px; color: #fff; background: #15151de8; border-radius: 6px; text-align: center; } /* theme-allow: Contrasting status overlay over user-selected scene colors. */
 .visualizer-editor { width: clamp(210px, 23vw, 300px); flex: none; overflow-y: auto; padding: 14px; border: 1px solid var(--et-surface-31); border-radius: 4px; color: var(--et-text-primary); box-sizing: border-box; }
 .visualizer-editor-inspector { width: clamp(240px, 26vw, 340px); }
-.visualizer-editor[hidden], .visualizer-selection[hidden], .visualizer-status[hidden] { display: none; }
+.visualizer-editor[hidden], .visualizer-selection[hidden], .visualizer-marquee[hidden], .visualizer-status[hidden] { display: none; }
 .visualizer-item-header { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 14px; }
 .visualizer-item-name.plugin-name { flex: 1 1 auto; min-width: 0; cursor: default; transform: none; margin: 0; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .visualizer-section { min-width: 0; margin: 0 0 16px; }
@@ -4335,6 +4371,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-section-title { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--et-text-primary); }
 .visualizer-section .visualizer-section { margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--et-surface-17); }
 .visualizer-editor-inspector .visualizer-section .visualizer-section { margin: 14.5px 0 0; padding-top: 14.5px; }
+.visualizer-editor-navigation .visualizer-section .visualizer-section { margin: 16px 0 0; padding-top: 0; border-top: 0; }
 .visualizer-section .visualizer-section-title:is(h4) { font-size: 13px; }
 .visualizer-editor-navigation .visualizer-field { display: flex; align-items: center; gap: 10px; min-height: 26px; margin: 2px 0; }
 .visualizer-editor-navigation .visualizer-field > label { flex: 0 1 100px; min-width: 0; color: var(--et-text-secondary); }
@@ -4342,6 +4379,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-editor-navigation .visualizer-field:has(> input[type="file"]) { flex-direction: column; align-items: stretch; gap: 0; }
 .visualizer-editor-navigation .visualizer-field:has(> input[type="file"]) > label { display: flex; align-items: center; min-height: 26px; flex: none; }
 .visualizer-editor-navigation .visualizer-field > input[type="file"] { width: 100%; min-width: 0; height: 26px; }
+.visualizer-editor-navigation .visualizer-field > input[type="range"] { flex: 1 1 0; width: auto; min-width: 0; }
 .visualizer-editor-navigation select { background: var(--et-input-gradient); border-color: var(--et-surface-28); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .24); }
 .visualizer-editor-navigation select:focus { outline: none; border-color: var(--et-accent); box-shadow: var(--et-focus-ring); }
 .visualizer-editor-navigation .visualizer-field.checkbox-row { flex-direction: row-reverse; justify-content: flex-end; align-items: center; }
@@ -4380,14 +4418,16 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-editor .visualizer-field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
 .visualizer-editor .visualizer-field input[type="color"]::-moz-color-swatch { border: 0; border-radius: 2px; }
 .visualizer-editor-actions { display: flex; flex: none; gap: 4px; margin-left: auto; }
+.visualizer-align-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: -6px 0 14px; }
+.visualizer-bulk-note { margin: 0 0 14px; font-size: 12px; color: var(--et-text-secondary); }
 .visualizer-editor button { margin: 2px; font-size: 12px; }
 .visualizer-editor button { background: var(--et-control-gradient); box-shadow: var(--et-control-shadow); }
 .visualizer-editor button:hover:not(:disabled):not(.toggle-button) { background: var(--et-control-hover-gradient); box-shadow: var(--et-control-hover-shadow); }
 .visualizer-effect-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .visualizer-effect-heading .visualizer-section-title { margin: 0; }
 .visualizer-effect-actions { display: flex; gap: 4px; margin-left: auto; }
-.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) button { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; margin: 0; padding: 4px 8px; border-color: var(--et-surface-32); }
-.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) :is(.move-up-button, .move-down-button, .bring-to-front-button, .send-to-back-button) { color: var(--et-accent); }
+.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions, .visualizer-align-actions) button { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; margin: 0; padding: 4px 8px; border-color: var(--et-surface-32); }
+.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions, .visualizer-align-actions) :is(.move-up-button, .move-down-button, .bring-to-front-button, .send-to-back-button, [class^="align-"]) { color: var(--et-accent); }
 .visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) .delete-button { color: var(--et-danger); }
 .visualizer-editor .toggle-button { flex: none; width: 48px; height: 24px; margin: 0; padding: 2px 8px; font-size: 12px; background: var(--et-toggle-on-gradient); border-color: var(--et-success); box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, .18); }
 .visualizer-editor .toggle-button.off { background: linear-gradient(180deg, var(--et-surface-51), var(--et-surface-42)); border-color: var(--et-surface-55); box-shadow: var(--et-control-shadow); }
@@ -4410,6 +4450,8 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-item-bounds { position: absolute; inset: 0; pointer-events: none; }
 .visualizer-item-bounds > div { position: absolute; box-sizing: border-box; border: 1px dashed #ffffffa6; box-shadow: 0 0 0 1px #0008; } /* theme-allow: White and black bounds remain visible over scene content. */
 .visualizer-selection { position: absolute; border: 1px solid #fff; outline: 1px solid #0008; box-sizing: border-box; pointer-events: none; } /* theme-allow: White and black selection remains visible over scene content. */
+.visualizer-item-bounds > div.selected { border: 1px solid #fff; } /* theme-allow: White and black selection remains visible over scene content. */
+.visualizer-marquee { position: absolute; border: 1px dashed #fff; background: #ffffff1a; box-shadow: 0 0 0 1px #0008; box-sizing: border-box; pointer-events: none; } /* theme-allow: White and black marquee remains visible over scene content. */
 .visualizer-handle { position: absolute; width: 13px; height: 13px; background: var(--et-accent); border: 1px solid #fff; pointer-events: auto; } /* theme-allow: White handle edge contrasts with its accent fill over scene content. */
 .visualizer-handle.nw { left: 0; top: 0; cursor: nwse-resize; }
 .visualizer-handle.n { left: 50%; top: 0; transform: translateX(-50%); cursor: ns-resize; }

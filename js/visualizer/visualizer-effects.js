@@ -50,13 +50,15 @@ export function animatedEffects(effects = []) {
 export class VisualizerEffects {
     constructor() { this.states = new Map(); }
     prune(ids) { for (const id of this.states.keys()) if (!ids.has(id)) this.states.delete(id); }
-    apply(id, input, effects, time, modulators, quality = 0, changed = true, flipX = false, flipY = false) {
+    // `scale` is the output width over the 1280-wide reference, so pixel radii keep
+    // the same proportion to the scene at any output resolution.
+    apply(id, input, effects, time, modulators, quality = 0, changed = true, flipX = false, flipY = false, scale = 1) {
         const factor = quality > 0 ? .35 : .65;
         const width = Math.max(1, Math.round(input.width * factor));
         const height = Math.max(1, Math.round(input.height * factor));
         const active = effects.filter(effect => effect.enabled);
         const padding = active.reduce((max, effect) => effect.type === 'glow'
-            ? Math.max(max, Math.ceil(glowRadius(effect.amount + effect.mod.depth) * 3)) : max, 0);
+            ? Math.max(max, Math.ceil(glowRadius(effect.amount + effect.mod.depth) * scale * 3)) : max, 0);
         const workWidth = width + padding * 2, workHeight = height + padding * 2;
         let state = this.states.get(id);
         if (!state || state.a.width !== workWidth || state.a.height !== workHeight || state.padding !== padding) {
@@ -123,7 +125,7 @@ export class VisualizerEffects {
                 scratch.fillStyle = color;
                 scratch.fillRect(0, 0, small.width, small.height);
                 scratch.globalCompositeOperation = 'source-over';
-                ctx.filter = `blur(${glowRadius(amount)}px)`;
+                ctx.filter = `blur(${glowRadius(amount) * scale}px)`;
                 ctx.globalAlpha = .25;
                 ctx.drawImage(current, 0, 0);
                 ctx.filter = 'none';
@@ -147,7 +149,7 @@ export class VisualizerEffects {
                     scratch.globalCompositeOperation = 'source-over';
                 }
                 if (effect.type === 'outline') {
-                    const offset = 1 + amount * 6;
+                    const offset = (1 + amount * 6) * scale;
                     for (let angle = 0; angle < 8; angle++) ctx.drawImage(small, Math.cos(angle * Math.PI / 4) * offset, Math.sin(angle * Math.PI / 4) * offset, workWidth, workHeight);
                 } else ctx.drawImage(small, 0, 0, workWidth, workHeight);
                 if (effect.type !== 'blur') { ctx.drawImage(current, 0, 0); }
@@ -189,7 +191,8 @@ export class VisualizerEffects {
                 for (const particle of state.particles) {
                     if (particle.life <= 0) continue;
                     particle.life -= dt; particle.x += particle.vx * dt; particle.y += particle.vy * dt;
-                    ctx.globalAlpha = Math.max(0, particle.life); ctx.fillRect(particle.x, particle.y, 2 + amount * 4, 2 + amount * 4);
+                    const size = (2 + amount * 4) * scale;
+                    ctx.globalAlpha = Math.max(0, particle.life); ctx.fillRect(particle.x, particle.y, size, size);
                 }
             } else {
                 ctx.drawImage(current, 0, 0);

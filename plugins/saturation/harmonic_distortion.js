@@ -235,39 +235,71 @@ class HarmonicDistortionPlugin extends PluginBase {
         ctx.beginPath();
         
         // Convert percentage values to actual coefficients
-        const a2 = -this.h2 * 0.01;
-        const a3 = -this.h3 * 0.01;
-        const a4 = -this.h4 * 0.01;
-        const a5 = -this.h5 * 0.01;
-        
+        const coeffs = {
+            a2: -this.h2 * 0.01,
+            a3: -this.h3 * 0.01,
+            a4: -this.h4 * 0.01,
+            a5: -this.h5 * 0.01
+        };
+
         for (let i = 0; i < width; i++) {
-            const x = (i / width) * 2 - 1; // Map to [-1, 1] range
-            
-            // Apply the same transfer function as in the processor
-            const x_scaled = x * this.sn;
-            const x2 = x_scaled * x_scaled;
-            const x3 = x2 * x_scaled;
-            const x4 = x3 * x_scaled;
-            const x5 = x4 * x_scaled;
-            
-            const y = x_scaled + 
-                     a2 * x2 + 
-                     a3 * x3 + 
-                     a4 * x4 + 
-                     a5 * x5;
-            
-            // Apply compensation and map to canvas coordinates
-            const y_compensated = y / this.sn;
-            const canvasY = ((1 - y_compensated) / 2) * height;
-            
+            const x = this._transferX(i, width);
+            const canvasY = this._transferY(x, height, coeffs);
+
             if (i === 0) {
                 ctx.moveTo(i, canvasY);
             } else {
                 ctx.lineTo(i, canvasY);
             }
         }
-        
+
         ctx.stroke();
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.coeffs = coeffs;
+        frame.valid = true;
+        this._graphReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -1..1 across the full width).
+    _transferX(x, width) {
+        return (x / width) * 2 - 1;
+    }
+
+    // Canvas y of the transfer curve's output for an input on the -1..1 axis
+    // (same polynomial the processor applies, with the same output compensation).
+    _transferY(x, height, coeffs) {
+        const x_scaled = x * this.sn;
+        const x2 = x_scaled * x_scaled;
+        const x3 = x2 * x_scaled;
+        const x4 = x3 * x_scaled;
+        const x5 = x4 * x_scaled;
+
+        const y = x_scaled +
+                 coeffs.a2 * x2 +
+                 coeffs.a3 * x3 +
+                 coeffs.a4 * x4 +
+                 coeffs.a5 * x5;
+
+        const y_compensated = y / this.sn;
+        return ((1 - y_compensated) / 2) * height;
+    }
+
+    // Reads the transfer curve at canvas pixel x.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inValue = this._transferX(x, frame.width);
+        const y = this._transferY(inValue, frame.height, frame.coeffs);
+        const outValue = 1 - 2 * y / frame.height;
+        return {
+            cursor: `in ${format.number(inValue)}`,
+            rows: [{ label: 'out', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.number(outValue), y }],
+            at: { x, y }
+        };
     }
 
     createUI() {
@@ -312,6 +344,12 @@ class HarmonicDistortionPlugin extends PluginBase {
         this.canvas = canvas;
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x),
+            crosshair: 'xy'
+        });
 
         // Update the graph initially
         this.updateTransferGraph();

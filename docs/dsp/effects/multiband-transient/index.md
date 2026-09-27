@@ -137,14 +137,6 @@ Each frequency band has independent transient shaping controls:
   - Higher values: More natural, transparent processing
   - Typical range: 3ms to 8ms
 
-### Visual Feedback
-- Three independent gain visualization graphs (one per band)
-- Real-time gain history display for each frequency band
-- Time markers for reference
-- Interactive band selection
-- Clear visual feedback of transient shaping activity
-- The graphs scroll smoothly from right to left, with the latest values at the right edge.
-
 ### Recommended Settings
 
 #### Punchier Pop/Rock Listening

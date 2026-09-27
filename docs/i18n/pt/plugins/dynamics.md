@@ -122,6 +122,7 @@ Um controle inteligente de volume que ajusta automaticamente sua música para ma
 - Nível de saída (linha branca)
 - Feedback visual claro dos ajustes de volume
 - O gráfico se desloca da direita para a esquerda, com os níveis mais recentes na borda direita e marcações a cada segundo.
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas
 
@@ -295,6 +296,7 @@ Um efeito que suaviza diferenças de volume reduzindo gentilmente os picos altos
 - Indicadores de nível de volume fáceis de ler
 - Feedback visual para todos os ajustes de parâmetros
 - Linhas de referência para ajudar a guiar suas configurações
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas para Diferentes Cenários de Audição
 - Audição Casual em Segundo Plano:
@@ -379,6 +381,7 @@ Um processador de faixa dinâmica que expande a faixa dinâmica de sinais abaixo
 - Indicadores de nível de volume fáceis de ler
 - Feedback visual para todos os ajustes de parâmetros
 - Linhas de referência para ajudar a guiar suas configurações
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas para Diferentes Cenários de Audição
 - Restauração de Dinâmicas Naturais:
@@ -466,6 +469,7 @@ Um noise gate de banda inteira que reduz o sinal todo quando o nível cai abaixo
 - Medidor de redução de ganho em tempo real exibindo:
   - Quantidade atual de redução de ruído
   - Feedback visual da atividade do gate
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas
 
@@ -609,6 +613,7 @@ Esta configuração cria o som característico "pronto para rádio":
 - Medidores de redução de ganho em tempo real
 - Visualização de atividade da banda de frequência
 - Indicadores claros de pontos de crossover
+- Passe o cursor sobre o gráfico de uma banda, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Uso
 - Comece com as configurações padrão em estilo de rádio FM
@@ -737,6 +742,7 @@ Esta configuração cria restauração dinâmica de som natural:
 - Medidores de atividade de expansão em tempo real mostrando quanto cada banda está sendo reduzida ou elevada
 - Visualização de atividade da banda de frequência
 - Indicadores claros de pontos de crossover
+- Passe o cursor sobre o gráfico de uma banda, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Uso
 - Comece com as configurações padrão para restauração dinâmica geral
@@ -852,6 +858,7 @@ Cada banda de frequência tem controles independentes de moldagem de transientes
 - Seleção interativa de bandas
 - Feedback visual claro da atividade de moldagem de transientes
 - Os gráficos se deslocam suavemente da direita para a esquerda, com os valores mais recentes na borda direita.
+- Passe o cursor sobre o gráfico de uma banda, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas
 
@@ -974,6 +981,7 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para começar co
 - Exibição baseada em tempo com marcadores de referência de 1 segundo
 - Valores atuais exibidos em tempo real
 - Os gráficos se deslocam suavemente da direita para a esquerda, com os valores mais recentes na borda direita.
+- Passe o cursor sobre qualquer um dos gráficos, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas
 
@@ -1065,6 +1073,7 @@ Um processador de dinâmica especializado que permite realçar ou reduzir indepe
 - Marcadores de tempo para referência
 - Interface intuitiva para todos os parâmetros
 - Os gráficos se deslocam suavemente da direita para a esquerda, com os valores mais recentes na borda direita.
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas
 

@@ -7070,8 +7070,13 @@ class TubeSimulatorPlugin extends PluginBase {
         context.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         context.fillRect(0, 0, width, height);
 
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         const panels = this._hudPanels();
-        if (panels.length === 0 || !this.hudAxes) return;
+        if (panels.length === 0 || !this.hudAxes) {
+            this._graphReadout?.refresh();
+            return;
+        }
         const gap = (narrow ? 12 : 20) * dpr;
         // The right margin holds the half of the last x tick label that sits outside the panel:
         // the labels are centred on their tick, and the rightmost one is on the panel edge. Three
@@ -7086,7 +7091,19 @@ class TubeSimulatorPlugin extends PluginBase {
         const panelWidth =
             (width - margin.left - margin.right - gap * (panels.length - 1)) / panels.length;
         const panelHeight = height - margin.top - margin.bottom;
-        if (panelWidth <= 0 || panelHeight <= 0) return;
+        if (panelWidth <= 0 || panelHeight <= 0) {
+            this._graphReadout?.refresh();
+            return;
+        }
+        frame.valid = true;
+        frame.left = margin.left;
+        frame.top = margin.top;
+        frame.panelWidth = panelWidth;
+        frame.panelHeight = panelHeight;
+        frame.gap = gap;
+        frame.count = panels.length;
+        frame.axes = this.hudAxes;
+        frame.curves = this.hudCharacteristics?.plateCurves ?? [];
         // One clock reading for the whole frame: both panels have to age their trails by the same
         // amount, or the two halves of a push-pull pair fade out of step with each other.
         const now = performance.now();
@@ -7121,6 +7138,57 @@ class TubeSimulatorPlugin extends PluginBase {
         context.rotate(-Math.PI / 2);
         context.fillText('Ia (mA)', 0, 0);
         context.restore();
+        this._graphReadout?.refresh();
+    }
+
+    // The panel under the point, in canvas pixels; the gaps between panels read nothing.
+    _readoutPanel(point) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const index = Math.floor((point.x - frame.left) / (frame.panelWidth + frame.gap));
+        if (index < 0 || index >= frame.count) return null;
+        return {
+            left: frame.left + index * (frame.panelWidth + frame.gap),
+            top: frame.top,
+            width: frame.panelWidth,
+            height: frame.panelHeight
+        };
+    }
+
+    _readHud(x, y) {
+        const frame = this._readoutFrame;
+        const panel = this._readoutPanel({ x, y });
+        if (!panel) return null;
+        const { axes } = frame;
+        const { format, seriesValueAt } = window.GraphReadout;
+        const vak = axes.xMin + (x - panel.left) / panel.width * (axes.xMax - axes.xMin);
+        const ia = axes.yMin + (panel.top + panel.height - y) / panel.height * (axes.yMax - axes.yMin);
+        let nearest = null;
+        let nearestIa = 0;
+        let nearestDistance = Infinity;
+        for (const curve of frame.curves) {
+            const value = seriesValueAt(curve.xValues, curve.yValues, vak);
+            if (value === null || value < axes.yMin || value > axes.yMax) continue;
+            const distance = value > ia ? value - ia : ia - value;
+            if (distance < nearestDistance) {
+                nearest = curve;
+                nearestIa = value;
+                nearestDistance = distance;
+            }
+        }
+        const rows = [];
+        if (nearest) {
+            rows.push({
+                label: 'Vgk',
+                color: 'var(--et-graph-grid-strong)',
+                value: `${format.number(nearest.vgk, Number.isInteger(nearest.vgk) ? 0 : 1)} V`,
+                y: panel.top + panel.height - (nearestIa - axes.yMin) / (axes.yMax - axes.yMin) * panel.height
+            });
+        }
+        return {
+            cursor: `${format.number(vak, 0)} V · ${format.number(ia * 1000, 2)} mA`,
+            rows
+        };
     }
 
     // The header names the displayed tube and both channel colours above the panel titles.
@@ -7526,6 +7594,13 @@ class TubeSimulatorPlugin extends PluginBase {
         }
         this._updateHudValues();
         this._refreshHudState();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: this.hudGraph.container,
+            surface: this.hudCanvas,
+            plot: point => this._readoutPanel(point),
+            read: (x, y) => this._readHud(x, y),
+            crosshair: 'xy'
+        });
         return container;
     }
 

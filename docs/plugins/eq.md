@@ -84,6 +84,7 @@ A detailed sound adjustment tool with 15 separate controls, each affecting a spe
 - Easy-to-use sliders with precise control
 - One-click reset to default settings
 - Double-click a slider to return that band to 0dB
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## 15Band PEQ
 
@@ -140,6 +141,7 @@ A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and trebl
 - Real-time curve updates as you adjust settings
 - Frequency and gain grid
 - Accurate numerical readouts for all parameters
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## 5Band Dynamic EQ
 
@@ -189,6 +191,7 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
 - Real-time frequency response graph
 - Dynamic response curve showing the current boosts and cuts
 - Interactive frequency and gain controls
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## 5Band FIR PEQ
 
@@ -224,6 +227,7 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
 - Numbered markers correspond to the five bands. Drag horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.
 - The status line reports whether the FIR is being designed, prepared, or used, and shows total processing latency in samples and milliseconds.
 - If the selected Taps cannot reproduce an extreme response accurately, the status recommends increasing Taps or reducing Q or Slope.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## 5Band PEQ
 
@@ -270,6 +274,7 @@ A flexible 5-band equalizer for shaping music playback. Use it when bass feels b
 - Real-time curve updates as you adjust settings
 - Frequency and gain grid
 - Accurate numerical readouts for all parameters
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Band Pass Filter
 
@@ -316,6 +321,7 @@ A precision band-pass filter that combines high-pass and low-pass filters to all
 - Clear visualization of both filter slopes and cutoff points
 - Interactive controls for precise adjustment
 - Frequency grid with markers at key reference points
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Comb Filter
 
@@ -364,6 +370,7 @@ A comb filter that adds a phasey, hollow, metallic, or resonant character by mix
 - Fundamental frequency marker showing delay time
 - Interactive controls for precise adjustment
 - Delay distance calculation in millimeters
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Earphone Cable Sim
 
@@ -414,6 +421,7 @@ Click **Effect Presets** in the effect header to compare complete source-and-cab
 - Grid labels cover 20Hz to 20kHz; the plotted curve extends across the full 10Hz to 40kHz graph range
 - Green response curve over a dark grid, with an auto-scaled dB axis around the normalized 0dB reference
 - Larger curve deviations indicate where the model changes playback level most
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Group Delay EQ
 
@@ -444,6 +452,7 @@ Total latency is the Latency setting plus half the Taps count. It stays the same
 - The grey curve is the target: the delay you asked for, interpolated across a logarithmic frequency axis from 20 Hz to 20 kHz. The delay axis rescales itself to fit the current settings, starting at ±5 ms.
 - The green curve is what the designed filter really does. Where the two curves lie on top of each other the setting is fully realized; where they separate, the filter cannot follow the request with the current Taps.
 - The status line shows the total latency in samples and milliseconds, and the magnitude ripple of the filter. Ripple measures how far the realized magnitude response departs from the flat design target: smaller values are closer to the target, and 0.3 dB is the accuracy-warning threshold.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Group Delay PEQ
 
@@ -467,7 +476,7 @@ Only the differences between frequencies matter for the sound. A filter that del
   - **Low Shelf** - A smooth step that holds Delay below Freq, passes half of Delay at Freq, and falls to zero above it. Q sets the steepness of the transition: Q 1 matches the group-delay transition of a first-order allpass, while Q 2 to 4 gives the practical, roughly one-octave step used for band-limited alignment.
   - **High Shelf** - The mirror image of Low Shelf, and its complement: the two shapes at the same Freq and Q add up to a constant Delay.
   - **Filter GD** - Adds or subtracts the group-delay shape of one analog filter stage (high-pass, crossover, or resonance) as it is. Enter the cutoff frequency and Q of the filter you are correcting into Freq and Q, and the height of the hump on the measured group-delay curve into Delay, using a negative value to cancel it.
-- **Freq** - Sets the band frequency from 20 Hz to 20 kHz.
+- **Freq** - Sets the band frequency from 20 Hz to 20 kHz. Near 18 to 20 kHz the target is tapered smoothly down to zero, so a band placed close to the top of the range has a reduced effect.
 - **Delay** - Sets the extreme value of that band's own curve in milliseconds. Positive values make that region arrive later, negative values earlier. The range covers the whole delay the filter can hold: at 96 kHz that is ±18.6 ms with 4096 taps and ±149.3 ms with 32768 taps. Changing Taps or the sample rate clamps the stored values to the new limit.
 - **Q** - Sets the width or steepness of the shape from 0.1 to 100 on a logarithmic slider, and is used by every Type. The useful ranges differ: 0.25 to 16 for Low Shelf and High Shelf, and 0.1 to 10 for Filter GD. In practice, shelves are used at Q 2 to 4, and Filter GD at Q 0.5 to 8 - 0.5 corresponds to a first-order allpass or an LR2 sum, 0.7071 to a Butterworth alignment or an LR4 sum, and 8 to a sharp resonance. Settings outside those ranges are still accepted; the status line reports when the current Taps cannot realize them.
 - **Enabled** - Turns each of the five bands on or off. Disabled bands contribute nothing to the target curve and appear dimmed on the graph.
@@ -480,9 +489,9 @@ Total latency is the Latency setting plus half the Taps count. It stays the same
 
 - The grey curve is the target: the sum of the enabled band shapes, drawn on a logarithmic frequency axis. The delay axis rescales itself to fit the current settings, starting at ±5 ms.
 - The green curve is what the designed filter really does. Where the two curves lie on top of each other the setting is fully realized; where they separate, the filter cannot follow the request with the current Taps.
-- Near 18 to 20 kHz the target is tapered smoothly down to zero. This high-frequency taper is by design, so a band placed close to the top of the range is shown, and realized, with a reduced effect.
 - Numbered markers correspond to the five bands. Drag horizontally to change Freq and vertically to change Delay. The marker sits on the curve only for Peak: a shelf passes half of Delay at Freq, and Filter GD reaches its extreme value below Freq - just below it at high Q, and progressively further below as Q falls, until at Q of about 0.577 or less the extreme value sits at the low-frequency end of the graph.
 - The status line shows the total latency in samples and milliseconds, and the magnitude ripple of the filter. Ripple measures how far the realized magnitude response departs from the flat design target: smaller values are closer to the target, and 0.3 dB is the accuracy-warning threshold.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Hi Pass Filter
 
@@ -520,6 +529,7 @@ A precision high-pass filter that removes unwanted low frequencies while preserv
 - Clear visualization of the filter slope and cutoff point
 - Interactive controls for precise adjustment
 - Frequency grid with markers at key reference points
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Lo Pass Filter
 
@@ -561,6 +571,7 @@ A precision low-pass filter that removes unwanted high frequencies while preserv
 - Clear visualization of the filter slope and cutoff point
 - Interactive controls for precise adjustment
 - Frequency grid with markers at key reference points
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Loudness Equalizer
 
@@ -614,6 +625,7 @@ Click **Effect Presets** in the effect header to start from a complete loudness-
 - Interactive parameter controls
 - Volume-dependent correction curve; the uniform Relative Volume gain is not included in the graph
 - Precise numerical readouts
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Narrow Range
 
@@ -653,6 +665,7 @@ A tool that lets you focus on specific parts of the music by filtering out unwan
 - Clear graph showing frequency response
 - Easy-to-adjust frequency controls
 - Simple slope drop-down menus
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Room EQ
 
@@ -705,11 +718,11 @@ Measurements are device-local references. A URL or preset stores the selected me
 
 - Use the **Graph** radio buttons above the graph to switch between **Frequency**, **Phase**, **Min Group Delay**, **Excess Group Delay**, and **Impulse**.
 - **Phase** uses a logarithmic frequency axis and a vertical phase axis from -180° to 180°. The gray line is the phase before correction and the green line is the calculated phase after the actual FIR. The measured onset is removed from both, and the FIR's known fixed delay is also removed from the corrected result, so the graph shows the phase change introduced by the filter without those fixed timing offsets. A measurement without impulse-response data shows an unavailable message instead.
-- **Min Group Delay** shows the delay implied by the minimum-phase part of the magnitude response. **Excess Group Delay** separately shows the remaining delay after that minimum-phase part is removed, making reflections and other non-minimum-phase timing easier to inspect. Both views use a logarithmic frequency axis and a vertical axis in milliseconds. Values retain the absolute group delay after removing the measured onset and, from the corrected result, the FIR's known fixed delay. They are not re-referenced at 1 kHz, so the value there is not necessarily 0 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. Group-delay analysis is independent of the displayed point spacing and does not rely on phase unwrapping. Smoothing is applied on a fixed logarithmic-frequency analysis grid, so a lower Smoothing setting shows finer detail. **Min Group Delay** automatically adjusts its vertical range to the displayed curves. **Excess Group Delay** keeps a fixed -100 to +100 ms range, while the hover readout retains the unclipped value when a curve extends beyond it. A measurement without impulse-response data shows an unavailable message instead.
+- **Min Group Delay** shows the delay implied by the minimum-phase part of the magnitude response. **Excess Group Delay** separately shows the remaining delay after that minimum-phase part is removed, making reflections and other non-minimum-phase timing easier to inspect. Both views use a logarithmic frequency axis and a vertical axis in milliseconds. Values retain the absolute group delay after removing the measured onset and, from the corrected result, the FIR's known fixed delay. They are not re-referenced at 1 kHz, so the value there is not necessarily 0 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. Group-delay analysis is independent of the displayed point spacing and does not rely on phase unwrapping. Smoothing is applied on a fixed logarithmic-frequency analysis grid, so a lower Smoothing setting shows finer detail. **Min Group Delay** automatically adjusts its vertical range to the displayed curves. **Excess Group Delay** keeps a fixed -100 to +100 ms range, while the readout retains the unclipped value when a curve extends beyond it. A measurement without impulse-response data shows an unavailable message instead.
 - **Impulse** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 2 ms before the measured onset through the largest of 5 ms, Direct Window, and — when Reverb Correction is above 0% — Reverb Window limited to 50 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. Low-frequency Phase Extension and Reverb Correction can analyze later response than this view displays. For this display only, components at and above 20 kHz are removed; this does not affect the correction filter or audio processing. A measurement without impulse-response data shows an unavailable message instead.
 - **Frequency** uses a logarithmic frequency axis and a vertical gain axis in dB.
 - The **Preview channel** selector above the graph appears only when filters have been designed for more than one channel; it selects which channel's response the graph and the Additional EQ base curve show, and does not affect the audio.
-- Moving the pointer over the graph marks every curve with a dot at the pointer's horizontal position and shows each reading to the right of its name in the legend, with the pointer's own frequency — or time in the Impulse view — above them. The readout clears when the pointer leaves the graph.
+- Hover over the graph, or touch and drag on it, to mark each curve with a dot at that point and show its value beside its name in the legend, with the frequency — or time in the Impulse view — above them.
 - The two white dotted vertical lines mark the frequencies set by Correction Low and Correction High.
 - Numbered markers correspond to the five bands. Drag a marker horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.
 - The light gray curve shows the smoothed measured frequency response with the graph's common display offset applied.
@@ -757,6 +770,7 @@ A simple three-band sound adjuster for quick and easy sound personalization. Per
 ### Visual Display
 - Easy-to-read graph showing your adjustments
 - Simple sliders for each control
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Tilt EQ
 
@@ -788,3 +802,4 @@ A simple yet effective equalizer that gently tilts the frequency balance of your
 - Clear indication of current slope value
 
 - Quick reset button
+- Hover over the graph, or touch and drag on it, to read the values at that point.

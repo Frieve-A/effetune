@@ -229,9 +229,14 @@ class OscilloscopePlugin extends PluginBase {
   
       const parametersGrid = document.createElement('div');
       parametersGrid.className = 'parameters-grid';
+      // Each column stacks its own rows, so a wrapped radio row grows only its column.
+      const leftColumn = document.createElement('div');
+      const rightColumn = document.createElement('div');
+      parametersGrid.appendChild(leftColumn);
+      parametersGrid.appendChild(rightColumn);
   
       // --- Display Time Control (ms) ---
-      parametersGrid.appendChild(this.createParameterControl(
+      leftColumn.appendChild(this.createParameterControl(
         'Display Time', 1, 100, 1,
         (this.displayTime * 1000).toFixed(0),
         (value) => {
@@ -280,12 +285,15 @@ class OscilloscopePlugin extends PluginBase {
         modeRadioInputs.push({ radio, mode });
         return label;
       });
+      const tmGroup = document.createElement('div');
+      tmGroup.className = 'radio-group';
+      modeRadios.forEach(r => tmGroup.appendChild(r));
       tmRow.appendChild(tmLabel);
-      modeRadios.forEach(r => tmRow.appendChild(r));
-      parametersGrid.appendChild(tmRow);
+      tmRow.appendChild(tmGroup);
+      rightColumn.appendChild(tmRow);
   
       // --- Trigger Level Control ---
-      parametersGrid.appendChild(this.createParameterControl(
+      leftColumn.appendChild(this.createParameterControl(
         'Trigger Level', -1.0, 1.0, 0.01,
         this.triggerLevel,
         (value) => {
@@ -332,12 +340,15 @@ class OscilloscopePlugin extends PluginBase {
         edgeRadioInputs.push({ radio, edge });
         return label;
       });
+      const teGroup = document.createElement('div');
+      teGroup.className = 'radio-group';
+      edgeRadios.forEach(r => teGroup.appendChild(r));
       teRow.appendChild(teLabel);
-      edgeRadios.forEach(r => teRow.appendChild(r));
-      parametersGrid.appendChild(teRow);
+      teRow.appendChild(teGroup);
+      rightColumn.appendChild(teRow);
   
       // --- Holdoff Control (ms) ---
-      parametersGrid.appendChild(this.createParameterControl(
+      leftColumn.appendChild(this.createParameterControl(
         'Holdoff', 0.1, 10, 0.1,
         (this.holdoff * 1000).toFixed(1),
         (value) => {
@@ -349,7 +360,7 @@ class OscilloscopePlugin extends PluginBase {
       ));
   
       // --- Display Level Control (dB) ---
-      parametersGrid.appendChild(this.createParameterControl(
+      rightColumn.appendChild(this.createParameterControl(
         'Display Level', -96, 0, 1,
         this.displayLevel,
         (value) => {
@@ -360,7 +371,7 @@ class OscilloscopePlugin extends PluginBase {
       ));
 
       // --- Vertical Offset Control ---
-      parametersGrid.appendChild(this.createParameterControl(
+      leftColumn.appendChild(this.createParameterControl(
         'Vertical Offset', -1.0, 1.0, 0.01,
         this.verticalOffset,
         (value) => {
@@ -407,6 +418,16 @@ class OscilloscopePlugin extends PluginBase {
         for (const { radio, edge } of edgeRadioInputs) {
           radio.checked = (edge === this.triggerEdge);
         }
+      });
+
+      this._graphReadout = window.GraphReadout?.attach({
+        mount: graphContainer,
+        surface: this.canvas,
+        plot: () => {
+          const frame = this._readoutFrame;
+          return frame && { left: frame.left, top: 0, width: frame.width, height: frame.height };
+        },
+        read: x => this._readWaveform(x)
       });
 
       return container;
@@ -990,14 +1011,14 @@ class OscilloscopePlugin extends PluginBase {
       // Draw the waveform if a frozen snapshot is available.
       // ---------------------------
       const displayBuffer = this.scopeSnapshot?.values || this.frozenDisplayBuffer;
+      const sampleIndices = this.scopeSnapshot?.sampleIndices;
+      const sampleCount = this.scopeSnapshot?.captureSampleCount || displayBuffer?.length;
+      const denominator = sampleCount > 1 ? sampleCount - 1 : 1;
       if (displayBuffer) {
-        const sampleIndices = this.scopeSnapshot?.sampleIndices;
-        const sampleCount = this.scopeSnapshot?.captureSampleCount || displayBuffer.length;
         const drawTrace = target => {
           target.strokeStyle = options?.traceStyle?.(target) ?? theme('graph-trace');
           target.lineWidth = 2 * dpr;
           target.beginPath();
-          const denominator = sampleCount > 1 ? sampleCount - 1 : 1;
           for (let i = 0; i < displayBuffer.length; i++) {
             const sampleIndex = sampleIndices ? sampleIndices[i] : i;
             const x = leftMargin + (sampleIndex / denominator) * (width - leftMargin);
@@ -1014,6 +1035,37 @@ class OscilloscopePlugin extends PluginBase {
         if (options?.drawSignal) options.drawSignal(ctx, drawTrace);
         else drawTrace(ctx);
       }
+
+      // Keep the drawn mapping for the cursor readout.
+      const frame = (this._readoutFrame ??= {});
+      frame.left = leftMargin;
+      frame.width = width - leftMargin;
+      frame.height = height;
+      frame.centerY = centerY;
+      frame.factor = factor;
+      frame.displayTimeMs = this.displayTime * 1000;
+      frame.values = displayBuffer;
+      frame.sampleIndices = sampleIndices;
+      frame.denominator = denominator;
+      this._graphReadout?.refresh();
+    }
+
+    // Reads the drawn waveform at canvas pixel x, interpolating between plotted points.
+    _readWaveform(x) {
+      const frame = this._readoutFrame;
+      if (!frame || frame.width <= 0) return null;
+      const { format, seriesValueAt, columnValueAt } = window.GraphReadout;
+      const { left, width, values, sampleIndices, denominator } = frame;
+      const position = (x - left) / width * denominator;
+      const row = { label: 'Amplitude', color: 'var(--et-graph-trace)', value: format.number(NaN) };
+      const sample = !values ? null
+        : sampleIndices ? seriesValueAt(sampleIndices, values, position)
+        : columnValueAt(values, position);
+      if (sample !== null) {
+        row.value = format.number(sample, 3);
+        row.y = frame.centerY - sample * frame.factor * frame.height / 2;
+      }
+      return { cursor: format.time((x - left) / width * frame.displayTimeMs), rows: [row] };
     }
 
     // ---------------------------

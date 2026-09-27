@@ -68,11 +68,13 @@ export class PluginManager {
                 'plugins/frequency-axis.js',
                 'plugins/spectrum-overlay.js',
                 'plugins/frequency-preview.js',
+                'plugins/graph-readout.js',
                 'plugins/multires-spectrum.js',
                 'plugins/theme-palette.js'
             ]
                 .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));
-            const cssUrls = [this.withDevelopmentCacheBuster('plugins/spectrum-overlay.css', devCacheToken)];
+            const cssUrls = ['plugins/spectrum-overlay.css', 'plugins/graph-readout.css']
+                .map(url => this.withDevelopmentCacheBuster(url, devCacheToken));
             for (const {path, hasCSS} of pluginDefinitions.values()) {
                 jsUrls.push(this.withDevelopmentCacheBuster(`${path}.js`, devCacheToken));
                 if (hasCSS) cssUrls.push(this.withDevelopmentCacheBuster(`${path}.css`, devCacheToken));
@@ -157,6 +159,11 @@ export class PluginManager {
                 await loadScriptWithProgress(jsUrls.shift());
             } catch (error) {
                 console.error('Error loading frequency preview:', error);
+            }
+            try {
+                await loadScriptWithProgress(jsUrls.shift());
+            } catch (error) {
+                console.error('Error loading graph readout:', error);
             }
             
             await loadScriptWithProgress(jsUrls.shift());

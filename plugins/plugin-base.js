@@ -1648,6 +1648,10 @@ class PluginBase {
         labelEl.textContent = `${label}:`;
         row.appendChild(labelEl);
 
+        const optionsEl = document.createElement('span');
+        optionsEl.className = 'radio-options';
+        row.appendChild(optionsEl);
+
         const radios = [];
         options.forEach((option, index) => {
             const optionValue = typeof option === 'string' ? option : option.value;
@@ -1675,7 +1679,7 @@ class PluginBase {
             radioOption.appendChild(radioLabel);
 
             radios.push(radio);
-            row.appendChild(radioOption);
+            optionsEl.appendChild(radioOption);
         });
 
         this._registerUIControl(modelKey, radios, (modelValue) => {

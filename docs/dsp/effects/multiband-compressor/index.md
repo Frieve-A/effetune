@@ -141,12 +141,6 @@ This configuration creates the characteristic "radio-ready" sound:
 - Enhanced presence and clarity
 - Reduced listening fatigue
 
-### Visual Feedback
-- Interactive transfer function graphs for each band
-- Real-time gain reduction meters
-- Frequency band activity visualization
-- Clear crossover point indicators
-
 ### Tips for Use
 - Start with the default FM radio-style settings
 - Adjust crossover frequencies to match your material

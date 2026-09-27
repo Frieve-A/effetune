@@ -666,22 +666,6 @@ class GroupDelayPEQPlugin extends PluginBase {
         responseSvg.setAttribute('height', '100%');
         graphContainer.appendChild(responseSvg);
 
-        const legend = document.createElement('div');
-        legend.className = 'group-delay-peq-legend';
-        for (const [className, label] of [
-            ['group-delay-peq-legend-target', this._t('groupDelayPeq.graph.target', 'Target')],
-            ['group-delay-peq-legend-realized', this._t('groupDelayPeq.graph.realized', 'Realized')]
-        ]) {
-            const item = document.createElement('span');
-            item.className = `group-delay-peq-legend-item ${className}`;
-            const swatch = document.createElement('span');
-            swatch.className = 'group-delay-peq-legend-swatch';
-            swatch.setAttribute('aria-hidden', 'true');
-            item.append(swatch, document.createTextNode(label));
-            legend.appendChild(item);
-        }
-        graphContainer.appendChild(legend);
-
         const markers = [];
         for (let index = 0; index < GroupDelayPEQPlugin.BANDS.length; index += 1) {
             markers.push(this._createMarker(index, graphContainer));
@@ -715,6 +699,12 @@ class GroupDelayPEQPlugin extends PluginBase {
         this._detailsElement = details;
         this.uiCreated = true;
         this.observeGraphResize(graphContainer);
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: responseSvg,
+            read: x => this._readResponse(x),
+            legend: this._responseSeries()
+        });
         this.setUIValues();
         if (!this._statusMessage) {
             this._setStatus(this._t('groupDelayPeq.status.flat',
@@ -1122,7 +1112,41 @@ class GroupDelayPEQPlugin extends PluginBase {
         this.layoutMarkerLabels?.({ items: labelItems, width, height, axis: 'horizontal' });
     }
 
+    _responseSeries() {
+        return [
+            {
+                label: this._t('groupDelayPeq.graph.target', 'Target'),
+                color: 'var(--et-graph-trace-tertiary)',
+                selector: '.group-delay-peq-target-response'
+            },
+            {
+                label: this._t('groupDelayPeq.graph.realized', 'Realized'),
+                color: 'var(--et-graph-trace)',
+                selector: '.group-delay-peq-realized-response'
+            }
+        ];
+    }
+
+    _readResponse(x) {
+        const box = this.responseSvg.viewBox.baseVal;
+        if (!box?.width || !box.height) return null;
+        const { format, pathValueAt } = window.GraphReadout;
+        const rows = [];
+        for (const series of this._responseSeries()) {
+            const path = this.responseSvg.querySelector(series.selector);
+            const y = path ? pathValueAt(path, x) : null;
+            if (y === null) continue;
+            rows.push({ ...series, value: format.time(this.yToDelay(y / box.height * 100)), y });
+        }
+        return { cursor: format.frequency(this.xToFreq(x / box.width * 100)), rows };
+    }
+
     updateResponse() {
+        this._updateResponsePaths();
+        this._graphReadout?.refresh();
+    }
+
+    _updateResponsePaths() {
         if (!this.uiCreated || !this.responseSvg?.clientWidth || !this.responseSvg.clientHeight) return;
         const width = this.responseSvg.clientWidth;
         const height = this.responseSvg.clientHeight;

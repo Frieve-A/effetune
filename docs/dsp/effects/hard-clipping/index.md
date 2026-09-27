@@ -60,11 +60,6 @@ A digital clipping effect that limits peaks above a set threshold. Use it when y
   - Positive Only: Clips only positive peaks, creating asymmetrical clipping and a different tonal character
   - Negative Only: Clips only negative peaks, creating asymmetrical clipping with a different feel from Positive Only
 
-### Visual Display
-- Real-time graph showing how the sound is being shaped
-- Clear visual feedback as you adjust settings
-- Reference lines to help guide your adjustments
-
 ### Listening Tips
 - For subtle enhancement:
   1. Start with Threshold at 0dB

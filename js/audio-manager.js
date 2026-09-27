@@ -700,6 +700,11 @@ export class AudioManager {
         return this.contextManager?.workletNode || this.workletNode || null;
     }
 
+    isDspReady() {
+        const node = this._getPrimaryWorkletNode();
+        return !!node && this._dspCapabilitiesByNode.has(node);
+    }
+
     _resetDspExecutionStateSnapshot() {
         this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
         this._dspExecutionStateOwner = null;

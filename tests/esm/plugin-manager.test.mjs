@@ -261,18 +261,20 @@ test('loadPlugins loads resources, tracks progress, registers classes, and toler
   assert.ok(harness.calls.some(call => call[0] === 'consoleError' && String(call[1]).includes('Failed to initialize plugin Throwing')));
   assert.deepEqual(
     harness.calls.filter(call => call[0] === 'progress').map(call => call[1]),
-    [0, 8, 15, 23, 31, 38, 46, 54, 62, 69, 77, 85, 92, 100]
+    [0, 7, 13, 20, 27, 33, 40, 47, 53, 60, 67, 73, 80, 87, 93, 100]
   );
   assert.deepEqual(harness.appended.filter(element => element.tagName === 'SCRIPT')
-    .slice(0, 5).map(element => element.src),
+    .slice(0, 6).map(element => element.src),
   [
     'plugins/plugin-base.js',
     'plugins/graph-point-interaction.js',
     'plugins/frequency-axis.js',
     'plugins/spectrum-overlay.js',
-    'plugins/frequency-preview.js'
+    'plugins/frequency-preview.js',
+    'plugins/graph-readout.js'
   ]);
   assert.ok(harness.appended.some(element => element.href === 'plugins/spectrum-overlay.css'));
+  assert.ok(harness.appended.some(element => element.href === 'plugins/graph-readout.css'));
 });
 
 test('loadPlugins cache-busts dynamic resources on the development server', async () => {

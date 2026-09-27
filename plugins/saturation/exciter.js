@@ -307,27 +307,54 @@ class ExciterPlugin extends PluginBase {
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = curveLineWidth;
         for (let i = 0; i < width; i++) {
-            const freq = Math.pow(10, Math.log10(20) + (i / width) * (Math.log10(20000) - Math.log10(20)));
-
-            // Calculate high-pass filter response
-            let hpfMag = 1;
-            if (this.hs !== 0) {
-                const wRatio = freq / this.hf;
-                
-                if (this.hs === 1) {
-                    // 6dB/oct (1st order)
-                    hpfMag = wRatio / Math.sqrt(1 + wRatio * wRatio);
-                } else if (this.hs === 2) {
-                    // 12dB/oct (2nd order)
-                    hpfMag = wRatio * wRatio / Math.sqrt(1 + Math.pow(wRatio, 4));
-                }
-            }
-            
-            const response = 20 * Math.log10(hpfMag);
+            const freq = this._hpfFreqAt(i, width);
+            const response = this._hpfResponseDb(freq);
             const y = height * (1 - (response + 60) / 72);
             i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
         }
         ctx.stroke();
+
+        const frame = (this._hpfFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.valid = true;
+        this._hpfReadout?.refresh();
+    }
+
+    // Frequency (Hz, log scale 20..20000) plotted at canvas x.
+    _hpfFreqAt(x, width) {
+        return Math.pow(10, Math.log10(20) + (x / width) * (Math.log10(20000) - Math.log10(20)));
+    }
+
+    // High-pass filter response in dB at a given frequency.
+    _hpfResponseDb(freq) {
+        let hpfMag = 1;
+        if (this.hs !== 0) {
+            const wRatio = freq / this.hf;
+
+            if (this.hs === 1) {
+                // 6dB/oct (1st order)
+                hpfMag = wRatio / Math.sqrt(1 + wRatio * wRatio);
+            } else if (this.hs === 2) {
+                // 12dB/oct (2nd order)
+                hpfMag = wRatio * wRatio / Math.sqrt(1 + Math.pow(wRatio, 4));
+            }
+        }
+        return 20 * Math.log10(hpfMag);
+    }
+
+    // Reads the drawn HPF response curve at canvas pixel x.
+    _readHPFGraph(x) {
+        const frame = this._hpfFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const freq = this._hpfFreqAt(x, frame.width);
+        const response = this._hpfResponseDb(freq);
+        const y = frame.height * (1 - (response + 60) / 72);
+        return {
+            cursor: format.frequency(freq),
+            rows: [{ label: 'Response', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.db(response, { signed: true }), y }]
+        };
     }
 
     drawSaturationGraph(canvas) {
@@ -383,10 +410,8 @@ class ExciterPlugin extends PluginBase {
         ctx.beginPath();
         const mixRatio = this.mx / 100;
         for (let i = 0; i < width; i++) {
-            const x = (i / width) * 2 - 1;
-            const wet = Math.tanh(this.dr * (x + this.bs)) - Math.tanh(this.dr * this.bs);
-            const y = ((1 - mixRatio) * x + mixRatio * wet);
-            const canvasY = ((1 - y) / 2) * height;
+            const x = this._satTransferX(i, width);
+            const canvasY = this._satTransferY(x, height, mixRatio);
             if (i === 0) {
                 ctx.moveTo(i, canvasY);
             } else {
@@ -394,6 +419,40 @@ class ExciterPlugin extends PluginBase {
             }
         }
         ctx.stroke();
+
+        const frame = (this._satFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.mixRatio = mixRatio;
+        frame.valid = true;
+        this._satReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -1..1 across the full width).
+    _satTransferX(x, width) {
+        return (x / width) * 2 - 1;
+    }
+
+    // Canvas y of the saturation transfer curve's output for an input on the -1..1 axis.
+    _satTransferY(x, height, mixRatio = this.mx / 100) {
+        const wet = Math.tanh(this.dr * (x + this.bs)) - Math.tanh(this.dr * this.bs);
+        const y = ((1 - mixRatio) * x + mixRatio * wet);
+        return ((1 - y) / 2) * height;
+    }
+
+    // Reads the saturation transfer curve at canvas pixel x.
+    _readSatGraph(x) {
+        const frame = this._satFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inValue = this._satTransferX(x, frame.width);
+        const y = this._satTransferY(inValue, frame.height, frame.mixRatio);
+        const outValue = 1 - 2 * y / frame.height;
+        return {
+            cursor: `in ${format.number(inValue)}`,
+            rows: [{ label: 'out', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.number(outValue), y }],
+            at: { x, y }
+        };
     }
 
     createUI() {
@@ -461,6 +520,11 @@ class ExciterPlugin extends PluginBase {
         this.hpfCanvas = hpfCanvas;
         this.graphDisposers.push(disposeHPFGraph);
         graphsContainer.appendChild(hpfGraphContainer);
+        this._hpfReadout = window.GraphReadout?.attach({
+            mount: hpfGraphContainer,
+            surface: hpfCanvas,
+            read: x => this._readHPFGraph(x)
+        });
 
         // Saturation graph
         const { container: satGraphContainer, canvas: satCanvas, dispose: disposeSatGraph } = this.createResponsiveGraph({
@@ -473,6 +537,12 @@ class ExciterPlugin extends PluginBase {
         this.satCanvas = satCanvas;
         this.graphDisposers.push(disposeSatGraph);
         graphsContainer.appendChild(satGraphContainer);
+        this._satReadout = window.GraphReadout?.attach({
+            mount: satGraphContainer,
+            surface: satCanvas,
+            read: x => this._readSatGraph(x),
+            crosshair: 'xy'
+        });
 
         container.appendChild(graphsContainer);
 

@@ -120,6 +120,9 @@ Montre à quelles notes et octaves correspondent les composantes fréquentielles
 - La luminosité et la surface des points, ainsi que l'étendue de la zone colorée, indiquent une intensité relative, pas un niveau absolu : l'échelle suit les pics récents.
 - Dans le grave, les notes proches se distinguent moins bien et l'affichage réagit plus lentement ; elles peuvent se confondre.
 
+### Affichage Visuel
+- Survolez l'affichage, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
+
 ## Level Meter
 
 Un affichage visuel qui montre le niveau du signal en temps réel. Il vous aide à vérifier les niveaux après les effets et à repérer un éventuel clipping numérique.
@@ -149,6 +152,9 @@ Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano r
 - Les lignes guides des octaves et de E–F sont tracées derrière les barres de volume afin que la grille des hauteurs reste un repère visuel.
 - Les touches passent progressivement de leur couleur habituelle à la couleur d’affichage lorsque la confiance de la dernière image augmente, jusqu’à atteindre cette couleur à 1.
 - Changer **Color** recolore l’historique existant.
+
+### Affichage Visuel
+- Survolez l'affichage, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Ce que vous pouvez voir
 
@@ -186,6 +192,9 @@ Affiche la forme de l'onde sonore en temps réel, afin de voir les impacts, les 
 - Les lignes de la grille aident à mesurer les valeurs de temps et d'amplitude
 - Quand un déclenchement est détecté, la forme d'onde affichée démarre depuis cette position ; aucun marqueur séparé n'est affiché
 
+### Affichage Visuel
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
+
 ### Paramètres
 - **Display Time** - Durée d'affichage (1 à 100 ms)
   - Valeurs basses : Voir plus de détails dans les événements courts
@@ -219,6 +228,9 @@ Suit une fréquence fondamentale (F0) à la fois dans un piano roll défilant su
 - L'étiquette actuelle indique la note la plus proche et l'écart en cents. Une valeur positive est au-dessus de la note, une valeur négative en dessous. L'étiquette disparaît en l'absence d'estimation fiable.
 - Le nom de la note reprend les couleurs de Note Spectrogram. La taille du nom et de l'écart en cents s'adapte à la largeur disponible, et le point décimal des cents reste au même endroit.
 
+### Affichage Visuel
+- Survolez l'affichage, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
+
 ### Guide d'utilisation
 
 - Commencez par une seule note tenue, puis observez si la ligne reste centrée sur la note ou dérive vers l'aigu ou le grave.
@@ -249,6 +261,9 @@ Le graphique défile de droite à gauche à vitesse constante, avec un repère c
   - Bas : Sons graves
   - Milieu : Instruments principaux
   - Haut : Hautes fréquences
+
+### Affichage Visuel
+- Survolez l'affichage, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Ce Que Vous Pouvez Voir
 - Mélodies : Lignes de couleur fluides
@@ -284,6 +299,9 @@ Crée un affichage visuel en temps réel des fréquences de votre musique, des b
 - Le fin repère au-dessus d'une barre indique son pic récent et descend progressivement.
 - Les pics plus hauts indiquent une présence plus forte de ces fréquences
 - Observez comment différents instruments créent différents motifs
+
+### Affichage Visuel
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Ce Que Vous Pouvez Voir
 - Drops de basse : Grands mouvements à gauche

@@ -51,10 +51,17 @@ effect bus routing में **All** चुनें और सभी main speak
 - **Sub Outputs** प्रत्येक **Managed** या **LFE** के outputs चुनता है। channel चुनने पर उसका **Channel Role** **LFE** हो जाता है। नए चुने output पर bus के सभी inputs से normal polarity में **ON** routes शुरू होते हैं; अलग route बंद करने के लिए Matrix इस्तेमाल करें। कोई **Sub Outputs** न होने पर bass को अलग करना और subwoofers तक भेजना रुक जाता है, और input channels बिना crossover के pass होते हैं। **LFE Low-pass**, **LFE Frequency**, **LFE Slope** वैकल्पिक रूप से LFE को 20–300 Hz और 24/48/96 dB/oct पर सीमित करते हैं; पहले अलग किए main bass पर दोबारा filter नहीं लगाते।
 - **ON** और **Ø**: channel table के हर cell में **ON** उस **Managed** या **LFE** input को चुने हुए subwoofer output पर भेजता है। **Ø** केवल input से subwoofer तक के उसी path की polarity उलटता है, जिससे उसे measurement या सुनने के परिणाम के अनुसार मिलाया जा सके। **Ø** केवल **ON** चुने रहने पर उपलब्ध है; **ON** बंद करने पर **Ø** भी बंद हो जाता है। इससे input का main output नहीं बदलता।
 
-### डिस्प्ले, स्थिति और calibration
+### डिस्प्ले और स्थिति
 
 - routing summary हर subwoofer को feed करने वाले inputs दिखाता है। level बढ़ाने से पहले, खासकर channel count बदलने पर इसे देखें। **Managed** चुनने पर active high-pass और low-pass responses दिखते हैं, ideal curve नहीं।
-- status mode, Linear preparation और samples/ms में effective latency दिखाता है। Linear settings बदलने पर sound थोड़ी देर घट या रुक सकता है। तैयारी विफल हो तो **Taps** घटाकर फिर कोशिश करें। पिछली configuration उपलब्ध न हो तो normal mains matching delay के साथ pass होते हैं, reserved sub outputs silent रहते हैं और तैयारी तक LFE नहीं बजता।
+- status mode, Linear preparation और samples/ms में effective latency दिखाता है।
+- ग्राफ़ पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
+
+### फ़िल्टर तैयारी
+Linear settings बदलने पर sound थोड़ी देर घट या रुक सकता है। तैयारी विफल हो तो **Taps** घटाकर फिर कोशिश करें। पिछली configuration उपलब्ध न हो तो normal mains matching delay के साथ pass होते हैं, reserved sub outputs silent रहते हैं और तैयारी तक LFE नहीं बजता।
+
+### Bypass और calibration
+
 - host bypass original audio और channel assignment लौटाता है; Bass Management routing, protection और alignment नहीं रहते। wiring रखते हुए compare या mute के लिए बाद में MultiChannel Panel उपयोग करें। बाद का IIR high-pass/EQ या relative delay पूरे Linear system की phase बदलता है, इसलिए calibrated chain को एक preset में रखें।
 
 ## Channel Divider
@@ -92,7 +99,10 @@ effect bus routing में **All** चुनें और सभी main speak
 - output channels 4 से 16 के बीच even संख्या होने चाहिए
 - हर band original stereo pair बनाए रखता है: 2-band mode में Low channels 1-2 और High channels 3-4 पर जाता है; 3-band mode channels 1-2, 3-4 और 5-6 इस्तेमाल करता है; 4-band mode channels 1-2, 3-4, 5-6 और 7-8 इस्तेमाल करता है
 - high-quality Linkwitz-Riley crossover filters इस्तेमाल करता है
-- आसान configuration के लिए visual frequency response graph देता है
+
+### दृश्य प्रदर्शन
+- ग्राफ़ हर output band की frequency response दिखाता है।
+- ग्राफ़ पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## DC Offset
 
@@ -140,6 +150,7 @@ FIR design पारंपरिक filters की resonance के बिना
 - graph frequency के साथ हर band का target response दिखाता है।
 - हर रंग उस band के output pair को दर्शाता है।
 - status line latency और filter resolution दिखाती है, या channel count असंगत होने पर चेतावनी देती है।
+- ग्राफ़ पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Matrix
 

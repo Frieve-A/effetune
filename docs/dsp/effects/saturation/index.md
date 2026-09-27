@@ -69,11 +69,6 @@ An effect that simulates the warm, pleasant sound of vintage tube equipment. It 
   - Use negative values if the effect is too loud
   - Use positive values if the effect is too quiet
 
-### Visual Display
-- Clear graph showing how the sound is being shaped
-- Real-time visual feedback
-- Easy-to-read controls
-
 ### Music Enhancement Tips
 - Classical & Jazz:
   - Light Drive (1.0-2.0) for natural warmth

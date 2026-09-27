@@ -301,6 +301,10 @@ La latencia de procesamiento que informa Phase Select EQ es la suma del tamaño 
 
 La cuadrícula de Balance muestra proporciones izquierda:derecha. Balance 0%, ±17%, ±33%, ±60%, ±82% y ±100% corresponde a 50:50 y, hacia uno u otro lado, aproximadamente 59:41, 67:33, 80:20, 91:9 y 100:0. Las diferencias de nivel L/R son aproximadamente 0, ±3, ±6, ±12 y ±20 dB; ±100% significa que solo hay señal en un canal.
 
+### Visualización
+
+- Pasa el cursor sobre el mapa, o tócalo y desliza el dedo sobre él, para leer la frecuencia y la diferencia de fase o el balance en ese punto.
+
 ### Guía de mejora del sonido
 
 1. **Suavizar agudos muy abiertos**: ajusta un Band alrededor de 4–12 kHz y 90–180°. Empieza con 70–90% y transiciones amplias.

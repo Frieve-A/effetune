@@ -159,7 +159,7 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
   );
   assert.match(
     roomEqCss,
-    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-group-delay-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-group-delay-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-hover-overlay \{/
+    /body\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-additional-eq-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-phase-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-group-delay-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-group-delay-response,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-grid,\nbody\.layout-mobile \.room-eq-additional-eq-ui \.room-eq-impulse-response \{/
   );
   for (const selector of [
     '.room-eq-additional-eq-grid',
@@ -169,8 +169,7 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
     '.room-eq-group-delay-grid',
     '.room-eq-group-delay-response',
     '.room-eq-impulse-grid',
-    '.room-eq-impulse-response',
-    '.room-eq-hover-overlay'
+    '.room-eq-impulse-response'
   ]) {
     assert.match(
       getRule(
@@ -185,14 +184,17 @@ test('Room EQ keeps its inset plot size over the generic mobile SVG rule', () =>
 test('Room EQ keeps its external graph controls out of the graph overlay', () => {
   const css = readCss('../../plugins/eq/room_eq.css');
 
+  const readoutCss = readCss('../../plugins/graph-readout.css');
+
   assert.doesNotMatch(css, /\.room-eq-response-view-controls\s*\{/);
+  assert.doesNotMatch(css, /legend/);
   assert.match(
-    getRule(css, '.room-eq-response-legend'),
-    /top:\s*5px;[\s\S]*right:\s*7px;/
+    readoutCss,
+    /\n\.graph-readout-legend \{\s*top:\s*max\(5px,[^;]*\);\s*right:\s*max\(7px,[^;]*\);/
   );
   assert.match(
-    getRule(css, 'body.layout-mobile .room-eq-response-legend'),
-    /top:\s*5px;[\s\S]*right:\s*5px;/
+    getRule(readoutCss, 'body.layout-mobile .graph-readout-legend'),
+    /right:\s*max\(5px,[^;]*\);/
   );
 });
 

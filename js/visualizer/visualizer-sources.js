@@ -256,9 +256,7 @@ export class VisualizerSources {
         const preference = window.audioPreferences || window.electronIntegration?.audioPreferences || {};
         const rollout = getDspRolloutConfig({ preference, location: window.location });
         if (preference.useWasmDsp === false || rollout.forceOff) return 'disabled';
-        const primary = this.audioManager._getPrimaryWorkletNode?.();
-        return primary && this.audioManager._dspCapabilitiesByNode?.has(primary)
-            ? 'ready' : 'unavailable';
+        return this.audioManager.isDspReady?.() ? 'ready' : 'unavailable';
     }
 
     dispose() {

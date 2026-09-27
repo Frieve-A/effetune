@@ -66,8 +66,4 @@ A simple three-band sound adjuster for quick and easy sound personalization. Per
   - Decrease for smoother, softer sound
   - Affects the "brightness" of the music
 
-### Visual Display
-- Easy-to-read graph showing your adjustments
-- Simple sliders for each control
-
 [Back to all effects](/dsp/effects/)

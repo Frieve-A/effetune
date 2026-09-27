@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import '../../plugins/multires-spectrum.js';
-import { createAnalyzerDisplay } from '../../js/visualizer/visualizer-analyzer-display.js';
+import { createAnalyzerDisplay, createSpectrumSmoother } from '../../js/visualizer/visualizer-analyzer-display.js';
+import { createBallistics, stepBallistics } from '../../js/visualizer/visualizer-ballistics.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { createDefaultLayout, createItem } from '../../js/visualizer/visualizer-model.js';
 import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
@@ -45,7 +46,7 @@ function runtime() {
     }
     const window = { ThemePalette: { get: name => name === 'graph-trace' ? 'rgba(0,255,0,1)' : 'rgba(16,16,16,1)' } };
     const document = { createElement: () => canvas() };
-    for (const file of ['analyzer/spectrum_analyzer', 'analyzer/spectrogram', 'analyzer/oscilloscope', 'analyzer/stereo_meter',
+    for (const file of ['frequency-axis', 'analyzer/spectrum_analyzer', 'analyzer/spectrogram', 'analyzer/oscilloscope', 'analyzer/stereo_meter',
         'analyzer/note_spectrogram', 'analyzer/chroma_spiral', 'analyzer/level_meter', 'analyzer/analog_meter',
         'spatial/phase_select_eq']) {
         vm.runInNewContext(readFileSync(new URL(`../../plugins/${file}.js`, import.meta.url), 'utf8'),
@@ -146,7 +147,9 @@ test('Visualizer uses the original analyzer drawing methods without constructing
             assert.equal(display.plugin.graphDpr, 2);
             assert.deepEqual(env.counts(), baseline);
             const original = new env.window[name]();
-            for (const key of Object.keys(item.params).filter(key => key in original)) {
+            // Time ballistics and the peak toggle are display-side; only Analog Meter's ph is a plugin field.
+            const displayKeys = type === 'analog-meter' ? [] : ['cf', 'ph', 'pf', 'sm', 'pk'];
+            for (const key of Object.keys(item.params).filter(key => key in original && !displayKeys.includes(key))) {
                 assert.equal(display.plugin[key], item.params[key], `${type}.${key}`);
             }
             display.dispose();
@@ -431,14 +434,14 @@ test('Stereo correlation and balance controls hide each meter without hiding the
     });
 });
 
-test('Notes retain received history across canvas size, pixel ratio and palette changes without copying the keyboard into it', async () => {
+test('Notes retain received history across canvas size and palette changes without copying the keyboard into it', async () => {
     const env = runtime();
     await withGlobals(env, () => {
         const stage = canvas(), renderer = new VisualizerRenderer(stage), item = createItem('notes', 'notes');
         item.params.vl = false;
         item.params.kb = item.params.showAxisNumbers = true;
         const layout = createDefaultLayout(); layout.items = [item];
-        renderer.draw(layout, env.sources, {}, 1, { pixelRatio: 2 });
+        renderer.draw(layout, env.sources, {}, 1);
         env.subscribers.get('notes')(noteFrame(), {});
         const state = renderer.layers.get('notes'), plugin = state.display.plugin;
         assert.equal(plugin.lastFrameIndex, 1);
@@ -446,12 +449,13 @@ test('Notes retain received history across canvas size, pixel ratio and palette 
         assert.ok(recorded.some(value => value > 0));
         stage.width = 1000; stage.height = 600;
         item.palette.stops[0].color = '#ff0000';
-        renderer.draw(layout, env.sources, {}, 1, { pixelRatio: 1 });
+        renderer.draw(layout, env.sources, {}, 1);
         assert.equal(renderer.layers.get('notes'), state);
         assert.equal(plugin.history, history);
         assert.deepEqual(history, recorded);
         assert.equal(plugin.writeColumn, column);
-        assert.equal(plugin.graphDpr, 1);
+        // Graphics scale with the stage on a 1280-wide basis at the default Graph Scale.
+        assert.ok(Math.abs(plugin.graphDpr - 1000 / 1280) < 1e-12);
         assert.notEqual(plugin.tempCanvas, state.canvas);
         assert.notEqual(plugin.scaledHistoryCanvas, state.canvas);
         assert.ok(state.canvas.context.calls.some(call => call[0] === 'fillText'));
@@ -498,8 +502,10 @@ test('Notes use the keyboard space for history and hide its meters until the key
             assert.ok(shown.some(call => call[0] === 'arc'), 'Showing the keyboard restores its meters');
             assert.ok(shown.some(call => call[0] === 'fillText' && /^C\d+$/.test(call[1])),
                 'Keyboard note names remain visible when axis numbers are off');
-            const keyboardDepth = 44.8 * (ly === 'Horizontal'
-                ? target.width / 1024 : target.height / 480);
+            const [pitchLength, crossLength] = ly === 'Horizontal'
+                ? [target.width, target.height] : [target.height, target.width];
+            const keyboardDepth = env.window.FrequencyAxis.keyboardDepths(
+                12 * pitchLength / (plugin.mx - plugin.mn + 1), crossLength).gutter;
             assert.ok(Math.abs(extent(shown) - (fullExtent - keyboardDepth)) < 1e-8,
                 `${ly}: ${extent(shown)} vs ${fullExtent - keyboardDepth}`);
             assert.equal(target.context.fillStyle, '#111');
@@ -1049,7 +1055,7 @@ test('Visualizer keyboards keep their key depth in proportion as graph items res
                 assert.ok(depth > 0, `${type} ${ly ?? ''}: keyboard visible at ${scale}x`);
                 const blackDepth = type === 'spectrum' ? 4 : 3;
                 assert.ok(calls.some(call => call[0] === 'fillRect' &&
-                    Math.abs(call[blackDepth] - depth / 1.6) < 1e-8),
+                    Math.abs(call[blackDepth] - depth * 95 / 150) < 1e-8),
                 `${type} ${ly ?? ''}: black keys retain their depth relative to white keys`);
                 const pitchLength = type === 'spectrum' ? target.width
                     : type === 'spectrogram' || ly === 'Vertical' ? target.height : target.width;
@@ -1071,5 +1077,208 @@ test('Visualizer keyboards keep their key depth in proportion as graph items res
                     `${type} ${ly ?? ''}: keyboard key aspect remains stable`);
             }
         }
+    });
+});
+
+test('Display ballistics pass through at zero fall time, fall 20 dB per fall time, and hold peaks', () => {
+    const instant = createBallistics(2, false);
+    stepBallistics(instant, Float32Array.of(-10, -30), 0, 0);
+    stepBallistics(instant, Float32Array.of(-50, -70), 0, 0);
+    assert.deepEqual(Array.from(instant.cur), [-50, -70]);
+
+    const state = createBallistics(1, true);
+    stepBallistics(state, [-10], 0, 2, 1, 0.5);
+    assert.deepEqual([state.cur[0], state.peak[0]], [-10, -10]);
+    stepBallistics(state, [-100], 0, 2, 1, 0.5);
+    assert.deepEqual([state.cur[0], state.peak[0]], [-10, -10]);
+    stepBallistics(state, [-100], 2, 2, 1, 0.5);
+    // The current value falls 20 dB in 2 s; the peak holds 1 s, then falls 40 dB/s for 1 s.
+    assert.equal(state.cur[0], -30);
+    assert.equal(state.peak[0], -30);
+    stepBallistics(state, [-100], 0.5, 2, 1, 0.5);
+    assert.equal(state.cur[0], -35);
+    assert.equal(state.peak[0], -35);
+    stepBallistics(state, [-20], 0, 2, 1, 0.5);
+    stepBallistics(state, [-100], 0.5, 2, 1, 0.5);
+    assert.deepEqual([state.cur[0], state.peak[0]], [-25, -20]);
+    assert.ok([...state.cur, ...state.peak].every(Number.isFinite));
+});
+
+test('Spectrum smoothing is an identity at zero and spreads a spike symmetrically in log frequency', () => {
+    const smooth = createSpectrumSmoother();
+    const levels = new Float32Array(1001).fill(-240);
+    levels.fill(-145, 100, 900);
+    levels[500] = 0;
+    assert.equal(smooth(levels, 0, { start: 100, end: 900 }), levels);
+
+    const output = smooth(levels, 0.5, { start: 100, end: 900 });
+    for (let i = 0; i < 100; i++) assert.equal(output[i], -240);
+    for (let i = 900; i < 1001; i++) assert.equal(output[i], -240);
+    assert.ok(output[500] < -10 && output[520] > -100);
+    for (let d = 1; d < 58; d++) assert.ok(Math.abs(output[500 - d] - output[500 + d]) < 1e-6);
+    let power = 0;
+    for (let i = 100; i < 900; i++) {
+        assert.ok(output[i] >= -145);
+        power += 10 ** (output[i] / 10);
+    }
+    assert.ok(Math.abs(power - 1) < 1e-6);
+    assert.equal(smooth(levels, 0.5, { start: 100, end: 900 }), output);
+
+    const bins = new Float32Array(4096).fill(-145);
+    bins[0] = 3;
+    bins[1000] = 0;
+    const linear = smooth(bins, 1);
+    assert.equal(linear[0], 3);
+    for (const octave of [0.1, 0.3, 0.5]) {
+        assert.ok(Math.abs(linear[Math.round(1000 * 2 ** octave)] - linear[Math.round(1000 / 2 ** octave)]) < 0.5);
+    }
+    assert.ok(linear[1000] < -10 && linear[1500] < linear[1200]);
+});
+
+test('Spectrum smoothing keeps quiet high bins accurate next to a loud low end', () => {
+    const quiet = new Float32Array(8192);
+    for (let i = 0; i < quiet.length; i++) quiet[i] = -130 + 3 * Math.sin(i * 0.37);
+    const loud = quiet.slice();
+    loud.fill(0, 0, 40);
+    const reference = createSpectrumSmoother()(quiet, 0.3);
+    const output = createSpectrumSmoother()(loud, 0.3);
+    for (let i = 100; i < quiet.length; i++) assert.ok(Math.abs(output[i] - reference[i]) < 1e-3, `bin ${i}`);
+});
+
+test('Spectrum applies fall time, peak hold and peak fall to telemetry, and hides peaks when Peak is off', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('spectrum', 'spectrum'), target = canvas();
+        Object.assign(item.params, { sc: 'log', cf: 1, ph: 0.5, pf: 2 });
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        env.window.SpectrumAnalyzerPlugin.prototype.parseDspSpectrumTelemetryFrame = frame => frame.snapshot;
+        const send = level => env.subscribers.get('spectrum')({ snapshot: { sampleRate: 48000, points: 8, flags: 0,
+            current: new Float32Array(128).fill(level), peaks: new Float32Array(128).fill(level) } }, {});
+        send(-60);
+        display.draw(item, 1, 800);
+        assert.equal(display.plugin.spectrum[10], -60);
+        send(-100);
+        display.draw(item, 1.25, 800);
+        assert.equal(display.plugin.spectrum[10], -65);
+        assert.equal(display.plugin.peaks[10], -60);
+        display.draw(item, 1.75, 800);
+        assert.equal(display.plugin.spectrum[10], -75);
+        assert.equal(display.plugin.peaks[10], -62.5);
+        assert.equal(display.plugin.peakDecayPaused, true);
+
+        const hiddenPeakPoints = () => {
+            target.context.calls.length = 0;
+            display.draw(item, 1.75, 800);
+            return target.context.calls.filter(call =>
+                (call[0] === 'lineTo' || call[0] === 'fillRect') && !Number.isFinite(call[2])).length;
+        };
+        assert.equal(hiddenPeakPoints(), 0);
+        item.params.pk = false;
+        assert.ok(hiddenPeakPoints() > 0);
+        item.params.dm = 'bar';
+        assert.ok(hiddenPeakPoints() > 0);
+        item.params.pk = true;
+        assert.equal(hiddenPeakPoints(), 0);
+        display.dispose();
+    });
+});
+
+test('Level Meter reapplies time parameters after a channel change and hides its peak marker when Peak is off', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('level-meter', 'meter'), target = canvas();
+        Object.assign(item.params, { cf: 0, ph: 2.5, pf: 4, showLevelValues: true });
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const plugin = display.plugin;
+        const check = () => {
+            assert.equal(plugin.FALL_RATE, Number.MAX_VALUE);
+            assert.equal(plugin.PEAK_HOLD_TIME, 2.5);
+            assert.equal(plugin.PEAK_FALL_RATE, 5);
+        };
+        check();
+        display.draw({ ...item, channel: 'L' }, 1, 800);
+        check();
+        display.draw(item, 1, 800);
+        const draw = () => {
+            Object.assign(plugin, { lv: [-10, -10], raw: [-10, -10], pl: [-3, -3], ph: [1, 1] });
+            target.context.calls.length = 0;
+            display.draw(item, 1, 800);
+            const calls = target.context.calls;
+            return { markers: calls.filter(call => call[0] === 'fillRect' && call[3] === 2 * plugin.graphDpr).length,
+                texts: calls.filter(call => call[0] === 'fillText').map(call => call[1]) };
+        };
+        const shown = draw();
+        assert.equal(shown.markers, 2);
+        assert.ok(shown.texts.includes('L -3.0 dB'));
+        item.params.pk = false;
+        const hidden = draw();
+        assert.equal(hidden.markers, 0);
+        assert.ok(hidden.texts.includes('L -10.0 dB'));
+        display.dispose();
+    });
+});
+
+test('Chroma releases cell levels at its fall time', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('chroma', 'chroma'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const plugin = display.plugin;
+        plugin.levelReference = -20;
+        plugin.display = [{ midi: 60, level: -20.3 }, { midi: 61, level: -40 }];
+        display.draw(item, 1, 800);
+        assert.deepEqual(plugin.display.map(cell => cell.level), [-20.3, -40]);
+        item.params.cf = 2;
+        plugin.display = [{ midi: 60, level: -80 }, { midi: 61, level: -30 }];
+        display.draw(item, 1.5, 800);
+        assert.deepEqual(plugin.display.map(cell => cell.level), [-25.3, -30]);
+        display.dispose();
+    });
+});
+
+test('Stereo hides only its peak contour when Peak is off', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('stereo', 'stereo'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const measurements = display.plugin.currentMeasurements = {
+            xBuffer: new Float32Array(100).fill(.5), yBuffer: new Float32Array(100).fill(.3),
+            currentPosition: 0, peakBuffer: new Float32Array(360).fill(.5)
+        };
+        display.plugin.sampleRate = 100;
+        const draw = () => {
+            target.context.calls.length = 0;
+            display.draw(item, 1, 800);
+            const calls = target.context.calls;
+            return { hidden: calls.filter(call => call[0] === 'lineTo' && Number.isNaN(call[1])).length,
+                samples: calls.filter(call => call[0] === 'rect').length };
+        };
+        const shown = draw();
+        assert.equal(shown.hidden, 0);
+        item.params.pk = false;
+        const hidden = draw();
+        assert.equal(hidden.hidden, 359);
+        assert.equal(hidden.samples, shown.samples);
+        assert.equal(display.plugin.currentMeasurements, measurements);
+        display.dispose();
+    });
+});
+
+test('Stereo peak contour holds and then falls at the Peak Fall Time rate', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('stereo', 'stereo');
+        const display = createAnalyzerDisplay(item, canvas(), env.sources);
+        const db = values => 20 * Math.log10(values[0]);
+        const params = { ph: .5, pf: 2 };
+        display.stepStereo(new Float32Array(360).fill(1), params, 0);
+        const quiet = new Float32Array(360).fill(.1);
+        assert.ok(Math.abs(db(display.stepStereo(quiet, params, .5))) < 1e-5, 'held');
+        assert.ok(Math.abs(db(display.stepStereo(quiet, params, 1)) + 10) < 1e-4, 'falls 10 dB per second');
+        // The defaults follow the DSP envelope, which already falls 20 dB/s.
+        const defaults = { ph: item.params.ph, pf: item.params.pf };
+        display.stepStereo(new Float32Array(360).fill(1), defaults, 0);
+        assert.ok(Math.abs(db(display.stepStereo(new Float32Array(360).fill(10 ** -.5), defaults, .5)) + 10) < 1e-4);
+        display.dispose();
     });
 });

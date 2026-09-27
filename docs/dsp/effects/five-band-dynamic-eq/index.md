@@ -86,9 +86,4 @@ A smart equalizer that automatically adjusts frequency bands based on the conten
   - Sidechain Frequency: Detection frequency (20Hz-20kHz)
   - Sidechain Q: Detection bandwidth (0.1-10.0)
 
-### Visual Display
-- Real-time frequency response graph
-- Dynamic response curve showing the current boosts and cuts
-- Interactive frequency and gain controls
-
 [Back to all effects](/dsp/effects/)

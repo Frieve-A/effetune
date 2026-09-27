@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { frequencyAxisSource } from '../helpers/spectrum-overlay-harness.mjs';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -87,6 +88,7 @@ function createCanvasContext() {
         moveTo(...args) { calls.push(['moveTo', depth, ...args]); },
         lineTo(...args) { calls.push(['lineTo', depth, ...args]); },
         stroke() { calls.push(['stroke', depth]); },
+        rect() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} }),
         save() { depth++; calls.push(['save', depth]); },
         restore() { calls.push(['restore', depth]); depth--; },
         translate(...args) { calls.push(['translate', depth, ...args]); },
@@ -104,6 +106,12 @@ function createCanvasContext() {
     };
 }
 
+const FrequencyAxis = (() => {
+    const window = {};
+    vm.runInNewContext(frequencyAxisSource, { window });
+    return window.FrequencyAxis;
+})();
+
 async function loadPlugin({ telemetryHub = null, audioContext = null } = {}) {
     const source = await fs.readFile(pluginPath, 'utf8');
     const noteSource = await fs.readFile(path.join(repoRoot, 'plugins', 'analyzer', 'note_spectrogram.js'), 'utf8');
@@ -118,6 +126,7 @@ async function loadPlugin({ telemetryHub = null, audioContext = null } = {}) {
             ThemePalette: { get: name => `theme-${name}` }
         }
     });
+    vm.runInContext(frequencyAxisSource, context, { filename: 'frequency-axis.js' });
     vm.runInContext(noteSource, context, { filename: 'note_spectrogram.js' });
     vm.runInContext(spectrogramSource, context, { filename: 'spectrogram.js' });
     vm.runInContext(source, context, { filename: pluginPath });
@@ -342,13 +351,14 @@ test('Pitch Meter uses continuous white keys with black overlays in both layouts
         const horizontal = layout === 'Horizontal';
         const width = horizontal ? plugin.canvas.height : plugin.canvas.width;
         const height = horizontal ? plugin.canvas.width : plugin.canvas.height;
-        const rollWidth = width - 45;
+        const { gutter, blackDepth } = FrequencyAxis.keyboardDepths(12 * height / 88, width);
+        const rollWidth = width - gutter;
         const whiteKeys = context.calls
-            .filter(call => call[0] === 'fillRect' && call[2] === rollWidth && call[4] === 45)
+            .filter(call => call[0] === 'fillRect' && call[2] === rollWidth && call[4] === gutter)
             .map(call => [call[3], call[3] + call[5]])
             .sort((left, right) => left[0] - right[0]);
         const blackKeys = context.calls.filter(call =>
-            call[0] === 'fillRect' && call[2] === rollWidth && call[4] === 28
+            call[0] === 'fillRect' && call[2] === rollWidth && call[4] === blackDepth
         );
         assert.ok(whiteKeys.length > 0);
         assert.ok(blackKeys.length > 0);

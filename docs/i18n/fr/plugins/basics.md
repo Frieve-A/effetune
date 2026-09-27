@@ -52,10 +52,17 @@ Sélectionnez **All** dans le routage de bus de l'effet et prévoyez assez de ca
 - **Sub Outputs** choisit les sorties de chaque entrée **Managed** ou **LFE**. Sélectionner un canal fait passer son **Channel Role** à **LFE**. Une sortie nouvellement sélectionnée commence avec des trajets **ON** à polarité normale depuis toutes les entrées du bus ; utilisez Matrix pour désactiver un trajet. Sans **Sub Outputs**, la séparation des graves et le routage vers les caissons s'arrêtent, et les canaux d'entrée passent sans crossover. **LFE Low-pass**, **LFE Frequency** et **LFE Slope** limitent en option le LFE au-dessus de 20 à 300 Hz avec 24, 48 ou 96 dB/oct, sans filtrer à nouveau les graves déjà séparés.
 - **ON** et **Ø** : dans chaque cellule du tableau des canaux, **ON** envoie cette entrée **Managed** ou **LFE** vers la sortie de caisson choisie. **Ø** inverse la polarité de ce seul trajet entre l'entrée et le caisson, afin de l'ajuster au résultat mesuré ou entendu. **Ø** n'est disponible que lorsque **ON** est activé ; désactiver **ON** désactive aussi **Ø**. La sortie principale de l'entrée ne change pas.
 
-### Affichage, état et calibration
+### Affichage et état
 
 - Le résumé de routage indique quelles entrées alimentent chaque caisson. Vérifiez-le avant d'augmenter le niveau, surtout après avoir changé les canaux. Sélectionnez un canal **Managed** pour voir les réponses passe-haut et passe-bas actives, et non une courbe idéale.
-- L'état indique le mode, la préparation Linear et la latence effective en échantillons et ms. Modifier un réglage Linear peut réduire ou interrompre brièvement le son. Si la préparation échoue, réduisez **Taps** et réessayez. Si l'ancienne configuration ne peut pas être utilisée, les canaux principaux normaux passent avec un retard identique, les sorties réservées sont silencieuses et le LFE ne joue pas avant la fin de la préparation.
+- L'état indique le mode, la préparation Linear et la latence effective en échantillons et ms.
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
+
+### Préparation du filtre
+Modifier un réglage Linear peut réduire ou interrompre brièvement le son pendant la préparation des nouveaux filtres. Si la préparation échoue, réduisez **Taps** et réessayez. Si l'ancienne configuration ne peut pas être utilisée, les canaux principaux normaux passent avec un retard identique, les sorties réservées sont silencieuses et le LFE ne joue pas avant la fin de la préparation.
+
+### Bypass et calibration
+
 - Le bypass de l'hôte rétablit l'audio et l'affectation d'origine ; le routage, la protection et l'alignement de Bass Management ne restent pas actifs. Pour comparer ou couper le son en conservant le câblage, utilisez MultiChannel Panel après. Linear décrit le crossover : une EQ/passe-haut IIR ou un delay relatif ajouté ensuite change la phase du système entier. Enregistrez la chaîne calibrée dans un seul preset.
 
 ## Channel Divider
@@ -99,7 +106,10 @@ Pour utiliser cet effet, utilisez l'application de bureau, réglez un nombre pai
 * Le nombre de canaux de sortie doit être un nombre pair compris entre 4 et 16
 * Chaque bande conserve la paire stéréo d'origine : en mode 2 bandes, Low sort sur les canaux 1-2 et High sur 3-4 ; en mode 3 bandes, Low/Mid/High utilisent 1-2, 3-4 et 5-6 ; en mode 4 bandes, Low/Mid-Low/Mid-High/High utilisent 1-2, 3-4, 5-6 et 7-8
 * Utilise des filtres crossover Linkwitz-Riley de haute qualité
-* Graphique de réponse en fréquence pour une configuration facilitée
+
+### Affichage Visuel
+* Le graphique montre la réponse en fréquence de chaque bande de sortie.
+* Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ## DC Offset
 
@@ -150,6 +160,7 @@ La conception FIR autorise des pentes très raides sans la résonance des filtre
 - Le graphique montre la réponse cible de chaque bande en fonction de la fréquence.
 - Chaque couleur correspond à la paire de sorties de la bande.
 - La ligne d'état indique la latence et la résolution du filtre, ou avertit si le nombre de canaux est incompatible.
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ## Matrix
 

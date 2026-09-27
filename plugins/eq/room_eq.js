@@ -11,6 +11,28 @@ const ROOM_EQ_EXCESS_GROUP_DELAY_DISPLAY_LIMIT_MS = 100;
 const ROOM_EQ_GRAPH_FREQUENCY_TICKS =
     [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
 const ROOM_EQ_RESPONSE_HIDDEN_CLASS = 'room-eq-response-hidden';
+// Readout and legend series per view group, in drawing order with drawing colors.
+const ROOM_EQ_BEFORE_COLOR = 'var(--et-graph-trace-secondary)';
+const ROOM_EQ_RESPONSE_SERIES = {
+    frequency: [
+        { label: 'Room EQ', selector: '.room-eq-base-response-path', color: 'var(--et-success)', opacity: 0.65, signed: true },
+        { label: 'Total EQ', selector: '.room-eq-combined-response-path', color: 'var(--et-graph-trace)', signed: true },
+        { label: 'Before', selector: '.room-eq-measured-response-path', color: ROOM_EQ_BEFORE_COLOR, opacity: 0.7 },
+        { label: 'After', selector: '.room-eq-corrected-response-path', color: 'var(--et-text-primary)' }
+    ],
+    phase: [
+        { label: 'Before', selector: '.room-eq-phase-before', hidden: '.room-eq-phase-after', color: ROOM_EQ_BEFORE_COLOR, opacity: 0.7 },
+        { label: 'After', selector: '.room-eq-phase-after', color: 'var(--et-graph-trace)' }
+    ],
+    groupDelay: [
+        { label: 'Before', selector: '.room-eq-group-delay-before', hidden: '.room-eq-group-delay-after', color: ROOM_EQ_BEFORE_COLOR, opacity: 0.7 },
+        { label: 'After', selector: '.room-eq-group-delay-after', color: 'var(--et-graph-trace)' }
+    ],
+    impulse: [
+        { label: 'Before', selector: '.room-eq-impulse-before', hidden: '.room-eq-impulse-after', color: 'var(--et-graph-tone-50)' },
+        { label: 'After', selector: '.room-eq-impulse-after', color: 'var(--et-graph-trace)' }
+    ]
+};
 
 // Curves are drawn without clamping them to the plot area so they overflow past
 // the top and bottom edges instead of being cropped flat there. Only the path
@@ -956,8 +978,8 @@ class RoomEqPlugin extends PluginBase {
         this._responseView = 'frequency';
         this._responseViewElements = null;
         this._beforeLegendHover = null;
-        this._responseHoverCleanup = null;
-        this._pathPointCache = new WeakMap();
+        this._responseLegendEmphasis = null;
+        this._graphReadout = null;
         this._groupDelayAxisLimit = ROOM_EQ_GROUP_DELAY_MINIMUM_LIMIT_MS;
         this._impulseTimeAxis = null;
         this._visibilityHandler = () => {
@@ -2509,135 +2531,19 @@ class RoomEqPlugin extends PluginBase {
             )
         };
 
-        const hoverOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        hoverOverlay.setAttribute('class', 'room-eq-hover-overlay');
-        hoverOverlay.setAttribute('width', '100%');
-        hoverOverlay.setAttribute('height', '100%');
-        hoverOverlay.setAttribute('preserveAspectRatio', 'none');
-
-        const legend = document.createElement('div');
-        legend.className = 'room-eq-response-legend';
-        const cursorReadout = document.createElement('span');
-        cursorReadout.className = 'room-eq-response-legend-cursor';
-        legend.appendChild(cursorReadout);
-        const legendItems = [];
-        for (const { className, labelText, views } of [
-            {
-                className: 'room-eq-response-legend-room',
-                labelText: 'Room EQ',
-                views: { frequency: { selector: '.room-eq-base-response-path' } }
-            },
-            {
-                className: 'room-eq-response-legend-total',
-                labelText: 'Total EQ',
-                views: { frequency: { selector: '.room-eq-combined-response-path' } }
-            },
-            {
-                className: 'room-eq-response-legend-before',
-                labelText: 'Before',
-                views: {
-                    frequency: { selector: '.room-eq-measured-response-path' },
-                    phase: {
-                        selector: '.room-eq-phase-before',
-                        hidden: '.room-eq-phase-after'
-                    },
-                    minimumGroupDelay: {
-                        selector: '.room-eq-group-delay-before',
-                        hidden: '.room-eq-group-delay-after'
-                    },
-                    excessGroupDelay: {
-                        selector: '.room-eq-group-delay-before',
-                        hidden: '.room-eq-group-delay-after'
-                    },
-                    impulse: {
-                        selector: '.room-eq-impulse-before',
-                        hidden: '.room-eq-impulse-after'
-                    }
-                }
-            },
-            {
-                className: 'room-eq-response-legend-after',
-                labelText: 'After',
-                views: {
-                    frequency: { selector: '.room-eq-corrected-response-path' },
-                    phase: { selector: '.room-eq-phase-after' },
-                    minimumGroupDelay: { selector: '.room-eq-group-delay-after' },
-                    excessGroupDelay: { selector: '.room-eq-group-delay-after' },
-                    impulse: { selector: '.room-eq-impulse-after' }
-                }
-            }
-        ]) {
-            const item = document.createElement('span');
-            item.className = `room-eq-response-legend-item ${className}`;
-            const swatch = document.createElement('span');
-            swatch.className = 'room-eq-response-legend-swatch';
-            swatch.setAttribute('aria-hidden', 'true');
-            const value = document.createElement('span');
-            value.className = 'room-eq-response-legend-value';
-            item.append(swatch, document.createTextNode(labelText), value);
-            legendItems.push({ views, value });
-            const emphasis = { restore: null };
-            item.addEventListener('mouseenter', () => {
-                emphasis.restore?.();
-                const view = this._responseView;
-                const container = this._responseHoverContainer(view) || editor.responseSvg;
-                const selector = views[view]?.selector || null;
-                const hiddenSelector = views[view]?.hidden || null;
-                emphasis.restore = this._emphasizeResponsePath(
-                    container,
-                    selector,
-                    hiddenSelector
-                );
-                if (hiddenSelector) {
-                    this._beforeLegendHover = {
-                        owner: item,
-                        view,
-                        container,
-                        selector,
-                        hiddenSelector,
-                        emphasis
-                    };
-                }
-            });
-            item.addEventListener('mouseleave', () => {
-                emphasis.restore?.();
-                emphasis.restore = null;
-                if (this._beforeLegendHover?.owner === item) {
-                    this._beforeLegendHover = null;
-                }
-            });
-            legend.appendChild(item);
-        }
-
         for (const overlay of Object.values(overlays)) {
             graph.append(overlay.grid, overlay.response, overlay.unavailable);
         }
-        graph.append(hoverOverlay, legend);
-        this._responseViewElements = {
-            graph,
-            controls,
-            legend,
-            inputs,
-            overlays,
-            hoverOverlay,
-            cursorReadout,
-            legendItems
-        };
-        this._bindResponseHover(graph);
+        this._responseViewElements = { graph, controls, inputs, overlays };
         this._setResponseView(this._responseView);
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph,
+            surface: () => this._responseHoverContainer(this._responseView),
+            read: x => this._readResponse(x),
+            legend: this._responseLegendItems(),
+            onLegendHover: index => this._hoverResponseLegend(index)
+        });
         return controls;
-    }
-
-    _bindResponseHover(graph) {
-        this._responseHoverCleanup?.();
-        const move = event => this._updateResponseHover(event);
-        const leave = () => this._clearResponseHover();
-        graph.addEventListener('mousemove', move);
-        graph.addEventListener('mouseleave', leave);
-        this._responseHoverCleanup = () => {
-            graph.removeEventListener('mousemove', move);
-            graph.removeEventListener('mouseleave', leave);
-        };
     }
 
     _responseHoverContainer(view) {
@@ -2648,109 +2554,75 @@ class RoomEqPlugin extends PluginBase {
             ]?.response;
     }
 
-    // Reads the drawn polyline so every view shares one readout path, whatever the
-    // curve was built from.
-    _pathValueAtX(path, x) {
-        let points = this._pathPointCache.get(path);
-        if (!points) {
-            points = [];
-            for (const [, pointX, pointY] of
-                (path.getAttribute('d') || '').matchAll(
-                    /[ML] (-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g
-                )) {
-                points.push([Number(pointX), Number(pointY)]);
-            }
-            this._pathPointCache.set(path, points);
-        }
-        if (points.length < 2 || x < points[0][0] ||
-            x > points[points.length - 1][0]) {
-            return null;
-        }
-        let low = 0;
-        let high = points.length - 1;
-        while (high - low > 1) {
-            const middle = (low + high) >> 1;
-            if (points[middle][0] <= x) low = middle;
-            else high = middle;
-        }
-        const span = points[high][0] - points[low][0];
-        return span > 0
-            ? points[low][1] +
-                (x - points[low][0]) / span * (points[high][1] - points[low][1])
-            : points[low][1];
+    _responseSeries(view) {
+        return ROOM_EQ_RESPONSE_SERIES[
+            this._isGroupDelayView(view) ? 'groupDelay' : view
+        ];
     }
 
-    _formatHoverFrequency(x, width) {
-        const frequency = this._additionalEqEditor.xToFreq(x / width * 100);
-        return frequency >= 1000
-            ? `${(frequency / 1000).toFixed(2)} kHz`
-            : `${frequency.toFixed(0)} Hz`;
+    _responseLegendItems() {
+        return this._responseSeries(this._responseView)
+            .map(({ label, color, opacity }) => ({ label, color, opacity }));
     }
 
-    _formatHoverCursor(view, x, width) {
-        if (view !== 'impulse') return this._formatHoverFrequency(x, width);
-        const axis = this._impulseTimeAxis;
-        if (!axis) return '';
-        const time = axis.startMs + x / width * (axis.durationMs - axis.startMs);
-        return `${time.toFixed(2)} ms`;
-    }
-
-    _formatHoverValue(view, y, height) {
-        const position = y / height;
-        if (view === 'frequency') {
-            return `${this._additionalEqEditor.yToGain(position * 100).toFixed(1)} dB`;
-        }
-        if (view === 'phase') return `${(180 - position * 360).toFixed(0)}°`;
-        if (this._isGroupDelayView(view)) {
-            const limit = this._groupDelayAxisLimit;
-            return `${(limit - position * 2 * limit).toFixed(2)} ms`;
-        }
-        return ((0.5 - position) * 2).toFixed(2);
-    }
-
-    _updateResponseHover(event) {
-        const elements = this._responseViewElements;
-        if (!elements) return;
+    // Reads the drawn polylines so every view shares one readout path,
+    // whatever the curve was built from.
+    _readResponse(x) {
         const view = this._responseView;
         const container = this._responseHoverContainer(view);
-        const width = container?.clientWidth;
-        const height = container?.clientHeight;
-        const rect = container?.getBoundingClientRect?.();
-        if (!width || !height || !rect) return this._clearResponseHover();
-        const x = (event.clientX - rect.left) * width / rect.width;
-        if (!(x >= 0 && x <= width)) return this._clearResponseHover();
-        const { hoverOverlay } = elements;
-        hoverOverlay.setAttribute('viewBox', `0 0 ${width} ${height}`);
-        hoverOverlay.replaceChildren();
-        elements.cursorReadout.textContent = this._formatHoverCursor(view, x, width);
-        for (const { views, value } of elements.legendItems) {
-            const selector = views[view]?.selector;
-            const matched = selector ? container.querySelector(selector) : null;
+        const box = container?.viewBox?.baseVal;
+        const editor = this._additionalEqEditor;
+        if (!box?.width || !box.height || !editor) return null;
+        const { format, pathValueAt } = window.GraphReadout;
+        const axis = this._impulseTimeAxis;
+        const cursor = view === 'impulse'
+            ? (axis ? format.time(axis.startMs + x / box.width * (axis.durationMs - axis.startMs)) : '')
+            : format.frequency(editor.xToFreq(x / box.width * 100));
+        const limit = this._groupDelayAxisLimit;
+        const rows = [];
+        for (const series of this._responseSeries(view)) {
+            const path = container.querySelector(series.selector);
             // A legend hover hides the competing curve; a hidden curve reads as absent.
-            const path = matched?.classList?.contains?.(ROOM_EQ_RESPONSE_HIDDEN_CLASS)
-                ? null
-                : matched;
-            const y = path ? this._pathValueAtX(path, x) : null;
-            value.textContent = y === null ? '' : this._formatHoverValue(view, y, height);
-            if (y === null) continue;
-            const dot = this._appendResponseSvgElement(hoverOverlay, 'circle', {
-                class: 'room-eq-hover-dot',
-                cx: x.toFixed(2),
-                cy: y.toFixed(2),
-                r: 3.5
-            });
-            const stroke = path.getAttribute('stroke') ||
-                globalThis.getComputedStyle?.(path)?.stroke;
-            if (stroke) dot.setAttribute('fill', stroke);
+            if (!path || path.classList.contains(ROOM_EQ_RESPONSE_HIDDEN_CLASS)) continue;
+            const y = pathValueAt(path, x);
+            // A path/at-cursor gap (e.g. the phase wrap's M break) has no y but is still drawn;
+            // read it as a dash rather than dropping the legend row.
+            const position = y === null ? NaN : y / box.height;
+            const value = view === 'frequency'
+                ? format.db(editor.yToGain(position * 100), { signed: series.signed })
+                : view === 'phase'
+                    ? format.degrees(180 - position * 360)
+                    : view === 'impulse'
+                        ? format.number((0.5 - position) * 2, 2)
+                        : format.time(limit - position * 2 * limit);
+            const row = { label: series.label, color: series.color, value };
+            if (y !== null) row.y = y;
+            rows.push(row);
         }
+        return { cursor, rows };
     }
 
-    _clearResponseHover() {
-        const elements = this._responseViewElements;
-        if (!elements) return;
-        elements.hoverOverlay.replaceChildren();
-        elements.cursorReadout.textContent = '';
-        for (const { value } of elements.legendItems) value.textContent = '';
+    _hoverResponseLegend(index) {
+        this._responseLegendEmphasis?.restore?.();
+        this._responseLegendEmphasis = null;
+        this._beforeLegendHover = null;
+        const view = this._responseView;
+        const series = index === null ? null : this._responseSeries(view)[index];
+        if (!series) return;
+        const container = this._responseHoverContainer(view);
+        const emphasis = {
+            restore: this._emphasizeResponsePath(container, series.selector, series.hidden)
+        };
+        this._responseLegendEmphasis = emphasis;
+        if (series.hidden) {
+            this._beforeLegendHover = {
+                view,
+                container,
+                selector: series.selector,
+                hiddenSelector: series.hidden,
+                emphasis
+            };
+        }
     }
 
     _createResponseOverlay(className, ariaLabel, unavailableText) {
@@ -2806,7 +2678,9 @@ class RoomEqPlugin extends PluginBase {
         for (const [value, input] of Object.entries(elements.inputs)) {
             input.checked = value === this._responseView;
         }
-        this._clearResponseHover();
+        this._hoverResponseLegend(null);
+        this._graphReadout?.clear();
+        this._graphReadout?.setLegend(this._responseLegendItems());
         if (this._responseView === 'phase') this._drawPhaseResponse();
         else if (this._isGroupDelayView(this._responseView)) {
             this._drawGroupDelayResponse();
@@ -3382,6 +3256,8 @@ class RoomEqPlugin extends PluginBase {
 
         this._additionalEqEditor?.dispose();
         this._responseViewElements = null;
+        this._graphReadout?.clear();
+        this._graphReadout = null;
         this._previewChannelControl = null;
         this._additionalEqEditor = RoomEqPlugin.createAdditionalEqEditor({
             host: this,
@@ -3401,6 +3277,7 @@ class RoomEqPlugin extends PluginBase {
             this._drawPhaseResponse();
             this._drawGroupDelayResponse();
             this._drawImpulseResponse();
+            this._graphReadout?.refresh();
         };
         this._syncCorrectionPreview();
         const additionalEqUi = this._additionalEqEditor.createUI();
@@ -3441,10 +3318,9 @@ class RoomEqPlugin extends PluginBase {
         this._designer = null;
         this._measurementStore = null;
         this._measurementRow = null;
-        this._beforeLegendHover?.emphasis.restore?.();
-        this._beforeLegendHover = null;
-        this._responseHoverCleanup?.();
-        this._responseHoverCleanup = null;
+        this._hoverResponseLegend(null);
+        this._graphReadout?.clear();
+        this._graphReadout = null;
         this._additionalEqEditor?.dispose();
         this._additionalEqEditor = null;
         this._responseViewElements = null;

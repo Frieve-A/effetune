@@ -57,11 +57,4 @@ To use it, run the desktop app with an even output-channel count from 4 to 16 an
 - **Crossover Frequencies** - F1, F2, and F3 set the active crossover points from 10 Hz to 40 kHz. The plugin keeps them in ascending order; the usable upper range also depends on the audio sample rate.
 - **Slope** - Sets each crossover target to 24, 48, 72, 96, 144, 192, 288, or 384 dB/oct. Higher values make a narrower transition and usually benefit from more Taps.
 
-### Visual Display
-
-- The graph follows Channel Divider's display: it shows the intended response of every active output band from 10 Hz to 40 kHz on a -60 to +12 dB scale.
-- Each green curve corresponds to one stereo output pair, ordered from the lowest band to the highest band.
-- The status line reports total processing latency, FIR frequency resolution, and whether the filter asset is bypassed, staged, preparing, active, or in error.
-- A channel warning appears unless the plugin is running with an even output-channel count from 4 to 16.
-
 [Back to all effects](/dsp/effects/)

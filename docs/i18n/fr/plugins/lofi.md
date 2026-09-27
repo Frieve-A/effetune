@@ -345,6 +345,7 @@ Paramètres avancés / utilitaires
   - **Output** - le niveau de sortie final (signal sec plus distorsion, après Dry-Wet et Output Trim).
 - **Analog Transfer Curve** - Affiche la courbe de distorsion créée par Analog Nonlinearity et Even Bias, dans le même style entrée/sortie que les plugins Saturation.
 - **Vue Difference-Frequency** - Un graphique statique montrant quelles fréquences audibles le bruit ultrasonique produit, en fonction des réglages de bruit actuels.
+- Survolez l'un ou l'autre graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés
 - Subtil (par défaut) : Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
@@ -403,6 +404,9 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
 - **MPath** indique le niveau de la première réflexion par rapport à l'onde directe en dB (−∞ quand Multipath est à 0%).
 - **Clicks** compte les clics de seuil FM récents par seconde et se met en évidence quand ils deviennent fréquents.
 - Si le moteur **WASM** est indisponible, le HUD affiche une notification et le signal traverse sans modification.
+
+### Affichage Visuel
+- Survolez le spectre, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages recommandés
 
@@ -907,6 +911,9 @@ Les neuf préréglages couvrent le Japon M/EIA-J, l'Amérique du Nord M/BTSC, la
 Le HUD affiche le Standard et la voie active : `STEREO`, `MAIN`, `SUB`, `NICAM`, `FALLBACK` ou `AM`. Carrier et CNR indiquent le niveau et la qualité ; Health indique si la voie stéréo ou numérique choisie est utilisable ; Multipath, la profondeur du signal réfléchi ; Errors, le taux d'erreurs de réception par seconde. Le spectre représente le multiplex FM restitué, le son détecté en L AM ou la sortie choisie en NICAM.
 
 Le modèle reproduit les effets audibles du son télévisé, pas un canal complet d'image et de radiofréquence ni un signal de test de diffusion.
+
+### Affichage Visuel
+- Survolez le spectre, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ## Vinyl Artifacts
 

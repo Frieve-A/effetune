@@ -40,13 +40,15 @@ You can close the extension popup or the editor while processing continues. When
 
 Choose **Edit pipeline** to open **EffeTune Pipeline Editor**, then select the tab in the header. Add effects, change their order, enable or disable individual effects, and adjust their parameters as you would in EffeTune. Analysis displays show the selected tab. With no active sessions, **Offline pipeline** edits the default pipeline for the next start.
 
+Select **Visualizer** in the editor header to show the selected tab's processed audio in [Visualizer](visualizer.md); select it again to return to the pipeline. If that tab is not being processed, Visualizer shows "Start EffeTune on a tab to show Visualizer." Track titles and artwork are not shown in the extension. **Share** and **Import Link** work as in the web app, and shared links open in the web version. Visualizer layouts and presets stay in the extension and do not sync with the web app or desktop app.
+
 Select a tab in the popup, then use **Saved preset** and **Apply to selected tab** to change its complete pipeline without opening the editor. In the editor, open **Pipeline Presets** to save a complete pipeline preset with **Save as**. Open **Settings** and choose **Import preset…** or **Export preset** to import or export complete pipeline presets. Extension presets and saved settings stay in the extension; they do not automatically sync with the web app or desktop app.
 
 If a preset needs an unsupported routing, effect, or unavailable external asset, it is not applied and the current pipeline remains unchanged.
 
 To use a measurement from the web app or desktop app with Room EQ or Crosstalk Cancellation, export the measurement as JSON there. In the extension editor, open **Settings**, choose **Import measurement…**, then select that JSON file. Include impulse responses in the export when using Crosstalk Cancellation or Room EQ's phase correction. Imported measurements appear immediately in Room EQ's **Measurement** list, remain in the extension's browser storage, and do not sync automatically. To remove an imported copy, select it in that list and choose **Delete** beside the list. After confirmation, every Room EQ and Crosstalk Cancellation assignment that uses it is cleared before the copy is deleted.
 
-For a selective transfer of all supported saved data, open **Settings > Backup / Restore** in the editor. The same `.effetune_backup` file works with the web and desktop apps and can contain saved pipeline presets, effect presets, impulse responses, and imported measurements. A pipeline that uses unsupported extension routing or effects remains saved and can be backed up again, although it cannot be applied in the extension. URL rules and the extension sample-rate setting are not included.
+For a selective transfer of all supported saved data, open **Settings > Backup / Restore** in the editor. The same `.effetune_backup` file works with the web and desktop apps and can contain saved pipeline presets, effect presets, Visualizer presets, impulse responses, and imported measurements. A pipeline that uses unsupported extension routing or effects remains saved and can be backed up again, although it cannot be applied in the extension. URL rules and the extension sample-rate setting are not included.
 
 ## URL presets and sample rate
 

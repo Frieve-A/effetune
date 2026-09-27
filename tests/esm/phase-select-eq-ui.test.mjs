@@ -61,6 +61,15 @@ class FakeElement {
     visit(this);
     return result;
   }
+  querySelector(selector) {
+    const className = /^\.([\w-]+)$/.exec(selector)?.[1];
+    for (const child of this.children) {
+      if (child?.className?.split?.(/\s+/).includes(className)) return child;
+      const match = child?.querySelector?.(selector);
+      if (match) return match;
+    }
+    return null;
+  }
   setPointerCapture(pointerId) { this.capturedPointer = pointerId; }
   releasePointerCapture(pointerId) {
     if (this.capturedPointer === pointerId) this.capturedPointer = null;
@@ -168,6 +177,8 @@ async function loadPlugin() {
       const labelElement = new FakeElement('label');
       labelElement.textContent = `${label}:`;
       row.appendChild(labelElement);
+      const optionsElement = row.appendChild(new FakeElement('span'));
+      optionsElement.className = 'radio-options';
       for (const option of options) {
         const radio = new FakeElement('input');
         radio.type = 'radio';
@@ -178,7 +189,7 @@ async function loadPlugin() {
         });
         const radioLabel = new FakeElement('label');
         radioLabel.textContent = option.label;
-        row.append(radio, radioLabel);
+        optionsElement.append(radio, radioLabel);
       }
       return row;
     }

@@ -28,6 +28,9 @@ const overlay = JSON.parse(fs.readFileSync(
   path.join(repoRoot, 'examples', 'dsp-library', 'docs', 'effects-v1.docs.json'),
   'utf8'
 ));
+const proseMap = JSON.parse(fs.readFileSync(path.join(
+  repoRoot, 'examples', 'dsp-library', 'docs', 'effect-prose-map-v0.1.json'
+), 'utf8'));
 const routes = JSON.parse(fs.readFileSync(path.join(
   repoRoot, 'examples', 'dsp-library', 'docs', 'routes-v0.1.json'
 ), 'utf8'));
@@ -79,6 +82,9 @@ test('DSP documentation outputs are deterministic and catalog-complete', () => {
     ), 'utf8');
     assert.match(page, /The following section is reproduced from the English EffeTune app documentation/);
     assert.match(page, new RegExp(`Semantic type: \\\`${effect.type}\\\``));
+    for (const heading of proseMap.guiOnlyHeadings) {
+      assert.ok(!page.includes(`\n### ${heading}\n`), `${effect.type}: ${heading}`);
+    }
     if (effect.parameters.length > 0) {
       assert.match(page, /\| Semantic name \| Python constructor keyword \|/);
       for (const parameter of effect.parameters) {

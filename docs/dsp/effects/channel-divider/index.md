@@ -69,6 +69,5 @@ To use this effect, use the desktop app, set an even output-channel count from 4
 - Output channels must be an even number from 4 to 16
 - Each band keeps the original stereo pair: 2-band mode outputs Low to channels 1-2 and High to channels 3-4; 3-band mode uses channels 1-2, 3-4, and 5-6; 4-band mode uses channels 1-2, 3-4, 5-6, and 7-8
 - Uses high-quality Linkwitz-Riley crossover filters
-- Visual frequency response graph for easy configuration
 
 [Back to all effects](/dsp/effects/)

@@ -16,6 +16,8 @@ import { ExtensionClient } from '../../extension/protocol.js';
 import { TelemetryFrameType, TelemetryHub } from '../../js/audio/telemetry-hub.js';
 import { PresetManager } from '../../js/ui/pipeline/preset-manager.js';
 import { ClipboardManager } from '../../js/ui/pipeline/clipboard-manager.js';
+import { createDefaultLayout, encodeLayoutShare, snapshotLayout } from '../../js/visualizer/visualizer-model.js';
+import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 import { refreshRangeFills, updateRangeFill } from '../../js/ui/range-fill.js';
 
@@ -606,6 +608,106 @@ test('extension UI infers error severity for shared preset messages with an omit
     ['Saved.', true],
     ['Something went wrong. Your current pipeline was kept. Try again.', false]
   ]);
+});
+
+test('extension UI shows translated Visualizer sentences and extension-only guidance', () => {
+  const messages = [];
+  const uiManager = createUiManager(
+    { 'visualizer.unavailable': 'Visualizer is unavailable. Reload the app to try again.' },
+    (...args) => messages.push(args), () => {});
+  uiManager.showTransientMessage('Loaded the Visualizer layout from the link.', false, {}, 3000);
+  uiManager.showTransientMessage('unknown.key', true);
+  assert.deepEqual(messages, [
+    ['Loaded the Visualizer layout from the link.', true, 3000],
+    ['Something went wrong. Try again.', false, 3000]
+  ]);
+  assert.equal(uiManager.t('visualizer.unavailable'), 'Start EffeTune on a tab to show Visualizer.');
+  assert.equal(uiManager.t('visualizer.disabled'), 'Start EffeTune on a tab to show Visualizer.');
+});
+
+test('extension clipboard opens an initialized Visualizer and imports shared layouts without changing the pipeline', async () => {
+  const messages = [];
+  const calls = [];
+  let initialize;
+  const documentRef = { body: { classList: { toggle() {} } } };
+  const editor = new ExtensionEditor({ client: {}, documentRef });
+  const uiManager = createUiManager({}, (...args) => messages.push(args), () => {},
+    encoded => editor.openSharedVisualizer(encoded));
+  editor.uiManager = uiManager;
+  const originalLayout = createDefaultLayout();
+  const view = editor.visualizerView = {
+    initialized: new Promise(resolve => { initialize = resolve; }),
+    uiManager,
+    layout: originalLayout,
+    currentPresetName: 'Saved',
+    show() { calls.push('show'); },
+    updateVisibility() {},
+    t(_key, fallback) { return fallback; },
+    notice(_key, fallback) { messages.push([fallback, false]); },
+    setLayout(layout) { calls.push('import'); this.layout = layout; },
+    importShared: VisualizerView.prototype.importShared
+  };
+  const plugin = editorPlugin(4, -6);
+  const pipeline = [plugin];
+  const selectedPlugins = new Set([plugin]);
+  const manager = new ClipboardManager({
+    core: { selectedPlugins }, audioManager: { pipeline }, pluginManager: {}
+  });
+  const layout = createDefaultLayout();
+  layout.aspect = '4:3';
+  const url = new URL('https://effetune.frieve.com/effetune.html');
+  url.searchParams.set('v', encodeLayoutShare(layout));
+
+  await withGlobals({ window: { uiManager } }, async () => {
+    const pasted = manager.handlePaste(url.href);
+    await Promise.resolve();
+    assert.deepEqual(calls, []);
+    assert.equal(view.layout, originalLayout);
+    initialize();
+    await pasted;
+    assert.deepEqual(calls, ['show', 'import']);
+    assert.deepEqual(view.layout, snapshotLayout(layout));
+    assert.equal(view.currentPresetName, '');
+    assert.deepEqual(messages, [['Loaded the Visualizer layout from the link.', true, 3000]]);
+
+    const importedLayout = view.layout;
+    url.searchParams.set('v', 'invalid');
+    await manager.handlePaste(url.href);
+    assert.equal(view.layout, importedLayout);
+    assert.match(messages.at(-1)[0], /This Visualizer link could not be read/);
+    assert.deepEqual(pipeline, [plugin]);
+    assert.deepEqual([...selectedPlugins], [plugin]);
+  });
+});
+
+test('extension Visualizer sources bypass the edit queue and republish after telemetry subscribes', async () => {
+  const requests = [];
+  const client = { sessionId: null, request: async (command, args) => { requests.push([command, args]); return {}; } };
+  const audioManager = new ExtensionAudioManager(client, error => assert.fail(error));
+  const sources = [{ tapId: 0xf0000000 }];
+  audioManager.setVisualizerSources(sources);
+  assert.deepEqual(requests, []);
+  client.sessionId = 'selected';
+  audioManager.setVisualizerSources(sources);
+  audioManager.setVisualizerSources([{ tapId: 0xf0000000 }]);
+  assert.deepEqual(requests, [['setVisualizerSources', { sources }]]);
+  assert.equal(audioManager.pendingMutations, 0);
+
+  let ready = 0;
+  audioManager.addEventListener('dspReady', () => { ready += 1; });
+  const documentRef = { hidden: false };
+  const editor = new ExtensionEditor({ client, documentRef });
+  editor.audioManager = audioManager;
+  await editor.updateTelemetrySubscription();
+  assert.equal(ready, 1);
+  documentRef.hidden = true;
+  await editor.updateTelemetrySubscription();
+  assert.equal(ready, 1);
+
+  audioManager.setDspReady(true);
+  audioManager.setDspReady(true);
+  assert.equal(ready, 2);
+  assert.equal(audioManager.isDspReady(), true);
 });
 
 test('extension UI layout mode follows the shared mobile-width breakpoint', async () => {

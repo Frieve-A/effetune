@@ -10,7 +10,6 @@
 .oscilloscope-plugin-ui .parameters-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: repeat(4, auto);
     column-gap: 10px;
     row-gap: 0;
 }

@@ -1,5 +1,16 @@
 {
   "schemaVersion": 1,
+  "guiOnlyHeadings": [
+    "Visual Display",
+    "Visual Display and Status",
+    "Visual Feedback",
+    "Visual Monitoring",
+    "Visualizations",
+    "Reading the Display",
+    "Reading the Status Line",
+    "Reading the Decay Graph",
+    "Note on Waveform Display"
+  ],
   "effects": {
     "PitchShifterHQ": ["docs/plugins/modulation.md", "Pitch Shifter HQ"],
     "BandwidthExtender": ["docs/plugins/saturation.md", "Bandwidth Extender"],

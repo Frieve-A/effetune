@@ -694,6 +694,12 @@ class FIRCrossoverPlugin extends PluginBase {
     graphWrap.appendChild(graphContainer);
     container.appendChild(graphWrap);
 
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graphContainer,
+      surface: canvas,
+      read: x => this._readGraph(x)
+    });
+
     const statusLine = document.createElement('div');
     statusLine.className = 'fir-crossover-status-line';
     const status = document.createElement('div');
@@ -836,7 +842,15 @@ class FIRCrossoverPlugin extends PluginBase {
     return values;
   }
 
+  _bandNames() {
+    if (this.bc === 2) return ['Low', 'High'];
+    if (this.bc === 3) return ['Low', 'Mid', 'High'];
+    return ['Low', 'Mid-Low', 'Mid-High', 'High'];
+  }
+
   drawGraph() {
+    const frame = (this._readoutFrame ??= {});
+    frame.valid = false;
     if (!this.canvas) return;
     const context = this.canvas.getContext('2d');
     const { width, height } = this.canvas;
@@ -906,21 +920,58 @@ class FIRCrossoverPlugin extends PluginBase {
     context.fillText('Level (dB)', 0, 0);
     context.restore();
 
-    context.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
+    const traceColor = (window.ThemePalette?.get('graph-trace') ?? '');
+    context.strokeStyle = traceColor;
     context.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
+    const bandNames = this._bandNames();
+    const bandResponses = Array.from({ length: this.bc }, () => new Float64Array(width));
     for (let band = 0; band < this.bc; band += 1) {
       context.beginPath();
       for (let x = 0; x < width; x += 1) {
-        const frequency = 10 ** (minimumLog +
-          x / Math.max(1, width - 1) * (maximumLog - minimumLog));
+        const frequency = this._graphFrequencyAt(x, width);
         const magnitude = this._bandMagnitudes(frequency)[band];
         const decibels = 20 * Math.log10(Math.max(1e-8, magnitude));
+        bandResponses[band][x] = decibels;
         const y = height * (1 - (decibels - decibelRange[0]) / decibelSpan);
         if (x === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
       }
       context.stroke();
     }
+
+    // --- Finalize readout frame ---
+    // Drawing happens directly in canvas-pixel units (canvas.width/height, no
+    // ctx.setTransform(dpr) scaling), so the cursor readout's x/y arrive in
+    // the same units already: no CSS-to-device conversion is needed.
+    frame.valid = true;
+    frame.width = width;
+    frame.toY = db => height * (1 - (db - decibelRange[0]) / decibelSpan);
+    frame.color = traceColor;
+    frame.bandNames = bandNames;
+    frame.bandResponses = bandResponses;
+    this._graphReadout?.refresh();
+  }
+
+  // Reads the exact per-pixel band-response curves drawn by drawGraph at a
+  // given canvas-pixel x, for the cursor readout overlay. All bands share the
+  // same trace color, matching what is actually drawn.
+  _readGraph(x) {
+    const frame = this._readoutFrame;
+    if (!frame?.valid) return null;
+    const { format, columnValueAt } = window.GraphReadout;
+    const rows = [];
+    for (let band = 0; band < frame.bandNames.length; band += 1) {
+      const db = columnValueAt(frame.bandResponses[band], x);
+      if (db === null) continue;
+      rows.push({ label: frame.bandNames[band], color: frame.color, value: format.db(db, { signed: true }), y: frame.toY(db) });
+    }
+    if (!rows.length) return null;
+    return { cursor: format.frequency(this._graphFrequencyAt(x, frame.width)), rows };
+  }
+
+  // Log-frequency axis of the band curves: 10 Hz at x = 0 to 40 kHz at x = width - 1 (canvas px).
+  _graphFrequencyAt(x, width) {
+    return 10 ** (Math.log10(10) + x / Math.max(1, width - 1) * (Math.log10(40000) - Math.log10(10)));
   }
 
   cleanup() {

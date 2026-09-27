@@ -724,6 +724,24 @@ test('Pipeline Analyzer host owns absolute open state and disposes the Electron 
   }
 });
 
+test('updateEditButtons disables pipeline edit buttons that have nothing to act on', () => {
+  const manager = Object.create(UIManager.prototype);
+  for (const name of ['undoButton', 'redoButton', 'cutButton', 'copyButton']) manager[name] = { disabled: false };
+  manager.pipelineManager = {
+    historyManager: { canUndo: false, canRedo: true },
+    core: { selectedPlugins: new Set() }
+  };
+  const states = () => ['undoButton', 'redoButton', 'cutButton', 'copyButton'].map(name => manager[name].disabled);
+
+  manager.updateEditButtons();
+  assert.deepEqual(states(), [true, false, true, true]);
+
+  manager.pipelineManager.historyManager = { canUndo: true, canRedo: false };
+  manager.pipelineManager.core.selectedPlugins.add({});
+  manager.updateEditButtons();
+  assert.deepEqual(states(), [false, true, false, false]);
+});
+
 test('Music Library catalog initialization is deferred until the library is requested', async () => {
   let initializeCalls = 0;
   let stateListener = null;

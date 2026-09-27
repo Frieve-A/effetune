@@ -120,6 +120,9 @@ Muestra en qué notas y octavas se sitúan los componentes de frecuencia de la m
 - El brillo y el área de los puntos, así como la extensión de la zona coloreada, muestran intensidad relativa, no un nivel absoluto: la escala sigue los picos recientes.
 - En las octavas graves, las notas próximas se distinguen peor y la respuesta es más lenta; pueden verse mezcladas.
 
+### Visualización
+- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo sobre ella, para leer los valores en ese punto.
+
 ## Level Meter
 
 Una visualización que muestra en tiempo real el nivel de señal digital de tu música. Te ayuda a revisar los niveles después de aplicar efectos y a detectar posibles recortes antes de que se vuelvan distorsión audible.
@@ -149,6 +152,9 @@ Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll
 - Las líneas guía de las octavas y de E–F se dibujan detrás de las barras de volumen, para que la cuadrícula de alturas siga sirviendo de referencia visual.
 - Las teclas pasan gradualmente de su color habitual al color de visualización a medida que aumenta la confianza del último fotograma, hasta alcanzar ese color con un valor de 1.
 - Cambiar **Color** actualiza los colores del historial existente.
+
+### Visualización
+- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo sobre ella, para leer los valores en ese punto.
 
 ### Qué Puedes Ver
 
@@ -186,6 +192,9 @@ Muestra la forma de la onda sonora en tiempo real para que puedas ver golpes, at
 - Las líneas de cuadrícula ayudan a medir valores de tiempo y amplitud
 - Los ajustes de Trigger determinan dónde empieza la captura de la forma de onda; no se muestra un marcador aparte
 
+### Visualización
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
+
 ### Parámetros
 - **Display Time** - Cuánto tiempo mostrar (1 a 100 ms)
   - Valores más bajos: Ver más detalle en eventos más cortos
@@ -219,6 +228,9 @@ Sigue una frecuencia fundamental (F0) cada vez en un piano roll móvil de dos se
 - La etiqueta actual muestra la nota más cercana y la diferencia en cents. Un valor positivo indica una altura superior y uno negativo, inferior. La etiqueta desaparece cuando no hay una estimación fiable.
 - El nombre de la nota usa los mismos colores que Note Spectrogram. El tamaño del nombre y la diferencia en cents se adapta al ancho disponible, y el punto decimal de los cents mantiene una posición fija.
 
+### Visualización
+- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo sobre ella, para leer los valores en ese punto.
+
 ### Guía de Uso
 
 - Empieza con una sola nota sostenida y observa si la línea permanece centrada o se desplaza hacia agudo o grave.
@@ -249,6 +261,9 @@ El gráfico se desplaza de derecha a izquierda a una velocidad constante, con ma
   - Abajo: Sonidos graves
   - Medio: Instrumentos principales
   - Arriba: Frecuencias altas
+
+### Visualización
+- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo sobre ella, para leer los valores en ese punto.
 
 ### Lo Que Puedes Ver
 - Melodías: Líneas fluidas de color
@@ -284,6 +299,9 @@ Crea una visualización en tiempo real de las frecuencias de tu música, desde g
 - En la visualización **Bar**, cada barra muestra el nivel más alto en una parte de igual ancho de la pantalla. **Log** y **Log (HQ)** usan anchos de octava iguales; **Linear** usa anchos de frecuencia iguales.
 - La marca fina sobre una barra muestra su pico reciente y desciende suavemente.
 - Observa cómo diferentes instrumentos crean diferentes patrones
+
+### Visualización
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Lo Que Puedes Ver
 - Caídas de Graves: Grandes movimientos a la izquierda

@@ -20,7 +20,7 @@ Processe até quatro abas do Chrome ou Edge com cadeias independentes, predefini
 
 ## Vídeo de Introdução
 
-[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=Qb5Airg0kI8)
 
 ## Conceito
 

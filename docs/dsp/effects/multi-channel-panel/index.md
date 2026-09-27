@@ -78,15 +78,6 @@ Scroll within the panel to reach channels below the visible area.
   - Maintains consistent settings across linked channel groups
   - Useful for stereo pairs or multi-channel groups
 
-### Visual Monitoring
-- Real-time level meters show current signal strength
-- Peak hold indicators display maximum levels
-- Clear numerical dB readout of peak levels
-- Color-coded meters for easy level recognition:
-  - Green: Safe levels
-  - Yellow: Approaching maximum
-  - Red: Near or at maximum level
-
 ### Practical Applications
 - Balancing surround sound or multi-speaker playback
 - Matching speaker timing when speakers are at different distances

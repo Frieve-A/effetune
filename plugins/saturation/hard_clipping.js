@@ -279,27 +279,11 @@ class HardClippingPlugin extends PluginBase {
         ctx.beginPath();
 
         const thresholdLinear = Math.pow(10, this.th / 20);
-        
+
         for (let i = 0; i < width; i++) {
-            const x = (i / width) * 2 - 1; // Map to [-1, 1]
-            let y = x;
-            
-            // Apply clipping based on mode
-            if (this.md === 'both') {
-                if (x > thresholdLinear) {
-                    y = thresholdLinear;
-                } else if (x < -thresholdLinear) {
-                    y = -thresholdLinear;
-                }
-            } else if (this.md === 'positive' && x > thresholdLinear) {
-                y = thresholdLinear;
-            } else if (this.md === 'negative' && x < -thresholdLinear) {
-                y = -thresholdLinear;
-            }
-            
-            // Map y from [-1, 1] to canvas coordinates
-            const canvasY = ((1 - y) / 2) * height;
-            
+            const x = this._transferX(i, width);
+            const canvasY = this._transferY(x, height, thresholdLinear);
+
             if (i === 0) {
                 ctx.moveTo(i, canvasY);
             } else {
@@ -307,6 +291,50 @@ class HardClippingPlugin extends PluginBase {
             }
         }
         ctx.stroke();
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.thresholdLinear = thresholdLinear;
+        frame.valid = true;
+        this._graphReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -1..1 across the full width).
+    _transferX(x, width) {
+        return (x / width) * 2 - 1;
+    }
+
+    // Canvas y of the transfer curve's output for an input on the -1..1 axis.
+    _transferY(x, height, thresholdLinear = Math.pow(10, this.th / 20)) {
+        let y = x;
+        if (this.md === 'both') {
+            if (x > thresholdLinear) {
+                y = thresholdLinear;
+            } else if (x < -thresholdLinear) {
+                y = -thresholdLinear;
+            }
+        } else if (this.md === 'positive' && x > thresholdLinear) {
+            y = thresholdLinear;
+        } else if (this.md === 'negative' && x < -thresholdLinear) {
+            y = -thresholdLinear;
+        }
+        return ((1 - y) / 2) * height;
+    }
+
+    // Reads the transfer curve at canvas pixel x.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inValue = this._transferX(x, frame.width);
+        const y = this._transferY(inValue, frame.height, frame.thresholdLinear);
+        const outValue = 1 - 2 * y / frame.height;
+        return {
+            cursor: `in ${format.number(inValue)}`,
+            rows: [{ label: 'out', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.number(outValue), y }],
+            at: { x, y }
+        };
     }
 
     createUI() {
@@ -378,6 +406,12 @@ class HardClippingPlugin extends PluginBase {
         this.updateTransferGraph(); // Initial draw
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x),
+            crosshair: 'xy'
+        });
 
         // Automation playback and preset recall change the model without touching the
         // DOM, so the controls this plugin builds by hand are refreshed here.

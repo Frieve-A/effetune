@@ -67,11 +67,6 @@ The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-o
   - Higher sensitivity increases the distortion intensity
   - Works as a global control affecting the intensity of the nonlinear shaping
 
-### Visual Display
-- Transfer curve showing how input levels are shaped into output levels
-- Intuitive sliders and input fields that provide immediate feedback
-- The graph updates as harmonic and sensitivity settings change
-
 ### Quick Start Guide
 1. **Initialization:** Start with default settings (2nd: 2%, 3rd: 3%, 4th: 0.5%, 5th: 0.3%, Sensitivity: 0.5)
 2. **Adjust Parameters:** Change one or two harmonic controls at a time while listening for harshness or loss of clarity

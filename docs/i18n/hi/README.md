@@ -20,7 +20,7 @@ EffeTune रियल-टाइम ऑडियो इफेक्ट प्र�
 
 ## परिचय वीडियो
 
-[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=Qb5Airg0kI8)
 
 ## अवधारणा
 

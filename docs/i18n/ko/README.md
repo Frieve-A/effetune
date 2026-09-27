@@ -21,7 +21,7 @@ EffeTune은 다양한 고품질 이펙트를 통해 모든 오디오 소스를 �
 
 ## 소개 영상
 
-[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=Qb5Airg0kI8)
 
 ## 컨셉
 

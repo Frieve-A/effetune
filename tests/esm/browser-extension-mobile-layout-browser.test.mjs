@@ -43,6 +43,7 @@ test('extension editor fits mobile width and exposes the effect-list overlay con
       mobileShell.applyMode(layoutMode.mode);
       window.extensionMobileTest = { layoutMode, mobileShell };
     ` });
+    await page.waitForFunction(() => !!window.extensionMobileTest);
 
     const closed = await page.evaluate(() => {
       const rect = selector => document.querySelector(selector).getBoundingClientRect();

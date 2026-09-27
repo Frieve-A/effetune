@@ -18,7 +18,7 @@ A real-time audio effect processor designed for audio enthusiasts to enhance the
 
 ## Introduction video
 
-[![YouTube Video](images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+[![YouTube Video](images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=Qb5Airg0kI8)
 
 ## Concept
 

@@ -72,16 +72,6 @@ Advanced / utility parameters
 - **Cross Sideband** (0 to 100%) - Amount of distortion created by the music mixing with the ultrasonic noise.
 - **Output Trim** (-24.0 to +12.0 dB) - Final output level adjustment.
 
-### Visualizations
-- **Term Contribution meters** - Real-time levels of each part of the effect:
-  - **Additive** - the constant noise-only distortion, present even with no input.
-  - **Attached** - distortion that sticks to and follows the music.
-  - **Cross** - distortion from the music mixing with the ultrasonic noise.
-  - **Total IMD** - the combined distortion that is generated.
-  - **Output** - the final output level (dry plus distortion, after Dry-Wet and Output Trim).
-- **Analog Transfer Curve** - Shows the distortion curve created by Analog Nonlinearity and Even Bias, in the same in/out style as the Saturation plugins.
-- **Difference-Frequency view** - A static graph showing which audible frequencies the ultrasonic noise produces, based on the current noise settings.
-
 ### Recommended Settings
 - Subtle (default): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
 - Tweeter-only IMD: IMD Path HPF 2.5 kHz, Signal Coupling 80–150%, Cross Sideband 50–100%, Scratch Tone 9–14 kHz.

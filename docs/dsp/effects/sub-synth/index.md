@@ -67,11 +67,6 @@ A specialized effect that reinforces the low end by mixing in a filtered low-fre
   - Frequency: Prevents bass buildup
   - Slope: Adjusts filter steepness (Off to -24dB/oct)
 
-### Visual Display
-- Live frequency response graph
-- Clear visualization of filter curves
-- Real-time visual feedback
-
 ### Music Enhancement Tips
 - For General Bass Enhancement:
   1. Start with Sub Level at 50%

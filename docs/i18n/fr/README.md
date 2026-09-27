@@ -20,7 +20,7 @@ Traitez jusqu’à quatre onglets Chrome ou Edge avec des chaînes indépendante
 
 ## Vidéo d'introduction
 
-[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=Qb5Airg0kI8)
 
 ## Concept
 

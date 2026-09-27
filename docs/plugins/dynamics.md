@@ -122,6 +122,7 @@ A smart volume control that automatically adjusts your music to maintain a consi
 - Output level (white line)
 - Clear visual feedback of volume adjustments
 - The graph scrolls from right to left, with the latest levels at the right edge and marks every second.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 
@@ -291,6 +292,7 @@ An effect that smooths out volume differences by gently reducing loud peaks. Use
 - Easy-to-read volume level indicators
 - Visual feedback for all parameter adjustments
 - Reference lines to help guide your settings
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings for Different Listening Scenarios
 - Casual Background Listening:
@@ -375,6 +377,7 @@ A dynamic range processor that expands the dynamic range of signals below a thre
 - Easy-to-read volume level indicators
 - Visual feedback for all parameter adjustments
 - Reference lines to help guide your settings
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings for Different Listening Scenarios
 - Natural Dynamics Restoration:
@@ -462,6 +465,7 @@ A full-band noise gate that turns down the whole signal when the level falls bel
 - Real-time gain reduction meter displaying:
   - Current amount of noise reduction
   - Visual feedback of gate activity
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 
@@ -604,6 +608,7 @@ This configuration creates the characteristic "radio-ready" sound:
 - Real-time gain reduction meters
 - Frequency band activity visualization
 - Clear crossover point indicators
+- Hover over a band's graph, or touch and drag on it, to read the values at that point.
 
 ### Tips for Use
 - Start with the default FM radio-style settings
@@ -732,6 +737,7 @@ This configuration creates natural-sounding dynamic restoration:
 - Real-time expansion activity meters showing how much each band is being reduced or lifted
 - Frequency band activity visualization
 - Clear crossover point indicators
+- Hover over a band's graph, or touch and drag on it, to read the values at that point.
 
 ### Tips for Use
 - Start with the default settings for general dynamic restoration
@@ -845,6 +851,7 @@ Each frequency band has independent transient shaping controls:
 - Interactive band selection
 - Clear visual feedback of transient shaping activity
 - The graphs scroll smoothly from right to left, with the latest values at the right edge.
+- Hover over a band's graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 
@@ -967,6 +974,7 @@ Click **Effect Presets** in the effect header to start with a complete power-sup
 - Time-based display with 1-second reference markers
 - Current values displayed in real-time
 - The graphs scroll smoothly from right to left, with the latest values at the right edge.
+- Hover over either graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 
@@ -1058,6 +1066,7 @@ A specialized dynamics processor that lets you enhance or reduce the attack and 
 - Time markers for reference
 - Intuitive interface for all parameters
 - The graphs scroll smoothly from right to left, with the latest values at the right edge.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 

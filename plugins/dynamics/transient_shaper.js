@@ -379,6 +379,33 @@ class TransientShaperPlugin extends PluginBase {
             ctx.lineTo(width, height * (1 - (this.gainBuffer[this.gainBuffer.length - 1] + 6) / 12));
             ctx.stroke();
         }
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.displayTime = displayTime;
+        frame.pixelsPerSecond = pixelsPerSecond;
+        frame.valid = started;
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the gain history at canvas pixel x as time back from the right edge (now).
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format, historyValueAt } = window.GraphReadout;
+        const secondsBack = (x - frame.width) / frame.pixelsPerSecond;
+        const buffer = this.gainBuffer;
+        const gain = historyValueAt(this.historyTimes, buffer, frame.displayTime + secondsBack, buffer[buffer.length - 1]);
+        return {
+            cursor: format.time(secondsBack * 1000),
+            rows: [{
+                label: 'Gain',
+                color: 'var(--et-graph-trace)',
+                value: format.db(gain, { signed: true }),
+                y: frame.height * (1 - (gain + 6) / 12)
+            }]
+        };
     }
 
     createUI() {
@@ -424,6 +451,11 @@ class TransientShaperPlugin extends PluginBase {
         }
         this.observer.observe(this.canvas);
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x)
+        });
         return container;
     }
 

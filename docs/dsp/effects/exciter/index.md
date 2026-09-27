@@ -74,11 +74,6 @@ An effect that adds harmonic content to enhance clarity and presence. By filteri
   - Medium (30-60%): Clearer presence and detail
   - High (60-100%): Strong added harmonics; use carefully to avoid harshness
 
-### Visual Display
-- High-pass filter frequency response graph
-- Saturation transfer curve visualization
-- Clear visual feedback for both filter and saturation
-
 ### Music Enhancement Tips
 - For Clearer Voices in Songs, Podcasts, or Videos:
   - HPF Freq: 3000-5000Hz

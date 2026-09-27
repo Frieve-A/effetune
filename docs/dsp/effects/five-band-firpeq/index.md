@@ -58,12 +58,4 @@ See [Assets and bundles](/dsp/concepts/assets-and-bundles/#asset-required-effect
 - **Q** - Sets the response width from 0.1 to 100. Higher values make a narrower change; lower values make a broader transition. The slider uses a logarithmic scale.
 - **Slope** - Sets the LowPass or HighPass cutoff rate from 0.1 to 384 dB/oct. The slider uses a logarithmic scale, and the control is available only for those two filter types.
 
-### Visual Display
-
-- The grey curve shows the combined target response requested by the current band settings.
-- The green curve shows the magnitude response realized by the designed FIR. A visible gap means the selected Taps cannot reproduce the target exactly.
-- Numbered markers correspond to the five bands. Drag horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.
-- The status line reports whether the FIR is being designed, prepared, or used, and shows total processing latency in samples and milliseconds.
-- If the selected Taps cannot reproduce an extreme response accurately, the status recommends increasing Taps or reducing Q or Slope.
-
 [Back to all effects](/dsp/effects/)

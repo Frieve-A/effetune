@@ -65,6 +65,7 @@ export class PipelineCore {
      */
     updatePipelineUI(forceRedraw = false) {
         this.pluginPresetDialog.closeIfPluginDetached();
+        this.selectionManager.pruneSelection();
         if (!this.pipelineList) {
             console.error("pipelineList element not found in PipelineCore");
             return;
@@ -75,6 +76,7 @@ export class PipelineCore {
         // --- Handle Empty Pipeline State --- 
         if (pipeline.length === 0) {
             this.columnManager.handleEmptyPipelineState();
+            this.updateSelectionClasses(); // Refresh edit button state (e.g. Cut/Copy) for the cleared selection
             return; // Exit early
         } else {
             // Pipeline is NOT empty. Ensure is-empty class is removed and #pipelineEmpty is hidden.

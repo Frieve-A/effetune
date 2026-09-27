@@ -346,6 +346,7 @@ Parámetros avanzados / de utilidad
   - **Output** - el nivel de salida final (señal seca más distorsión, después de Dry-Wet y Output Trim).
 - **Analog Transfer Curve** - Muestra la curva de distorsión creada por Analog Nonlinearity y Even Bias, con el mismo estilo de entrada/salida que los plugins de Saturation.
 - **Vista Difference-Frequency** - Un gráfico estático que muestra qué frecuencias audibles produce el ruido ultrasónico, según los ajustes de ruido actuales.
+- Pasa el cursor sobre cualquiera de los gráficos, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados
 - Sutil (por defecto): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
@@ -404,6 +405,9 @@ Haz clic en **Preajustes de efecto** en el encabezado del efecto para probar con
 - **MPath** muestra el nivel de la primera reflexión respecto a la onda directa en dB (−∞ cuando Multipath es 0%).
 - **Clicks** cuenta los clics recientes de umbral FM por segundo y se resalta cuando se vuelven frecuentes.
 - Si el motor **WASM** no está disponible, el HUD muestra un aviso y el audio pasa sin cambios.
+
+### Visualización
+- Pasa el cursor sobre el espectro, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes recomendados
 
@@ -908,6 +912,9 @@ Los nueve preajustes cubren Japón M/EIA-J, Norteamérica M/BTSC, Corea M/A2, Eu
 El HUD muestra el Standard y la ruta activa: `STEREO`, `MAIN`, `SUB`, `NICAM`, `FALLBACK` o `AM`. Carrier y CNR indican nivel y calidad; Health indica si la ruta estéreo o digital seleccionada está disponible; Multipath, la profundidad de la señal reflejada; y Errors, la tasa de errores de recepción por segundo. El espectro corresponde al audio múltiplex recuperado en FM, al audio detectado en L AM o a la salida seleccionada en NICAM.
 
 El modelo reproduce los efectos audibles del sonido televisivo, no un canal completo de imagen y radiofrecuencia ni una señal de prueba de emisión.
+
+### Visualización
+- Pasa el cursor sobre el espectro, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ## Vinyl Artifacts
 

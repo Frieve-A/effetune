@@ -696,35 +696,12 @@ class CompressorPlugin extends PluginBase {
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        const thresholdDb = this.th;
-        const ratio = this.rt;
-        const kneeDb = this.kn;
-        const gainDb = this.gn;
-
         for (let i = 0; i < width; i++) {
-            const inputDb = (i / width) * 60 - 60;
-            const diff = inputDb - thresholdDb;
-            let gainReduction = 0;
-            if (diff <= -kneeDb / 2) {
-                gainReduction = 0;
-            } else if (diff >= kneeDb / 2) {
-                gainReduction = diff * (1 - 1 / ratio);
-            } else {
-                const t = (diff + kneeDb / 2) / kneeDb;
-                const slope = (1 - 1 / ratio);
-                gainReduction = slope * kneeDb * t * t / 2;
-            }
-            
-            const totalGain = gainDb - gainReduction; // Total gain before clamping
-            // Clamp total gain to match actual audio processing: -60dB to +20dB
-            const clampedTotalGain = Math.max(-60, Math.min(20, totalGain));
-            const outputDb = inputDb + clampedTotalGain;
-            const x = i;
-            const y = ((outputDb + 60) / 60) * height;
+            const y = this._transferY(this._inputDbAt(i, width), height);
             if (i === 0) {
-                ctx.moveTo(x, height - y);
+                ctx.moveTo(i, y);
             } else {
-                ctx.lineTo(x, height - y);
+                ctx.lineTo(i, y);
             }
         }
         ctx.stroke();
@@ -741,6 +718,55 @@ class CompressorPlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.valid = true;
+        this._graphReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -60..0 dB across the full width).
+    _inputDbAt(x, width) {
+        return (x / width) * 60 - 60;
+    }
+
+    // Canvas y of an output level on the -60..0 dB axis.
+    _transferY(inputDb, height) {
+        return height - ((inputDb + this._transferGain(inputDb) + 60) / 60) * height;
+    }
+
+    // Static soft-knee gain applied at an input level, clamped like the audio processing (-60..+20 dB).
+    _transferGain(inputDb) {
+        const kneeDb = this.kn;
+        const diff = inputDb - this.th;
+        let gainReduction = 0;
+        if (diff >= kneeDb / 2) {
+            gainReduction = diff * (1 - 1 / this.rt);
+        } else if (diff > -kneeDb / 2) {
+            const t = (diff + kneeDb / 2) / kneeDb;
+            gainReduction = (1 - 1 / this.rt) * kneeDb * t * t / 2;
+        }
+        const totalGain = this.gn - gainReduction;
+        return totalGain < -60 ? -60 : (totalGain > 20 ? 20 : totalGain);
+    }
+
+    // Reads the transfer curve at canvas pixel x; the GR strip on the right is outside the plot.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inputDb = this._inputDbAt(x, frame.width);
+        const gain = this._transferGain(inputDb);
+        const y = this._transferY(inputDb, frame.height);
+        return {
+            cursor: `in ${format.db(inputDb)}`,
+            rows: [
+                { label: 'out', color: 'var(--et-graph-trace)', value: format.db(inputDb + gain), y },
+                { label: 'Gain', color: 'var(--et-text-primary)', value: format.db(gain, { signed: true }) }
+            ],
+            at: { x, y }
+        };
     }
 
     updateReductionMeter() {
@@ -831,6 +857,13 @@ class CompressorPlugin extends PluginBase {
 
         this.updateTransferGraph();
         this.startAnimation();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            plot: () => ({ left: 0, top: 0, width: canvas.width - 32, height: canvas.height }),
+            read: x => this._readGraph(x),
+            crosshair: 'xy'
+        });
         return container;
     }
 

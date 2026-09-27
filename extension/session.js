@@ -12,6 +12,7 @@ let audio;
 let stream;
 let queue = Promise.resolve();
 let telemetry = false;
+let visualizerSources = [];
 let failurePending = false;
 let status = 'stopped';
 let error = null;
@@ -35,8 +36,16 @@ function snapshot() {
 function publish() { const state = snapshot(); port.postMessage({ kind: 'state', state }); return state; }
 function forward(message) { port.postMessage({ kind: 'workletMessage', message }); }
 
+function applyVisualizerSources() {
+    // Apply sources first: AudioManager posts its own rate, which this session rate must override.
+    if (!telemetry) visualizerSources = [];
+    audio?.setVisualizerSources(visualizerSources);
+    audio?.workletNode?.port.postMessage({ type: 'dspSetTelemetryRate',
+        hz: telemetry ? (visualizerSources.length ? 60 : 30) : 0 });
+}
+
 function synchronizeTelemetry() {
-    audio?.workletNode?.port.postMessage({ type: 'dspSetTelemetryRate', hz: telemetry ? 30 : 0 });
+    applyVisualizerSources();
     audio?.powerPolicyController?.handlePageLifecycleEvent('visibilitychange', { hidden: !telemetry });
 }
 
@@ -148,6 +157,10 @@ async function handle(command, args) {
         telemetry = args.enabled;
         synchronizeTelemetry();
         if (telemetry) replayDspExecutionStates(audio.getDspExecutionStateSnapshot(), forward);
+    } else if (command === 'setVisualizerSources') {
+        visualizerSources = Array.isArray(args.sources) ? args.sources : [];
+        applyVisualizerSources();
+        return snapshot();
     } else if (command === 'frequencyPreview') audio.setFrequencyPreview(args.frequency);
     else if (command === 'setPipeline') await applyPipeline({ plugins: args.plugins });
     else if (command === 'setBypass') {

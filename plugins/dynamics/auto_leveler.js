@@ -585,6 +585,7 @@ class AutoLevelerPlugin extends PluginBase {
             ctx.beginPath();
             let started = false;
             let lastY = 0;
+            let lastValue = NaN;
             let previousTime = null;
             const maxContinuousGap = 1;
             for (let i = 0; i < buffer.length; i++) {
@@ -603,6 +604,7 @@ class AutoLevelerPlugin extends PluginBase {
                     ctx.lineTo(x, y);
                 }
                 lastY = y;
+                lastValue = value;
                 previousTime = time;
             }
             if (started) {
@@ -610,13 +612,22 @@ class AutoLevelerPlugin extends PluginBase {
                 ctx.lineTo(width, lastY);
                 ctx.stroke();
             }
+            // The value held at the right edge, or NaN when nothing was drawn.
+            return lastValue;
         };
 
+        const frame = (this._readoutFrame ??= {});
         // Draw input LUFS (green)
-        drawLufs(this.inputLufsBuffer, (window.ThemePalette?.get('graph-trace') ?? ''));
+        frame.inputEdge = drawLufs(this.inputLufsBuffer, (window.ThemePalette?.get('graph-trace') ?? ''));
         // Draw output (After Auto Leveler) LUFS (white)
-        drawLufs(this.outputLufsBuffer, (window.ThemePalette?.get('text-primary') ?? ''));
-        
+        frame.outputEdge = drawLufs(this.outputLufsBuffer, (window.ThemePalette?.get('text-primary') ?? ''));
+        frame.width = width;
+        frame.height = height;
+        frame.displayTime = displayTime;
+        frame.pixelsPerSecond = pixelsPerSecond;
+        frame.valid = !Number.isNaN(frame.inputEdge) || !Number.isNaN(frame.outputEdge);
+        frame.valueLabel = null;
+
         // Display current LUFS level as white text
         const currentOutputLufs = this.outputLufsBuffer[this.outputLufsBuffer.length - 1];
         if (!isNaN(currentOutputLufs)) {
@@ -627,8 +638,41 @@ class AutoLevelerPlugin extends PluginBase {
             ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
             ctx.textAlign = 'right';
             ctx.font = `${valueFontSize}px Arial`;
-            ctx.fillText(currentOutputLufs.toFixed(1) + ' dB', x, y);
+            const text = currentOutputLufs.toFixed(1) + ' dB';
+            ctx.fillText(text, x, y);
+            frame.valueLabel = { text, right: x, baseline: y, fontSize: valueFontSize };
         }
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the drawn LUFS curves at canvas pixel x as time back from the right edge (now).
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format, historyValueAt } = window.GraphReadout;
+        const secondsBack = (x - frame.width) / frame.pixelsPerSecond;
+        const t = frame.displayTime + secondsBack;
+        const rows = [];
+        const series = [
+            ['Input', 'var(--et-graph-trace)', this.inputLufsBuffer, frame.inputEdge],
+            ['Output', 'var(--et-text-primary)', this.outputLufsBuffer, frame.outputEdge]
+        ];
+        for (const [label, color, buffer, edgeValue] of series) {
+            if (Number.isNaN(edgeValue)) continue;
+            const lufs = historyValueAt(this.historyTimes, buffer, t, edgeValue);
+            rows.push({ label, color, value: format.db(lufs), y: frame.height * (1 - (lufs + 48) / 48) });
+        }
+        return { cursor: format.time(secondsBack * 1000), rows };
+    }
+
+    // Rect of the current output level label that follows the output curve at the right edge.
+    _valueLabelRects() {
+        const label = this._readoutFrame?.valueLabel;
+        if (!label) return [];
+        const ctx = this.canvas.getContext('2d');
+        ctx.font = `${label.fontSize}px Arial`;
+        const width = ctx.measureText(label.text).width;
+        return [{ left: label.right - width, top: label.baseline - label.fontSize, width, height: label.fontSize * 1.3 }];
     }
 
     createUI() {
@@ -675,6 +719,12 @@ class AutoLevelerPlugin extends PluginBase {
         }
         this.observer.observe(this.canvas);
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x),
+            avoid: () => this._valueLabelRects()
+        });
         return container;
     }
 

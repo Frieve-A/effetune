@@ -301,6 +301,9 @@ Phase Select EQ द्वारा बताई गई processing latency, FFT s
 
 Balance grid left:right ratio दिखाता है। Balance 0%, ±17%, ±33%, ±60%, ±82% और ±100% क्रमशः 50:50 और किसी भी दिशा में लगभग 59:41, 67:33, 80:20, 91:9 तथा 100:0 के बराबर हैं। L/R level difference लगभग 0, ±3, ±6, ±12 और ±20 dB है; ±100% का अर्थ केवल एक channel में signal है।
 
+### दृश्य प्रदर्शन
+- मैप पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु की frequency और phase difference या Balance पढ़ी जा सके।
+
 ### ध्वनि सुधार गाइड
 
 1. **बहुत फैले हुए high frequencies की तीक्ष्णता कम करें**: Band को लगभग 4–12 kHz और 90–180° पर रखें। 70–90% और चौड़े transitions से शुरू करें।

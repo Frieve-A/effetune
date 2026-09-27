@@ -120,6 +120,9 @@ Mostra onde os componentes de frequência da música se situam entre as 12 notas
 - O brilho e a área dos pontos, assim como a extensão da área colorida, mostram intensidade relativa, não nível absoluto: a escala acompanha os picos recentes.
 - Nas oitavas graves, notas próximas ficam menos distintas e a resposta é mais lenta; elas podem parecer sobrepostas.
 
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
+
 ## Level Meter
 
 Um display visual que mostra em tempo real o nível digital do sinal da música. Ele ajuda a conferir os níveis depois de aplicar efeitos e a identificar possível clipping antes que vire distorção audível.
@@ -149,6 +152,9 @@ Mostra as frequências fundamentais (F0) estimadas de A0 a C8 em um piano roll q
 - As linhas-guia das oitavas e de E–F são desenhadas atrás das barras de volume, mantendo a grade de alturas como referência visual.
 - As teclas passam gradualmente da cor normal para a cor de exibição conforme aumenta a confiança do quadro mais recente, chegando a essa cor em 1.
 - Alterar **Color** muda as cores do histórico existente.
+
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### O que você pode ver
 
@@ -186,6 +192,9 @@ Mostra a forma da onda sonora em tempo real, para você ver batidas, ataques rá
 - Linhas de grade ajudam a medir valores de tempo e amplitude
 - As configurações de trigger determinam onde a captura da forma de onda começa; não há um marcador separado
 
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
+
 ### Parâmetros
 - **Display Time** - Quanto tempo mostrar (1 a 100 ms)
   - Valores menores: Veja mais detalhes em eventos curtos
@@ -219,6 +228,9 @@ Acompanha uma frequência fundamental (F0) por vez em um piano roll móvel de do
 - O rótulo atual mostra a nota mais próxima e a diferença em cents. Um valor positivo indica uma altura acima da nota, e um valor negativo indica uma altura abaixo. O rótulo desaparece quando não há uma estimativa confiável.
 - O nome da nota usa as mesmas cores do Note Spectrogram. O tamanho do nome e da diferença em cents se ajusta à largura disponível, e o ponto decimal dos cents permanece na mesma posição.
 
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
+
 ### Guia de uso
 
 - Comece com uma única nota sustentada e observe se a linha permanece centralizada na nota ou se desloca para cima ou para baixo.
@@ -249,6 +261,9 @@ O gráfico se desloca da direita para a esquerda a uma velocidade constante, com
   - Parte inferior: Sons graves
   - Meio: Instrumentos principais
   - Parte superior: Frequências altas
+
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### O Que Você Pode Ver
 - Melodias: Linhas fluidas de cor
@@ -284,6 +299,9 @@ Cria uma exibição visual em tempo real das frequências da sua música, dos gr
 - Na visualização **Bar**, cada barra mostra o nível mais alto em uma parte de largura igual da tela. **Log** e **Log (HQ)** usam larguras de oitava iguais; **Linear** usa larguras de frequência iguais.
 - A marca fina acima de uma barra mostra seu pico recente e desce suavemente.
 - Observe como diferentes instrumentos criam padrões diferentes
+
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### O Que Você Pode Ver
 - Drops de Grave: Grandes movimentos à esquerda

@@ -1714,7 +1714,7 @@ body.layout-mobile #visualizerView.is-editing .visualizer-stage-host.scroll-gutt
 body.layout-mobile .visualizer-editor { width: 100%; max-height: 25dvh; }
 body.layout-mobile .visualizer-editor-navigation { order: -1; }
 body.layout-mobile .visualizer-toolbar { gap: 6px; font-size: 12px; }
-body.layout-mobile .visualizer-toolbar button { padding: 8px; }
+body.layout-mobile .visualizer-toolbar > button { padding: 8px; }
 body.layout-mobile .visualizer-toolbar > button > span { display: none; }
 body.layout-mobile .visualizer-quality-label { gap: 3px; }
 body.layout-mobile.view-visualizer .mobile-mini-player,

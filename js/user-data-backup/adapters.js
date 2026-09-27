@@ -48,7 +48,7 @@ export function createUserDataBackupAdapter(options = {}) {
                 }
                 return result;
             });
-            if (!client && visualizerPresets) await read('visualizer', async () => (await visualizerPresets.readBackupSnapshot()).map(({ name, layout }) => ({
+            if (visualizerPresets) await read('visualizer', async () => (await visualizerPresets.readBackupSnapshot()).map(({ name, layout }) => ({
                 key: `visualizer:${name}`, id: name, kind: 'visualizer', name, data: layout
             })));
             await read('ir', async () => (await (await irOwner()).readBackupSnapshot()).map(data => ({
@@ -62,7 +62,7 @@ export function createUserDataBackupAdapter(options = {}) {
 
         validateItem(item) {
             if (typeof item.name !== 'string' || !item.name.trim()) return 'Enter a name for this item.';
-            if (item.kind === 'visualizer' && (client || !visualizerPresets)) return 'Visualizer presets are unavailable in this environment.';
+            if (item.kind === 'visualizer' && !visualizerPresets) return 'Visualizer presets are unavailable in this environment.';
             if ((item.kind === 'pipeline' || item.kind === 'plugin' || item.kind === 'visualizer') && RESERVED_NAMES.has(item.name)) {
                 return 'This preset name cannot be used. Rename it before creating a backup.';
             }
@@ -105,7 +105,7 @@ export function createUserDataBackupAdapter(options = {}) {
                 await pluginPresets.appendPreset(item.pluginName, name, data);
                 return { id: name, name };
             }
-            if (item.kind === 'visualizer' && !client) {
+            if (item.kind === 'visualizer') {
                 await visualizerPresets.appendUserPreset(name, data);
                 return { id: name, name };
             }

@@ -89,15 +89,6 @@ Click **Effect Presets** in the effect header to start with a complete power-sup
   - Checked: Independent supplies (monoblock configuration)
   - Use for better channel separation and imaging
 
-### Visual Display
-
-- Dual real-time graphs showing input envelope and gain reduction
-- Input envelope (green): Signal energy driving the effect
-- Gain reduction (white): Amount of voltage sag applied
-- Time-based display with 1-second reference markers
-- Current values displayed in real-time
-- The graphs scroll smoothly from right to left, with the latest values at the right edge.
-
 ### Recommended Settings
 
 #### Vintage Character

@@ -83,13 +83,6 @@ A dynamic range processor that expands the dynamic range of signals below a thre
   - Increase if the music feels too quiet
   - Decrease if it's too loud
 
-### Visual Display
-
-- Interactive graph showing how the expansion is working
-- Easy-to-read volume level indicators
-- Visual feedback for all parameter adjustments
-- Reference lines to help guide your settings
-
 ### Recommended Settings for Different Listening Scenarios
 - Natural Dynamics Restoration:
   - Threshold: -18dB

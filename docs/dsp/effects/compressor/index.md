@@ -83,13 +83,6 @@ An effect that smooths out volume differences by gently reducing loud peaks. Use
   - Increase if the music feels too quiet
   - Decrease if it's too loud
 
-### Visual Display
-
-- Interactive graph showing how the effect is working
-- Easy-to-read volume level indicators
-- Visual feedback for all parameter adjustments
-- Reference lines to help guide your settings
-
 ### Recommended Settings for Different Listening Scenarios
 - Casual Background Listening:
   - Threshold: -24dB

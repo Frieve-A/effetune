@@ -120,6 +120,9 @@ Shows where the frequency components of your music fall among the 12 notes and a
 - Dot brightness and area, and the filled area's extent, show relative strength. The display follows recent peaks, so they are not absolute level readings.
 - Low notes are less sharply separated and respond more slowly. Nearby notes in the lowest octaves may blur together.
 
+### Visual Display
+- Hover over the display, or touch and drag on it, to read the values at that point.
+
 ## Level Meter
 
 A visual display that shows your music's digital signal level in real time. It helps you check levels after applying effects and spot possible clipping before it becomes audible distortion.
@@ -149,6 +152,9 @@ Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in
 - Octave and E–F guide lines are drawn behind the volume bars so the pitch grid remains a visual reference.
 - The keys blend from their normal color toward the display color as confidence in the latest frame increases, reaching that color at 1.
 - Changing **Color** recolors the existing history.
+
+### Visual Display
+- Hover over the display, or touch and drag on it, to read the values at that point.
 
 ### Listening Guide
 
@@ -186,6 +192,9 @@ Shows the shape of the sound wave in real time, so you can see beats, sharp hits
 - Grid lines help measure time and amplitude values
 - Trigger settings determine where the waveform capture begins; no separate marker is shown
 
+### Visual Display
+- Hover over the graph, or touch and drag on it, to read the values at that point.
+
 ### Parameters
 - **Display Time** - How much time to show (1 to 100 ms)
   - Lower values: See more detail in shorter events
@@ -219,6 +228,9 @@ Tracks one fundamental pitch (F0) at a time in a two-second scrolling piano roll
 - The current label shows the nearest note and the difference in cents. A positive value is above the note and a negative value is below it. The label disappears when there is no reliable estimate.
 - The note name uses the same note colors as Note Spectrogram. The large readout fits the available width and keeps the cents decimal point in a fixed position.
 
+### Visual Display
+- Hover over the display, or touch and drag on it, to read the values at that point.
+
 ### Listening Guide
 
 - Start with a single sustained note, then watch whether the line stays centered on a note or moves sharp or flat.
@@ -250,6 +262,9 @@ The graph scrolls from right to left at a steady speed, with marks every second.
   - Middle: Main instruments
   - Top: High frequencies
 - With **Log (HQ)**, nearby low-frequency tones appear as more clearly separated bands. The longer low-frequency measurement can take a little longer to settle or fade.
+
+### Visual Display
+- Hover over the display, or touch and drag on it, to read the values at that point.
 
 ### What You Can See
 - Melodies: Flowing lines of color
@@ -286,6 +301,9 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - The thin marker above a bar shows its recent peak and falls smoothly.
 - With **Log (HQ)**, nearby bass tones can appear as separate peaks. Their longer low-frequency measurement can take a little longer to settle or fade.
 - Watch how different instruments create different patterns
+
+### Visual Display
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### What You Can See
 - Bass Drops: Big movements on the left

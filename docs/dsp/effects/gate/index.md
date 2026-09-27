@@ -87,16 +87,6 @@ A full-band noise gate that turns down the whole signal when the level falls bel
   - Use to compensate for any perceived volume loss
   - Typically left at 0dB unless needed
 
-### Visual Feedback
-- Interactive transfer function graph showing:
-  - Input/output relationship
-  - Threshold point
-  - Knee curve
-  - Ratio slope
-- Real-time gain reduction meter displaying:
-  - Current amount of noise reduction
-  - Visual feedback of gate activity
-
 ### Recommended Settings
 
 #### Light Noise Reduction

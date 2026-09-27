@@ -27,8 +27,6 @@ const MULTI_F0_RESOLUTIONS = [
 ];
 const MULTI_F0_LAYOUTS = ['Vertical', 'Horizontal'];
 const MULTI_F0_HISTORY_WIDTH = 1024;
-const MULTI_F0_KEY_GUTTER_CSS_PX = 28;
-const MULTI_F0_HORIZONTAL_KEY_GUTTER_CSS_PX = MULTI_F0_KEY_GUTTER_CSS_PX * 1.6;
 const MULTI_F0_PASS_THROUGH_PROCESSOR = 'return data;';
 const MULTI_F0_BLACK_KEY_CLASSES = new Set([1, 3, 6, 8, 10]);
 const MULTI_F0_WHITE_KEY_CLASSES = [0, 2, 4, 5, 7, 9, 11];
@@ -217,15 +215,18 @@ class NoteSpectrogramPlugin extends PluginBase {
             this.pr = params.pr;
             this.configureHistoryImage();
             this.volumeHistoryDirty = true;
+            this._graphReadout?.clear();
             this.drawGraph();
         }
         if (MULTI_F0_LAYOUTS.includes(params.ly) && params.ly !== this.ly) {
             this.ly = params.ly;
+            this._graphReadout?.clear();
             this.drawGraph();
         }
         if (params.vl !== undefined && (params.vl === true) !== this.vl) {
             this.vl = params.vl === true;
             this.volumeHistoryDirty = true;
+            this._graphReadout?.clear();
             this.drawGraph();
         }
         if (params.ts !== undefined) {
@@ -449,7 +450,8 @@ class NoteSpectrogramPlugin extends PluginBase {
         const light = background.every(channel => channel > 127);
         return {
             trace,
-            whiteKey: light ? 255 : 221,
+            whiteKey: light ? 255 : 238,
+            blackKey: 17,
             whiteBand: background,
             blackBand: light ? soft : background.map(channel => channel + MULTI_F0_BLACK_KEY_BACKGROUND),
             volumeCompositeOperation: light ? 'darken' : 'lighter'
@@ -814,6 +816,24 @@ class NoteSpectrogramPlugin extends PluginBase {
         } else {
             this.drawGraph();
         }
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this.canvas,
+            // The piano roll, or the keyboard gutter while the pointer is over it (canvas coordinates).
+            plot: point => {
+                const frame = this._readoutFrame;
+                if (!frame?.valid) return null;
+                const { horizontal, rollWidth, gutter, height } = frame;
+                const onKeys = (horizontal ? point.y : point.x) >= rollWidth;
+                const start = onKeys ? rollWidth : 0;
+                const length = onKeys ? gutter : rollWidth;
+                return horizontal
+                    ? { left: 0, top: start, width: height, height: length }
+                    : { left: start, top: 0, width: length, height };
+            },
+            read: (x, y) => this._readNote(x, y),
+            crosshair: 'xy'
+        });
         return container;
     }
 
@@ -1069,27 +1089,34 @@ class NoteSpectrogramPlugin extends PluginBase {
 
     drawGraph(now = performance.now()) {
         if (this.displayOptions?.deferDraw) return;
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         if (!this.canvasCtx || !this.imageData || !this.tempCtx || !this.tempCanvas ||
             !this.canvas) {
+            this._graphReadout?.refresh();
             return;
         }
         const palette = this._displayPalette();
-        if (!palette) return;
+        if (!palette) {
+            this._graphReadout?.refresh();
+            return;
+        }
         const context = this.canvasCtx;
         const horizontal = this.ly === 'Horizontal';
         const width = horizontal ? this.canvas.height : this.canvas.width;
         const height = horizontal ? this.canvas.width : this.canvas.height;
         const dpr = this.graphDpr || 1;
         const showKeyboard = this.displayOptions?.showKeyboard !== false;
-        const keyboardScale = this.displayOptions?.preserveKeyboardAspect
-            ? height / (horizontal ? 1024 : 480) : dpr;
-        const gutter = showKeyboard ? MULTI_F0_HORIZONTAL_KEY_GUTTER_CSS_PX * keyboardScale : 0;
-        const blackKeyDepth = MULTI_F0_KEY_GUTTER_CSS_PX * keyboardScale;
+        const visiblePitchCount = this.mx - this.mn + 1;
+        const rowHeight = height / visiblePitchCount;
+        const keyboard = window.FrequencyAxis.keyboardDepths(12 * rowHeight, width,
+            this.displayOptions?.keyboardLength);
+        const gutter = showKeyboard ? keyboard.gutter : 0;
+        const blackKeyDepth = keyboard.blackDepth;
         const rollWidth = width - gutter;
         const drawKeyboard = (draw, boundary = false) => this.displayOptions?.drawKeyboard
             ? this.displayOptions.drawKeyboard(context, draw, { horizontal, width, height, rollWidth, boundary })
             : draw();
-        const visiblePitchCount = this.mx - this.mn + 1;
         const displayDivisions = this.pr === 'High' ? MULTI_F0_FINE_DIVISIONS : 1;
         const visibleDisplayPitchCount = visiblePitchCount * displayDivisions;
         const sourceY = (MULTI_F0_LAST_MIDI - this.mx) * displayDivisions;
@@ -1097,7 +1124,10 @@ class NoteSpectrogramPlugin extends PluginBase {
         context.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '');
         if (this.displayOptions?.transparent) context.clearRect(0, 0, this.canvas.width, this.canvas.height);
         else context.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        if (rollWidth <= 0 || height <= 0) return;
+        if (rollWidth <= 0 || height <= 0) {
+            this._graphReadout?.refresh();
+            return;
+        }
 
         const scrollPhase = this._scrollPhase(now);
         this.scrollAnchorPending = false;
@@ -1117,7 +1147,10 @@ class NoteSpectrogramPlugin extends PluginBase {
         }
         if (this.scaledHistoryCanvas.height !== height) this.scaledHistoryCanvas.height = height;
         const scaledContext = this.scaledHistoryCanvas.getContext('2d');
-        if (!scaledContext) return;
+        if (!scaledContext) {
+            this._graphReadout?.refresh();
+            return;
+        }
         if (horizontal) {
             context.save();
             context.translate(this.canvas.width, 0);
@@ -1182,7 +1215,10 @@ class NoteSpectrogramPlugin extends PluginBase {
         if (this.displayOptions?.drawSignal) this.displayOptions.drawSignal(context, drawHistory, { width: rollWidth, height });
         else drawHistory(context);
 
-        const rowHeight = height / visiblePitchCount;
+        Object.assign(frame, {
+            valid: true, horizontal, canvasWidth: this.canvas.width, rollWidth, height, rowHeight,
+            gutter, blackKeyDepth, scrollPhase, columnWidth, phaseOffset, split, palette
+        });
         if (this.vl && this.displayOptions?.separateAnnotations) this._paintVolumeGrid(context, 0, rollWidth, rowHeight);
         context.lineWidth = dpr;
         if (showKeyboard) {
@@ -1202,7 +1238,6 @@ class NoteSpectrogramPlugin extends PluginBase {
                     const clippedEnd = end > height ? height : end;
                     if (clippedStart >= clippedEnd) continue;
                     const confidence = this._bagConfidence(latestOffset, midi);
-                    const best = this._bestBagPitch(latestOffset, midi);
                     const color = this.displayOptions?.noteColor?.(midi) ?? (this.cl === 'Rainbow'
                         ? MULTI_F0_NOTE_COLORS[pitchClass]
                         : palette.trace);
@@ -1231,21 +1266,27 @@ class NoteSpectrogramPlugin extends PluginBase {
                     context.lineTo(width, y);
                     context.stroke();
                 }
+                const blackKeys = [];
                 for (let midi = this.mn; midi <= this.mx; midi++) {
                     const pitchClass = midi % 12;
                     if (!MULTI_F0_BLACK_KEY_CLASSES.has(pitchClass)) continue;
                     const row = this.mx - midi;
                     const confidence = this._bagConfidence(latestOffset, midi);
-                    const best = this._bestBagPitch(latestOffset, midi);
                     const color = this.displayOptions?.noteColor?.(midi) ?? (this.cl === 'Rainbow'
                         ? MULTI_F0_NOTE_COLORS[pitchClass]
                         : palette.trace);
-                    const red = Math.round(34 + (color[0] - 34) * confidence);
-                    const green = Math.round(34 + (color[1] - 34) * confidence);
-                    const blue = Math.round(34 + (color[2] - 34) * confidence);
-                    context.fillStyle = `rgb(${red}, ${green}, ${blue})`; // theme-allow: Fixed signal-level or self-painted colormap color.
-                    context.fillRect(rollWidth, row * rowHeight, blackKeyDepth, rowHeight);
+                    const red = Math.round(palette.blackKey + (color[0] - palette.blackKey) * confidence);
+                    const green = Math.round(palette.blackKey + (color[1] - palette.blackKey) * confidence);
+                    const blue = Math.round(palette.blackKey + (color[2] - palette.blackKey) * confidence);
+                    blackKeys.push([row * rowHeight, (row + 1) * rowHeight, `rgb(${red}, ${green}, ${blue})`]); // theme-allow: Fixed signal-level or self-painted colormap color.
                 }
+                window.FrequencyAxis.shadeKeyboard(context,
+                    { along: 'y', edge: rollWidth, length: height, gutter, blackDepth: blackKeyDepth, dpr }, blackKeys, () => {
+                        for (const [start, end, color] of blackKeys) {
+                            context.fillStyle = color;
+                            context.fillRect(rollWidth, start, blackKeyDepth, end - start);
+                        }
+                    });
             });
             // The meters and border sit on the roll boundary rather than inside the keys.
             drawKeyboard(() => {
@@ -1337,6 +1378,60 @@ class NoteSpectrogramPlugin extends PluginBase {
             }
         }
         if (horizontal) context.restore();
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the history cell at canvas pixel (x, y); u/v are the unrotated roll coordinates.
+    _readNote(x, y) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid || !this.history) return null;
+        const { format } = window.GraphReadout;
+        const { horizontal, canvasWidth, rollWidth, rowHeight, columnWidth, scrollPhase } = frame;
+        const u = horizontal ? y : x;
+        const v = horizontal ? canvasWidth - x : y;
+        const frequency = midi => 440 * 2 ** ((midi - 69) / 12);
+        if (u >= rollWidth) {
+            const axis = window.FrequencyAxis;
+            const key = axis?.hitKey(axis.noteAxisKeys(this.mn, this.mx, frame.height),
+                frame.height - v, u - rollWidth, frame.gutter, frame.blackKeyDepth);
+            return key ? { cursor: format.note(frequency(key.midi), 440), rows: [], crosshair: 'none' } : null;
+        }
+        const latestStart = rollWidth - (1 + scrollPhase) * columnWidth;
+        const column = u >= latestStart
+            ? (frame.split + MULTI_F0_HISTORY_WIDTH - 1) % MULTI_F0_HISTORY_WIDTH
+            : (frame.split + Math.floor((u + frame.phaseOffset) / columnWidth)) % MULTI_F0_HISTORY_WIDTH;
+        const rowIndex = Math.floor(v / rowHeight);
+        const midi = this.mx - (rowIndex < 0 ? 0 : rowIndex);
+        if (midi < this.mn) return null;
+        const historyOffset = column * MULTI_F0_PITCH_COUNT;
+        const high = this.pr === 'High';
+        const rowTop = (this.mx - midi) * rowHeight;
+        const subRow = Math.floor((v - rowTop) / (rowHeight / MULTI_F0_FINE_DIVISIONS));
+        const division = MULTI_F0_FINE_DIVISIONS - 1 -
+            (subRow < 0 ? 0 : subRow > MULTI_F0_FINE_DIVISIONS - 1 ? MULTI_F0_FINE_DIVISIONS - 1 : subRow);
+        // Snap to the center of the display row under the pointer: a 1/60-octave sub-row in High,
+        // otherwise the semitone row (its center division), whether or not anything sounds there.
+        const pitch = (midi - MULTI_F0_FIRST_MIDI) * MULTI_F0_FINE_DIVISIONS +
+            (high ? division : MULTI_F0_FINE_CENTER);
+        const cellMidi = MULTI_F0_FIRST_MIDI + (pitch - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS;
+        const center = rowTop + (MULTI_F0_FINE_DIVISIONS - 1 - pitch % MULTI_F0_FINE_DIVISIONS + 0.5) *
+            rowHeight / MULTI_F0_FINE_DIVISIONS;
+        // High without Volume paints every sub-row cell; otherwise each semitone row shows its strongest cell.
+        const salience = high && !this.vl
+            ? this.history[historyOffset + pitch]
+            : this._bagConfidence(historyOffset, midi);
+        const color = this.cl === 'Rainbow'
+            ? (high ? multiF0InterpolatedNoteColor(pitch) : MULTI_F0_NOTE_COLORS[midi % 12])
+            : frame.palette.trace;
+        const row = {
+            label: 'Salience',
+            color: `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`, // theme-allow: Same note or theme trace color as the drawn cell.
+            value: format.percent(salience),
+            y: horizontal ? u : center
+        };
+        const cursor = `${format.note(frequency(cellMidi), 440)} · ${
+            format.time(-(rollWidth - u) / columnWidth * this.columnPeriod * 1000)}`;
+        return { cursor, rows: [row], at: horizontal ? { x: canvasWidth - center, y: u } : { x: u, y: center } };
     }
 
     cleanup() {

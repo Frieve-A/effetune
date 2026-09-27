@@ -80,10 +80,4 @@ Click **Effect Presets** in the effect header to compare complete source-and-cab
 - **Realization**: The transfer function is factored and converted to a matched-Z cascade of biquad filters, giving zero latency and minimum-phase behavior comparable to the other EQ plugins.
 - **Normalization**: The response is normalized to a 0 dB power average (20Hz to 20kHz) so toggling the effect does not change overall loudness.
 
-### Visual Display
-- Real-time graph of the realized filter response on a logarithmic frequency scale
-- Grid labels cover 20Hz to 20kHz; the plotted curve extends across the full 10Hz to 40kHz graph range
-- Green response curve over a dark grid, with an auto-scaled dB axis around the normalized 0dB reference
-- Larger curve deviations indicate where the model changes playback level most
-
 [Back to all effects](/dsp/effects/)

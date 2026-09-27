@@ -367,6 +367,7 @@ DSD64再生でしばしば議論される控えめな副作用を再現するエ
   - **Output** - Dry-WetとOutput Trim適用後の最終出力レベル (ドライ + 歪み)。
 - **Analog Transfer Curve** - Analog NonlinearityとEven Biasが作る歪みカーブを、Saturation系プラグインと同じ入出力スタイルで表示。
 - **Difference-Frequency表示** - 現在のノイズ設定に基づき、超音波ノイズがどの可聴周波数を作るかを示す静的グラフ。
+- どちらのグラフでも、マウスを重ねるか、タッチしてなぞると、その位置の値を読み取れます。
 
 ### 推奨設定
 - 控えめ (デフォルト): Amount +24 dB、Ultrasonic Level -30 dBFS、Analog Nonlinearity 1.40%、Even Bias 20%、Signal Coupling 150%、Cross Sideband 75%、Scratch Tone 10.5 kHz。
@@ -425,6 +426,9 @@ FM Radio Simulatorは、放送用オーディオ処理とプリエンファシ�
 - **MPath**は直接波に対する第1反射波のレベルをdBで示します (Multipathが0%のときは−∞)。
 - **Clicks**は直近のFM閾値クリックの毎秒回数で、頻発するとハイライトされます。
 - **WASM**エンジンを利用できない場合は、HUDに通知が表示され、音声は変わらずそのまま素通しされます。
+
+### ビジュアル表示
+- スペクトル表示にマウスを重ねるか、タッチしてなぞると、その位置の値を読み取れます。
 
 ### 推奨設定
 
@@ -934,6 +938,9 @@ TV Audio Simulatorは、音楽をアナログテレビ放送またはNICAMデジ
 HUDには選択したテレビ方式と、現在聞こえている経路（`STEREO`、`MAIN`、`SUB`、`NICAM`、`FALLBACK`、`AM`）が表示されます。CarrierとCNRは受信レベルと推定信号品質を示します。Healthは選択したステレオまたはデジタル経路が利用可能か、Multipathは反射波の深さ、Errorsは1秒あたりの受信エラー率を示します。スペクトラムは、アナログFMでは復元した多重音声、L AMでは検波後の音声、NICAMでは選択後の出力を表します。
 
 このモデルはテレビ音声の可聴上の挙動に重点を置いています。映像を含むテレビRFチャンネル全体は生成せず、A2とNICAMも放送機器の試験信号ではなく、聴感上の特徴を再現します。
+
+### ビジュアル表示
+- スペクトル表示にマウスを重ねるか、タッチしてなぞると、その位置の値を読み取れます。
 
 ## Vinyl Artifacts
 

@@ -17,6 +17,7 @@ async function hostHarness(loaded = {}, { startStatus = () => 'processing', fail
     const frames = [];
     const audioSessions = [];
     const decodeContexts = [];
+    const visualizerRequests = [];
     class MessageChannel {
         constructor() {
             const session = { status: 'stopped', plugins: [], masterBypass: false, irIds: [] };
@@ -29,6 +30,7 @@ async function hostHarness(loaded = {}, { startStatus = () => 'processing', fail
                 if (data.command === 'stop') session.status = 'stopped';
                 if (data.command === 'setBypass') session.masterBypass = args.enabled;
                 if (data.command === 'rebuild') session.sampleRate = args.sampleRate;
+                if (data.command === 'setVisualizerSources') visualizerRequests.push(args.sources);
                 if (data.command === 'workletMessage' && args.message?.type === 'updatePlugin') {
                     session.plugins = session.plugins.map(plugin => plugin.id === args.message.plugin.id
                         ? { ...plugin, ...args.message.plugin.parameters, en: args.message.plugin.enabled } : plugin);
@@ -79,7 +81,7 @@ async function hostHarness(loaded = {}, { startStatus = () => 'processing', fail
     vm.runInContext(hostSource, context);
     const run = (command, args = {}, clientId = 'editor') => context.enqueue(command, args, clientId);
     await run('getState');
-    return { context, run, saves, frames, audioSessions, decodeContexts,
+    return { context, run, saves, frames, audioSessions, decodeContexts, visualizerRequests,
         maximumSaving: () => maximumSaving };
 }
 
@@ -254,6 +256,18 @@ test('queued telemetry subscriptions follow session lifetime through stop, failu
     assert.equal(vm.runInContext('viewers.size', host.context), 0);
     await host.run('setTelemetry', { sessionId: running.sessionId, enabled: true });
     assert.equal(vm.runInContext('viewers.get("editor").sessionId', host.context), running.sessionId);
+});
+
+test('Visualizer sources reach the selected session and are cleared when their owner leaves', async () => {
+    const host = await hostHarness();
+    const { sessionId } = await host.run('start', { tabId: 1, url: 'https://test/', streamId: 'a' });
+    await host.run('setTelemetry', { sessionId, enabled: true });
+    const sources = [{ tapId: 0xf0000000, kind: 'level' }];
+    assert.equal(await host.run('setVisualizerSources', { sessionId, sources }), null);
+    // The harness records values from the host realm, so compare their JSON form.
+    assert.equal(JSON.stringify(host.visualizerRequests), JSON.stringify([sources]));
+    await host.run('setTelemetry', { sessionId, enabled: false });
+    assert.equal(JSON.stringify(host.visualizerRequests), JSON.stringify([sources, []]));
 });
 
 test('URL bindings follow navigation and deletion while rule edits wait for navigation', async () => {

@@ -1017,10 +1017,11 @@ function createSplashScreen() {
   // Create HTML content for splash window
   const splashContent = `
   <!DOCTYPE html>
-  <html>
+  <html data-theme="${preset.id}">
   <head>
     <meta charset="UTF-8">
     <title>EffeTune</title>
+    <link rel="stylesheet" href="${pathToFileURL(path.join(__dirname, '../css/effetune-theme.css')).href}">
     <style>
       body {
         background-color: color-mix(in srgb, ${preset.windowBackground} 90%, transparent);
@@ -1035,7 +1036,15 @@ function createSplashScreen() {
         border-radius: 8px;
         overflow: hidden;
       }
+      .splash-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
       .splash-container {
+        position: relative;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -1082,6 +1091,7 @@ function createSplashScreen() {
     </style>
   </head>
   <body>
+    <canvas class="splash-canvas" id="splash-canvas"></canvas>
     <div class="splash-container">
       <div class="splash-header">
         <img src="${path.join(__dirname, '../images/icon_64x64.png')}" class="splash-icon" alt="EffeTune Icon">
@@ -1094,6 +1104,14 @@ function createSplashScreen() {
         <div class="splash-loading">Starting application...</div>
       </div>
     </div>
+    <script type="module">
+      import { startBrandAnimation } from '${pathToFileURL(path.join(__dirname, '../js/ui/brand-animation.js')).href}';
+      startBrandAnimation(document.getElementById('splash-canvas'), {
+        icon: document.querySelector('.splash-icon'),
+        title: document.querySelector('.splash-header h2'),
+        reveal: [...document.querySelector('.splash-content').children]
+      });
+    </script>
   </body>
   </html>
   `;

@@ -401,6 +401,7 @@ export class ElectronIntegration {
       // Create dialog HTML
       const dialogHTML = `
         <div class="about-dialog">
+          <canvas class="about-canvas"></canvas>
           <div class="about-header">
             <img src="images/icon_64x64.png" class="about-icon" alt="EffeTune Icon">
             <h2>Frieve EffeTune</h2>
@@ -417,6 +418,9 @@ export class ElectronIntegration {
         </div>
       `;
       
+      // Load the intro animation before the dialog appears so nothing flashes unanimated.
+      const { startBrandAnimation } = await import('./ui/brand-animation.js');
+
       // Create dialog element
       const dialogElement = document.createElement('div');
       dialogElement.className = 'modal-overlay';
@@ -449,6 +453,8 @@ export class ElectronIntegration {
           z-index: 1000;
         }
         .about-dialog {
+          position: relative;
+          overflow: hidden;
           background-color: var(--et-surface-5);
           border-radius: 8px;
           padding: 20px;
@@ -457,6 +463,16 @@ export class ElectronIntegration {
           display: flex;
           flex-direction: column;
           align-items: center;
+        }
+        .about-canvas {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
+        .about-dialog > :not(.about-canvas) {
+          position: relative;
         }
         .about-header {
           display: flex;
@@ -519,14 +535,27 @@ export class ElectronIntegration {
         }
       `;
       document.head.appendChild(styleElement);
-      
+
       // Add event listener for close button
+      let stopAnimation = null;
       const closeButton = document.getElementById('close-button');
       closeButton.addEventListener('click', () => {
+        stopAnimation?.();
         document.body.removeChild(dialogElement);
         document.head.removeChild(styleElement);
       });
-      
+
+      // The animation is decorative; the dialog stays usable if it cannot start.
+      try {
+        stopAnimation = startBrandAnimation(dialogElement.querySelector('.about-canvas'), {
+          icon: dialogElement.querySelector('.about-icon'),
+          title: dialogElement.querySelector('.about-header h2'),
+          reveal: [...dialogElement.querySelectorAll('.about-content > *, .dialog-buttons')]
+        });
+      } catch (error) {
+        console.error('Failed to start About dialog animation:', error);
+      }
+
     } catch (error) {
       console.error('Failed to show about dialog:', error);
     }

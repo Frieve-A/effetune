@@ -45,8 +45,4 @@ Clip Restorer reconstructs peaks that were flattened by hard digital clipping. I
 - **Threshold** (-18–0 dB, default -0.10 dB) sets the level treated as a clipped peak. A value closer to 0 dB targets only nearly full-scale flat peaks. Lowering it includes less obvious clipping, but can affect more loud material.
 - **Output Gain** (-12–0 dB, default -3 dB) sets the output level after restoration. Raise it toward 0 dB for a louder result; lower it for more headroom if restored peaks are too high.
 
-### Reading the Display
-
-**RESTORED** shows the recent percentage of audio samples repaired as clipped peaks. A small value can be normal because clipping often occurs only at brief peaks. If it remains high on material that does not sound clipped, raise **Threshold**.
-
 [Back to all effects](/dsp/effects/)

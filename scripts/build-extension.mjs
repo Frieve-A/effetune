@@ -50,7 +50,7 @@ export async function buildExtension() {
     const scripts = new Set([
         'extension/service-worker.js', 'extension/offscreen.js', 'extension/session.js', 'extension/editor.js', 'extension/popup.js',
         'plugins/plugin-base.js', 'plugins/graph-point-interaction.js', 'plugins/frequency-axis.js',
-        'plugins/spectrum-overlay.js', 'plugins/frequency-preview.js', 'plugins/theme-palette.js',
+        'plugins/spectrum-overlay.js', 'plugins/frequency-preview.js', 'plugins/graph-readout.js', 'plugins/theme-palette.js',
         'plugins/multires-spectrum.js',
         'plugins/audio-processor.js', ...pluginPaths.map(filename => `${filename}.js`)
     ]);

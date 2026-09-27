@@ -48,11 +48,6 @@ Lets you adjust how the music is distributed between your left and right speaker
   - Left (-100%): More sound in left
   - Right (+100%): More sound in right
 
-### Visual Display
-- Easy-to-use slider
-- Clear number display
-- Visual indicator of stereo position
-
 ### Recommended Uses
 
 1. General Listening

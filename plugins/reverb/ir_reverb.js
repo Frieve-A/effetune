@@ -1797,8 +1797,13 @@ class IRReverbPlugin extends PluginBase {
         const height = Math.max(1, Math.round(cssHeight));
         context.setTransform?.(dpr, 0, 0, dpr, 0, 0);
         context.clearRect(0, 0, width, height);
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         const graph = this.getEdcGraphData();
-        if (!graph) return;
+        if (!graph) {
+            this._graphReadout?.refresh();
+            return;
+        }
         const fontSize = width < 400 ? 11 : 12;
         const labelLineHeight = fontSize + 3;
         const labelTop = 5;
@@ -1931,6 +1936,46 @@ class IRReverbPlugin extends PluginBase {
         context.fillStyle = (window.ThemePalette?.get('text-primary') ?? '');
         context.textAlign = 'right';
         context.fillText(timeLabel, width - right, height - 5, plotWidth);
+        Object.assign(frame, {
+            valid: true,
+            scale: dpr,
+            left,
+            top,
+            plotWidth,
+            plotHeight,
+            durationSeconds: graph.durationSeconds,
+            sampleRate: this._prepared.sampleRate,
+            original: graph.original,
+            current: graph.current
+        });
+        this._graphReadout?.refresh();
+    }
+
+    // Reads both decay curves at canvas pixel x, interpolating between the plotted points.
+    _readEdcGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format, seriesValueAt } = window.GraphReadout;
+        const { scale, left, top, plotWidth, plotHeight, sampleRate } = frame;
+        const seconds = (x / scale - left) / plotWidth * frame.durationSeconds;
+        const frames = seconds * sampleRate;
+        const rows = [];
+        for (const [label, color, series] of [
+            ['Original', 'var(--et-graph-trace-tertiary)', frame.original],
+            ['Current', 'var(--et-graph-trace)', frame.current]
+        ]) {
+            const db = seriesValueAt(series.sampleFrames, series.edcDb, frames) ?? NaN;
+            const depth = -db / 90;
+            rows.push({
+                label,
+                color,
+                value: format.db(db),
+                ...(Number.isFinite(db)
+                    ? { y: (top + (depth < 0 ? 0 : depth > 1 ? 1 : depth) * plotHeight) * scale }
+                    : {})
+            });
+        }
+        return { cursor: format.time(seconds * 1000), rows };
     }
 
     createUI() {
@@ -2037,6 +2082,20 @@ class IRReverbPlugin extends PluginBase {
         appendAssetControl('dt', this.createParameterControl(this._t('irReverb.parameter.decay', 'Decay'), 10, 400, 1, this.dt, value => this.setParameters({ dt: value }), '%', 'dt'));
         appendAssetControl('tr', this.createParameterControl(this._t('irReverb.parameter.trim', 'Trim'), 1, 100, 1, this.tr, value => this.setParameters({ tr: value }), '%', 'tr'));
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this._graphCanvas,
+            plot: () => {
+                const frame = this._readoutFrame;
+                return frame?.valid ? {
+                    left: frame.left * frame.scale,
+                    top: frame.top * frame.scale,
+                    width: frame.plotWidth * frame.scale,
+                    height: frame.plotHeight * frame.scale
+                } : null;
+            },
+            read: x => this._readEdcGraph(x)
+        });
         return container;
     }
 

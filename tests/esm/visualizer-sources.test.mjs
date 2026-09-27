@@ -207,7 +207,6 @@ test('Visualizer sources share matching analyzers and stop outside the visible v
     const listeners = new Map();
     const subscriptions = new Map();
     const published = [];
-    const worklet = {};
     globalThis.document = {
         hidden: false,
         addEventListener(type, callback) { listeners.set(type, callback); },
@@ -224,8 +223,7 @@ test('Visualizer sources share matching analyzers and stop outside the visible v
         }
     };
     const manager = {
-        _getPrimaryWorkletNode: () => worklet,
-        _dspCapabilitiesByNode: new Map([[worklet, { kernels: [] }]]),
+        isDspReady: () => true,
         telemetryHub: {
             subscribe(tapId, frameType, callback) {
                 subscriptions.set(tapId, { frameType, callback });
@@ -493,8 +491,7 @@ test('Visualizer status follows primary DSP readiness across failure and reiniti
     globalThis.window = { location: { search: '' }, audioPreferences: { useWasmDsp: true } };
     globalThis.document = { addEventListener() {}, removeEventListener() {} };
     const manager = {
-        _getPrimaryWorkletNode: () => worklet,
-        _dspCapabilitiesByNode: capabilities,
+        isDspReady: () => capabilities.has(worklet),
         setVisualizerSources() {},
         telemetryHub: { subscribe: () => () => {} }
     };

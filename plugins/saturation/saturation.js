@@ -210,10 +210,8 @@ class SaturationPlugin extends PluginBase {
         ctx.beginPath();
         const mixRatio = this.mx / 100;
         for (let i = 0; i < width; i++) {
-            const x = (i / width) * 2 - 1;
-            const wet = Math.tanh(this.dr * (x + this.bs)) - Math.tanh(this.dr * this.bs);
-            const y = ((1 - mixRatio) * x + mixRatio * wet) * Math.pow(10, this.gn / 20);
-            const canvasY = ((1 - y) / 2) * height;
+            const x = this._transferX(i, width);
+            const canvasY = this._transferY(x, height, mixRatio);
             if (i === 0) {
                 ctx.moveTo(i, canvasY);
             } else {
@@ -221,6 +219,40 @@ class SaturationPlugin extends PluginBase {
             }
         }
         ctx.stroke();
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.mixRatio = mixRatio;
+        frame.valid = true;
+        this._graphReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -1..1 across the full width).
+    _transferX(x, width) {
+        return (x / width) * 2 - 1;
+    }
+
+    // Canvas y of the transfer curve's output for an input on the -1..1 axis.
+    _transferY(x, height, mixRatio = this.mx / 100) {
+        const wet = Math.tanh(this.dr * (x + this.bs)) - Math.tanh(this.dr * this.bs);
+        const y = ((1 - mixRatio) * x + mixRatio * wet) * Math.pow(10, this.gn / 20);
+        return ((1 - y) / 2) * height;
+    }
+
+    // Reads the transfer curve at canvas pixel x.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inValue = this._transferX(x, frame.width);
+        const y = this._transferY(inValue, frame.height, frame.mixRatio);
+        const outValue = 1 - 2 * y / frame.height;
+        return {
+            cursor: `in ${format.number(inValue)}`,
+            rows: [{ label: 'out', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.number(outValue), y }],
+            at: { x, y }
+        };
     }
 
     createUI() {
@@ -260,6 +292,12 @@ class SaturationPlugin extends PluginBase {
         this.updateTransferGraph(); // Initial graph draw
         graphContainer.appendChild(canvas);
         container.appendChild(graphContainer);
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x),
+            crosshair: 'xy'
+        });
 
         // Gain control
         container.appendChild(this.createParameterControl(

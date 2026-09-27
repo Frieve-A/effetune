@@ -610,22 +610,6 @@ class GroupDelayEqPlugin extends PluginBase {
         canvas.style.margin = '0 auto';
         this._graphCanvas = canvas;
 
-        const legend = document.createElement('div');
-        legend.className = 'group-delay-eq-legend';
-        for (const [className, label] of [
-            ['group-delay-eq-legend-target', this._t('groupDelayEq.graph.target', 'Target')],
-            ['group-delay-eq-legend-realized', this._t('groupDelayEq.graph.realized', 'Realized')]
-        ]) {
-            const item = document.createElement('span');
-            item.className = `group-delay-eq-legend-item ${className}`;
-            const swatch = document.createElement('span');
-            swatch.className = 'group-delay-eq-legend-swatch';
-            swatch.setAttribute('aria-hidden', 'true');
-            item.append(swatch, document.createTextNode(label));
-            legend.appendChild(item);
-        }
-        graphContainer.appendChild(legend);
-
         const resetButton = document.createElement('button');
         resetButton.className = 'eq-reset-button';
         resetButton.textContent = this._t('groupDelayEq.action.reset', 'Reset');
@@ -658,7 +642,38 @@ class GroupDelayEqPlugin extends PluginBase {
         this._getRuntime().then(() => {
             if (!this._disposed) this.drawGraph(this._graphCanvas);
         }).catch(error => console.error('Group Delay EQ runtime failed to load:', error));
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x),
+            legend: this._graphSeries()
+        });
         return container;
+    }
+
+    // Plotted curves in drawing order with their drawing colors.
+    _graphSeries() {
+        return [
+            { label: this._t('groupDelayEq.graph.target', 'Target'), color: 'var(--et-graph-trace-tertiary)' },
+            { label: this._t('groupDelayEq.graph.realized', 'Realized'), color: 'var(--et-graph-trace)' }
+        ];
+    }
+
+    // Reads the drawn curves at canvas pixel x, interpolating between plotted points.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format, seriesValueAt } = window.GraphReadout;
+        const { scale, xs, toY } = frame;
+        const cssX = x / scale;
+        const rows = [];
+        const [target, realized] = this._graphSeries();
+        for (const [series, values] of [[target, frame.targetMs], [realized, frame.realizedMs]]) {
+            if (!values) continue;
+            const ms = seriesValueAt(xs, values, cssX) ?? NaN;
+            rows.push({ ...series, value: format.time(ms), y: toY(ms) * scale });
+        }
+        return { cursor: format.frequency(10 ** (frame.logMinFreq + cssX / frame.width * frame.logFreqSpan)), rows };
     }
 
     _formatDelay(index) {
@@ -719,6 +734,8 @@ class GroupDelayEqPlugin extends PluginBase {
 
     drawGraph(canvas) {
         if (!canvas) return;
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         const ctx = canvas.getContext('2d');
         const rect = canvas.getBoundingClientRect();
         const cssWidth = rect.width || canvas.clientWidth || canvas.width;
@@ -806,7 +823,10 @@ class GroupDelayEqPlugin extends PluginBase {
         ctx.fillText('Delay (ms)', 0, 0);
         ctx.restore();
 
-        if (!frequencies) return;
+        if (!frequencies) {
+            this._graphReadout?.refresh();
+            return;
+        }
 
         // Draw the requested curve first, then the curve the filter realizes
         const drawCurve = (values, color) => {
@@ -823,6 +843,17 @@ class GroupDelayEqPlugin extends PluginBase {
         };
         drawCurve(targetMs, (window.ThemePalette?.get('graph-trace-tertiary') ?? ''));
         if (realizedMs) drawCurve(realizedMs, (window.ThemePalette?.get('graph-trace') ?? ''));
+
+        frame.valid = true;
+        frame.scale = dpr;
+        frame.width = width;
+        frame.logMinFreq = logMinFreq;
+        frame.logFreqSpan = logFreqSpan;
+        frame.xs = frequencies.map(toX);
+        frame.toY = toY;
+        frame.targetMs = targetMs;
+        frame.realizedMs = realizedMs;
+        this._graphReadout?.refresh();
     }
 
     cleanup() {

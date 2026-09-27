@@ -789,6 +789,14 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         this.graphDisposers.push(disposeTransferGraph);
         tcWrap.appendChild(transferGraph);
         vizRow.appendChild(tcWrap);
+        this._transferReadout = window.GraphReadout?.attach({
+            mount: transferGraph,
+            surface: transferCanvas,
+            read: x => this._readTransferGraph(x),
+            crosshair: 'xy'
+        });
+        // Note: `mount` is the responsive-graph's own container (transferGraph), which wraps
+        // only the canvas, so the readout overlay never covers the title text above it.
 
         // Difference-frequency view (static; depends on the ultrasonic shaping H_U only)
         const dfWrap = document.createElement('div');
@@ -809,6 +817,11 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         this.graphDisposers.push(disposeDiffGraph);
         dfWrap.appendChild(diffGraph);
         vizRow.appendChild(dfWrap);
+        this._diffReadout = window.GraphReadout?.attach({
+            mount: diffGraph,
+            surface: diffCanvas,
+            read: x => this._readDiffGraph(x)
+        });
 
         c.appendChild(vizRow);
 
@@ -938,12 +951,45 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
         ctx.beginPath();
         for (let i = 0; i < width; i++) {
-            const v = (i / width) * 2 - 1;          // map to [-1, 1]
-            const y = v + a2 * v * v + a3 * v * v * v;
-            const canvasY = ((1 - y) / 2) * height;
+            const v = this._transferX(i, width);
+            const canvasY = this._transferY(v, height, a2, a3);
             if (i === 0) ctx.moveTo(i, canvasY); else ctx.lineTo(i, canvasY);
         }
         ctx.stroke();
+
+        const frame = (this._transferFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.a2 = a2;
+        frame.a3 = a3;
+        frame.valid = true;
+        this._transferReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -1..1 across the full width).
+    _transferX(x, width) {
+        return (x / width) * 2 - 1;
+    }
+
+    // Canvas y of the transfer curve phi(v) for an input on the -1..1 axis.
+    _transferY(v, height, a2, a3) {
+        const y = v + a2 * v * v + a3 * v * v * v;
+        return ((1 - y) / 2) * height;
+    }
+
+    // Reads the transfer curve at canvas pixel x.
+    _readTransferGraph(x) {
+        const frame = this._transferFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inValue = this._transferX(x, frame.width);
+        const y = this._transferY(inValue, frame.height, frame.a2, frame.a3);
+        const outValue = 1 - 2 * y / frame.height;
+        return {
+            cursor: `in ${format.number(inValue)}`,
+            rows: [{ label: 'out', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.number(outValue), y }],
+            at: { x, y }
+        };
     }
 
     // --- Helpers shared by the Difference-Frequency view (96 kHz reference) ---
@@ -1092,14 +1138,37 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
         // Difference-frequency density curve (unified green)
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
+        const dbToY = db => H * (1 - Math.max(0, Math.min(1, (db - dbBot) / dbSpan)));
+        const levelDb = new Float64Array(nF);
         ctx.beginPath();
         for (let j = 0; j < nF; j++) {
-            const db = 10 * Math.log10(D[j] / maxD + 1e-24);
+            const db = levelDb[j] = 10 * Math.log10(D[j] / maxD + 1e-24);
             const x = W * j / (nF - 1);
-            const y = H * (1 - Math.max(0, Math.min(1, (db - dbBot) / dbSpan)));
+            const y = dbToY(db);
             if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke();
+
+        const frame = (this._diffFrame ??= {});
+        frame.width = W;
+        frame.db = levelDb;
+        frame.dbToY = dbToY;
+        frame.fMax = fMax;
+        frame.valid = true;
+        this._diffReadout?.refresh();
+    }
+
+    // Reads the difference-frequency density curve at canvas pixel x.
+    _readDiffGraph(x) {
+        const frame = this._diffFrame;
+        if (!frame?.valid) return null;
+        const { format, columnValueAt } = window.GraphReadout;
+        const { db: levelDb, width, fMax } = frame;
+        const db = columnValueAt(levelDb, x / width * (levelDb.length - 1)) ?? NaN;
+        return {
+            cursor: format.frequency(x / width * fMax),
+            rows: [{ label: 'Level', color: (window.ThemePalette?.get('graph-trace') ?? ''), value: format.db(db), y: frame.dbToY(db) }]
+        };
     }
 
     cleanup() {

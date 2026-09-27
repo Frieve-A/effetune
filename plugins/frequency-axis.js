@@ -36,6 +36,101 @@
         return keys;
     }
 
+    // Piano key proportions in millimetres: 23.5 mm white-key pitch and 150 mm white keys
+    // with 95 mm black keys. The default length is half of a real piano (lengthScale 2 is
+    // the real ratio). Black keys fill their semitone, as wide as the white keys' back parts.
+    const KEYBOARD_DEPTH_PER_OCTAVE = 150 / (7 * 23.5) / 2;
+    const BLACK_KEY_DEPTH_RATIO = 95 / 150;
+
+    // Keyboard depth for an axis on which one octave spans octaveLength. The depth is
+    // limited to half of the cross-axis length so extreme zoom still leaves a plot.
+    function keyboardDepths(octaveLength, crossLength, lengthScale = 1) {
+        const depth = octaveLength * KEYBOARD_DEPTH_PER_OCTAVE * lengthScale;
+        const gutter = depth < crossLength / 2 ? depth : crossLength / 2;
+        return { gutter, blackDepth: gutter * BLACK_KEY_DEPTH_RATIO };
+    }
+
+    // Shading applies once black keys are at least this long in CSS pixels; smaller
+    // keyboards keep the flat keys, whose details would not be visible anyway.
+    const KEY_SHADING_MIN_BLACK_DEPTH = 12;
+    const darken = alpha => 'rgba(0, 0, 0, ' + alpha + ')'; // theme-allow: Fixed shading on self-painted piano keys.
+    const lighten = alpha => 'rgba(255, 255, 255, ' + alpha + ')'; // theme-allow: Fixed highlight on self-painted piano keys.
+
+    // Shades a flat-painted keyboard so it reads as real keys. The caller paints the white
+    // keys and their gaps first; drawBlackKeys paints the flat black keys, which lie over the
+    // black-key shadows drawn here. `along` is the canvas axis ('x' or 'y') the keys run
+    // along; their depth grows from the roll boundary at `edge` toward the player. Each layer
+    // is a single fill with one gradient shared by all keys, so the cost stays close to flat.
+    function shadeKeyboard(ctx, { along, edge, length, gutter, blackDepth, dpr }, blackKeys, drawBlackKeys) {
+        if (blackDepth < KEY_SHADING_MIN_BLACK_DEPTH * dpr) {
+            drawBlackKeys();
+            return;
+        }
+        // Adds a rectangle given along the keys and in depth from the roll boundary,
+        // clipped to the keyboard.
+        const rect = (start, end, depthEnd, depthStart = 0) => {
+            const low = start > 0 ? start : 0;
+            const high = end < length ? end : length;
+            const near = depthStart > 0 ? depthStart : 0;
+            const far = depthEnd < gutter ? depthEnd : gutter;
+            if (high <= low || far <= near) return;
+            if (along === 'x') ctx.rect(low, edge + near, high - low, far - near);
+            else ctx.rect(edge + near, low, far - near, high - low);
+        };
+        const fillDepthGradient = (depth, stops, addRects) => {
+            const gradient = along === 'x'
+                ? ctx.createLinearGradient(0, edge, 0, edge + depth)
+                : ctx.createLinearGradient(edge, 0, edge + depth, 0);
+            for (const [offset, color] of stops) gradient.addColorStop(offset, color);
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            addRects();
+            ctx.fill();
+        };
+        const lip = gutter * 0.04 > 1.5 * dpr ? gutter * 0.04 : 1.5 * dpr;
+        const shadow = blackDepth * 0.05 > dpr ? blackDepth * 0.05 : dpr;
+        const slope = blackDepth * 0.1;
+        const front = 1 - slope / blackDepth;
+        // White keys: shade under the roll edge and a rounded front lip.
+        fillDepthGradient(gutter, [
+            [0, darken(0.3)], [0.05, darken(0.08)], [0.5, darken(0)],
+            [1 - 2 * lip / gutter, darken(0.04)], [1 - lip / gutter, lighten(0.35)], [1, darken(0.3)]
+        ], () => rect(0, length, gutter));
+        // Like the UI's box-shadows, the black-key shadow falls straight down the screen,
+        // whatever rotation or flip the caller applied. The inverse transform maps the
+        // screen-down vector into keyboard space.
+        const matrix = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+        const determinant = matrix ? matrix.a * matrix.d - matrix.b * matrix.c : 1;
+        const downX = matrix ? -matrix.c / determinant : 0;
+        const downY = matrix ? matrix.a / determinant : 1;
+        const downScale = shadow / Math.hypot(downX, downY);
+        const shiftAlong = (along === 'x' ? downX : downY) * downScale;
+        const shiftDepth = (along === 'x' ? downY : downX) * downScale;
+        // A wide faint layer under a tight one approximates a soft shadow without a blur.
+        for (const [grow, alpha] of [[shadow, 0.1], [0, 0.12]]) {
+            ctx.fillStyle = darken(alpha);
+            ctx.beginPath();
+            for (const [start, end] of blackKeys) {
+                rect(start + shiftAlong - grow, end + shiftAlong + grow,
+                    blackDepth + shiftDepth + grow, shiftDepth - grow);
+            }
+            ctx.fill();
+        }
+        drawBlackKeys();
+        // Black keys: darker sides, a lit sloping front end, and a raised top face.
+        fillDepthGradient(blackDepth, [
+            [0, darken(0.25)], [front, darken(0.1)], [front + 0.001, lighten(0.28)], [1, lighten(0.08)]
+        ], () => {
+            for (const [start, end] of blackKeys) rect(start, end, blackDepth);
+        });
+        fillDepthGradient(blackDepth, [[0, lighten(0.04)], [front, lighten(0.2)]], () => {
+            for (const [start, end] of blackKeys) {
+                const inset = (end - start) * 0.15;
+                if (inset >= 0.5 * dpr) rect(start + inset, end - inset, blackDepth - slope);
+            }
+        });
+    }
+
     function hitKey(keys, along, across, gutter, blackDepth) {
         if (across < 0 || across > gutter) return null;
         if (across <= blackDepth) {
@@ -112,15 +207,17 @@
     for (const name of ['SpectrumAnalyzerPlugin', 'SpectrogramPlugin']) {
         const vertical = name === 'SpectrogramPlugin';
         const target = targets.get(name);
-        target.axisCheck = ['getKeyboardGeometry(length)', 'const blackDepth = gutter / 1.6;'];
+        target.axisCheck = ['getKeyboardGeometry(length)', 'keyboardDepths(', '_DISPLAY_FREQ / '];
         target.axis = (plugin, box) => {
             const orientation = vertical ? 'y' : 'x';
             const length = vertical ? box.height : box.width;
             const crossLength = vertical ? box.width : box.height;
-            const gutter = plugin.kb && crossLength > (vertical ? 28 : 44.8) ? (vertical ? 28 : 44.8) : 0;
+            const { gutter, blackDepth } = plugin.kb
+                ? keyboardDepths(length / Math.log2(40000 / 20), crossLength, plugin.displayOptions?.keyboardLength)
+                : { gutter: 0, blackDepth: 0 };
             const scale = plugin.sc === 'linear' ? 'linear' : 'log';
             return {
-                orientation, length, crossLength, gutter, blackDepth: gutter / 1.6, a4: 440,
+                orientation, length, crossLength, gutter, blackDepth, a4: 440,
                 keys: gutter ? plugin.getKeyboardGeometry(length) : null,
                 toPos: frequency => vertical ? plugin.freqToY(frequency) / 255 * length : plugin.frequencyToX(frequency, length),
                 toFreq: position => positionToFrequency(position, length, 20, 40000, scale, orientation)
@@ -145,7 +242,7 @@
             }
             return {
                 orientation, length, crossLength, a4, keys, rowHeight,
-                gutter: name === 'PitchMeterPlugin' ? 45 : 44.8, blackDepth: 28,
+                ...keyboardDepths(12 * rowHeight, crossLength, plugin.displayOptions?.keyboardLength),
                 toPos(frequency) {
                     const midi = 69 + 12 * Math.log2(frequency / a4);
                     const position = (midi - plugin.mn + 0.5) * rowHeight;
@@ -185,5 +282,5 @@
     }
 
     window.FrequencyAxis = { targets, getAxis, pruneDetached, frequencyToPosition,
-        positionToFrequency, nearestSemitone, noteFrequency, noteAxisKeys, hitKey };
+        positionToFrequency, nearestSemitone, noteFrequency, noteAxisKeys, keyboardDepths, shadeKeyboard, hitKey };
 })();

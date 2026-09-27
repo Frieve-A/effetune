@@ -59,8 +59,7 @@ body:not(.layout-mobile) .room-eq-phase-low-row { flex-wrap: nowrap; }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response,
 .room-eq-phase-response,
 .room-eq-group-delay-response,
-.room-eq-impulse-response,
-.room-eq-hover-overlay {
+.room-eq-impulse-response {
     overflow: visible;
 }
 .room-eq-additional-eq-ui .room-eq-additional-eq-response path {
@@ -246,48 +245,6 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 .room-eq-additional-eq-ui .room-eq-additional-eq-response .room-eq-corrected-response-path {
     stroke: var(--et-text-primary);
 }
-.room-eq-response-legend {
-    position: absolute;
-    z-index: 4;
-    top: 5px;
-    right: 7px;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    padding: 2px 6px;
-    color: var(--et-graph-label-strong);
-    background: var(--et-graph-base-veil);
-    border-radius: 3px;
-    font-size: 11px;
-    line-height: 1.25;
-    white-space: nowrap;
-}
-.room-eq-response-legend-cursor {
-    align-self: flex-end;
-    color: var(--et-graph-label-strong);
-    font-variant-numeric: tabular-nums;
-}
-.room-eq-response-legend-cursor:empty { display: none; }
-.room-eq-response-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    cursor: default;
-}
-.room-eq-response-legend-value {
-    margin-left: auto;
-    padding-left: 8px;
-    font-variant-numeric: tabular-nums;
-}
-.room-eq-response-legend-swatch {
-    width: 14px;
-    border-top: 2px solid currentColor;
-}
-.room-eq-response-legend-item:hover { font-weight: 600; }
-.room-eq-response-legend-room { color: var(--et-success); opacity: 0.65; }
-.room-eq-response-legend-total { color: var(--et-graph-trace); }
-.room-eq-response-legend-before { color: var(--et-graph-trace-secondary); opacity: 0.7; }
-.room-eq-response-legend-after { color: var(--et-text-primary); }
 .room-eq-phase-grid,
 .room-eq-phase-response,
 .room-eq-group-delay-grid,
@@ -301,19 +258,6 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
     left: 20px;
     top: 20px;
     pointer-events: none;
-}
-.room-eq-hover-overlay {
-    position: absolute;
-    z-index: 3;
-    width: calc(100% - 40px);
-    height: calc(100% - 40px);
-    left: 20px;
-    top: 20px;
-    pointer-events: none;
-}
-.room-eq-hover-overlay .room-eq-hover-dot {
-    stroke: var(--et-graph-base);
-    stroke-width: 1;
 }
 .room-eq-phase-grid line,
 .room-eq-group-delay-grid line,
@@ -390,23 +334,6 @@ body:not(.layout-mobile) .room-eq-additional-eq-ui .room-eq-additional-eq-filter
 .room-eq-impulse-view .room-eq-additional-eq-marker {
     display: none;
 }
-.room-eq-phase-view .room-eq-response-legend-room,
-.room-eq-phase-view .room-eq-response-legend-total,
-.room-eq-group-delay-view .room-eq-response-legend-room,
-.room-eq-group-delay-view .room-eq-response-legend-total,
-.room-eq-impulse-view .room-eq-response-legend-room,
-.room-eq-impulse-view .room-eq-response-legend-total {
-    display: none;
-}
-.room-eq-impulse-view .room-eq-response-legend-before {
-    color: var(--et-graph-tone-50);
-    opacity: 1;
-}
-.room-eq-phase-view .room-eq-response-legend-after,
-.room-eq-group-delay-view .room-eq-response-legend-after,
-.room-eq-impulse-view .room-eq-response-legend-after {
-    color: var(--et-graph-trace);
-}
 .room-eq-phase-view .room-eq-phase-grid,
 .room-eq-phase-view .room-eq-phase-response,
 .room-eq-group-delay-view .room-eq-group-delay-grid,
@@ -425,11 +352,6 @@ body.layout-mobile .room-eq-measurement-row,
 body.layout-mobile .room-eq-channel-measurement-row { flex-wrap: wrap !important; }
 body.layout-mobile .room-eq-measurement-row select,
 body.layout-mobile .room-eq-channel-measurement-row select { flex-basis: calc(100% - 130px); }
-body.layout-mobile .room-eq-response-legend {
-    top: 5px;
-    right: 5px;
-    font-size: 10px;
-}
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-additional-eq-type-label {
     flex: 0 0 auto;
     min-width: 78px;
@@ -462,8 +384,7 @@ body.layout-mobile .room-eq-additional-eq-ui .room-eq-phase-response,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-group-delay-grid,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-group-delay-response,
 body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-grid,
-body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-response,
-body.layout-mobile .room-eq-additional-eq-ui .room-eq-hover-overlay {
+body.layout-mobile .room-eq-additional-eq-ui .room-eq-impulse-response {
     width: calc(100% - 40px) !important;
     height: calc(100% - 40px) !important;
 }

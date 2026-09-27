@@ -127,6 +127,7 @@ Click **Effect Presets** in the effect header to compare complete cone-motion se
 - Live transfer curve graph showing how displacement is being saturated
 - Clear visual feedback of distortion characteristics
 - Visual representation of how Distortion Drive and Bias affect the sound
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Music Enhancement Tips
 - For Subtle Warmth:
@@ -207,6 +208,7 @@ An effect that adds harmonic content to enhance clarity and presence. By filteri
 - High-pass filter frequency response graph
 - Saturation transfer curve visualization
 - Clear visual feedback for both filter and saturation
+- Hover over either graph, or touch and drag on it, to read the values at that point.
 
 ### Music Enhancement Tips
 - For Clearer Voices in Songs, Podcasts, or Videos:
@@ -272,6 +274,7 @@ A digital clipping effect that limits peaks above a set threshold. Use it when y
 - Real-time graph showing how the sound is being shaped
 - Clear visual feedback as you adjust settings
 - Reference lines to help guide your adjustments
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Listening Tips
 - For subtle enhancement:
@@ -321,6 +324,7 @@ The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-o
 - Transfer curve showing how input levels are shaped into output levels
 - Intuitive sliders and input fields that provide immediate feedback
 - The graph updates as harmonic and sensitivity settings change
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Quick Start Guide
 1. **Initialization:** Start with default settings (2nd: 2%, 3rd: 3%, 4th: 0.5%, 5th: 0.3%, Sensitivity: 0.5)
@@ -374,6 +378,7 @@ Because this processes frequency bands, it affects all sounds in the selected ra
 - Interactive band selection tabs
 - Real-time transfer curve graph for each band
 - Clear visual feedback as you adjust settings
+- Hover over a band's graph, or touch and drag on it, to read the values at that point.
 
 ### Music Enhancement Tips
 - For Full Mix Enhancement:
@@ -449,6 +454,7 @@ An effect that simulates the warm, pleasant sound of vintage tube equipment. It 
 - Clear graph showing how the sound is being shaped
 - Real-time visual feedback
 - Easy-to-read controls
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Music Enhancement Tips
 - Classical & Jazz:
@@ -507,6 +513,7 @@ A specialized effect that reinforces the low end by mixing in a filtered low-fre
 - Live frequency response graph
 - Clear visualization of filter curves
 - Real-time visual feedback
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Music Enhancement Tips
 - For General Bass Enhancement:
@@ -649,3 +656,6 @@ Changing circuit parameters can cause a large level jump. With **Auto Gain Reduc
 - The status below the graph shows whether the effect is active or bypassed and displays any automatic output reduction.
 
 Tube Simulator adds a short processing delay of about 0.3-1.5ms, depending on sample rate.
+
+### Visual Display
+- Hover over the graph, or touch and drag on it, to read the plate voltage and current at that point and, where plate curves are drawn, the grid voltage of the nearest curve.

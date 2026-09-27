@@ -53,11 +53,4 @@ A simple yet effective equalizer that gently tilts the frequency balance of your
   - Positive values make the sound brighter; negative values make it warmer.
   - Smaller values make gentler changes.
 
-### Visual Display
-- Simple slider for easy slope adjustment
-- Real-time frequency response curve to show the tilt effect
-- Clear indication of current slope value
-
-- Quick reset button
-
 [Back to all effects](/dsp/effects/)

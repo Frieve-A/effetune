@@ -71,10 +71,4 @@ A precision band-pass filter that combines high-pass and low-pass filters to all
   - -36dB/oct: Stronger filtering (LR6 - 6th order Linkwitz-Riley)
   - -48dB/oct: Very strong filtering (LR8 - 8th order Linkwitz-Riley)
 
-### Visual Display
-- Real-time frequency response graph with logarithmic frequency scale
-- Clear visualization of both filter slopes and cutoff points
-- Interactive controls for precise adjustment
-- Frequency grid with markers at key reference points
-
 [Back to all effects](/dsp/effects/)

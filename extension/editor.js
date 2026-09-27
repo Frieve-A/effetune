@@ -20,6 +20,12 @@ const TRANSIENT_MESSAGE_DURATION_MS = 3000;
 const VIRTUAL_MEASUREMENT_CHANNEL_SEPARATOR = '::ch=';
 const SAMPLE_RATES = new Set([44100, 48000, 96000, 192000]);
 const DOCUMENTATION_BASE_URL = 'https://effetune.frieve.com';
+const VISUALIZER_INACTIVE_MESSAGE = 'Start EffeTune on a tab to show Visualizer.';
+// Extension-only wording for shared keys whose Web text does not apply here.
+const EXTENSION_TRANSLATIONS = Object.freeze({
+  'visualizer.unavailable': VISUALIZER_INACTIVE_MESSAGE,
+  'visualizer.disabled': VISUALIZER_INACTIVE_MESSAGE
+});
 
 const STATUS_LABELS = Object.freeze({
   stopped: 'Not processing',
@@ -92,13 +98,15 @@ export function getExtensionDocumentationUrl(path) {
   return `${DOCUMENTATION_BASE_URL}/docs${htmlPath}${anchor ? `#${anchor}` : ''}`;
 }
 
-export function createUiManager(translations, showMessage, hideMessage) {
+export function createUiManager(sourceTranslations, showMessage, hideMessage, openSharedVisualizer) {
+  const translations = { ...sourceTranslations, ...EXTENSION_TRANSLATIONS };
   return {
     translations,
     englishTranslations: translations,
     expandedPlugins: new Set(),
     layoutMode: new LayoutModeManager(),
     debugChannelCount: 2,
+    openSharedVisualizer,
     t(key, params = {}) {
       return substitute(translations[key] || key, params);
     },
@@ -108,7 +116,8 @@ export function createUiManager(translations, showMessage, hideMessage) {
     isDoubleBlindActive() { return false; },
     getLocalizedDocPath(path) { return getExtensionDocumentationUrl(path); },
     showTransientMessage(key, isError = false, params = {}, duration = 3000) {
-      const fallback = isError ? 'Something went wrong. Try again.' : 'Pipeline updated.';
+      // Shared views may pass an already translated sentence instead of a key.
+      const fallback = /\s/.test(key) ? key : (isError ? 'Something went wrong. Try again.' : 'Pipeline updated.');
       showMessage(substitute(translations[key] || fallback, params), !isError, duration);
     },
     setError(key, isError = key.startsWith('error.'), params = {}) {
@@ -161,6 +170,8 @@ export class ExtensionAudioManager {
     this.audioContext = audioContext;
     this.contextManager = { workletNode: this.workletNode, audioContext };
     this.pipelineProcessor = { setMasterBypass() {} };
+    this.listeners = new Map();
+    this.dspReady = false;
   }
 
   get pipeline() { return this.pipelineA; }
@@ -173,7 +184,39 @@ export class ExtensionAudioManager {
   notifyPipelineAnalysisInvalidated() {}
   rebuildPipeline() { window.FrequencyPreview?.stop?.(); }
   setFrequencyPreview(frequency) { this.client.sendFrequencyPreview(frequency); }
-  dispatchEvent() {}
+
+  addEventListener(name, listener) {
+    if (!this.listeners.has(name)) this.listeners.set(name, new Set());
+    this.listeners.get(name).add(listener);
+  }
+
+  removeEventListener(name, listener) { this.listeners.get(name)?.delete(listener); }
+
+  dispatchEvent(name, data) {
+    for (const listener of [...(this.listeners.get(name) || [])]) listener(data);
+  }
+
+  isDspReady() { return this.dspReady; }
+
+  setDspReady(ready) {
+    const becameReady = ready && !this.dspReady;
+    this.dspReady = ready;
+    // A recreated worklet restarts its frame counters, so listeners resubscribe with fresh tap IDs.
+    if (becameReady) this.dispatchEvent('dspReady');
+  }
+
+  setVisualizerSources(sources) {
+    // Bypass the mutation queue: its settlement would restore the pipeline snapshot.
+    const sessionId = this.client.sessionId;
+    if (!sessionId) return;
+    const key = JSON.stringify([sessionId, sources]);
+    if (key === this.lastVisualizerSourcesKey) return;
+    this.lastVisualizerSourcesKey = key;
+    this.client.request('setVisualizerSources', { sources }).catch(error => {
+      if (this.lastVisualizerSourcesKey === key) this.lastVisualizerSourcesKey = null;
+      console.error('[EffeTune extension] Visualizer sources update failed', error);
+    });
+  }
 
   enqueue(operation) {
     const generation = this.mutationGeneration;
@@ -346,6 +389,7 @@ export class ExtensionEditor {
       presetFile: this.document.getElementById('editorPresetFile'),
       undo: this.document.getElementById('undoButton'),
       redo: this.document.getElementById('redoButton'),
+      visualizerButton: this.document.getElementById('editorVisualizerButton'),
       message: this.document.getElementById('editorMessage')
     };
 
@@ -371,13 +415,18 @@ export class ExtensionEditor {
     this.uiManager = createUiManager(
       translations,
       (text, success, duration) => this.showMessage(text, success, duration),
-      () => this.hideMessage()
+      () => this.hideMessage(),
+      encoded => this.openSharedVisualizer(encoded)
     );
     this.mobileShell = new ExtensionMobileShell({
       documentRef: this.document,
       translate: (key, fallback) => translations[key] || fallback
     });
     this.uiManager.mobileNav = this.mobileShell;
+    this.uiManager.hideVisualizerView = options => {
+      void this.setVisualizerVisible(false, options)
+        .catch(error => console.error('[EffeTune extension] Visualizer could not be closed', error));
+    };
     this.mobileNumberKeypad = new MobileNumberKeypad({
       documentRef: this.document,
       isEnabled: () => this.uiManager.layoutMode.isMobile,
@@ -521,6 +570,13 @@ export class ExtensionEditor {
     this.elements.exportPreset.addEventListener('click', () => {
       this.closeSettingsMenu();
       void this.exportPreset();
+    });
+    this.elements.visualizerButton?.addEventListener('click', () => {
+      const visible = !this.document.body.classList.contains('view-visualizer');
+      void this.setVisualizerVisible(visible).catch(error => {
+        this.visualizerModulePromise = null;
+        this.reportError(error, 'Visualizer could not be opened. Try again.');
+      });
     });
     this.elements.undo.addEventListener('click', () => this.pipelineManager.undo());
     this.elements.redo.addEventListener('click', () => this.pipelineManager.redo());
@@ -717,6 +773,7 @@ export class ExtensionEditor {
 
   syncRuntimeState(snapshot) {
     this.audioManager.masterBypass = snapshot.masterBypass === true;
+    this.audioManager.setDspReady(snapshot.status === 'processing');
     this.audioManager.workletNode.context.sampleRate = snapshot.sampleRate || 48000;
     this.pipelineManager.core.enabled = !this.audioManager.masterBypass;
     this.pipelineManager.core.masterToggle?.classList.toggle('off', this.audioManager.masterBypass);
@@ -1098,9 +1155,40 @@ export class ExtensionEditor {
     }
   }
 
-  updateTelemetrySubscription() {
-    return this.client.request('setTelemetry', { enabled: !this.document.hidden })
-      .catch(error => console.error('[EffeTune extension] Telemetry subscription failed', error));
+  async updateTelemetrySubscription() {
+    const enabled = !this.document.hidden;
+    try {
+      await this.client.request('setTelemetry', { enabled });
+    } catch (error) {
+      console.error('[EffeTune extension] Telemetry subscription failed', error);
+      return;
+    }
+    // Subscribing clears this editor's Visualizer sources in the session; republish them.
+    if (enabled) this.audioManager?.dispatchEvent('dspReady');
+  }
+
+  async openSharedVisualizer(encoded) {
+    await this.setVisualizerVisible(true);
+    await this.visualizerView.importShared(encoded);
+  }
+
+  async setVisualizerVisible(visible, options = {}) {
+    const revision = this.visualizerRevision = (this.visualizerRevision || 0) + 1;
+    if (visible && !this.visualizerView) {
+      this.visualizerModulePromise ||= import('../js/visualizer/visualizer-view.js');
+      const { VisualizerView } = await this.visualizerModulePromise;
+      this.visualizerView ||= new VisualizerView(this.uiManager);
+    }
+    const view = this.visualizerView;
+    if (!view) return;
+    await view.initialized;
+    if (revision !== this.visualizerRevision) return;
+    if (visible) view.show();
+    else view.hide(options);
+    this.document.body.classList.toggle('view-visualizer', visible);
+    this.elements.visualizerButton?.classList.toggle('active', visible);
+    this.elements.visualizerButton?.setAttribute('aria-pressed', String(visible));
+    if (visible) view.updateVisibility();
   }
 
 }

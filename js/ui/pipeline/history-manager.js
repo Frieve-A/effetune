@@ -72,6 +72,18 @@ export class HistoryManager {
         };
     }
 
+    get canUndo() {
+        return this.historyIndex > 0;
+    }
+
+    get canRedo() {
+        return this.historyIndex < this.history.length - 1;
+    }
+
+    updateEditButtons() {
+        globalThis.window?.uiManager?.updateEditButtons?.();
+    }
+
     statesEqual(left, right) {
         return left === right || (left !== null && right !== null &&
             JSON.stringify(left) === JSON.stringify(right));
@@ -95,6 +107,7 @@ export class HistoryManager {
                 if (this.activeOperationOwnerIndex < 0) this.endOperation();
             }
         }
+        this.updateEditButtons();
     }
 
     /**
@@ -123,6 +136,7 @@ export class HistoryManager {
                     this.activeOperationShiftedStates = [];
                 }
                 this.activeOperationOwnerIndex = -1;
+                this.updateEditButtons();
             }
             return;
         }
@@ -163,6 +177,7 @@ export class HistoryManager {
         }
         
         this.historyIndex--;
+        this.updateEditButtons();
         this.loadStateFromHistory();
     }
     
@@ -181,6 +196,7 @@ export class HistoryManager {
         }
         
         this.historyIndex++;
+        this.updateEditButtons();
         this.loadStateFromHistory();
     }
     

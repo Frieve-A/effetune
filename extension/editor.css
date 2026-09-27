@@ -66,6 +66,8 @@
 .extension-editor #systemPresetsTab, .extension-editor #userPresetsTab { display: none; }
 .extension-editor .pipeline-item { min-width: 0; max-width: none; }
 .extension-editor .pipeline-item .plugin-ui { overflow-x: auto; }
+/* The extension header is shorter than the Web header the shared Visualizer height assumes. */
+.extension-editor .visualizer-workspace { height: calc(100vh - 170px); }
 
 .extension-dialog-overlay {
   position: fixed;

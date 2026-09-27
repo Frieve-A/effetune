@@ -1291,6 +1291,20 @@ class FMRadioSimulatorPlugin extends PluginBase {
             this.hudObserver.observe(this.hudCanvas);
         }
         this.startAnimation();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this.hudCanvas,
+            plot: () => {
+                const frame = this._readoutFrame;
+                return frame?.valid ? {
+                    left: frame.plotLeft,
+                    top: frame.plotTop,
+                    width: frame.plotWidth,
+                    height: frame.plotHeight
+                } : null;
+            },
+            read: x => this._readHud(x)
+        });
         return container;
     }
 
@@ -1353,6 +1367,8 @@ class FMRadioSimulatorPlugin extends PluginBase {
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         ctx.fillRect(0, 0, width, height);
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
 
         if (mode !== 'active') {
             const messages = {
@@ -1371,6 +1387,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
             ctx.fillStyle = (window.ThemePalette?.get('graph-tone-58') ?? '');
             ctx.font = `${Math.round(11 * dpr)}px Arial`;
             ctx.fillText(detail, width / 2, height * 0.65);
+            this._graphReadout?.refresh();
             return;
         }
 
@@ -1387,7 +1404,10 @@ class FMRadioSimulatorPlugin extends PluginBase {
         const plotBottom = height - statusHeight - 16 * dpr;
         const plotWidth = plotRight - plotLeft;
         const plotHeight = plotBottom - plotTop;
-        if (plotWidth <= 0 || plotHeight <= 0) return;
+        if (plotWidth <= 0 || plotHeight <= 0) {
+            this._graphReadout?.refresh();
+            return;
+        }
 
         const floorDb = FM_RADIO_SIMULATOR_SPECTRUM_FLOOR_DB;
         const logSpan = Math.log(FM_RADIO_SIMULATOR_SPECTRUM_MAX_HZ /
@@ -1453,6 +1473,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = 2 * dpr;
         ctx.stroke();
+        Object.assign(frame, { valid: true, plotLeft, plotTop, plotWidth, plotHeight, spectrum, dbToY });
 
         // Status area: signal meter, CNR, stereo lamp + blend, multipath,
         // clicks. Narrow layouts split the six items into two rows so every
@@ -1495,6 +1516,21 @@ class FMRadioSimulatorPlugin extends PluginBase {
                 textX += ctx.measureText?.(text)?.width ?? text.length * 6 * dpr;
             }
         });
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the MPX spectrum at canvas pixel x, interpolating between the drawn bins.
+    _readHud(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format, columnValueAt } = window.GraphReadout;
+        const db = columnValueAt(frame.spectrum,
+            (x - frame.plotLeft) / frame.plotWidth * (frame.spectrum.length - 1)) ?? NaN;
+        return {
+            cursor: format.frequency(window.FrequencyAxis.positionToFrequency(x - frame.plotLeft,
+                frame.plotWidth, FM_RADIO_SIMULATOR_SPECTRUM_MIN_HZ, FM_RADIO_SIMULATOR_SPECTRUM_MAX_HZ)),
+            rows: [{ label: 'MPX', color: 'var(--et-graph-trace)', value: format.db(db), y: frame.dbToY(db) }]
+        };
     }
 
     cleanup() {

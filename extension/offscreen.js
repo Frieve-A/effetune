@@ -99,7 +99,7 @@ async function createSession(args) {
     frame.src = chrome.runtime.getURL('extension/session.html');
     const connection = new MessageChannel();
     const session = { frame, port: connection.port1, pending: new Map(), sequence: 0, irIds: new Set(),
-        telemetry: false, frequencyPreviewOwner: null,
+        telemetry: false, frequencyPreviewOwner: null, visualizerOwner: null,
         state: { sessionId, tabId: args.tabId, title: args.title, url: args.url, status: 'starting',
             presetName, plugins, masterBypass: settings.masterBypass, sampleRate: settings.sampleRate,
             error: null, powerState: 'ACTIVE', preparationStatuses: [] } };
@@ -144,9 +144,15 @@ async function createSession(args) {
 
 function removeViewer(id) {
     viewers.delete(id);
-    for (const session of sessions.values()) if (session.frequencyPreviewOwner === id) {
-        session.frequencyPreviewOwner = null;
-        requestSession(session, 'frequencyPreview', { frequency: null }).catch(console.error);
+    for (const session of sessions.values()) {
+        if (session.frequencyPreviewOwner === id) {
+            session.frequencyPreviewOwner = null;
+            requestSession(session, 'frequencyPreview', { frequency: null }).catch(console.error);
+        }
+        if (session.visualizerOwner === id) {
+            session.visualizerOwner = null;
+            requestSession(session, 'setVisualizerSources', { sources: [] }).catch(console.error);
+        }
     }
 }
 
@@ -255,6 +261,14 @@ async function handle(command, args = {}, clientId = null, updateSession = reque
             }
             synchronizeTelemetry();
             return snapshot();
+        }
+        if (command === 'setVisualizerSources') {
+            const session = sessions.get(args.sessionId);
+            // Sources do not change the shared state, so reply without a revisioned snapshot.
+            if (!session || !isLive(session.state)) return null;
+            session.visualizerOwner = clientId;
+            await requestSession(session, command, { sources: args.sources });
+            return null;
         }
         const session = selectedSession(args);
         if (command === 'stop' || command === 'setBypass') {

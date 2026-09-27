@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, createDefaultLayout, createItem,
+import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, createDefaultLayout, createItem,
     layoutsEqual, normalizeEffect, normalizeLayout, normalizeParams, paletteModesForType, snapshotLayout, validateLayout,
     encodeLayoutShare, decodeLayoutShare, layoutShareParam } from '../../js/visualizer/visualizer-model.js';
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
@@ -25,15 +25,15 @@ test('layout share links round-trip without the background image and reject inva
 });
 
 test('original analyzer parameters and optional note octave mapping normalize in one place', () => {
-    assert.deepEqual(normalizeParams('spectrum'), { dr: -96, pt: 12, sc: 'log-hq', kb: false, dm: 'line', quantizeBars: true,
-        orientation: 'horizontal', gainDb: 0, showAxes: false, showAxisNumbers: false });
+    assert.deepEqual(normalizeParams('spectrum'), { dr: -96, pt: 12, sc: 'log-hq', kb: false, kl: 100, dm: 'line', quantizeBars: true,
+        orientation: 'horizontal', cf: 0, pk: true, ph: 0, pf: 1, sm: 0, gainDb: 0, showAxes: false, showAxisNumbers: false });
     assert.equal(createItem('spectrogram', 'new-spectrogram').params.sc, 'log-hq');
     assert.equal(createDefaultLayout().items[0].params.sc, 'log-hq');
     assert.equal(normalizeParams('spectrum', { sc: 'log' }).sc, 'log');
     assert.equal(normalizeParams('spectrum', { orientation: 'diagonal' }).orientation, 'horizontal');
     assert.deepEqual(normalizeParams('spectrum', { orientation: 'vertical', dm: 'bar', sc: 'linear', pt: 10 }),
-        { dr: -96, pt: 10, sc: 'linear', kb: false, dm: 'bar', quantizeBars: true, orientation: 'vertical', gainDb: 0,
-            showAxes: false, showAxisNumbers: false });
+        { dr: -96, pt: 10, sc: 'linear', kb: false, kl: 100, dm: 'bar', quantizeBars: true, orientation: 'vertical',
+            cf: 0, pk: true, ph: 0, pf: 1, sm: 0, gainDb: 0, showAxes: false, showAxisNumbers: false });
     assert.equal(normalizeParams('spectrum', { dm: 'bar', quantizeBars: false }).quantizeBars, false);
     assert.equal(normalizeParams('spectrogram', { sc: 'linear' }).sc, 'linear');
     const savedLayout = createDefaultLayout();
@@ -41,19 +41,19 @@ test('original analyzer parameters and optional note octave mapping normalize in
     Object.assign(savedLayout.items[0].params, { kb: true, showAxes: true, showAxisNumbers: true });
     const restored = normalizeLayout(savedLayout).items[0].params;
     assert.deepEqual([restored.sc, restored.kb, restored.showAxes, restored.showAxisNumbers], ['log', true, true, true]);
-    assert.deepEqual(normalizeParams('spectrogram', { dr: -200, pt: 15, sc: 'log-hq', kb: true, gainDb: 30, showAxes: false, showAxisNumbers: true }),
-        { dr: -144, pt: 14, sc: 'log-hq', kb: true, gainDb: 24, showAxes: false, showAxisNumbers: true });
+    assert.deepEqual(normalizeParams('spectrogram', { dr: -200, pt: 15, sc: 'log-hq', kb: true, kl: 250, gainDb: 30, showAxes: false, showAxisNumbers: true }),
+        { dr: -144, pt: 14, sc: 'log-hq', kb: true, kl: 200, gainDb: 24, showAxes: false, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('stereo'),
-        { wt: 0.1, gainDb: 0, showCorrelation: true, showBalance: true, showAxes: false, showAxisNumbers: false });
-    assert.deepEqual(normalizeParams('stereo', { showCorrelation: false, showBalance: false }),
-        { wt: 0.1, gainDb: 0, showCorrelation: false, showBalance: false, showAxes: false, showAxisNumbers: false });
+        { wt: 0.1, gainDb: 0, pk: true, ph: 0, pf: 1, showCorrelation: true, showBalance: true, showAxes: false, showAxisNumbers: false });
+    assert.deepEqual(normalizeParams('stereo', { showCorrelation: false, showBalance: false, pf: 0.1 }),
+        { wt: 0.1, gainDb: 0, pk: true, ph: 0, pf: 1, showCorrelation: false, showBalance: false, showAxes: false, showAxisNumbers: false });
     const stereo = createItem('stereo', 'stereo');
     stereo.params.showCorrelation = false;
     stereo.params.showBalance = false;
     assert.deepEqual(normalizeLayout({ ...createDefaultLayout(), items: [stereo] }).items[0].params,
         normalizeParams('stereo', { showCorrelation: false, showBalance: false }));
     assert.deepEqual(normalizeParams('notes', { pr: 'High', ly: 'Vertical', vl: false, ts: 9, mn: 90, mx: 40, nc: 16 }),
-        { pr: 'High', ly: 'Vertical', kb: false, vl: false, ts: 9, mn: 90, mx: 90, nc: 16, showAxes: false, showAxisNumbers: false });
+        { pr: 'High', ly: 'Vertical', kb: false, kl: 100, vl: false, ts: 9, mn: 90, mx: 90, nc: 16, showAxes: false, showAxisNumbers: false });
     const notes = createItem('notes', 'notes');
     assert.equal(notes.params.kb, false);
     assert.equal(notes.palette.mode, 'solid');
@@ -105,7 +105,7 @@ test('item color modes preserve independent solid color and gradient settings', 
     assert.equal(normalizeLayout({ ...createDefaultLayout(), items: [stereo] }).items[0].palette.mode, 'solid');
     const meter = createItem('level-meter', 'meter');
     assert.deepEqual(meter.params, { dr: -96, orientation: 'horizontal', showLevelValues: false,
-        showAxes: false, showAxisNumbers: false });
+        cf: 1, pk: true, ph: 1, pf: 1, showAxes: false, showAxisNumbers: false });
     assert.equal(meter.channel, null);
     assert.equal(meter.palette.mode, 'solid');
     meter.palette.mode = 'heatmap';
@@ -114,7 +114,7 @@ test('item color modes preserve independent solid color and gradient settings', 
     assert.equal(restoredMeter.palette.mode, 'heatmap');
     assert.equal(restoredMeter.params.showAxes, true);
     assert.deepEqual(normalizeParams('level-meter', { dr: -61, orientation: 'vertical', showLevelValues: true }),
-        { dr: -61, orientation: 'vertical', showLevelValues: true, showAxes: false, showAxisNumbers: false });
+        { dr: -61, orientation: 'vertical', showLevelValues: true, cf: 1, pk: true, ph: 1, pf: 1, showAxes: false, showAxisNumbers: false });
     assert.equal(normalizeParams('level-meter', { dr: -200 }).dr, -144);
     assert.equal(normalizeParams('level-meter', { dr: -20 }).dr, -48);
     assert.equal(normalizeParams('level-meter', { orientation: 'diagonal' }).orientation, 'horizontal');
@@ -155,12 +155,12 @@ test('Gradient direction survives presets and sharing while existing layouts kee
 
 test('Chroma defaults and octave bounds follow its native controls', () => {
     const chroma = createItem('chroma', 'chroma');
-    assert.deepEqual(chroma.params, { dm: 0, lo: 1, hi: 7, ft: 3, lr: 24, df: -60,
+    assert.deepEqual(chroma.params, { dm: 0, lo: 1, hi: 7, ft: 3, lr: 24, df: -60, cf: 0,
         showAxes: false, showAxisNumbers: false });
     assert.equal(chroma.channel, null);
     assert.equal(chroma.palette.mapping, 'range');
     assert.deepEqual(normalizeParams('chroma', { dm: 2, lo: 8, hi: 2, ft: 2.74, lr: 100, df: -200 }),
-        { dm: 0, lo: 8, hi: 8, ft: 2.5, lr: 96, df: -120,
+        { dm: 0, lo: 8, hi: 8, ft: 2.5, lr: 96, df: -120, cf: 0,
             showAxes: false, showAxisNumbers: false });
 });
 
@@ -218,6 +218,70 @@ test('Oscilloscope preserves its trigger and display settings in layouts', () =>
         te: 'invalid', ho: 0, dl: -200, vo: 2 }),
         { dt: 0.1, tm: 'Auto', tl: -1, te: 'Rising', ho: 0.0001, dl: -96, vo: 1,
             showAxes: false, showAxisNumbers: false });
+});
+
+test('Graph scale normalizes into range and always accompanies a layout', () => {
+    assert.equal(createDefaultLayout().graphScale, 1);
+    assert.equal(normalizeLayout({}).graphScale, 1);
+    assert.equal(normalizeLayout({ graphScale: 0.1 }).graphScale, 0.5);
+    assert.equal(normalizeLayout({ graphScale: 10 }).graphScale, 3);
+    assert.equal(normalizeLayout({ graphScale: 1.234 }).graphScale, 1.25);
+});
+
+test('saved layouts accept only missing newly defaulted fields and retain strict supplied-value validation', () => {
+    // The original default snapshot predates Graph Scale and analyzer ballistics.
+    const original = {
+        aspect: '16:9', background: { color: '#080d1c', image: null, effects: [] },
+        items: [{ id: 'main-spectrum', type: 'spectrum', rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+            channel: null, flipX: false, flipY: false,
+            palette: { stops: [{ pos: 0, color: '#40dfff' }], motion: { mode: 'none', speed: 0.25 }, mode: 'solid', color: '#40dfff' },
+            params: { dr: -96, pt: 12, sc: 'log-hq', kb: false, dm: 'line', quantizeBars: true,
+                orientation: 'horizontal', gainDb: 0, showAxes: false, showAxisNumbers: false }, style: {}, effects: [] }]
+    };
+    assert.equal(validateLayout(original), true);
+    assert.deepEqual(normalizeLayout(original), createDefaultLayout());
+    assert.deepEqual(decodeLayoutShare(encodePipelineState(original)), original);
+    assert.equal(Object.hasOwn(original, 'graphScale'), false, 'Validation does not rewrite the input');
+    for (const [type, keys] of Object.entries({
+        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm'], spectrogram: ['kl'], notes: ['kl'],
+        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf'], chroma: ['cf']
+    })) {
+        const layout = { ...createDefaultLayout(), items: [createItem(type, type)] };
+        const saved = structuredClone(layout);
+        delete saved.graphScale;
+        for (const key of keys) delete saved.items[0].params[key];
+        assert.equal(validateLayout(saved), true, type);
+        assert.deepEqual(normalizeLayout(saved), layout);
+        for (const key of keys) {
+            for (const invalid of [null, undefined, 'invalid', key === 'pk' ? 0 : 999]) {
+                const supplied = structuredClone(saved);
+                supplied.items[0].params[key] = invalid;
+                assert.equal(validateLayout(supplied), false, `${type}.${key}=${invalid}`);
+            }
+        }
+        const missingOriginal = structuredClone(saved);
+        delete missingOriginal.items[0].params.showAxes;
+        assert.equal(validateLayout(missingOriginal), false, `${type} still requires original parameters`);
+        saved.items[0].params.extra = 1;
+        assert.equal(validateLayout(saved), false, 'Unknown fields remain invalid');
+    }
+    for (const invalid of [null, undefined, '1', 10, 1.234]) {
+        assert.equal(validateLayout({ ...original, graphScale: invalid }), false, `graphScale=${invalid}`);
+    }
+});
+
+test('Fall time, peak toggle, peak fall time, and smoothing normalize per type', () => {
+    assert.deepEqual(normalizeParams('spectrum', { cf: 10, ph: 20, pf: 20, sm: 2 }),
+        { ...normalizeParams('spectrum'), cf: 5, ph: 10, pf: 10, sm: 1 });
+    assert.equal(normalizeParams('spectrum', { pk: false }).pk, false);
+    assert.equal(normalizeParams('spectrum', { cf: 0.123 }).cf, 0.1);
+    assert.equal(Object.hasOwn(normalizeParams('spectrogram'), 'cf'), false);
+    assert.deepEqual(normalizeParams('level-meter', { cf: -5, ph: -5, pf: 0 }),
+        { ...normalizeParams('level-meter'), cf: 0, ph: 0, pf: 0.1 });
+    assert.equal(normalizeParams('level-meter', { pk: false }).pk, false);
+    assert.equal(normalizeParams('chroma', { cf: 3.14 }).cf, 3.15);
+    assert.equal(normalizeParams('stereo', { pk: false }).pk, false);
+    assert.equal(Object.hasOwn(normalizeParams('analog-meter'), 'pk'), false);
 });
 
 test('visualizer layouts normalize unknown and out-of-range settings', () => {
@@ -286,6 +350,19 @@ test('text font choices and emphasis persist without affecting non-text items', 
     const normalized = normalizeLayout({ ...createDefaultLayout(), items: [title] }).items[0];
     assert.deepEqual([normalized.style.fontFamily, normalized.style.bold, normalized.style.italic], ['sans-serif', false, false]);
     assert.deepEqual(createItem('artwork', 'cover').style, { rounded: false });
+});
+
+test('text decorations are optional, persist when set, and clamp invalid values', () => {
+    const title = createItem('title', 'decorated');
+    assert.ok(validateLayout({ ...createDefaultLayout(), items: [title] }));
+    title.style = { ...title.style, verticalAlign: 'bottom', textCase: 'upper', letterSpacing: 4,
+        outlineWidth: 2.5, outlineColor: '#ffffff', shadowColor: '#102030', shadowOpacity: 0.4,
+        shadowBlur: 8, shadowX: -3, shadowY: 5 };
+    assert.ok(validateLayout({ ...createDefaultLayout(), items: [title] }));
+    title.style = { ...title.style, verticalAlign: 'baseline', letterSpacing: 500, outlineColor: 'red', shadowOpacity: -1 };
+    const normalized = normalizeLayout({ ...createDefaultLayout(), items: [title] }).items[0].style;
+    assert.deepEqual([normalized.verticalAlign, normalized.letterSpacing, normalized.outlineColor, normalized.shadowOpacity],
+        [TEXT_DECORATION_DEFAULTS.verticalAlign, 100, TEXT_DECORATION_DEFAULTS.outlineColor, 0]);
 });
 
 test('layout theme colors retain sparse compatibility and snapshot fixed Graphite defaults', () => {

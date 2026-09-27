@@ -122,6 +122,7 @@ Un control de volumen inteligente que ajusta automáticamente tu música para ma
 - Nivel de salida (línea blanca)
 - Retroalimentación visual clara de los ajustes de volumen
 - El gráfico se desplaza de derecha a izquierda, con los niveles más recientes en el borde derecho y marcas cada segundo.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados
 
@@ -288,6 +289,7 @@ Un efecto que suaviza las diferencias de volumen reduciendo con suavidad los pic
 - Indicadores de nivel de volumen fáciles de leer
 - Retroalimentación visual para todos los ajustes de parámetros
 - Líneas de referencia para ayudar a guiar tus ajustes
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados para Diferentes Escenarios de Escucha
 - Escucha Casual de Fondo:
@@ -372,6 +374,7 @@ Un procesador de rango dinámico que expande el rango dinámico de señales por 
 - Indicadores de nivel de volumen fáciles de leer
 - Retroalimentación visual para todos los ajustes de parámetros
 - Líneas de referencia para ayudar a guiar tus ajustes
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados para Diferentes Escenarios de Escucha
 - Restauración de Dinámicas Naturales:
@@ -459,6 +462,7 @@ Una puerta de ruido de banda completa que baja toda la señal cuando el nivel ca
 - Medidor de reducción de ganancia en tiempo real mostrando:
   - Cantidad actual de reducción de ruido
   - Retroalimentación visual de actividad de la puerta
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados
 
@@ -602,6 +606,7 @@ Esta configuración crea el característico sonido "listo para radio":
 - Medidores de reducción de ganancia en tiempo real
 - Visualización de actividad de banda de frecuencia
 - Indicadores claros de puntos de cruce
+- Pasa el cursor sobre el gráfico de una banda, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos de Uso
 - Comienza con el preset predeterminado de radio FM
@@ -730,6 +735,7 @@ Esta configuración crea restauración dinámica de sonido natural:
 - Medidores de actividad de expansión en tiempo real que muestran cuánto se reduce o se eleva cada banda
 - Visualización de actividad de banda de frecuencia
 - Indicadores claros de puntos de cruce
+- Pasa el cursor sobre el gráfico de una banda, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos de Uso
 - Comienza con la configuración predeterminada para restauración dinámica general
@@ -845,6 +851,7 @@ Cada banda de frecuencia tiene controles independientes de modelado de transient
 - Selección interactiva de bandas
 - Retroalimentación visual clara de la actividad de modelado de transientes
 - Los gráficos se desplazan suavemente de derecha a izquierda, con los valores más recientes en el borde derecho.
+- Pasa el cursor sobre el gráfico de una banda, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados
 
@@ -967,6 +974,7 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para empezar con 
 - Visualización basada en tiempo con marcadores de referencia de 1 segundo
 - Valores actuales mostrados en tiempo real
 - Los gráficos se desplazan suavemente de derecha a izquierda, con los valores más recientes en el borde derecho.
+- Pasa el cursor sobre cualquiera de los gráficos, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Configuraciones Recomendadas
 
@@ -1058,6 +1066,7 @@ Un procesador de dinámica especializado que permite realzar o reducir de forma 
 - Marcadores de tiempo para referencia
 - Interfaz intuitiva para todos los parámetros
 - Los gráficos se desplazan suavemente de derecha a izquierda, con los valores más recientes en el borde derecho.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Ajustes Recomendados
 

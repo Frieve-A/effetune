@@ -367,6 +367,7 @@ Cassette Artifacts 结合了盒式磁带的频率响应、磁带压缩、底噪�
   - **Output** - 最终输出电平(干信号加失真,经 Dry-Wet 和 Output Trim 处理之后)。
 - **Analog Transfer Curve** - 显示由 Analog Nonlinearity 和 Even Bias 形成的失真曲线,采用与 Saturation 插件相同的输入/输出表现方式。
 - **Difference-Frequency 视图** - 一张静态图,根据当前噪声设置,展示超声噪声会产生哪些可闻频率。
+- 将鼠标悬停在任意一个图表上，或触摸并拖动，即可读取该位置的数值。
 
 ### 推荐设置
 - 细微(默认):Amount +24 dB,Ultrasonic Level -30 dBFS,Analog Nonlinearity 1.40%,Even Bias 20%,Signal Coupling 150%,Cross Sideband 75%,Scratch Tone 10.5 kHz。
@@ -425,6 +426,9 @@ FM Radio Simulator 让音乐通过一条建模的 FM 广播与接收链路：广
 - **MPath** 以 dB 显示第一条反射波相对直达波的电平 (Multipath 为 0% 时显示 −∞)。
 - **Clicks** 统计每秒最近的 FM 门限咔嗒次数，频繁时会高亮。
 - 如果 **WASM** 引擎不可用，HUD 会显示提示，音频将原样通过。
+
+### 可视化显示
+- 将鼠标悬停在频谱上，或触摸并拖动，即可读取该位置的数值。
 
 ### 推荐设置
 
@@ -924,6 +928,9 @@ TV Audio Simulator让音乐经过模拟电视广播或NICAM数字电视的伴音
 HUD显示Standard和当前通路：`STEREO`、`MAIN`、`SUB`、`NICAM`、`FALLBACK`或`AM`。Carrier与CNR表示电平和质量；Health表示所选立体声或数字通路是否可用；Multipath表示反射信号深度；Errors表示每秒接收错误率。频谱在模拟FM时显示恢复的复合伴音，在L AM时显示检波后音频，在NICAM时显示所选输出。
 
 本模型重现电视伴音的可听特征，而不是完整的图像与射频频道，也不能作为广播测试信号。
+
+### 可视化显示
+- 将鼠标悬停在频谱上，或触摸并拖动，即可读取该位置的数值。
 
 ## Vinyl Artifacts
 

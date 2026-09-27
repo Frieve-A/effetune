@@ -43,11 +43,15 @@ body.layout-mobile .plugin-parameter-ui canvas.spectrum-overlay-canvas {
     display: none;
 }
 
-.room-eq-additional-eq-graph:has(> canvas.spectrum-overlay-canvas):not(
-    .room-eq-phase-view, .room-eq-group-delay-view, .room-eq-impulse-view
-) > .room-eq-response-legend {
-    /* Keep the expanding hover readout clear of the 10px spectrum axis labels. */
-    right: calc(var(--spectrum-overlay-inset, 0px) + 40px);
+:has(> canvas.spectrum-overlay-canvas) {
+    /* Keep the cursor readout clear of the toggle and the 10px spectrum axis labels. */
+    --graph-readout-inset-right: calc(var(--spectrum-overlay-inset, 0px) + 40px);
+}
+
+.room-eq-additional-eq-graph.room-eq-phase-view,
+.room-eq-additional-eq-graph.room-eq-group-delay-view,
+.room-eq-additional-eq-graph.room-eq-impulse-view {
+    --graph-readout-inset-right: 0px;
 }
 
 .spectrum-overlay-toggle {

@@ -20,7 +20,7 @@ Procesa hasta cuatro pestañas de Chrome o Edge con cadenas independientes, prea
 
 ## Video de introducción
 
-[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=--mtsy1t4HI)
+[![YouTube Video](../../../images/video_thumbnail.jpg)](https://www.youtube.com/watch?v=Qb5Airg0kI8)
 
 ## Concepto
 

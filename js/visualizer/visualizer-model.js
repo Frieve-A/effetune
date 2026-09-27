@@ -7,6 +7,9 @@ export const ASPECT_FILES = Object.freeze({
 });
 
 export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'chroma', 'phase', 'analog-meter'];
+// Analyzer graphics (ticks, lines, labels, peak marks) are drawn in these 1280-wide units,
+// so the same geometry looks identical regardless of the output canvas size or window scale.
+export const REFERENCE_WIDTH = 1280;
 export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase'];
 export const META_TYPES = ['artwork', 'title', 'album', 'artist'];
 export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES];
@@ -49,7 +52,7 @@ const CHANNELS = new Set([null, 'L', 'R', ...Array.from({ length: 7 }, (_, i) =>
     ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)]);
 const MOD_SOURCES = ['none', 'time', 'level', 'bass'];
 const DEFAULT_PALETTE = { stops: [{ pos: 0, color: '#40dfff' }], motion: { mode: 'none', speed: 0.25 } }; // theme-allow: Editable scene palette default.
-const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+export const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const choice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
 const number = (value, fallback, min, max) => Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 const color = (value, fallback) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
@@ -96,6 +99,23 @@ function normalizeEffects(values, target) {
         .map(value => normalizeEffect(value, target)).filter(Boolean);
 }
 
+// Text decorations are optional keys so layouts saved without them stay valid; absent keys
+// use TEXT_DECORATION_DEFAULTS. Lengths use the same 1280-pixel-wide units as fontSize.
+const TEXT_DECORATION_RULES = {
+    verticalAlign: value => choice(value, ['top', 'middle', 'bottom'], 'middle'),
+    textCase: value => choice(value, ['none', 'upper', 'lower'], 'none'),
+    letterSpacing: value => Math.round(number(value, 0, -20, 100)),
+    outlineWidth: value => Math.round(number(value, 0, 0, 20) * 2) / 2,
+    outlineColor: value => color(value, '#000000'), // theme-allow: Editable text outline default.
+    shadowColor: value => color(value, '#000000'), // theme-allow: Editable text shadow default.
+    shadowOpacity: value => Math.round(number(value, 0.6, 0, 1) * 100) / 100,
+    shadowBlur: value => Math.round(number(value, 0, 0, 50)),
+    shadowX: value => Math.round(number(value, 0, -50, 50)),
+    shadowY: value => Math.round(number(value, 0, -50, 50))
+};
+export const TEXT_DECORATION_DEFAULTS = Object.freeze(Object.fromEntries(
+    Object.entries(TEXT_DECORATION_RULES).map(([key, rule]) => [key, rule(undefined)])));
+
 function normalizeStyle(type, input) {
     const style = isRecord(input) ? input : {};
     if (['title', 'album', 'artist'].includes(type)) return {
@@ -103,7 +123,9 @@ function normalizeStyle(type, input) {
         fontFamily: choice(style.fontFamily, FONT_FAMILIES.map(([family]) => family), 'sans-serif'),
         bold: style.bold === true,
         italic: style.italic === true,
-        align: choice(style.align, ['left', 'center', 'right'], 'left')
+        align: choice(style.align, ['left', 'center', 'right'], 'left'),
+        ...Object.fromEntries(Object.entries(TEXT_DECORATION_RULES)
+            .filter(([key]) => Object.hasOwn(style, key)).map(([key, rule]) => [key, rule(style[key])]))
     };
     if (type === 'artwork') return { rounded: style.rounded === true };
     return {};
@@ -120,15 +142,26 @@ export function normalizeParams(type, input) {
         pt: Math.round(number(params.pt, 12, 8, 14)),
         sc: choice(params.sc, ['log', 'log-hq', 'linear'], 'log-hq'),
         kb: params.kb === true,
+        kl: Math.round(number(params.kl, 100, 50, 200)),
         ...(type === 'spectrum' ? {
             dm: choice(params.dm, ['line', 'bar'], 'line'),
             quantizeBars: params.quantizeBars !== false,
-            orientation: choice(params.orientation, ['horizontal', 'vertical'], 'horizontal')
+            orientation: choice(params.orientation, ['horizontal', 'vertical'], 'horizontal'),
+            // Fall times are "seconds to fall 20 dB" (0 = instant); pk is the current/peak-hold
+            // display toggle, and ph/pf only matter while it is on.
+            cf: Math.round(number(params.cf, 0, 0, 5) * 20) / 20,
+            pk: params.pk !== false,
+            ph: Math.round(number(params.ph, 0, 0, 10) * 10) / 10,
+            pf: Math.round(number(params.pf, 1, 0.1, 10) * 10) / 10,
+            sm: Math.round(number(params.sm, 0, 0, 1) * 100) / 100
         } : {}),
         gainDb: Math.round(number(params.gainDb, 0, -24, 24)), ...axes
     };
     if (type === 'stereo') return { wt: Math.round(number(params.wt, 0.1, 0.01, 1) * 1000) / 1000,
-        gainDb: Math.round(number(params.gainDb, 0, -24, 24)),
+        gainDb: Math.round(number(params.gainDb, 0, -24, 24)), pk: params.pk !== false,
+        // The DSP envelope already falls 20 dB/s, so slower peak falls are the only ones possible.
+        ph: Math.round(number(params.ph, 0, 0, 10) * 10) / 10,
+        pf: Math.round(number(params.pf, 1, 1, 10) * 10) / 10,
         showCorrelation: params.showCorrelation !== false, showBalance: params.showBalance !== false, ...axes };
     if (type === 'oscilloscope') return {
         dt: Math.round(number(params.dt, 0.01, 0.001, 0.1) * 1000) / 1000,
@@ -142,7 +175,12 @@ export function normalizeParams(type, input) {
     if (type === 'level-meter') return {
         dr: Math.round(number(params.dr, -96, -144, -48)),
         orientation: choice(params.orientation, ['horizontal', 'vertical'], 'horizontal'),
-        showLevelValues: params.showLevelValues === true, ...axes
+        showLevelValues: params.showLevelValues === true,
+        // Defaults match today's fixed ballistics (FALL_RATE = 20 <=> cf = 1.0, etc.).
+        cf: Math.round(number(params.cf, 1, 0, 5) * 20) / 20,
+        pk: params.pk !== false,
+        ph: Math.round(number(params.ph, 1, 0, 10) * 10) / 10,
+        pf: Math.round(number(params.pf, 1, 0.1, 10) * 10) / 10, ...axes
     };
     if (type === 'notes') {
         const mn = Math.round(number(params.mn, 28, 21, 108));
@@ -150,6 +188,7 @@ export function normalizeParams(type, input) {
             pr: choice(params.pr, ['Semitone', 'High'], 'Semitone'),
             ly: choice(params.ly, ['Horizontal', 'Vertical'], 'Horizontal'),
             kb: params.kb === true,
+            kl: Math.round(number(params.kl, 100, 50, 200)),
             vl: params.vl !== false,
             ts: Math.round(number(params.ts, 2, 1, 10)),
             mn, mx: Math.max(mn, Math.round(number(params.mx, 91, 21, 108))),
@@ -163,7 +202,8 @@ export function normalizeParams(type, input) {
             hi: Math.max(lo, Math.round(number(params.hi, 7, 1, 9))),
             ft: Math.round(number(params.ft, 3, -6, 6) * 2) / 2,
             lr: Math.round(number(params.lr, 24, 6, 96)),
-            df: Math.round(number(params.df, -60, -120, -24)), ...axes
+            df: Math.round(number(params.df, -60, -120, -24)),
+            cf: Math.round(number(params.cf, 0, 0, 5) * 20) / 20, ...axes
         };
     }
     if (type === 'phase') return {
@@ -224,7 +264,7 @@ export function createItem(type, id = globalThis.crypto?.randomUUID?.() || `item
 
 export function createDefaultLayout() {
     return {
-        aspect: '16:9', background: { color: '#080d1c', image: null, effects: [] }, // theme-allow: Editable scene background default.
+        aspect: '16:9', graphScale: 1, background: { color: '#080d1c', image: null, effects: [] }, // theme-allow: Editable scene background default.
         items: [createItem('spectrum', 'main-spectrum')]
     };
 }
@@ -256,6 +296,7 @@ export function normalizeLayout(value) {
     });
     return {
         aspect: choice(input.aspect, ASPECTS, '16:9'),
+        graphScale: Math.round(number(input.graphScale, 1, 0.5, 3) * 20) / 20,
         background: {
             color: color(background.color, '#080d1c'), // theme-allow: Editable scene background fallback.
             image: typeof background.image === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/i.test(background.image)
@@ -280,7 +321,23 @@ export function validateLayout(value) {
             Object.keys(a).every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
         return a === b;
     };
-    return same(value, normalizeLayout(value));
+    // Only fields added with defaults may be absent in older saved layouts. Supplied
+    // values and every original field must still match strict normalization.
+    const addedParams = {
+        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm'], spectrogram: ['kl'], notes: ['kl'],
+        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf'], chroma: ['cf']
+    };
+    const comparable = {
+        ...value,
+        graphScale: Object.hasOwn(value, 'graphScale') ? value.graphScale : 1,
+        items: value.items.map(item => {
+            if (!isRecord(item) || !isRecord(item.params) || !Object.hasOwn(addedParams, item.type)) return item;
+            const params = { ...item.params }, defaults = normalizeParams(item.type);
+            for (const key of addedParams[item.type]) if (!Object.hasOwn(params, key)) params[key] = defaults[key];
+            return { ...item, params };
+        })
+    };
+    return same(comparable, normalizeLayout(value));
 }
 
 export function layoutsEqual(a, b) {

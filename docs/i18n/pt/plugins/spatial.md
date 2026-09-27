@@ -301,6 +301,9 @@ A latência de processamento informada pelo Phase Select EQ é a soma do tamanho
 
 A grade de Balance mostra proporções esquerda:direita. Balance 0%, ±17%, ±33%, ±60%, ±82% e ±100% corresponde a 50:50 e, para um lado ou outro, aproximadamente 59:41, 67:33, 80:20, 91:9 e 100:0. As diferenças de nível L/R são aproximadamente 0, ±3, ±6, ±12 e ±20 dB; ±100% significa sinal em apenas um canal.
 
+### Exibição Visual
+- Passe o cursor sobre o mapa, ou toque e arraste, para ler a frequência e a diferença de fase ou o balanço nesse ponto.
+
 ### Guia de melhoria sonora
 
 1. **Suavizar agudos muito abertos**: ajuste um Band em 4–12 kHz e 90–180°. Comece entre 70 e 90%, com transições amplas.

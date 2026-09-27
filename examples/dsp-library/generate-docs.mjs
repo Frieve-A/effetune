@@ -625,6 +625,8 @@ function extractAppSections(catalog, overlay, mapping) {
       `/dsp/effects/${overlay.effects[effect.type].slug ?? slugForType(effect.type)}/`
     );
   }
+  // App-only display subsections are omitted from library pages.
+  const guiOnlyHeadings = new Set(mapping.guiOnlyHeadings);
   const sections = new Map();
   for (const effect of catalog.effects) {
     const [relativeSource, heading] = mapping.effects[effect.type];
@@ -646,8 +648,13 @@ function extractAppSections(catalog, overlay, mapping) {
         break;
       }
     }
+    let skipping = false;
+    const sectionLines = lines.slice(start, end).filter(line => {
+      if (/^###\s/.test(line)) skipping = guiOnlyHeadings.has(line.slice(4));
+      return !skipping;
+    });
     const sourceKey = relativeSource.replaceAll('\\', '/');
-    const section = lines.slice(start, end).join('\n').trimEnd().replace(
+    const section = sectionLines.join('\n').trimEnd().replace(
       /\]\(#([^)]+)\)/g,
       (match, fragment) => {
         const destination = destinationBySourceFragment.get(

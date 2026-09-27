@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { frequencyAxisSource } from '../helpers/spectrum-overlay-harness.mjs';
 import { performance } from 'node:perf_hooks';
 
 function createHub() {
@@ -57,6 +58,7 @@ function loadSpectrumAnalyzer({
     cleanup() { calls.push(['baseCleanup']); }
   }
   installThemePaletteStub(windowRef);
+  vm.runInNewContext(frequencyAxisSource, { window: windowRef });
   vm.runInNewContext(source, {
     window: windowRef,
     PluginBase,
@@ -484,6 +486,8 @@ function createSpectrumDrawRecorder() {
     moveTo(x, y) { record('moveTo', { x, y }); },
     lineTo(x, y) { record('lineTo', { x, y }); },
     rect(x, y, width, height) { record('rect', { x, y, width, height }); },
+    fill() { record('fill', { style: this.fillStyle }); },
+    createLinearGradient: () => ({ addColorStop() {} }),
     stroke() { record('stroke', { style: this.strokeStyle, lineWidth: this.lineWidth }); },
     measureText(text) { return { width: text.length * parseFloat(this.font) * 0.65 }; },
     clip() { record('clip'); },
@@ -766,7 +770,7 @@ test('Spectrum Analyzer keyboard cells follow both frequency scales and clip the
 test('Spectrum Analyzer Keyboard uses Note Spectrogram key colors in Paper and Midnight', () => {
   for (const { theme, background, soft, white } of [
     { theme: 'Paper', background: 'rgb(255, 255, 255)', soft: 'rgb(241, 241, 241)', white: 255 },
-    { theme: 'Midnight', background: 'rgb(7, 11, 20)', soft: 'rgb(24, 31, 42)', white: 221 }
+    { theme: 'Midnight', background: 'rgb(7, 11, 20)', soft: 'rgb(24, 31, 42)', white: 238 }
   ]) {
     const runtime = loadSpectrumAnalyzer();
     const requestedColors = [];
@@ -781,7 +785,7 @@ test('Spectrum Analyzer Keyboard uses Note Spectrogram key colors in Paper and M
     const width = 1024;
     const height = 100;
     const gutter = 44.8;
-    plugin.drawKeyboard(ctx, width, height, gutter, 1);
+    plugin.drawKeyboard(ctx, width, height, gutter, 28, 1);
 
     const fills = operations.filter(operation => operation.type === 'fillRect');
     assert.deepEqual(fills[0], {
@@ -795,7 +799,7 @@ test('Spectrum Analyzer Keyboard uses Note Spectrogram key colors in Paper and M
     const blackKeys = plugin.getKeyboardGeometry(width).filter(key => key.black);
     assert.equal(fills.length, blackKeys.length + 1, theme);
     assert.ok(fills.slice(1).every(operation =>
-      operation.style === 'rgb(34, 34, 34)' &&
+      operation.style === 'rgb(17, 17, 17)' &&
       operation.y === height - gutter &&
       Math.abs(operation.height - 28) < 1e-9
     ), theme);
@@ -821,7 +825,9 @@ test('Spectrum Analyzer Keyboard reserves a DPR-scaled gutter for Line and Bar w
         const { ctx, operations } = createSpectrumDrawRecorder();
         const width = 1024 * dpr;
         const height = 480 * dpr;
-        const plotHeight = height - 44.8 * dpr;
+        const { gutter: keyboardDepth, blackDepth } =
+          runtime.windowRef.FrequencyAxis.keyboardDepths(width / Math.log2(40000 / 20), height);
+        const plotHeight = height - keyboardDepth;
         plugin.canvas = { width, height, getContext: () => ctx };
 
         plugin.drawGraph(0);
@@ -841,7 +847,7 @@ test('Spectrum Analyzer Keyboard reserves a DPR-scaled gutter for Line and Bar w
         const plotClip = operations.find(operation => operation.type === 'rect');
         assert.deepEqual(plotClip, { type: 'rect', x: 0, y: 0, width, height: plotHeight });
         const base = operations.find(operation => operation.type === 'fillRect' && operation.y === plotHeight);
-        assert.deepEqual(base, { type: 'fillRect', style: base.style, x: 0, y: plotHeight, width, height: 44.8 * dpr });
+        assert.deepEqual(base, { type: 'fillRect', style: base.style, x: 0, y: plotHeight, width, height: keyboardDepth });
         const cLabels = operations.filter(operation => operation.type === 'fillText' && /^C\d+$/.test(operation.text));
         assert.ok(cLabels.length > 0);
         for (const label of cLabels) {
@@ -880,15 +886,15 @@ test('Spectrum Analyzer Keyboard reserves a DPR-scaled gutter for Line and Bar w
         assert.ok(bars.every(bar => Math.abs(bar.y + bar.height - plotHeight) < 1e-9));
         const blackKeys = plugin.getKeyboardGeometry(width).filter(key => key.black);
         const blackFills = operations.filter(operation => operation.type === 'fillRect' &&
-          operation.style === 'rgb(34, 34, 34)');
+          operation.style === 'rgb(17, 17, 17)');
         assert.deepEqual(blackFills.map(({ x, width: keyWidth }) => ({ x, width: keyWidth })),
           Array.from(blackKeys, key => ({ x: key.start, width: key.end - key.start })));
         assert.ok(blackFills.every(operation => operation.y === plotHeight &&
-          Math.abs(operation.height - 28 * dpr) < 1e-9));
+          Math.abs(operation.height - blackDepth) < 1e-9));
         const whiteBaseIndex = operations.findIndex(operation => operation.type === 'fillRect' &&
-          operation.y === plotHeight && operation.width === width && operation.height === 44.8 * dpr);
+          operation.y === plotHeight && operation.width === width && operation.height === keyboardDepth);
         const firstBlackIndex = operations.findIndex(operation => operation.type === 'fillRect' &&
-          operation.style === 'rgb(34, 34, 34)');
+          operation.style === 'rgb(17, 17, 17)');
         assert.ok(whiteBaseIndex >= 0 && whiteBaseIndex < firstBlackIndex);
         assert.ok(operations.some(operation => operation.type === 'stroke' &&
           operation.style === 'stub:graph-label' && operation.lineWidth === dpr));
@@ -898,8 +904,9 @@ test('Spectrum Analyzer Keyboard reserves a DPR-scaled gutter for Line and Bar w
         operations.length = 0;
         plugin.canvas.height = 40 * dpr;
         plugin.drawGraph(0);
-        assert.equal(operations.some(operation => operation.type === 'fillText' && /^C\d+$/.test(operation.text)), false);
-        assert.equal(operations.find(operation => operation.type === 'fillText' && operation.text === 'Frequency (Hz)').y, 32 * dpr);
+        // A short graph caps the keyboard at half its height instead of dropping it.
+        assert.deepEqual(operations.find(operation => operation.type === 'rect'),
+          { type: 'rect', x: 0, y: 0, width, height: 20 * dpr });
       }
     }
   }

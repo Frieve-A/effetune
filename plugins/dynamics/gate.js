@@ -726,39 +726,12 @@ class GatePlugin extends PluginBase {
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        const thresholdDb = this.th;
-        const ratio = this.rt;
-        const kneeDb = this.kn;
-        const gainDb = this.gn;
-
         for (let i = 0; i < width; i++) {
-            const inputDb = (i / width) * 96 - 96;
-            
-            const diff = thresholdDb - inputDb;
-            let gainReduction = 0;
-            
-            if (ratio === 1) {
-                gainReduction = 0;
-            } else {
-                if (diff <= -kneeDb / 2) {
-                    gainReduction = 0;
-                } else if (diff >= kneeDb / 2) {
-                    gainReduction = diff * (ratio - 1);
-                } else {
-                    const t = (diff + kneeDb / 2) / kneeDb;
-                    gainReduction = (ratio - 1) * kneeDb * t * t / 2;
-                }
-            }
-            
-            const outputDb = inputDb - gainReduction + gainDb;
-            
-            const x = i;
-            const y = ((outputDb + 96) / 96) * height;
-            
+            const y = this._transferY(this._inputDbAt(i, width), height);
             if (i === 0) {
-                ctx.moveTo(x, height - y);
+                ctx.moveTo(i, y);
             } else {
-                ctx.lineTo(x, height - y);
+                ctx.lineTo(i, y);
             }
         }
         ctx.stroke();
@@ -775,6 +748,57 @@ class GatePlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.valid = true;
+        this._graphReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -96..0 dB across the full width).
+    _inputDbAt(x, width) {
+        return (x / width) * 96 - 96;
+    }
+
+    // Canvas y of an output level on the -96..0 dB axis.
+    _transferY(inputDb, height) {
+        return height - ((inputDb + this._transferGain(inputDb) + 96) / 96) * height;
+    }
+
+    // Static soft-knee gain applied at an input level (makeup gain minus gate reduction).
+    _transferGain(inputDb) {
+        const ratio = this.rt;
+        const kneeDb = this.kn;
+        const diff = this.th - inputDb;
+        let gainReduction = 0;
+        if (ratio !== 1 && diff > -kneeDb / 2) {
+            if (diff >= kneeDb / 2) {
+                gainReduction = diff * (ratio - 1);
+            } else {
+                const t = (diff + kneeDb / 2) / kneeDb;
+                gainReduction = (ratio - 1) * kneeDb * t * t / 2;
+            }
+        }
+        return this.gn - gainReduction;
+    }
+
+    // Reads the transfer curve at canvas pixel x; the GR strip on the left is outside the plot.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inputDb = this._inputDbAt(x, frame.width);
+        const gain = this._transferGain(inputDb);
+        const y = this._transferY(inputDb, frame.height);
+        return {
+            cursor: `in ${format.db(inputDb)}`,
+            rows: [
+                { label: 'out', color: 'var(--et-graph-trace)', value: format.db(inputDb + gain), y },
+                { label: 'Gain', color: 'var(--et-text-primary)', value: format.db(gain, { signed: true }) }
+            ],
+            at: { x, y }
+        };
     }
 
     updateReductionMeter() {
@@ -848,6 +872,13 @@ class GatePlugin extends PluginBase {
 
         this.updateTransferGraph();
         this.startAnimation();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            plot: () => ({ left: 32, top: 0, width: canvas.width - 32, height: canvas.height }),
+            read: x => this._readGraph(x),
+            crosshair: 'xy'
+        });
         return container;
     }
 

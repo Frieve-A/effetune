@@ -572,6 +572,11 @@ class EarphoneCableSimPlugin extends PluginBase {
     this.responseSvg = responseSvg;
     this.observeGraphResize(graphContainer);
     container.appendChild(graphContainer);
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graphContainer,
+      surface: responseSvg,
+      read: x => this._readResponse(x)
+    });
 
     // ---- Amplifier / cable parameters ----
     const ampSection = document.createElement('div');
@@ -834,6 +839,24 @@ class EarphoneCableSimPlugin extends PluginBase {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', pathPoints.join(' '));
     this.responseSvg.appendChild(path);
+    this._responsePath = path;
+    this._graphReadout?.refresh();
+  }
+
+  // Reads the drawn response curve at SVG viewBox x, interpolating between plotted points and
+  // reversing gainToY (dB = R * (1 - 2y/height), the inverse of gainToY's y = 50 - (gain/R)*50).
+  _readResponse(x) {
+    const box = this.responseSvg?.viewBox?.baseVal;
+    if (!box?.width || !box.height || !this._responsePath) return null;
+    const { format, pathValueAt } = window.GraphReadout;
+    const y = pathValueAt(this._responsePath, x);
+    if (y === null) return null;
+    const R = this._dbMapRange || 13.2;
+    const gain = (50 - y / box.height * 100) / 50 * R;
+    return {
+      cursor: format.frequency(window.FrequencyAxis?.positionToFrequency(x, box.width, 10, 40000) ?? NaN),
+      rows: [{ label: 'Response', color: 'var(--et-success)', value: format.db(gain, { signed: true }), y }]
+    };
   }
 
   cleanup() {

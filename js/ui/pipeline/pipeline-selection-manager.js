@@ -84,6 +84,18 @@ export class PipelineSelectionManager {
         
         // Force a synchronous style recalculation and layout
         document.body.getBoundingClientRect();
+        globalThis.window?.uiManager?.updateEditButtons?.();
+    }
+
+    /**
+     * Drop selected plugins that are no longer in the pipeline, such as after undo or a preset load
+     * recreates the plugins. The Set is edited in place because PipelineCore shares it.
+     */
+    pruneSelection() {
+        const pipeline = new Set(this.audioManager.pipeline);
+        for (const plugin of this.selectedPlugins) {
+            if (!pipeline.has(plugin)) this.selectedPlugins.delete(plugin);
+        }
     }
 
     /**

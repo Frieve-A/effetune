@@ -269,6 +269,12 @@ class ChromaSpiralPlugin extends PluginBase {
             this.startAnimation();
         }
         this.drawGraph();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this.canvas,
+            read: (x, y) => this._readSpiral(x, y),
+            crosshair: 'none'
+        });
         return container;
     }
 
@@ -288,7 +294,10 @@ class ChromaSpiralPlugin extends PluginBase {
     }
 
     drawGraph() {
-        if (!this.canvas || !this.canvasCtx) return;
+        if (!this.canvas || !this.canvasCtx) {
+            this._graphReadout?.refresh();
+            return;
+        }
         const ctx = this.canvasCtx;
         const width = this.canvas.width;
         const height = this.canvas.height;
@@ -301,7 +310,13 @@ class ChromaSpiralPlugin extends PluginBase {
             ctx.fillStyle = palette('graph-bg-deep');
             ctx.fillRect(0, 0, width, height);
         }
-        if (outer <= inner) return;
+        const frame = (this._readoutFrame ??= {});
+        Object.assign(frame, { valid: outer > inner, centerX: width / 2, centerY: height / 2,
+            inner, pitch, midiLow, midiEnd });
+        if (outer <= inner) {
+            this._graphReadout?.refresh();
+            return;
+        }
         ctx.save();
         ctx.translate(width / 2, height / 2);
         ctx.lineWidth = dpr;
@@ -405,6 +420,49 @@ class ChromaSpiralPlugin extends PluginBase {
             }
         }
         ctx.restore();
+        this._graphReadout?.refresh();
+    }
+
+    // Snaps canvas pixel (x, y) to the nearest drawn spiral cell.
+    _readSpiral(x, y) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const { inner, pitch, midiLow } = frame;
+        const dx = x - frame.centerX;
+        const dy = y - frame.centerY;
+        const phase = (Math.atan2(dx, -dy) / (2 * Math.PI) + 1) % 1;
+        const turn = Math.round((Math.hypot(dx, dy) - inner) / pitch - phase);
+        const midi = midiLow + (turn + phase) * 12;
+        if (midi < midiLow - 0.5 || midi > frame.midiEnd) return null;
+        let cell = null;
+        for (const candidate of this.display ?? []) {
+            if (!cell || Math.abs(candidate.midi - midi) < Math.abs(cell.midi - midi)) cell = candidate;
+        }
+        const cellMidi = cell && Math.abs(cell.midi - midi) <= 0.5 ? cell.midi : midi;
+        const frequency = 440 * 2 ** ((cellMidi - 69) / 12);
+        const cursor = `${format.note(frequency, 440)} · ${format.frequency(frequency)}`;
+        const base = ChromaSpiralPlugin.spiralPoint(cellMidi, midiLow, inner, pitch);
+        const at = { x: frame.centerX + base.x, y: frame.centerY + base.y };
+        if (cellMidi !== cell?.midi) return { cursor, rows: [{ label: 'Level', value: format.percent(NaN) }], at };
+        const intensity = window.NoteSpectrogramPlugin.normalizedLevel(cell.level, this.levelReference, this.lr, this.df);
+        if (this.dm === 1) {
+            // Normal 2 draws the level as a radial line, so the dot sits on its tip.
+            at.x += Math.sin(base.angle) * intensity * pitch;
+            at.y -= Math.cos(base.angle) * intensity * pitch;
+        }
+        return {
+            cursor,
+            at,
+            rows: [{
+                label: 'Level',
+                color: this.dm === 2
+                    ? `rgb(${window.NoteSpectrogramPlugin.noteColors[Math.round(cell.midi) % 12].join(',')})` // theme-allow: Shared semantic note colors.
+                    : 'var(--et-graph-trace)',
+                value: format.percent(intensity),
+                y: at.y
+            }]
+        };
     }
 
     cleanup() {

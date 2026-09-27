@@ -15,7 +15,7 @@ test('Chroma stays drawable when a small visualizer tile receives a signal', asy
         for (const file of ['note_spectrogram', 'chroma_spiral']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
         }
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display', 'visualizer-renderer']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const result = await page.evaluate(() => {
@@ -30,7 +30,7 @@ test('Chroma stays drawable when a small visualizer tile receives a signal', asy
                 getFrame: () => null,
                 subscribeItem: () => () => {}
             };
-            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             draw();
             const display = renderer.layers.get(item.id).display;
             display.plugin.display = [{ midi: 69, level: -12 }];
@@ -38,7 +38,7 @@ test('Chroma stays drawable when a small visualizer tile receives a signal', asy
             draw();
             item.rect.w = item.rect.h = 0.4;
             draw();
-            const { inner, pitch, midiLow } = display.plugin.getSpiralGeometry(160, 160);
+            const { inner, pitch, midiLow } = display.plugin.getSpiralGeometry(160, 160, display.plugin.graphDpr);
             const point = ChromaSpiralPlugin.spiralPoint(69, midiLow, inner, pitch);
             const pixel = display.plugin.canvasCtx.getImageData(
                 Math.round(80 + point.x), Math.round(80 + point.y), 1, 1).data;
@@ -57,6 +57,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
         const page = await browser.newPage();
         await page.setContent('<!doctype html><body></body>');
         await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
+        await page.addScriptTag({ content: read('../../plugins/frequency-axis.js') });
         await page.addScriptTag({ content: `
             window.ThemePalette = { get: role => role === 'graph-trace' ? 'rgb(0,255,0)' : 'rgb(90,90,90)' };
             const TelemetryFrameType = { TAP_LEVEL: 1, TAP_SPECTRUM: 4, TAP_SPECTROGRAM_COL: 5, TAP_STEREO_FIELD: 6 };
@@ -64,7 +65,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
         for (const file of ['../multires-spectrum', 'spectrum_analyzer', 'spectrogram', 'stereo_meter', 'note_spectrogram', 'chroma_spiral', 'level_meter']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
         }
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-sources', 'visualizer-analyzer-display', 'visualizer-renderer']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-sources', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const result = await page.evaluate(() => {
@@ -83,7 +84,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             item.params.lo = item.params.hi = 4;
             const layout = { ...createDefaultLayout(), items: [item] };
             sources.setLayout(layout); sources.setVisible(true);
-            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             draw();
             const display = renderer.layers.get(item.id).display;
             if (!(display.plugin.canvasCtx instanceof CanvasRenderingContext2D)) throw new Error('Expected native Canvas');
@@ -247,7 +248,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             item.rect = { x: 0, y: 0, w: 1, h: 1 };
             const layout = { ...createDefaultLayout(), items: [item] };
             sources.setLayout(layout); sources.setVisible(true);
-            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             draw();
             const display = renderer.layers.get(item.id).display;
             const factory = display?.plugin instanceof LevelMeterPlugin &&
@@ -404,7 +405,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             item.params.showAxisNumbers = true;
             item.effects = [normalizeEffect({ type: 'opacity', amount: .5 })];
             const layout = { ...createDefaultLayout(), items: [item] };
-            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             draw();
             const display = renderer.layers.get(item.id).display;
             display.plugin.spectrum.fill(-48);

@@ -123,6 +123,7 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar aju
 - Gráfico en vivo de curva de transferencia que muestra cómo se satura el desplazamiento
 - Retroalimentación visual clara de las características de distorsión
 - Representación visual de cómo el Distortion Drive y el Bias afectan al sonido
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos para Mejorar la Música
 - Para Calidez Sutil:
@@ -203,6 +204,7 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
 - Gráfico de respuesta de frecuencia del filtro paso alto
 - Visualización de la curva de transferencia de saturación
 - Retroalimentación visual clara tanto para el filtro como para la saturación
+- Pasa el cursor sobre cualquiera de los gráficos, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos para Mejorar la Música
 - Para Voces más Claras en Canciones, Podcasts o Vídeos:
@@ -268,6 +270,7 @@ Un efecto de clipping digital que limita los picos por encima de un umbral defin
 - Gráfico en tiempo real mostrando cómo se está moldeando el sonido
 - Retroalimentación visual clara al ajustar configuraciones
 - Líneas de referencia para ayudar a guiar tus ajustes
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos de Escucha
 - Para mejora sutil:
@@ -317,6 +320,7 @@ Harmonic Distortion moldea la forma de onda con términos no lineales ajustables
 - Curva de transferencia que muestra cómo los niveles de entrada se moldean en niveles de salida
 - Controles deslizantes e campos de entrada intuitivos que ofrecen retroalimentación inmediata
 - El gráfico se actualiza a medida que cambian los ajustes de armónicos y sensibilidad
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Guía de Inicio Rápido
 1. **Inicialización:** Comienza con la configuración predeterminada (2nd: 2%, 3rd: 3%, 4th: 0.5%, 5th: 0.3%, Sensitivity: 0.5)
@@ -370,6 +374,7 @@ Como procesa bandas de frecuencia, afecta a todos los sonidos del rango seleccio
 - Pestañas interactivas de selección de banda
 - Gráfico de curva de transferencia en tiempo real para cada banda
 - Retroalimentación visual clara al ajustar configuraciones
+- Pasa el cursor sobre el gráfico de una banda, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos de Mejora Musical
 - Para Mejora Global del Mix:
@@ -445,6 +450,7 @@ Un efecto que simula el sonido cálido y agradable del equipo de válvulas vinta
 - Gráfico claro mostrando cómo se está moldeando el sonido
 - Retroalimentación visual en tiempo real
 - Controles fáciles de leer
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos de Mejora Musical
 - Clásica y Jazz:
@@ -503,6 +509,7 @@ Un efecto especializado que refuerza el extremo grave mezclando una señal filtr
 - Gráfico interactivo de respuesta en frecuencia
 - Visualización clara de curvas de filtro
 - Retroalimentación visual en tiempo real
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Consejos de Mejora Musical
 - Para Mejora General de Graves:
@@ -614,3 +621,6 @@ Cambiar parámetros del circuito puede causar un salto de nivel importante. Con 
 - El estado bajo el gráfico indica si el efecto está activo o en bypass y muestra cualquier reducción automática de salida.
 
 Tube Simulator añade un breve retardo de procesamiento de unos 0.3 a 1.5ms, según la frecuencia de muestreo.
+
+### Visualización
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer la tensión y la corriente de placa en ese punto y, donde se dibujen curvas de placa, la tensión de rejilla de la curva más cercana.

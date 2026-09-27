@@ -48,8 +48,4 @@ Hum Remover reduces a steady electrical mains hum and its harmonics, such as a 5
 - **Harmonics** (1–64, default 8) chooses how many multiples of the fundamental are removed. Higher values can clear more buzz, while lower values preserve more musical content near higher harmonics. The slider uses a logarithmic scale to give lower settings more adjustment space.
 - **Tracking Speed** (0–100%, default 50%) controls how quickly automatic tracking follows a changing hum. Higher values follow drift more quickly; lower values change more slowly and suit a stable hum.
 
-### Reading the Display
-
-**FUNDAMENTAL** shows the frequency currently targeted by the effect. **REMOVED** shows the level of the hum component being removed in dBFS: a value closer to 0 dBFS means a stronger removed hum, while a very low value (such as -140 dBFS) means little or no hum is currently being removed.
-
 [Back to all effects](/dsp/effects/)

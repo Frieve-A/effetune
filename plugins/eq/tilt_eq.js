@@ -368,10 +368,42 @@ return data; // Return the modified buffer
             this.drawGraph(canvas);
         });
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x)
+        });
+
         return container;
     }
 
+    // Reads the drawn response curve at canvas pixel x, interpolating between plotted columns.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const cssX = x / frame.scale;
+        const db = window.GraphReadout.columnValueAt(frame.response, cssX);
+        if (db === null) return null;
+        return {
+            cursor: format.frequency(this._graphFrequencyAt(cssX, frame.width)),
+            rows: [{
+                label: 'Response',
+                color: (window.ThemePalette?.get('graph-trace') ?? ''),
+                value: format.db(db, { signed: true }),
+                y: frame.toY(db) * frame.scale
+            }]
+        };
+    }
+
+    // Log-frequency axis of the response curve: 20 Hz at x = 0 to 20 kHz at x = width (CSS px).
+    _graphFrequencyAt(x, width) {
+        return Math.pow(10, Math.log10(20) + (x / width) * (Math.log10(20000) - Math.log10(20)));
+    }
+
     drawGraph(canvas) {
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         const ctx = canvas.getContext('2d');
         const rect = canvas.getBoundingClientRect();
         const cssWidth = rect.width || canvas.clientWidth || canvas.width;
@@ -449,6 +481,7 @@ return data; // Return the modified buffer
         const sampleRate = 96000; // Standard sample rate assumption for visualization
 
         // Skip drawing if slope is essentially zero
+        const response = new Array(width);
         if (Math.abs(slopeDbOct) < 0.01) {
             // Draw flat line at 0dB
             const y0dB = height * (1 - (0 + 24) / 48);
@@ -456,6 +489,7 @@ return data; // Return the modified buffer
             ctx.moveTo(0, y0dB);
             ctx.lineTo(width, y0dB);
             ctx.stroke();
+            response.fill(0);
         } else {
             // Calculate shelving filter coefficients (same as in processor)
             const omega = 2 * Math.PI * pivotFreq / sampleRate;
@@ -506,7 +540,7 @@ return data; // Return the modified buffer
 
             // For each pixel in the canvas width, calculate the frequency response
             for (let i = 0; i < width; i++) {
-                const freq = Math.pow(10, Math.log10(20) + (i / width) * (Math.log10(20000) - Math.log10(20)));
+                const freq = this._graphFrequencyAt(i, width);
 
                 // Calculate z = e^(jw) for this frequency
                 const w = 2 * Math.PI * freq / sampleRate;
@@ -543,6 +577,7 @@ return data; // Return the modified buffer
                 // Convert total magnitude to dB: 10 * log10(|H(z)|^2) = 20 * log10(|H(z)|)
                 // Add a small epsilon to prevent log10(0)
                 const combinedDb = 10 * Math.log10(totalMagSq + 1e-18); // Use 10*log10 for magnitude squared
+                response[i] = combinedDb; // Keep the true (unclamped) value for the cursor readout
 
                 // Map response to canvas height
                 const y = height * (1 - (combinedDb + 24) / 48); // Clamp to avoid extreme values?
@@ -565,6 +600,13 @@ return data; // Return the modified buffer
         ctx.beginPath();
         ctx.arc(pivotX, pivotY, 5, 0, Math.PI * 2);
         ctx.fill();
+
+        frame.valid = true;
+        frame.scale = dpr;
+        frame.width = width;
+        frame.response = response;
+        frame.toY = db => height * (1 - (db + 24) / 48);
+        this._graphReadout?.refresh();
     }
 }
 

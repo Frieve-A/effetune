@@ -65,9 +65,4 @@ A tool that lets you focus on specific parts of the music by filtering out unwan
   - 0dB: No reduction (off)
   - -6dB to -48dB: Increasingly stronger reduction in 6dB steps
 
-### Visual Display
-- Clear graph showing frequency response
-- Easy-to-adjust frequency controls
-- Simple slope drop-down menus
-
 [Back to all effects](/dsp/effects/)

@@ -306,7 +306,7 @@ IR Reverb इम्पोर्ट की गई impulse response (IR) के �
 
 ### Decay graph पढ़ना
 
-समय बाएँ से दाएँ और level 0 से -90 dB है। Solid EDC energy decay दिखाती है; तेज ढलान का अर्थ छोटी tail है। Markers onset, cut, pre-delay और trim दिखाते हैं। RT60 60 dB decay का अनुमान है। **Decay** बदलने पर नई curve solid और मूल curve dotted दिखती है।
+समय बाएँ से दाएँ और level 0 से -90 dB है। Solid EDC energy decay दिखाती है; तेज ढलान का अर्थ छोटी tail है। Markers onset, cut, pre-delay और trim दिखाते हैं। RT60 60 dB decay का अनुमान है। **Decay** बदलने पर नई curve solid और मूल curve dotted दिखती है। ग्राफ़ पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ### Routing, library और sharing
 

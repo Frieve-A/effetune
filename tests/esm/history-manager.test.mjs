@@ -486,3 +486,22 @@ test('loadStateFromHistory restores suppression after a missing history entry', 
   assert.equal(runtime.calls.some(call => call[0] === 'updatePipelineUI'), false);
   assert.equal(runtime.calls.some(call => call[0] === 'querySelector'), false);
 });
+
+test('canUndo and canRedo follow saves, undo, and redo and refresh the edit buttons', async () => {
+  const runtime = createRuntime({ pipelineA: [createSourcePlugin('Alpha', { serialized: { nm: 'Alpha', gain: 0 } })] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  manager.loadStateFromHistory = () => {};
+  let refreshes = 0;
+  await withGlobals({ window: { uiManager: { updateEditButtons: () => refreshes++ } } }, () => {
+    const state = () => [manager.canUndo, manager.canRedo, refreshes];
+    manager.saveState();
+    assert.deepEqual(state(), [false, false, 1]);
+    runtime.audioManager.pipelineA[0].serialized.gain = 1;
+    manager.saveState();
+    assert.deepEqual(state(), [true, false, 2]);
+    manager.undo();
+    assert.deepEqual(state(), [false, true, 3]);
+    manager.redo();
+    assert.deepEqual(state(), [true, false, 4]);
+  });
+});

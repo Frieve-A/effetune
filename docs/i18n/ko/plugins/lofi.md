@@ -367,6 +367,7 @@ DSD64 재생에서 흔히 논쟁이 되는 미묘한 부작용을 재현하는 �
   - **Output** - 최종 출력 레벨입니다(Dry-Wet과 Output Trim을 거친 후의 드라이 + 왜곡).
 - **Analog Transfer Curve** - Analog Nonlinearity와 Even Bias가 만들어내는 왜곡 곡선을 Saturation 플러그인과 동일한 입력/출력 형식으로 보여줍니다.
 - **Difference-Frequency 뷰** - 현재 노이즈 설정을 기준으로 초음파 노이즈가 어떤 가청 주파수를 만들어내는지 보여주는 정적 그래프입니다.
+- 어느 그래프든 마우스를 올리거나 터치한 채로 드래그하면 그 지점의 값을 읽을 수 있습니다.
 
 ### 권장 설정
 - 미묘하게(기본값): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
@@ -425,6 +426,9 @@ FM Radio Simulator는 방송용 오디오 처리와 프리엠퍼시스, 19 kHz �
 - **MPath**는 직접파 대비 첫 번째 반사파 레벨을 dB로 표시합니다 (Multipath가 0%이면 −∞).
 - **Clicks**는 최근 FM 임계값 클릭의 초당 횟수이며, 잦아지면 강조 표시됩니다.
 - **WASM** 엔진을 사용할 수 없으면 HUD에 알림이 표시되고, 오디오는 변경되지 않고 그대로 통과합니다.
+
+### 시각적 표시
+- 스펙트럼에 마우스를 올리거나 터치한 채로 드래그하면 그 지점의 값을 읽을 수 있습니다.
 
 ### 권장 설정
 
@@ -931,6 +935,9 @@ TV Audio Simulator는 음악을 아날로그 텔레비전 방송 또는 NICAM �
 HUD는 Standard와 현재 경로(`STEREO`, `MAIN`, `SUB`, `NICAM`, `FALLBACK`, `AM`)를 표시합니다. Carrier와 CNR은 레벨과 품질을 나타냅니다. Health는 선택한 스테레오 또는 디지털 경로의 사용 가능 여부, Multipath는 반사 신호의 깊이, Errors는 초당 수신 오류율을 나타냅니다. 스펙트럼은 아날로그 FM의 복원된 다중 음성, L AM의 검파 후 음성, NICAM의 선택 출력을 보여 줍니다.
 
 이 모델은 TV 음성의 가청 특성을 재현하며 영상과 RF를 포함한 전체 채널이나 방송 시험 신호를 만들지는 않습니다.
+
+### 시각적 표시
+- 스펙트럼에 마우스를 올리거나 터치한 채로 드래그하면 그 지점의 값을 읽을 수 있습니다.
 
 ## Vinyl Artifacts
 

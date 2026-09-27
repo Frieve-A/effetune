@@ -56,6 +56,9 @@ export class ExtensionMobileShell {
     this.document.getElementById('pluginList')?.classList.remove('mobile-open');
   }
 
+  // The extension editor has a single view, so Visualizer Back returns to the pipeline.
+  getCurrentView() { return 'effects'; }
+
   setView() {}
 
   removeElements() {

@@ -422,6 +422,11 @@ class SubSynthPlugin extends PluginBase {
     });
 
     this.drawGraph(canvas); // Initial draw
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graphContainer,
+      surface: canvas,
+      read: x => this._readGraph(x)
+    });
     return container;
   }
 
@@ -494,24 +499,17 @@ class SubSynthPlugin extends PluginBase {
     }
 
     // Draw dry signal response (white)
+    const dryColor = (window.ThemePalette?.get('text-primary') ?? '');
+    const subColor = (window.ThemePalette?.get('graph-trace') ?? '');
+    const dryResponse = new Float64Array(width);
+    const subResponse = new Float64Array(width);
     ctx.beginPath();
-    ctx.strokeStyle = (window.ThemePalette?.get('text-primary') ?? '');
+    ctx.strokeStyle = dryColor;
     ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
     const dryHpfStages = computeStages(this.dhs);
     for (let i = 0; i < width; i++) {
-      const freq = Math.pow(10, Math.log10(5) + (i / width) * (Math.log10(1000) - Math.log10(5)));
-      let mag = 1;
-      if (this.dhs !== 0) {
-        const wRatio = freq / this.dhf;
-        if (dryHpfStages.order1) {
-          mag *= (wRatio / Math.sqrt(1 + wRatio * wRatio));
-        }
-        if (dryHpfStages.order2) {
-          const secondOrder = (wRatio * wRatio) / Math.sqrt(1 + 2 * wRatio * wRatio + Math.pow(wRatio, 4));
-          mag *= Math.pow(secondOrder, dryHpfStages.order2);
-        }
-      }
-      const response = 20 * Math.log10(mag);
+      const response = this._dryResponseDb(this._graphFrequencyAt(i, width), dryHpfStages);
+      dryResponse[i] = response;
       const y = height * (1 - (response + 30) / 36);
       i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
     }
@@ -519,38 +517,96 @@ class SubSynthPlugin extends PluginBase {
 
     // Draw sub signal response (green)
     ctx.beginPath();
-    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
+    ctx.strokeStyle = subColor;
     ctx.lineWidth = (isMobileLayout ? 2 : 1) * dpr;
     const subLpfStages = computeStages(this.sls);
     const subHpfStages = computeStages(this.shs);
     for (let i = 0; i < width; i++) {
-      const freq = Math.pow(10, Math.log10(5) + (i / width) * (Math.log10(1000) - Math.log10(5)));
-      let mag = this.sl / 100;
-      if (this.sls !== 0) {
-        const wRatio = freq / this.slf;
-        if (subLpfStages.order1) {
-          mag *= (1 / Math.sqrt(1 + wRatio * wRatio));
-        }
-        if (subLpfStages.order2) {
-          const secondOrder = 1 / Math.sqrt(1 + 2 * wRatio * wRatio + Math.pow(wRatio, 4));
-          mag *= Math.pow(secondOrder, subLpfStages.order2);
-        }
-      }
-      if (this.shs !== 0) {
-        const wRatio = freq / this.shf;
-        if (subHpfStages.order1) {
-          mag *= (wRatio / Math.sqrt(1 + wRatio * wRatio));
-        }
-        if (subHpfStages.order2) {
-          const secondOrder = (wRatio * wRatio) / Math.sqrt(1 + 2 * wRatio * wRatio + Math.pow(wRatio, 4));
-          mag *= Math.pow(secondOrder, subHpfStages.order2);
-        }
-      }
-      const response = 20 * Math.log10(mag);
+      const response = this._subResponseDb(this._graphFrequencyAt(i, width), subLpfStages, subHpfStages);
+      subResponse[i] = response;
       const y = height * (1 - (response + 30) / 36);
       i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
     }
     ctx.stroke();
+
+    const frame = (this._readoutFrame ??= {});
+    frame.valid = true;
+    frame.width = width;
+    frame.rows = [
+      { label: 'Dry', color: dryColor, values: dryResponse },
+      { label: 'Sub', color: subColor, values: subResponse }
+    ];
+    frame.toY = db => height * (1 - (db + 30) / 36);
+    this._graphReadout?.refresh();
+  }
+
+  // Log-frequency axis of the response curves: 5 Hz at x = 0 to 1 kHz at x = width (canvas px).
+  _graphFrequencyAt(x, width) {
+    return Math.pow(10, Math.log10(5) + (x / width) * (Math.log10(1000) - Math.log10(5)));
+  }
+
+  // Dry curve magnitude; the dry level control also scales it, matching the DSP.
+  _dryResponseDb(freq, dryHpfStages) {
+    let mag = this.dl / 100;
+    if (this.dhs !== 0) {
+      const wRatio = freq / this.dhf;
+      if (dryHpfStages.order1) {
+        mag *= (wRatio / Math.sqrt(1 + wRatio * wRatio));
+      }
+      if (dryHpfStages.order2) {
+        const secondOrder = (wRatio * wRatio) / Math.sqrt(1 + 2 * wRatio * wRatio + Math.pow(wRatio, 4));
+        mag *= Math.pow(secondOrder, dryHpfStages.order2);
+      }
+    }
+    return 20 * Math.log10(mag);
+  }
+
+  // Sub curve magnitude.
+  _subResponseDb(freq, subLpfStages, subHpfStages) {
+    let mag = this.sl / 100;
+    if (this.sls !== 0) {
+      const wRatio = freq / this.slf;
+      if (subLpfStages.order1) {
+        mag *= (1 / Math.sqrt(1 + wRatio * wRatio));
+      }
+      if (subLpfStages.order2) {
+        const secondOrder = 1 / Math.sqrt(1 + 2 * wRatio * wRatio + Math.pow(wRatio, 4));
+        mag *= Math.pow(secondOrder, subLpfStages.order2);
+      }
+    }
+    if (this.shs !== 0) {
+      const wRatio = freq / this.shf;
+      if (subHpfStages.order1) {
+        mag *= (wRatio / Math.sqrt(1 + wRatio * wRatio));
+      }
+      if (subHpfStages.order2) {
+        const secondOrder = (wRatio * wRatio) / Math.sqrt(1 + 2 * wRatio * wRatio + Math.pow(wRatio, 4));
+        mag *= Math.pow(secondOrder, subHpfStages.order2);
+      }
+    }
+    return 20 * Math.log10(mag);
+  }
+
+  // Reads the drawn Dry/Sub curves at canvas pixel x (drawGraph plots in canvas px).
+  _readGraph(x) {
+    const frame = this._readoutFrame;
+    if (!frame?.valid) return null;
+    const { format, columnValueAt } = window.GraphReadout;
+    const rows = [];
+    for (const { label, color, values } of frame.rows) {
+      let db = columnValueAt(values, x);
+      if (db === null) {
+        // columnValueAt returns null both when x is outside the column range and when the
+        // column's own value there is non-finite (e.g. -Infinity for a silent Dry/Sub curve).
+        // Distinguish by reading the raw column value: out-of-range indexing yields undefined.
+        const raw = values[Math.round(x)];
+        if (raw === undefined) continue;
+        db = raw;
+      }
+      rows.push({ label, color, value: format.db(db, { signed: true }), y: frame.toY(db) });
+    }
+    if (!rows.length) return null;
+    return { cursor: format.frequency(this._graphFrequencyAt(x, frame.width)), rows };
   }
 
   cleanup() {

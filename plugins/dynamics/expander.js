@@ -652,46 +652,12 @@ class ExpanderPlugin extends PluginBase {
         ctx.lineWidth = 2;
         ctx.beginPath();
 
-        const thresholdDb = this.th;
-        const ratio = this.rt;
-        const kneeDb = this.kn;
-        const gainDb = this.gn;
-
         for (let i = 0; i < width; i++) {
-            const inputDb = (i / width) * 60 - 60;
-            const diff = inputDb - thresholdDb;
-            let gainBoost = 0;
-            
-            // Expander logic: expand below threshold, no change above threshold
-            if (diff <= -kneeDb / 2) {
-                // Below threshold: apply expansion ratio
-                // For expander: output = threshold + (input - threshold) * ratio
-                // gainBoost = output - input = threshold + (input - threshold) * ratio - input
-                // gainBoost = threshold - input + (input - threshold) * ratio
-                // gainBoost = (threshold - input) + (input - threshold) * ratio
-                // gainBoost = (input - threshold) * (ratio - 1)
-                gainBoost = diff * (ratio - 1);
-            } else if (diff >= kneeDb / 2) {
-                // Above threshold: no change (1:1 ratio)
-                gainBoost = 0;
-            } else {
-                // Within knee: smooth transition
-                const t = (diff + kneeDb / 2) / kneeDb;
-                const slope = (ratio - 1);
-                const linearBelow = (-kneeDb / 2) * slope;
-                gainBoost = linearBelow * (1 - t) * (1 - t);
-            }
-            
-            const totalGain = gainBoost + gainDb; // Total gain before clamping
-            // Clamp total gain to match actual audio processing: -60dB to +20dB
-            const clampedTotalGain = Math.max(-60, Math.min(20, totalGain));
-            const outputDb = inputDb + clampedTotalGain;
-            const x = i;
-            const y = ((outputDb + 60) / 60) * height;
+            const y = this._transferY(this._inputDbAt(i, width), height);
             if (i === 0) {
-                ctx.moveTo(x, height - y);
+                ctx.moveTo(i, y);
             } else {
-                ctx.lineTo(x, height - y);
+                ctx.lineTo(i, y);
             }
         }
         ctx.stroke();
@@ -708,6 +674,57 @@ class ExpanderPlugin extends PluginBase {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('out', 0, 0);
         ctx.restore();
+
+        const frame = (this._readoutFrame ??= {});
+        frame.width = width;
+        frame.height = height;
+        frame.valid = true;
+        this._graphReadout?.refresh();
+    }
+
+    // Input level plotted at canvas x (the transfer graph spans -60..0 dB across the full width).
+    _inputDbAt(x, width) {
+        return (x / width) * 60 - 60;
+    }
+
+    // Canvas y of an output level on the -60..0 dB axis.
+    _transferY(inputDb, height) {
+        return height - ((inputDb + this._transferGain(inputDb) + 60) / 60) * height;
+    }
+
+    // Static soft-knee gain applied at an input level, clamped like the audio processing (-60..+20 dB).
+    _transferGain(inputDb) {
+        const kneeDb = this.kn;
+        const diff = inputDb - this.th;
+        let gainBoost = 0;
+        if (diff <= -kneeDb / 2) {
+            // Below the knee: output = threshold + (input - threshold) * ratio.
+            gainBoost = diff * (this.rt - 1);
+        } else if (diff < kneeDb / 2) {
+            // Within the knee: smooth transition to 1:1 above the threshold.
+            const t = (diff + kneeDb / 2) / kneeDb;
+            gainBoost = (-kneeDb / 2) * (this.rt - 1) * (1 - t) * (1 - t);
+        }
+        const totalGain = gainBoost + this.gn;
+        return totalGain < -60 ? -60 : (totalGain > 20 ? 20 : totalGain);
+    }
+
+    // Reads the transfer curve at canvas pixel x; the boost strip on the left is outside the plot.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const inputDb = this._inputDbAt(x, frame.width);
+        const gain = this._transferGain(inputDb);
+        const y = this._transferY(inputDb, frame.height);
+        return {
+            cursor: `in ${format.db(inputDb)}`,
+            rows: [
+                { label: 'out', color: 'var(--et-graph-trace)', value: format.db(inputDb + gain), y },
+                { label: 'Gain', color: 'var(--et-text-primary)', value: format.db(gain, { signed: true }) }
+            ],
+            at: { x, y }
+        };
     }
 
     updateBoostMeter() {
@@ -787,6 +804,13 @@ class ExpanderPlugin extends PluginBase {
 
         this.updateTransferGraph();
         this.startAnimation();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            plot: () => ({ left: 32, top: 0, width: canvas.width - 32, height: canvas.height }),
+            read: x => this._readGraph(x),
+            crosshair: 'xy'
+        });
         return container;
     }
 

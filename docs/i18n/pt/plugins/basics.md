@@ -51,11 +51,17 @@ Escolha **All** no roteamento do bus e canais de saída suficientes para todos o
 - **Sub Outputs** escolhe as saídas de cada entrada **Managed** ou **LFE**. Selecionar um canal muda seu **Channel Role** para **LFE**. Uma saída recém-selecionada começa com rotas **ON** em polaridade normal de todas as entradas do barramento; use Matrix para desligar uma rota individual. Sem **Sub Outputs**, a separação dos graves e o roteamento para subwoofers param, e os canais de entrada passam sem crossover. **LFE Low-pass**, **LFE Frequency** e **LFE Slope** limitam opcionalmente LFE acima de 20 a 300 Hz em 24, 48 ou 96 dB/oct, sem filtrar de novo os graves já separados.
 - **ON** e **Ø**: em cada célula da tabela de canais, **ON** envia essa entrada **Managed** ou **LFE** à saída de subwoofer escolhida. **Ø** inverte a polaridade somente nesse caminho entre a entrada e o subwoofer, para ajustá-lo ao resultado medido ou ouvido. **Ø** fica disponível apenas enquanto **ON** estiver selecionado; desativar **ON** também desativa **Ø**. A saída principal da entrada não muda.
 
-### Tela, estado e calibração
+### Tela e estado
 
 - O resumo de rotas mostra quais entradas alimentam cada subwoofer. Confira-o antes de aumentar o nível, sobretudo após mudar canais. Selecione um **Managed** para ver as respostas passa-altas e passa-baixas ativas, não uma curva ideal.
-- O estado mostra modo, preparação Linear e latência efetiva em amostras e ms. Alterar Linear pode reduzir ou interromper o som brevemente. Se não preparar os filtros, reduza **Taps** e tente novamente. Se a configuração anterior não puder continuar, canais principais normais passam com atraso correspondente, saídas reservadas ficam silenciosas e LFE não toca até a preparação terminar.
-- O bypass do host restaura áudio e mapeamento originais; roteamento, proteção e alinhamento não continuam. Para comparar ou silenciar mantendo a fiação, use MultiChannel Panel depois. EQ/passa-altas IIR ou delay relativo posterior muda a fase do sistema Linear completo. Salve a cadeia calibrada em um único preset.
+- O estado mostra modo, preparação Linear e latência efetiva em amostras e ms.
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
+
+### Preparação do Filtro
+Alterar Linear pode reduzir ou interromper o som brevemente enquanto os novos filtros são preparados. Se não preparar os filtros, reduza **Taps** e tente novamente. Se a configuração anterior não puder continuar, canais principais normais passam com atraso correspondente, saídas reservadas ficam silenciosas e LFE não toca até a preparação terminar.
+
+### Bypass e Calibração
+O bypass do host restaura áudio e mapeamento originais; roteamento, proteção e alinhamento não continuam. Para comparar ou silenciar mantendo a fiação, use MultiChannel Panel depois. EQ/passa-altas IIR ou delay relativo posterior muda a fase do sistema Linear completo. Salve a cadeia calibrada em um único preset.
 
 ## Channel Divider
 
@@ -98,7 +104,10 @@ Para usar este efeito, use o aplicativo desktop, defina uma quantidade par de ca
 * A quantidade de canais de saída deve ser par, entre 4 e 16
 * Cada banda preserva o par estéreo original: no modo de 2 bandas, Low sai nos canais 1-2 e High nos canais 3-4; no modo de 3 bandas, são usados os canais 1-2, 3-4 e 5-6; no modo de 4 bandas, são usados os canais 1-2, 3-4, 5-6 e 7-8
 * Utiliza filtros de crossover Linkwitz-Riley de alta qualidade
-* Gráfico de resposta em frequência visual para configuração fácil
+
+### Exibição Visual
+* O gráfico mostra a resposta em frequência de cada banda de saída.
+* Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ## DC Offset
 
@@ -149,6 +158,7 @@ O projeto FIR permite inclinações muito acentuadas sem a ressonância dos filt
 - O gráfico mostra a resposta-alvo de cada banda ao longo da frequência.
 - Cada cor corresponde ao par de saídas da respectiva banda.
 - A linha de status mostra a latência e a resolução do filtro, ou alerta se o número de canais não for compatível.
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ## Matrix
 

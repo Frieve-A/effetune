@@ -1192,7 +1192,12 @@ test('Group Delay PEQ is registered and styled under its own class names', () =>
     assert.match(registry[index + 1], /^eq\/hi_pass_filter: Hi Pass Filter /);
 
     assert.match(pluginCss, /\.group-delay-peq-plugin-ui \.group-delay-peq-graph/);
-    assert.match(pluginCss, /\.group-delay-peq-legend-realized/);
+    assert.doesNotMatch(pluginCss, /legend/);
+    assert.match(pluginSource, /window\.GraphReadout\?\.attach\(\{[\s\S]*?legend: this\._responseSeries\(\)/);
+    assert.match(pluginSource,
+        /label: this\._t\('groupDelayPeq\.graph\.target', 'Target'\),\s*color: 'var\(--et-graph-trace-tertiary\)'/);
+    assert.match(pluginSource,
+        /label: this\._t\('groupDelayPeq\.graph\.realized', 'Realized'\),\s*color: 'var\(--et-graph-trace\)'/);
     assert.match(pluginCss, /\.group-delay-peq-marker/);
     assert.match(pluginCss, /\.group-delay-peq-band-type/);
     assert.match(pluginCss, /\.group-delay-peq-delay-text/);

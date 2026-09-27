@@ -367,6 +367,7 @@ Parâmetros avançados / utilitários
   - **Output** - o nível final de saída (seco mais distorção, após Dry-Wet e Output Trim).
 - **Analog Transfer Curve** - Mostra a curva de distorção criada por Analog Nonlinearity e Even Bias, no mesmo estilo de entrada/saída dos plugins de Saturation.
 - **Visualização Difference-Frequency** - Um gráfico estático que mostra quais frequências audíveis o ruído ultrassônico produz, com base nas configurações de ruído atuais.
+- Passe o cursor sobre qualquer um dos gráficos, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Configurações Recomendadas
 - Sutil (padrão): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
@@ -425,6 +426,9 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
 - **MPath** mostra o nível da primeira reflexão em relação à onda direta em dB (−∞ quando Multipath está em 0%).
 - **Clicks** conta os cliques recentes de limiar FM por segundo e é destacado quando eles se tornam frequentes.
 - Se o motor **WASM** estiver indisponível, o HUD mostra um aviso e o áudio passa sem alteração.
+
+### Exibição Visual
+- Passe o cursor sobre o espectro, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Ajustes recomendados
 
@@ -924,6 +928,9 @@ As nove predefinições cobrem Japão M/EIA-J, América do Norte M/BTSC, Coreia 
 O HUD mostra o Standard e o caminho ativo: `STEREO`, `MAIN`, `SUB`, `NICAM`, `FALLBACK` ou `AM`. Carrier e CNR indicam nível e qualidade; Health indica se o caminho estéreo ou digital selecionado está disponível; Multipath, a profundidade do sinal refletido; e Errors, a taxa de erros de recepção por segundo. O espectro representa o multiplex FM recuperado, o áudio detectado em L AM ou a saída selecionada em NICAM.
 
 O modelo reproduz os efeitos audíveis do áudio de televisão, não um canal completo de imagem e radiofrequência nem um sinal de teste de transmissão.
+
+### Exibição Visual
+- Passe o cursor sobre o espectro, ou toque e arraste, para ler os valores nesse ponto.
 
 ## Vinyl Artifacts
 

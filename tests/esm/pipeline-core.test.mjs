@@ -150,6 +150,7 @@ function createBareCore(options = {}) {
   };
   core.selectionManager = {
     selectedPlugins: new Set(),
+    pruneSelection() {},
     updateSelectionClasses() {
       calls.push(['updateSelectionClasses']);
     },
@@ -339,7 +340,7 @@ test('updatePipelineUI handles missing, empty, rebuild, forced, and redistribute
   await withPipelineGlobals({}, async () => {
     empty.core.updatePipelineUI();
   });
-  assert.deepEqual(empty.calls, [['handleEmptyPipelineState']]);
+  assert.deepEqual(empty.calls, [['handleEmptyPipelineState'], ['updateSelectionClasses']]);
 
   const mismatch = createBareCore({
     pipeline: [{ id: 1 }],

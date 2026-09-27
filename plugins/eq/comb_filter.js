@@ -284,10 +284,43 @@ class CombFilterPlugin extends PluginBase {
             this.drawGraph(canvas);
         });
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: canvas,
+            read: x => this._readGraph(x),
+            avoid: () => this._readoutFrame?.avoidRects ?? []
+        });
+
         return container;
     }
 
+    // Reads the drawn response curve at canvas pixel x, interpolating between plotted columns.
+    _readGraph(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const cssX = x / frame.scale;
+        const db = window.GraphReadout.columnValueAt(frame.response, cssX);
+        if (db === null) return null;
+        return {
+            cursor: format.frequency(this._graphFrequencyAt(cssX, frame.width)),
+            rows: [{
+                label: 'Response',
+                color: (window.ThemePalette?.get('graph-trace') ?? ''),
+                value: format.db(db, { signed: true }),
+                y: frame.toY(db) * frame.scale
+            }]
+        };
+    }
+
+    // Log-frequency axis of the response curve: 1 Hz at x = 0 to 40 kHz at x = width (CSS px).
+    _graphFrequencyAt(x, width) {
+        return Math.pow(10, Math.log10(1) + (x / width) * (Math.log10(40000) - Math.log10(1)));
+    }
+
     drawGraph(canvas) {
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         const ctx = canvas.getContext("2d");
         const rect = canvas.getBoundingClientRect();
         const cssWidth = rect.width || canvas.clientWidth || canvas.width;
@@ -354,9 +387,10 @@ class CombFilterPlugin extends PluginBase {
         ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
         ctx.lineWidth = isMobileLayout ? 2 : 1;
         
+        const response = new Array(width);
         for (let i = 0; i < width; i++) {
-            const freq = Math.pow(10, Math.log10(1) + (i / width) * (Math.log10(40000) - Math.log10(1)));
-            
+            const freq = this._graphFrequencyAt(i, width);
+
             // Calculate Comb Filter frequency response based on type
             const omega = 2 * Math.PI * freq / sampleRate;
             const theta = omega * delaySamples;
@@ -380,14 +414,16 @@ class CombFilterPlugin extends PluginBase {
             
             // Convert to dB
             const responseDB = 20 * Math.log10(overallMagnitude);
+            response[i] = responseDB;
             const y = height * (1 - (responseDB + 24) / 48);
-            
+
             i === 0 ? ctx.moveTo(i, y) : ctx.lineTo(i, y);
         }
         ctx.stroke();
-        
+
         // Draw fundamental frequency marker
         const markerX = width * (Math.log10(effectiveFreq) - Math.log10(1)) / (Math.log10(40000) - Math.log10(1));
+        const avoidRects = [];
         if (markerX >= 0 && markerX <= width) {
             ctx.strokeStyle = (window.ThemePalette?.get('graph-marker') ?? '');
             ctx.lineWidth = isMobileLayout ? 2 : 1;
@@ -397,14 +433,32 @@ class CombFilterPlugin extends PluginBase {
             ctx.lineTo(markerX, height);
             ctx.stroke();
             ctx.setLineDash([]);
-            
+
             // Label the fundamental frequency and delay distance (larger text for 1/2 resolution)
             ctx.fillStyle = (window.ThemePalette?.get('graph-marker') ?? '');
             ctx.font = "13px Arial";
             ctx.textAlign = "center";
-            ctx.fillText(`${effectiveFreq.toFixed(1)} Hz`, markerX, 30);
-            ctx.fillText(`${delayDistanceMm.toFixed(1)} mm`, markerX, 46);
+            const hzText = `${effectiveFreq.toFixed(1)} Hz`;
+            const mmText = `${delayDistanceMm.toFixed(1)} mm`;
+            ctx.fillText(hzText, markerX, 30);
+            ctx.fillText(mmText, markerX, 46);
+
+            // Reserve the label bounding boxes so the readout box avoids overlapping them.
+            const hzWidth = ctx.measureText(hzText).width;
+            const mmWidth = ctx.measureText(mmText).width;
+            avoidRects.push(
+                { left: (markerX - hzWidth / 2) * dpr, top: 20 * dpr, width: hzWidth * dpr, height: 14 * dpr },
+                { left: (markerX - mmWidth / 2) * dpr, top: 36 * dpr, width: mmWidth * dpr, height: 14 * dpr }
+            );
         }
+
+        frame.valid = true;
+        frame.scale = dpr;
+        frame.width = width;
+        frame.response = response;
+        frame.toY = db => height * (1 - (db + 24) / 48);
+        frame.avoidRects = avoidRects;
+        this._graphReadout?.refresh();
     }
 }
 

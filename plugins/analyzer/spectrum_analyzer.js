@@ -231,6 +231,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (visible === this.kb) return;
         this.kb = visible;
         this.updateParameters();
+        this._graphReadout?.clear();
         this.drawGraph();
     }
 
@@ -240,6 +241,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (scale === 'log-hq' || this.sc === 'log-hq') this.resetHqDisplay();
         this.sc = scale;
         this.updateParameters();
+        this._graphReadout?.clear();
         this.drawGraph();
     }
 
@@ -257,6 +259,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (mode === this.dm) return;
         this.dm = mode;
         this.updateParameters();
+        this._graphReadout?.clear();
         this.drawGraph();
     }
 
@@ -692,6 +695,24 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             pointsValue.value = 1 << this.pt;
         });
 
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graphContainer,
+            surface: this.canvas,
+            // The spectrum area, or the keyboard gutter while the pointer is over it.
+            plot: point => {
+                const frame = this._readoutFrame;
+                if (!frame?.valid) return null;
+                const onKeys = point.y > frame.plotHeight;
+                return {
+                    left: 0,
+                    top: onKeys ? frame.plotHeight : 0,
+                    width: frame.width,
+                    height: onKeys ? frame.gutter : frame.plotHeight
+                };
+            },
+            read: (x, y) => this._readSpectrum(x, y),
+            crosshair: 'x'
+        });
         return container;
     }
 
@@ -810,16 +831,15 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         return keys;
     }
 
-    drawKeyboard(ctx, width, height, gutter, dpr) {
+    drawKeyboard(ctx, width, height, gutter, blackDepth, dpr) {
         const background = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '')
             .match(/[\d.]+/g)?.slice(0, 3).map(Number);
         if (!background || background.length !== 3) return;
         const light = background.every(channel => channel > 127);
-        const white = light ? 255 : 221;
-        const black = 34;
+        const white = light ? 255 : 238;
+        const black = 17;
         const keys = this.getKeyboardGeometry(width);
         const edge = height - gutter;
-        const blackDepth = gutter / 1.6;
         ctx.save();
         ctx.beginPath();
         ctx.rect(0, edge, width, gutter);
@@ -836,11 +856,12 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             ctx.lineTo(key.whiteStart, height);
             ctx.stroke();
         }
-        ctx.fillStyle = 'rgb(' + black + ', ' + black + ', ' + black + ')'; // theme-allow: Fixed self-painted black key color.
-        for (const key of keys) {
-            if (!key.black) continue;
-            ctx.fillRect(key.start, edge, key.end - key.start, blackDepth);
-        }
+        const blackKeys = keys.filter(key => key.black);
+        window.FrequencyAxis.shadeKeyboard(ctx, { along: 'x', edge, length: width, gutter, blackDepth, dpr },
+            blackKeys.map(key => [key.start, key.end]), () => {
+                ctx.fillStyle = 'rgb(' + black + ', ' + black + ', ' + black + ')'; // theme-allow: Fixed self-painted black key color.
+                for (const key of blackKeys) ctx.fillRect(key.start, edge, key.end - key.start, blackDepth);
+            });
         ctx.beginPath();
         ctx.moveTo(0, edge);
         ctx.lineTo(width, edge);
@@ -869,8 +890,13 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
     drawGraph(now = performance.now()) {
         if (this.displayOptions?.deferDraw) return;
-        if (!this.canvas) return;
-        
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
+        if (!this.canvas) {
+            this._graphReadout?.refresh();
+            return;
+        }
+
         const ctx = this.canvas.getContext('2d', { alpha: false });
         const width = this.canvas.width;
         const height = this.canvas.height;
@@ -879,8 +905,11 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const graphWidth = vertical ? height : width;
         const graphHeight = vertical ? width : height;
         const isNarrow = (vertical ? graphWidth / dpr : this.graphCssWidth) < 500;
-        const keyboardDepth = 44.8 * (this.displayOptions?.preserveKeyboardAspect ? graphWidth / 1024 : dpr);
-        const keyboardGutter = this.kb && graphHeight > keyboardDepth ? keyboardDepth : 0;
+        // Keys keep piano proportions at the log-axis semitone width, also on the linear axis.
+        const { gutter: keyboardGutter, blackDepth } = this.kb ? window.FrequencyAxis.keyboardDepths(
+            graphWidth / Math.log2(SPECTRUM_MAX_DISPLAY_FREQ / SPECTRUM_MIN_DISPLAY_FREQ), graphHeight,
+            this.displayOptions?.keyboardLength
+        ) : { gutter: 0, blackDepth: 0 };
         const plotHeight = graphHeight - keyboardGutter;
 
         ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '');
@@ -901,12 +930,14 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             ctx.font = `${14 * dpr}px Arial`;
             ctx.textAlign = 'center';
             (this.displayOptions?.textContext ?? ctx).fillText('Invalid Sample Rate or Range', width / 2, height / 2);
+            this._graphReadout?.refresh();
             return;
         }
 
         if (maxDisplayFreq <= minDisplayFreq) {
              ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? ''); ctx.font = `${14 * dpr}px Arial`; ctx.textAlign = 'center';
              (this.displayOptions?.textContext ?? ctx).fillText('Invalid Frequency Range', width / 2, height / 2);
+             this._graphReadout?.refresh();
              return;
         }
 
@@ -922,6 +953,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             ctx.clip();
         }
         const drawBars = this.dm === 'bar';
+        Object.assign(frame, { valid: true, width: graphWidth, plotHeight, gutter: keyboardGutter, blackDepth, bands: null });
         const deferredTicks = this.drawGrid(
             ctx, graphWidth, plotHeight, dpr, isNarrow, drawBars, Boolean(keyboardGutter)
         );
@@ -929,6 +961,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             const levels = this.collectSpectrumLevels(graphWidth, now);
             const bandCount = isNarrow ? SPECTRUM_NARROW_BAR_COUNT : SPECTRUM_WIDE_BAR_COUNT;
             const bands = SpectrumAnalyzerPlugin.aggregateBands(levels, graphWidth, bandCount);
+            frame.bands = bands;
             const draw = target => this.drawSpectrumBars(target, bands, graphWidth, plotHeight, dpr);
             if (this.displayOptions?.drawSignal) this.displayOptions.drawSignal(ctx, draw, { width: graphWidth, height: plotHeight });
             else draw(ctx);
@@ -936,15 +969,75 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         } else {
             this.drawAxisLabels(ctx, graphWidth, plotHeight, dpr, isNarrow, deferredTicks, !keyboardGutter);
             const levels = this.collectSpectrumLevels(graphWidth, now);
+            const line = frame.line = { xs: [], spectrum: [], peaks: [] };
+            for (const [x, [spectrumLevel, peakLevel]] of levels) {
+                line.xs.push(x);
+                line.spectrum.push(spectrumLevel);
+                line.peaks.push(peakLevel);
+            }
             const draw = target => this.drawSpectrumLines(target, levels, graphWidth, plotHeight, dpr);
             if (this.displayOptions?.drawSignal) this.displayOptions.drawSignal(ctx, draw, { width: graphWidth, height: plotHeight });
             else draw(ctx);
         }
         if (keyboardGutter) {
             ctx.restore();
-            this.drawKeyboard(ctx, graphWidth, graphHeight, keyboardGutter, dpr);
+            this.drawKeyboard(ctx, graphWidth, graphHeight, keyboardGutter, blackDepth, dpr);
         }
         if (vertical) ctx.restore();
+        this._graphReadout?.refresh();
+    }
+
+    // Color drawn at canvas (x, y) for the Heatmap/Rainbow styles; otherwise the given theme color.
+    _readoutColor(x, y, fallback) {
+        const { width, plotHeight } = this._readoutFrame;
+        if (this.cl === 'Rainbow') {
+            const color = window.NoteSpectrogramPlugin?.noteColor?.(
+                69 + 12 * Math.log2(this.displayXToFrequency(x / width) / 440));
+            if (color) return `rgb(${color.map(Math.round).join(',')})`; // theme-allow: Shared Note Spectrogram note colormap.
+        } else if (this.cl === 'Heatmap') {
+            const lut = window.SpectrogramPlugin?.getHeatmapLuts().rgba;
+            const ratio = 1 - y / plotHeight;
+            const offset = Math.round((ratio < 0 ? 0 : ratio > 1 ? 1 : ratio) * 255) * 4;
+            if (lut) return `rgb(${lut[offset]},${lut[offset + 1]},${lut[offset + 2]})`; // theme-allow: Shared Spectrogram heatmap colormap.
+        }
+        return fallback;
+    }
+
+    // Spectrum and peak-hold levels drawn at canvas x (line: between points, bar: the band under x).
+    _readSpectrum(x, y) {
+        const frame = this._readoutFrame;
+        const { format, seriesValueAt } = window.GraphReadout;
+        const { width, plotHeight, bands, line } = frame;
+        if (y > plotHeight) {
+            const key = window.FrequencyAxis?.hitKey(this.getKeyboardGeometry(width), x, y - plotHeight,
+                frame.gutter, frame.blackDepth);
+            return key ? { cursor: format.note(440 * 2 ** ((key.midi - 69) / 12)), rows: [], crosshair: 'none' } : null;
+        }
+        let at = x;
+        let levels = [NaN, NaN];
+        if (bands) {
+            const count = bands.spectrum.length;
+            const index = Math.floor(x * count / width);
+            const band = index > count - 1 ? count - 1 : index;
+            at = (band + 0.5) * width / count;
+            if (band >= bands.firstFilled && band <= bands.lastFilled) {
+                levels = [bands.spectrum[band], bands.peaks[band]];
+            }
+        } else if (line) {
+            levels = [seriesValueAt(line.xs, line.spectrum, x) ?? NaN, seriesValueAt(line.xs, line.peaks, x) ?? NaN];
+        }
+        const rowFor = (label, level, token) => {
+            const levelY = plotHeight * (level / this.dr);
+            return { label, color: this._readoutColor(at, levelY, token), value: format.db(level), y: levelY };
+        };
+        return {
+            cursor: format.frequency(this.displayXToFrequency(at / width)),
+            rows: [
+                rowFor('Spectrum', levels[0], 'var(--et-graph-trace-fill)'),
+                rowFor('Peak hold', levels[1], 'var(--et-graph-trace)')
+            ],
+            at: { x: at, y }
+        };
     }
 
     drawGrid(ctx, width, height, dpr, isNarrow, deferTicks, keyboard) {
@@ -1099,7 +1192,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
                 ]);
             }
         }
-        
+
         // Sort map entries by x-coordinate for correct line drawing
         return [...xToLevels.entries()].sort((a, b) => a[0] - b[0]);
     }
@@ -1205,11 +1298,11 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         if (firstFilled > lastFilled) return;
 
         const bandWidth = width / spectrum.length;
+        // All sizes scale with dpr so the Visualizer's fractional graph scale keeps the same proportions.
         const desiredGap = 2 * dpr;
-        const gap = bandWidth - desiredGap >= 1 ? desiredGap : 0;
-        const availableWidth = bandWidth - gap;
-        const barWidth = availableWidth >= 1 ? availableWidth : 1;
-        const peakHeight = dpr >= 1 ? dpr : 1;
+        const gap = bandWidth - desiredGap >= dpr ? desiredGap : 0;
+        const barWidth = bandWidth - gap;
+        const peakHeight = dpr;
         const segmentPitch = 6 * dpr;
         const quantize = this.displayOptions?.quantizeBars === true;
         const fullBlockCount = Math.floor(height / segmentPitch);
@@ -1239,7 +1332,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         // Cut horizontal segments only through the bar bodies, preserving the grid.
         ctx.clip();
         ctx.strokeStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '');
-        ctx.lineWidth = dpr >= 1 ? dpr : 1;
+        ctx.lineWidth = dpr;
         ctx.beginPath();
         for (let y = height - segmentPitch; y > 0; y -= segmentPitch) {
             ctx.moveTo(0, y);

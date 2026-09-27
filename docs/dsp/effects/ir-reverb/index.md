@@ -61,10 +61,6 @@ IR Reverb convolves the signal with an imported impulse response (IR), reproduci
 - **Decay** - Reshapes the IR decay from 10% to 400%; 100% preserves the recorded decay, lower values shorten it, and higher values extend it.
 - **Trim** - Retains 1% to 100% of the post-cut IR with a fade. Shorter settings reduce tail length, CPU use, and memory.
 
-### Reading the Decay Graph
-
-Time runs left to right and level runs from 0 to -90 dB. The solid energy decay curve (EDC) shows how stored acoustic energy falls; a steeper descent means a shorter tail. The faint envelope gives transient context. Markers identify detected onset, the active direct-cut point, wet pre-delay, and trim point. **RT60** estimates the time for a 60 dB decay; “unavailable” means the IR did not contain a reliable fitting range. When **Decay** differs from 100%, compare the reshaped solid curve with the original dotted curve.
-
 ### Routing, Library, and Sharing
 
 A mono IR can feed selected channels, independent IR channels stay separate, and a four-channel true-stereo IR uses LL/LR/RL/RR cross-routes. In Auto, every four-channel IR on a stereo selection is interpreted in that order; choose Independent or Diagonal Matrix explicitly for quad or other four-channel layouts. Other multichannel files use a bounded diagonal route; IR Reverb does not create a full surround crossfeed matrix. For paired true-stereo files, select matching `L`/`R` or `Left`/`Right` filenames together.

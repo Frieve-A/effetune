@@ -52,10 +52,17 @@ Selecciona **All** en el enrutamiento del bus del efecto y configura suficientes
 - **Sub Outputs** selecciona las salidas de cada entrada **Managed** o **LFE**. Al seleccionar un canal, su **Channel Role** cambia a **LFE**. Una salida recién seleccionada empieza con rutas **ON** de todos los inputs del bus y con polaridad normal; usa Matrix para desactivar una ruta individual. Sin **Sub Outputs**, se detiene la división de graves y el enrutamiento a subwoofers, y los canales de entrada pasan sin crossover. **LFE Low-pass**, **LFE Frequency** y **LFE Slope** limitan opcionalmente LFE por encima de 20 a 300 Hz con 24, 48 o 96 dB/oct, sin filtrar de nuevo los graves ya separados.
 - **ON** y **Ø**: en cada celda de la tabla de canales, **ON** envía esa entrada **Managed** o **LFE** a la salida de subwoofer elegida. **Ø** invierte la polaridad solo de esa ruta entre la entrada y el subwoofer, para ajustarla al resultado medido o audible. **Ø** solo está disponible mientras **ON** está seleccionado; al desactivar **ON** también se desactiva **Ø**. No cambia la salida principal de la entrada.
 
-### Pantalla, estado y calibración
+### Pantalla y estado
 
 - El resumen de rutas muestra qué entradas alimentan cada subwoofer. Revísalo antes de subir el nivel, especialmente después de cambiar los canales. Al seleccionar un canal **Managed** se ven las respuestas pasaaltos y pasabajos activas, no una curva idealizada.
-- El estado muestra el modo, la preparación Linear y la latencia efectiva en muestras y ms. Al cambiar ajustes Linear el sonido puede reducirse o detenerse brevemente. Si no se pueden preparar los filtros, reduce **Taps** y vuelve a intentarlo. Si no puede usarse la configuración anterior, los canales principales normales pasan con retardo equivalente, las salidas reservadas quedan silenciosas y LFE no se reproduce hasta que la preparación termine.
+- El estado muestra el modo, la preparación Linear y la latencia efectiva en muestras y ms.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
+
+### Preparación del filtro
+Al cambiar ajustes Linear el sonido puede reducirse o detenerse brevemente. Si no se pueden preparar los filtros, reduce **Taps** y vuelve a intentarlo. Si no puede usarse la configuración anterior, los canales principales normales pasan con retardo equivalente, las salidas reservadas quedan silenciosas y LFE no se reproduce hasta que la preparación termine.
+
+### Bypass y calibración
+
 - El bypass del host restaura el audio y la asignación originales; el enrutamiento, la protección y la alineación de Bass Management no continúan. Para comparar o silenciar conservando el cableado, usa MultiChannel Panel después. El modo Linear describe el cruce: EQ/pasaaltos IIR o delay relativo posterior cambia la fase del sistema completo. Guarda la cadena calibrada como un solo preset.
 
 ## Channel Divider
@@ -99,7 +106,10 @@ Para usar este efecto, utiliza la aplicación de escritorio, configura un númer
 * Los canales de salida deben ser un número par de 4 a 16
 * Cada banda conserva el par estéreo original: en modo de 2 bandas, Low sale por los canales 1-2 y High por 3-4; en modo de 3 bandas se usan 1-2, 3-4 y 5-6; en modo de 4 bandas se usan 1-2, 3-4, 5-6 y 7-8
 * Utiliza filtros de cruce Linkwitz-Riley de alta calidad
-* Gráfico de respuesta de frecuencia visual para una configuración sencilla
+
+### Visualización
+- El gráfico muestra la respuesta de frecuencia de cada banda de salida.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ## DC Offset
 
@@ -150,6 +160,7 @@ El diseño FIR permite pendientes muy pronunciadas sin la resonancia de los filt
 - El gráfico muestra la respuesta objetivo de cada banda según la frecuencia.
 - Cada color corresponde al par de salidas de esa banda.
 - La línea de estado muestra la latencia y la resolución del filtro, o avisa si el número de canales no es compatible.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ## Matrix
 

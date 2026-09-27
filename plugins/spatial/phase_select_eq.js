@@ -909,7 +909,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         this._axisControls = axisControls;
         this._hiddenAxisBadge = document.createElement('span');
         this._hiddenAxisBadge.className = 'phase-select-eq-hidden-axis-badge';
-        axisControls.appendChild(this._hiddenAxisBadge);
+        axisControls.querySelector('.radio-options').appendChild(this._hiddenAxisBadge);
         container.appendChild(axisControls);
 
         const graph = this.createResponsiveGraph({
@@ -950,6 +950,21 @@ class PhaseSelectEqPlugin extends PluginBase {
         document.addEventListener('keydown', this._boundKeyDown);
         this._refreshUi();
         this.drawGraph();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this.canvas,
+            read: (x, y) => this._readMap(x, y),
+            avoid: () => {
+                const frame = this._readoutFrame;
+                return frame?.valid ? frame.labels.map(rect => ({
+                    left: rect.left * frame.scale,
+                    top: rect.top * frame.scale,
+                    width: rect.width * frame.scale,
+                    height: rect.height * frame.scale
+                })) : [];
+            },
+            crosshair: 'xy'
+        });
         return container;
     }
 
@@ -1436,6 +1451,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         ctx.fillStyle = color;
         ctx.fillText(constraint, badgeX + 4, y + 2);
         ctx.restore();
+        return { left: groupX, top: y, width: groupWidth, height: 15 };
     }
 
     _hiddenAxisWeight(point) {
@@ -1452,7 +1468,8 @@ class PhaseSelectEqPlugin extends PluginBase {
     }
 
     // Grid lines and labels in CSS pixels; a null labelContext omits the labels.
-    _drawPhaseMapGrid(context, showLines, labelContext) {
+    // When given, labelRects collects each drawn label's CSS-pixel rectangle.
+    _drawPhaseMapGrid(context, showLines, labelContext, labelRects = null) {
         const plot = this._plotRect();
         // The Visualizer palette carries only its shared roles, so labels use its graph-label role there.
         const labelColor = this._themeColor(this.displayOptions ? 'graph-label' : 'graph-tone-50');
@@ -1475,6 +1492,12 @@ class PhaseSelectEqPlugin extends PluginBase {
             context.textAlign = index === 0 ? 'left'
                 : (index === axisGrid.length - 1 ? 'right' : 'center');
             labelContext.fillText(label, x, plot.bottom - 25);
+            if (labelRects) {
+                const labelWidth = context.measureText?.(label)?.width ?? 0;
+                const labelLeft = index === 0 ? x
+                    : (index === axisGrid.length - 1 ? x - labelWidth : x - labelWidth / 2);
+                labelRects.push({ left: labelLeft, top: plot.bottom - 39, width: labelWidth, height: 14 });
+            }
         }
         const frequencies = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
             .filter(frequency => frequency < this._maximumDisplayFrequency());
@@ -1492,8 +1515,12 @@ class PhaseSelectEqPlugin extends PluginBase {
             }
             if (!labelContext) continue;
             context.fillStyle = labelColor;
-            labelContext.fillText(frequency >= 1000 ? `${frequency / 1000}k` : String(frequency),
-                plot.left + 40, y);
+            const label = frequency >= 1000 ? `${frequency / 1000}k` : String(frequency);
+            labelContext.fillText(label, plot.left + 40, y);
+            if (labelRects) {
+                const labelWidth = context.measureText?.(label)?.width ?? 0;
+                labelRects.push({ left: plot.left + 40 - labelWidth, top: y - 7, width: labelWidth, height: 14 });
+            }
         }
     }
 
@@ -1560,7 +1587,10 @@ class PhaseSelectEqPlugin extends PluginBase {
         context.fillStyle = (window.ThemePalette?.get('graph-bg-deep') ?? '');
         context.fillRect(0, 0, width, height);
         const plot = this._plotRect();
-        this._drawPhaseMapGrid(context, true, context);
+        const frame = (this._readoutFrame ??= {});
+        const labels = (frame.labels ??= []);
+        labels.length = 0;
+        this._drawPhaseMapGrid(context, true, context, labels);
 
         const geometry = this.regions.map(region => this._regionGeometry(region));
         for (let index = 0; index < this.regions.length; index++) {
@@ -1590,11 +1620,13 @@ class PhaseSelectEqPlugin extends PluginBase {
             for (const rectangle of geometry[index].core) {
                 const color = index === this.selectedRegionIndex
                     ? (window.ThemePalette?.get('graph-handle-active') ?? '') : (window.ThemePalette?.get('graph-handle') ?? '');
-                this._drawBandLabel(context, rectangle, index, color, plot);
+                labels.push(this._drawBandLabel(context, rectangle, index, color, plot));
             }
         }
 
         for (const handle of this._selectedHandles()) {
+            // The avoided square matches the 22 px handle grab radius.
+            labels.push({ left: handle.x - 11, top: handle.y - 11, width: 22, height: 22 });
             context.save();
             context.translate(handle.x, handle.y);
             context.fillStyle = handle.outer ? (window.ThemePalette?.get('graph-base') ?? '') : (window.ThemePalette?.get('graph-handle-active') ?? '');
@@ -1614,6 +1646,20 @@ class PhaseSelectEqPlugin extends PluginBase {
             }
             context.restore();
         }
+        frame.valid = true;
+        frame.scale = dpr;
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the map coordinates under canvas pixel (x, y): frequency and phase difference or balance.
+    _readMap(x, y) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const horizontal = this._xToHorizontal(x / frame.scale);
+        const value = this.xAxisMode === 'balance'
+            ? phaseSelectEqBalanceRatio(horizontal) : format.degrees(horizontal);
+        return { cursor: `${format.frequency(this._yToFrequency(y / frame.scale))} · ${value}`, rows: [] };
     }
 
     cleanup() {

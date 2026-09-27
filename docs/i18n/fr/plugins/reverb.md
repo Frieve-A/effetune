@@ -306,7 +306,7 @@ IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afi
 
 ### Lecture du graphique de décroissance
 
-Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC continue montre la perte d'énergie ; une pente plus forte indique une traîne plus courte. Les repères indiquent onset, cut, pre-delay et trim. RT60 estime le temps d'une chute de 60 dB. Lorsque **Decay** change, la nouvelle courbe est continue et l'originale pointillée.
+Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC continue montre la perte d'énergie ; une pente plus forte indique une traîne plus courte. Les repères indiquent onset, cut, pre-delay et trim. RT60 estime le temps d'une chute de 60 dB. Lorsque **Decay** change, la nouvelle courbe est continue et l'originale pointillée. Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Routage, bibliothèque et partage
 

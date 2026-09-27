@@ -72,11 +72,4 @@ A comb filter that adds a phasey, hollow, metallic, or resonant character by mix
 - **Spatial Coloration**: Can resemble short reflections, hollow coloration, or metallic resonance
 - **Real-time Visualization**: Shows frequency response with fundamental frequency marker
 
-### Visual Display
-- Real-time frequency response graph with logarithmic frequency scale
-- Clear visualization of comb filter peaks and dips
-- Fundamental frequency marker showing delay time
-- Interactive controls for precise adjustment
-- Delay distance calculation in millimeters
-
 [Back to all effects](/dsp/effects/)

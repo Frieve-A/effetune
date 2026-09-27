@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 import { chromium } from 'playwright';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
+const frequencyAxisScript = read('../../plugins/frequency-axis.js');
+const { FrequencyAxis } = (() => { const window = {}; vm.runInNewContext(frequencyAxisScript, { window }); return window; })();
 
 test('Spectrum gradient directions follow frequency and level after rotating the graph', async () => {
     const browser = await chromium.launch({ headless: true });
@@ -12,8 +15,9 @@ test('Spectrum gradient directions follow frequency and level after rotating the
         const page = await browser.newPage();
         await page.setContent('<!doctype html><body></body>');
         await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
+        await page.addScriptTag({ content: frequencyAxisScript });
         await page.addScriptTag({ content: read('../../plugins/analyzer/spectrum_analyzer.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const results = await page.evaluate(() => {
@@ -78,10 +82,11 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
             }
             window.ThemePalette = { get: name => name === 'graph-trace' ? 'rgba(0,255,0,1)' : 'rgba(24,24,24,1)' };
         ` });
+        await page.addScriptTag({ content: frequencyAxisScript });
         for (const file of ['spectrum_analyzer', 'spectrogram', 'stereo_meter', 'note_spectrogram']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
         }
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display', 'visualizer-renderer', 'visualizer-editor']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer', 'visualizer-editor']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const results = await page.evaluate(() => {
@@ -206,7 +211,8 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
                 result.push({ type, backgroundPixel, layerPixel, history });
                 item.effects = [normalizeEffect({ type: 'opacity', amount: .5 })];
                 item.params.showAxes = item.params.showAxisNumbers = true;
-                if (type === 'spectrum') { display.plugin.spectrum.fill(-30); display.plugin.peaks.fill(-20); }
+                // Like telemetry, assign a fresh raw spectrum; the display derives its own peaks.
+                if (type === 'spectrum') display.plugin.spectrum = new Float32Array(display.plugin.spectrum.length).fill(-30);
                 if (type === 'spectrogram') {
                     display.plugin.getSpectrogramDisplayTime = () => 1;
                     display.plugin.spectrogramColumnPeriod = .1;
@@ -301,14 +307,14 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
                 analyzer.flipX = title.flipX = flipX; analyzer.flipY = title.flipY = flipY;
                 transforms.length = 0;
                 renderer.draw({ background: { color: '#0b1621', effects: [] }, items: [analyzer, title] },
-                    sources, { title: 'Track' }, 1, { quality: 'high', pixelRatio: 1 });
+                    sources, { title: 'Track' }, 1, { quality: 'high' });
                 result.push({ type: 'composition', flipX, flipY, transforms: structuredClone(transforms) });
             }
             result.push({ type: 'effect-flips', calls: effectCalls });
             analyzer.rect = { x: 0, y: 0, w: 1, h: 1 };
             analyzer.effects = [normalizeEffect({ type: 'opacity', amount: 0 }), normalizeEffect({ type: 'shake', amount: 1 })];
             renderer.draw({ background: { color: '#0b1621', effects: [] }, items: [analyzer] },
-                sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+                sources, {}, 1, { quality: 'high' });
             const expected = document.createElement('canvas'); expected.width = 800; expected.height = 400;
             const expectedContext = expected.getContext('2d');
             expectedContext.fillStyle = '#0b1621'; expectedContext.fillRect(0, 0, 800, 400);
@@ -327,7 +333,7 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
             bars.palette.stops = [{ pos: 0, color: '#ff00ff' }];
             const boundsLayout = { background: { color: '#000000', effects: [] }, items: [bars] };
             const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
-                view: { layout: boundsLayout }, open: true, selection: bars.id, overlay,
+                view: { layout: boundsLayout, updateEditButtons() {} }, open: true, selection: new Set([bars.id]), overlay,
                 itemBounds: document.createElement('div')
             });
             editor.updateSelection();
@@ -335,9 +341,9 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
             const editorRect = { x: (overlayRect.left - hostRect.left) * 1.6, y: (overlayRect.top - hostRect.top) * 1.6,
                 width: overlayRect.width * 1.6, height: overlayRect.height * 1.6 };
             const boundsRenderer = new VisualizerRenderer(boundsStage);
-            boundsRenderer.draw(boundsLayout, sources, {}, 1, { quality: 'high', pixelRatio: 1.6 });
+            boundsRenderer.draw(boundsLayout, sources, {}, 1, { quality: 'high' });
             const native = boundsRenderer.layers.get(bars.id).display.plugin;
-            native.spectrum.fill(-30); native.peaks.fill(-20);
+            native.spectrum = new Float32Array(native.spectrum.length).fill(-30);
             const pixelsBounds = canvas => {
                 const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
                 let left = canvas.width, right = -1, bottom = -1;
@@ -355,7 +361,7 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
             for (const [name, effects] of [['none', []], ['disabled', [{ ...pulse, enabled: false }]],
                 ['glow', [glow]], ['pulse', [pulse]], ['pulse-glow', [pulse, glow]]]) {
                 bars.effects = effects;
-                boundsRenderer.draw(boundsLayout, sources, {}, 1, { quality: 'high', pixelRatio: 1.6 });
+                boundsRenderer.draw(boundsLayout, sources, {}, 1, { quality: 'high' });
                 samples.push({ name, ...pixelsBounds(boundsStage) });
             }
             // Reproduce the former final transform with the same native input.
@@ -369,8 +375,9 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
         });
         const expectedCenter = (type, row, original) => {
             const [x, y] = original.center;
-            if (type === 'notes') return [x, row.flipY ? y - (400 - 44.8 * 800 / 1024) : y];
-            if (type === 'notes-vertical') return [row.flipX ? x - (800 - 44.8 * 400 / 480) : x, y];
+            // The default note range has 64 rows along the 800 px or 400 px pitch axis.
+            if (type === 'notes') return [x, row.flipY ? y - (400 - FrequencyAxis.keyboardDepths(12 * 800 / 64, 400).gutter) : y];
+            if (type === 'notes-vertical') return [row.flipX ? x - (800 - FrequencyAxis.keyboardDepths(12 * 400 / 64, 800).gutter) : x, y];
             return [row.flipX ? 800 - x : x, row.flipY ? 400 - y : y];
         };
         for (const type of ['spectrum', 'spectrogram', 'stereo', 'notes', 'notes-vertical', 'notes-keyless', 'notes-vertical-keyless']) {
@@ -504,8 +511,9 @@ test('Notes move the keyboard to the opposite side without reversing its keys', 
             }
             window.ThemePalette = { get: () => 'rgb(24,24,24)' };
         ` });
+        await page.addScriptTag({ content: frequencyAxisScript });
         await page.addScriptTag({ content: read('../../plugins/analyzer/note_spectrogram.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
             const sources = { subscribeItem: () => () => {} };
@@ -518,9 +526,9 @@ test('Notes move the keyboard to the opposite side without reversing its keys', 
                 const horizontal = layout === 'Horizontal';
                 const length = horizontal ? canvas.width : canvas.height;
                 const depth = horizontal ? canvas.height : canvas.width;
-                const gutter = 44.8 * length / (horizontal ? 1024 : 480);
-                const rollWidth = depth - gutter;
                 const rowHeight = length / (item.params.mx - item.params.mn + 1);
+                const gutter = FrequencyAxis.keyboardDepths(12 * rowHeight, depth).gutter;
+                const rollWidth = depth - gutter;
                 const context = canvas.getContext('2d');
                 const nativeFillText = context.fillText.bind(context);
                 const labels = [];
@@ -570,19 +578,25 @@ test('Notes move the keyboard to the opposite side without reversing its keys', 
                     meters.push({ flipX, flipY, silent: sample(-Infinity), loud: sample(0) });
                 }
                 display.dispose();
-                return { layout, rows, meters, keySpan: 12 * rowHeight / 7 - 2,
-                    keyDepth: gutter - 28 * length / (horizontal ? 1024 : 480) - 2 };
+                return { layout, rows, meters, lowestNote: item.params.mn, highestNote: item.params.mx,
+                    keySpan: 12 * rowHeight / 7 - 2,
+                    keyDepth: gutter * (1 - 95 / 150) - 2 };
             });
         });
-        for (const { layout, rows, meters, keySpan, keyDepth } of results) {
+        for (const { layout, rows, meters, lowestNote, highestNote, keySpan, keyDepth } of results) {
             for (const row of meters) {
                 assert.notDeepEqual(row.loud, row.silent,
                     `${layout} flipX=${row.flipX} flipY=${row.flipY} draws the volume meter beside the keys`);
             }
-            const baseline = rows[0].keys;
-            assert.ok(new Set(baseline.map(pixel => pixel.join(','))).size > 1, `${layout} samples white and black keys`);
+            const blackKeyClasses = new Set([1, 3, 6, 8, 10]);
+            const expectedKeys = Array.from({ length: highestNote - lowestNote + 1 },
+                (_, index) => blackKeyClasses.has((highestNote - index) % 12));
+            // This dark fixture paints silent black/white keys at 17/238 before depth shading.
+            const keyColorMidpoint = (17 + 238) / 2;
             for (const row of rows) {
-                assert.deepEqual(row.keys, baseline, `${layout} flipX=${row.flipX} flipY=${row.flipY} keeps key order`);
+                assert.deepEqual(row.keys.map(pixel => pixel[0] < keyColorMidpoint), expectedKeys,
+                    `${layout} flipX=${row.flipX} flipY=${row.flipY} keeps MIDI key order`);
+                assert.ok(row.keys.every(pixel => pixel[3] === 255), `${layout} keyboard keys stay opaque`);
                 if (row.oldSide) assert.equal(row.oldSide[3], 0, `${layout} vacates the original keyboard side`);
             }
             const labels = rows[0].labels;
@@ -613,7 +627,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
             window.ThemePalette = { get: role => role === 'graph-bg-deep' ? '#070809' : '#444444' };
         ` });
         await page.addScriptTag({ content: read('../../plugins/analyzer/level_meter.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display', 'visualizer-renderer'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
             const stage = document.createElement('canvas'); stage.width = 800; stage.height = 400;
@@ -621,10 +635,11 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
             item.channel = 'L';
             item.params.showLevelValues = item.params.showAxes = item.params.showAxisNumbers = true;
             item.rect = { x: .02, y: .3, w: .05, h: .2 };
-            const layout = { background: { color: '#111111', effects: [] }, items: [item] };
+            // Graph Scale 1.6 on the 800 px stage keeps one graph pixel per canvas pixel.
+            const layout = { graphScale: 1.6, background: { color: '#111111', effects: [] }, items: [item] };
             const sources = { subscribeItem: () => () => {}, getFrame: () => null, getModulators: () => ({}) };
             const renderer = new VisualizerRenderer(stage);
-            renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             const plugin = renderer.layers.get(item.id).display.plugin;
             plugin.lv = plugin.pl = plugin.raw = [-6];
             plugin.ph = [0];
@@ -670,7 +685,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                 item.params.orientation = orientation;
                 for (const [flipX, flipY] of [[false, false], [true, false], [false, true], [true, true]]) {
                     stageValues.length = axisStrokes.length = axisFills.length = gridStrokes.length = localValues.length = 0;
-                    renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+                    renderer.draw(layout, sources, {}, 1, { quality: 'high' });
                     rows.push({ orientation, flipX, flipY, stageValues: structuredClone(stageValues),
                         axisStrokes: structuredClone(axisStrokes), axisFills: structuredClone(axisFills),
                         localValues: [...localValues] });
@@ -679,12 +694,12 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
             item.rect = { x: .1, y: .3, w: .8, h: .2 };
             item.params.orientation = 'horizontal';
             stageValues.length = axisStrokes.length = axisFills.length = gridStrokes.length = localValues.length = 0;
-            renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             const wide = { stageValues: structuredClone(stageValues), axisStrokes: structuredClone(axisStrokes),
                 localValues: structuredClone(localValues), signalWidth: signalWidths.at(-1) };
             item.params.dr = -61;
             axisFills.length = signalWidths.length = 0;
-            renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             const range = { dbStart: plugin.dbStart, dbRange: plugin.dbRange,
                 canvasWidth: plugin.foregroundCanvas.width, ticks: structuredClone(axisFills),
                 signalWidth: signalWidths.at(-1) };
@@ -695,7 +710,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                 'graph-grid-soft': '#00aa00', 'graph-bg-deep': '#000099', 'text-primary': '#fafafa'
             };
             stageValues.length = axisStrokes.length = axisFills.length = gridStrokes.length = localValues.length = 0;
-            renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             const themed = { value: structuredClone(stageValues), fills: structuredClone(axisFills),
                 outlines: structuredClone(axisStrokes), grid: [...gridStrokes] };
             const colorContext = document.createElement('canvas').getContext('2d');
@@ -708,7 +723,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                 'graph-bg-deep': '#223344', 'text-primary': '#eecc44' };
             window.ThemePalette.get = role => appColors[role] ?? '#444444';
             stageValues.length = axisStrokes.length = axisFills.length = gridStrokes.length = localValues.length = 0;
-            renderer.draw(layout, sources, {}, 1, { quality: 'high', pixelRatio: 1 });
+            renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             const defaultTheme = { value: structuredClone(stageValues), fills: structuredClone(axisFills),
                 outlines: structuredClone(axisStrokes), grid: [...gridStrokes] };
             return { rows, wide, range, themed, expected, defaultTheme };
@@ -764,7 +779,7 @@ test('Spectrum Note Colors bars and peaks use one center-frequency color through
         ` });
         for (const file of ['spectrum_analyzer', 'note_spectrogram'])
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
             const sources = { subscribeItem: () => () => {}, getFrame: () => null, getModulators: () => ({}) };
@@ -830,7 +845,7 @@ test('Heatmap keeps native colors on black while its dark values reveal the scen
             window.ThemePalette = { get: () => 'rgb(0,0,0)' };
         ` });
         await page.addScriptTag({ content: read('../../plugins/analyzer/spectrogram.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-analyzer-display'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const samples = await page.evaluate(() => {
             const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;

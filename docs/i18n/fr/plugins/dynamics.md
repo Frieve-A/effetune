@@ -122,6 +122,7 @@ Un contrôle intelligent du volume qui ajuste automatiquement votre musique pour
 - Niveau de sortie (ligne blanche).
 - Retour visuel clair des ajustements de volume.
 - Le graphique défile de droite à gauche, avec les niveaux les plus récents sur le bord droit et des repères toutes les secondes.
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés
 
@@ -288,6 +289,7 @@ Un effet qui lisse les différences de volume en réduisant doucement les crête
 - Indicateurs de niveau de volume faciles à lire
 - Retour visuel pour tous les ajustements de paramètres
 - Lignes de référence pour guider vos réglages
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés pour Différents Scénarios d'Écoute
 - Écoute de Fond Décontractée :
@@ -372,6 +374,7 @@ Un processeur de plage dynamique qui étend la plage dynamique des signaux en de
 - Indicateurs de niveau de volume faciles à lire
 - Retour visuel pour tous les ajustements de paramètres
 - Lignes de référence pour guider vos réglages
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés pour Différents Scénarios d'Écoute
 - Restauration de Dynamiques Naturelles :
@@ -459,6 +462,7 @@ Une porte de bruit pleine bande qui baisse tout le signal lorsque le niveau pass
 - Vumètre de réduction de gain en temps réel affichant :
   - Quantité actuelle de réduction du bruit
   - Retour visuel de l'activité de la porte
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés
 
@@ -602,6 +606,7 @@ Cette configuration crée le son caractéristique "prêt pour la radio" :
 - Vumètres de réduction de gain en temps réel
 - Visualisation de l'activité des bandes de fréquences
 - Indicateurs clairs des points de crossover
+- Survolez le graphique d'une bande, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Utilisation
 - Commencez avec les réglages par défaut de style radio FM
@@ -730,6 +735,7 @@ Cette configuration crée une restauration dynamique au son naturel :
 - Vumètres d'activité d'expansion en temps réel indiquant combien chaque bande est réduite ou relevée
 - Visualisation de l'activité des bandes de fréquences
 - Indicateurs clairs des points de crossover
+- Survolez le graphique d'une bande, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Conseils d'Utilisation
 - Commencez avec les paramètres par défaut pour la restauration dynamique générale
@@ -845,6 +851,7 @@ Chaque bande de fréquence a des contrôles indépendants de mise en forme des t
 - Sélection interactive des bandes
 - Retour visuel clair de l'activité de mise en forme des transitoires
 - Les graphiques défilent de droite à gauche de façon fluide, avec les valeurs les plus récentes sur le bord droit.
+- Survolez le graphique d'une bande, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés
 
@@ -967,6 +974,7 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour part
 - Affichage temporel avec marqueurs de référence d'une seconde
 - Valeurs actuelles affichées en temps réel
 - Les graphiques défilent de droite à gauche de façon fluide, avec les valeurs les plus récentes sur le bord droit.
+- Survolez l'un ou l'autre graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés
 
@@ -1058,6 +1066,7 @@ Un processeur de dynamique spécialisé qui vous permet d'améliorer ou de rédu
 - Marqueurs temporels pour référence
 - Interface intuitive pour tous les paramètres
 - Les graphiques défilent de droite à gauche de façon fluide, avec les valeurs les plus récentes sur le bord droit.
+- Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Réglages Recommandés
 

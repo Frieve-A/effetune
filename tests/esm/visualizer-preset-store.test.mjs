@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { VisualizerPresetStore } from '../../js/visualizer/visualizer-preset-store.js';
-import { createDefaultLayout, DEFAULT_THEME_COLORS, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
+import { createDefaultLayout, createItem, DEFAULT_THEME_COLORS, normalizeLayout, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
+import { validateItemShape } from '../../js/user-data-backup/portable.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 test('current layout persists on flush while named presets require explicit save', async () => {
@@ -30,6 +31,47 @@ test('current layout persists on flush while named presets require explicit save
     assert.equal((await store.loadCurrent()).background.color, '#654321');
     assert.equal((await store.getUserPreset('Night')).background.color, '#123456');
     assert.deepEqual((await store.readBackupSnapshot()).map(item => item.name), ['Night']);
+});
+
+test('older current layouts, named presets, and backups retain user settings when defaults are added', async () => {
+    const legacy = createDefaultLayout();
+    legacy.background.color = '#123456';
+    const added = { spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm'], spectrogram: ['kl'], notes: ['kl'],
+        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf'], chroma: ['cf'] };
+    legacy.items = Object.entries(added).map(([type, keys]) => {
+        const item = createItem(type, `saved-${type}`);
+        item.rect = { x: 0.2, y: 0.25, w: 0.6, h: 0.5 };
+        item.channel = 'R';
+        item.palette.color = '#fedcba';
+        item.params.showAxes = true;
+        for (const key of keys) delete item.params[key];
+        return item;
+    });
+    legacy.items[0].params.sc = 'linear';
+    legacy.items[2].params.mn = 40;
+    legacy.items[2].params.mx = 72;
+    delete legacy.graphScale;
+    const original = structuredClone(legacy);
+    const stores = { current: new Map([['layout', legacy]]), presets: new Map([['Saved', legacy]]) };
+    const store = new VisualizerPresetStore();
+    store.request = async (name, _mode, action) => action({
+        get: key => stores[name].get(key),
+        put: (value, key) => stores[name].set(key, structuredClone(value)),
+        add: (value, key) => stores[name].set(key, structuredClone(value)),
+        getAllKeys: () => [...stores[name].keys()]
+    });
+    assert.deepEqual(await store.loadCurrent(), original, 'Initialization receives the saved layout instead of a null fallback');
+    assert.deepEqual(normalizeLayout(await store.getUserPreset('Saved')), normalizeLayout(original));
+    assert.doesNotThrow(() => validateItemShape({ id: 'old-backup', kind: 'visualizer', name: 'Restored', data: original }));
+    await store.appendUserPreset('Restored', original);
+    assert.deepEqual(await store.getUserPreset('Restored'), snapshotLayout(original));
+    assert.deepEqual(await store.readBackupSnapshot(), [
+        { name: 'Saved', layout: snapshotLayout(original) }, { name: 'Restored', layout: snapshotLayout(original) }
+    ]);
+    store.saveCurrent(normalizeLayout(await store.loadCurrent()));
+    await store.flushCurrent();
+    assert.deepEqual(await store.loadCurrent(), snapshotLayout(original));
+    assert.deepEqual(await store.getUserPreset('Saved'), original, 'Loading and saving current leaves the old named preset intact');
 });
 
 test('preset save and backup restore preserve effective theme colors including legacy sparse layouts', async () => {

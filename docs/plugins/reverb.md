@@ -307,7 +307,7 @@ IR Reverb convolves the signal with an imported impulse response (IR), reproduci
 
 ### Reading the Decay Graph
 
-Time runs left to right and level runs from 0 to -90 dB. The solid energy decay curve (EDC) shows how stored acoustic energy falls; a steeper descent means a shorter tail. The faint envelope gives transient context. Markers identify detected onset, the active direct-cut point, wet pre-delay, and trim point. **RT60** estimates the time for a 60 dB decay; “unavailable” means the IR did not contain a reliable fitting range. When **Decay** differs from 100%, compare the reshaped solid curve with the original dotted curve.
+Time runs left to right and level runs from 0 to -90 dB. The solid energy decay curve (EDC) shows how stored acoustic energy falls; a steeper descent means a shorter tail. The faint envelope gives transient context. Markers identify detected onset, the active direct-cut point, wet pre-delay, and trim point. **RT60** estimates the time for a 60 dB decay; “unavailable” means the IR did not contain a reliable fitting range. When **Decay** differs from 100%, compare the reshaped solid curve with the original dotted curve. Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ### Routing, Library, and Sharing
 

@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.12.0-4209a8158ee705de";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.12.0-09f6b4f983bd1398";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./css/effetune-library.css",
   "./css/effetune-mobile.css",
@@ -211,6 +211,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/audio-player/rolling-pcm-transport.js",
   "./js/ui/audio-player/rolling-pcm-worker-entry.js",
   "./js/ui/audio-player/state-manager.js",
+  "./js/ui/brand-animation.js",
   "./js/ui/double-blind-test/double-blind-test.js",
   "./js/ui/layout-mode-manager.js",
   "./js/ui/library/artwork-loader.js",
@@ -291,8 +292,10 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/vendor/sqlite/sqlite3.wasm",
   "./js/vendor/sqlite/vendor.json",
   "./js/visualizer/visualizer-analyzer-display.js",
+  "./js/visualizer/visualizer-ballistics.js",
   "./js/visualizer/visualizer-editor.js",
   "./js/visualizer/visualizer-effects.js",
+  "./js/visualizer/visualizer-history.js",
   "./js/visualizer/visualizer-model.js",
   "./js/visualizer/visualizer-palette-presets.js",
   "./js/visualizer/visualizer-preset-store.js",
@@ -395,6 +398,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./plugins/frequency-axis.js",
   "./plugins/frequency-preview.js",
   "./plugins/graph-point-interaction.js",
+  "./plugins/graph-readout.css",
+  "./plugins/graph-readout.js",
   "./plugins/lofi/am_radio_simulator.css",
   "./plugins/lofi/am_radio_simulator.js",
   "./plugins/lofi/bit_crusher.js",

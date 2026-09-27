@@ -77,11 +77,6 @@ Because this processes frequency bands, it affects all sounds in the selected ra
     - Use to balance the bands with each other
     - Compensate for any volume changes
 
-### Visual Display
-- Interactive band selection tabs
-- Real-time transfer curve graph for each band
-- Clear visual feedback as you adjust settings
-
 ### Music Enhancement Tips
 - For Full Mix Enhancement:
   1. Start with gentle Drive (2.0-3.0) on all bands

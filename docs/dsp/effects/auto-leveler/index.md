@@ -99,13 +99,6 @@ A smart volume control that automatically adjusts your music to maintain a consi
   - Lower values: Allows the leveler to react to quieter passages
   - Start at -60dB and adjust if needed
 
-### Visual Feedback
-- Real-time LUFS level display
-- Input level (green line)
-- Output level (white line)
-- Clear visual feedback of volume adjustments
-- The graph scrolls from right to left, with the latest levels at the right edge and marks every second.
-
 ### Recommended Settings
 
 #### General Listening

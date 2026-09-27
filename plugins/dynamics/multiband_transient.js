@@ -863,7 +863,34 @@ class MultibandTransientPlugin extends PluginBase {
                 ctx.lineTo(width, height * (1 - (latest + 6) / 12));
                 ctx.stroke();
             }
+
+            const frame = ((this._readoutFrames ??= [])[bandIdx] ??= {});
+            frame.width = width;
+            frame.height = height;
+            frame.displayTime = displayTime;
+            frame.pixelsPerSecond = pixelsPerSecond;
+            frame.valid = started;
         }
+        this._graphReadouts?.forEach(readout => readout?.refresh());
+    }
+
+    // Reads a band's gain history at canvas pixel x as time back from the right edge (now).
+    _readBandGraph(bandIdx, x) {
+        const frame = this._readoutFrames?.[bandIdx];
+        if (!frame?.valid) return null;
+        const { format, historyValueAt } = window.GraphReadout;
+        const secondsBack = (x - frame.width) / frame.pixelsPerSecond;
+        const buffer = this.gainBuffers[bandIdx];
+        const gain = historyValueAt(this.historyTimes, buffer, frame.displayTime + secondsBack, buffer[buffer.length - 1]);
+        return {
+            cursor: format.time(secondsBack * 1000),
+            rows: [{
+                label: 'Gain',
+                color: 'var(--et-graph-trace)',
+                value: format.db(gain, { signed: true }),
+                y: frame.height * (1 - (gain + 6) / 12)
+            }]
+        };
     }
 
     cleanup() {
@@ -1057,6 +1084,8 @@ class MultibandTransientPlugin extends PluginBase {
         // Transfer graphs UI (from multiband_saturation.js structure)
         const graphsContainer = document.createElement('div');
         graphsContainer.className = 'mbt-transfer-graphs';
+        this._readoutFrames = [];
+        this._graphReadouts = [];
         for (let i = 0; i < this.bands.length; i++) {
             const graphDiv = document.createElement('div');
             graphDiv.className = `mbt-band-graph ${i === 0 ? 'active' : ''}`;
@@ -1096,6 +1125,11 @@ class MultibandTransientPlugin extends PluginBase {
             });
             
             graphsContainer.appendChild(graphDiv);
+            this._graphReadouts.push(window.GraphReadout?.attach({
+                mount: graphContainer,
+                surface: canvas,
+                read: x => this._readBandGraph(bandIndex, x)
+            }));
         }
         container.appendChild(graphsContainer);
 

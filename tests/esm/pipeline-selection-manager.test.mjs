@@ -214,3 +214,25 @@ test('selection helpers expose, replace, toggle, and invert selections', async (
     assert.deepEqual([...manager.selectedPlugins], [pluginB, pluginC]);
   });
 });
+
+test('pruneSelection drops plugins outside the pipeline from the shared Set in place', () => {
+  const kept = { id: 'kept' };
+  const runtime = createRuntime([kept]);
+  const manager = new PipelineSelectionManager(runtime.pipelineCore);
+  const shared = manager.selectedPlugins;
+  shared.add(kept).add({ id: 'recreated' });
+
+  manager.pruneSelection();
+
+  assert.equal(manager.selectedPlugins, shared);
+  assert.deepEqual([...shared], [kept]);
+});
+
+test('updateSelectionClasses refreshes the pipeline edit buttons', async () => {
+  const runtime = createRuntime([]);
+  const manager = new PipelineSelectionManager(runtime.pipelineCore);
+  await withGlobals({ window: { uiManager: { updateEditButtons: () => runtime.calls.push(['updateEditButtons']) } } }, async () => {
+    await withLayoutDocument(runtime.calls, async () => manager.updateSelectionClasses());
+  });
+  assert.deepEqual(runtime.calls.at(-1), ['updateEditButtons']);
+});

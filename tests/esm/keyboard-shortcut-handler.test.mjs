@@ -55,10 +55,6 @@ function createContext(options = {}) {
   const calls = [];
   const pipeline = [{ id: 'a' }, { id: 'b' }];
   const selectedPlugins = new Set([{ id: 'old' }]);
-  const selectedItems = [
-    { classList: { remove: name => calls.push(['removeClass', name, 0]) } },
-    { classList: { remove: name => calls.push(['removeClass', name, 1]) } }
-  ];
 
   const context = {
     calls,
@@ -74,12 +70,6 @@ function createContext(options = {}) {
     },
     core: {
       selectedPlugins,
-      pipelineList: {
-        querySelectorAll: selector => {
-          calls.push(['querySelectorAll', selector]);
-          return selectedItems;
-        }
-      },
       updateSelectionClasses: () => calls.push(['updateSelectionClasses']),
       deleteSelectedPlugins: () => calls.push(['deleteSelectedPlugins'])
     },
@@ -200,17 +190,13 @@ test('Ctrl+X cuts and Meta+C copies selected plugins', () => {
   assert.deepEqual(copyContext.calls, [['copySelectedPluginsToClipboard']]);
 });
 
-test('Escape clears selected plugins and selected item classes', () => {
+test('Escape clears selected plugins and refreshes the selection display', () => {
   const context = createContext();
   const event = createEvent({ key: 'Escape' });
 
   assert.equal(callShortcut(event, context), true);
   assert.equal(context.core.selectedPlugins.size, 0);
-  assert.deepEqual(context.calls, [
-    ['querySelectorAll', '.pipeline-item'],
-    ['removeClass', 'selected', 0],
-    ['removeClass', 'selected', 1]
-  ]);
+  assert.deepEqual(context.calls, [['updateSelectionClasses']]);
 });
 
 test('Ctrl+V prevents browser paste and applies non-empty clipboard text', async () => {
@@ -348,11 +334,7 @@ test('Escape clears selection when no document reference is available', () => {
 
   assert.equal(callShortcut(event, context), true);
   assert.equal(context.core.selectedPlugins.size, 0);
-  assert.deepEqual(context.calls, [
-    ['querySelectorAll', '.pipeline-item'],
-    ['removeClass', 'selected', 0],
-    ['removeClass', 'selected', 1]
-  ]);
+  assert.deepEqual(context.calls, [['updateSelectionClasses']]);
 });
 
 test('targets without matches are treated as non-editing elements', () => {

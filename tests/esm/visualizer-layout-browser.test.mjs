@@ -7,7 +7,8 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../../css/effetune-theme.css') +
     read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '') +
     read('../../css/effetune-mobile.css') + read('../../css/effetune-library.css');
-const viewSource = read('../../js/visualizer/visualizer-view.js')
+const viewSource = read('../../js/visualizer/visualizer-history.js').replace(/^export /gm, '') +
+    read('../../js/visualizer/visualizer-view.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerView', 'window.VisualizerView = class VisualizerView');
 const modelSource = read('../../js/visualizer/visualizer-model.js')
@@ -36,11 +37,11 @@ test('Visualizer Edit channel dropdown automatically uses the shared themed list
             Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
             const root = document.querySelector('#visualizerView');
             const layout = createDefaultLayout();
-            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
-                t: (_, fallback) => fallback, changed() {}, notice() {} };
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() {}, notice() {}, commitPending() {}, warn() {} };
             window.editor = new VisualizerEditor(view);
             root.append(editor.navigation, editor.root);
-            editor.selection = layout.items[0].id;
+            editor.selection = new Set([layout.items[0].id]);
             editor.setOpen(true);
         });
         const channel = page.locator('.visualizer-editor-inspector .parameter-row')
@@ -81,15 +82,15 @@ test('Visualizer item arrows move one list position and layer buttons move to ei
             const layout = window.createDefaultLayout();
             layout.items = ['back', 'middle', 'selected', 'front'].map(id => window.createItem('title', id));
             const savedOrders = [];
-            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
                 t: (_, fallback) => fallback,
-                changed() { savedOrders.push(layout.items.map(item => item.id)); } };
+                changed() { savedOrders.push(layout.items.map(item => item.id)); }, commitPending() {} };
             const editor = new window.VisualizerEditor(view);
             root.append(editor.navigation, editor.root);
-            editor.selection = 'selected'; editor.setOpen(true);
+            editor.selection = new Set(['selected']); editor.setOpen(true);
             const state = () => ({
                 order: layout.items.map(item => item.id),
-                selection: editor.selection,
+                selection: [...editor.selection].join(),
                 disabled: [...editor.root.querySelectorAll('.visualizer-editor-actions button')]
                     .slice(0, 4).map(button => button.disabled),
                 activeLabel: editor.navigation.querySelector('.visualizer-item-list .active').textContent,
@@ -105,7 +106,7 @@ test('Visualizer item arrows move one list position and layer buttons move to ei
             }
             layout.items = [layout.items[0]]; editor.render();
             const single = state();
-            editor.selection = null; editor.render();
+            editor.clearSelection(); editor.render();
             return { states, single, savedOrders, labels,
                 backgroundActions: editor.root.querySelectorAll('.visualizer-editor-actions button').length };
         });
@@ -130,6 +131,61 @@ test('Visualizer item arrows move one list position and layer buttons move to ei
     }
 });
 
+test('Multi-selection edits every same-type item, reorders the group, and shows alignment buttons', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body><div id="visualizerView"><div class="visualizer-stage"></div></div></body>');
+        await page.addScriptTag({ content: modelSource });
+        await page.addScriptTag({ content: palettePresetsSource });
+        await page.addScriptTag({ content: editorSource });
+        const result = await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView');
+            const layout = window.createDefaultLayout();
+            layout.items = ['a', 'b', 'c'].map(id => window.createItem('spectrum', id));
+            layout.items.push(window.createItem('title', 't'));
+            let changes = 0;
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() { changes++; }, commitPending() {} };
+            const editor = new window.VisualizerEditor(view);
+            root.append(editor.navigation, editor.root);
+            editor.selection = new Set(['a', 'b']); editor.setOpen(true);
+            const panel = () => ({
+                order: layout.items.map(item => item.id).join(),
+                disabled: [...editor.root.querySelectorAll('.visualizer-editor-actions button')].slice(0, 4).map(button => button.disabled),
+                align: [...editor.root.querySelectorAll('.visualizer-align-actions button')].map(button => button.title),
+                note: !!editor.root.querySelector('.visualizer-bulk-note'),
+                settings: editor.root.querySelectorAll('.parameter-row').length > 0
+            });
+            const same = panel();
+            const channel = [...editor.root.querySelectorAll('.parameter-row')]
+                .find(row => row.querySelector('label')?.textContent === 'Channel').querySelector('select');
+            channel.value = 'R'; channel.dispatchEvent(new Event('change'));
+            const channels = layout.items.map(item => item.channel);
+            const editChanges = changes;
+            editor.root.querySelector('.visualizer-editor-actions .move-down-button').click();
+            const moved = panel();
+            editor.root.querySelector('.visualizer-align-actions .align-right-button').click();
+            editor.selection = new Set(['a', 't']); editor.render();
+            return { same, channels, editChanges, moved, changes, mixed: panel() };
+        });
+        const align = ['Align left edges', 'Align horizontal centers', 'Align right edges', 'Align top edges',
+            'Align vertical centers', 'Align bottom edges'];
+        assert.deepEqual(result.same, { order: 'a,b,c,t', disabled: [true, false, false, true], align, note: true, settings: true });
+        assert.deepEqual(result.channels, ['R', 'R', null, null]);
+        assert.equal(result.editChanges, 1);
+        assert.deepEqual(result.moved, { ...result.same, order: 'c,a,b,t', disabled: [false, false, false, false] });
+        assert.equal(result.changes, 3);
+        assert.deepEqual(result.mixed, { order: 'c,a,b,t', disabled: [false, false, false, false], align, note: false, settings: false });
+    } finally {
+        await browser.close();
+    }
+});
+
 test('Rainbow stop sliders retain fractional positions and update the saved and drawn gradient', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -149,10 +205,10 @@ test('Rainbow stop sliders retain fractional positions and update the saved and 
             const root = document.querySelector('#visualizerView');
             const layout = createDefaultLayout();
             layout.items[0].palette.mode = 'gradient';
-            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
-                t: (_, fallback) => fallback, changed() {}, notice() {} };
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() {}, notice() {}, commitPending() {}, warn() {} };
             const editor = new VisualizerEditor(view);
-            editor.selection = layout.items[0].id;
+            editor.selection = new Set([layout.items[0].id]);
             editor.setOpen(true);
             const dbRange = [...editor.root.querySelectorAll('.visualizer-field')]
                 .find(row => row.querySelector('label')?.textContent === 'DB Range').querySelector('input').value;
@@ -181,9 +237,9 @@ test('Rainbow stop sliders retain fractional positions and update the saved and 
             const expandedPreset = layout.items[0].palette.stops.every((stop, index) =>
                 stop.color === GRADIENT_PRESETS[3].colors[index] &&
                 stop.pos === (GRADIENT_PRESETS[3].colors.length === 1 ? 0 : index / (GRADIENT_PRESETS[3].colors.length - 1)));
-            editor.selection = null;
+            editor.clearSelection();
             const stereo = createItem('stereo'); layout.items.push(stereo);
-            editor.selection = stereo.id; editor.render();
+            editor.selection = new Set([stereo.id]); editor.render();
             const windowRange = [...editor.root.querySelectorAll('.visualizer-field')]
                 .find(row => row.querySelector('label')?.textContent === 'Window').querySelector('input').value;
             return { initial, stops, edited: sliders[1].value, saved, before, after, dbRange, windowRange,
@@ -221,8 +277,8 @@ test('Editor additions respect saved item and effect limits and recover after de
             const root = document.querySelector('#visualizerView');
             const layout = createDefaultLayout();
             layout.items = Array.from({ length: 63 }, () => createItem('title'));
-            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
-                t: (_, fallback) => fallback, changed() {}, notice() {} };
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() {}, notice() {}, commitPending() {}, warn() {} };
             const editor = new VisualizerEditor(view);
             editor.setOpen(true);
             const addItem = () => editor.navigation.querySelector('.visualizer-navigation-add-row button');
@@ -230,7 +286,7 @@ test('Editor additions respect saved item and effect limits and recover after de
             const itemDisabled = addItem().disabled;
             addItem().click();
             addItem().dispatchEvent(new Event('click'));
-            const duplicateBlocked = editor.duplicateItem(layout.items[0]) === null;
+            const duplicateBlocked = editor.insertCopies([layout.items[0]], true) === null;
             const itemLimit = layout.items.length;
             editor.deleteSelected();
             const itemReenabled = !addItem().disabled;
@@ -239,7 +295,7 @@ test('Editor additions respect saved item and effect limits and recover after de
             const effects = [];
             for (const target of [layout.items.at(-1), layout.background]) {
                 target.effects = Array.from({ length: 15 }, () => normalizeEffect({ type: 'opacity' }));
-                editor.selection = target.id || null;
+                editor.selection = new Set(target.id ? [target.id] : []);
                 editor.render();
                 const addEffect = () => [...editor.root.querySelectorAll('.visualizer-select-action-row')]
                     .find(row => row.querySelector('select option[value="opacity"]')).querySelector('button');
@@ -285,11 +341,11 @@ test('Chroma octave sliders retain pointer and keyboard interaction while synchr
             const item = createItem('chroma');
             item.params.hi = 3;
             layout.items = [item];
-            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
-                t: (_, fallback) => fallback, changed() {}, notice() {} };
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() {}, notice() {}, commitPending() {}, warn() {} };
             const editor = new VisualizerEditor(view);
             root.append(editor.root);
-            editor.selection = item.id;
+            editor.selection = new Set([item.id]);
             editor.setOpen(true);
             const fields = [...editor.root.querySelectorAll('.visualizer-field')];
             const slider = label => fields.find(row => row.querySelector('label')?.textContent === label).querySelector('input');
@@ -354,10 +410,10 @@ test('Trail Feedback sliders save zoom, rotation, and horizontal and vertical fl
             const root = document.querySelector('#visualizerView');
             const layout = createDefaultLayout();
             layout.items[0].effects = [normalizeEffect({ type: 'trail-feedback' })];
-            const view = { root, stage: root.querySelector('.visualizer-stage'), layout,
-                t: (_, fallback) => fallback, changed() {}, notice() {} };
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() {}, notice() {}, commitPending() {}, warn() {} };
             const editor = new VisualizerEditor(view);
-            editor.selection = layout.items[0].id;
+            editor.selection = new Set([layout.items[0].id]);
             editor.setOpen(true);
             const slider = label => [...editor.root.querySelectorAll('.visualizer-field')]
                 .find(row => row.querySelector('label')?.textContent === label)?.querySelector('input');
@@ -399,7 +455,7 @@ test('Visualizer expand icon is centered and names both view-area actions', asyn
                     this.navigation = document.createElement('aside'); this.root = document.createElement('aside');
                     this.navigationContent = document.createElement('div');
                     this.navigation.appendChild(this.navigationContent);
-                    this.open = false;
+                    this.open = false; this.selection = new Set();
                 }
                 setOpen(open) { this.open = open; }
             };
@@ -724,16 +780,16 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             layout.items[0].palette.mode = 'gradient';
             layout.items[0].params.showAxes = true;
             layout.items.push(window.createItem('artwork'));
-            const view = { root, stage, layout,
+            const view = Object.assign(Object.create(window.VisualizerView.prototype), { root, stage, layout, updateEditButtons() {},
                 t: (key, fallback) => ({ 'visualizer.type.spectrum': 'Spectrum',
                     'visualizer.gradient': 'グラデーション', 'visualizer.apply': '適用',
                     'visualizer.effect': '演出', 'visualizer.add': '追加' })[key] || fallback, changes: 0,
-                changed() { this.changes++; }, notice() {} };
+                changed() { this.changes++; }, notice() {}, commitPending() {}, warn() {} });
             const editor = new window.VisualizerEditor(view);
             const workspace = root.querySelector('.visualizer-workspace');
             workspace.insertBefore(editor.navigation, workspace.firstChild);
             workspace.appendChild(editor.root);
-            editor.selection = layout.items[0].id;
+            editor.selection = new Set([layout.items[0].id]);
             editor.setOpen(true);
             const qualityRow = document.createElement('label');
             qualityRow.className = 'visualizer-quality-label';
@@ -753,15 +809,15 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 addParts: ['label', 'select', 'button'].map(tag => leftAddRow.querySelector(tag).getBoundingClientRect().width),
                 fits: editor.navigation.scrollWidth <= editor.navigation.clientWidth + 1
             };
-            const gridToggle = layoutFields[1].querySelector('input');
-            const gridBefore = gridToggle.checked;
-            layoutFields[1].querySelector('label').click();
-            const gridLabelWorks = gridToggle.checked !== gridBefore;
+            const gridSelect = layoutFields[2].querySelector('select');
+            const gridLabelLinked = layoutFields[2].querySelector('label').htmlFor === gridSelect.id;
+            gridSelect.value = '8'; gridSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            const gridLabelWorks = gridLabelLinked && editor.gridDivisions === 8;
             const listInitial = itemList.children.length === 3 &&
                 itemList.children[1].classList.contains('active') &&
                 itemList.children[1].getAttribute('aria-pressed') === 'true';
             itemList.children[2].click();
-            const listSelects = editor.selection === layout.items[1].id &&
+            const listSelects = [...editor.selection].join() === layout.items[1].id &&
                 editor.root.querySelector('.visualizer-item-name').textContent.includes('artwork');
             editor.navigation.querySelector('.visualizer-item-list').children[1].click();
             const pipelineCard = document.createElement('div');
@@ -1010,9 +1066,9 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             remove.click();
             editor.root.querySelector('.visualizer-effect-actions .delete-button').click();
             const effectRemoved = layout.items[0].effects.length === 0;
-            editor.selection = null; editor.render();
+            editor.clearSelection(); editor.render();
             const backgroundHeading = editor.root.querySelector('.visualizer-item-name').textContent;
-            editor.selection = layout.items[0].id; editor.render();
+            editor.selection = new Set([layout.items[0].id]); editor.render();
             const axes = layout.items[0].params.showAxes;
             const motionMode = layout.items[0].palette.motion.mode;
             const stopCount = layout.items[0].palette.stops.length;
@@ -1021,9 +1077,9 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             editor.root.querySelector('.visualizer-editor-actions .send-to-back-button').click();
             const sentBack = layout.items[0]?.id === 'main-spectrum';
             editor.root.querySelector('.visualizer-editor-actions .delete-button').click();
-            const itemDeleted = layout.items.length === 1 && editor.selection === null;
+            const itemDeleted = layout.items.length === 1 && editor.selection.size === 0;
             const replacement = window.createItem('spectrum');
-            layout.items.unshift(replacement); editor.selection = replacement.id; editor.render();
+            layout.items.unshift(replacement); editor.selection = new Set([replacement.id]); editor.render();
             const theme = editor.navigation.querySelector('.visualizer-theme-colors');
             const themeInputs = [...theme.querySelectorAll('input[type="color"]')];
             const themeDefaults = themeInputs.length === 8 && themeInputs.every((input, index) =>
@@ -1052,7 +1108,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 itemAddRow.scrollWidth <= itemAddRow.clientWidth + 1;
             itemAddSelect.value = 'level-meter'; itemAddButton.click();
             const itemAdded = layout.items.length === 3 && layout.items.at(-1).type === 'level-meter' &&
-                editor.selection === layout.items.at(-1).id;
+                [...editor.selection].join() === layout.items.at(-1).id;
             const firstThemedItem = layout.items.at(-1);
             themeTrace = 'rgba(220, 40, 80, 1)';
             const secondAddRow = editor.navigation.querySelector('.visualizer-navigation-add-row');
@@ -1060,9 +1116,9 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             const themeSolidColors = firstThemedItem.palette.color === '#00ff00' &&
                 layout.items.at(-1).palette.color === '#00ff00' && firstThemedItem.palette.mode === 'solid';
             layout.items.pop();
-            editor.selection = replacement.id; editor.render();
+            editor.selection = new Set([replacement.id]); editor.render();
             const drawn = [];
-            let frameRequests = 0, leakedDeletes = 0;
+            let frameRequests = 0;
             window.requestAnimationFrame = () => ++frameRequests;
             const visualCanvas = document.createElement('canvas'); stage.appendChild(visualCanvas);
             Object.assign(view, { stageHost: root.querySelector('.visualizer-stage-host'), canvas: visualCanvas,
@@ -1071,19 +1127,20 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 visible: true, quality: 'high', uiManager: {}, editor });
             view.frame = window.VisualizerView.prototype.frame;
             view.frame(0);
-            document.addEventListener('keydown', event => { if (event.key === 'Delete') leakedDeletes++; });
+            // Delete is handled on the document so it also works after clicking the item list.
+            document.addEventListener('keydown', event => window.VisualizerView.prototype.onEditKeyDown.call(view, event));
             stage.focus();
             const deleteEvent = new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true });
             stage.dispatchEvent(deleteEvent);
             view.frame(16);
-            const deleteKeepsDrawing = deleteEvent.defaultPrevented && leakedDeletes === 0 &&
-                editor.selection === null && frameRequests === 2 && drawn.length === 2 &&
+            const deleteKeepsDrawing = deleteEvent.defaultPrevented &&
+                editor.selection.size === 0 && frameRequests === 2 && drawn.length === 2 &&
                 drawn[0].includes(replacement.id) && !drawn[1].includes(replacement.id) &&
                 drawn[1].includes(layout.items[0].id) && drawn[1].includes(layout.items[1].id);
             const postDelete = window.createItem('spectrum');
-            layout.items.unshift(postDelete); editor.selection = postDelete.id; editor.render();
+            layout.items.unshift(postDelete); editor.selection = new Set([postDelete.id]); editor.render();
             const notes = window.createItem('notes');
-            layout.items.push(notes); editor.selection = notes.id; editor.render();
+            layout.items.push(notes); editor.selection = new Set([notes.id]); editor.render();
             const noteRow = label => [...editor.root.querySelectorAll('.visualizer-field')]
                 .find(field => field.querySelector('label')?.textContent === label);
             const lowRow = noteRow('Lowest note'), highRow = noteRow('Highest note');
@@ -1112,7 +1169,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             const notesKeyboardSaved = notes.params.kb === true;
             const dividerItem = layout.items[0];
             dividerItem.effects = ['glow', 'opacity'].map(type => window.normalizeEffect({ type }, 'item'));
-            editor.selection = dividerItem.id; editor.render();
+            editor.selection = new Set([dividerItem.id]); editor.render();
             const effectHeaders = [...editor.root.querySelectorAll('.visualizer-effect-heading')];
             const nextDivider = {
                 occupied: effectHeaders[1].getBoundingClientRect().top -
@@ -1134,7 +1191,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 dividerItem.rect.x === beforeSideDrag.x && dividerItem.rect.w === beforeSideDrag.w &&
                 editor.dragging === null;
             const titleItem = window.createItem('title');
-            layout.items.push(titleItem); editor.selection = titleItem.id; editor.render();
+            layout.items.push(titleItem); editor.selection = new Set([titleItem.id]); editor.render();
             const textRows = [...editor.root.querySelectorAll('.visualizer-field')];
             const fontRow = textRows.find(row => row.querySelector('select option[value="system-ui"]'));
             const fontSelect = fontRow.querySelector('select');
@@ -1172,7 +1229,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             editor.render();
             const textStyleRestored = [...editor.root.querySelectorAll('.visualizer-style-row button')]
                 .every(button => button.getAttribute('aria-pressed') === 'true');
-            editor.selection = notes.id; editor.render();
+            editor.selection = new Set([notes.id]); editor.render();
             notes.palette.motion.mode = 'hue';
             const savedStops = JSON.stringify(notes.palette.stops);
             const paletteMode = () => [...editor.root.querySelectorAll('select')]
@@ -1206,7 +1263,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 editor.root.querySelector('input[type="color"]')?.value === '#123456';
             const chroma = window.createItem('chroma');
             chroma.palette.mode = 'gradient';
-            layout.items.push(chroma); editor.selection = chroma.id; editor.render();
+            layout.items.push(chroma); editor.selection = new Set([chroma.id]); editor.render();
             const chromaField = label => [...editor.root.querySelectorAll('.visualizer-field')]
                 .find(field => field.querySelector('label')?.textContent === label);
             const display = chromaField('Display').querySelector('select');
@@ -1223,13 +1280,13 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             const styleByType = ['title', 'album', 'artist', 'spectrum', 'spectrogram', 'stereo', 'level-meter', 'notes', 'chroma']
                 .map(type => {
                     const specimen = window.createItem(type);
-                    layout.items.push(specimen); editor.selection = specimen.id; editor.render();
+                    layout.items.push(specimen); editor.selection = new Set([specimen.id]); editor.render();
                     const buttons = [...editor.root.querySelectorAll('.visualizer-style-row button')];
                     const order = buttons.map(button => button.dataset.style);
                     const colorMode = [...editor.root.querySelectorAll('select')]
                         .find(select => select.querySelector('option[value="solid"]'));
                     const paletteChoices = [...colorMode.options].map(option => option.value);
-                    const picker = editor.root.querySelector('input[type="color"]');
+                    const picker = colorMode.closest('.visualizer-section').querySelector('input[type="color"]');
                     picker.value = '#abcdef'; picker.dispatchEvent(new Event('input', { bubbles: true }));
                     const paletteSaved = specimen.palette.color === '#abcdef' &&
                         specimen.palette.mode === 'solid';
@@ -1277,7 +1334,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                         spectrumOrientationSaved, spectrumQuantizeSaved };
                 });
             const levelMeterAvailable = !!editor.navigation.querySelector('.visualizer-navigation-add-row option[value="level-meter"]');
-            notes.palette.mode = 'gradient'; editor.selection = notes.id; editor.render();
+            notes.palette.mode = 'gradient'; editor.selection = new Set([notes.id]); editor.render();
             return { fieldCount: fields.length, clipped, associated, sectionBorder, paneStyle, itemHeading,
                 itemHeaderAligned, longTitleFits, rowMetrics, themeDefaults, themeSaved, themeReset,
                 listInitial, listSelects, listStyle, leftMetrics, navControlMetrics, themeColorAlignment, gridLabelWorks, deleteKeepsDrawing, nestedPitch,
@@ -1320,7 +1377,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
         assert.equal(result.leftMetrics.settingPitch, 30, JSON.stringify(result.leftMetrics));
         assert.equal(result.leftMetrics.addHeight, 26, JSON.stringify(result.leftMetrics));
         assert.equal(result.leftMetrics.qualityHeight, 26, JSON.stringify(result.leftMetrics));
-        assert.deepEqual(result.leftMetrics.qualityMargin, ['2px', '2px']);
+        assert.deepEqual(result.leftMetrics.qualityMargin, ['2px', '16px']);
         assert.equal(result.leftMetrics.listPitch, 30, JSON.stringify(result.leftMetrics));
         assert.equal(result.leftMetrics.fits && result.gridLabelWorks, true);
         assert.ok(result.leftMetrics.addParts[1] >= 60, JSON.stringify(result.leftMetrics));
@@ -1389,7 +1446,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 assert.equal(specimen.spectrumQuantizeSaved, true);
             }
             if (specimen.type === 'level-meter') {
-                assert.deepEqual(specimen.meterFields, ['Channel', 'DB Range', 'Orientation', 'Level values', 'Axes and grid', 'Axis labels and numbers']);
+                assert.deepEqual(specimen.meterFields, ['Channel', 'DB Range', 'Orientation', 'Level values', 'Fall Time', 'Peak', 'Peak Hold', 'Peak Fall Time', 'Axes and grid', 'Axis labels and numbers']);
                 assert.equal(specimen.meterSaved, true);
             }
         }
@@ -1453,7 +1510,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
         assert.ok(wideRadio.addSelectWidth >= 60 && wideRadio.navigationFits, JSON.stringify(wideRadio));
         const sliderBox = await page.evaluate(() => {
             const { editor, notes } = window.__notesSliderTest;
-            editor.selection = notes.id; editor.render();
+            editor.selection = new Set([notes.id]); editor.render();
             const row = [...editor.root.querySelectorAll('.visualizer-field')]
                 .find(field => field.querySelector('label')?.textContent === 'Lowest note');
             const slider = row.querySelector('input');
@@ -1480,6 +1537,119 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
         assert.ok(dragResult.events >= 2 && dragResult.connected && dragResult.low > 91 &&
             dragResult.high === dragResult.low && dragResult.highSlider === dragResult.high &&
             dragResult.highName.length >= 2, JSON.stringify(dragResult));
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Visualizer Edit history and clipboard buttons keep Pipeline sizing and show only while editing', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const measure = async (width, mobile) => {
+            const page = await browser.newPage({ viewport: { width, height: 700 } });
+            await page.setContent(`<!doctype html><body class="view-visualizer${mobile ? ' layout-mobile' : ''}">
+                <div class="pipeline-header-right"><div class="pipeline-toolbar-group"><button type="button" class="header-button undo-button" id="reference">↶</button></div></div>
+                <div class="main-container"></div></body>`);
+            await page.addStyleTag({ content: css });
+            await page.addScriptTag({ content: `
+                window.createDefaultLayout = () => ({ aspect: '16:9' });
+                window.VisualizerPresetStore = class {};
+                window.VisualizerSources = class {};
+                window.VisualizerRenderer = class {};
+                window.VisualizerEditor = class {
+                    constructor(view) {
+                        this.view = view; this.selection = new Set(); this.open = false;
+                        this.navigation = document.createElement('aside'); this.root = document.createElement('aside');
+                        this.navigationContent = document.createElement('div');
+                        this.navigation.appendChild(this.navigationContent);
+                    }
+                    setOpen(open) { this.open = open; this.view.root.classList.toggle('is-editing', open); }
+                };
+            ` });
+            await page.addScriptTag({ content: viewSource });
+            return page.evaluate(() => {
+                Object.defineProperty(window, 'localStorage', { configurable: true, value: { getItem: () => null } });
+                window.VisualizerView.prototype.initialize = async () => {};
+                const view = new window.VisualizerView({ t: key => key, audioManager: {}, layoutMode: {} });
+                const group = view.root.querySelector('.pipeline-header-right');
+                const shown = element => getComputedStyle(element).display !== 'none';
+                const size = element => {
+                    const style = getComputedStyle(element);
+                    return [style.width, style.height, style.padding].join(' ');
+                };
+                const idle = { group: shown(group), importLink: shown(view.importButton) };
+                view.editor.setOpen(true);
+                const toolbar = view.toolbar;
+                return {
+                    idle,
+                    editing: { group: shown(group), importLink: shown(view.importButton) },
+                    reference: size(document.querySelector('#reference')),
+                    sizes: [view.undoButton, view.redoButton, view.cutButton, view.copyButton, view.pasteButton].map(size),
+                    fits: toolbar.scrollWidth <= toolbar.clientWidth + 1 &&
+                        [...toolbar.querySelectorAll('button')].every(button => button.getBoundingClientRect().right <= innerWidth + 0.5)
+                };
+            });
+        };
+        for (const [width, mobile] of [[1280, false], [375, true]]) {
+            const result = await measure(width, mobile);
+            assert.deepEqual(result.idle, { group: false, importLink: true });
+            assert.deepEqual(result.editing, { group: true, importLink: false });
+            assert.deepEqual(result.sizes, Array(5).fill(result.reference));
+            assert.equal(result.fits, true, `toolbar fits at ${width}px`);
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Visualizer multi-selection shows plain selected bounds and the marquee only while dragging', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+        await page.setContent('<!doctype html><body class="view-visualizer"><div id="visualizerView"><div class="visualizer-stage" tabindex="-1" style="position:relative;width:400px;height:200px"><canvas></canvas></div></div></body>');
+        await page.addStyleTag({ content: css });
+        await page.addScriptTag({ content: modelSource });
+        await page.addScriptTag({ content: palettePresetsSource });
+        await page.addScriptTag({ content: editorSource });
+        await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView');
+            const layout = createDefaultLayout();
+            layout.items = [createItem('title'), createItem('artist'), createItem('album')];
+            layout.items[0].rect = { x: .1, y: .1, w: .2, h: .2 };
+            layout.items[1].rect = { x: .35, y: .1, w: .2, h: .2 };
+            layout.items[2].rect = { x: .7, y: .6, w: .2, h: .2 };
+            const stage = root.querySelector('.visualizer-stage');
+            const view = { root, stage, canvas: stage.querySelector('canvas'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() {}, notice() {}, commitPending() {}, warn() {} };
+            window.editor = new VisualizerEditor(view);
+            root.append(editor.navigation, editor.root);
+            editor.selection = new Set([layout.items[0].id, layout.items[1].id]);
+            editor.setOpen(true);
+        });
+        const bounds = await page.evaluate(() => ({
+            handles: getComputedStyle(editor.overlay).display,
+            selected: [...editor.itemBounds.querySelectorAll('div.selected')].map(div => getComputedStyle(div).borderTopStyle),
+            unselected: [...editor.itemBounds.querySelectorAll('div:not(.selected)')].map(div => getComputedStyle(div).borderTopStyle)
+        }));
+        assert.deepEqual(bounds, { handles: 'none', selected: ['solid', 'solid'], unselected: ['dashed'] });
+        const stage = await page.locator('.visualizer-stage').boundingBox();
+        // Drag from the empty lower-left area around the third item only.
+        await page.mouse.move(stage.x + stage.width * .65, stage.y + stage.height * .5);
+        await page.mouse.down();
+        await page.mouse.move(stage.x + stage.width * .95, stage.y + stage.height * .95, { steps: 3 });
+        const during = await page.evaluate(() => {
+            const rect = editor.marquee.getBoundingClientRect();
+            return { shown: getComputedStyle(editor.marquee).display !== 'none' && rect.width > 0 && rect.height > 0,
+                selection: [...editor.selection].map(id => editor.view.layout.items.findIndex(item => item.id === id)) };
+        });
+        await page.mouse.up();
+        const after = await page.evaluate(() => getComputedStyle(editor.marquee).display);
+        assert.deepEqual(during, { shown: true, selection: [2] });
+        assert.equal(after, 'none');
     } finally {
         await browser.close();
     }

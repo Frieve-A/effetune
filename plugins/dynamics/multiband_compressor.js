@@ -1236,10 +1236,6 @@ class MultibandCompressorPlugin extends PluginBase {
       ctx.strokeStyle = CURVE_COLOR;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      const halfKnee = band.k * 0.5;
-      const ratio = band.r;
-      const slope = (ratio === 1.0) ? 0.0 : (1.0 - 1.0 / ratio);
-
       // Use a smaller number of points for the curve to improve performance
       const numPoints = Math.min(width, 100); // Reduce from width to 100 points
       const pointSpacing = width / numPoints;
@@ -1249,23 +1245,7 @@ class MultibandCompressorPlugin extends PluginBase {
       for (let i = 0; i < numPoints; i++) {
         const x = i * pointSpacing;
         const inputDb = (x / width) * 60 - 60;
-        const diff = inputDb - band.t;
-
-        // Unified formula for both compression (ratio >= 1) and expansion (ratio < 1)
-        // For compression: slope > 0, gainChange > 0 above threshold (reduction)
-        // For expansion: slope < 0, gainChange < 0 above threshold (boost)
-        let gainChange = 0;
-        if (diff <= -halfKnee) {
-          gainChange = 0;
-        } else if (diff >= halfKnee) {
-          gainChange = diff * slope;
-        } else {
-          const t = (diff + halfKnee) / band.k;
-          gainChange = slope * band.k * t * t * 0.5;
-        }
-
-        // gainChange > 0 means reduction, gainChange < 0 means boost
-        const outputDb = inputDb - gainChange + band.g;
+        const outputDb = inputDb + this._bandGain(band, inputDb);
         const y = height - ((outputDb + 60) / 60) * height;
         ctx.lineTo(x, y);// do not clamp y here to allow curve to go off-canvas
       }
@@ -1277,7 +1257,66 @@ class MultibandCompressorPlugin extends PluginBase {
         const meterHeight = Math.min(height, (band.gr / 60) * height);
         ctx.fillRect(width - meterWidth, 0, meterWidth, meterHeight);
       }
+
+      const frame = ((this._readoutFrames ??= [])[bandIndex] ??= {});
+      frame.width = width;
+      frame.height = height;
+      frame.pointSpacing = pointSpacing;
+      frame.lastPoint = numPoints - 1;
+      frame.meterWidth = meterWidth;
+      frame.valid = true;
     });
+    this._graphReadouts?.forEach(readout => readout?.refresh());
+  }
+
+  // Static gain at an input level: makeup gain minus the soft-knee gain change.
+  // The unified formula covers compression (ratio >= 1, reduction above threshold)
+  // and expansion (ratio < 1, boost above threshold).
+  _bandGain(band, inputDb) {
+    const halfKnee = band.k * 0.5;
+    const slope = (band.r === 1.0) ? 0.0 : (1.0 - 1.0 / band.r);
+    const diff = inputDb - band.t;
+    let gainChange = 0;
+    if (diff >= halfKnee) {
+      gainChange = diff * slope;
+    } else if (diff > -halfKnee) {
+      const t = (diff + halfKnee) / band.k;
+      gainChange = slope * band.k * t * t * 0.5;
+    }
+    return band.g - gainChange;
+  }
+
+  // Reads a band's transfer curve at canvas pixel x, interpolating between the plotted points.
+  _readBandGraph(bandIndex, x) {
+    const frame = this._readoutFrames?.[bandIndex];
+    const band = this.bands[bandIndex];
+    if (!frame?.valid || !band) return null;
+    const { format } = window.GraphReadout;
+    const { width, height, pointSpacing } = frame;
+    const inputDb = (x / width) * 60 - 60;
+    const index = Math.floor(x / pointSpacing);
+    if (index < 0 || index >= frame.lastPoint) {
+      return {
+        cursor: `in ${format.db(inputDb)}`,
+        rows: [
+          { label: 'out', color: 'var(--et-graph-trace)', value: format.db(NaN) },
+          { label: 'Gain', color: 'var(--et-text-primary)', value: format.db(NaN) }
+        ]
+      };
+    }
+    const gain0 = this._bandGain(band, (index * pointSpacing / width) * 60 - 60);
+    const gain1 = this._bandGain(band, ((index + 1) * pointSpacing / width) * 60 - 60);
+    const gain = gain0 + (gain1 - gain0) * (x / pointSpacing - index);
+    const outputDb = inputDb + gain;
+    const y = height - ((outputDb + 60) / 60) * height;
+    return {
+      cursor: `in ${format.db(inputDb)}`,
+      rows: [
+        { label: 'out', color: 'var(--et-graph-trace)', value: format.db(outputDb), y },
+        { label: 'Gain', color: 'var(--et-text-primary)', value: format.db(gain, { signed: true }) }
+      ],
+      at: { x, y }
+    };
   }
 
   createUI() {
@@ -1473,6 +1512,8 @@ class MultibandCompressorPlugin extends PluginBase {
     // Gain reduction graphs UI
     const graphsContainer = document.createElement('div');
     graphsContainer.className = 'multiband-compressor-graphs';
+    this._readoutFrames = [];
+    this._graphReadouts = [];
     // Generate graphs based on number of bands
     for (let i = 0; i < this.bands.length; i++) {
       const graphDiv = document.createElement('div');
@@ -1515,6 +1556,16 @@ class MultibandCompressorPlugin extends PluginBase {
       });
       
       graphsContainer.appendChild(graphDiv);
+      this._graphReadouts.push(window.GraphReadout?.attach({
+        mount: graphContainer,
+        surface: canvas,
+        read: x => this._readBandGraph(bandIndex, x),
+        avoid: () => {
+          const meterWidth = this._readoutFrames[bandIndex]?.meterWidth ?? 0;
+          return [{ left: canvas.width - meterWidth, top: 0, width: meterWidth, height: canvas.height }];
+        },
+        crosshair: 'xy'
+      }));
     }
     container.appendChild(graphsContainer);
 

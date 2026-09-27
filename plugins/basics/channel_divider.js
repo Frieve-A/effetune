@@ -639,7 +639,13 @@ class ChannelDividerPlugin extends PluginBase {
     this.graphDispose = dispose;
     graphWrap.appendChild(graphContainer);
     frag.appendChild(graphWrap);
-    
+
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graphContainer,
+      surface: canvas,
+      read: x => this._readGraph(x)
+    });
+
     const uiContainer = document.createElement("div");
     uiContainer.className = "channel-divider-plugin-ui plugin-parameter-ui";
     uiContainer.appendChild(frag);
@@ -797,6 +803,8 @@ class ChannelDividerPlugin extends PluginBase {
   }
 
   drawGraph() {
+    const frame = (this._readoutFrame ??= {});
+    frame.valid = false;
     if (!this.canvas) return;
     const ctx = this.canvas.getContext("2d");
     const { width, height } = this.canvas;
@@ -849,9 +857,7 @@ class ChannelDividerPlugin extends PluginBase {
     ctx.fillText("Level (dB)", 0, 0);
     ctx.restore();
 
-    const freqPoints = Array.from({ length: width }, (_, i) => 
-        Math.pow(10, minFreqLog + (i / (width - 1)) * (maxFreqLog - minFreqLog))
-    );
+    const freqPoints = Array.from({ length: width }, (_, i) => this._graphFrequencyAt(i, width));
 
     const bandDefinitions = [];
     if (this.bc === 2) {
@@ -868,11 +874,17 @@ class ChannelDividerPlugin extends PluginBase {
       bandDefinitions.push({ name: "High", filters: [{ freq: this.f3, slope: this.s3, type: "hp" }] });
     }
     
-    ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
+    const traceColor = (window.ThemePalette?.get('graph-trace') ?? '');
+    ctx.strokeStyle = traceColor;
     ctx.lineWidth = (isMobileLayout ? 2 : 1.5) * dpr;
 
-    bandDefinitions.forEach(bandDef => {
-      const response = this.calculateBandResponse(freqPoints, bandDef.filters);
+    const bands = bandDefinitions.map(bandDef => ({
+      name: bandDef.name,
+      response: this.calculateBandResponse(freqPoints, bandDef.filters)
+    }));
+
+    bands.forEach(band => {
+      const response = band.response;
       ctx.beginPath();
       for (let i = 0; i < width; i++) {
         let y = height * (1 - (response[i] - dbRange[0]) / totalDbSpan);
@@ -880,6 +892,39 @@ class ChannelDividerPlugin extends PluginBase {
       }
       ctx.stroke();
     });
+
+    // --- Finalize readout frame ---
+    // Drawing happens directly in canvas-pixel units (canvas.width/height, no
+    // ctx.setTransform(dpr) scaling), so the cursor readout's x/y arrive in
+    // the same units already: no CSS-to-device conversion is needed.
+    frame.valid = true;
+    frame.width = width;
+    frame.toY = db => height * (1 - (db - dbRange[0]) / totalDbSpan);
+    frame.color = traceColor;
+    frame.bands = bands;
+    this._graphReadout?.refresh();
+  }
+
+  // Reads the exact per-pixel band-response curves drawn by drawGraph at a
+  // given canvas-pixel x, for the cursor readout overlay. All bands share the
+  // same trace color, matching what is actually drawn.
+  _readGraph(x) {
+    const frame = this._readoutFrame;
+    if (!frame?.valid) return null;
+    const { format, columnValueAt } = window.GraphReadout;
+    const rows = [];
+    for (const band of frame.bands) {
+      const db = columnValueAt(band.response, x);
+      if (db === null) continue;
+      rows.push({ label: band.name, color: frame.color, value: format.db(db, { signed: true }), y: frame.toY(db) });
+    }
+    if (!rows.length) return null;
+    return { cursor: format.frequency(this._graphFrequencyAt(x, frame.width)), rows };
+  }
+
+  // Log-frequency axis of the band curves: 10 Hz at x = 0 to 40 kHz at x = width - 1 (canvas px).
+  _graphFrequencyAt(x, width) {
+    return Math.pow(10, Math.log10(10) + (x / (width - 1)) * (Math.log10(40000) - Math.log10(10)));
   }
 
   calculateBandResponse(freqPoints, filters) {

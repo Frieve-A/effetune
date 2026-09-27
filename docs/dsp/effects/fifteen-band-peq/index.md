@@ -81,11 +81,4 @@ A 15-band parametric equalizer for fine-tuning bass, vocals, presence, and trebl
       ...
       ```
 
-### Visual Display
-- High-resolution frequency response visualization
-- Interactive control points with precise parameter display
-- Real-time curve updates as you adjust settings
-- Frequency and gain grid
-- Accurate numerical readouts for all parameters
-
 [Back to all effects](/dsp/effects/)

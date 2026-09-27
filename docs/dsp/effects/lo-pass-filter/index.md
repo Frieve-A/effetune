@@ -64,10 +64,4 @@ A precision low-pass filter that removes unwanted high frequencies while preserv
   - -48dB/oct: Very strong filtering (LR8 - 8th order Linkwitz-Riley)
   - -60dB/oct to -96dB/oct: Extremely steep filtering for special applications
 
-### Visual Display
-- Real-time frequency response graph with logarithmic frequency scale
-- Clear visualization of the filter slope and cutoff point
-- Interactive controls for precise adjustment
-- Frequency grid with markers at key reference points
-
 [Back to all effects](/dsp/effects/)

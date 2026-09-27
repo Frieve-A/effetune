@@ -5,6 +5,12 @@ import { VisualizerPresetStore } from './visualizer-preset-store.js';
 import { VisualizerSources } from './visualizer-sources.js';
 import { VisualizerRenderer } from './visualizer-renderer.js';
 import { VisualizerEditor } from './visualizer-editor.js';
+import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-history.js';
+
+// Undo, Redo, and Delete stay available on range, color, select, and button controls.
+const NON_TEXT_INPUT_TYPES = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
+const isTextEntry = target => !!target && (target.isContentEditable || target.tagName === 'TEXTAREA' ||
+    (target.tagName === 'INPUT' && !NON_TEXT_INPUT_TYPES.has(target.type)));
 
 export class VisualizerView {
     constructor(uiManager) {
@@ -15,10 +21,11 @@ export class VisualizerView {
         this.currentPresetName = '';
         this.quality = localStorage.getItem('effetune_visualizer_quality') || 'auto';
         this.historyDepth = 0;
+        this.history = new VisualizerHistory();
         this.root = document.createElement('section');
         this.root.id = 'visualizerView';
         this.root.setAttribute('aria-label', 'Visualizer');
-        this.root.innerHTML = '<div class="visualizer-toolbar"><button type="button" class="visualizer-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5L16 3zm-3 3 5 5"/></svg><span></span></button><button type="button" class="visualizer-presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span></span></button><button type="button" class="visualizer-share"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg><span></span></button><button type="button" class="visualizer-import"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg><span></span></button><label class="visualizer-quality-label"><span></span><select class="visualizer-quality"></select></label></div><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas><button type="button" class="visualizer-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button></div><p class="visualizer-status" role="status" hidden></p></div></div>';
+        this.root.innerHTML = '<div class="visualizer-toolbar"><button type="button" class="visualizer-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5L16 3zm-3 3 5 5"/></svg><span></span></button><button type="button" class="visualizer-presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span></span></button><button type="button" class="visualizer-share"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg><span></span></button><button type="button" class="visualizer-import"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg><span></span></button><div class="pipeline-header-right"><div class="pipeline-toolbar-group"><button type="button" class="header-button undo-button">↶</button><button type="button" class="header-button redo-button">↷</button></div><div class="pipeline-toolbar-group"><button type="button" class="header-button cut-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.7 20 19.5"/><path d="M20 4.5 8.2 16.3"/><path d="M11.5 12 13 13.2"/></svg></button><button type="button" class="header-button copy-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M4.5 15.5A2 2 0 0 1 3 13.5v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 1.9"/></svg></button><button type="button" class="header-button paste-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h2"/></svg></button></div></div><label class="visualizer-quality-label"><span></span><select class="visualizer-quality"></select></label></div><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas><button type="button" class="visualizer-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button></div><p class="visualizer-status" role="status" hidden></p></div></div>';
         const main = document.querySelector('.main-container');
         main?.parentNode.insertBefore(this.root, main.nextSibling);
         this.stageHost = this.root.querySelector('.visualizer-stage-host');
@@ -47,8 +54,26 @@ export class VisualizerView {
             button.title = label;
             button.setAttribute('aria-label', label);
         }
+        [this.undoButton, this.redoButton, this.cutButton, this.copyButton, this.pasteButton] =
+            ['undo', 'redo', 'cut', 'copy', 'paste'].map(name => this.root.querySelector(`.${name}-button`));
+        for (const [button, label] of [
+            [this.undoButton, this.t('ui.title.undo', 'Undo')],
+            [this.redoButton, this.t('ui.title.redo', 'Redo')],
+            [this.cutButton, this.t('visualizer.cut', 'Cut items')],
+            [this.copyButton, this.t('visualizer.copy', 'Copy items')],
+            [this.pasteButton, this.t('visualizer.paste', 'Paste items')]
+        ]) {
+            button.title = label;
+            button.setAttribute('aria-label', label);
+        }
+        this.undoButton.addEventListener('click', () => this.stepHistory('undo'));
+        this.redoButton.addEventListener('click', () => this.stepHistory('redo'));
+        this.cutButton.addEventListener('click', () => this.editor.cutSelected());
+        this.copyButton.addEventListener('click', () => this.editor.copySelected());
+        this.pasteButton.addEventListener('click', () => this.pasteFromClipboard());
+        this.updateEditButtons();
         this.shareButton.addEventListener('click', () => this.share());
-        this.importButton.addEventListener('click', () => readTextFromClipboard().then(text => this.importFromText(text)));
+        this.importButton.addEventListener('click', () => this.pasteFromClipboard());
         this.expandButton = this.root.querySelector('.visualizer-expand');
         this.stageHost.appendChild(this.expandButton);
         this.updateExpandButtonLabel();
@@ -77,8 +102,9 @@ export class VisualizerView {
             if (!(event.ctrlKey || event.metaKey) || event.key?.toLowerCase() !== 'v' ||
                 typeof window.electronAPI?.readClipboardText !== 'function' || !this.acceptsPaste(event)) return;
             event.preventDefault();
-            readTextFromClipboard().then(text => this.importFromText(text));
+            this.pasteFromClipboard();
         });
+        document.addEventListener('keydown', event => this.onEditKeyDown(event));
         document.addEventListener('paste', event => {
             if (!this.acceptsPaste(event)) return;
             event.preventDefault();
@@ -99,8 +125,15 @@ export class VisualizerView {
         } catch (error) { this.fail(error); this.sources.setLayout(this.layout); }
     }
     setLayout(layout) {
-        this.layout = normalizeLayout(layout);
-        this.changed();
+        this.commitPending();
+        this.replaceLayout(normalizeLayout(layout));
+        this.recordHistory();
+    }
+    // Shared by setLayout and Undo/Redo; restored snapshots skip normalization so redo entries survive.
+    replaceLayout(layout) {
+        this.layout = layout;
+        this.editor.resetForLayout();
+        this.applyLayout();
         if (this.editor.open) this.editor.render();
         this.editor.updateSelection();
     }
@@ -117,15 +150,23 @@ export class VisualizerView {
             ? this.t('visualizer.shareCopiedWithoutImage', 'Link copied to clipboard. The background image is not included in the link.')
             : 'success.urlCopied', false, {}, 3000);
     }
+    acceptsLayoutEvent(event) {
+        return document.body.classList.contains('view-visualizer') &&
+            (this.root.contains(event.target) || event.target === document.body);
+    }
     acceptsPaste(event) {
         const target = event.target;
-        return document.body.classList.contains('view-visualizer') &&
+        return this.acceptsLayoutEvent(event) &&
             !(target?.isContentEditable || target?.matches?.('input, textarea, select'));
     }
+    pasteFromClipboard() { return readTextFromClipboard().then(text => this.importFromText(text)); }
+    // Shared by every paste path: a share link replaces the layout; in Edit, copied items are inserted.
     importFromText(text) {
         const encoded = layoutShareParam(text);
         if (encoded) return this.importShared(encoded);
-        this.uiManager.showTransientMessage(this.t('visualizer.importLinkMissing', 'No Visualizer link was found. Copy a Visualizer share link, then try again.'), true, {}, 5000);
+        if (!this.editor.open) this.warn('visualizer.importLinkMissing', 'No Visualizer link was found. Copy a Visualizer share link, then try again.');
+        else if (this.editor.pasteItems(text)) return true;
+        else this.warn('visualizer.pasteNothing', 'There are no Visualizer items or link to paste. Copy some items or a Visualizer share link, then try again.');
         return false;
     }
     async importShared(encoded) {
@@ -141,10 +182,54 @@ export class VisualizerView {
         this.uiManager.showTransientMessage(this.t('visualizer.importSucceeded', 'Loaded the Visualizer layout from the link.'), false, {}, 3000);
         return true;
     }
-    changed() {
+    warn(key, fallback, params = {}) { this.uiManager.showTransientMessage(this.t(key, fallback), true, params, 5000); }
+    // Continuous edits (drags, slider input, arrow-key repeat) are recorded once when they end.
+    changed(continuing = false) {
+        this.applyLayout();
+        if (continuing) this.historyPending = true;
+        else this.recordHistory();
+    }
+    applyLayout() {
         this.sources.setLayout(this.layout);
         this.store.saveCurrent(this.layout);
         this.stage.style.aspectRatio = this.layout.aspect.replace(':', '/');
+    }
+    recordHistory() {
+        this.historyPending = false;
+        this.history.record(layoutSnapshot(this.layout));
+        this.updateEditButtons();
+    }
+    commitPending() { if (this.historyPending) this.recordHistory(); }
+    stepHistory(direction) {
+        this.commitPending();
+        const snapshot = this.history[direction]();
+        if (snapshot) this.replaceLayout(snapshotLayout(snapshot));
+        this.updateEditButtons();
+    }
+    // Paste stays enabled because the clipboard is read only when it is used.
+    updateEditButtons() {
+        this.undoButton.disabled = !this.history.canUndo;
+        this.redoButton.disabled = !this.history.canRedo;
+        this.cutButton.disabled = this.copyButton.disabled = !this.editor.selection.size;
+    }
+    onEditKeyDown(event) {
+        if (!this.editor.open || !this.acceptsLayoutEvent(event) || event.altKey) return;
+        const command = event.ctrlKey || event.metaKey, key = event.key?.toLowerCase();
+        let action;
+        if (command && !event.shiftKey && (key === 'z' || key === 'y')) {
+            if (!isTextEntry(event.target)) action = () => this.stepHistory(key === 'z' ? 'undo' : 'redo');
+        } else if (command && !event.shiftKey && (key === 'a' || key === 'x' || key === 'c')) {
+            // Cut and Copy with nothing selected leave the key to the browser.
+            if (this.acceptsPaste(event) && (key === 'a' || this.editor.selection.size)) {
+                action = { a: () => this.editor.selectAll(), x: () => this.editor.cutSelected(), c: () => this.editor.copySelected() }[key];
+            }
+        } else if (!command && !event.shiftKey && this.editor.selection.size && !isTextEntry(event.target)) {
+            if (event.key === 'Delete') action = () => this.editor.deleteSelected();
+            else if (event.key === 'Escape' && !event.defaultPrevented) action = () => this.editor.deselectAll();
+        }
+        if (!action) return;
+        event.preventDefault();
+        action();
     }
     flush() { void this.store.flushCurrent().catch(error => { console.error('Visualizer save failed:', error); this.notice('visualizer.saveFailed', 'Your layout could not be saved. Check that browser storage is available and try again.'); }); }
     show() {
@@ -174,6 +259,7 @@ export class VisualizerView {
         }
     }
     setEditing(open) {
+        if (!open) this.commitPending();
         this.editor.setOpen(open);
         if (open) this.editor.navigation.insertBefore(this.qualityLabel, this.editor.navigationContent);
         else this.toolbar.appendChild(this.qualityLabel);
@@ -266,7 +352,7 @@ export class VisualizerView {
             const player = this.uiManager.audioPlayer;
             const snapshot = player?.stateManager?.getStateSnapshot();
             const metadata = snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;
-            this.renderer.draw(this.layout, this.sources, metadata, milliseconds / 1000, { editing: this.editor.open, quality: this.quality, pixelRatio: dpr });
+            this.renderer.draw(this.layout, this.sources, metadata, milliseconds / 1000, { editing: this.editor.open, quality: this.quality });
         } else {
             this.canvas.getContext('2d').clearRect(0, 0, cw, ch);
             this.status.hidden = false;

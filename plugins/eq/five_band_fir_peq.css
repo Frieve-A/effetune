@@ -44,43 +44,6 @@
   font-size: 10px;
 }
 
-.five-band-fir-peq-plugin-ui .five-band-fir-peq-legend {
-  position: absolute;
-  z-index: 4;
-  top: 5px;
-  right: 7px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  color: var(--et-graph-label-strong);
-  background: var(--et-graph-base-veil);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.five-band-fir-peq-plugin-ui .five-band-fir-peq-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: default;
-}
-
-.five-band-fir-peq-plugin-ui .five-band-fir-peq-legend-swatch {
-  width: 14px;
-  border-top: 2px solid currentColor;
-}
-
-.five-band-fir-peq-plugin-ui .five-band-fir-peq-legend-target {
-  color: var(--et-graph-trace-secondary);
-  opacity: 0.7;
-}
-
-.five-band-fir-peq-plugin-ui .five-band-fir-peq-legend-realized {
-  color: var(--et-graph-trace);
-}
-
 .five-band-fir-peq-plugin-ui .five-band-fir-peq-marker {
   position: absolute;
   display: flex;

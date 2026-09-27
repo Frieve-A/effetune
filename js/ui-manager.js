@@ -349,6 +349,7 @@ export class UIManager {
             this.initClipboardButtons();
             // Initialize history buttons after translations are loaded
             this.initHistoryButtons();
+            this.updateEditButtons();
             // Initialize pipeline toggle buttons after translations are loaded
             this.initPipelineToggleButtons();
             // Initialize keyboard shortcuts
@@ -2547,6 +2548,18 @@ export class UIManager {
                 this.pipelineManager.redo();
             });
         }
+    }
+
+    /**
+     * Disable the pipeline Undo, Redo, Cut, and Copy buttons when they have nothing to act on
+     */
+    updateEditButtons() {
+        const history = this.pipelineManager?.historyManager;
+        const noSelection = !this.pipelineManager?.core?.selectedPlugins?.size;
+        if (this.undoButton) this.undoButton.disabled = !history?.canUndo;
+        if (this.redoButton) this.redoButton.disabled = !history?.canRedo;
+        if (this.cutButton) this.cutButton.disabled = noSelection;
+        if (this.copyButton) this.copyButton.disabled = noSelection;
     }
 
     /**

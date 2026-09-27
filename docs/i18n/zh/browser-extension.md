@@ -28,11 +28,13 @@ lang: zh
 
 选择 **Edit pipeline** 可打开 **EffeTune Pipeline Editor**。您可像在 EffeTune 中一样添加、排序、启用或禁用效果，调节参数，并使用可用的分析显示。弹窗中的 **Saved preset** 和 **Apply to selected tab** 可以不打开编辑器而更换完整效果链。在编辑器中打开 **Pipeline Presets**，可通过 **Save as** 保存完整效果链预设。要导入或导出完整预设，请打开 **Settings**，然后选择 **Import preset…** 或 **Export preset**。 在编辑器顶部选择标签页，即可查看它的效果链和分析显示。没有活动会话时，**Offline pipeline** 可编辑下次启动使用的默认效果链。在弹窗中先选择标签页，再应用预设。
 
+在编辑器顶部选择 **Visualizer**，即可在 [Visualizer](visualizer.md) 中查看所选标签页处理后的声音；再次选择即可返回效果链。如果该标签页尚未开始处理，Visualizer 会显示“Start EffeTune on a tab to show Visualizer.”。扩展中不显示曲目名称和封面图。**Share** 和 **Import Link** 的用法与网页应用相同，分享的链接会在网页版中打开。Visualizer 的布局和预设保存在扩展中，不会与网页应用或桌面应用同步。
+
 已保存的设置和预设保存在扩展中，不会自动与网页应用或桌面应用同步。若预设需要不支持的路由、效果或不可用的外部资源，它不会被应用，当前效果链会保持不变。
 
 要在 Room EQ 或 Crosstalk Cancellation 中使用网页应用或桌面应用的测量结果，请先在相应应用中将测量结果导出为 JSON。在扩展编辑器中打开 **Settings**，选择 **Import measurement…**，再选择该 JSON 文件。用于 Crosstalk Cancellation 或 Room EQ 相位校正时，导出时应包含脉冲响应。导入的测量结果会立即出现在 Room EQ 的 **Measurement** 列表中，保存在扩展的浏览器存储中，并且不会自动同步。如需删除导入的副本，请先在该列表中选中它，再选择列表旁的 **Delete**。确认后，会先清除所有使用该副本的 Room EQ 和 Crosstalk Cancellation 分配，再删除副本。
 
-如需选择已保存的数据并一次性转移，请在编辑器中打开 **Settings > Backup / Restore**。同一个 `.effetune_backup` 文件也可用于网页应用和桌面应用，能包含已保存的效果链预设、效果器预设、脉冲响应和导入的测量结果。使用扩展不支持的路由或效果的效果链仍会保存，也可以再次备份，但无法在扩展中应用。文件不包含 URL 规则和扩展的 Sample rate 设置。
+如需选择已保存的数据并一次性转移，请在编辑器中打开 **Settings > Backup / Restore**。同一个 `.effetune_backup` 文件也可用于网页应用和桌面应用，能包含已保存的效果链预设、效果器预设、Visualizer 预设、脉冲响应和导入的测量结果。使用扩展不支持的路由或效果的效果链仍会保存，也可以再次备份，但无法在扩展中应用。文件不包含 URL 规则和扩展的 Sample rate 设置。
 
 ## URL预设与采样率
 

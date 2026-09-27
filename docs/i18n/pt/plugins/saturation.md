@@ -123,6 +123,7 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para comparar co
 - Gráfico ao vivo de curva de transferência mostrando como o deslocamento está sendo saturado
 - Feedback visual claro das características de distorção
 - Representação visual de como o Distortion Drive e o Bias afetam o som
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Aprimoramento Musical
 - Para Calor Sutil:
@@ -203,6 +204,7 @@ Um efeito que adiciona conteúdo harmônico para melhorar a clareza e presença.
 - Gráfico de resposta de frequência do filtro passa-alta
 - Visualização da curva de transferência de saturação
 - Feedback visual claro para filtro e saturação
+- Passe o cursor sobre qualquer um dos gráficos, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Aprimoramento Musical
 - Para Vozes Mais Claras em Músicas, Podcasts ou Vídeos:
@@ -268,6 +270,7 @@ Um efeito de clipping digital que limita picos acima de um threshold definido. U
 - Gráfico em tempo real mostrando como o som está sendo moldado
 - Feedback visual claro ao ajustar configurações
 - Linhas de referência para ajudar a guiar seus ajustes
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Audição
 - Para aprimoramento sutil:
@@ -317,6 +320,7 @@ O plugin Harmonic Distortion molda a forma de onda com termos não lineares ajus
 - Curva de transferência mostrando como níveis de entrada são moldados em níveis de saída
 - Controles deslizantes e campos de entrada intuitivos que fornecem feedback imediato
 - O gráfico é atualizado conforme as configurações de harmônicos e Sensitivity mudam
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
    
 ### Guia de Início Rápido
 1. **Inicialização:** Inicie com as configurações padrão (2nd: 2%, 3rd: 3%, 4th: 0.5%, 5th: 0.3%, Sensitivity: 0.5)
@@ -370,6 +374,7 @@ Como este efeito processa bandas de frequência, ele afeta todos os sons na faix
 - Abas interativas de seleção de banda
 - Gráfico de curva de transferência em tempo real para cada banda
 - Feedback visual claro ao ajustar configurações
+- Passe o cursor sobre o gráfico de uma banda, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Aprimoramento Musical
 - Para Aprimoramento Geral da Mixagem:
@@ -445,6 +450,7 @@ Um efeito que simula o som quente e agradável de equipamentos valvulados vintag
 - Gráfico claro mostrando como o som está sendo moldado
 - Feedback visual em tempo real
 - Controles fáceis de ler
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Aprimoramento Musical
 - Clássica & Jazz:
@@ -503,6 +509,7 @@ Um efeito especializado que reforça os graves misturando um sinal filtrado de b
 - Gráfico ao vivo de resposta em frequência
 - Visualização clara das curvas de filtro
 - Feedback visual em tempo real
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Dicas de Aprimoramento Musical
 - Para Aprimoramento Geral dos Graves:
@@ -614,3 +621,6 @@ Alterar parâmetros do circuito pode causar um grande salto de nível. Com **Aut
 - O status abaixo do gráfico informa se o efeito está ativo ou em bypass e mostra qualquer redução automática de saída.
 
 O Tube Simulator acrescenta um pequeno atraso de processamento de aproximadamente 0.3 a 1.5ms, conforme a taxa de amostragem.
+
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler a tensão e a corrente de placa nesse ponto e, quando curvas de placa estiverem desenhadas, a tensão de grade da curva mais próxima.

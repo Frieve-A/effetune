@@ -78,9 +78,7 @@ export function handlePipelineKeyboardShortcut(event, {
 
     if (event.key === 'Escape') {
         core.selectedPlugins.clear();
-        core.pipelineList.querySelectorAll('.pipeline-item').forEach(item => {
-            item.classList.remove('selected');
-        });
+        core.updateSelectionClasses();
         return true;
     }
 

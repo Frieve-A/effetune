@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { frequencyAxisSource } from '../helpers/spectrum-overlay-harness.mjs';
 import { fileURLToPath } from 'node:url';
 import { TelemetryHub, TELEMETRY_HEADER_BYTES } from '../../js/audio/telemetry-hub.js';
 import { audibleFrameTime, audibleContextTime } from '../../js/audio/visual-sync.js';
@@ -18,6 +19,9 @@ const confidenceOffset = 28;
 const volumeOffset = confidenceOffset + pitchCount * 4;
 const payloadBytes = volumeOffset + pitchCount * 4;
 const historyWidth = 1024;
+
+// Canvas calls used only by the shaded piano keys.
+const keyShadingStubs = { rect() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} }) };
 
 function createGradient(type, coordinates) {
     return {
@@ -125,6 +129,12 @@ function createPluginBase() {
     };
 }
 
+const FrequencyAxis = (() => {
+    const window = {};
+    vm.runInNewContext(frequencyAxisSource, { window });
+    return window.FrequencyAxis;
+})();
+
 async function loadPlugin({ telemetryHub = null, audioContext = null, nullCanvasContext = false,
     now = 0, background = [0, 0, 0], soft = [34, 34, 34], trace = [0, 255, 0] } = {}) {
     const source = await fs.readFile(path.join(repoRoot, pluginPath), 'utf8');
@@ -144,6 +154,7 @@ async function loadPlugin({ telemetryHub = null, audioContext = null, nullCanvas
         : name === 'graph-base-soft' ? `rgba(${soft.join(', ')}, 1)`
         : name === 'accent' ? 'rgba(26, 115, 232, 1)'
         : name === 'graph-trace' ? `rgba(${trace.join(', ')}, 1)` : originalGet(name);
+    vm.runInContext(frequencyAxisSource, context, { filename: 'frequency-axis.js' });
     vm.runInContext(source, context, { filename: pluginPath });
     const spectrogramSource = await fs.readFile(path.join(repoRoot, 'plugins', 'analyzer', 'spectrogram.js'), 'utf8');
     vm.runInContext(spectrogramSource, context, { filename: 'spectrogram.js' });
@@ -674,6 +685,7 @@ test('Volume meter remains above the bars and graph-side in both layouts', async
         plugin.ly = layout;
         plugin.volumeHistoryDirty = true;
         plugin.canvasCtx = {
+        ...keyShadingStubs,
             save() { stack.push({ angle, origin }); },
             restore() { ({ angle, origin } = stack.pop()); },
             translate(x, y) { origin = point(x, y); },
@@ -880,6 +892,7 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     plugin.tempCanvas.width = historyWidth;
     plugin.tempCanvas.height = pitchCount;
     plugin.canvasCtx = {
+        ...keyShadingStubs,
         fillRect(x, y, width, height) {
             if (x > 0) fills.push({ x, y, width, height, color: this.fillStyle });
         },
@@ -890,15 +903,17 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
         fillText() {},
         measureText() { return { width: 10 }; }
     };
+    const { blackDepth } = FrequencyAxis.keyboardDepths(12 * 5, 1024);
     const keyColor = pitch => {
         const midi = 21 + pitch;
         const pitchClass = midi % 12;
         if ([1, 3, 6, 8, 10].includes(pitchClass)) {
-            return fills.find(fill => fill.width === 28 && fill.y === (108 - midi) * 5)?.color;
+            return fills.find(fill => Math.abs(fill.width - blackDepth) < 1e-9 &&
+                fill.y === (108 - midi) * 5)?.color;
         }
         const whiteMidis = Array.from({ length: noteCount }, (_, index) => 21 + index)
             .filter(note => ![1, 3, 6, 8, 10].includes(note % 12));
-        return fills.filter(fill => fill.width > 28)[whiteMidis.indexOf(midi)]?.color;
+        return fills.filter(fill => fill.width > blackDepth)[whiteMidis.indexOf(midi)]?.color;
     };
     const draw = () => { fills.length = 0; lines.length = 0; plugin.drawGraph(); };
     // The newest column is the last buffer column after the ring wraps.
@@ -909,10 +924,10 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     plugin.history[0] = 0.75;
     draw();
     assert.equal(keyColor(0), 'rgb(129, 107, 168)');
-    assert.equal(keyColor(1), 'rgb(94, 67, 91)');
-    assert.equal(keyColor(2), 'rgb(208, 190, 196)');
-    assert.equal(keyColor(3), 'rgb(221, 221, 221)');
-    assert.equal(keyColor(4), 'rgb(34, 34, 34)');
+    assert.equal(keyColor(1), 'rgb(85, 58, 83)');
+    assert.equal(keyColor(2), 'rgb(220, 203, 208)');
+    assert.equal(keyColor(3), 'rgb(238, 238, 238)');
+    assert.equal(keyColor(4), 'rgb(17, 17, 17)');
     assert.deepEqual(lines.filter(line => line.color === 'stub:graph-grid-strong').map(line => line.y),
         [425, 365, 305, 245, 185, 125, 65, 5]);
     assert.deepEqual(lines.filter(line => line.color === 'stub:graph-grid-subtle').map(line => line.y),
@@ -958,17 +973,17 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
 
     plugin.writeColumn = 1;
     draw();
-    assert.equal(keyColor(0), 'rgb(152, 136, 181)');
+    assert.equal(keyColor(0), 'rgb(156, 140, 186)');
     plugin.setParameters({ cf: 1 });
     draw();
-    assert.equal(keyColor(0), 'rgb(152, 136, 181)');
+    assert.equal(keyColor(0), 'rgb(156, 140, 186)');
 
     plugin.reset();
     plugin.ly = 'Vertical';
     plugin.vl = false;
     plugin.setParameters({ pr: 'High', mn: 21, mx: 108 });
     draw();
-    assert.equal(keyColor(0), 'rgb(221, 221, 221)');
+    assert.equal(keyColor(0), 'rgb(238, 238, 238)');
 });
 
 test('pitch resolution switches between five-cell history and semitone bag rows', async () => {
@@ -1033,6 +1048,7 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
     plugin.tempCtx = { putImageData() {} };
     plugin.tempCanvas = {};
     plugin.canvasCtx = {
+        ...keyShadingStubs,
         save() { stack.push({ angle, origin }); },
         restore() { ({ angle, origin } = stack.pop()); },
         translate(x, y) { origin = point(x, y); },
@@ -1069,8 +1085,11 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
     const writeColumn = plugin.writeColumn;
     // Changing layout redraws even when animation is stopped.
     plugin.setParameters({ ly: 'Horizontal' });
-    const blackKeys = fills.filter(fill => Math.abs(fill.width - 28) < 1e-6);
-    const whiteKeys = fills.filter(fill => Math.abs(fill.width - 44.8) < 1e-6);
+    // Horizontal: 88 rows of 10 px across the 880 px width, keys 440 px deep at most.
+    const { gutter, blackDepth } = FrequencyAxis.keyboardDepths(12 * 10, 440);
+    const rollHeight = 440 - gutter;
+    const blackKeys = fills.filter(fill => Math.abs(fill.width - blackDepth) < 1e-6);
+    const whiteKeys = fills.filter(fill => Math.abs(fill.width - gutter) < 1e-6);
     assert.equal(blackKeys.length, 36);
     assert.equal(whiteKeys.length, 52);
     const blackKeyPitches = Array.from({ length: noteCount }, (_, pitch) => pitch)
@@ -1078,8 +1097,8 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
     blackKeys.forEach((key, index) => {
         assert.ok(Math.abs(key.center[0] - (blackKeyPitches[index] + 0.5) * 10) < 1e-6);
     });
-    assert.ok(blackKeys.every(key => Math.abs(key.center[1] - 409.2) < 1e-6));
-    assert.ok(whiteKeys.every(key => Math.abs(key.center[1] - 417.6) < 1e-6));
+    assert.ok(blackKeys.every(key => Math.abs(key.center[1] - (rollHeight + blackDepth / 2)) < 1e-6));
+    assert.ok(whiteKeys.every(key => Math.abs(key.center[1] - (440 - gutter / 2)) < 1e-6));
     assert.equal(whiteKeys[0].color, 'rgb(0, 255, 0)');
     for (let octave = 0; octave < 7; octave++) {
         const cKey = whiteKeys[2 + octave * 7];
@@ -1097,17 +1116,17 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
         Math.abs(line.start[1] - line.end[1]) < 1e-6 &&
         Math.abs(line.start[0] - line.end[0]) > 1e-6
     );
-    assert.ok(horizontalLines.every(line => Math.abs(line.start[1] - 395.2) < 1e-6));
+    assert.ok(horizontalLines.every(line => Math.abs(line.start[1] - rollHeight) < 1e-6));
     assert.deepEqual(labels.map(label => label.text), ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']);
     assert.ok(labels[0].position[0] < labels.at(-1).position[0]);
-    assert.ok(Math.abs(images.at(-1).end[1] - 395.2) < 1e-6);
+    assert.ok(Math.abs(images.at(-1).end[1] - rollHeight) < 1e-6);
     const previousY = images[0].start[1];
     now += plugin.columnPeriod * 500;
     images.length = 0;
     plugin.drawGraph();
     assert.ok(images[0].start[1] < previousY);
-    assert.ok(Math.abs(images[0].start[1] - previousY + 0.5 * 395.2 / historyWidth) < 1e-6);
-    assert.ok(Math.abs(images.at(-1).end[1] - 395.2) < 1e-6);
+    assert.ok(Math.abs(images[0].start[1] - previousY + 0.5 * rollHeight / historyWidth) < 1e-6);
+    assert.ok(Math.abs(images.at(-1).end[1] - rollHeight) < 1e-6);
     assert.equal(stack.length, 0);
     assert.equal(angle, 0);
     assert.deepEqual(origin, [0, 0]);
@@ -1118,14 +1137,18 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
     fills.length = 0;
     labels.length = 0;
     plugin.setParameters({ ly: 'Vertical' });
-    const verticalBlackKeys = fills.filter(fill => Math.abs(fill.width - 28) < 1e-6);
-    const verticalWhiteKeys = fills.filter(fill => Math.abs(fill.width - 44.8) < 1e-6);
+    // Vertical: 69 rows across the 440 px height, keys 880 px deep at most.
+    const vertical = FrequencyAxis.keyboardDepths(12 * 440 / 69, 880);
+    const verticalBlackKeys = fills.filter(fill => Math.abs(fill.width - vertical.blackDepth) < 1e-6);
+    const verticalWhiteKeys = fills.filter(fill => Math.abs(fill.width - vertical.gutter) < 1e-6);
     assert.ok(verticalBlackKeys.length > 0);
     assert.ok(verticalWhiteKeys.length > 0);
-    assert.ok(verticalBlackKeys.every(key => Math.abs(key.center[0] - 849.2) < 1e-6));
-    assert.ok(verticalWhiteKeys.every(key => Math.abs(key.center[0] - 857.6) < 1e-6));
+    assert.ok(verticalBlackKeys.every(key =>
+        Math.abs(key.center[0] - (880 - vertical.gutter + vertical.blackDepth / 2)) < 1e-6));
+    assert.ok(verticalWhiteKeys.every(key => Math.abs(key.center[0] - (880 - vertical.gutter / 2)) < 1e-6));
     assert.ok(labels.every(label => Math.abs(label.angle) < 1e-6));
-    assert.ok(labels.every(label => Math.abs(label.position[0] - 871.6) < 1e-6));
+    assert.ok(labels.every(label =>
+        Math.abs(label.position[0] - (880 - (vertical.gutter - vertical.blackDepth) / 2)) < 1e-6));
     const verticalRowHeight = plugin.canvas.height / (plugin.mx - plugin.mn + 1);
     labels.forEach(label => {
         const midi = (Number(label.text.slice(1)) + 1) * 12;
@@ -1170,12 +1193,14 @@ test('piano roll scrolls by monotonic fractional time and freezes across pauses'
     plugin.tempCtx = { putImageData() {} };
     plugin.tempCanvas = {};
     plugin.canvasCtx = {
+        ...keyShadingStubs,
         fillRect() {},
         drawImage(...args) { drawCalls.push(args); },
         beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {},
         measureText() { return { width: 10 }; }
     };
-    const rollWidth = plugin.canvas.width - 44.8;
+    const rollWidth = plugin.canvas.width - FrequencyAxis.keyboardDepths(
+        12 * 440 / (plugin.mx - plugin.mn + 1), 1024).gutter;
     const historySources = split => {
         plugin.writeColumn = split;
         drawCalls.length = 0;
@@ -1303,6 +1328,7 @@ test('pitch bands, white keys and Normal confidence gradients follow the theme',
             plugin.canvas = { width: 1024, height: 440 };
             const fills = [];
             plugin.canvasCtx = {
+        ...keyShadingStubs,
                 fillRect(x) { if (x > 0) fills.push(this.fillStyle); },
                 drawImage() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {},
                 save() {}, restore() {}, translate() {}, rotate() {}, measureText() { return { width: 8 }; }
@@ -1316,8 +1342,8 @@ test('pitch bands, white keys and Normal confidence gradients follow the theme',
             };
             assert.deepEqual(pixel(whitePitch), [...theme.background, 255], theme.name + ' white band');
             assert.deepEqual(pixel(blackPitch), [...theme.blackBand, 255], theme.name + ' black band');
-            const whiteKey = theme.name === 'Midnight' ? [221, 221, 221] : [255, 255, 255];
-            const blackKey = [34, 34, 34];
+            const whiteKey = theme.name === 'Midnight' ? [238, 238, 238] : [255, 255, 255];
+            const blackKey = [17, 17, 17];
             for (const layout of ['Horizontal', 'Vertical']) {
                 plugin.ly = layout;
                 fills.length = 0;

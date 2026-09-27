@@ -423,6 +423,8 @@ export class PipelineAnalyzerUI {
         this.viewGroup.setAttribute('role', 'radiogroup');
         this.viewLabel = createElement(this.document, 'label');
         this.viewGroup.appendChild(this.viewLabel);
+        const viewOptions = createElement(this.document, 'span', 'radio-options');
+        this.viewGroup.appendChild(viewOptions);
         this.viewInputs = new Map();
         for (const [index, value] of GRAPH_VIEWS.entries()) {
             const option = createElement(
@@ -447,7 +449,7 @@ export class PipelineAnalyzerUI {
                 this.emitConfigurationChange();
             });
             option.append(input, label);
-            this.viewGroup.appendChild(option);
+            viewOptions.appendChild(option);
             this.viewInputs.set(value, { input, text: label });
         }
         this.legend = createElement(this.document, 'div', 'pipeline-analyzer-legend');

@@ -1,6 +1,7 @@
 {
   "Mastering Console": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#0a0e14",
       "image": null,
@@ -135,6 +136,10 @@
           "dr": -60,
           "orientation": "horizontal",
           "showLevelValues": true,
+          "cf": 1,
+          "pk": true,
+          "ph": 1,
+          "pf": 1,
           "showAxes": true,
           "showAxisNumbers": true
         },
@@ -172,9 +177,15 @@
           "pt": 12,
           "sc": "log-hq",
           "kb": false,
+          "kl": 100,
           "dm": "line",
           "quantizeBars": true,
           "orientation": "horizontal",
+          "cf": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0,
           "gainDb": 0,
           "showAxes": true,
           "showAxisNumbers": true
@@ -213,9 +224,15 @@
           "pt": 12,
           "sc": "log-hq",
           "kb": false,
+          "kl": 100,
           "dm": "line",
           "quantizeBars": true,
           "orientation": "horizontal",
+          "cf": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0,
           "gainDb": 0,
           "showAxes": false,
           "showAxisNumbers": false
@@ -260,6 +277,9 @@
         "params": {
           "wt": 0.08,
           "gainDb": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
           "showCorrelation": true,
           "showBalance": true,
           "showAxes": true,
@@ -311,6 +331,7 @@
           "pt": 12,
           "sc": "log-hq",
           "kb": false,
+          "kl": 100,
           "gainDb": 0,
           "showAxes": true,
           "showAxisNumbers": true
@@ -362,6 +383,7 @@
   },
   "Spectral Studio": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#08070c",
       "image": null,
@@ -497,6 +519,7 @@
           "pt": 12,
           "sc": "log-hq",
           "kb": false,
+          "kl": 100,
           "gainDb": 0,
           "showAxes": true,
           "showAxisNumbers": true
@@ -551,9 +574,15 @@
           "pt": 12,
           "sc": "log-hq",
           "kb": false,
+          "kl": 100,
           "dm": "bar",
           "quantizeBars": false,
           "orientation": "vertical",
+          "cf": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0,
           "gainDb": 0,
           "showAxes": true,
           "showAxisNumbers": false
@@ -565,6 +594,7 @@
   },
   "Harmony Lab": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#08070c",
       "image": null,
@@ -612,6 +642,7 @@
           "pr": "High",
           "ly": "Horizontal",
           "kb": true,
+          "kl": 100,
           "vl": true,
           "ts": 3,
           "mn": 28,
@@ -729,6 +760,7 @@
           "ft": 3,
           "lr": 24,
           "df": -60,
+          "cf": 0,
           "showAxes": true,
           "showAxisNumbers": true
         },
@@ -739,6 +771,7 @@
   },
   "Phosphor Scope": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#020604",
       "image": null,
@@ -877,6 +910,9 @@
         "params": {
           "wt": 0.05,
           "gainDb": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
           "showCorrelation": false,
           "showBalance": false,
           "showAxes": true,
@@ -912,6 +948,7 @@
   },
   "Now Playing": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#07080c",
       "image": null,
@@ -1194,9 +1231,15 @@
           "pt": 12,
           "sc": "log",
           "kb": false,
+          "kl": 100,
           "dm": "bar",
           "quantizeBars": true,
           "orientation": "horizontal",
+          "cf": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0,
           "gainDb": 0,
           "showAxes": false,
           "showAxisNumbers": false
@@ -1231,6 +1274,7 @@
   },
   "Neon Pulse": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#05060d",
       "image": null,
@@ -1309,9 +1353,15 @@
           "pt": 12,
           "sc": "log",
           "kb": false,
+          "kl": 100,
           "dm": "bar",
           "quantizeBars": true,
           "orientation": "horizontal",
+          "cf": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0,
           "gainDb": 0,
           "showAxes": false,
           "showAxisNumbers": false
@@ -1403,9 +1453,15 @@
           "pt": 12,
           "sc": "log",
           "kb": false,
+          "kl": 100,
           "dm": "bar",
           "quantizeBars": true,
           "orientation": "horizontal",
+          "cf": 0,
+          "pk": true,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0,
           "gainDb": 0,
           "showAxes": false,
           "showAxisNumbers": false
@@ -1542,6 +1598,7 @@
   },
   "Chroma Mandala": {
     "aspect": "16:9",
+    "graphScale": 1,
     "background": {
       "color": "#05060d",
       "image": null,
@@ -1592,6 +1649,7 @@
           "ft": 3,
           "lr": 24,
           "df": -60,
+          "cf": 0,
           "showAxes": false,
           "showAxisNumbers": false
         },

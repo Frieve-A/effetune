@@ -367,6 +367,7 @@ Advanced / utility parameters
   - **Output** - the final output level (dry plus distortion, after Dry-Wet and Output Trim).
 - **Analog Transfer Curve** - Shows the distortion curve created by Analog Nonlinearity and Even Bias, in the same in/out style as the Saturation plugins.
 - **Difference-Frequency view** - A static graph showing which audible frequencies the ultrasonic noise produces, based on the current noise settings.
+- Hover over either graph, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 - Subtle (default): Amount +24 dB, Ultrasonic Level -30 dBFS, Analog Nonlinearity 1.40%, Even Bias 20%, Signal Coupling 150%, Cross Sideband 75%, Scratch Tone 10.5 kHz.
@@ -425,6 +426,9 @@ Click **Effect Presets** in the effect header to try representative FM reception
 - **MPath** shows the first reflection level relative to the direct wave in dB (−∞ when Multipath is 0%).
 - **Clicks** counts recent FM threshold clicks per second and highlights when clicking becomes frequent.
 - If the **WASM** engine is unavailable, the HUD shows a notice and the plugin passes audio through unchanged.
+
+### Visual Display
+- Hover over the spectrum, or touch and drag on it, to read the values at that point.
 
 ### Recommended Settings
 
@@ -934,6 +938,9 @@ The nine presets select representative regional systems: Japan TV (M / EIA-J), N
 The HUD shows the selected television standard and the path currently heard: `STEREO`, `MAIN`, `SUB`, `NICAM`, `FALLBACK`, or `AM`. Carrier and CNR indicate received level and estimated signal quality. Health shows whether the selected stereo or digital path is usable; Multipath reports the reflected-signal depth, and Errors reports the reception error rate per second. The spectrum represents recovered multiplex audio for analogue FM, detected audio for L AM, and the selected output for NICAM.
 
 The model focuses on audible television sound behavior. It does not generate a complete television picture-and-radio-frequency channel, and its A2 and NICAM paths reproduce the listening effects rather than serving as broadcast test signals.
+
+### Visual Display
+- Hover over the spectrum, or touch and drag on it, to read the values at that point.
 
 ## Vinyl Artifacts
 

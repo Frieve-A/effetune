@@ -41,10 +41,6 @@ Simple Jitter adds random variations to sample timing. The picosecond range is f
 
 - **RMS Jitter** (1 ps to 10 ms) - Sets the size of the random timing variations. Moving the slider to the right increases the effect on a logarithmic scale.
 
-### Reading the Display
-
-- The value beside the slider is the RMS timing variation. Its unit changes automatically between ps, ns, µs, and ms.
-
 ### Starting Points
 
 1. **Small Clock Fluctuation**

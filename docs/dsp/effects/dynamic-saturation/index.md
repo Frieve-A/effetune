@@ -92,11 +92,6 @@ Click **Effect Presets** in the effect header to compare complete cone-motion se
   - High values: Dramatic effect
 - **Output Gain** (-18.0-18.0dB) - Adjusts the final output level
 
-### Visual Display
-- Live transfer curve graph showing how displacement is being saturated
-- Clear visual feedback of distortion characteristics
-- Visual representation of how Distortion Drive and Bias affect the sound
-
 ### Music Enhancement Tips
 - For Subtle Warmth:
   - Speaker Drive: 2.0-3.0

@@ -87,10 +87,6 @@ Compact cassette speed is fixed, so there is no Speed control.
 - **Output** (-24.0 to +24.0 dB) - Adjusts the level after the whole chain. Use it to match loudness when you compare with bypass, or to bring back the loudness a high Record Level setting has cost.
 - **Mix** (0 to 100%) - Blends the cassette sound with the original. Start at 100% to judge the full effect; lower it for a subtler result. Intermediate values can soften the highest frequencies because the two paths partly cancel there.
 
-### Reading the Status Line
-
-The line below the controls shows the effective wow/flutter and background-noise level for the current settings. Use it to compare changes in Tape Type, Noise Reduction, Record Level, and Hiss. `off` means the tape-noise layer is disabled, and `measuring…` means the displayed estimate is updating.
-
 ### Recommended Settings
 
 1. **Ordinary Cassette Deck (default)**

@@ -306,7 +306,7 @@ IR Reverb convoluciona la señal con una respuesta al impulso (IR) importada par
 
 ### Cómo leer el gráfico de decaimiento
 
-El tiempo avanza de izquierda a derecha y el nivel va de 0 a -90 dB. La curva EDC continua muestra la pérdida de energía; una pendiente mayor indica una cola más corta. Las marcas señalan onset, cut, pre-delay y trim. RT60 estima el tiempo de caída de 60 dB. Al cambiar **Decay**, la curva nueva es continua y la original aparece punteada.
+El tiempo avanza de izquierda a derecha y el nivel va de 0 a -90 dB. La curva EDC continua muestra la pérdida de energía; una pendiente mayor indica una cola más corta. Las marcas señalan onset, cut, pre-delay y trim. RT60 estima el tiempo de caída de 60 dB. Al cambiar **Decay**, la curva nueva es continua y la original aparece punteada. Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ### Enrutamiento, biblioteca y uso compartido
 

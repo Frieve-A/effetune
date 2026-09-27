@@ -1,12 +1,22 @@
-import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, EFFECT_CATALOG, FONT_FAMILIES, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, normalizeEffect, paletteModesForType } from './visualizer-model.js';
+import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, EFFECT_CATALOG, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
+import { copyTextToClipboard } from '../utils/clipboard-utils.js';
+
+// Identifies copied Visualizer items in clipboard text.
+const CLIPBOARD_KEY = 'effetuneVisualizerItems';
 
 const ACTION_ICONS = {
     up: ['move-up-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 8l5.4 8.8H6.6z"/></svg>'],
     down: ['move-down-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 16l5.4-8.8H6.6z"/></svg>'],
     front: ['bring-to-front-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5"/><rect x="9" y="9" width="10" height="10" rx="1.5" fill="currentColor"/></svg>'],
     back: ['send-to-back-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M6.5 5h7A1.5 1.5 0 0 1 15 6.5V9h-4.5A1.5 1.5 0 0 0 9 10.5V15H6.5A1.5 1.5 0 0 1 5 13.5v-7A1.5 1.5 0 0 1 6.5 5z" fill="currentColor"/><rect x="9" y="9" width="10" height="10" rx="1.5"/></svg>'],
-    delete: ['delete-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>']
+    delete: ['delete-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>'],
+    left: ['align-left-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M4 3v18"/><rect x="7" y="6" width="12" height="4" rx="1"/><rect x="7" y="14" width="7" height="4" rx="1"/></svg>'],
+    hcenter: ['align-hcenter-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/></svg>'],
+    right: ['align-right-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M20 3v18"/><rect x="5" y="6" width="12" height="4" rx="1"/><rect x="10" y="14" width="7" height="4" rx="1"/></svg>'],
+    top: ['align-top-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 4h18"/><rect x="6" y="7" width="4" height="12" rx="1"/><rect x="14" y="7" width="4" height="7" rx="1"/></svg>'],
+    vcenter: ['align-vcenter-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/></svg>'],
+    bottom: ['align-bottom-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 20h18"/><rect x="6" y="5" width="4" height="12" rx="1"/><rect x="14" y="10" width="4" height="7" rx="1"/></svg>']
 };
 const STYLE_ICONS = {
     flipX: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 6 2 12l6 6V6zm8 0 6 6-6 6V6z"/></svg>',
@@ -19,8 +29,35 @@ const THEME_COLOR_LABELS = {
     'graph-grid-soft': 'Soft grid', 'graph-grid-strong': 'Major grid', 'graph-label': 'Graph labels',
     'text-primary': 'Axis titles', 'graph-trace-tertiary': 'Meter ticks'
 };
+// Every choice is divisible by 4 so the quarter guide lines stay on the snap grid.
+const GRID_DIVISIONS = [4, 8, 20, 40, 80];
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const midiNoteName = midi => `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+const round = value => Math.round(value * 1000000) / 1000000;
+// Copies every value of source that differs from base onto target. Nested objects are compared key by key,
+// so one changed parameter leaves the others alone; arrays such as effects or color stops are copied whole.
+const copyChanges = (source, base, target, skip = []) => {
+    for (const [key, value] of Object.entries(source)) {
+        if (skip.includes(key)) continue;
+        if (isRecord(value) && isRecord(base?.[key]) && isRecord(target[key])) copyChanges(value, base[key], target[key]);
+        else if (JSON.stringify(value) !== JSON.stringify(base?.[key])) target[key] = structuredClone(value);
+    }
+};
+const RANGE_ENDPOINTS = { notes: ['mn', 'mx'], chroma: ['lo', 'hi'] };
+// Keep the edited endpoint and move its partner only when the range would invert.
+const adjustRangeEndpoint = (item, key) => {
+    const endpoints = Object.hasOwn(RANGE_ENDPOINTS, item.type) ? RANGE_ENDPOINTS[item.type] : [];
+    if (!endpoints.includes(key) || item.params[endpoints[0]] <= item.params[endpoints[1]]) return null;
+    const otherKey = endpoints.find(endpoint => endpoint !== key);
+    item.params[otherKey] = item.params[key];
+    return otherKey;
+};
+const rectStyle = rect => ({ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` });
+// Bounding box of the given items in normalized stage units.
+const itemsBox = items => ({
+    x0: Math.min(...items.map(({ rect }) => rect.x)), y0: Math.min(...items.map(({ rect }) => rect.y)),
+    x1: Math.max(...items.map(({ rect }) => rect.x + rect.w)), y1: Math.max(...items.map(({ rect }) => rect.y + rect.h))
+});
 
 export class VisualizerEditor {
     constructor(view) {
@@ -33,8 +70,11 @@ export class VisualizerEditor {
         this.root = document.createElement('aside');
         this.root.className = 'visualizer-editor visualizer-editor-inspector plugin-parameter-ui';
         this.root.hidden = true;
-        this.selection = null;
-        this.grid = localStorage.getItem('effetune_visualizer_grid') === 'true';
+        // Selected item ids; empty means Background. The anchor is where Shift+click ranges start.
+        this.selection = new Set();
+        this.anchor = null;
+        const divisions = Number(localStorage.getItem('effetune_visualizer_grid_divisions'));
+        this.gridDivisions = GRID_DIVISIONS.includes(divisions) ? divisions : 0;
         this.itemBounds = document.createElement('div');
         this.itemBounds.className = 'visualizer-item-bounds';
         this.itemBounds.hidden = true;
@@ -50,12 +90,17 @@ export class VisualizerEditor {
             this.overlay.appendChild(handle);
         }
         view.stage.appendChild(this.overlay);
+        this.marquee = document.createElement('div');
+        this.marquee.className = 'visualizer-marquee';
+        this.marquee.hidden = true;
+        view.stage.appendChild(this.marquee);
         view.stage.addEventListener('pointerdown', event => this.startDrag(event));
         view.stage.addEventListener('pointermove', event => this.drag(event));
         view.stage.addEventListener('pointerup', () => this.endDrag());
         view.stage.addEventListener('pointercancel', () => this.endDrag());
         view.stage.tabIndex = -1;
         view.stage.addEventListener('keydown', event => this.onStageKeyDown(event));
+        view.stage.addEventListener('keyup', () => this.view.commitPending());
     }
 
     t(key, fallback) { return this.view.t(key, fallback); }
@@ -64,13 +109,107 @@ export class VisualizerEditor {
         this.navigation.hidden = !open;
         this.root.hidden = !open;
         this.view.stage.classList.toggle('editing', open);
-        this.view.stage.classList.toggle('show-grid', open && this.grid);
+        this.updateGrid();
         this.view.stage.tabIndex = open ? 0 : -1;
         this.view.root.classList.toggle('is-editing', open);
         if (open) this.render();
         this.updateSelection();
     }
-    changed(structural = false) { this.view.changed(); if (structural) this.render(); this.updateSelection(); }
+    // Off keeps free placement; arrow and Ctrl+D steps then use the default division.
+    gridStep() { return 1 / (this.gridDivisions || 40); }
+    updateGrid() {
+        this.view.stage.classList.toggle('show-grid', this.open && this.gridDivisions > 0);
+        if (this.gridDivisions) this.view.stage.style.setProperty('--visualizer-grid-cell', `${100 / this.gridDivisions}%`);
+    }
+    // Drags and slider input are continuous; their history entry is recorded when they end.
+    changed(structural = false, continuing = false, rangeEndpoint = null) {
+        this.applyBulkEdit(rangeEndpoint);
+        this.view.changed(continuing || !!this.dragging || !!this.inputActive);
+        if (structural) this.render();
+        this.updateSelection();
+    }
+    refresh() { this.render(); this.updateSelection(); }
+    // With several items of one type selected, the panel edits the first one and its changes are copied to the others.
+    // The baseline id guards against a selection that changed after the baseline was taken, such as after a paste.
+    applyBulkEdit(rangeEndpoint = null) {
+        const [first, ...others] = this.selectedItems();
+        if (first && this.baseline?.id === first.id) {
+            const endpoints = Object.hasOwn(RANGE_ENDPOINTS, first.type) ? RANGE_ENDPOINTS[first.type] : [];
+            const changedEndpoints = endpoints.filter(key => (!rangeEndpoint || key === rangeEndpoint) &&
+                first.params[key] !== this.baseline.copy.params[key]);
+            const partner = endpoints.includes(rangeEndpoint) ? endpoints.find(key => key !== rangeEndpoint) : null;
+            // The first item's partner may have moved to keep its own range valid. Each
+            // other item keeps its partner unless the requested endpoint crosses it.
+            const source = partner ? { ...first, params: { ...first.params, [partner]: this.baseline.copy.params[partner] } } : first;
+            for (const item of others) {
+                copyChanges(source, this.baseline.copy, item, ['id', 'type', 'rect']);
+                for (const key of changedEndpoints) adjustRangeEndpoint(item, key);
+            }
+        }
+        this.takeBaseline();
+    }
+    takeBaseline() {
+        const selected = this.selectedItems();
+        this.baseline = selected.length > 1 && selected.every(item => item.type === selected[0].type)
+            ? { id: selected[0].id, copy: structuredClone(selected[0]) } : null;
+    }
+    // Front and back move the selection as a group; up and down swap each selected item with its unselected neighbor.
+    reorderedItems(kind) {
+        const items = this.view.layout.items, chosen = item => this.selection.has(item.id);
+        if (kind === 'front') return [...items.filter(item => !chosen(item)), ...items.filter(chosen)];
+        if (kind === 'back') return [...items.filter(chosen), ...items.filter(item => !chosen(item))];
+        const next = [...items];
+        if (kind === 'up') {
+            for (let i = 1; i < next.length; i++) if (chosen(next[i]) && !chosen(next[i - 1])) [next[i - 1], next[i]] = [next[i], next[i - 1]];
+        } else {
+            for (let i = next.length - 2; i >= 0; i--) if (chosen(next[i]) && !chosen(next[i + 1])) [next[i], next[i + 1]] = [next[i + 1], next[i]];
+        }
+        return next;
+    }
+    // Every item moves inside the selection bounds, so no snapping or clamping is needed.
+    align(kind) {
+        const items = this.selectedItems(), box = itemsBox(items);
+        for (const { rect } of items) {
+            if (kind === 'left') rect.x = box.x0;
+            else if (kind === 'hcenter') rect.x = round((box.x0 + box.x1 - rect.w) / 2);
+            else if (kind === 'right') rect.x = round(box.x1 - rect.w);
+            else if (kind === 'top') rect.y = box.y0;
+            else if (kind === 'vcenter') rect.y = round((box.y0 + box.y1 - rect.h) / 2);
+            else rect.y = round(box.y1 - rect.h);
+        }
+        this.changed();
+    }
+    selectedItems() { return this.view.layout.items.filter(item => this.selection.has(item.id)); }
+    clearSelection() { this.selection = new Set(); this.anchor = null; }
+    deselectAll() { this.clearSelection(); this.refresh(); }
+    selectAll() { this.selection = new Set(this.view.layout.items.map(item => item.id)); this.refresh(); }
+    // Applies an item click and returns whether a drag may start from it.
+    clickItem(id, event) {
+        const toggle = event.ctrlKey || event.metaKey;
+        if (event.shiftKey && this.anchor) {
+            const ids = this.view.layout.items.map(item => item.id);
+            const [first, last] = [ids.indexOf(this.anchor), ids.indexOf(id)].sort((a, b) => a - b);
+            const range = ids.slice(first, last + 1);
+            this.selection = new Set(toggle ? [...this.selection, ...range] : range);
+            return false;
+        }
+        this.anchor = id;
+        if (toggle) {
+            if (!this.selection.delete(id)) this.selection.add(id);
+            return false;
+        }
+        if (!this.selection.has(id)) this.selection = new Set([id]);
+        return true;
+    }
+    // Drops gestures and selected ids that no longer match a replaced layout.
+    resetForLayout() {
+        this.dragging = null;
+        this.marqueeStart = null;
+        this.marquee.hidden = true;
+        const ids = new Set(this.view.layout.items.map(item => item.id));
+        for (const id of this.selection) if (!ids.has(id)) this.selection.delete(id);
+        if (!ids.has(this.anchor)) this.anchor = null;
+    }
     button(parent, label, action) {
         const button = document.createElement('button');
         button.type = 'button'; button.textContent = label;
@@ -129,11 +268,15 @@ export class VisualizerEditor {
         if (kind === 'checkbox') input.checked = value; else input.value = value;
         const output = kind === 'range' && options.format ? document.createElement('output') : null;
         if (output) output.textContent = options.format(value);
-        input.addEventListener(kind === 'range' || kind === 'color' ? 'input' : 'change', () => {
+        const continuous = kind === 'range' || kind === 'color';
+        input.addEventListener(continuous ? 'input' : 'change', () => {
             const next = kind === 'checkbox' ? input.checked : kind === 'range' || kind === 'number' ? Number(input.value) : kind === 'file' ? input.files[0] : input.value;
             if (output) output.textContent = options.format(next);
-            action(next);
+            // Slider and color input streams become one history entry, recorded on change.
+            this.inputActive = continuous;
+            try { action(next); } finally { this.inputActive = false; }
         });
+        if (continuous) input.addEventListener('change', () => this.view.commitPending());
         row.append(name, input); if (output) row.appendChild(output); parent.appendChild(row); return input;
     }
     group(parent, title) {
@@ -183,7 +326,13 @@ export class VisualizerEditor {
         const layout = this.view.layout;
         const scene = this.group(this.navigationContent, this.t('visualizer.layout', 'Layout'));
         this.field(scene, this.t('visualizer.aspect', 'Aspect ratio'), 'select', layout.aspect, value => { layout.aspect = value; this.changed(); }, { values: ASPECTS });
-        this.field(scene, this.t('visualizer.grid', 'Snap to grid'), 'checkbox', this.grid, value => { this.grid = value; localStorage.setItem('effetune_visualizer_grid', String(value)); this.view.stage.classList.toggle('show-grid', value); });
+        this.field(scene, this.t('visualizer.graphScale', 'Graph scale'), 'range', layout.graphScale, value => { layout.graphScale = value; this.changed(); },
+            { min: 0.5, max: 3, step: 0.05, format: value => `×${value.toFixed(2)}` });
+        this.field(scene, this.t('visualizer.grid', 'Snap to grid'), 'select', String(this.gridDivisions), value => {
+            this.gridDivisions = Number(value);
+            localStorage.setItem('effetune_visualizer_grid_divisions', value);
+            this.updateGrid();
+        }, { values: [['0', this.t('visualizer.paramChoice.Off', 'Off')], ...GRID_DIVISIONS.map(value => [String(value), `${value} × ${value}`])] });
         const bg = this.group(this.navigationContent, this.t('visualizer.background', 'Background'));
         this.field(bg, this.t('visualizer.color', 'Color'), 'color', layout.background.color, value => { layout.background.color = value; this.changed(); });
         this.field(bg, this.t('visualizer.image', 'Image'), 'file', '', file => this.importImage(file), { accept: 'image/png,image/jpeg,image/webp' });
@@ -210,7 +359,7 @@ export class VisualizerEditor {
             if (layout.items.length >= MAX_ITEMS) return;
             const item = createItem(add.value);
             if (item.type !== 'artwork') item.palette.color = DEFAULT_TRACE_COLOR;
-            layout.items.push(item); this.selection = item.id; this.changed(true);
+            layout.items.push(item); this.selection = new Set([item.id]); this.changed(true);
         });
         addItem.disabled = layout.items.length >= MAX_ITEMS;
         const items = this.group(this.navigationContent, this.t('visualizer.items', 'Items'));
@@ -221,44 +370,59 @@ export class VisualizerEditor {
         items.appendChild(list);
         for (const [id, label] of [['', this.t('visualizer.background', 'Background')],
             ...layout.items.map((value, index) => [value.id, `${index + 1}. ${this.t(`visualizer.type.${value.type}`, value.type)}`])]) {
-            const option = this.button(list, label, () => {
-                this.selection = id || null;
-                this.render(); this.updateSelection();
+            const option = this.button(list, label, event => {
+                if (id) this.clickItem(id, event); else this.clearSelection();
+                this.refresh();
                 if (id) this.view.stage.focus({ preventScroll: true });
             });
+            const active = id ? this.selection.has(id) : this.selection.size === 0;
             option.className = 'player-playlist-item';
-            option.classList.toggle('active', (this.selection || '') === id);
-            option.setAttribute('aria-pressed', String((this.selection || '') === id));
+            option.classList.toggle('active', active);
+            option.setAttribute('aria-pressed', String(active));
         }
-        const item = layout.items.find(value => value.id === this.selection);
+        const selected = this.selectedItems();
+        const [item] = selected, single = selected.length === 1;
+        this.takeBaseline();
         const header = document.createElement('div');
         header.className = 'visualizer-item-header';
         this.root.appendChild(header);
         const heading = document.createElement('h2');
         heading.className = 'visualizer-item-name plugin-name';
-        heading.textContent = item
+        heading.textContent = single
             ? `${layout.items.indexOf(item) + 1}. ${this.t(`visualizer.type.${item.type}`, item.type)}`
-            : this.t('visualizer.background', 'Background');
+            : selected.length ? this.t('visualizer.selectedCount', '{count} items selected').replace('{count}', selected.length)
+                : this.t('visualizer.background', 'Background');
         heading.title = heading.textContent;
         header.appendChild(heading);
-        if (!item) {
+        if (!selected.length) {
             this.effects(this.root, layout.background.effects, 'background');
             return;
         }
         const order = document.createElement('div'); order.className = 'visualizer-editor-actions'; header.appendChild(order);
-        const index = layout.items.indexOf(item);
-        const move = target => {
-            layout.items.splice(index, 1); layout.items.splice(target, 0, item); this.changed(true);
-        };
-        const up = this.iconButton(order, 'up', this.t('visualizer.moveUp', 'Move up'), () => move(index - 1));
-        up.disabled = index === 0;
-        const down = this.iconButton(order, 'down', this.t('visualizer.moveDown', 'Move down'), () => move(index + 1));
-        down.disabled = index === layout.items.length - 1;
-        const front = this.iconButton(order, 'front', this.t('visualizer.front', 'Bring to front'), () => move(layout.items.length - 1));
-        front.disabled = down.disabled;
-        const back = this.iconButton(order, 'back', this.t('visualizer.back', 'Send to back'), () => move(0));
-        back.disabled = up.disabled;
+        for (const [kind, key, fallback] of [['up', 'moveUp', 'Move up'], ['down', 'moveDown', 'Move down'],
+            ['front', 'front', 'Bring to front'], ['back', 'back', 'Send to back']]) {
+            const next = this.reorderedItems(kind);
+            const button = this.iconButton(order, kind, this.t(`visualizer.${key}`, fallback), () => {
+                layout.items.splice(0, layout.items.length, ...next); this.changed(true);
+            });
+            button.disabled = next.every((value, index) => value === layout.items[index]);
+        }
         this.iconButton(order, 'delete', this.t('visualizer.delete', 'Delete'), () => this.deleteSelected());
+        if (!single) {
+            const alignment = document.createElement('div');
+            alignment.className = 'visualizer-align-actions';
+            this.root.appendChild(alignment);
+            for (const [kind, fallback] of [['left', 'Align left edges'], ['hcenter', 'Align horizontal centers'], ['right', 'Align right edges'],
+                ['top', 'Align top edges'], ['vcenter', 'Align vertical centers'], ['bottom', 'Align bottom edges']]) {
+                this.iconButton(alignment, kind, this.t(`visualizer.align.${kind}`, fallback), () => this.align(kind));
+            }
+            // Mixed item types have no shared settings to show.
+            if (!this.baseline) return;
+            const note = document.createElement('p');
+            note.className = 'visualizer-bulk-note';
+            note.textContent = this.t('visualizer.bulkEditNote', 'Showing the settings of the first selected item. Changes apply to all selected items.');
+            this.root.appendChild(note);
+        }
         const properties = this.group(this.root, this.t('visualizer.properties', 'Properties'));
         if (VISUAL_TYPES.includes(item.type)) {
             const channels = [['', '1–2'], ['L', 'L'], ['R', 'R'], ...Array.from({ length: 7 }, (_, i) => [`${i * 2 + 3}${i * 2 + 4}`, `${i * 2 + 3}–${i * 2 + 4}`]), ...Array.from({ length: 16 }, (_, i) => [`${i + 1}`, `${i + 1}`])];
@@ -266,16 +430,37 @@ export class VisualizerEditor {
         }
         this.styleToggles(properties, item);
         if (VISUAL_TYPES.includes(item.type)) this.parameters(properties, item);
-        const styles = item.type === 'artwork' ? { rounded: true } : VISUAL_TYPES.includes(item.type) ? {} : {
-            fontFamily: FONT_FAMILIES.map(([family]) => family), fontSize: 36,
-            align: ['left', 'center', 'right']
-        };
-        const fontLabels = Object.fromEntries(FONT_FAMILIES);
-        for (const [key, values] of Object.entries(styles)) {
-            this.field(properties, this.t(`visualizer.style.${key}`, key === 'bold' ? 'Bold' : key === 'italic' ? 'Italic' : key), Array.isArray(values) ? 'select' : typeof values === 'boolean' ? 'checkbox' : 'range', item.style[key], value => { item.style[key] = value; this.changed(); }, Array.isArray(values) ? { values: values.map(value => [value, this.t(`visualizer.value.${value}`, fontLabels[value] || value)]) } : { min: 8, max: 200, step: 1 });
-        }
+        if (item.type === 'artwork') this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
+            item.style.rounded, value => { item.style.rounded = value; this.changed(); });
+        else if (!VISUAL_TYPES.includes(item.type)) this.textStyle(properties, item.style);
         if (item.type !== 'artwork') this.palette(this.root, item.palette, item.type);
         this.effects(this.root, item.effects, 'item', item.type);
+    }
+
+    textStyle(parent, style) {
+        const value = key => style[key] ?? TEXT_DECORATION_DEFAULTS[key];
+        const set = key => next => { style[key] = next; this.changed(); };
+        const label = (key, fallback) => this.t(`visualizer.style.${key}`, fallback);
+        const select = (group, key, fallback, values) => this.field(group, label(key, fallback), 'select', value(key), set(key),
+            { values: values.map(([entry, name]) => [entry, this.t(`visualizer.value.${entry}`, name)]) });
+        const range = (group, key, fallback, min, max, step = 1) => this.field(group, label(key, fallback), 'range', value(key), set(key),
+            { min, max, step, format: next => String(next) });
+        select(parent, 'fontFamily', 'Font', FONT_FAMILIES);
+        range(parent, 'fontSize', 'Text size', 8, 200);
+        select(parent, 'align', 'Alignment', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]);
+        select(parent, 'verticalAlign', 'Vertical alignment', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]);
+        range(parent, 'letterSpacing', 'Letter spacing', -20, 100);
+        select(parent, 'textCase', 'Case', [['none', 'None'],['upper', 'UPPERCASE'], ['lower', 'lowercase']]);
+        const outline = this.group(parent, this.t('visualizer.style.outline', 'Outline'));
+        range(outline, 'outlineWidth', 'Width', 0, 20, 0.5);
+        this.field(outline, this.t('visualizer.color', 'Color'), 'color', value('outlineColor'), set('outlineColor'));
+        const shadow = this.group(parent, this.t('visualizer.style.shadow', 'Shadow'));
+        this.field(shadow, this.t('visualizer.color', 'Color'), 'color', value('shadowColor'), set('shadowColor'));
+        this.field(shadow, label('shadowOpacity', 'Opacity'), 'range', value('shadowOpacity'), set('shadowOpacity'),
+            { min: 0, max: 1, step: 0.01, format: next => `${Math.round(next * 100)}%` });
+        range(shadow, 'shadowBlur', 'Blur', 0, 50);
+        range(shadow, 'shadowX', 'Offset X', -50, 50);
+        range(shadow, 'shadowY', 'Offset Y', -50, 50);
     }
 
     parameters(parent, item) {
@@ -284,8 +469,8 @@ export class VisualizerEditor {
         const update = (key, value) => {
             params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
                 (analogMeter && ['sc', 'ln', 'ls'].includes(key)) ? Number(value) : value;
-            // Mode and PPM Scale decide which Analog Meter parameters apply, so rebuild the panel.
-            this.changed(analogMeter && (key === 'md' || key === 'sc'));
+            // Mode and PPM Scale decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time. Rebuild the panel for these.
+            this.changed((analogMeter && (key === 'md' || key === 'sc')) || key === 'pk');
         };
         const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values });
         const orientation = () => select('orientation', 'Orientation', [
@@ -294,11 +479,21 @@ export class VisualizerEditor {
         ]);
         const range = (key, label, min, max, step, format) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, format });
         const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value));
+        // Peak Hold and Peak Fall Time only matter while the peak indicator (pk) is shown.
+        const peakControls = (fallMin = 0.1) => {
+            check('pk', 'Peak');
+            if (params.pk) {
+                range('ph', 'Peak Hold', 0, 10, 0.1, value => `${value.toFixed(1)} s`);
+                range('pf', 'Peak Fall Time', fallMin, 10, 0.1, value => `${value.toFixed(1)} s`);
+            }
+        };
         if (item.type === 'spectrum' || item.type === 'spectrogram') {
             range('dr', 'DB Range', -144, -48, 1, value => `${value} dB`);
             select('pt', 'Points', Array.from({ length: 7 }, (_, index) => [String(index + 8), String(2 ** (index + 8))]));
             select('sc', 'Frequency Scale', [['log', this.t('visualizer.paramChoice.log', 'Log')], ['log-hq', this.t('visualizer.paramChoice.log-hq', 'Log (HQ)')], ['linear', this.t('visualizer.paramChoice.linear', 'Linear')]]);
             check('kb', 'Keyboard');
+            // 100% is half the length of real piano keys; 200% is the real proportion.
+            range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
             if (item.type === 'spectrum') {
                 let quantize;
                 this.field(parent, this.t('visualizer.param.dm', 'Display'), 'select', params.dm, value => {
@@ -310,9 +505,13 @@ export class VisualizerEditor {
                     'checkbox', params.quantizeBars, value => update('quantizeBars', value),
                     { disabled: params.dm !== 'bar' });
                 orientation();
+                range('sm', 'Smoothing', 0, 1, 0.01, value => `${value.toFixed(2)} oct`);
+                range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
+                peakControls();
             }
         } else if (item.type === 'stereo') {
             range('wt', 'Window', 0.01, 1, 0.001, value => `${Math.round(value * 1000)} ms`);
+            peakControls(1);
             check('showCorrelation', 'Correlation');
             check('showBalance', 'Balance');
         } else if (item.type === 'oscilloscope') {
@@ -329,6 +528,8 @@ export class VisualizerEditor {
             range('dr', 'DB Range', -144, -48, 1, value => `${value} dB`);
             orientation();
             check('showLevelValues', 'Level values');
+            range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
+            peakControls();
         } else if (item.type === 'notes') {
             select('pr', 'Pitch Resolution', [['Semitone', this.t('visualizer.paramChoice.Semitone', '1/12 Octave')], ['High', this.t('visualizer.paramChoice.High', 'High (1/60 Octave)')]]);
             select('ly', 'Layout', [['Horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')], ['Vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]]);
@@ -339,37 +540,38 @@ export class VisualizerEditor {
                 noteSliders[key] = this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => {
                     const midi = Math.max(21, Math.min(108, Math.round(value)));
                     params[key] = midi;
-                    const otherKey = key === 'mn' ? 'mx' : 'mn';
-                    if (key === 'mn' ? params.mx < midi : params.mn > midi) {
-                        params[otherKey] = midi;
+                    const otherKey = adjustRangeEndpoint(item, key);
+                    if (otherKey) {
                         noteSliders[otherKey].value = midi;
                         noteSliders[otherKey].nextElementSibling.textContent = midiNoteName(midi);
                         window.uiManager?.refreshRangeFillStyling?.(noteSliders[otherKey]);
                     }
-                    this.changed();
+                    this.changed(false, false, key);
                 }, { min: 21, max: 108, step: 1, format: midiNoteName });
             }
             range('nc', 'Regular Note Limit', 1, 16, 1, value => String(value));
             check('kb', 'Keyboard');
+            // 100% is half the length of real piano keys; 200% is the real proportion.
+            range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
         } else if (item.type === 'chroma') {
             select('dm', 'Display', [['0', this.t('visualizer.value.dots', 'Dots')], ['1', this.t('visualizer.value.fill', 'Fill')]]);
             const octaveSliders = {};
             for (const [key, label, min, max] of [['lo', 'Lowest Octave', 1, 8], ['hi', 'Highest Octave', 1, 9]]) {
                 octaveSliders[key] = this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => {
                     params[key] = value;
-                    const otherKey = key === 'lo' ? 'hi' : 'lo';
-                    if (key === 'lo' ? params.hi < value : params.lo > value) {
-                        params[otherKey] = value;
+                    const otherKey = adjustRangeEndpoint(item, key);
+                    if (otherKey) {
                         octaveSliders[otherKey].value = value;
                         octaveSliders[otherKey].nextElementSibling.textContent = String(value);
                         window.uiManager?.refreshRangeFillStyling?.(octaveSliders[otherKey]);
                     }
-                    this.changed();
+                    this.changed(false, false, key);
                 }, { min, max, step: 1, format: value => String(value) });
             }
             range('ft', 'Frequency Tilt', -6, 6, 0.5, value => `${value} dB/oct`);
             range('lr', 'Level Range', 6, 96, 1, value => `${value} dB`);
             range('df', 'Display Floor', -120, -24, 1, value => `${value} dB`);
+            range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
         } else if (item.type === 'phase') {
             select('ax', 'X Axis', [['phase', this.t('visualizer.paramChoice.phase', 'Phase')],
                 ['balance', this.t('visualizer.paramChoice.balance', 'Balance')]]);
@@ -534,29 +736,54 @@ export class VisualizerEditor {
         if (!this.open || event.target.closest('button')) return;
         const point = this.point(event);
         const corner = event.target.dataset.corner;
-        const item = corner ? this.view.layout.items.find(value => value.id === this.selection) : [...this.view.layout.items].reverse().find(value => point.x >= value.rect.x && point.y >= value.rect.y && point.x <= value.rect.x + value.rect.w && point.y <= value.rect.y + value.rect.h);
-        this.selection = item?.id || null; this.render(); this.updateSelection();
-        if (!item) return;
+        const hit = corner ? this.selectedItems()[0] : [...this.view.layout.items].reverse().find(value => point.x >= value.rect.x && point.y >= value.rect.y && point.x <= value.rect.x + value.rect.w && point.y <= value.rect.y + value.rect.h);
+        // Range and toggle clicks only change the selection; they never start a drag.
+        if (hit && !corner && !this.clickItem(hit.id, event)) { this.refresh(); return; }
         this.view.stage.focus({ preventScroll: true });
         event.preventDefault(); this.view.stage.setPointerCapture(event.pointerId);
-        this.dragging = { item, point, rect: { ...item.rect }, corner,
-            duplicateOnMove: event.altKey === true && !corner };
+        if (!hit) {
+            const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+            if (!additive) this.clearSelection();
+            this.marqueeStart = { point, base: new Set(this.selection) };
+            this.refresh();
+            return;
+        }
+        this.refresh();
+        this.beginDrag(hit, corner ? [hit] : this.selectedItems(), point, corner, event.altKey === true && !corner);
+    }
+    beginDrag(grabbed, items, point, corner = null, duplicateOnMove = false) {
+        this.dragging = { items, grabbed, point, rect: { ...grabbed.rect }, corner, moved: false,
+            starts: items.map(item => ({ ...item.rect })), box: itemsBox(items), duplicateOnMove };
     }
     drag(event) {
+        if (this.marqueeStart) { this.updateMarquee(event); return; }
         if (!this.dragging) return;
-        const { point, rect, corner } = this.dragging;
+        const { point, rect, corner, box, starts } = this.dragging;
         const current = this.point(event), dx = current.x - point.x, dy = current.y - point.y;
-        if (this.dragging.duplicateOnMove && (dx !== 0 || dy !== 0)) {
-            const copy = this.duplicateItem(this.dragging.item);
-            if (!copy) { this.dragging = null; return; }
-            this.dragging.item = copy;
+        if (dx === 0 && dy === 0) return;
+        this.dragging.moved = true;
+        if (this.dragging.duplicateOnMove) {
+            const copies = this.insertCopies(this.dragging.items, false);
+            if (!copies) { this.dragging = null; return; }
+            this.dragging.grabbed = copies[this.dragging.items.indexOf(this.dragging.grabbed)];
+            this.dragging.items = copies;
             this.dragging.duplicateOnMove = false;
         }
-        const item = this.dragging.item;
-        const snap = value => this.grid ? Math.round(value * 40) / 40 : value;
+        // Holding Alt at any point of the drag places the item freely.
+        const divisions = event.altKey ? 0 : this.gridDivisions;
+        const snap = value => divisions ? Math.round(value * divisions) / divisions : value;
         const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
-        if (!corner) { item.rect.x = clamp(snap(rect.x + dx), 0, 1 - rect.w); item.rect.y = clamp(snap(rect.y + dy), 0, 1 - rect.h); }
-        else {
+        if (!corner) {
+            // The grabbed item snaps; the whole selection shares its offset and stays inside the stage.
+            const x = clamp(snap(rect.x + dx), rect.x - box.x0, 1 - box.x1 + rect.x);
+            const y = clamp(snap(rect.y + dy), rect.y - box.y0, 1 - box.y1 + rect.y);
+            this.dragging.items.forEach((item, index) => {
+                const start = starts[index];
+                item.rect.x = clamp(x + (start.x - rect.x), 0, 1 - start.w);
+                item.rect.y = clamp(y + (start.y - rect.y), 0, 1 - start.h);
+            });
+        } else {
+            const item = this.dragging.grabbed;
             const left = corner.includes('w') ? clamp(snap(rect.x + dx), 0, rect.x + rect.w - .02) : rect.x;
             const top = corner.includes('n') ? clamp(snap(rect.y + dy), 0, rect.y + rect.h - .02) : rect.y;
             const right = corner.includes('e') ? clamp(snap(rect.x + rect.w + dx), left + .02, 1) : rect.x + rect.w;
@@ -565,65 +792,125 @@ export class VisualizerEditor {
         }
         this.changed();
     }
-    endDrag() { this.dragging = null; }
-    duplicateItem(item, offset = false) {
-        const items = this.view.layout.items;
-        if (items.length >= MAX_ITEMS) return null;
-        const copy = structuredClone(item);
-        copy.id = createItem(item.type).id;
-        if (offset) {
-            const shift = (position, size) => position + 1 / 40 <= 1 - size
-                ? position + 1 / 40 : Math.max(0, position - 1 / 40);
-            copy.rect.x = Math.round(shift(item.rect.x, item.rect.w) * 1000000) / 1000000;
-            copy.rect.y = Math.round(shift(item.rect.y, item.rect.h) * 1000000) / 1000000;
+    endDrag() {
+        if (this.marqueeStart) { this.marqueeStart = null; this.marquee.hidden = true; }
+        const dragging = this.dragging;
+        this.dragging = null;
+        // Clicking a selected item without moving it selects only that item.
+        if (dragging && !dragging.moved && !dragging.corner && this.selection.size > 1) {
+            this.selection = new Set([dragging.grabbed.id]);
+            this.refresh();
         }
-        items.splice(items.indexOf(item) + 1, 0, copy);
-        this.selection = copy.id;
+        this.view.commitPending();
+    }
+    // Marquee selection changes only the selection, so it records no history.
+    updateMarquee(event) {
+        const start = this.marqueeStart.point, current = this.point(event);
+        const clamp = value => Math.max(0, Math.min(1, value));
+        const x0 = clamp(Math.min(start.x, current.x)), x1 = clamp(Math.max(start.x, current.x));
+        const y0 = clamp(Math.min(start.y, current.y)), y1 = clamp(Math.max(start.y, current.y));
+        this.marquee.hidden = false;
+        Object.assign(this.marquee.style, rectStyle({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }));
+        const next = new Set(this.marqueeStart.base);
+        for (const { id, rect } of this.view.layout.items) {
+            if (rect.x >= x0 && rect.y >= y0 && rect.x + rect.w <= x1 && rect.y + rect.h <= y1) next.add(id);
+        }
+        if (next.size === this.selection.size && [...next].every(id => this.selection.has(id))) return;
+        this.selection = next;
+        this.refresh();
+    }
+    // Shared by Ctrl+D, Alt+drag, and Paste: inserts deep copies after the frontmost selected item and selects them.
+    insertCopies(sources, offset) {
+        const items = this.view.layout.items;
+        if (items.length + sources.length > MAX_ITEMS) {
+            this.view.warn('visualizer.itemLimit', 'A layout can have up to {max} items. Delete some items, then try again.', { max: MAX_ITEMS });
+            return null;
+        }
+        const step = this.gridStep(), box = itemsBox(sources);
+        const shift = (low, high) => high + step <= 1 ? step : -Math.min(step, low);
+        const dx = shift(box.x0, box.x1), dy = shift(box.y0, box.y1);
+        const copies = sources.map(item => {
+            const copy = structuredClone(item);
+            copy.id = createItem(item.type).id;
+            if (offset) { copy.rect.x = round(copy.rect.x + dx); copy.rect.y = round(copy.rect.y + dy); }
+            return copy;
+        });
+        const last = items.findLastIndex(item => this.selection.has(item.id));
+        items.splice(last < 0 ? items.length : last + 1, 0, ...copies);
+        this.selection = new Set(copies.map(copy => copy.id));
         this.changed(true);
-        return copy;
+        return copies;
+    }
+    async copySelected() {
+        const items = this.selectedItems();
+        if (!items.length) return false;
+        if (!await copyTextToClipboard(JSON.stringify({ [CLIPBOARD_KEY]: items }))) {
+            console.error('Failed to copy Visualizer items');
+            this.view.warn('visualizer.copyFailed', 'The selected items could not be copied. Try again.');
+            return false;
+        }
+        this.view.uiManager.showTransientMessage(this.t('visualizer.itemsCopied', 'Copied the selected items.'), false, {}, 3000);
+        return true;
+    }
+    // Deletes only after the copy succeeds, and deletes the items that were copied.
+    async cutSelected() {
+        const ids = new Set(this.selection);
+        if (!await this.copySelected()) return;
+        this.selection = ids;
+        this.deleteSelected();
+    }
+    // Returns false when the text holds no Visualizer items.
+    pasteItems(text) {
+        let items;
+        try { items = JSON.parse(text)?.[CLIPBOARD_KEY]; } catch { return false; }
+        items = normalizeLayout({ items }).items;
+        if (!items.length) return false;
+        this.insertCopies(items, true);
+        return true;
     }
     deleteSelected() {
-        const index = this.view.layout.items.findIndex(value => value.id === this.selection);
-        if (index < 0) return;
-        this.view.layout.items.splice(index, 1);
-        this.selection = null;
+        const items = this.view.layout.items;
+        if (!this.selection.size) return;
+        for (let index = items.length - 1; index >= 0; index--) if (this.selection.has(items[index].id)) items.splice(index, 1);
+        this.clearSelection();
         this.changed(true);
     }
     onStageKeyDown(event) {
-        if (!this.open || event.target !== this.view.stage) return;
-        const item = this.view.layout.items.find(value => value.id === this.selection);
-        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd' && item) {
+        if (!this.open || event.target !== this.view.stage || !this.selection.size) return;
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd') {
             event.preventDefault(); event.stopPropagation();
-            this.duplicateItem(item, true);
+            this.insertCopies(this.selectedItems(), true);
             return;
         }
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        if (event.key === 'Delete' && this.view.layout.items.some(value => value.id === this.selection)) {
-            event.preventDefault(); event.stopPropagation();
-            this.deleteSelected();
-            return;
-        }
         const offset = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
         if (!offset) return;
-        if (!item) return;
         event.preventDefault();
-        const clamp = (value, size) => Math.max(0, Math.min(1 - size, Math.round(value * 1000000) / 1000000));
-        item.rect.x = clamp(item.rect.x + offset[0] / 40, item.rect.w);
-        item.rect.y = clamp(item.rect.y + offset[1] / 40, item.rect.h);
-        this.changed();
+        const items = this.selectedItems(), step = this.gridStep();
+        const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+        // Every item moves by the same amount, limited so the whole selection stays inside the stage.
+        const box = itemsBox(items);
+        const dx = clamp(offset[0] * step, -box.x0, 1 - box.x1), dy = clamp(offset[1] * step, -box.y0, 1 - box.y1);
+        for (const { rect } of items) {
+            rect.x = clamp(round(rect.x + dx), 0, 1 - rect.w);
+            rect.y = clamp(round(rect.y + dy), 0, 1 - rect.h);
+        }
+        // Key repeat merges into one history entry, recorded on keyup.
+        this.changed(false, true);
     }
     updateSelection() {
-        const item = this.view.layout.items.find(value => value.id === this.selection);
-        const rectStyle = rect => ({ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` });
+        const selected = this.open ? this.selectedItems() : [];
+        const item = selected.length === 1 ? selected[0] : null;
         this.itemBounds.hidden = !this.open;
-        this.itemBounds.replaceChildren(...(this.open ? this.view.layout.items.filter(value => value.id !== this.selection) : []).map(value => {
+        this.itemBounds.replaceChildren(...(this.open ? this.view.layout.items.filter(value => value !== item) : []).map(value => {
             const bounds = document.createElement('div');
             bounds.dataset.itemId = value.id;
+            bounds.classList.toggle('selected', this.selection.has(value.id));
             Object.assign(bounds.style, rectStyle(value.rect));
             return bounds;
         }));
-        this.overlay.hidden = !this.open || !item;
-        if (!item) return;
-        Object.assign(this.overlay.style, rectStyle(item.rect));
+        this.overlay.hidden = !item;
+        if (item) Object.assign(this.overlay.style, rectStyle(item.rect));
+        this.view.updateEditButtons();
     }
 }

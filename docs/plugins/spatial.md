@@ -293,6 +293,9 @@ The Balance grid uses familiar channel ratios. Approximate level differences are
 |---|---:|---:|---:|---:|---:|---:|
 | L/R level difference | 0 dB | ±3 dB | ±6 dB | ±12 dB | ±20 dB | one channel only |
 
+### Visual Display
+- Hover over the map, or touch and drag on it, to read the frequency and the phase difference or balance at that point.
+
 ### Listening Enhancement Guide
 
 1. **Reduce wide high-frequency glare**

@@ -416,10 +416,42 @@ class HiPassFilterPlugin extends PluginBase {
       this.drawGraph(canvas);
     });
 
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graphContainer,
+      surface: canvas,
+      read: x => this._readGraph(x)
+    });
+
     return container;
   }
 
+  // Reads the drawn response curve at canvas pixel x, interpolating between plotted columns.
+  _readGraph(x) {
+    const frame = this._readoutFrame;
+    if (!frame?.valid) return null;
+    const { format } = window.GraphReadout;
+    const cssX = x / frame.scale;
+    const db = window.GraphReadout.columnValueAt(frame.response, cssX);
+    if (db === null) return null;
+    return {
+      cursor: format.frequency(this._graphFrequencyAt(cssX, frame.width)),
+      rows: [{
+        label: 'Response',
+        color: (window.ThemePalette?.get('graph-trace') ?? ''),
+        value: format.db(db, { signed: true }),
+        y: frame.toY(db) * frame.scale
+      }]
+    };
+  }
+
+  // Log-frequency axis of the response curve: 10 Hz at x = 0 to 40 kHz at x = width - 1 (CSS px).
+  _graphFrequencyAt(x, width) {
+    return Math.pow(10, Math.log10(10) + (x / (width - 1)) * (Math.log10(40000) - Math.log10(10)));
+  }
+
   drawGraph(canvas) {
+    const frame = (this._readoutFrame ??= {});
+    frame.valid = false;
     const ctx = canvas.getContext("2d");
     const rect = canvas.getBoundingClientRect();
     const cssWidth = rect.width || canvas.clientWidth || canvas.width;
@@ -478,9 +510,7 @@ class HiPassFilterPlugin extends PluginBase {
     ctx.restore();
 
     // Calculate frequency response using actual filter coefficients
-    const freqPoints = Array.from({ length: width }, (_, i) =>
-      Math.pow(10, minFreqLog + (i / (width - 1)) * (maxFreqLog - minFreqLog))
-    );
+    const freqPoints = Array.from({ length: width }, (_, i) => this._graphFrequencyAt(i, width));
 
     const response = freqPoints.map(freq => this.calculateFilterMagnitudeDb(freq, this.fr, this.sl));
 
@@ -493,6 +523,13 @@ class HiPassFilterPlugin extends PluginBase {
       else ctx.lineTo(i, y);
     }
     ctx.stroke();
+
+    frame.valid = true;
+    frame.scale = dpr;
+    frame.width = width;
+    frame.response = response;
+    frame.toY = db => height * (1 - (db - dbRange[0]) / totalDbSpan);
+    this._graphReadout?.refresh();
   }
 
   calculateFilterMagnitudeDb(freq, cutoffFreq, slope) {

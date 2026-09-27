@@ -13,6 +13,7 @@ const graphPointInteractionSource = await fs.readFile(
     path.join(repoRoot, 'plugins', 'graph-point-interaction.js'),
     'utf8'
 );
+const graphReadoutSource = await fs.readFile(path.join(repoRoot, 'plugins', 'graph-readout.js'), 'utf8');
 const pluginCss = await fs.readFile(path.join(repoRoot, 'plugins', 'eq', 'room_eq.css'), 'utf8');
 
 function deferred() {
@@ -807,7 +808,8 @@ test('Room EQ offers an external Graph radio row with separate group delay views
         /value: 'impulse',\s+label: this\._t\('roomEq\.graph\.impulse', 'Impulse'/);
     assert.match(pluginSource,
         /'frequency',\s+'phase',\s+'minimumGroupDelay',\s+'excessGroupDelay',\s+'impulse'/);
-    assert.match(pluginSource, /graph\.append\(hoverOverlay, legend\);/);
+    assert.match(pluginSource,
+        /this\._graphReadout = window\.GraphReadout\?\.attach\(\{\s*mount: graph,\s*surface: \(\) => this\._responseHoverContainer\(this\._responseView\),/);
     assert.match(pluginSource,
         /container\.append\(responseViewControls, additionalEqUi\);/);
     assert.doesNotMatch(pluginCss,
@@ -823,12 +825,8 @@ test('Room EQ offers an external Graph radio row with separate group delay views
         /\.room-eq-group-delay-response \.room-eq-group-delay-after/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-before/);
     assert.match(pluginCss, /\.room-eq-impulse-response \.room-eq-impulse-after/);
-    assert.match(
-        pluginSource,
-        /'room-eq-response-legend-before',[\s\S]*?selector: '\.room-eq-group-delay-before',\s*hidden: '\.room-eq-group-delay-after'/
-    );
     assert.match(pluginSource,
-        /const container = this\._responseHoverContainer\(view\) \|\| editor\.responseSvg;/);
+        /label: 'Before', selector: '\.room-eq-group-delay-before', hidden: '\.room-eq-group-delay-after'/);
 });
 
 test('Room EQ defaults Correction Low to 80 Hz', () => {
@@ -882,10 +880,7 @@ test('Room EQ updates both axis titles for every response view', () => {
             classList: { toggle() {} },
             setAttribute(name, value) { attributes[name] = value; }
         },
-        inputs: {},
-        hoverOverlay: { replaceChildren() {} },
-        cursorReadout: { textContent: '' },
-        legendItems: []
+        inputs: {}
     };
     plugin._drawPhaseResponse = () => {};
     plugin._drawGroupDelayResponse = () => {};
@@ -909,20 +904,29 @@ test('Room EQ updates both axis titles for every response view', () => {
     plugin.cleanup();
 });
 
-test('Room EQ graph shows a color-matched legend in its upper-right corner', () => {
-    for (const label of ['Room EQ', 'Total EQ', 'Before', 'After']) {
-        assert.match(pluginSource, new RegExp(`'${label}'`));
-    }
-    assert.match(pluginCss,
-        /\.room-eq-response-legend \{[^}]*top: 5px;[^}]*right: 7px;/s);
-    assert.match(pluginCss, /\.room-eq-response-legend-room \{ color: var\(--et-success\);/);
-    assert.match(pluginCss, /\.room-eq-response-legend-total \{ color: var\(--et-graph-trace\);/);
-    assert.match(pluginCss, /\.room-eq-response-legend-before \{ color: var\(--et-graph-trace-secondary\);/);
-    assert.match(pluginCss, /\.room-eq-response-legend-after \{ color: var\(--et-text-primary\);/);
-    assert.match(pluginCss,
-        /\.room-eq-phase-view \.room-eq-response-legend-after,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-after \{\s*color: var\(--et-graph-trace\);/);
-    assert.match(pluginCss,
-        /\.room-eq-impulse-view \.room-eq-response-legend-room,[\s\S]*\.room-eq-impulse-view \.room-eq-response-legend-total \{\s*display: none;/);
+test('Room EQ graph legend lists each view\'s curves in their drawn colors', () => {
+    const { Plugin } = loadPlugin();
+    const plugin = new Plugin();
+    const legend = view => {
+        plugin._responseView = view;
+        return JSON.parse(JSON.stringify(plugin._responseLegendItems()));
+    };
+    const before = { label: 'Before', color: 'var(--et-graph-trace-secondary)', opacity: 0.7 };
+    assert.deepEqual(legend('frequency'), [
+        { label: 'Room EQ', color: 'var(--et-success)', opacity: 0.65 },
+        { label: 'Total EQ', color: 'var(--et-graph-trace)' },
+        before,
+        { label: 'After', color: 'var(--et-text-primary)' }
+    ]);
+    const after = { label: 'After', color: 'var(--et-graph-trace)' };
+    assert.deepEqual(legend('phase'), [before, after]);
+    assert.deepEqual(legend('excessGroupDelay'), [before, after]);
+    assert.deepEqual(legend('impulse'), [
+        { label: 'Before', color: 'var(--et-graph-tone-50)' },
+        after
+    ]);
+    assert.doesNotMatch(pluginCss, /legend/);
+    plugin.cleanup();
 });
 
 test('Room EQ legend emphasis fronts its response, hides an optional competitor, and restores both', () => {
@@ -1019,8 +1023,6 @@ test('Room EQ phase graph uses frequency and phase axes without connecting wrap 
         /\.room-eq-phase-before,\s*\.room-eq-group-delay-response \.room-eq-group-delay-before \{\s*stroke: var\(--et-graph-trace-secondary\);\s*stroke-width: 1;/s);
     assert.match(pluginCss,
         /\.room-eq-phase-after,\s*\.room-eq-group-delay-response \.room-eq-group-delay-after \{\s*stroke: var\(--et-graph-trace\);\s*stroke-width: 1;/s);
-    assert.match(pluginSource,
-        /const hiddenSelector = views\[view\]\?\.hidden \|\| null;/);
     assert.equal(
         pluginSource.match(
             /this\._applyBeforeLegendHover\('phase', response\)/g
@@ -1094,14 +1096,13 @@ test('Room EQ group delay graph plots both curves on a rounded millisecond axis'
     assert.deepEqual(excessLabels, ['100 ms', '50 ms', '0 ms', '-50 ms', '-100 ms']);
     assert.match(response.children[0].attributes.d, /,-400\.00/);
     assert.match(response.children[0].attributes.d, /,600\.00/);
-    assert.equal(plugin._formatHoverValue('excessGroupDelay', -400, 200), '500.00 ms');
-    assert.equal(plugin._formatHoverValue('excessGroupDelay', 600, 200), '-500.00 ms');
     plugin.cleanup();
 });
 
-test('Room EQ graph hover dots each curve and reads it out beside the legend', () => {
+test('Room EQ graph readout reads each visible curve of the current view', () => {
     const { Plugin, context } = loadPlugin();
     context.document.createElementNS = createSvgElementStub();
+    vm.runInContext(graphReadoutSource, context);
     const plugin = new Plugin();
     plugin._additionalEqEditor = {
         xToFreq(xPercent) {
@@ -1113,47 +1114,56 @@ test('Room EQ graph hover dots each curve and reads it out beside the legend', (
         dispose() {}
     };
     const response = svgStub(400, 200);
-    response.getBoundingClientRect = () => ({ left: 20, top: 0, width: 600, height: 300 });
-    const curve = context.document.createElementNS();
-    curve.setAttribute('class', 'room-eq-phase-before');
-    curve.setAttribute('d', 'M 0.00,100.00 L 400.00,50.00');
-    response.appendChild(curve);
-    const hoverOverlay = svgStub(400, 200);
-    const cursorReadout = { textContent: '' };
-    const value = { textContent: '' };
+    response.viewBox = { baseVal: { x: 0, y: 0, width: 400, height: 200 } };
+    const addCurve = (className, d) => {
+        const curve = context.document.createElementNS();
+        curve.classList.contains = name => curve.classes.has(name);
+        curve.setAttribute('class', className);
+        curve.setAttribute('d', d);
+        response.appendChild(curve);
+        return curve;
+    };
+    addCurve('room-eq-phase-before', 'M 0.00,100.00 L 400.00,50.00');
+    const after = addCurve('room-eq-phase-after', 'M 0.00,100.00 L 100.00,100.00');
     plugin._responseView = 'phase';
     plugin._responseViewElements = {
-        overlays: { phase: { grid: svgStub(), response, unavailable: {} } },
-        hoverOverlay,
-        cursorReadout,
-        legendItems: [
-            { views: { phase: { selector: '.room-eq-phase-before' } }, value },
-            { views: { frequency: { selector: '.room-eq-base-response-path' } }, value: { textContent: 'stale' } }
-        ]
+        overlays: { phase: { grid: svgStub(), response, unavailable: {} } }
+    };
+    const read = x => {
+        // Copy the result out of the vm realm so deepEqual compares plain objects.
+        return JSON.parse(JSON.stringify(plugin._readResponse(x)));
     };
 
-    plugin._updateResponseHover({ clientX: 320 });
-
-    assert.equal(hoverOverlay.children.length, 1);
-    assert.equal(hoverOverlay.children[0].attributes.class, 'room-eq-hover-dot');
-    assert.equal(hoverOverlay.children[0].attributes.cx, '200.00');
-    assert.equal(hoverOverlay.children[0].attributes.cy, '75.00');
-    assert.equal(value.textContent, '45°');
-    assert.equal(plugin._responseViewElements.legendItems[1].value.textContent, '');
-    assert.equal(cursorReadout.textContent, '632 Hz');
-
-    plugin._clearResponseHover();
-
-    assert.equal(hoverOverlay.children.length, 0);
-    assert.equal(value.textContent, '');
-    assert.equal(cursorReadout.textContent, '');
+    assert.deepEqual(read(200), {
+        cursor: '632 Hz',
+        rows: [
+            { label: 'Before', color: 'var(--et-graph-trace-secondary)', value: '45°', y: 75 },
+            // x=200 is outside the After curve's drawn range (0..100); the row stays with a dash, no y.
+            { label: 'After', color: 'var(--et-graph-trace)', value: '—' }
+        ]
+    });
+    assert.deepEqual(read(50).rows.map(row => row.label), ['Before', 'After']);
+    after.classList.add('room-eq-response-hidden');
+    assert.deepEqual(read(50).rows.map(row => row.label), ['Before'], 'a hidden curve reads as absent');
+    after.classList.remove('room-eq-response-hidden');
+    after.setAttribute('d', 'M 0,100 L 100,100 M 300,50 L 400,50');
+    // x=200 falls in the moveTo gap between the two segments: no y, value stays a dash.
+    const gapRow = read(200).rows.find(row => row.label === 'After');
+    assert.equal(gapRow.value, '—');
+    assert.equal('y' in gapRow, false);
 
     plugin._responseView = 'excessGroupDelay';
+    plugin._responseViewElements.overlays.groupDelay = { response };
+    addCurve('room-eq-group-delay-before', 'M 0.00,50.00 L 400.00,50.00');
     plugin._groupDelayAxisLimit = 20;
-    assert.equal(plugin._formatHoverValue('excessGroupDelay', 50, 200), '10.00 ms');
+    assert.equal(read(10).rows[0].value, '10.0 ms');
+
+    plugin._responseView = 'impulse';
+    plugin._responseViewElements.overlays.impulse = { response };
+    addCurve('room-eq-impulse-before', 'M 0.00,50.00 L 400.00,50.00');
     plugin._impulseTimeAxis = { startMs: -2, durationMs: 6 };
-    assert.equal(plugin._formatHoverCursor('impulse', 100, 400), '0.00 ms');
-    assert.equal(plugin._formatHoverValue('impulse', 50, 200), '0.50');
+    assert.equal(read(100).cursor, '0.00 ms');
+    assert.equal(read(100).rows[0].value, '0.50');
     plugin.cleanup();
 });
 

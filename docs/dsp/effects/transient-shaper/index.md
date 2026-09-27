@@ -101,13 +101,6 @@ A specialized dynamics processor that lets you enhance or reduce the attack and 
   - Higher values: More natural, transparent processing
   - 5.0ms provides a good balance for most material
 
-### Visual Display
-- Real-time gain visualization
-- Clear gain history display
-- Time markers for reference
-- Intuitive interface for all parameters
-- The graphs scroll smoothly from right to left, with the latest values at the right edge.
-
 ### Recommended Settings
 
 #### Enhanced Percussion

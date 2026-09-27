@@ -628,6 +628,11 @@ class FiveBandPEQPlugin extends PluginBase {
     this.graphContainer = graphContainer; this.responseSvg = responseSvg; this.markers = markers;
     this.uiContainer = container;
     this.observeGraphResize(graphContainer);
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graphContainer,
+      surface: responseSvg,
+      read: x => this._readResponse(x)
+    });
 
     this._uiCreated(); // Set uiCreated = true and call setUIValues
 
@@ -882,7 +887,24 @@ class FiveBandPEQPlugin extends PluginBase {
       path.setAttribute('fill', 'none');
       path.id = `five-band-peq-response-path-${this.id}`;
       this.responseSvg.appendChild(path);
+      this._responsePath = path;
+    } else {
+      this._responsePath = null;
     }
+    this._graphReadout?.refresh();
+  }
+
+  // Reads the drawn response curve at SVG viewBox x, interpolating between plotted points.
+  _readResponse(x) {
+    const box = this.responseSvg?.viewBox?.baseVal;
+    if (!box?.width || !box.height || !this._responsePath) return null;
+    const { format, pathValueAt } = window.GraphReadout;
+    const y = pathValueAt(this._responsePath, x);
+    if (y === null) return null;
+    return {
+      cursor: format.frequency(this.xToFreq(x / box.width * 100)),
+      rows: [{ label: 'Response', color: 'var(--et-graph-trace)', value: format.db(this.yToGain(y / box.height * 100), { signed: true }), y }]
+    };
   }
 
   // Implement drag move handler as class method

@@ -8,8 +8,6 @@ const PITCH_METER_DEFAULT_MAX_MIDI = 96;
 const PITCH_METER_HISTORY_WIDTH = 1024;
 const PITCH_METER_TIME_SPAN_SECONDS = 2;
 const PITCH_METER_COLUMN_PERIOD = PITCH_METER_TIME_SPAN_SECONDS / PITCH_METER_HISTORY_WIDTH;
-const PITCH_METER_KEY_GUTTER_CSS_PX = 45;
-const PITCH_METER_BLACK_KEY_DEPTH_CSS_PX = 28;
 const PITCH_METER_LAYOUTS = ['Vertical', 'Horizontal'];
 const PITCH_METER_COLORS = [
     { value: 'Normal', label: 'Normal' },
@@ -114,6 +112,7 @@ class PitchMeterPlugin extends PluginBase {
         }
         if (PITCH_METER_LAYOUTS.includes(params.ly) && params.ly !== this.ly) {
             this.ly = params.ly;
+            this._graphReadout?.clear();
             this.drawGraph();
         }
         if (PITCH_METER_COLORS.some(option => option.value === params.cl) && params.cl !== this.cl) {
@@ -455,6 +454,25 @@ class PitchMeterPlugin extends PluginBase {
         } else {
             this.drawGraph();
         }
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this.canvas,
+            // The pitch roll, or the keyboard gutter while the pointer is over it (canvas coordinates).
+            plot: point => {
+                const frame = this._readoutFrame;
+                if (!frame?.valid) return null;
+                const { horizontal, rollWidth, gutter, height } = frame;
+                const onKeys = (horizontal ? point.y : point.x) > rollWidth;
+                const start = onKeys ? rollWidth : 0;
+                const length = onKeys ? gutter : rollWidth;
+                return horizontal
+                    ? { left: 0, top: start, width: height, height: length }
+                    : { left: start, top: 0, width: length, height };
+            },
+            read: (x, y) => this._readPitch(x, y),
+            avoid: () => (this._readoutFrame?.label.width ? [this._readoutFrame.label] : []),
+            crosshair: 'xy'
+        });
         return container;
     }
 
@@ -502,8 +520,8 @@ class PitchMeterPlugin extends PluginBase {
             background,
             whiteBand: background,
             blackBand: light ? soft : darkBand,
-            whiteKey: light ? '#fff' : '#ddd', // theme-allow: Theme-dependent keyboard color.
-            blackKey: '#222', // theme-allow: Fixed self-painted black key color.
+            whiteKey: light ? '#fff' : '#eee', // theme-allow: Theme-dependent keyboard color.
+            blackKey: '#111', // theme-allow: Fixed self-painted black key color.
             trace: read('graph-trace'),
             label: read('graph-label'),
             strongGrid: read('graph-grid-strong'),
@@ -520,26 +538,34 @@ class PitchMeterPlugin extends PluginBase {
     }
 
     drawGraph() {
-        if (!this.canvas || !this.canvasCtx) return;
+        if (!this.canvas || !this.canvasCtx) {
+            this._graphReadout?.refresh();
+            return;
+        }
         const context = this.canvasCtx;
         const palette = this._displayPalette();
         const horizontal = this.ly === 'Horizontal';
         const width = horizontal ? this.canvas.height : this.canvas.width;
         const height = horizontal ? this.canvas.width : this.canvas.height;
         const dpr = this.graphDpr || 1;
-        const gutter = PITCH_METER_KEY_GUTTER_CSS_PX * dpr;
-        const blackKeyDepth = PITCH_METER_BLACK_KEY_DEPTH_CSS_PX * dpr;
+        const noteCount = this.mx - this.mn + 1;
+        const rowHeight = height / noteCount;
+        const { gutter, blackDepth: blackKeyDepth } = window.FrequencyAxis.keyboardDepths(12 * rowHeight, width);
         const rollWidth = width - gutter;
+        const frame = (this._readoutFrame ??= { label: {} });
+        frame.valid = false;
+        frame.label.width = 0;
         context.fillStyle = palette.background;
         context.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        if (rollWidth <= 0 || height <= 0) return;
+        if (rollWidth <= 0 || height <= 0) {
+            this._graphReadout?.refresh();
+            return;
+        }
         if (horizontal) {
             context.save();
             context.translate(this.canvas.width, 0);
             context.rotate(Math.PI / 2);
         }
-        const noteCount = this.mx - this.mn + 1;
-        const rowHeight = height / noteCount;
         for (let midi = this.mn; midi <= this.mx; midi++) {
             const y = (this.mx - midi) * rowHeight;
             const black = PITCH_METER_BLACK_KEY_CLASSES.has(midi % 12);
@@ -581,12 +607,15 @@ class PitchMeterPlugin extends PluginBase {
             context.lineTo(width, y);
             context.stroke();
         }
-        context.fillStyle = palette.blackKey;
+        const blackKeys = [];
         for (let midi = this.mn; midi <= this.mx; midi++) {
-            if (!PITCH_METER_BLACK_KEY_CLASSES.has(midi % 12)) continue;
-            context.fillRect(rollWidth, (this.mx - midi) * rowHeight,
-                blackKeyDepth, rowHeight);
+            if (PITCH_METER_BLACK_KEY_CLASSES.has(midi % 12)) blackKeys.push([(this.mx - midi) * rowHeight, (this.mx - midi + 1) * rowHeight]);
         }
+        window.FrequencyAxis.shadeKeyboard(context,
+            { along: 'y', edge: rollWidth, length: height, gutter, blackDepth: blackKeyDepth, dpr }, blackKeys, () => {
+                context.fillStyle = palette.blackKey;
+                for (const [start] of blackKeys) context.fillRect(rollWidth, start, blackKeyDepth, rowHeight);
+            });
         context.strokeStyle = palette.label;
         context.beginPath();
         context.moveTo(rollWidth, 0);
@@ -608,7 +637,7 @@ class PitchMeterPlugin extends PluginBase {
                 context.fillText(label, 0, 0);
                 context.restore();
             } else {
-                context.fillText(label, rollWidth + gutter * 0.72, y);
+                context.fillText(label, rollWidth + (blackKeyDepth + gutter) / 2, y);
             }
         }
         context.lineWidth = 2 * dpr;
@@ -636,6 +665,10 @@ class PitchMeterPlugin extends PluginBase {
         }
         context.globalAlpha = 1;
         if (horizontal) context.restore();
+        Object.assign(frame, {
+            valid: true, horizontal, canvasWidth: this.canvas.width, rollWidth, height, rowHeight,
+            gutter, blackKeyDepth, palette, mn: this.mn, mx: this.mx, rf: this.rf, writeColumn: this.writeColumn
+        });
         if (this.currentNote) {
             const padding = 8 * dpr;
             const gap = 16 * dpr;
@@ -646,7 +679,10 @@ class PitchMeterPlugin extends PluginBase {
             const centsWidth = context.measureText('-50.0 cent').width;
             const labelWidth = noteWidth + gap + centsWidth;
             const availableWidth = this.canvas.width - (horizontal ? 0 : gutter) - 2 * padding;
-            if (availableWidth <= 0) return;
+            if (availableWidth <= 0) {
+                this._graphReadout?.refresh();
+                return;
+            }
             // Reserve fixed slots so note changes and cent digits never move the decimal point.
             const scale = Math.min(1, availableWidth / labelWidth);
             const noteColor = window.NoteSpectrogramPlugin?.noteColors[Math.round(this.lastPitchMidi) % 12];
@@ -661,7 +697,52 @@ class PitchMeterPlugin extends PluginBase {
             context.font = `${fontSize * scale}px monospace`;
             context.textAlign = 'right';
             context.fillText(this.currentCents, padding + labelWidth * scale, padding);
+            Object.assign(frame.label, {
+                left: padding, top: padding, width: labelWidth * scale, height: fontSize * scale
+            });
         }
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the pitch history at canvas pixel (x, y); rows use the unrotated roll coordinates.
+    _readPitch(x, y) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format } = window.GraphReadout;
+        const { horizontal, canvasWidth, rollWidth, rowHeight, rf } = frame;
+        const along = horizontal ? y : x;
+        const across = horizontal ? canvasWidth - x : y;
+        const frequency = midi => rf * 2 ** ((midi - 69) / 12);
+        if (along > rollWidth) {
+            const axis = window.FrequencyAxis;
+            const key = axis?.hitKey(axis.noteAxisKeys(frame.mn, frame.mx, frame.height),
+                frame.height - across, along - rollWidth, frame.gutter, frame.blackKeyDepth);
+            return key ? { cursor: format.note(frequency(key.midi), rf), rows: [], crosshair: 'none' } : null;
+        }
+        const last = PITCH_METER_HISTORY_WIDTH - 1;
+        const index = Math.round(along / rollWidth * last);
+        const column = (frame.writeColumn + index) % PITCH_METER_HISTORY_WIDTH;
+        const columnAlong = index * rollWidth / last;
+        const voiced = this.voicedHistory[column] === 1;
+        const midi = this.pitchHistory[column];
+        const row = {
+            label: 'Pitch',
+            color: this._lineColor(midi, this.volumeHistory[column], frame.palette),
+            value: voiced ? format.note(frequency(midi), rf) : format.note(NaN)
+        };
+        const drawn = voiced && midi >= frame.mn - 0.5 && midi <= frame.mx + 0.5;
+        const dotAcross = (frame.mx - midi + 0.5) * rowHeight;
+        // The cursor note names the crosshair position, which follows the drawn pitch in the rotated layout.
+        const crosshairAcross = horizontal && drawn ? dotAcross : across;
+        const cursor = `${format.note(frequency(frame.mx + 0.5 - crosshairAcross / rowHeight), rf)} · ${
+            format.time(-(last - index) * PITCH_METER_COLUMN_PERIOD * 1000)}`;
+        if (!horizontal) {
+            if (drawn) row.y = dotAcross;
+            return { cursor, rows: [row], at: { x: columnAlong, y } };
+        }
+        // Rotated layout: dots sit on the crosshair's x, so the crosshair follows the drawn pitch.
+        if (drawn) row.y = columnAlong;
+        return { cursor, rows: [row], at: { x: drawn ? canvasWidth - dotAcross : x, y: columnAlong } };
     }
 
     cleanup() {

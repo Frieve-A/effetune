@@ -103,20 +103,30 @@ test('note-axis keys follow the rendered equal white-key geometry and black prio
   assert.equal(axes.hitKey(keys, 12, 5, 45, 28).midi, 61);
   assert.equal(axes.hitKey(keys, 12, 35, 45, 28).midi, 60);
   assert.equal(axes.hitKey(keys, 120, 35, 45, 28).midi, 71);
-  for (const [name, gutter, markers] of [
-    ['NoteSpectrogramPlugin', 44.8, ['MULTI_F0_KEY_GUTTER_CSS_PX = 28;', 'MULTI_F0_KEY_GUTTER_CSS_PX * 1.6']],
-    ['PitchMeterPlugin', 45, ['PITCH_METER_KEY_GUTTER_CSS_PX = 45;', 'PITCH_METER_BLACK_KEY_DEPTH_CSS_PX = 28;']]
-  ]) {
+  for (const name of ['NoteSpectrogramPlugin', 'PitchMeterPlugin']) {
     const source = fs.readFileSync(new URL(`../../plugins/${files[name]}.js`, import.meta.url), 'utf8');
-    for (const marker of markers) assert.ok(source.includes(marker));
+    assert.ok(source.includes('keyboardDepths(12 * rowHeight, width'));
     for (const ly of ['Horizontal', 'Vertical']) {
       const axis = axes.getAxis({ mn: 60, mx: 71, rf: 442, ly }, axes.targets.get(name), { width: 120, height: 120 });
-      assert.equal(axis.gutter, gutter);
-      assert.equal(axis.blackDepth, 28);
+      assert.ok(Math.abs(axis.gutter - 120 * 150 / (7 * 23.5) / 2) < 1e-12);
+      assert.ok(Math.abs(axis.blackDepth - axis.gutter * 95 / 150) < 1e-12);
       const position = ly === 'Horizontal' ? 15 : 105;
       assert.equal(axis.toFreq(position), axes.noteFrequency(61, axis.a4));
       assert.ok(Math.abs(axis.toPos(axis.toFreq(position)) - position) < 1e-10);
-      assert.equal(axes.hitKey(axis.keys, position, 5, gutter, 28).midi, 61);
+      assert.equal(axes.hitKey(axis.keys, position, 5, axis.gutter, axis.blackDepth).midi, 61);
     }
   }
+});
+
+test('keyboards keep piano key proportions and leave room for the plot', () => {
+  // 23.5 mm white-key pitch, 150 mm white length and 95 mm black length, drawn at half
+  // length by default; a length scale of 2 gives the real proportion.
+  const whitePitch = 10;
+  const { gutter, blackDepth } = axes.keyboardDepths(7 * whitePitch, 1000);
+  assert.ok(Math.abs(gutter / whitePitch - 150 / 23.5 / 2) < 1e-12);
+  assert.ok(Math.abs(blackDepth / gutter - 95 / 150) < 1e-12);
+  const real = axes.keyboardDepths(7 * whitePitch, 1000, 2);
+  assert.ok(Math.abs(real.gutter / whitePitch - 150 / 23.5) < 1e-12);
+  assert.ok(Math.abs(real.blackDepth / real.gutter - 95 / 150) < 1e-12);
+  assert.equal(axes.keyboardDepths(7 * whitePitch, 40, 2).gutter, 20);
 });

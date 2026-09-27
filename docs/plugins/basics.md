@@ -68,8 +68,11 @@ Select **All** in the effect bus routing, then make the output bus wide enough f
 
 - The routing summary shows which input roles feed each subwoofer output. Check it before raising the level, especially after changing the output-channel count.
 - Select a managed main channel to see its low-pass and high-pass responses. The display represents the active filter mode and settings rather than an idealized response.
-- The status shows the active mode, Linear filter preparation state, and effective latency in samples and milliseconds. Changing Linear settings can briefly reduce or pause sound while the new filters are prepared.
-- If filter preparation cannot complete, reduce **Taps** and try again. When a previous active configuration remains usable, it continues playing; otherwise the normal main channels pass through with matching delay, reserved subwoofer outputs are silent, and an LFE source is not played until preparation succeeds.
+- The status shows the active mode, Linear filter preparation state, and effective latency in samples and milliseconds.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
+
+### Filter Preparation
+Changing Linear settings can briefly reduce or pause sound while the new filters are prepared. If filter preparation cannot complete, reduce **Taps** and try again. When a previous active configuration remains usable, it continues playing; otherwise the normal main channels pass through with matching delay, reserved subwoofer outputs are silent, and an LFE source is not played until preparation succeeds.
 
 ### Bypass and Calibration
 
@@ -112,7 +115,10 @@ To use this effect, use the desktop app, set an even output-channel count from 4
 - Output channels must be an even number from 4 to 16
 - Each band keeps the original stereo pair: 2-band mode outputs Low to channels 1-2 and High to channels 3-4; 3-band mode uses channels 1-2, 3-4, and 5-6; 4-band mode uses channels 1-2, 3-4, 5-6, and 7-8
 - Uses high-quality Linkwitz-Riley crossover filters
-- Visual frequency response graph for easy configuration
+
+### Visual Display
+- The graph shows the frequency response of each output band.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## DC Offset
 
@@ -161,6 +167,7 @@ To use it, run the desktop app with an even output-channel count from 4 to 16 an
 - Each green curve corresponds to one stereo output pair, ordered from the lowest band to the highest band.
 - The status line reports total processing latency, FIR frequency resolution, and whether the filter asset is bypassed, staged, preparing, active, or in error.
 - A channel warning appears unless the plugin is running with an even output-channel count from 4 to 16.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Matrix
 

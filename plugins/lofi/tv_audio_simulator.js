@@ -1873,6 +1873,20 @@ class TVAudioSimulatorPlugin extends PluginBase {
             this.hudObserver.observe(this.hudCanvas);
         }
         this.startAnimation();
+        this._graphReadout = window.GraphReadout?.attach({
+            mount: graph.container,
+            surface: this.hudCanvas,
+            plot: () => {
+                const frame = this._readoutFrame;
+                return frame?.valid ? {
+                    left: frame.plotLeft,
+                    top: frame.plotTop,
+                    width: frame.plotWidth,
+                    height: frame.plotHeight
+                } : null;
+            },
+            read: x => this._readHud(x)
+        });
         return container;
     }
 
@@ -1945,6 +1959,8 @@ class TVAudioSimulatorPlugin extends PluginBase {
         context.clearRect(0, 0, width, height);
         context.fillStyle = window.ThemePalette?.get('graph-bg-deep') ?? '';
         context.fillRect(0, 0, width, height);
+        const frame = (this._readoutFrame ??= {});
+        frame.valid = false;
         if (mode !== 'active') {
             context.fillStyle = mode === 'bypass' ?
                 (window.ThemePalette?.get('warning') ?? '') :
@@ -1953,6 +1969,7 @@ class TVAudioSimulatorPlugin extends PluginBase {
             context.textBaseline = 'middle';
             context.font = `600 ${Math.round(13 * scale)}px Arial`;
             context.fillText(idleMessages[mode], width / 2, height / 2);
+            this._graphReadout?.refresh();
             return;
         }
 
@@ -1965,7 +1982,10 @@ class TVAudioSimulatorPlugin extends PluginBase {
         const plotBottom = height - statusHeight - 15 * scale;
         const plotWidth = plotRight - plotLeft;
         const plotHeight = plotBottom - plotTop;
-        if (plotWidth <= 0 || plotHeight <= 0) return;
+        if (plotWidth <= 0 || plotHeight <= 0) {
+            this._graphReadout?.refresh();
+            return;
+        }
 
         const maximumHz = this._spectrumMaximumHz();
         const logSpan = Math.log(maximumHz / TV_AUDIO_SIMULATOR_SPECTRUM_MIN_HZ);
@@ -2035,6 +2055,10 @@ class TVAudioSimulatorPlugin extends PluginBase {
         context.stroke();
 
         const info = TV_AUDIO_SIMULATOR_STANDARD_INFO[this.ss];
+        Object.assign(frame, {
+            valid: true, plotLeft, plotTop, plotWidth, plotHeight, maximumHz, spectrum, dbToY,
+            label: info.spectrum
+        });
         const label = this._hudSignalLabel();
         const multipath = values.multipathDb <= -119 ? '-∞' : values.multipathDb.toFixed(1);
         const status = `${this.ss}  ${label}  ${info.spectrum}  ` +
@@ -2056,6 +2080,21 @@ class TVAudioSimulatorPlugin extends PluginBase {
                 statusHeight * (index + 0.5) / statusLines.length;
             context.fillText(line, 8 * scale, y, width - 16 * scale);
         });
+        this._graphReadout?.refresh();
+    }
+
+    // Reads the spectrum at canvas pixel x, interpolating between the drawn bins.
+    _readHud(x) {
+        const frame = this._readoutFrame;
+        if (!frame?.valid) return null;
+        const { format, columnValueAt } = window.GraphReadout;
+        const db = columnValueAt(frame.spectrum,
+            (x - frame.plotLeft) / frame.plotWidth * (frame.spectrum.length - 1)) ?? NaN;
+        return {
+            cursor: format.frequency(window.FrequencyAxis.positionToFrequency(x - frame.plotLeft,
+                frame.plotWidth, TV_AUDIO_SIMULATOR_SPECTRUM_MIN_HZ, frame.maximumHz)),
+            rows: [{ label: frame.label, color: 'var(--et-graph-trace)', value: format.db(db), y: frame.dbToY(db) }]
+        };
     }
 
     cleanup() {

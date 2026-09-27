@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { frequencyAxisSource } from '../helpers/spectrum-overlay-harness.mjs';
 
 function createHub() {
   const subscriptions = [];
@@ -50,6 +51,7 @@ function loadSpectrogram({ hub = null, clock = { now: () => 0 } } = {}) {
     cleanup() { calls.push(['baseCleanup']); }
     requestPowerAnimationFrame(callback) { this.nextFrame = callback; return 1; }
   }
+  vm.runInNewContext(frequencyAxisSource, { window: windowRef });
   vm.runInNewContext(source, {
     window: windowRef,
     PluginBase,
@@ -136,6 +138,8 @@ function installCanvasStubs(plugin) {
     },
     rect(x, y, width, height) { operations.push({ type: 'rect', x, y, width, height }); },
     clip() {},
+    fill() {},
+    createLinearGradient: () => ({ addColorStop() {} }),
     measureText(text) { return { width: text.length * parseFloat(this.font) * 0.65 }; },
     stroke() {
       strokeCalls.push({ strokeStyle: this.strokeStyle, lineWidth: this.lineWidth });
@@ -664,7 +668,7 @@ test('Spectrogram Keyboard keeps Note Spectrogram key colors in light and dark t
         'graph-base-soft': 'rgba(25, 33, 51, 1)',
         'graph-label': 'rgba(125, 138, 163, 1)'
       },
-      whiteKey: 'rgb(221, 221, 221)'
+      whiteKey: 'rgb(238, 238, 238)'
     }
   ];
   for (const theme of themes) {
@@ -676,8 +680,8 @@ test('Spectrogram Keyboard keeps Note Spectrogram key colors in light and dark t
     const height = 480;
     const gutter = 28;
     const edge = width - gutter;
-    const blackDepth = gutter / 1.6;
-    plugin.drawKeyboard(plugin.canvasCtx, width, height, gutter, 1, 12);
+    const blackDepth = 17.5;
+    plugin.drawKeyboard(plugin.canvasCtx, width, height, gutter, blackDepth, 1, 12);
 
     assert.deepEqual(fillCalls[0], {
       x: edge, y: 0, width: gutter, height, fillStyle: theme.whiteKey
@@ -685,7 +689,7 @@ test('Spectrogram Keyboard keeps Note Spectrogram key colors in light and dark t
     const blackKey = plugin.getKeyboardGeometry(height).find(key => key.midi === 70);
     assert.ok(fillCalls.some(call =>
       call.x === edge && call.y === blackKey.start && call.width === blackDepth &&
-      call.height === blackKey.end - blackKey.start && call.fillStyle === 'rgb(34, 34, 34)'),
+      call.height === blackKey.end - blackKey.start && call.fillStyle === 'rgb(17, 17, 17)'),
     theme.name + ' black keys');
     assert.ok(strokeCalls.some(call =>
       call.strokeStyle === theme.palette['graph-label'] && call.lineWidth === 1),
@@ -730,8 +734,9 @@ test('Spectrogram plot uses one fixed black-background palette before history is
   plugin.canvas.width = 512;
   plugin.canvas.height = 256;
 
+  const keyboardDepth = runtime.windowRef.FrequencyAxis.keyboardDepths(256 / Math.log2(40000 / 20), 512).gutter;
   const verifyFixedPlotPalette = (expectedWidth, whiteKey = null) => {
-    const plotWidth = expectedWidth - (whiteKey ? 28 : 0);
+    const plotWidth = expectedWidth - (whiteKey ? keyboardDepth : 0);
     assert.deepEqual(fillCalls[0], {
       x: 0, y: 0, width: plotWidth, height: 256, fillStyle: 'rgb(0, 0, 0)'
     });
@@ -745,7 +750,7 @@ test('Spectrogram plot uses one fixed black-background palette before history is
         operation.type === 'fillText' && operation.text === 'Frequency (Hz)'), false);
       assert.ok(strokeCalls.some(call => call.strokeStyle === '#444' && call.lineWidth === 1));
       assert.ok(fillCalls.some(call =>
-        call.x === plotWidth && call.width === 28 && call.fillStyle === whiteKey));
+        call.x === plotWidth && call.width === keyboardDepth && call.fillStyle === whiteKey));
     } else {
       assert.ok(strokeCalls.some(call => call.strokeStyle === '#888' && call.lineWidth === 1));
       assert.ok(frequencyLabels.length > 0);
@@ -802,7 +807,7 @@ test('Spectrogram plot uses one fixed black-background palette before history is
   fillCalls.length = 0;
   strokeCalls.length = 0;
   plugin.drawGraph(0);
-  verifyFixedPlotPalette(768, 'rgb(221, 221, 221)');
+  verifyFixedPlotPalette(768, 'rgb(238, 238, 238)');
 });
 
 test('Spectrogram Keyboard replaces the frequency axis with B-C boundary lines', () => {
@@ -812,7 +817,7 @@ test('Spectrogram Keyboard replaces the frequency axis with B-C boundary lines',
   const maxMidi = 69 + 12 * Math.log2(maxFrequency / 440);
   for (const scale of ['log', 'linear']) {
     for (const dpr of [1, 2]) {
-      const { SpectrogramPlugin } = loadSpectrogram();
+      const { SpectrogramPlugin, windowRef } = loadSpectrogram();
       const plugin = new SpectrogramPlugin();
       const { operations, lineCalls } = installCanvasStubs(plugin);
       plugin.sc = scale;
@@ -831,7 +836,8 @@ test('Spectrogram Keyboard replaces the frequency axis with B-C boundary lines',
       lineCalls.length = 0;
       plugin.kb = true;
       plugin.drawGraph(0);
-      const plotWidth = (1024 - 28) * dpr;
+      const plotWidth = 1024 * dpr -
+        windowRef.FrequencyAxis.keyboardDepths(1024 * dpr / Math.log2(maxFrequency / minFrequency), 1024 * dpr).gutter;
       const boundaryLines = lineCalls.filter(call =>
         call.from.x === 0 && call.to.x === plotWidth && call.from.y === call.to.y);
       const expectedBoundaries = pitchClass => {
@@ -875,7 +881,9 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       plugin.canvas.height = 1024 * dpr;
       const width = plugin.canvas.width;
       const height = plugin.canvas.height;
-      const plotWidth = width - 28 * dpr;
+      const { gutter, blackDepth } =
+        runtime.windowRef.FrequencyAxis.keyboardDepths(height / Math.log2(40000 / 20), width);
+      const plotWidth = width - gutter;
       plugin.handleDspSpectrogramTelemetry(makeSpectrogramFrame({ timeSeconds: 1 }).frame);
       plugin.handleDspSpectrogramTelemetry(makeSpectrogramFrame({ timeSeconds: 1.125 }).frame);
       const times = Array.from(plugin.spectrogramColumnTimes);
@@ -887,19 +895,19 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       plugin.drawGraph(0);
       assert.equal(drawCalls.length, fullImages.length);
       drawCalls.forEach((image, index) => {
-        assert.equal(image[5], fullImages[index][5] * plotWidth / width);
-        assert.equal(image[7], fullImages[index][7] * plotWidth / width);
-        assert.ok(image[5] + image[7] <= plotWidth);
+        assert.ok(Math.abs(image[5] - fullImages[index][5] * plotWidth / width) < 1e-9);
+        assert.ok(Math.abs(image[7] - fullImages[index][7] * plotWidth / width) < 1e-9);
+        assert.ok(image[5] + image[7] <= plotWidth + 1e-9);
       });
       const latest = drawCalls.at(-1);
-      assert.equal(latest[5] + latest[7], plotWidth);
-      markerCalls.forEach((x, index) => assert.equal(x, fullMarkers[index] * plotWidth / width));
+      assert.ok(Math.abs(latest[5] + latest[7] - plotWidth) < 1e-9);
+      markerCalls.forEach((x, index) => assert.ok(Math.abs(x - fullMarkers[index] * plotWidth / width) < 1e-9));
       assert.deepEqual(operations.find(operation => operation.type === 'rect'),
         { type: 'rect', x: 0, y: 0, width: plotWidth, height });
       const base = operations.find(operation => operation.type === 'fillRect');
       assert.deepEqual(base, { type: 'fillRect', x: 0, y: 0, width: plotWidth, height });
       assert.ok(operations.some(operation => operation.type === 'fillRect' &&
-        operation.x === plotWidth && operation.y === 0 && operation.width === 28 * dpr && operation.height === height));
+        operation.x === plotWidth && operation.y === 0 && operation.width === gutter && operation.height === height));
       const timeLabel = operations.find(operation => operation.type === 'fillText' && operation.text === 'Time');
       assert.equal(timeLabel.x, plotWidth / 2);
       assert.equal(operations.some(operation =>
@@ -918,7 +926,7 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       assert.deepEqual(outlinedLabels.map(({ text, x, y }) => ({ text, x, y })),
         octaveLabels.map(({ text, x, y }) => ({ text, x, y })));
       assert.ok(outlinedLabels.every(label =>
-        label.strokeStyle === 'rgb(221, 221, 221)' &&
+        label.strokeStyle === 'rgb(238, 238, 238)' &&
         label.lineWidth === 1.5 * dpr && label.lineJoin === 'round'));
       assert.ok(octaveLabels.length >= 6);
       const frequencyFont = `${(plugin.graphCssWidth < 500 ? 11 : 12) * dpr}px Arial`;
@@ -936,14 +944,13 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       const twoDigits = outlinedLabels.find(label => label.text === '10');
       const fontSize = parseFloat(frequencyFont);
       const oneDigitWidth = fontSize * 0.65;
-      const previousCenter = plotWidth + 28 * dpr / 1.6 +
-        (28 * dpr - 28 * dpr / 1.6) / 2;
+      const previousCenter = plotWidth + blackDepth + (gutter - blackDepth) / 2;
       assert.ok(Math.abs(oneDigit.x - oneDigitWidth / 2 - previousCenter) <= dpr);
       assert.ok(width - (oneDigit.x + oneDigit.lineWidth / 2) >= dpr);
       assert.ok(twoDigits.x - 2 * oneDigitWidth - twoDigits.lineWidth / 2 <
         oneDigit.x - oneDigitWidth - oneDigit.lineWidth / 2);
-      assert.deepEqual(operations.filter(operation => operation.type === 'rect').at(-1),
-        { type: 'rect', x: plotWidth, y: 0, width: 28 * dpr, height });
+      assert.deepEqual(operations.find(operation => operation.type === 'rect' && operation.x === plotWidth),
+        { type: 'rect', x: plotWidth, y: 0, width: gutter, height });
       const keys = plugin.getKeyboardGeometry(height);
       assert.ok(outlinedLabels.every(label => {
         const key = keys.find(item => item.midi === (Number(label.text) + 1) * 12);
@@ -951,14 +958,15 @@ test('Spectrogram Keyboard scales history, grid, clock and labels to the same pl
       }));
       const black = plugin.getKeyboardGeometry(height).find(key => key.midi === 70);
       assert.ok(operations.some(operation => operation.type === 'fillRect' &&
-        operation.x === plotWidth && operation.y === black.start && operation.height === black.end - black.start));
+        operation.x === plotWidth && operation.y === black.start && operation.width === blackDepth &&
+        operation.height === black.end - black.start));
       assert.deepEqual(Array.from(plugin.spectrogramColumnTimes), times);
 
       operations.length = 0;
       plugin.canvas.width = 28 * dpr;
       plugin.drawGraph(0);
-      assert.equal(operations.some(operation => operation.type === 'rect'), false);
-      assert.equal(operations.find(operation => operation.type === 'fillText' && operation.text === 'Time').x, 14 * dpr);
+      // A narrow graph caps the keyboard at half its width instead of dropping it.
+      assert.equal(operations.find(operation => operation.type === 'fillText' && operation.text === 'Time').x, 7 * dpr);
     }
   }
 });

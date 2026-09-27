@@ -301,6 +301,9 @@ La latence de traitement annoncée par Phase Select EQ est égale à la taille d
 
 La grille Balance affiche des rapports gauche:droite. Les valeurs Balance 0%, ±17%, ±33%, ±60%, ±82% et ±100% correspondent à 50:50 puis, vers l'un ou l'autre côté, à environ 59:41, 67:33, 80:20, 91:9 et 100:0. Les écarts de niveau G/D sont d'environ 0, ±3, ±6, ±12 et ±20 dB ; ±100% signifie qu'un seul canal contient le signal.
 
+### Affichage Visuel
+- Survolez la carte, ou touchez-la et faites glisser, pour lire la fréquence et la différence de phase ou la balance à cet endroit.
+
 ### Guide d'amélioration sonore
 
 1. **Adoucir des aigus très larges** : réglez un Band vers 4–12 kHz et 90–180°. Commencez entre 70 et 90 % avec des transitions larges.

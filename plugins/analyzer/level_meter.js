@@ -96,6 +96,7 @@ class LevelMeterPlugin extends PluginBase {
         this.OVERLOAD_DISPLAY_TIME = 5.0; // seconds
         this.PEAK_HOLD_TIME = 1.0; // seconds
         this.FALL_RATE = 20; // dB per second
+        this.PEAK_FALL_RATE = 20; // dB per second after the hold
         this.lastProcessTime = performance.now() / 1000;
         this.lastMeterUpdateTime = 0;
         this.METER_UPDATE_INTERVAL = 16; // Match with plugin-base.js
@@ -291,11 +292,11 @@ class LevelMeterPlugin extends PluginBase {
                 this.pl[ch] = dbLevel;
                 this.ph[ch] = time;
             } else if (time > this.ph[ch] + this.PEAK_HOLD_TIME) {
-                // After hold time, let peak fall at the same rate as level
+                // After hold time, let the peak fall at its own rate
                 const peakFallStart = this.ph[ch] + this.PEAK_HOLD_TIME;
                 const peakFallTime = time > peakFallStart ?
                     time - (previousProcessTime > peakFallStart ? previousProcessTime : peakFallStart) : 0;
-                const fallingPeak = this.pl[ch] - this.FALL_RATE * peakFallTime;
+                const fallingPeak = this.pl[ch] - this.PEAK_FALL_RATE * peakFallTime;
                 // But never fall below current level
                 this.pl[ch] = fallingPeak > this.lv[ch] ? fallingPeak : this.lv[ch];
             }
@@ -547,6 +548,7 @@ class LevelMeterPlugin extends PluginBase {
             ? ['L', 'R']
             : [channel.slice(0, channel.length / 2), channel.slice(channel.length / 2)];
         const numDrawableChannels = singleChannel ? 1 : this.lv.length;
+        const showPeaks = options?.showPeaks !== false;
         const elapsed = now / 1000 - this.displayReceiptTime;
         const extrapolation = this.displayFrozen ? this.displayFrozenExtrapolation :
             (elapsed > 0 ? (elapsed < this.DISPLAY_EXTRAPOLATION_LIMIT ? elapsed : this.DISPLAY_EXTRAPOLATION_LIMIT) : 0);
@@ -575,7 +577,7 @@ class LevelMeterPlugin extends PluginBase {
             const peakFallElapsed = renderTime > peakFallStart ?
                 renderTime - (this.lastProcessTime > peakFallStart ? this.lastProcessTime : peakFallStart) : 0;
             if (peakFallElapsed > 0) {
-                const fallingPeak = this.pl[channel] - this.FALL_RATE * (peakFallElapsed < this.DISPLAY_EXTRAPOLATION_LIMIT ? peakFallElapsed : this.DISPLAY_EXTRAPOLATION_LIMIT);
+                const fallingPeak = this.pl[channel] - this.PEAK_FALL_RATE * (peakFallElapsed < this.DISPLAY_EXTRAPOLATION_LIMIT ? peakFallElapsed : this.DISPLAY_EXTRAPOLATION_LIMIT);
                 peakLevel = fallingPeak > level ? fallingPeak : level;
             } else if (peakLevel < level) {
                 peakLevel = level;
@@ -600,6 +602,7 @@ class LevelMeterPlugin extends PluginBase {
                 target.fillStyle = style;
                 if (vertical) target.fillRect(start + dpr, this.canvasHeight - levelLength, channelSize, levelLength);
                 else target.fillRect(0, start + dpr, levelLength, channelSize);
+                if (!showPeaks) return;
                 target.fillStyle = (options?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? '';
                 if (vertical) target.fillRect(start + dpr, this.canvasHeight - peakPosition - dpr,
                     channelSize, 2 * dpr);
@@ -614,7 +617,7 @@ class LevelMeterPlugin extends PluginBase {
                 ctx.font = `${12 * dpr}px Arial`;
                 ctx.textAlign = vertical ? 'center' : 'right';
                 ctx.textBaseline = vertical ? 'top' : 'middle';
-                const peakText = (channelLabels ? `${channelLabels[channel]} ` : '') + peakLevel.toFixed(1) + ' dB';
+                const peakText = (channelLabels ? `${channelLabels[channel]} ` : '') + (showPeaks ? peakLevel : level).toFixed(1) + ' dB';
                 const textX = vertical ? start + channelSize / 2 : this.canvasWidth - (10 * dpr);
                 const textY = vertical ? 2 * dpr : start + channelSize / 2 + (numDrawableChannels === 1 ? 0 : dpr);
                 if (options?.drawLevelValue) options.drawLevelValue(ctx, peakText, textX, textY);

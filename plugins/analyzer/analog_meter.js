@@ -639,8 +639,9 @@ class AnalogMeterPlugin extends PluginBase {
         // The host options supply textContext, drawSignal, needleColor, showAxes, and showAxisNumbers.
         this.drawMeterCells(context, palette, canvas.width, canvas.height, grids, {
             ...options,
-            // Text scales with the cell's 4:3 face instead of the effect graph's fixed clamp.
-            fontSize: (width, height) => (width < height * 4 / 3 ? width : height * 4 / 3) / 22
+            // Like the other Visualizer graphs, text uses the base label size in graph pixels,
+            // independent of the item's size.
+            fontSize: () => 12 * (this.graphDpr || 1)
         });
     }
 

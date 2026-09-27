@@ -779,6 +779,12 @@ class BassManagementPlugin extends PluginBase {
     graphWrap.appendChild(graph.container);
     container.appendChild(graphWrap);
 
+    this._graphReadout = window.GraphReadout?.attach({
+      mount: graph.container,
+      surface: this.canvas,
+      read: x => this._readGraph(x)
+    });
+
     const route = document.createElement('div');
     route.className = 'bass-management-route-summary';
     this._routeElement = route;
@@ -1089,6 +1095,37 @@ class BassManagementPlugin extends PluginBase {
     return 1 / (1 + Math.exp(exponent));
   }
 
+  // Reads the exact per-pixel Sub/Main response curves drawn by drawGraph at a
+  // given canvas-pixel x, for the cursor readout overlay. Returns null when no
+  // response curve is drawn for the selected channel (Full Range / LFE / Unused).
+  _readGraph(x) {
+    const frame = this._readoutFrame;
+    if (!frame?.valid || !frame.hasResponse) return null;
+    const { format, columnValueAt } = window.GraphReadout;
+    const labels = ['Sub (low)', 'Main (high)'];
+    const rows = [];
+    for (let curve = 0; curve < 2; curve += 1) {
+      const db = columnValueAt(frame.curveData[curve], x);
+      if (db === null) continue;
+      rows.push({
+        label: labels[curve],
+        color: frame.colors[curve],
+        value: format.db(db, { signed: true }),
+        y: frame.toY(db)
+      });
+    }
+    if (!rows.length) return null;
+    return { cursor: format.frequency(this._graphFrequencyAt(x, frame.width)), rows };
+  }
+
+  // Log-frequency axis of the response curves: 10 Hz at x = 0 to the plotted maximum at
+  // x = width - 1 (canvas px).
+  _graphFrequencyAt(x, width) {
+    const minimumLog = Math.log10(10);
+    const maximumLog = Math.log10(Math.min(20000, this._sampleRate * 0.48));
+    return 10 ** (minimumLog + x / Math.max(1, width - 1) * (maximumLog - minimumLog));
+  }
+
   _getCanvasDpr(canvas) {
     const rect = canvas.getBoundingClientRect?.();
     const cssWidth = canvas.clientWidth || rect?.width || canvas.width || 1;
@@ -1096,6 +1133,8 @@ class BassManagementPlugin extends PluginBase {
   }
 
   drawGraph() {
+    const frame = (this._readoutFrame ??= {});
+    frame.valid = false;
     if (!this.canvas) return;
     const context = this.canvas.getContext('2d');
     const { width, height } = this.canvas;
@@ -1124,8 +1163,7 @@ class BassManagementPlugin extends PluginBase {
       for (let curve = 0; curve < curveData.length; curve += 1) {
         let nearest = 0;
         for (let x = 0; x < width; x += 1) {
-          const frequency = 10 ** (minimumLog + x / Math.max(1, width - 1) *
-            (maximumLog - minimumLog));
+          const frequency = this._graphFrequencyAt(x, width);
           let low = this._lowWeight(frequency, cutoff, slope);
           if (response && frequencies?.length === response.length) {
             while (nearest + 1 < frequencies.length && frequencies[nearest + 1] < frequency) {
@@ -1160,6 +1198,22 @@ class BassManagementPlugin extends PluginBase {
     const decibelMaximum = 12;
     const decibelTick = 12;
     const decibelSpan = decibelMaximum - decibelMinimum;
+    const colors = [
+      window.ThemePalette?.get('graph-trace') ?? '',
+      window.ThemePalette?.get('graph-trace-secondary') ?? ''
+    ];
+
+    // --- Finalize readout frame ---
+    // Drawing happens directly in canvas-pixel units (canvas.width/height, no
+    // ctx.setTransform(dpr) scaling), so the cursor readout's x/y arrive in
+    // the same units already: no CSS-to-device conversion is needed.
+    frame.valid = true;
+    frame.hasResponse = hasResponse;
+    frame.width = width;
+    frame.curveData = curveData;
+    frame.colors = colors;
+    frame.toY = db => height * (1 - (db - decibelMinimum) / decibelSpan);
+    this._graphReadout?.refresh();
 
     context.strokeStyle = window.ThemePalette?.get('graph-grid') ?? '';
     context.lineWidth = (document.body?.classList.contains('layout-mobile') ? 1 : 0.5) * dpr;
@@ -1236,10 +1290,6 @@ class BassManagementPlugin extends PluginBase {
       context.fillText(message, width / 2, height / 2, width - 48 * dpr);
       return;
     }
-    const colors = [
-      window.ThemePalette?.get('graph-trace') ?? '',
-      window.ThemePalette?.get('graph-trace-secondary') ?? ''
-    ];
     const mobile = document.body?.classList.contains('layout-mobile');
     for (let curve = 0; curve < 2; curve += 1) {
       context.strokeStyle = colors[curve];
