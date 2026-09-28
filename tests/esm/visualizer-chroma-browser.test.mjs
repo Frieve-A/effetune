@@ -408,8 +408,8 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
             const draw = () => renderer.draw(layout, sources, {}, 1, { quality: 'high' });
             draw();
             const display = renderer.layers.get(item.id).display;
-            display.plugin.spectrum.fill(-48);
-            display.plugin.peaks.fill(-24);
+            display.plugin.spectrum = new Float32Array(display.plugin.spectrum.length).fill(-48);
+            display.plugin.peaks = new Float32Array(display.plugin.peaks.length).fill(-24);
             const labels = [];
             const context = display.plugin.ctx;
             const fillText = context.fillText.bind(context);

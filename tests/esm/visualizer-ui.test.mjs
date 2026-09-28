@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { VisualizerEditor } from '../../js/visualizer/visualizer-editor.js';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
+import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { VisualizerHistory } from '../../js/visualizer/visualizer-history.js';
 import { createDefaultLayout, createItem, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
@@ -689,6 +690,51 @@ test('Visualizer stops sources and animation when host visibility changes', asyn
         view.updateVisibility();
         assert.equal(view.frameRequest, 8);
         assert.equal(view.visible, true);
+    });
+});
+
+test('Hiding the main Visualizer preserves feed sources until the feed closes', async () => {
+    const published = [], cancelled = [], classList = classes('view-visualizer');
+    const audioManager = {
+        telemetryHub: { subscribe: () => () => {} },
+        setVisualizerSources: sources => published.push(sources)
+    };
+    await withGlobals({
+        window: {},
+        document: { body: { classList }, hidden: false, addEventListener() {}, removeEventListener() {} },
+        cancelAnimationFrame: id => cancelled.push(id)
+    }, () => {
+        const sources = new VisualizerSources(audioManager);
+        const feed = { visible: true, dispose() { this.visible = false; } };
+        const view = Object.assign(Object.create(VisualizerView.prototype), {
+            sources, feed, visible: true, frameRequest: 7,
+            uiManager: { audioManager, isDoubleBlindActive: () => false },
+            setEditing() {}, setExpanded() {}
+        });
+        try {
+            sources.setLayout({ items: [{ id: 'meter', type: 'analog-meter', params: { md: 'Loudness' } }] });
+            sources.setVisible(true);
+            const source = [...sources.sources.values()][0];
+            const identity = source.identity;
+            const reading = source.frame = { program: { integrated: -23, integratedSeconds: 60 } };
+            const tapId = published.at(-1)[0].tapId;
+            published.length = 0;
+            view.hide();
+            classList.remove('view-visualizer');
+            view.updateVisibility();
+            assert.equal(view.visible, false);
+            assert.equal(view.frameRequest, null);
+            assert.deepEqual(cancelled, [7]);
+            assert.ok(published.every(records => records.length === 1 && records[0].tapId === tapId));
+            assert.equal(source.identity, identity);
+            assert.equal(source.frame, reading);
+            view.setFeedState({ open: false, visible: false });
+            assert.equal(view.feed, null);
+            assert.equal(sources.active, false);
+            assert.deepEqual(published.at(-1), []);
+        } finally {
+            sources.dispose();
+        }
     });
 });
 

@@ -4,6 +4,7 @@ import {
   packDSPAutomationValue,
   unpackDSPAutomationValue
 } from '../audio/dsp-params.generated.js';
+import { getAppTarget } from './app-targets.js';
 
 // Kept in the runtime module so persisted mappings and the dialog use the
 // same assignability decision as parameter application.
@@ -45,6 +46,10 @@ export class ParamAdapter {
   }
 
   resolve(type, key, element = 0) {
+    if (type === '_global') {
+      const app = getAppTarget(key);
+      return app?.kind === 'float' ? Object.freeze({ descriptor: app.descriptor, strategy: 'app', app }) : null;
+    }
     const normalizedElement = Number.isSafeInteger(element) ? element : 0;
     if (!this.isAssignable(type, key, normalizedElement)) return null;
     const cacheKey = descriptorId(type, key, normalizedElement);
@@ -71,6 +76,7 @@ export class ParamAdapter {
 
   read(plugin, resolved) {
     if (!plugin || !resolved) return undefined;
+    if (resolved.strategy === 'app') return resolved.app.read(plugin);
     const { descriptor } = resolved;
     let packedValue;
     if (resolved.strategy === 'field') {
@@ -89,7 +95,9 @@ export class ParamAdapter {
   }
 
   apply(plugin, resolved, realValue) {
-    if (!plugin || !resolved || typeof plugin.setParameters !== 'function') return false;
+    if (!plugin || !resolved) return false;
+    if (resolved.strategy === 'app') return resolved.app.apply(plugin, realValue);
+    if (typeof plugin.setParameters !== 'function') return false;
     const { descriptor } = resolved;
     const packedValue = usesPublicValueTransform(descriptor)
       ? packDSPAutomationValue(descriptor, realValue)
@@ -128,7 +136,8 @@ export function getAssignableDescriptors(type, adapter = new ParamAdapter()) {
 }
 
 export function getTargetValueRange(target, adapter = new ParamAdapter()) {
-  if (!target || target.type === '_global' || target.param === '_enabled') {
+  if (!target || target.param === '_enabled' ||
+      (target.type === '_global' && getAppTarget(target.param)?.kind === 'action')) {
     return { kind: 'bool', minimum: 0, maximum: 1, step: 1, values: null };
   }
   const descriptor = adapter.resolve(target.type, target.param, target.element)?.descriptor;

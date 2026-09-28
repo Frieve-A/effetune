@@ -161,6 +161,23 @@ test('relative messages accumulate and re-seed after an external change', () => 
   assert.ok(Math.abs(target.gn - (0.5 + 1 / 127)) < 1e-9);
 });
 
+test('relative moves respond on the first reversing tick after the target clamps', () => {
+  const target = {
+    ...plugin(1, 0.5),
+    setParameters(parameters) { this.gn = parameters.gn < 0.5 ? 0.5 : parameters.gn; }
+  };
+  const item = mapping('relative-clamp', { kind: 'cc', channel: 0, number: 8, mode: 'rel2c' });
+  const { engine } = harness([item], [target]);
+  for (let index = 0; index < 30; index++) {
+    engine.onSourceEvent('Device', item.source, 127);
+    engine.applyFrame();
+  }
+  assert.equal(target.gn, 0.5);
+  engine.onSourceEvent('Device', item.source, 1);
+  engine.applyFrame();
+  assert.ok(Math.abs(target.gn - (0.5 + 1 / 127)) < 1e-9);
+});
+
 test('relative accumulators re-seed when a mapping changes to a coarse integer target', () => {
   const continuous = plugin(1, 0.5);
   const stepped = {
@@ -443,4 +460,206 @@ test('engine default timer wrappers preserve the global native receiver for fram
     globalThis.setTimeout = originalSetTimeout;
     globalThis.clearTimeout = originalClearTimeout;
   }
+});
+
+function appMapping(id, param, source, map = {}) {
+  return {
+    id, device: source.kind === 'key' ? '' : 'Device', source,
+    target: { type: '_global', instance: 'first', param, element: 0 },
+    map: { lo: 0, hi: 1, sensitivity: 1, dir: 1, buttonMode: 'toggle', ...map }
+  };
+}
+
+function playerHarness(mappings) {
+  const result = harness(mappings, []);
+  const log = [];
+  const state = { isPlaying: false, playbackSpeed: 1 };
+  const record = name => (...args) => { log.push([name, ...args]); };
+  const timers = [];
+  let resume = () => Promise.resolve(true);
+  Object.assign(result.windowRef, {
+    setTimeout(callback) { timers.push(callback); return timers.length; },
+    clearTimeout() {}
+  });
+  result.windowRef.uiManager.setError = record('setError');
+  result.windowRef.uiManager.audioPlayer = {
+    playbackManager: {
+      activePlayRequest: null,
+      transitionInProgress: false,
+      setPlaybackSpeed(value) {
+        if (Number(value.toFixed(2)) !== value) throw new RangeError('Unrounded speed');
+        if (value === state.playbackSpeed) return false;
+        state.playbackSpeed = value;
+        return true;
+      },
+      play: record('play'),
+      pause: record('pause'),
+      playNext: record('next'),
+      playPrevious: record('previous'),
+      fastForward: record('fastForward'),
+      rewind: record('rewind'),
+      runPlaybackCommand: command => command(),
+      runWithPlaybackPending(operation, priority) { log.push(['pending', priority]); return operation(); }
+    },
+    stateManager: { getStateSnapshot: () => ({ ...state }) },
+    contextManager: { invalidateAutomaticMoveForManualCommand: record('invalidate') },
+    stop: record('stop'),
+    resumeAudioContextForRemotePlayback: () => resume()
+  };
+  return { ...result, log, state, timers, setResume(next) { resume = next; } };
+}
+
+const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test('signed player actions follow button direction, encoder sign, and absolute rising edges', async () => {
+  const previous = appMapping('previous', 'track', { kind: 'key', keyCombo: 'P' }, { dir: -1 });
+  const encoder = appMapping('encoder', 'track', { kind: 'cc', channel: 0, number: 8, mode: 'rel2c' });
+  const rewind = appMapping('rewind', 'seek', { kind: 'cc', channel: 0, number: 9, mode: 'abs' }, { dir: -1 });
+  const { engine, log, calls } = playerHarness([previous, encoder, rewind]);
+  engine.onSourceEvent('', previous.source, { pressed: true });
+  engine.onSourceEvent('Device', encoder.source, 1);
+  assert.equal(engine.applyFrame(), false);
+  await flush();
+  assert.deepEqual(log, [
+    ['invalidate'], ['pending', 2], ['previous', false],
+    ['invalidate'], ['pending', 2], ['next', false, { ignoreRepeatOne: true, reason: 'explicit' }]
+  ]);
+  log.length = 0;
+  for (const value of [0, 127, 127, 0, 127]) {
+    engine.onSourceEvent('Device', rewind.source, value);
+    engine.applyFrame();
+  }
+  assert.deepEqual(log, [['rewind', false], ['rewind', false]]);
+  assert.equal(calls.url, 0);
+});
+
+test('playback speed follows absolute, relative, and button sources on the log speed scale', () => {
+  const fader = appMapping('fader', 'playbackSpeed', { kind: 'pitchbend', channel: 0 }, { lo: 0.25, hi: 4 });
+  const encoder = appMapping('encoder', 'playbackSpeed', { kind: 'cc', channel: 0, number: 8, mode: 'rel2c' },
+    { lo: 0.25, hi: 4, sensitivity: 0.25 });
+  const up = appMapping('up', 'playbackSpeed', { kind: 'key', keyCombo: 'U' }, { lo: 0.5, hi: 1.2 });
+  const down = appMapping('down', 'playbackSpeed', { kind: 'key', keyCombo: 'D' }, { lo: 0.5, hi: 1.2, dir: -1 });
+  const { engine, state, calls } = playerHarness([fader, encoder, up, down]);
+  state.playbackSpeed = 0.5;
+  engine.onSourceEvent('Device', fader.source, 8192);
+  assert.equal(engine.applyFrame(), false);
+  assert.equal(state.playbackSpeed, 1);
+  // A polled axis resends the same value; it must not undo an external change.
+  state.playbackSpeed = 1.5;
+  engine.onSourceEvent('Device', fader.source, 8192);
+  engine.applyFrame();
+  assert.equal(state.playbackSpeed, 1.5);
+
+  state.playbackSpeed = 0.25;
+  for (let index = 0; index < 10; index++) {
+    engine.onSourceEvent('Device', encoder.source, 1);
+    engine.applyFrame();
+  }
+  assert.ok(state.playbackSpeed > 0.25);
+
+  state.playbackSpeed = 1;
+  engine.onSourceEvent('', up.source, { pressed: true });
+  engine.applyFrame();
+  assert.equal(state.playbackSpeed, 1.2);
+  engine.onSourceEvent('', down.source, { pressed: true });
+  engine.applyFrame();
+  assert.equal(state.playbackSpeed, 1);
+  assert.equal(calls.url, 0);
+});
+
+test('reversed playback speed bounds reverse buttons and encoders while retaining the range limits', () => {
+  const forward = appMapping('forward', 'playbackSpeed', { kind: 'key', keyCombo: 'F' }, { lo: 1.2, hi: 0.5 });
+  const backward = appMapping('backward', 'playbackSpeed', { kind: 'key', keyCombo: 'B' }, { lo: 1.2, hi: 0.5, dir: -1 });
+  const encoder = appMapping('encoder', 'playbackSpeed', { kind: 'cc', channel: 0, number: 8, mode: 'rel2c' },
+    { lo: 1.2, hi: 0.5 });
+  const { engine, state } = playerHarness([forward, backward, encoder]);
+  const press = (item, expected) => {
+    engine.onSourceEvent('', item.source, { pressed: true });
+    engine.applyFrame();
+    assert.equal(state.playbackSpeed, expected);
+  };
+  for (const expected of [0.75, 0.5, 0.5]) press(forward, expected);
+  for (const expected of [0.75, 1, 1.2, 1.2]) press(backward, expected);
+  state.playbackSpeed = 1;
+  engine.onSourceEvent('Device', encoder.source, 1);
+  engine.applyFrame();
+  assert.equal(state.playbackSpeed, 0.98);
+  engine.onSourceEvent('Device', encoder.source, 127);
+  engine.applyFrame();
+  assert.equal(state.playbackSpeed, 1);
+});
+
+test('player targets are no-ops without a player while Master Bypass still commits', () => {
+  const play = appMapping('play', 'playPause', { kind: 'key', keyCombo: 'P' });
+  const speed = appMapping('speed', 'playbackSpeed', { kind: 'pitchbend', channel: 0 }, { lo: 0.25, hi: 4 });
+  const master = appMapping('master', 'masterBypass', { kind: 'key', keyCombo: 'M' });
+  const { engine, calls, windowRef } = harness([play, speed, master], []);
+  engine.onSourceEvent('', play.source, { pressed: true });
+  engine.onSourceEvent('Device', speed.source, 8192);
+  assert.equal(engine.applyFrame(), false);
+  let clicks = 0;
+  windowRef.pipelineManager.core.masterToggle = { click() { clicks++; } };
+  engine.onSourceEvent('', master.source, { pressed: true });
+  assert.equal(engine.applyFrame(), true);
+  assert.equal(clicks, 1);
+  assert.equal(calls.url, 1);
+});
+
+test('controller playback starts only when audio resumes before the deadline', async () => {
+  const play = appMapping('play', 'playPause', { kind: 'key', keyCombo: 'P' });
+  const { engine, log, timers, setResume } = playerHarness([play]);
+  const press = async () => {
+    engine.onSourceEvent('', play.source, { pressed: true });
+    engine.applyFrame();
+    await flush();
+  };
+  await press();
+  assert.deepEqual(log, [['play', false]]);
+
+  log.length = 0;
+  setResume(() => Promise.resolve(false));
+  await press();
+  assert.deepEqual(log, [['setError', 'error.controllerPlaybackBlocked', true]]);
+
+  log.length = 0;
+  let resolveResume;
+  setResume(() => new Promise(resolve => { resolveResume = resolve; }));
+  await press();
+  timers.at(-1)();
+  await flush();
+  resolveResume(true);
+  await flush();
+  assert.deepEqual(log, [['setError', 'error.controllerPlaybackBlocked', true]]);
+});
+
+test('preset steps wrap, start from an unknown preset, and ignore steps while loading', async () => {
+  const next = appMapping('next', 'preset', { kind: 'key', keyCombo: 'N' });
+  const previous = appMapping('previous', 'preset', { kind: 'key', keyCombo: 'P' }, { dir: -1 });
+  const { engine, windowRef, calls } = playerHarness([next, previous]);
+  const loads = [];
+  let finishLoad;
+  windowRef.pipelineManager.presetManager = {
+    currentPresetName: 'c',
+    getLoadablePresets: async () => ({ b: {}, c: {}, a: {} }),
+    loadPreset(name) {
+      loads.push(name);
+      return new Promise(resolve => { finishLoad = resolve; });
+    }
+  };
+  const press = async mapping => {
+    engine.onSourceEvent('', mapping.source, { pressed: true });
+    assert.equal(engine.applyFrame(), false);
+    await flush();
+  };
+  await press(next);
+  await press(next);
+  assert.deepEqual(loads, ['a']);
+  finishLoad();
+  await flush();
+  windowRef.pipelineManager.presetManager.currentPresetName = 'missing';
+  await press(previous);
+  finishLoad();
+  await flush();
+  assert.deepEqual(loads, ['a', 'c']);
+  assert.equal(calls.url, 0);
 });

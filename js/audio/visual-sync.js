@@ -1,5 +1,6 @@
 // Deterministic capture age and staged-analysis completion bounds, in context frames.
 export const VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS = 0.5;
+// Entries held per stream; the total grows with the number of synced streams.
 export const VISUAL_SYNC_QUEUE_LIMIT = 256;
 export const isVisualSyncEnabled = config => config?.visualSync === true;
 
@@ -98,6 +99,22 @@ export function audibleContextTime({ outputTimestamp, currentTime, outputLatency
         return outputTimestamp.contextTime * 1000 + performanceTime - outputTimestamp.performanceTime;
     }
     return (currentTime - (outputLatency || baseLatency || 0)) * 1000;
+}
+
+// Frees room for one more entry of a stream in a due-sorted queue by dropping that
+// stream's earliest entry once it holds `limit` entries. A shared limit would let
+// many streams evict every entry before its deadline. Returns whether one dropped.
+export function dropVisualSyncOverflow(queue, sameStream, limit = VISUAL_SYNC_QUEUE_LIMIT) {
+    let first = -1;
+    let count = 0;
+    for (let i = 0; i < queue.length; i++) {
+        if (!sameStream(queue[i])) continue;
+        if (first < 0) first = i;
+        count++;
+    }
+    if (count < limit) return false;
+    queue.splice(first, 1);
+    return true;
 }
 
 // These payloads record capture-end time on the worklet processing timeline.

@@ -63,7 +63,7 @@ test('dialog numbers repeated parameter titles and offers Enabled', () => {
   assert.equal(select.value, 'band:1');
 });
 
-test('dialog exposes the two global operations', () => {
+test('dialog lists global operations in table order with direction only where it has meaning', () => {
   const documentRef = { createElement() { return element(); } };
   const dialog = new MidiMappingDialog({
     manager: { adapter: new ParamAdapter({ catalog: {} }) },
@@ -71,8 +71,23 @@ test('dialog exposes the two global operations', () => {
   });
   const select = element();
   dialog.populateParameterSelect(select, '_global', { param: 'abToggle', element: 0 });
-  assert.deepEqual(select.children.map(option => option.textContent), ['Master Bypass', 'A/B Toggle']);
+  assert.deepEqual(select.children.map(option => option.value), [
+    'masterBypass:0', 'abToggle:0', 'playPause:0', 'stop:0', 'track:0', 'seek:0',
+    'playbackSpeed:0', 'preservePitch:0', 'repeat:0', 'shuffle:0', 'preset:0'
+  ]);
   assert.equal(select.value, 'abToggle:0');
+
+  const labels = param => dialog.renderDetails({
+    id: param, device: '', source: { kind: 'key', keyCombo: 'K' },
+    target: { type: '_global', instance: 'first', param, element: 0 },
+    map: { lo: 0.5, hi: 2, sensitivity: 1, dir: 1, buttonMode: 'toggle', behavior: 'direct', amount: 0.01 }
+  }).children.map(child => child.textContent);
+  assert.equal(labels('playPause').includes('Direction'), false);
+  assert.equal(labels('track').includes('Direction'), true);
+  const speed = labels('playbackSpeed');
+  assert.equal(speed.includes('Min (x)'), true);
+  assert.equal(speed.includes('Max (x)'), true);
+  assert.equal(speed.includes('Direction'), true);
 });
 
 test('dialog resolves plugin labels, default targets, and real-value detail ranges', async () => {

@@ -10,11 +10,7 @@ const SPECTRUM_MIN_DISPLAY_FREQ = 20;
 const SPECTRUM_MAX_DISPLAY_FREQ = 40000;
 const SPECTRUM_WIDE_BAR_COUNT = 48;
 const SPECTRUM_NARROW_BAR_COUNT = 24;
-const SPECTRUM_DISPLAY_FREQ_RANGE =
-    SPECTRUM_MAX_DISPLAY_FREQ - SPECTRUM_MIN_DISPLAY_FREQ;
 const SPECTRUM_LOG_MIN_DISPLAY_FREQ = Math.log10(SPECTRUM_MIN_DISPLAY_FREQ);
-const SPECTRUM_LOG_DISPLAY_FREQ_RANGE =
-    Math.log10(SPECTRUM_MAX_DISPLAY_FREQ) - SPECTRUM_LOG_MIN_DISPLAY_FREQ;
 
 class SpectrumAnalyzerPlugin extends PluginBase {
     constructor() {
@@ -271,18 +267,26 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         this.drawGraph();
     }
 
+    // A host such as the Visualizer may lower the top of the frequency axis.
+    get maxDisplayFrequency() {
+        return this.displayOptions?.maxFrequency ?? SPECTRUM_MAX_DISPLAY_FREQ;
+    }
+
     frequencyToX(freq, width) {
         if (this.sc === 'linear') {
-            return width * (freq - SPECTRUM_MIN_DISPLAY_FREQ) / SPECTRUM_DISPLAY_FREQ_RANGE;
+            return width * (freq - SPECTRUM_MIN_DISPLAY_FREQ) /
+                (this.maxDisplayFrequency - SPECTRUM_MIN_DISPLAY_FREQ);
         }
         return width * (Math.log10(freq) - SPECTRUM_LOG_MIN_DISPLAY_FREQ) /
-            SPECTRUM_LOG_DISPLAY_FREQ_RANGE;
+            (Math.log10(this.maxDisplayFrequency) - SPECTRUM_LOG_MIN_DISPLAY_FREQ);
     }
 
     displayXToFrequency(position) {
+        const max = this.maxDisplayFrequency;
         return this.sc === 'linear'
-            ? SPECTRUM_MIN_DISPLAY_FREQ + position * SPECTRUM_DISPLAY_FREQ_RANGE
-            : 10 ** (SPECTRUM_LOG_MIN_DISPLAY_FREQ + position * SPECTRUM_LOG_DISPLAY_FREQ_RANGE);
+            ? SPECTRUM_MIN_DISPLAY_FREQ + position * (max - SPECTRUM_MIN_DISPLAY_FREQ)
+            : 10 ** (SPECTRUM_LOG_MIN_DISPLAY_FREQ +
+                position * (Math.log10(max) - SPECTRUM_LOG_MIN_DISPLAY_FREQ));
     }
 
     // Reset parameters
@@ -557,7 +561,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
 
-        container.appendChild(this.createParameterControl(
+        // Two columns on desktop, one on mobile (css/effetune.css and css/effetune-mobile.css).
+        const parameters = document.createElement('div');
+        parameters.className = 'analyzer-parameters';
+        parameters.appendChild(this.createParameterControl(
             'DB Range', -144, -48, 1, this.dr, (v) => this.setDBRange(v), 'dB', 'dr'
         ));
 
@@ -600,7 +607,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         pointsRow.appendChild(pointsLabel);
         pointsRow.appendChild(pointsSlider);
         pointsRow.appendChild(pointsValue);
-        container.appendChild(pointsRow);
+        parameters.appendChild(pointsRow);
 
         const frequencyScaleRow = this.createRadioGroup(
             'Frequency Scale',
@@ -612,7 +619,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             this.sc,
             value => this.setFrequencyScale(value), 'sc'
         );
-        container.appendChild(frequencyScaleRow);
+        parameters.appendChild(frequencyScaleRow);
 
         const displayModeRow = this.createRadioGroup(
             'Display',
@@ -623,8 +630,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             this.dm,
             value => this.setDisplayMode(value), 'dm'
         );
-        container.appendChild(displayModeRow);
-        container.appendChild(this.createRadioGroup(
+        parameters.appendChild(displayModeRow);
+        parameters.appendChild(this.createRadioGroup(
             'Color',
             [
                 { value: 'Normal', label: 'Normal' },
@@ -634,9 +641,10 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             this.cl,
             value => this.setColor(value), 'cl'
         ));
-        container.appendChild(this.createCheckboxControl(
+        parameters.appendChild(this.createCheckboxControl(
             'Keyboard', this.kb, value => this.setKeyboardVisible(value), 'kb'
         ));
+        container.appendChild(parameters);
 
         const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
             maxWidth: 1024,
@@ -805,7 +813,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
     getKeyboardGeometry(length) {
         const minMidi = 69 + 12 * Math.log2(SPECTRUM_MIN_DISPLAY_FREQ / 440);
-        const maxMidi = 69 + 12 * Math.log2(SPECTRUM_MAX_DISPLAY_FREQ / 440);
+        const maxMidi = 69 + 12 * Math.log2(this.maxDisplayFrequency / 440);
         const blackClasses = [1, 3, 6, 8, 10];
         const isBlack = midi => blackClasses.includes((midi % 12 + 12) % 12);
         const position = midi => {
@@ -907,7 +915,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const isNarrow = (vertical ? graphWidth / dpr : this.graphCssWidth) < 500;
         // Keys keep piano proportions at the log-axis semitone width, also on the linear axis.
         const { gutter: keyboardGutter, blackDepth } = this.kb ? window.FrequencyAxis.keyboardDepths(
-            graphWidth / Math.log2(SPECTRUM_MAX_DISPLAY_FREQ / SPECTRUM_MIN_DISPLAY_FREQ), graphHeight,
+            graphWidth / Math.log2(this.maxDisplayFrequency / SPECTRUM_MIN_DISPLAY_FREQ), graphHeight,
             this.displayOptions?.keyboardLength
         ) : { gutter: 0, blackDepth: 0 };
         const plotHeight = graphHeight - keyboardGutter;
@@ -923,7 +931,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const minDisplayFreq = SPECTRUM_MIN_DISPLAY_FREQ;
         const nyquistFreq = this.sampleRate / 2;
         // Max display frequency is Nyquist, but ensure it's at least minDisplayFreq
-        const maxDisplayFreq = SPECTRUM_MAX_DISPLAY_FREQ;
+        const maxDisplayFreq = this.maxDisplayFrequency;
 
         if (this.sampleRate <= 0 || nyquistFreq <= minDisplayFreq) { // Not enough range or invalid sampleRate
             ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? '');
@@ -959,7 +967,8 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         );
         if (drawBars) {
             const levels = this.collectSpectrumLevels(graphWidth, now);
-            const bandCount = isNarrow ? SPECTRUM_NARROW_BAR_COUNT : SPECTRUM_WIDE_BAR_COUNT;
+            const bandCount = this.displayOptions?.barCount ??
+                (isNarrow ? SPECTRUM_NARROW_BAR_COUNT : SPECTRUM_WIDE_BAR_COUNT);
             const bands = SpectrumAnalyzerPlugin.aggregateBands(levels, graphWidth, bandCount);
             frame.bands = bands;
             const draw = target => this.drawSpectrumBars(target, bands, graphWidth, plotHeight, dpr);
@@ -1042,7 +1051,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
     drawGrid(ctx, width, height, dpr, isNarrow, deferTicks, keyboard) {
         const minDisplayFreq = SPECTRUM_MIN_DISPLAY_FREQ;
-        const maxDisplayFreq = SPECTRUM_MAX_DISPLAY_FREQ;
+        const maxDisplayFreq = this.maxDisplayFrequency;
         const deferredTicks = [];
 
         if (keyboard) {
@@ -1061,10 +1070,13 @@ class SpectrumAnalyzerPlugin extends PluginBase {
             }
         } else {
             // Vertical grid lines (frequency) - Dynamic
+            // A linear axis topping out at 10 kHz or below gets a 1 kHz grid.
             let baseGridFreqs = this.sc === 'linear'
-                ? (isNarrow
-                    ? [20, 10000, 20000, 30000, 40000]
-                    : [20, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000])
+                ? (maxDisplayFreq <= 10000
+                    ? [20, ...Array.from({ length: Math.floor(maxDisplayFreq / 1000) }, (_, index) => (index + 1) * 1000)]
+                    : isNarrow
+                        ? [20, 10000, 20000, 30000, 40000]
+                        : [20, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000])
                 : (isNarrow
                     ? [20, 100, 1000, 10000, 20000]
                     : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]);
@@ -1157,7 +1169,7 @@ class SpectrumAnalyzerPlugin extends PluginBase {
 
     collectSpectrumLevels(width, now) {
         const minDisplayFreq = SPECTRUM_MIN_DISPLAY_FREQ;
-        const maxDisplayFreq = SPECTRUM_MAX_DISPLAY_FREQ;
+        const maxDisplayFreq = this.maxDisplayFrequency;
         // Draw spectrum
         const fftSize = 1 << this.spectrumPoints;
         const binCount = this.spectrum.length;
@@ -1303,8 +1315,11 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         const gap = bandWidth - desiredGap >= dpr ? desiredGap : 0;
         const barWidth = bandWidth - gap;
         const peakHeight = dpr;
-        const segmentPitch = 6 * dpr;
-        const quantize = this.displayOptions?.quantizeBars === true;
+        // A host may size segments in dB (0 = continuous bars); otherwise they are 6 px.
+        const segmentDb = this.displayOptions?.segmentDb;
+        const segmentPitch = segmentDb === undefined ? 6 * dpr : height * segmentDb / -this.dr;
+        const segmented = segmentPitch > 0;
+        const quantize = segmented && this.displayOptions?.quantizeBars === true;
         const fullBlockCount = Math.floor(height / segmentPitch);
 
         const noteColor = this.cl === 'Rainbow' ? window.NoteSpectrogramPlugin?.noteColor : null;
@@ -1330,15 +1345,17 @@ class SpectrumAnalyzerPlugin extends PluginBase {
         }
 
         // Cut horizontal segments only through the bar bodies, preserving the grid.
-        ctx.clip();
-        ctx.strokeStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '');
-        ctx.lineWidth = dpr;
-        ctx.beginPath();
-        for (let y = height - segmentPitch; y > 0; y -= segmentPitch) {
-            ctx.moveTo(0, y);
-            ctx.lineTo(width, y);
+        if (segmented) {
+            ctx.clip();
+            ctx.strokeStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '');
+            ctx.lineWidth = dpr;
+            ctx.beginPath();
+            for (let y = height - segmentPitch; y > 0; y -= segmentPitch) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+            }
+            ctx.stroke();
         }
-        ctx.stroke();
         ctx.restore();
 
         if (!colors) ctx.fillStyle = (colorStyle ?? window.ThemePalette?.get('graph-trace') ?? '');

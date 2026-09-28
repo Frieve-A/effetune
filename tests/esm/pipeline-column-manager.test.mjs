@@ -26,6 +26,9 @@ function createColumn(calls, owner) {
     children: [],
     innerHTML: '',
     appendChild(child) {
+      // Like the DOM, appending moves the child out of its previous column
+      const previous = child.parentNode?.children;
+      if (previous) previous.splice(previous.indexOf(child), 1);
       this.children.push(child);
       child.parentNode = this;
       calls.push(['appendToColumn', this.dataset.columnIndex, child.pluginId]);
@@ -85,7 +88,8 @@ function createRuntime(options = {}) {
     itemBuilder: {
       createPipelineItem(plugin) {
         calls.push(['createPipelineItem', plugin.id]);
-        return { pluginId: plugin.id };
+        const height = plugin.height ?? 0;
+        return { pluginId: plugin.id, getBoundingClientRect: () => ({ height }) };
       }
     },
     updatePipelineUI(force) {
@@ -311,6 +315,24 @@ test('rebuild and distribution handle missing lists, empty columns, and invalid 
     manager.distributePluginsToColumns();
   });
   assert.equal(warnings.length, 1);
+});
+
+test('distribution keeps order and minimizes the tallest column by measured height', async () => {
+  const placements = async (heights, columnCount) => {
+    const runtime = createRuntime({ pipeline: heights.map((height, id) => ({ id, height })) });
+    await withColumnGlobals(runtime, {}, async () => {
+      const manager = new PipelineColumnManager(runtime.pipelineCore);
+      manager.rebuildPipelineColumns(columnCount);
+    });
+    return runtime.pipelineList.columns.map(column => column.children.map(item => item.pluginId));
+  };
+
+  assert.deepEqual(await placements([300, 50, 50, 50, 50], 2), [[0], [1, 2, 3, 4]]);
+  assert.deepEqual(await placements([50, 50, 50, 50, 300], 2), [[0, 1, 2, 3], [4]]);
+  assert.deepEqual(await placements([100, 20, 20], 4), [[0], [1], [2], []]);
+  // Without layout (hidden pipeline) the split falls back to item count
+  assert.deepEqual(await placements([0, 0, 0, 0, 0], 2), [[0, 1, 2], [3, 4]]);
+  assert.deepEqual(await placements([0, 0, 0, 0], 3), [[0, 1], [2], [3]]);
 });
 
 test('responsive resize debounce registers callbacks without changing column settings', async () => {

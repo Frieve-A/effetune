@@ -1,4 +1,4 @@
-import { createLayer, paletteGradient, VisualizerEffects } from './visualizer-effects.js';
+import { createLayer, drawBackplates, paletteGradient, VisualizerEffects } from './visualizer-effects.js';
 
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
 import { REFERENCE_WIDTH, TEXT_DECORATION_DEFAULTS } from './visualizer-model.js';
@@ -21,6 +21,11 @@ export class VisualizerRenderer {
         let image = this.images.get(url);
         if (!image) { image = new Image(); image.src = url; this.images.set(url, image); }
         return image.complete && image.naturalWidth ? image : null;
+    }
+
+    dispose() {
+        for (const state of this.layers.values()) state.display?.dispose();
+        this.layers.clear();
     }
 
     draw(layout, sources, metadata, time, { editing = false, quality = 'auto' } = {}) {
@@ -74,6 +79,8 @@ export class VisualizerRenderer {
             const flipCanvas = !ANALYZER_TYPES.has(item.type);
             const output = this.effects.apply(item.id, signal || state.canvas, item.effects, time, modulators, this.quality,
                 changed || !flipCanvas, flipCanvas && item.flipX, flipCanvas && item.flipY, stageScale);
+            drawBackplates(ctx, item.rect.x * stage.width, item.rect.y * stage.height, width, height,
+                item.effects, time, modulators, stageScale);
             if (state.display?.underlayCanvas) ctx.drawImage(state.display.underlayCanvas,
                 item.rect.x * stage.width, item.rect.y * stage.height, width, height);
             ctx.save();
@@ -87,19 +94,21 @@ export class VisualizerRenderer {
                 (item.rect.y + item.rect.h / 2) * stage.height - height / 2, width, height);
             for (const label of state.display?.overflowLevelValues || []) {
                 ctx.save();
-                ctx.font = label.font;
-                ctx.fillStyle = label.fillStyle;
-                ctx.textAlign = label.textAlign;
-                ctx.textBaseline = label.textBaseline;
-                const metrics = ctx.measureText(label.text);
+                const { text, x: labelX, y: labelY, ...style } = label;
+                Object.assign(ctx, style);
+                const metrics = ctx.measureText(text);
                 const minX = metrics.actualBoundingBoxLeft ?? (label.textAlign === 'right' ? metrics.width : metrics.width / 2);
                 const maxX = stage.width - (metrics.actualBoundingBoxRight ?? (label.textAlign === 'right' ? 0 : metrics.width / 2));
-                const x = (item.rect.x + item.rect.w / 2) * stage.width - width / 2 + label.x;
-                const y = (item.rect.y + item.rect.h / 2) * stage.height - height / 2 + label.y;
-                if (minX > maxX) {
-                    ctx.textAlign = 'center';
-                    ctx.fillText(label.text, stage.width / 2, y, Math.max(1, stage.width - 2));
-                } else ctx.fillText(label.text, Math.max(minX, Math.min(maxX, x)), y);
+                const x = (item.rect.x + item.rect.w / 2) * stage.width - width / 2 + labelX;
+                const y = (item.rect.y + item.rect.h / 2) * stage.height - height / 2 + labelY;
+                const draw = method => {
+                    if (minX > maxX) {
+                        ctx.textAlign = 'center';
+                        ctx[method](text, stage.width / 2, y, Math.max(1, stage.width - 2));
+                    } else ctx[method](text, Math.max(minX, Math.min(maxX, x)), y);
+                };
+                draw('strokeText');
+                draw('fillText');
                 ctx.restore();
             }
         }

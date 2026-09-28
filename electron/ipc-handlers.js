@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const constants = require('./constants');
 const config = require('./config');
 const windowState = require('./window-state');
+const visualizerFeed = require('./visualizer-feed');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
 const { registerIrLibraryIpc } = require('./ir-library-ipc');
 const { registerMeasurementBackupIpc } = require('./measurement-backup-ipc.cjs');
@@ -519,6 +520,7 @@ function createApplicationMenuTemplate(menuState = {}) {
           checked: false,
           click: menuItem => sendToRenderer('set-pipeline-analyzer-open', menuItem.checked === true)
         }),
+        visualizerFeed.createMenuItem(item),
         { type: 'separator' },
         item('toggle-fullscreen', {
           role: 'togglefullscreen',
@@ -602,9 +604,17 @@ function createApplicationMenuTemplate(menuState = {}) {
   ];
 }
 
+let currentMenuState = {};
+
 function createMenu(menuState = {}) {
+  currentMenuState = menuState;
   const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(menuState));
   Menu.setApplicationMenu(menu);
+}
+
+// Rebuild with the current labels, e.g. after the display list changes.
+function refreshMenu() {
+  createMenu(currentMenuState);
 }
 
 // Register all IPC handlers
@@ -619,6 +629,10 @@ function registerIpcHandlers({ onConfigSaved } = {}) {
     }
     return { success: true, enabled: isMiniMode };
   });
+
+  ipcMain.handle('set-visualizer-feed-allowed', (event, allowed) => (
+    visualizerFeed.setRendererAllowed(allowed === true)
+  ));
 
   ipcMain.handle('set-always-on-top', (event, flag) => {
     const mainWin = constants.getMainWindow();
@@ -1310,6 +1324,7 @@ module.exports = {
   setMainWindow,
   registerIpcHandlers,
   createMenu,
+  refreshMenu,
   simulateKeyboardShortcut,
   restoreNormalWindowShape
 };

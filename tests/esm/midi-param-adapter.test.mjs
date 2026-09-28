@@ -12,6 +12,7 @@ import {
 import {
   canonicalizeAutomationAmount,
   defaultAutomationAmount,
+  getTargetValueRange,
   ParamAdapter,
   UNASSIGNABLE_DESCRIPTORS
 } from '../../js/midi/param-adapter.js';
@@ -212,4 +213,23 @@ test('ParamAdapter reachability matches the frozen exclusions for every generate
   }
   assert.equal(descriptorCount, 976);
   assert.deepEqual(observedUnassignable, UNASSIGNABLE_DESCRIPTORS);
+});
+
+test('ParamAdapter delegates float app targets and reports app value ranges', () => {
+  const adapter = new ParamAdapter({ catalog });
+  assert.equal(adapter.resolve('_global', 'playPause', 0), null);
+  const resolved = adapter.resolve('_global', 'playbackSpeed', 0);
+  assert.equal(resolved.strategy, 'app');
+  assert.equal(resolved.descriptor.normalization, 'log');
+  const applied = [];
+  const player = {
+    stateManager: { getStateSnapshot: () => ({ playbackSpeed: 1.5 }) },
+    playbackManager: { setPlaybackSpeed(value) { applied.push(value); return true; } }
+  };
+  assert.equal(adapter.read(player, resolved), 1.5);
+  assert.equal(adapter.apply(player, resolved, 1.23456), true);
+  assert.deepEqual(applied, [1.23]);
+  assert.equal(getTargetValueRange({ type: '_global', param: 'track', element: 0 }, adapter).kind, 'bool');
+  const speed = getTargetValueRange({ type: '_global', param: 'playbackSpeed', element: 0 }, adapter);
+  assert.deepEqual([speed.kind, speed.minimum, speed.maximum], ['float', 0.25, 4]);
 });

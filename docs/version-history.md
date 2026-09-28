@@ -8,9 +8,9 @@ lang: en
 
 ### Version 2.12.0 (TBD, 2026)
 - Added Analog Meter effect
-- Added Phase Map and Analog Meter items to the Visualizer
-- Added cursor readouts to effect graphs
+- Added Phase Map and Analog Meter to the Visualizer, along with extensive feature enhancements
 - Added Visualizer to the browser extension
+- Added music player and preset controls to Controller Mapping
 - Various minor improvements
 
 ### Version 2.11.0 (Sep 25, 2026)

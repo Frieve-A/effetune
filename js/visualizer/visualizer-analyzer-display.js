@@ -1,4 +1,4 @@
-import { paletteColor, paletteGradient } from './visualizer-effects.js';
+import { isLayerEffect, paletteColor, paletteGradient } from './visualizer-effects.js';
 import { THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR } from './visualizer-model.js';
 import { createBallistics, stepBallistics } from './visualizer-ballistics.js';
 
@@ -192,7 +192,12 @@ class AnalyzerDisplay {
             options.orientation = params.orientation;
             options.showPeaks = params.pk;
         }
-        if (this.type === 'spectrum') options.quantizeBars = params.quantizeBars;
+        if (this.type === 'spectrum') {
+            options.quantizeBars = params.quantizeBars;
+            options.barCount = params.bc;
+        }
+        if (this.type === 'spectrum' || this.type === 'spectrogram') options.maxFrequency = params.mf;
+        if (this.type === 'spectrum' || this.type === 'level-meter') options.segmentDb = params.ds;
         if (this.type === 'spectrum' || this.type === 'spectrogram' || this.type === 'notes') {
             options.keyboardLength = params.kl / 100;
         }
@@ -239,7 +244,7 @@ class AnalyzerDisplay {
         const fixedNotes = mode === 'note-colors' && Boolean(notePlugin?.noteColor);
         const phase = mode !== 'gradient' || item.palette.motion.mode === 'none' || !item.palette.motion.speed ? 0 : time;
         if (this.paletteKey === paletteKey && this.phase === phase &&
-            ['mn', 'mx', 'lo', 'hi', 'sc', 'orientation'].every(key => changed[key] === undefined)) return;
+            ['mn', 'mx', 'lo', 'hi', 'sc', 'mf', 'orientation'].every(key => changed[key] === undefined)) return;
         this.paletteKey = paletteKey;
         this.phase = phase;
         this.colors = mode === 'gradient' ? Array.from({ length: 256 }, (_, index) =>
@@ -409,7 +414,7 @@ class AnalyzerDisplay {
             this.plugin.volumeHistoryDirty = true;
         }
         const options = this.plugin.displayOptions;
-        const separate = item.effects.some(effect => effect.enabled);
+        const separate = item.effects.some(isLayerEffect);
         if (options.separateAnnotations !== separate) this.plugin.volumeHistoryDirty = true;
         options.separateAnnotations = separate;
         this.signalCanvas = null;
@@ -560,11 +565,18 @@ class AnalyzerDisplay {
         const matrix = Number.isFinite(transform?.a) ? transform : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
         const originX = matrix.a * (x + centerX) + matrix.c * (y + centerY) + matrix.e - centerX;
         const originY = matrix.b * (x + centerX) + matrix.d * (y + centerY) + matrix.f - centerY;
+        // The value sits over the palette-colored bar or, beyond the item, over the scene.
+        const outline = { strokeStyle: this.plugin.displayOptions.themePalette.get('graph-bg-deep'),
+            lineWidth: 2 * this.plugin.graphDpr, lineJoin: 'round' };
         if (originX - left >= 0 && originX + right <= this.plugin.canvas.width) {
+            context.save();
+            Object.assign(context, outline);
+            this.drawText('strokeText', text, x, y);
+            context.restore();
             this.drawText('fillText', text, x, y);
             return;
         }
-        this.overflowLevelValues.push({ text, x: originX, y: originY, font: context.font,
+        this.overflowLevelValues.push({ text, x: originX, y: originY, font: context.font, ...outline,
             fillStyle: context.fillStyle, textAlign: context.textAlign, textBaseline: context.textBaseline });
     }
 

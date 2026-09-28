@@ -932,8 +932,8 @@ body.layout-mobile .plugin-parameter-ui .parameter-row {
     box-sizing: border-box;
 }
 
-body.layout-mobile .analog-meter-parameters {
-    grid-template-columns: minmax(0, 1fr);
+body.layout-mobile .analyzer-parameters {
+    column-count: 1;
 }
 
 body.layout-mobile .analog-meter-reset-button {

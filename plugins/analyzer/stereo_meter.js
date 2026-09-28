@@ -210,20 +210,24 @@ class StereoMeterPlugin extends PluginBase {
     const container = document.createElement('div');
     container.className = 'plugin-parameter-ui stereo-meter';
 
+    // Two columns on desktop, one on mobile (css/effetune.css and css/effetune-mobile.css).
+    const parameters = document.createElement('div');
+    parameters.className = 'analyzer-parameters';
     // Use createParameterControl for Window time
-    container.appendChild(this.createParameterControl(
+    parameters.appendChild(this.createParameterControl(
       'Window', 10, 1000, 1,
       (this.windowTime * 1000).toFixed(0),
       (value) => this.setWindowTime(value / 1000),
       'ms',
       'windowTime', (value) => value * 1000, true // Widget is shown in ms, the model stores seconds
     ));
-    container.appendChild(this.createParameterControl(
+    parameters.appendChild(this.createParameterControl(
       'Gain', 0, 24, 1,
       this.gainDb,
       (value) => this.setGain(value),
       'dB', 'gainDb'
     ));
+    container.appendChild(parameters);
 
     // Create the graph container and canvas.
     const graph = this.createResponsiveGraph({
@@ -795,17 +799,27 @@ class StereoMeterPlugin extends PluginBase {
 
     // Draw labels for the enabled meters.
     if (this.displayOptions?.showAxisNumbers !== false) {
+      const text = this.displayOptions?.textContext ?? ctx;
+      // These titles overlap their bars; a Visualizer palette can match the text color, so outline them there.
+      const outline = this.displayOptions?.visualizerAxisLabels;
+      const label = (value, x, y) => {
+        if (outline) text.strokeText(value, x, y);
+        text.fillText(value, x, y);
+      };
+      ctx.save();
       ctx.fillStyle = ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? '');
+      ctx.strokeStyle = background;
+      ctx.lineWidth = 2 * dpr;
+      ctx.lineJoin = 'round';
       ctx.textAlign = 'center';
       ctx.font = `${12 * dpr}px Arial`;
-      if (this.displayOptions?.showBalance !== false) (this.displayOptions?.textContext ?? ctx).fillText('LR Balance', width / 2, height - dpr);
+      if (this.displayOptions?.showBalance !== false) label('LR Balance', width / 2, height - dpr);
       if (this.displayOptions?.showCorrelation !== false) {
-        ctx.save();
         ctx.translate(20 * dpr, height / 2);
         ctx.rotate(-Math.PI / 2);
-        (this.displayOptions?.textContext ?? ctx).fillText('LR Correlation', 0, -3 * dpr);
-        ctx.restore();
+        label('LR Correlation', 0, -3 * dpr);
       }
+      ctx.restore();
     }
   }
 

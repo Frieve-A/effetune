@@ -2217,12 +2217,7 @@ export class UIManager {
         }
         if ((this.miniPlayerMode || this.miniPlayerTargetMode) && !await this.setMiniPlayerMode(false)) return false;
         if (document.body.classList.contains('view-library') && this.libraryView?.hasActiveDialog?.()) return false;
-        if (!this.visualizerView) {
-            this.visualizerModulePromise ||= import('./visualizer/visualizer-view.js');
-            const { VisualizerView } = await this.visualizerModulePromise;
-            this.visualizerView ||= new VisualizerView(this);
-        }
-        await this.visualizerView.initialized;
+        await this.ensureVisualizerView();
         if (revision !== this.visualizerOpenRevision || this.isDoubleBlindActive()) return false;
         this.visualizerView.previousMobileView = this.mobileNav?.getCurrentView() || 'player';
         this.hideLibraryView({ restoreFocus: false });
@@ -2231,6 +2226,38 @@ export class UIManager {
         this.mobileNav?.applyViewState('visualizer', { fromLibraryView: true });
         this.visualizerView.updateVisibility();
         return true;
+    }
+
+    async ensureVisualizerView() {
+        if (!this.visualizerView) {
+            this.visualizerModulePromise ||= import('./visualizer/visualizer-view.js');
+            const { VisualizerView } = await this.visualizerModulePromise;
+            this.visualizerView ||= new VisualizerView(this);
+        }
+        await this.visualizerView.initialized;
+    }
+
+    // Electron clean feed: the main process shows it only while the Visualizer is
+    // not already on screen here and no Double Blind Test could reveal track details.
+    reportVisualizerFeedAllowed() {
+        const api = window.electronAPI;
+        if (typeof api?.setVisualizerFeedAllowed !== 'function') return;
+        this.stopVisualizerFeedState ||= api.onVisualizerFeedState(state => this.applyVisualizerFeedState(state));
+        const allowed = !document.body.classList.contains('view-visualizer') && !this.isDoubleBlindActive();
+        if (allowed === this.visualizerFeedAllowed) return;
+        this.visualizerFeedAllowed = allowed;
+        api.setVisualizerFeedAllowed(allowed).then(state => this.applyVisualizerFeedState(state),
+            error => console.warn('Unable to update the Visualizer clean feed:', error));
+    }
+
+    async applyVisualizerFeedState(state) {
+        this.visualizerFeedState = state;
+        try {
+            if (state?.open) await this.ensureVisualizerView();
+            this.visualizerView?.setFeedState(this.visualizerFeedState);
+        } catch (error) {
+            console.error('Visualizer clean feed could not be opened:', error);
+        }
     }
 
     async openSharedVisualizer(encoded) {
@@ -2293,6 +2320,7 @@ export class UIManager {
         if (this.isDoubleBlindActive() && document.body?.classList.contains('view-visualizer')) this.hideVisualizerView();
         if (this.visualizerButton) this.visualizerButton.disabled = this.isDoubleBlindActive();
         this.visualizerView?.updateVisibility();
+        this.reportVisualizerFeedAllowed();
         const hidden = this.isEffectPipelineHidden();
         if (hidden === this.effectPipelineHidden) return;
         this.effectPipelineHidden = hidden;

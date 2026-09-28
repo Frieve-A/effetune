@@ -117,7 +117,7 @@ test('system presets load once by aspect and never enter user storage', async ()
     } });
     const presets = await store.loadSystemPresets();
     assert.deepEqual(Object.keys(presets), ['16:9', '21:9', '4:3', '1:1', '9:16']);
-    assert.ok(Object.values(presets).every(group => Object.keys(group).length === 7));
+    assert.ok(Object.values(presets).every(group => Object.keys(group).length === 10));
     assert.equal(await store.loadSystemPresets(), presets);
     assert.equal(requests.length, 5);
 });

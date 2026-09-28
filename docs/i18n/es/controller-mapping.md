@@ -27,9 +27,18 @@ Con Temporizador, fija **Intervalo (segundos)** en 1 o más. **Cambiar por canti
 
 La **Programación** ofrece **Intervalo**, **Una vez** y **Diario**. El intervalo admite de 1 a 2.147.483,647 segundos y mide el tiempo transcurrido mientras la aplicación está en ejecución. Si se retrasa, solo aplica un cambio, inicia desde ahí el siguiente intervalo y no repite eventos perdidos. Una vez usa la **Fecha** y la **Hora** locales; Diario usa la hora local y espera al día siguiente si la de hoy ya pasó. Ambos siguen el calendario y el reloj locales del equipo, incluidos los cambios manuales y el horario de verano; Diario se ejecuta como máximo una vez por fecha local. Una cita pasada aparece como **Caducado** y no se recupera; cambia la fecha o la hora a un valor futuro para activarla otra vez.
 
-Reloj y Temporizador solo pueden controlar parámetros numéricos de efectos, no Enabled, listas, Master Bypass ni A/B Toggle. Las acciones aleatorias también están disponibles para botones o teclas físicos asignados a un parámetro numérico. Si la aplicación o el equipo retrasan un evento, se aplica un solo cambio al reanudarse y no se repiten los eventos perdidos. Una misma configuración no produce siempre la misma secuencia aleatoria.
+Reloj y Temporizador solo pueden controlar parámetros numéricos de efectos, no Activado, listas ni operaciones de Global, incluida Velocidad de reproducción. Las acciones aleatorias también están disponibles para botones o teclas físicos asignados a un parámetro numérico. Si la aplicación o el equipo retrasan un evento, se aplica un solo cambio al reanudarse y no se repiten los eventos perdidos. Una misma configuración no produce siempre la misma secuencia aleatoria.
 
-**Primero** y **Último** eligen la primera o la última instancia coincidente. **Todos** aplica el mismo valor a todas y usa la primera como punto de partida para cambios relativos. **Enabled** activa o desactiva el efecto; **Global** ofrece Master Bypass y A/B Toggle. Min y Max limitan el recorrido y se introducen en la unidad mostrada del parámetro; intercambiarlos invierte la dirección. Empieza con Sensitivity 1.
+**Primero** y **Último** eligen la primera o la última instancia coincidente. **Todos** aplica el mismo valor a todas y usa la primera como punto de partida para cambios relativos. **Activado** activa o desactiva el efecto.
+
+**Global** controla la aplicación y el reproductor de música en lugar de un efecto: **Bypass maestro**, **Cambio A/B**, **Reproducir/Pausar**, **Detener**, **Pista siguiente/anterior**, **Avanzar/retroceder 10 s**, **Velocidad de reproducción**, **Mantener el tono**, **Repetir**, **Aleatorio** y **Preset siguiente/anterior**.
+
+- En Pista siguiente/anterior, Avanzar/retroceder 10 s y Preset siguiente/anterior, **Dirección** fija el sentido: **+** avanza y **−** retrocede. Con un codificador sin fin o una rueda jog, el movimiento sigue el sentido en que lo giras.
+- **Velocidad de reproducción** cambia de forma continua con un fader o un potenciómetro, con 1x en el centro. Un botón o una tecla pasa a la siguiente velocidad estándar según su Dirección.
+- **Preset siguiente/anterior** recorre tus presets de usuario por orden de nombre y, al llegar a un extremo, vuelve al otro.
+- Las operaciones del reproductor no hacen nada mientras el reproductor de música está cerrado. Si el navegador no permite iniciar el audio, la reproducción no puede empezar desde el controlador; iníciala con el botón de reproducción del reproductor.
+
+Min y Max limitan el recorrido y se introducen en la unidad mostrada del parámetro; intercambiarlos invierte la dirección. Empieza con Sensitivity 1.
 
 ## Fuentes de control
 

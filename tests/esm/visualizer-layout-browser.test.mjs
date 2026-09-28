@@ -444,7 +444,7 @@ test('Visualizer expand icon is centered and names both view-area actions', asyn
     try {
         const page = await browser.newPage({ viewport: { width: 860, height: 600 } });
         await page.setContent('<!doctype html><body class="view-visualizer"><div class="main-container"></div></body>');
-        await page.addStyleTag({ content: css });
+        await page.addStyleTag({ content: `${css}\n* { transition: none !important; }` });
         await page.addScriptTag({ content: `
             window.createDefaultLayout = () => ({ aspect: '16:9' });
             window.VisualizerPresetStore = class {};
@@ -477,7 +477,9 @@ test('Visualizer expand icon is centered and names both view-area actions', asyn
             view.openPresets = () => { presetOpens++; return Promise.resolve(); };
             view.presetButton.click();
             const toolbarOrder = view.toolbar.children[0] === view.editButton &&
-                view.editButton.nextElementSibling === view.presetButton;
+                [view.presetButton, view.shareButton, view.importButton, view.qualityLabel]
+                    .every((control, index, controls) => !index || controls[index - 1].nextElementSibling === control) &&
+                view.qualityLabel === view.toolbar.lastElementChild;
             const toolbarButtons = [view.presetButton, view.editButton].map(control => {
                 const icon = control.querySelector('svg'), label = control.querySelector('span');
                 const bounds = control.getBoundingClientRect(), iconBounds = icon.getBoundingClientRect();
@@ -760,7 +762,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
     try {
         const page = await browser.newPage({ viewport: { width: 860, height: 760 } });
         await page.setContent('<!doctype html><body class="view-visualizer"><section id="visualizerView"><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage" style="width:320px;height:180px"></div></div></div></section></body>');
-        await page.addStyleTag({ content: css });
+        await page.addStyleTag({ content: `${css}\n* { transition: none !important; }` });
         await page.addScriptTag({ content: `${read('../../plugins/plugin-base.js')}\nwindow.TestPluginBase = PluginBase;` });
         await page.addScriptTag({ content: viewSource });
         await page.addScriptTag({ content: modelSource });
@@ -1446,7 +1448,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 assert.equal(specimen.spectrumQuantizeSaved, true);
             }
             if (specimen.type === 'level-meter') {
-                assert.deepEqual(specimen.meterFields, ['Channel', 'DB Range', 'Orientation', 'Level values', 'Fall Time', 'Peak', 'Peak Hold', 'Peak Fall Time', 'Axes and grid', 'Axis labels and numbers']);
+                assert.deepEqual(specimen.meterFields, ['Channel', 'DB Range', 'Orientation', 'dB per Segment', 'Level values', 'Fall Time', 'Peak', 'Peak Hold', 'Peak Fall Time', 'Axes and grid', 'Axis labels and numbers']);
                 assert.equal(specimen.meterSaved, true);
             }
         }
@@ -1476,7 +1478,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
         assert.equal(result.backgroundHeading, 'Background');
         assert.deepEqual(result.actionStyle.map(action => action.className), ['move-up-button', 'move-down-button', 'delete-button']);
         assert.ok(result.actionStyle.every(action => action.equal && action.svg), JSON.stringify(result.actionStyle));
-        assert.deepEqual(result.itemActions.map(action => action.className), ['move-up-button', 'move-down-button', 'bring-to-front-button', 'send-to-back-button', 'delete-button']);
+        assert.deepEqual(result.itemActions.map(action => action.className), ['move-up-button', 'move-down-button', 'header-button bring-to-front-button', 'header-button send-to-back-button', 'delete-button']);
         assert.deepEqual(result.itemActions.map(action => action.label), ['Move up', 'Move down', 'Bring to front', 'Send to back', 'Delete']);
         assert.ok(result.itemActions.every(action => action.svg && action.width === 24 && action.height === 24));
         assert.equal(result.sentFront && result.sentBack && result.itemDeleted, true);

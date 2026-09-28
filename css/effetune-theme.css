@@ -116,6 +116,7 @@
     --et-control-active-gradient: linear-gradient(180deg, var(--et-surface-38), var(--et-surface-31));
     --et-input-gradient: linear-gradient(180deg, var(--et-surface-18), var(--et-surface-14));
     --et-toggle-on-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-success), var(--et-base) 30%), color-mix(in srgb, var(--et-success), var(--et-base) 45%));
+    --et-toggle-danger-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-danger), var(--et-base) 30%), color-mix(in srgb, var(--et-danger), var(--et-base) 45%));
     --et-panel-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
     --et-card-shadow: 0 6px 18px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.045), inset 0 0 0 1px rgba(255, 255, 255, 0.028);
     --et-control-shadow: 0 2px 7px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.075);
@@ -155,6 +156,7 @@ html[data-theme="paper"] {
     --et-graph-label: #666666;
     --et-graph-bg-deep: #ffffff;
     --et-toggle-on-gradient: linear-gradient(180deg, var(--et-success), var(--et-success));
+    --et-toggle-danger-gradient: linear-gradient(180deg, var(--et-danger), var(--et-danger));
 }
 
 html[data-theme="midnight"] {
@@ -170,6 +172,7 @@ html[data-theme="midnight"] {
     --et-graph-label: #7d8aa3;
     --et-graph-bg-deep: #070b14;
     --et-toggle-on-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-success), var(--et-base) 55%), color-mix(in srgb, var(--et-success), var(--et-base) 65%));
+    --et-toggle-danger-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-danger), var(--et-base) 55%), color-mix(in srgb, var(--et-danger), var(--et-base) 65%));
 }
 
 html[data-theme="ember"] {
@@ -185,6 +188,7 @@ html[data-theme="ember"] {
     --et-graph-label: #8a7a6e;
     --et-graph-bg-deep: #0d0a08;
     --et-toggle-on-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-success), var(--et-base) 40%), color-mix(in srgb, var(--et-success), var(--et-base) 55%));
+    --et-toggle-danger-gradient: linear-gradient(180deg, color-mix(in srgb, var(--et-danger), var(--et-base) 40%), color-mix(in srgb, var(--et-danger), var(--et-base) 55%));
 }
 
 html[data-theme="mint"] {
@@ -200,6 +204,7 @@ html[data-theme="mint"] {
     --et-graph-label: #5f6f66;
     --et-graph-bg-deep: #ffffff;
     --et-toggle-on-gradient: linear-gradient(180deg, var(--et-success), var(--et-success));
+    --et-toggle-danger-gradient: linear-gradient(180deg, var(--et-danger), var(--et-danger));
 }
 
 html[data-theme="midnight"],

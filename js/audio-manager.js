@@ -15,7 +15,7 @@ import {
 } from './audio/plugin-execution-capabilities.js';
 import { TelemetryHub } from './audio/telemetry-hub.js';
 import { DSP_PARAM_PACKERS } from './audio/dsp-params.generated.js';
-import { VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, VISUAL_SYNC_QUEUE_LIMIT,
+import { VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, dropVisualSyncOverflow,
     isVisualSyncEnabled, requiredOutputDelayFrames, audibleFrameTime, audibleContextTime, telemetryCaptureTiming } from './audio/visual-sync.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
 import { PowerDiagnostics } from './audio/power-diagnostics.js';
@@ -2175,9 +2175,9 @@ export class AudioManager {
         const due = this._resolveVisualSyncDue(data.pluginId, data.endFrame);
         const now = this._visualSyncNow();
         this._syncedMeasurements ??= [];
-        if (this._syncedMeasurements.length >= VISUAL_SYNC_QUEUE_LIMIT) {
-            this._syncedMeasurements.shift();
-            if (this.telemetryHub?.stats) this.telemetryHub.stats.visualSyncDropped++;
+        if (dropVisualSyncOverflow(this._syncedMeasurements, entry => entry.plugin === plugin) &&
+            this.telemetryHub?.stats) {
+            this.telemetryHub.stats.visualSyncDropped++;
         }
         this._syncedMeasurements.push({ due: Number.isFinite(due) ? due : now, data, plugin });
         this._syncedMeasurements.sort((a, b) => a.due - b.due);

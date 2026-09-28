@@ -4,6 +4,7 @@ import { copyTextToClipboard, readTextFromClipboard } from '../utils/clipboard-u
 import { VisualizerPresetStore } from './visualizer-preset-store.js';
 import { VisualizerSources } from './visualizer-sources.js';
 import { VisualizerRenderer } from './visualizer-renderer.js';
+import { VisualizerFeed } from './visualizer-feed.js';
 import { VisualizerEditor } from './visualizer-editor.js';
 import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-history.js';
 
@@ -25,7 +26,7 @@ export class VisualizerView {
         this.root = document.createElement('section');
         this.root.id = 'visualizerView';
         this.root.setAttribute('aria-label', 'Visualizer');
-        this.root.innerHTML = '<div class="visualizer-toolbar"><button type="button" class="visualizer-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5L16 3zm-3 3 5 5"/></svg><span></span></button><button type="button" class="visualizer-presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span></span></button><button type="button" class="visualizer-share"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg><span></span></button><button type="button" class="visualizer-import"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg><span></span></button><div class="pipeline-header-right"><div class="pipeline-toolbar-group"><button type="button" class="header-button undo-button">↶</button><button type="button" class="header-button redo-button">↷</button></div><div class="pipeline-toolbar-group"><button type="button" class="header-button cut-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.7 20 19.5"/><path d="M20 4.5 8.2 16.3"/><path d="M11.5 12 13 13.2"/></svg></button><button type="button" class="header-button copy-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M4.5 15.5A2 2 0 0 1 3 13.5v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 1.9"/></svg></button><button type="button" class="header-button paste-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h2"/></svg></button></div></div><label class="visualizer-quality-label"><span></span><select class="visualizer-quality"></select></label></div><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas><button type="button" class="visualizer-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button></div><p class="visualizer-status" role="status" hidden></p></div></div>';
+        this.root.innerHTML = '<div class="visualizer-toolbar"><button type="button" class="header-button visualizer-edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5L16 3zm-3 3 5 5"/></svg><span></span></button><div class="pipeline-header-right"><div class="pipeline-toolbar-group"><button type="button" class="header-button undo-button">↶</button><button type="button" class="header-button redo-button">↷</button></div><div class="pipeline-toolbar-group"><button type="button" class="header-button cut-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.7 20 19.5"/><path d="M20 4.5 8.2 16.3"/><path d="M11.5 12 13 13.2"/></svg></button><button type="button" class="header-button copy-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M4.5 15.5A2 2 0 0 1 3 13.5v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 1.9"/></svg></button><button type="button" class="header-button paste-button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h2"/></svg></button></div></div><button type="button" class="header-button visualizer-presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span></span></button><button type="button" class="header-button visualizer-share"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg><span></span></button><button type="button" class="header-button visualizer-import"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg><span></span></button><label class="visualizer-quality-label"><span></span><select class="visualizer-quality"></select></label></div><div class="visualizer-workspace"><div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas><button type="button" class="visualizer-expand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button></div><p class="visualizer-status" role="status" hidden></p></div></div>';
         const main = document.querySelector('.main-container');
         main?.parentNode.insertBefore(this.root, main.nextSibling);
         this.stageHost = this.root.querySelector('.visualizer-stage-host');
@@ -253,7 +254,7 @@ export class VisualizerView {
         this.visible = false;
         clearTimeout(this.controlsTimer);
         cancelAnimationFrame(this.frameRequest); this.frameRequest = null;
-        this.sources.setVisible(false);
+        this.sources.setVisible(!!this.feed?.visible);
         if (!mini && this.historyDepth && !fromHistory) {
             const depth = this.historyDepth; this.historyDepth = 0; this.ignorePopState = true; history.go(-depth);
         }
@@ -307,9 +308,20 @@ export class VisualizerView {
         const hostHidden = this.sources.hostHidden ?? this.uiManager.audioManager.powerPolicyController?.hostHidden;
         const visible = document.body.classList.contains('view-visualizer') && !document.hidden && !hostHidden && !this.uiManager.isDoubleBlindActive();
         this.visible = visible;
-        this.sources.setVisible(visible);
+        this.sources.setVisible(visible || !!this.feed?.visible);
         if (visible && !this.frameRequest) this.frameRequest = requestAnimationFrame(time => this.frame(time));
         if (!visible && this.frameRequest) { cancelAnimationFrame(this.frameRequest); this.frameRequest = null; }
+    }
+    setFeedState({ open = false, visible = false } = {}) {
+        if (this.feed && (!open || this.feed.closed)) { this.feed.dispose(); this.feed = null; }
+        if (open && !this.feed) this.feed = new VisualizerFeed(this);
+        this.feed?.setVisible(visible);
+        this.updateVisibility();
+    }
+    metadata() {
+        const player = this.uiManager.audioPlayer;
+        const snapshot = player?.stateManager?.getStateSnapshot();
+        return snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;
     }
     frame(milliseconds) {
         this.frameRequest = null;
@@ -349,10 +361,7 @@ export class VisualizerView {
             // Restore the notice text that the unavailable status may have replaced before audio was ready.
             if (!this.noticeActive) this.status.hidden = true;
             else if (this.status.textContent !== this.noticeText) this.status.textContent = this.noticeText;
-            const player = this.uiManager.audioPlayer;
-            const snapshot = player?.stateManager?.getStateSnapshot();
-            const metadata = snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;
-            this.renderer.draw(this.layout, this.sources, metadata, milliseconds / 1000, { editing: this.editor.open, quality: this.quality });
+            this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality });
         } else {
             this.canvas.getContext('2d').clearRect(0, 0, cw, ch);
             this.status.hidden = false;

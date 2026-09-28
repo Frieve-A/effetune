@@ -517,6 +517,9 @@ test('updateInsertionIndicator and findInsertionIndex handle empty, invalid, and
     assert.equal(manager.findInsertionIndex(1, 1, ['a', 'b', 'c', 'd', 'e']), 2);
     manager.findPotentialInsertionTarget = () => ({ columnIndex: 1, itemIndex: 3 });
     assert.equal(manager.findInsertionIndex(1, 1, ['a', 'b', 'c', 'd', 'e']), 5);
+    // Column sizes follow item heights, so the index counts the items in earlier columns
+    manager.findPotentialInsertionTarget = () => ({ columnIndex: 1, itemIndex: 0 });
+    assert.equal(manager.findInsertionIndex(1, 1, ['a', 'b', 'c', 'd', 'e']), 2);
   });
 });
 

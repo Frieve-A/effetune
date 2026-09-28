@@ -45,7 +45,8 @@ export const EFFECT_CATALOG = Object.freeze({
     'trail-feedback': { label: 'Trail Feedback', defaultAmount: 0.4, allowedOn: ['item'] },
     particles: { label: 'Particles', defaultAmount: 0.5, allowedOn: ['item'] },
     'ken-burns': { label: 'Ken Burns', defaultAmount: 0.4, allowedOn: ['item', 'background'] },
-    flash: { label: 'Flash', defaultAmount: 0.5, allowedOn: ['background'] }
+    flash: { label: 'Flash', defaultAmount: 0.5, allowedOn: ['background'] },
+    backplate: { label: 'Backplate', defaultAmount: 1, allowedOn: ['item'] }
 });
 
 const CHANNELS = new Set([null, 'L', 'R', ...Array.from({ length: 7 }, (_, i) => `${2 * i + 3}${2 * i + 4}`),
@@ -85,6 +86,16 @@ export function normalizeEffect(value, target = 'item') {
             ? { flowY: number(value.flowY, 0, -1, 1) } : {}),
         ...(value.type === 'trail-feedback' && Object.hasOwn(value, 'zoom')
             ? { zoom: number(value.zoom, 2, -2, 2) } : {}),
+        // Border width and corner radius use the same 1280-pixel-wide units as text sizes.
+        ...(value.type === 'backplate' ? {
+            fill: color(value.fill, '#000000'), // theme-allow: Editable backplate fill default.
+            fillOpacity: Math.round(number(value.fillOpacity, 0.5, 0, 1) * 100) / 100,
+            border: color(value.border, '#ffffff'), // theme-allow: Editable backplate border default.
+            borderWidth: Math.round(number(value.borderWidth, 0, 0, 20) * 2) / 2,
+            radius: Math.round(number(value.radius, 16, 0, 200)),
+            // Positive margins extend the plate beyond the item; negative ones shrink it inside.
+            margin: Math.round(number(value.margin, 0, -200, 200))
+        } : {}),
         palette: normalizePalette(value.palette),
         mod: {
             source: choice(value.mod?.source, MOD_SOURCES, 'none'),
@@ -143,9 +154,14 @@ export function normalizeParams(type, input) {
         sc: choice(params.sc, ['log', 'log-hq', 'linear'], 'log-hq'),
         kb: params.kb === true,
         kl: Math.round(number(params.kl, 100, 50, 200)),
+        // Top of the frequency axis in Hz; the bottom stays at 20 Hz.
+        mf: Math.round(number(params.mf, 40000, 1000, 40000) / 1000) * 1000,
         ...(type === 'spectrum' ? {
             dm: choice(params.dm, ['line', 'bar'], 'line'),
             quantizeBars: params.quantizeBars !== false,
+            // Bar mode: band count and dB per segment (0 = continuous bars).
+            bc: Math.round(number(params.bc, 48, 8, 128)),
+            ds: Math.round(number(params.ds, 1, 0, 12) * 2) / 2,
             orientation: choice(params.orientation, ['horizontal', 'vertical'], 'horizontal'),
             // Fall times are "seconds to fall 20 dB" (0 = instant); pk is the current/peak-hold
             // display toggle, and ph/pf only matter while it is on.
@@ -176,6 +192,8 @@ export function normalizeParams(type, input) {
         dr: Math.round(number(params.dr, -96, -144, -48)),
         orientation: choice(params.orientation, ['horizontal', 'vertical'], 'horizontal'),
         showLevelValues: params.showLevelValues === true,
+        // dB per segment; 0 draws continuous bars.
+        ds: Math.round(number(params.ds, 0, 0, 12) * 2) / 2,
         // Defaults match today's fixed ballistics (FALL_RATE = 20 <=> cf = 1.0, etc.).
         cf: Math.round(number(params.cf, 1, 0, 5) * 20) / 20,
         pk: params.pk !== false,
@@ -324,8 +342,8 @@ export function validateLayout(value) {
     // Only fields added with defaults may be absent in older saved layouts. Supplied
     // values and every original field must still match strict normalization.
     const addedParams = {
-        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm'], spectrogram: ['kl'], notes: ['kl'],
-        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf'], chroma: ['cf']
+        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
+        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf']
     };
     const comparable = {
         ...value,

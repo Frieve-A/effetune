@@ -1386,11 +1386,19 @@ body.layout-mobile #pipelineStats {
     flex: 1 1 0;
 }
 
-/* Analog Meter lays its parameters out in two columns on desktop. */
-.analog-meter-parameters {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+/* Analyzer plugins lay their parameters out in two columns on desktop. The rows fill
+   the left column top to bottom first, and each column stacks its rows on its own so a
+   wrapped radio row does not open a gap in the other column. */
+.analyzer-parameters {
+    column-count: 2;
     column-gap: 20px;
+}
+
+/* Column flow collapses the rows' 2px margins into one; a single 4px gap keeps the
+   row pitch equal to the pitch of a wrapped radio line, as in the flex layout. */
+.plugin-parameter-ui .analyzer-parameters > * {
+    break-inside: avoid;
+    margin: 0 0 4px;
 }
 
 /* Restarts the Loudness measurement only; sits in normal flow below the graph so it
@@ -1490,7 +1498,9 @@ body:not(.layout-mobile) .pipeline-analyzer-panel input[type="number"] {
 }
 
 .plugin-parameter-ui select,
-.pipeline-analyzer-panel select {
+.pipeline-analyzer-panel select,
+.visualizer-editor-navigation select,
+.visualizer-quality {
     background-color: var(--et-surface-17);
     border: 1px solid var(--et-surface-23);
     color: var(--et-text-primary);
@@ -2244,7 +2254,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     -webkit-app-region: no-drag;
 }
 
-.player-library-context-menu {
+.player-library-context-menu,
+.visualizer-context-menu {
     position: fixed;
     z-index: 10000;
     min-width: 210px;
@@ -2255,7 +2266,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
 
-.player-library-context-menu button {
+.player-library-context-menu button,
+.visualizer-context-menu button {
     display: block;
     width: 100%;
     min-height: 30px;
@@ -2269,16 +2281,25 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 }
 
 .player-library-context-menu button:hover,
-.player-library-context-menu button:focus-visible {
+.player-library-context-menu button:focus-visible,
+.visualizer-context-menu button:hover,
+.visualizer-context-menu button:focus-visible {
     background: var(--et-surface-9);
     outline: none;
 }
 
-.player-library-context-menu hr {
+.player-library-context-menu hr,
+.visualizer-context-menu hr {
     height: 1px;
     margin: 5px 0;
     background: var(--et-surface-13);
     border: 0;
+}
+
+.visualizer-context-menu button:disabled {
+    background: transparent;
+    opacity: 0.45;
+    cursor: default;
 }
 
 .player-speed-popup {
@@ -2994,7 +3015,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .cut-button,
 .copy-button,
 .paste-button,
-.player-button {
+.player-button,
+.visualizer-editor button:not([class]) {
     background: var(--et-control-gradient);
     border-color: var(--et-surface-32);
     box-shadow: var(--et-control-shadow);
@@ -3022,7 +3044,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .cut-button:hover:not(:disabled),
 .copy-button:hover:not(:disabled),
 .paste-button:hover:not(:disabled),
-.player-button:hover:not(:disabled) {
+.player-button:hover:not(:disabled),
+.visualizer-editor button:not([class]):hover:not(:disabled) {
     background: var(--et-control-hover-gradient);
     border-color: var(--et-surface-38);
     box-shadow: var(--et-control-hover-shadow);
@@ -3049,7 +3072,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .cut-button:active,
 .copy-button:active,
 .paste-button:active,
-.player-button:active {
+.player-button:active,
+.visualizer-editor button:not([class]):active {
     background: var(--et-control-active-gradient);
 }
 
@@ -3078,7 +3102,8 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .redo-button:focus-visible,
 .cut-button:focus-visible,
 .copy-button:focus-visible,
-.paste-button:focus-visible {
+.paste-button:focus-visible,
+.visualizer-editor button:not([class]):focus-visible {
     outline: none;
     border-color: var(--et-accent);
     box-shadow: var(--et-control-hover-shadow), var(--et-focus-ring);
@@ -3426,6 +3451,8 @@ h1 {
 .multichannel-panel-ui input[type="number"],
 .pipeline-analyzer-panel input[type="number"],
 .pipeline-analyzer-panel select,
+.visualizer-editor-navigation select,
+.visualizer-quality,
 .dbt-name-input,
 .dbt-count-input,
 .routing-dialog-row select,
@@ -3498,6 +3525,8 @@ h1 {
 .multichannel-panel-ui input[type="number"]:focus,
 .pipeline-analyzer-panel input[type="number"]:focus,
 .pipeline-analyzer-panel select:focus,
+.visualizer-editor-navigation select:focus,
+.visualizer-quality:focus,
 .dbt-name-input:focus,
 .dbt-count-input:focus,
 .routing-dialog-row select:focus,
@@ -3814,8 +3843,7 @@ input[type="radio"]:disabled {
 .analyzer-reset-button,
 .analog-meter-reset-button,
 .fifteen-band-peq-import-button,
-.fifteen-band-peq-inverse-button,
-.matrix-button {
+.fifteen-band-peq-inverse-button {
     background: var(--et-control-gradient) !important;
     border-color: var(--et-surface-32) !important;
     color: var(--et-text-primary) !important;
@@ -3827,8 +3855,7 @@ input[type="radio"]:disabled {
 .analyzer-reset-button:hover,
 .analog-meter-reset-button:hover,
 .fifteen-band-peq-import-button:hover,
-.fifteen-band-peq-inverse-button:hover,
-.matrix-button:hover {
+.fifteen-band-peq-inverse-button:hover {
     background: var(--et-control-hover-gradient) !important;
     border-color: var(--et-surface-38) !important;
     box-shadow: var(--et-control-hover-shadow) !important;
@@ -3849,19 +3876,6 @@ input[type="radio"]:disabled {
 .multichannel-panel-solo-button:hover {
     border-color: var(--et-surface-38);
     box-shadow: var(--et-control-hover-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.09);
-}
-
-.matrix-button.active {
-    color: var(--et-on-status) !important;
-    background: linear-gradient(180deg, var(--et-success), var(--et-success)) !important;
-    border-color: var(--et-success) !important;
-    box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
-}
-
-.matrix-button.phase-button.active {
-    background: linear-gradient(180deg, var(--et-danger), var(--et-danger)) !important;
-    border-color: var(--et-danger) !important;
-    box-shadow: 0 3px 10px color-mix(in srgb, var(--et-danger) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-marker,
@@ -4329,14 +4343,13 @@ body.view-visualizer #libraryView,
 body.view-visualizer #mobileLibraryView,
 body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
-.visualizer-toolbar > button, .visualizer-editor button, .visualizer-editor select, .visualizer-quality {
-    background: var(--et-surface-8); color: var(--et-text-primary); border: 1px solid var(--et-surface-20); border-radius: 5px; padding: 6px 10px; font: inherit;
-}
-.visualizer-toolbar > button, .visualizer-editor button { cursor: pointer; }
-.visualizer-toolbar > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.visualizer-toolbar > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font: inherit; }
 .visualizer-toolbar > button svg { display: block; flex: 0 0 auto; }
 #visualizerView:not(.is-editing) .pipeline-header-right, #visualizerView.is-editing .visualizer-import { display: none; }
-.visualizer-quality-label { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* Presets, Share, Import, and Quality sit at the right; while editing, the edit tools take the free space instead. */
+.visualizer-toolbar > .visualizer-presets { margin-left: auto; }
+#visualizerView.is-editing .visualizer-toolbar > .visualizer-presets { margin-left: 0; }
+.visualizer-quality-label { display: flex; align-items: center; gap: 8px; }
 .visualizer-editor-navigation .visualizer-quality-label { justify-content: space-between; min-height: 26px; margin: 2px 0 16px; }
 .visualizer-editor-navigation .visualizer-quality-label > span { font-weight: bold; }
 .visualizer-editor-navigation .visualizer-quality-label > select { height: 26px; padding: 2px 6px; }
@@ -4380,8 +4393,6 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-editor-navigation .visualizer-field:has(> input[type="file"]) > label { display: flex; align-items: center; min-height: 26px; flex: none; }
 .visualizer-editor-navigation .visualizer-field > input[type="file"] { width: 100%; min-width: 0; height: 26px; }
 .visualizer-editor-navigation .visualizer-field > input[type="range"] { flex: 1 1 0; width: auto; min-width: 0; }
-.visualizer-editor-navigation select { background: var(--et-input-gradient); border-color: var(--et-surface-28); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .24); }
-.visualizer-editor-navigation select:focus { outline: none; border-color: var(--et-accent); box-shadow: var(--et-focus-ring); }
 .visualizer-editor-navigation .visualizer-field.checkbox-row { flex-direction: row-reverse; justify-content: flex-end; align-items: center; }
 .visualizer-editor-navigation .visualizer-field.checkbox-row > label { flex: 1; }
 .visualizer-editor-navigation .visualizer-theme-colors .visualizer-field { flex-direction: row; align-items: center; min-height: 26px; gap: 10px; margin: 2px 0; }
@@ -4420,17 +4431,16 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-editor-actions { display: flex; flex: none; gap: 4px; margin-left: auto; }
 .visualizer-align-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: -6px 0 14px; }
 .visualizer-bulk-note { margin: 0 0 14px; font-size: 12px; color: var(--et-text-secondary); }
-.visualizer-editor button { margin: 2px; font-size: 12px; }
-.visualizer-editor button { background: var(--et-control-gradient); box-shadow: var(--et-control-shadow); }
-.visualizer-editor button:hover:not(:disabled):not(.toggle-button) { background: var(--et-control-hover-gradient); box-shadow: var(--et-control-hover-shadow); }
+.visualizer-editor button { margin: 2px; font: inherit; font-size: 12px; }
+/* Buttons without a shared control class take the shared control skin (see the shared control lists). */
+.visualizer-editor button:where(:not([class])) { padding: 6px 10px; color: var(--et-text-primary); border: 1px solid var(--et-surface-32); border-radius: 4px; cursor: pointer; }
 .visualizer-effect-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .visualizer-effect-heading .visualizer-section-title { margin: 0; }
 .visualizer-effect-actions { display: flex; gap: 4px; margin-left: auto; }
-.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions, .visualizer-align-actions) button { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; margin: 0; padding: 4px 8px; border-color: var(--et-surface-32); }
-.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions, .visualizer-align-actions) :is(.move-up-button, .move-down-button, .bring-to-front-button, .send-to-back-button, [class^="align-"]) { color: var(--et-accent); }
-.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions) .delete-button { color: var(--et-danger); }
-.visualizer-editor .toggle-button { flex: none; width: 48px; height: 24px; margin: 0; padding: 2px 8px; font-size: 12px; background: var(--et-toggle-on-gradient); border-color: var(--et-success); box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, .18); }
-.visualizer-editor .toggle-button.off { background: linear-gradient(180deg, var(--et-surface-51), var(--et-surface-42)); border-color: var(--et-surface-55); box-shadow: var(--et-control-shadow); }
+.visualizer-editor :is(.visualizer-effect-actions, .visualizer-editor-actions, .visualizer-align-actions) button { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; margin: 0; padding: 4px 8px; }
+/* Visualizer-only order and alignment actions reuse .header-button; tint them like the shared move buttons. */
+.visualizer-editor :is(.visualizer-editor-actions, .visualizer-align-actions) .header-button { color: var(--et-accent); }
+.visualizer-editor .toggle-button { flex: none; margin: 0; }
 .visualizer-editor :disabled { opacity: .45; cursor: default; }
 .visualizer-stop { border-bottom: 1px solid var(--et-surface-12); padding-bottom: 4px; }
 .visualizer-stop-color-row { display: flex; align-items: center; gap: 6px; }

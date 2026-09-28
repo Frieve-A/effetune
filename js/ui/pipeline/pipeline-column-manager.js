@@ -147,8 +147,11 @@ export class PipelineColumnManager {
     }
 
     /**
-     * Distribute plugins to columns in a column-first manner
-     * This ensures plugins are placed in vertical columns (fill column 1, then column 2, etc.)
+     * Distribute plugins to columns in a column-first manner, keeping pipeline order.
+     * The split points are chosen from the measured item heights so that the tallest
+     * column is as short as possible. Expanding or collapsing an effect does not call
+     * this, so the columns only change when effects are added, removed, or reordered,
+     * or when the column count changes.
      */
     distributePluginsToColumns() {
         const columns = this.pipelineList.querySelectorAll('.pipeline-column');
@@ -162,29 +165,32 @@ export class PipelineColumnManager {
         }
 
         const columnCount = columns.length;
-        const pipeline = this.audioManager.pipeline;
-        const totalPlugins = pipeline.length;
-
-        // Calculate items per column for column-first distribution
-        const pluginsPerColumn = Math.ceil(totalPlugins / columnCount);
 
         // Clear all columns first to ensure clean distribution
         columns.forEach(column => {
             column.innerHTML = '';
         });
 
-        // Distribute plugins
-        pipeline.forEach((plugin, index) => {
+        // Lay every item out in the first column so its height can be measured
+        const items = this.audioManager.pipeline.map(plugin => {
             const item = this.pipelineCore.itemBuilder.createPipelineItem(plugin); // Returns the main item element
+            columns[0]?.appendChild(item);
+            return item;
+        });
+        const measured = items.map(item => item.getBoundingClientRect().height);
+        // A hidden pipeline has no layout; split by item count instead
+        const heights = measured.some(height => height > 0) ? measured : measured.map(() => 1);
+        const columnSizes = partitionColumns(heights, columnCount);
 
-            // Determine target column index
-            const columnIndex = Math.floor(index / pluginsPerColumn);
-            const targetColumn = columns[Math.min(columnIndex, columnCount - 1)];
-
-            if (targetColumn) {
-                targetColumn.appendChild(item);
-            } else {
-                 console.warn(`Could not find target column ${columnIndex} for plugin ${index}.`);
+        let index = 0;
+        columnSizes.forEach((size, columnIndex) => {
+            const targetColumn = columns[columnIndex];
+            for (const end = index + size; index < end; index++) {
+                if (targetColumn) {
+                    targetColumn.appendChild(items[index]);
+                } else {
+                    console.warn(`Could not find target column ${columnIndex} for plugin ${index}.`);
+                }
             }
         });
 
@@ -288,4 +294,51 @@ export class PipelineColumnManager {
              pipelineEmptyElement.style.display = 'none';
         }
     }
+}
+
+/**
+ * Split ordered item heights into at most columnCount contiguous columns so that the
+ * tallest column is as short as possible. Earlier columns are filled first, while each
+ * remaining column still receives an item when there are enough items.
+ * The gap between items is the same everywhere, so it does not change the best split.
+ * @param {number[]} heights - Item heights in pipeline order
+ * @param {number} columnCount - Number of columns
+ * @returns {number[]} Number of items in each column
+ */
+function partitionColumns(heights, columnCount) {
+    const prefix = [0];
+    heights.forEach(height => prefix.push(prefix[prefix.length - 1] + height));
+    const count = heights.length;
+
+    // tallest[i]: smallest possible tallest column for the first i items
+    let tallest = prefix.slice();
+    for (let column = 1; column < columnCount; column++) {
+        const next = tallest.slice();
+        for (let i = 1; i <= count; i++) {
+            for (let j = 1; j < i; j++) {
+                const segment = prefix[i] - prefix[j];
+                const candidate = tallest[j] > segment ? tallest[j] : segment;
+                if (candidate < next[i]) next[i] = candidate;
+            }
+        }
+        tallest = next;
+    }
+    const limit = tallest[count];
+
+    const sizes = [];
+    let start = 0;
+    for (let column = 0; column < columnCount; column++) {
+        // Leave one item for each later column, as far as the items last
+        const columnsAfter = columnCount - column - 1;
+        const itemsLeft = count - start;
+        const reserve = columnsAfter < itemsLeft ? columnsAfter : itemsLeft - 1;
+        const stop = count - (reserve > 0 ? reserve : 0);
+        let end = start;
+        while (end < stop && prefix[end + 1] - prefix[start] <= limit) {
+            end++;
+        }
+        sizes.push(end - start);
+        start = end;
+    }
+    return sizes;
 }

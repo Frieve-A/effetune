@@ -406,32 +406,36 @@ class PitchMeterPlugin extends PluginBase {
         this.resizeGraphDisposer = null;
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
-        container.appendChild(this.createRadioGroup(
+        // Two columns on desktop, one on mobile (css/effetune.css and css/effetune-mobile.css).
+        const parameters = document.createElement('div');
+        parameters.className = 'analyzer-parameters';
+        parameters.appendChild(this.createRadioGroup(
             'Color', PITCH_METER_COLORS, this.cl,
             value => this.setParameters({ cl: value }), 'cl'
         ));
-        container.appendChild(this.createRadioGroup(
+        parameters.appendChild(this.createRadioGroup(
             'Layout', PITCH_METER_LAYOUTS, this.ly,
             value => this.setParameters({ ly: value }), 'ly'
         ));
-        container.appendChild(this.createParameterControl(
+        parameters.appendChild(this.createParameterControl(
             'Reference A4', 400, 480, 1, this.rf,
             value => this.setParameters({ rf: value }), 'Hz', 'rf'
         ));
-        container.appendChild(this.createNoteRangeControl(
+        parameters.appendChild(this.createNoteRangeControl(
             'Lowest Note', this.mn,
             value => {
                 this.setParameters({ mn: value });
                 this.syncUIControls?.();
             }, 'mn'
         ));
-        container.appendChild(this.createNoteRangeControl(
+        parameters.appendChild(this.createNoteRangeControl(
             'Highest Note', this.mx,
             value => {
                 this.setParameters({ mx: value });
                 this.syncUIControls?.();
             }, 'mx'
         ));
+        container.appendChild(parameters);
         const graph = this.createResponsiveGraph({
             maxWidth: 1024,
             aspectRatio: '32 / 15',

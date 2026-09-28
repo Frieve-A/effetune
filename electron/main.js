@@ -21,6 +21,7 @@ const constants = require('./constants');
 const configModule = require('./config');
 const windowState = require('./window-state');
 const ipcHandlers = require('./ipc-handlers');
+const visualizerFeed = require('./visualizer-feed');
 const fileHandlers = require('./file-handlers');
 const { queueAutoRestart } = require('./relaunch');
 const { initializeGpuAcceleration } = require('./gpu-acceleration.cjs');
@@ -710,11 +711,8 @@ function createWindow() {
     e.preventDefault();
   });
   
-  // Enable file drag and drop
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Prevent opening new windows
-    return { action: 'deny' };
-  });
+  // Only the Visualizer clean feed may open a window; all others are denied.
+  visualizerFeed.attachMainWindow(mainWindow, { onMenuChanged: ipcHandlers.refreshMenu });
 
   // Set up the application menu
   ipcHandlers.createMenu();

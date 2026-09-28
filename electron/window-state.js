@@ -154,6 +154,13 @@ function loadWindowState() {
           alwaysOnTop: savedMiniPlayer.alwaysOnTop === true
         };
       }
+      const savedFeed = saved.visualizerFeed;
+      if (savedFeed && typeof savedFeed === 'object') {
+        state.visualizerFeed = {
+          displayId: Number.isSafeInteger(savedFeed.displayId) ? savedFeed.displayId : null,
+          showWhileInactive: savedFeed.showWhileInactive === true
+        };
+      }
       constants.setWindowState(state);
     }
   } catch (error) {
@@ -283,6 +290,24 @@ function isMiniMode() {
   return windowMode === 'mini';
 }
 
+// A null displayId turns the Visualizer clean feed off.
+function getVisualizerFeedSettings() {
+  const { displayId = null, showWhileInactive = false } = constants.getWindowState().visualizerFeed || {};
+  return { displayId, showWhileInactive };
+}
+
+function setVisualizerFeedSettings(changes) {
+  const state = {
+    ...constants.getWindowState(),
+    visualizerFeed: { ...getVisualizerFeedSettings(), ...changes }
+  };
+  try {
+    writeWindowState(state);
+  } catch (error) {
+    console.error('Failed to save the Visualizer clean feed settings:', error);
+  }
+}
+
 module.exports = {
   DEFAULT_SIZE,
   MIN_SIZE,
@@ -303,5 +328,7 @@ module.exports = {
   resumeSave,
   getMiniPlayerState,
   setMiniPlayerAlwaysOnTop,
-  isMiniMode
+  isMiniMode,
+  getVisualizerFeedSettings,
+  setVisualizerFeedSettings
 };

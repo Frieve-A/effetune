@@ -403,6 +403,7 @@ test('Stereo correlation and balance controls hide each meter without hiding the
                 correlationBar: calls.some(call => call[0] === 'fillRect' && call[1] === 0),
                 balanceBar: calls.some(call => call[0] === 'fillRect' && call[2] === 384),
                 labels: calls.filter(call => call[0] === 'fillText').map(call => call[1]),
+                outlined: calls.filter(call => call[0] === 'strokeText').map(call => call[1]),
                 waveform: calls.some(call => call[0] === 'rect'),
                 peak: calls.some(call => call[0] === 'closePath')
             };
@@ -411,6 +412,7 @@ test('Stereo correlation and balance controls hide each meter without hiding the
         assert.equal(both.correlationBar, true);
         assert.equal(both.balanceBar, true);
         assert.ok(both.labels.includes('LR Correlation') && both.labels.includes('LR Balance'));
+        assert.ok(both.outlined.includes('LR Correlation') && both.outlined.includes('LR Balance'), 'Titles over the bars are outlined');
         item.params.showCorrelation = false;
         const balanceOnly = draw();
         assert.equal(balanceOnly.correlationBar, false);
@@ -568,6 +570,56 @@ test('Axis lines and labels can be hidden independently while the spectrum trace
         assert.equal(count().labels.length, 0);
         item.params.showAxisNumbers = true;
         assert.ok(count().labels.length > 0, 'Graph axis labels remain independently available');
+    });
+});
+
+test('Spectrum Max Frequency moves the right edge of the frequency axis on both scales', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('spectrum', 'spectrum'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        display.draw(item, 1, 800);
+        assert.equal(Math.round(display.plugin.displayXToFrequency(1)), 40000);
+        for (const sc of ['log-hq', 'linear']) {
+            Object.assign(item.params, { mf: 20000, sc });
+            display.draw(item, 1, 800);
+            assert.equal(Math.round(display.plugin.displayXToFrequency(1)), 20000, sc);
+            assert.equal(Math.round(display.plugin.displayXToFrequency(0)), 20, sc);
+        }
+    });
+});
+
+test('Spectrogram Max Frequency moves the top of the frequency axis over the full-range history', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('spectrogram', 'spectrogram'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        display.draw(item, 1, 800);
+        assert.equal(Math.round(display.plugin.displayRowToFrequency(0)), 40000);
+        assert.equal(display.plugin.displayRowToCanonicalRow(0), 0);
+        for (const sc of ['log-hq', 'linear']) {
+            Object.assign(item.params, { mf: 20000, sc });
+            display.draw(item, 1, 800);
+            assert.equal(Math.round(display.plugin.displayRowToFrequency(0)), 20000, sc);
+            assert.equal(Math.round(display.plugin.displayRowToFrequency(255)), 20, sc);
+            // History rows stay log-spaced over 20 Hz-40 kHz; 20 kHz lies one octave below the top.
+            assert.ok(Math.abs(display.plugin.displayRowToCanonicalRow(0) - 255 * Math.log10(2) / Math.log10(2000)) < 1e-9, sc);
+            assert.ok(Math.abs(display.plugin.displayRowToCanonicalRow(255) - 255) < 1e-9, sc);
+        }
+    });
+});
+
+test('Linear frequency axes up to 10 kHz label every 1 kHz', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        for (const type of ['spectrum', 'spectrogram']) {
+            const item = createItem(type, type), target = canvas();
+            Object.assign(item.params, { sc: 'linear', mf: 10000, showAxes: true, showAxisNumbers: true });
+            const display = createAnalyzerDisplay(item, target, env.sources);
+            display.draw(item, 1, 800);
+            const labels = target.context.calls.filter(call => call[0] === 'fillText').map(call => String(call[1]));
+            for (let khz = 1; khz <= 9; khz++) assert.ok(labels.includes(`${khz}k`), `${type} ${khz}k`);
+        }
     });
 });
 
@@ -732,12 +784,12 @@ test('Notes intensity gradients color pitch confidence and note volume while pre
             const gradient = { stops: [], addColorStop(position, color) { this.stops.push([position, color]); } };
             gradients.push(gradient); return gradient;
         }, fillRect() {} };
-        plugin._paintVolumeBar(context, 0, 0, { midi: 60, best: 197, confidence: .5 }, 8, plugin._displayPalette());
-        assert.ok(gradients[0].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.5)'));
+        const bar = plugin._volumeBarShape(0, { midi: 60, best: 197, confidence: .5 }, 8, plugin._displayPalette());
+        assert.equal(bar.fill, 'rgba(255, 0, 0, 0.5)');
         plugin.mn = plugin.mx = 60; plugin._normalizedLevel = () => 1;
         plugin._drawVolumeMeters({ createRadialGradient: context.createLinearGradient,
             beginPath() {}, moveTo() {}, arc() {}, closePath() {}, fill() {} }, 100, 8, plugin._displayPalette());
-        assert.ok(gradients[1].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.5)'));
+        assert.ok(gradients[0].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.5)'));
         item.palette.direction = 'frequency'; display.draw(item, 0, 800);
         assert.equal(plugin.history, history);
         assert.deepEqual(plugin.displayOptions.noteColor(60), plugin.displayOptions.noteColor(72));
@@ -1012,15 +1064,15 @@ test('Notes Heatmap uses confidence for history and volume bars without a second
             const gradient = { stops: [], addColorStop(position, color) { this.stops.push([position, color]); } };
             gradients.push(gradient); return gradient;
         }, fillRect() {} };
-        plugin._paintVolumeBar(context, 0, 0, { midi: 60, best: 197, confidence }, 8, plugin._displayPalette());
-        assert.ok(gradients[0].stops.some(([, color]) => color.endsWith(`, ${rgba[index + 3] / 255})`)));
+        const bar = plugin._volumeBarShape(0, { midi: 60, best: 197, confidence }, 8, plugin._displayPalette());
+        assert.ok(bar.fill.endsWith(`, ${rgba[index + 3] / 255})`));
         plugin.mn = plugin.mx = 60;
         plugin.vl = true;
         plugin._normalizedLevel = () => confidence;
         const glow = { createRadialGradient: context.createLinearGradient,
             beginPath() {}, moveTo() {}, arc() {}, closePath() {}, fill() {} };
         plugin._drawVolumeMeters(glow, 100, 8, plugin._displayPalette());
-        assert.ok(gradients[1].stops.some(([, color]) => color.endsWith(`, ${rgba[index + 3] / 255 * .5})`)));
+        assert.ok(gradients[0].stops.some(([, color]) => color.endsWith(`, ${rgba[index + 3] / 255 * .5})`)));
         assert.equal(display.phase, 0);
         display.dispose();
     });
@@ -1096,12 +1148,24 @@ test('Display ballistics pass through at zero fall time, fall 20 dB per fall tim
     assert.equal(state.cur[0], -30);
     assert.equal(state.peak[0], -30);
     stepBallistics(state, [-100], 0.5, 2, 1, 0.5);
+    // The -30 dB value reached at the last step is itself held.
     assert.equal(state.cur[0], -35);
-    assert.equal(state.peak[0], -35);
+    assert.equal(state.peak[0], -30);
     stepBallistics(state, [-20], 0, 2, 1, 0.5);
     stepBallistics(state, [-100], 0.5, 2, 1, 0.5);
     assert.deepEqual([state.cur[0], state.peak[0]], [-25, -20]);
     assert.ok([...state.cur, ...state.peak].every(Number.isFinite));
+
+    // A brief return to the held level must not make a neighbor 0.01 dB lower fall away.
+    const pair = createBallistics(2, true);
+    let widest = 0;
+    for (let frame = 0; frame < 180; frame++) {
+        const level = frame === 0 || frame === 54 ? -10 : -30;
+        stepBallistics(pair, [level, frame === 54 ? level - 0.01 : level], 1 / 60, 0, 1.5, 2);
+        const gap = Math.abs(pair.peak[0] - pair.peak[1]);
+        if (gap > widest) widest = gap;
+    }
+    assert.ok(widest <= 0.01 + 1e-9, `neighbor peaks diverged by ${widest} dB`);
 });
 
 test('Spectrum smoothing is an identity at zero and spreads a spike symmetrically in log frequency', () => {
@@ -1163,7 +1227,8 @@ test('Spectrum applies fall time, peak hold and peak fall to telemetry, and hide
         assert.equal(display.plugin.peaks[10], -60);
         display.draw(item, 1.75, 800);
         assert.equal(display.plugin.spectrum[10], -75);
-        assert.equal(display.plugin.peaks[10], -62.5);
+        // A value entered at the start of a hold slot is held for 1.25 x ph, then falls.
+        assert.equal(display.plugin.peaks[10], -61.25);
         assert.equal(display.plugin.peakDecayPaused, true);
 
         const hiddenPeakPoints = () => {
@@ -1274,7 +1339,8 @@ test('Stereo peak contour holds and then falls at the Peak Fall Time rate', asyn
         display.stepStereo(new Float32Array(360).fill(1), params, 0);
         const quiet = new Float32Array(360).fill(.1);
         assert.ok(Math.abs(db(display.stepStereo(quiet, params, .5))) < 1e-5, 'held');
-        assert.ok(Math.abs(db(display.stepStereo(quiet, params, 1)) + 10) < 1e-4, 'falls 10 dB per second');
+        // Held for 1.25 x ph (a value entered at the start of a hold slot), then 10 dB/s.
+        assert.ok(Math.abs(db(display.stepStereo(quiet, params, 1)) + 8.75) < 1e-4, 'falls 10 dB per second');
         // The defaults follow the DSP envelope, which already falls 20 dB/s.
         const defaults = { ph: item.params.ph, pf: item.params.pf };
         display.stepStereo(new Float32Array(360).fill(1), defaults, 0);

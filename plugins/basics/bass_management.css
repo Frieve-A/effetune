@@ -117,8 +117,9 @@
 }
 
 .bass-management-channel-button {
+  height: 24px;
   border: 0;
-  padding: 5px 7px;
+  padding: 0 7px;
   color: var(--et-text-primary);
   background: transparent;
   border-radius: 3px;
@@ -170,23 +171,27 @@
   white-space: nowrap;
 }
 
+/* Same look and height as the effect header's ON/OFF toggle (.toggle-button). */
 .bass-management-matrix-button {
   box-sizing: border-box;
-  min-width: 27px;
-  min-height: 28px;
+  height: 24px;
+  min-width: 30px;
   margin: 1px;
-  padding: 3px 4px;
-  border: 1px solid var(--et-surface-33);
-  border-radius: 3px;
+  padding: 0 8px;
+  border: 1px solid var(--et-surface-55);
+  border-radius: 4px;
   color: var(--et-text-primary);
-  background: var(--et-surface-47);
-  font: inherit;
+  background: linear-gradient(180deg, var(--et-surface-51), var(--et-surface-42));
+  box-shadow: var(--et-control-shadow);
+  font-size: 12px;
   cursor: pointer;
 }
 
 .bass-management-matrix-button.active {
-  color: var(--et-on-status);
-  background: var(--et-success);
+  border-color: var(--et-success);
+  color: var(--et-on-accent);
+  background: var(--et-toggle-on-gradient);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .bass-management-matrix-button.phase-button {
@@ -194,7 +199,9 @@
 }
 
 .bass-management-matrix-button.phase-button.active {
-  background: var(--et-danger);
+  border-color: var(--et-danger);
+  background: var(--et-toggle-danger-gradient);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--et-danger) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .bass-management-matrix-button:disabled {
@@ -274,11 +281,11 @@ body.layout-mobile .bass-management-slope-cell select {
 
 body.layout-mobile .bass-management-matrix-button {
   min-width: 40px;
-  min-height: var(--et-mobile-control-height);
+  height: var(--et-mobile-control-height);
   font-size: 16px;
 }
 
 body.layout-mobile .bass-management-channel-button {
-  min-height: var(--et-mobile-control-height);
+  height: var(--et-mobile-control-height);
   font-size: 16px;
 }

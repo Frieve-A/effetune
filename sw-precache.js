@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.12.0-09f6b4f983bd1398";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.12.0-e497da8124e94ca5";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./css/effetune-library.css",
   "./css/effetune-mobile.css",
@@ -161,6 +161,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/locales/ru.json5",
   "./js/locales/zh.json5",
   "./js/measurement-store/client.js",
+  "./js/midi/app-targets.js",
   "./js/midi/automation-scheduler.js",
   "./js/midi/local-input-sources.js",
   "./js/midi/mcu-protocol.js",
@@ -295,6 +296,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/visualizer/visualizer-ballistics.js",
   "./js/visualizer/visualizer-editor.js",
   "./js/visualizer/visualizer-effects.js",
+  "./js/visualizer/visualizer-feed.js",
   "./js/visualizer/visualizer-history.js",
   "./js/visualizer/visualizer-model.js",
   "./js/visualizer/visualizer-palette-presets.js",

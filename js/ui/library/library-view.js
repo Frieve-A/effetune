@@ -2241,9 +2241,11 @@ export class LibraryView {
         : null;
     const navigationScrollTop = Number(navigationRestorePosition?.contentScrollTop);
     const hasNavigationScrollTop = Number.isFinite(navigationScrollTop);
+    // An explicit Back position wins over the anchorless-query reset: folders that
+    // contain only subfolders have no row to anchor but still need their scroll back.
     let targetScrollTop = this.pagedContentScrollTop;
-    if (this.pagedResetScrollOnCommit) targetScrollTop = 0;
-    else if (hasNavigationScrollTop) targetScrollTop = Math.max(0, navigationScrollTop);
+    if (hasNavigationScrollTop) targetScrollTop = Math.max(0, navigationScrollTop);
+    else if (this.pagedResetScrollOnCommit) targetScrollTop = 0;
     else if (this.pagedScrollToAnchorOnCommit) targetScrollTop = initialScrollTop;
     this.content.scrollTop = targetScrollTop;
     this.pagedContentScrollTop = Number(this.content.scrollTop) || 0;

@@ -59,9 +59,14 @@
     // Shades a flat-painted keyboard so it reads as real keys. The caller paints the white
     // keys and their gaps first; drawBlackKeys paints the flat black keys, which lie over the
     // black-key shadows drawn here. `along` is the canvas axis ('x' or 'y') the keys run
-    // along; their depth grows from the roll boundary at `edge` toward the player. Each layer
-    // is a single fill with one gradient shared by all keys, so the cost stays close to flat.
-    function shadeKeyboard(ctx, { along, edge, length, gutter, blackDepth, dpr }, blackKeys, drawBlackKeys) {
+    // along; their depth grows from the roll boundary at `edge` toward the player. Keys are
+    // [start, end, press] along `along`.
+    // Unpressed keys share one gradient per layer, so the cost stays close to flat; only
+    // pressed keys add fills. A pressed key (press 0-1) sinks: its shading moves toward the
+    // player, so its front edge drops out of view, and it darkens as it tilts away from the light.
+    function shadeKeyboard(ctx, { along, edge, length, gutter, blackDepth, dpr }, blackKeys, drawBlackKeys,
+        whiteKeys = []) {
+        const pressOf = key => key[2] > 0.05 ? (key[2] < 1 ? key[2] : 1) : 0;
         if (blackDepth < KEY_SHADING_MIN_BLACK_DEPTH * dpr) {
             drawBlackKeys();
             return;
@@ -77,25 +82,65 @@
             if (along === 'x') ctx.rect(low, edge + near, high - low, far - near);
             else ctx.rect(edge + near, low, far - near, high - low);
         };
-        const fillDepthGradient = (depth, stops, addRects) => {
-            const gradient = along === 'x'
-                ? ctx.createLinearGradient(0, edge, 0, edge + depth)
-                : ctx.createLinearGradient(edge, 0, edge + depth, 0);
-            for (const [offset, color] of stops) gradient.addColorStop(offset, color);
-            ctx.fillStyle = gradient;
+        const fillRects = (style, addRects) => {
+            ctx.fillStyle = style;
             ctx.beginPath();
             addRects();
             ctx.fill();
         };
+        // Fills a gradient running in depth from `near` to `far`. Stops are [offset, released
+        // tone, pressed tone]; a tone above 0 lightens and one below 0 darkens by its
+        // magnitude, blended by the press amount.
+        const fillDepthGradient = (near, far, stops, press, addRects) => {
+            const gradient = along === 'x'
+                ? ctx.createLinearGradient(0, edge + near, 0, edge + far)
+                : ctx.createLinearGradient(edge + near, 0, edge + far, 0);
+            for (const [offset, released, pressed] of stops) {
+                const tone = released + (pressed - released) * press;
+                gradient.addColorStop(offset, tone < 0 ? darken(-tone) : lighten(tone));
+            }
+            fillRects(gradient, addRects);
+        };
+        const released = keys => keys.filter(key => pressOf(key) === 0);
+        const pressed = keys => keys.filter(key => pressOf(key) > 0);
         const lip = gutter * 0.04 > 1.5 * dpr ? gutter * 0.04 : 1.5 * dpr;
         const shadow = blackDepth * 0.05 > dpr ? blackDepth * 0.05 : dpr;
         const slope = blackDepth * 0.1;
-        const front = 1 - slope / blackDepth;
-        // White keys: shade under the roll edge and a rounded front lip.
-        fillDepthGradient(gutter, [
-            [0, darken(0.3)], [0.05, darken(0.08)], [0.5, darken(0)],
-            [1 - 2 * lip / gutter, darken(0.04)], [1 - lip / gutter, lighten(0.35)], [1, darken(0.3)]
-        ], () => rect(0, length, gutter));
+        // White keys: shade under the roll edge and a rounded front lip, which a pressed key
+        // pushes out of view.
+        const whiteStops = depth => [
+            [0, -0.3, -0.3], [0.05, -0.08, -0.12], [0.5, 0, -0.08],
+            [1 - 2 * lip / depth, -0.04, -0.16], [1 - lip / depth, 0.35, -0.2], [1, -0.3, -0.3]
+        ];
+        fillDepthGradient(0, gutter, whiteStops(gutter), 0, () => {
+            if (!whiteKeys.length) rect(0, length, gutter);
+            else for (const [start, end] of released(whiteKeys)) rect(start, end, gutter);
+        });
+        for (const key of pressed(whiteKeys)) {
+            const press = pressOf(key);
+            const depth = gutter + 2 * lip * press;
+            fillDepthGradient(0, depth, whiteStops(depth), press, () => rect(key[0], key[1], gutter));
+        }
+        // A key sunk below a neighbour shows the neighbour's side wall, as wide as the
+        // height difference between the two keys.
+        if (pressed(whiteKeys).length) {
+            const sorted = [...whiteKeys].sort((a, b) => a[0] - b[0]);
+            // Keys without a touching neighbour (at either end) count as unpressed neighbours.
+            const wall = (key, neighbour, gap) => {
+                const width = shadow * (pressOf(key) - (neighbour && gap < 1 ? pressOf(neighbour) : 0));
+                return width > 0.5 * dpr ? width : 0;
+            };
+            fillDepthGradient(0, gutter, [[0, -0.04, -0.04], [1, -0.22, -0.22]], 0, () => {
+                sorted.forEach((key, index) => {
+                    const previous = sorted[index - 1];
+                    const next = sorted[index + 1];
+                    const left = wall(key, previous, previous ? key[0] - previous[1] : 0);
+                    const right = wall(key, next, next ? next[0] - key[1] : 0);
+                    if (left) rect(key[0], key[0] + left, gutter);
+                    if (right) rect(key[1] - right, key[1], gutter);
+                });
+            });
+        }
         // Like the UI's box-shadows, the black-key shadow falls straight down the screen,
         // whatever rotation or flip the caller applied. The inverse transform maps the
         // screen-down vector into keyboard space.
@@ -108,27 +153,39 @@
         const shiftDepth = (along === 'x' ? downY : downX) * downScale;
         // A wide faint layer under a tight one approximates a soft shadow without a blur.
         for (const [grow, alpha] of [[shadow, 0.1], [0, 0.12]]) {
-            ctx.fillStyle = darken(alpha);
-            ctx.beginPath();
-            for (const [start, end] of blackKeys) {
-                rect(start + shiftAlong - grow, end + shiftAlong + grow,
-                    blackDepth + shiftDepth + grow, shiftDepth - grow);
-            }
-            ctx.fill();
+            fillRects(darken(alpha), () => {
+                for (const key of blackKeys) {
+                    // A pressed black key sits closer to the white keys, so its shadow tightens.
+                    const lift = 1 - 0.6 * pressOf(key);
+                    const offsetAlong = shiftAlong * lift;
+                    const offsetDepth = shiftDepth * lift;
+                    const spread = grow * lift;
+                    rect(key[0] + offsetAlong - spread, key[1] + offsetAlong + spread,
+                        blackDepth + offsetDepth + spread, offsetDepth - spread);
+                }
+            });
         }
         drawBlackKeys();
-        // Black keys: darker sides, a lit sloping front end, and a raised top face.
-        fillDepthGradient(blackDepth, [
-            [0, darken(0.25)], [front, darken(0.1)], [front + 0.001, lighten(0.28)], [1, lighten(0.08)]
-        ], () => {
-            for (const [start, end] of blackKeys) rect(start, end, blackDepth);
-        });
-        fillDepthGradient(blackDepth, [[0, lighten(0.04)], [front, lighten(0.2)]], () => {
-            for (const [start, end] of blackKeys) {
-                const inset = (end - start) * 0.15;
-                if (inset >= 0.5 * dpr) rect(start + inset, end - inset, blackDepth - slope);
-            }
-        });
+        // Black keys: darker sides, a lit sloping front end, and a raised top face. Like a
+        // pressed white key, a pressed black key pushes its sloping front out of view.
+        const shadeBlackKeys = (keys, press) => {
+            if (!keys.length) return;
+            const depth = blackDepth + 0.8 * slope * press;
+            const front = 1 - slope / depth;
+            fillDepthGradient(0, depth, [
+                [0, -0.25, -0.25], [front, -0.1, -0.2], [front + 0.001, 0.28, 0.08], [1, 0.08, -0.1]
+            ], press, () => {
+                for (const [start, end] of keys) rect(start, end, blackDepth);
+            });
+            fillDepthGradient(0, depth, [[0, 0.04, 0.02], [front, 0.2, 0.08]], press, () => {
+                for (const [start, end] of keys) {
+                    const inset = (end - start) * 0.15;
+                    if (inset >= 0.5 * dpr) rect(start + inset, end - inset, depth - slope);
+                }
+            });
+        };
+        shadeBlackKeys(released(blackKeys), 0);
+        for (const key of pressed(blackKeys)) shadeBlackKeys([key], pressOf(key));
     }
 
     function hitKey(keys, along, across, gutter, blackDepth) {

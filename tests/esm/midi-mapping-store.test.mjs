@@ -221,3 +221,29 @@ test('MidiMappingStore normalizes interval, once, and daily timer schedule shape
     id: 'bad-daily', device: '', source: { kind: 'timer', schedule: 'daily', hour: 24, minute: 0, second: 0 }
   })), null);
 });
+
+test('MidiMappingStore accepts app targets, rejects unknown ones, and clamps playback speed ranges', async () => {
+  const store = new MidiMappingStore({
+    pluginManager: { pluginClasses: { Test: TestPlugin } },
+    adapter: new ParamAdapter({ catalog: { TestPlugin: [descriptor] } }),
+    loadConfigFn: async () => ({ midiController: { version: 1, devices: [], mappings: [] } }),
+    saveConfigFn: async () => true
+  });
+  await store.initialize();
+  const appMapping = (id, param, overrides = {}) => mapping({
+    id, device: '', source: { kind: 'key', keyCombo: id },
+    target: { type: '_global', instance: 'first', param, element: 0 },
+    ...overrides
+  });
+  assert.ok(await store.addMapping(appMapping('track', 'track')));
+  assert.equal(await store.addMapping(appMapping('unknown', 'undo')), null);
+  assert.equal(await store.addMapping(appMapping('prototype', 'toString')), null);
+  assert.equal(await store.addMapping(appMapping('clock', 'playbackSpeed', {
+    source: { kind: 'clock', component: 'minute', shape: 'sin' }
+  })), null);
+  const speed = await store.addMapping(appMapping('speed', 'playbackSpeed', {
+    map: { lo: 0.1, hi: 9, sensitivity: 1, dir: 1, buttonMode: 'toggle' }
+  }));
+  assert.equal(speed.map.lo, 0.25);
+  assert.equal(speed.map.hi, 4);
+});

@@ -4,14 +4,15 @@
 .matrix-table-wrapper {
     --matrix-cell-padding: 6px;
     --matrix-cell-border: 1px;
-    --matrix-button-box: 30px;
-    --matrix-button-margin: 2px;
-    --matrix-row-height: calc(var(--matrix-button-box) + 2 * var(--matrix-button-margin) + 2 * var(--matrix-cell-padding) + 2 * var(--matrix-cell-border));
-    --matrix-header-rows: 2;
+    /* Button plus margins equals the common 26px parameter row. */
+    --matrix-button-box: 24px;
+    --matrix-button-margin: 1px;
+    --matrix-row-height: calc(var(--matrix-button-box) + 2 * var(--matrix-button-margin) + 2 * var(--matrix-cell-padding) + var(--matrix-cell-border));
     --matrix-visible-rows: 8;
     --matrix-title-height: 32px;
     width: 100%;
-    max-height: calc(var(--matrix-row-height) * (var(--matrix-header-rows) + var(--matrix-visible-rows)));
+    /* Title row, channel header row, and the visible input rows. */
+    max-height: calc(var(--matrix-title-height) + var(--matrix-row-height) * (1 + var(--matrix-visible-rows)) + var(--matrix-cell-border));
     overflow: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -61,6 +62,8 @@ body.layout-mobile .matrix-table-expanded {
 .matrix-table .matrix-sticky-channel-header {
     position: sticky;
     top: var(--matrix-title-height);
+    height: var(--matrix-row-height);
+    box-sizing: border-box;
     z-index: 2;
     background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
 }
@@ -102,22 +105,27 @@ body.layout-mobile .matrix-table-expanded {
     vertical-align: middle;
 }
 
+/* Same look and height as the effect header's ON/OFF toggle (.toggle-button). */
 .matrix-button {
-    border: 1px solid var(--et-surface-33);
-    border-radius: 4px;
-    background-color: var(--et-surface-47);
-    margin: var(--matrix-button-margin);
-    padding: 4px 6px;
-    color: var(--et-text-primary);
-    border-radius: 3px;
-    cursor: pointer;
+    box-sizing: border-box;
+    height: var(--matrix-button-box);
     min-width: 30px;
-    min-height: var(--matrix-button-box);
+    margin: var(--matrix-button-margin);
+    padding: 0 8px;
+    border: 1px solid var(--et-surface-55);
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--et-surface-51), var(--et-surface-42));
+    box-shadow: var(--et-control-shadow);
+    color: var(--et-text-primary);
+    font-size: 12px;
+    cursor: pointer;
 }
 
 .matrix-button.active {
-    color: var(--et-on-status);
-    background-color: var(--et-success);
+    border-color: var(--et-success);
+    background: var(--et-toggle-on-gradient);
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--et-success) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    color: var(--et-on-accent);
 }
 
 .matrix-button.phase-button {
@@ -125,7 +133,9 @@ body.layout-mobile .matrix-table-expanded {
 }
 
 .matrix-button.phase-button.active {
-    background-color: var(--et-danger);
+    border-color: var(--et-danger);
+    background: var(--et-toggle-danger-gradient);
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--et-danger) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .matrix-table .disabled {

@@ -23,6 +23,39 @@ const historyWidth = 1024;
 // Canvas calls used only by the shaded piano keys.
 const keyShadingStubs = { rect() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} }) };
 
+// Canvas calls used only by the Volume history bar shapes.
+const volumePathStubs = {
+    save() {}, restore() {}, translate() {}, clip() {}, beginPath() {}, rect() {},
+    moveTo() {}, lineTo() {}, closePath() {}, ellipse() {}, fill() {}
+};
+
+// Records Volume history rectangles and filled bar paths in drawing order.
+function createVolumeContext() {
+    const saved = [];
+    let path = [];
+    const events = [];
+    return {
+        events,
+        globalCompositeOperation: 'source-over',
+        save() { saved.push(this.globalCompositeOperation); },
+        restore() { this.globalCompositeOperation = saved.pop(); },
+        translate() {}, clip() {}, rect() {}, closePath() {}, clearRect() {},
+        beginPath() { path = []; },
+        moveTo(x, y) { path.push(['point', x, y]); },
+        lineTo(x, y) { path.push(['point', x, y]); },
+        ellipse(x, y, radiusX, radiusY) { path.push(['ellipse', x, y, radiusX, radiusY]); },
+        fill() {
+            events.push({ type: 'shape', path, color: styleSignature(this.fillStyle),
+                composite: this.globalCompositeOperation });
+        },
+        fillRect(x, y, width, height) {
+            events.push({ type: 'rect', x, y, width, height, color: styleSignature(this.fillStyle),
+                composite: this.globalCompositeOperation });
+        },
+        createLinearGradient: (...coordinates) => createGradient('linear', coordinates)
+    };
+}
+
 function createGradient(type, coordinates) {
     return {
         type,
@@ -53,6 +86,7 @@ class FakeElement {
                 putImageData() {},
                 drawImage() {},
                 fillRect() {},
+                ...volumePathStubs,
                 createLinearGradient: (...coordinates) => createGradient('linear', coordinates),
                 createRadialGradient: (...coordinates) => createGradient('radial', coordinates)
             };
@@ -491,73 +525,86 @@ test('Volume history freezes normalized thickness when each column is written', 
 
 test('Volume bars map level to thickness and pitch resolution to center position', async () => {
     const plugin = await loadPlugin();
-    const fills = [];
-    const context = {
-        createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
-        fillRect(x, y, width, height) { fills.push({ x, y, width, height, color: this.fillStyle }); }
-    };
+    const context = createVolumeContext();
+    const shapes = () => context.events.filter(event => event.type === 'shape').map(event => event.path);
     plugin.volumeHistoryCanvas = { width: historyWidth, height: 100, getContext: () => context };
     plugin.mn = 21;
     plugin.mx = 21;
     plugin.pr = 'High';
+    plugin.writeColumn = 1;
     plugin.history[0] = 1;
     plugin.levelHistory[0] = 0;
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(100, plugin._displayPalette());
-    let bar = fills.find(fill => fill.width === 1);
-    assert.deepEqual([bar.y, bar.height], [70, 40]);
-    assert.deepEqual(bar.color.stops.map(stop => stop.offset), [0, 0.25, 0.75, 1]);
+    assert.deepEqual(shapes(), [[['ellipse', 1, 90, 1, 10]]]);
 
-    fills.length = 0;
+    context.events.length = 0;
     plugin.levelHistory[0] = 1;
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(100, plugin._displayPalette());
-    bar = fills.find(fill => fill.width === 1);
-    assert.deepEqual([bar.y, bar.height], [30.5, 119]);
+    assert.deepEqual(shapes(), [[['ellipse', 1, 90, 1, 49.5]]]);
 
-    fills.length = 0;
+    context.events.length = 0;
     plugin.pr = 'Semitone';
     plugin.levelHistory[0] = 0;
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(100, plugin._displayPalette());
-    bar = fills.find(fill => fill.width === 1);
-    assert.deepEqual([bar.y, bar.height], [30, 40]);
+    assert.deepEqual(shapes(), [[['ellipse', 1, 50, 1, 10]]]);
 });
 
-test('incremental Volume redraw preserves High bars that cross a neighboring row', async () => {
+test('Volume frames join overlapping bars across held columns and round off the rest', async () => {
     const plugin = await loadPlugin();
-    const fills = [];
-    const context = {
-        createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
-        fillRect(x, y, width, height) {
-            fills.push({ x, y, width, height, color: styleSignature(this.fillStyle) });
-        }
-    };
-    const rasterizeColumn = () => Array.from({ length: 20 }, (_, row) => {
-        let color = null;
-        for (const fill of fills) {
-            if (fill.x <= 0.5 && 0.5 < fill.x + fill.width &&
-                fill.y <= row + 0.5 && row + 0.5 < fill.y + fill.height) {
-                color = fill.color;
-            }
-        }
-        return color;
-    });
+    const context = createVolumeContext();
+    const shapes = () => context.events.filter(event => event.type === 'shape');
+    const round = path => path.map(([kind, ...values]) =>
+        [kind, ...values.map(value => Math.round(value * 100) / 100)]);
+    plugin.volumeHistoryCanvas = { width: historyWidth, height: 100, getContext: () => context };
+    plugin.mn = 21;
+    plugin.mx = 21;
+    plugin.pr = 'High';
+    plugin.writeColumn = 4;
+    plugin.volumeFrameEnds[1] = 0;
+    plugin.volumeFrameEnds[2] = 0;
+    plugin.history[2] = 1;
+    const current = 3 * pitchCount;
+    plugin.history[current + 2] = 0.5;
+    plugin.history[current + 3] = 1;
+
+    plugin.volumeHistoryDirty = true;
+    plugin._paintVolumeHistory(100, plugin._displayPalette());
+    const [onset, band] = shapes();
+    assert.deepEqual(onset.path, [['ellipse', 1, 50, 1, 10]]);
+    // The parabolic peak sits a sixth of a fine bin below the strongest bin.
+    assert.deepEqual(round(band.path),
+        [['point', 1, 40], ['point', 4, 23.33], ['point', 4, 43.33], ['point', 1, 60]]);
+    assert.deepEqual(JSON.parse(band.color).coordinates, [1, 0, 4, 0]);
+
+    plugin.history.fill(0, current, current + pitchCount);
+    context.events.length = 0;
+    plugin._paintVolumeColumns(3, 1);
+    assert.deepEqual(shapes().map(shape => shape.path), [[['ellipse', 1, 50, 3, 10]]]);
+});
+
+test('incremental Volume redraw matches the full redraw of the latest frame', async () => {
+    const plugin = await loadPlugin();
+    const context = createVolumeContext();
+    const shapes = () => context.events.filter(event => event.type === 'shape');
     plugin.vl = true;
     plugin.pr = 'High';
     plugin.mn = 21;
     plugin.mx = 22;
     plugin.volumeHistoryCanvas = { width: historyWidth, height: 20, getContext: () => context };
+    plugin.writeColumn = 1;
     plugin.history[4] = 1;
     plugin.levelHistory[4] = 1;
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(20, plugin._displayPalette());
-    const fullRedraw = rasterizeColumn();
+    const fullRedraw = shapes();
 
-    fills.length = 0;
+    context.events.length = 0;
     plugin._paintVolumeColumns(0, 1);
-    assert.deepEqual(rasterizeColumn(), fullRedraw);
-    assert.match(fullRedraw[8], /rgba\(0, 255, 0, 1\)/);
+    assert.deepEqual(shapes(), fullRedraw);
+    assert.match(fullRedraw[0].color, /rgba\(0, 255, 0, 1\)/);
 });
 
 test('Volume bars use theme-appropriate compositing without confidence sorting', async () => {
@@ -566,20 +613,13 @@ test('Volume bars use theme-appropriate compositing without confidence sorting',
         { background: [255, 255, 255], composite: 'darken' }
     ]) {
         const plugin = await loadPlugin({ background });
-        const fills = [];
-        const context = {
-            globalCompositeOperation: 'source-over',
-            createLinearGradient(...coordinates) { return createGradient('linear', coordinates); },
-            fillRect(x, y, width, height) {
-                fills.push({ x, y, width, height, color: styleSignature(this.fillStyle),
-                    composite: this.globalCompositeOperation });
-            }
-        };
+        const context = createVolumeContext();
         plugin.vl = true;
         plugin.cl = 'Rainbow';
         plugin.mn = 24;
         plugin.mx = 25;
         plugin.graphDpr = 2;
+        plugin.writeColumn = 1;
         plugin.volumeHistoryCanvas = { width: historyWidth, height: 20, getContext: () => context };
         const cPitch = (24 - 21) * fineDivisions;
         const sharpPitch = (25 - 21) * fineDivisions;
@@ -589,18 +629,18 @@ test('Volume bars use theme-appropriate compositing without confidence sorting',
         plugin.levelHistory[sharpPitch] = 1;
 
         const verifyOrder = () => {
-            const guide = fills.findIndex(fill => fill.color === 'stub:graph-grid-strong');
-            const bars = fills.map((fill, index) => ({ ...fill, index }))
-                .filter(fill => fill.color.startsWith('{'));
+            const guide = context.events.findIndex(event => event.color === 'stub:graph-grid-strong');
+            const bars = context.events.map((event, index) => ({ ...event, index }))
+                .filter(event => event.type === 'shape');
             assert.equal(bars.length, 2);
             assert.ok(guide >= 0 && guide < bars[0].index);
-            for (const fill of fills) {
-                assert.equal(fill.composite, fill.color.startsWith('{') ? composite : 'source-over');
+            for (const event of context.events) {
+                assert.equal(event.composite, event.type === 'shape' ? composite : 'source-over');
             }
             assert.equal(context.globalCompositeOperation, 'source-over');
         };
-        const layerColors = () => fills.map(fill => fill.color).filter(color =>
-            color === 'stub:graph-grid-strong' || color.startsWith('{'));
+        const layerColors = () => context.events.map(event => event.color).filter(color =>
+            color === 'stub:graph-grid-strong' || color.startsWith('rgba('));
 
         plugin.volumeHistoryDirty = true;
         plugin._paintVolumeHistory(20, plugin._displayPalette());
@@ -610,7 +650,7 @@ test('Volume bars use theme-appropriate compositing without confidence sorting',
         assert.ok(bars[0].confidence > bars[1].confidence);
         const fullRedraw = layerColors();
 
-        fills.length = 0;
+        context.events.length = 0;
         plugin._paintVolumeColumns(0, 1);
         verifyOrder();
         assert.deepEqual(layerColors(), fullRedraw);

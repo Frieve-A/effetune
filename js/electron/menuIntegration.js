@@ -104,6 +104,9 @@ export async function updateApplicationMenu(isElectron) {
         checked: (window.uiManager.isPipelineAnalyzerOpen?.() ??
           window.uiManager.pipelineAnalyzerController?.state?.open) === true
       },
+      'view.visualizerFeed': { label: t('menu.view.visualizerFeed') },
+      'view.visualizerFeedOff': { label: t('menu.view.visualizerFeedOff') },
+      'view.visualizerFeedShowWhileInactive': { label: t('menu.view.visualizerFeedShowWhileInactive') },
       'toggle-fullscreen': { label: t('menu.view.toggleFullscreen') },
       'view.miniPlayer': { label: t('menu.view.miniPlayer') },
       'menu.settings': { label: t('menu.settings') },

@@ -536,4 +536,15 @@ test('LevelMeter Visualizer display separates signal from guides and preserves r
   signalFills.length = 0;
   plugin.updateMeter(1000);
   assert.equal(signalFills.length, 4, 'Both channels return after horizontal selection');
+  // 6 dB segments on a 300 px, 96 dB meter are 18.75 px: the -7.96 dB bar stops at
+  // the 14th boundary, 13 background gaps cut it, and the peak lights the 15th segment.
+  plugin.displayOptions.channel = 'L';
+  plugin.displayOptions.segmentDb = 6;
+  plugin.handleDspLevelTelemetry(makeLevelFrame({ peaks: [0.4, 0.4], clipFlags: 0 }).frame);
+  signalFills.length = 0;
+  plugin.updateMeter(1000);
+  const [bar, ...rest] = signalFills;
+  assert.deepEqual(bar.args, [0, 1, 14 * 18.75, 120]);
+  assert.equal(rest.filter(fill => fill.style === 'stub:graph-bg-deep').length, 13);
+  assert.deepEqual(rest.at(-1), { style: '#123456', args: [14 * 18.75 + 0.5, 1, 17.75, 120] });
 });

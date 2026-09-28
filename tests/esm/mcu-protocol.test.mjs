@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { McuProtocol } from '../../js/midi/mcu-protocol.js';
+import { MidiMappingEngine } from '../../js/midi/midi-mapping-engine.js';
 import { ParamAdapter } from '../../js/midi/param-adapter.js';
 
 test('MCU decoding handles faders, signed V-Pots, buttons, and touch', () => {
@@ -43,15 +44,16 @@ test('MCU poller sends only changed first-wins feedback and stops cleanly', () =
   let intervalCallback;
   let cleared = false;
   let connected = true;
+  const windowRef = { pipelineManager: { core: { enabled: false } } };
   const mcu = new McuProtocol({
-    engine: { resolveTargets: () => [] },
+    engine: new MidiMappingEngine({ windowRef }),
     adapter: {},
     store: {
       mappings: [mapping, { ...mapping, id: 'duplicate' }],
       getDeviceProtocol: () => 'mcu'
     },
     getOutput: () => connected ? output : null,
-    windowRef: { pipelineManager: { core: { enabled: false } } },
+    windowRef,
     setIntervalFn(callback) { intervalCallback = callback; return 7; },
     clearIntervalFn(id) { assert.equal(id, 7); cleared = true; }
   });
@@ -78,11 +80,13 @@ test('MCU faders resend the latest feedback after touch is released', () => {
     target: { type: 'TestPlugin', param: 'gain', instance: 'first', element: 0 }
   };
   const mcu = new McuProtocol({
-    engine: { resolveTargets: () => [{}] },
-    adapter: {
-      resolve: () => ({ descriptor: { kind: 'float', normalization: 'linear', minimum: 0, maximum: 1 } }),
-      read: () => 0.8
+    engine: {
+      resolveMapping: () => ({
+        targets: [{}],
+        resolved: { descriptor: { kind: 'float', normalization: 'linear', minimum: 0, maximum: 1 } }
+      })
     },
+    adapter: { read: () => 0.8 },
     store: { mappings: [mapping], getDeviceProtocol: () => 'mcu' },
     getOutput: () => output
   });
@@ -132,7 +136,11 @@ test('MCU feedback returns the mapped physical position for parameter subranges'
   ];
   const adapter = new ParamAdapter({ catalog: { FeedbackPlugin: [linear, logarithmic, enumeration] } });
   const mcu = new McuProtocol({
-    engine: { resolveTargets: () => [target] },
+    engine: {
+      resolveMapping: ({ target: { type, param, element } }) => ({
+        targets: [target], resolved: adapter.resolve(type, param, element)
+      })
+    },
     adapter,
     store: { mappings, getDeviceProtocol: () => 'mcu' }
   });
@@ -157,7 +165,7 @@ test('MCU default interval wrappers preserve the global native receiver when sta
       calls.push({ kind: 'clear', args });
     };
     const mcu = new McuProtocol({
-      engine: { resolveTargets: () => [] },
+      engine: {},
       adapter: {},
       store: {
         mappings: [{
@@ -175,4 +183,22 @@ test('MCU default interval wrappers preserve the global native receiver when sta
     globalThis.setInterval = originalSetInterval;
     globalThis.clearInterval = originalClearInterval;
   }
+});
+
+test('MCU feedback reads app action state and playback speed', () => {
+  const adapter = new ParamAdapter({ catalog: {} });
+  const windowRef = {
+    uiManager: {
+      audioPlayer: { stateManager: { getStateSnapshot: () => ({ isPlaying: true, playbackSpeed: 1 }) } }
+    }
+  };
+  const engine = new MidiMappingEngine({ adapter, windowRef });
+  const mcu = new McuProtocol({ engine, adapter, windowRef });
+  const target = param => ({ type: '_global', instance: 'first', param, element: 0 });
+  assert.deepEqual(mcu.readFeedback({ target: target('playPause') }), { kind: 'bool', value: true, normalized: 1 });
+  assert.equal(mcu.readFeedback({ target: target('track') }), null);
+  const speed = mcu.readFeedback({ target: target('playbackSpeed'), map: { lo: 0.25, hi: 4 } });
+  assert.equal(speed.kind, 'continuous');
+  assert.equal(speed.value, 1);
+  assert.ok(Math.abs(speed.normalized - 0.5) < 1e-12);
 });

@@ -19,7 +19,7 @@ const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
 const kernelPath = path.join(pluginRoot, 'kernel.cpp');
 const rendererPath = path.join(repoRoot, 'plugins', 'analyzer', 'stereo_meter.js');
-const jsEngineHash = 'e6d78f2dcfac8bd912b8bec65785ebcbcd70691709d1ae0664ebea01aab69cd6';
+const jsEngineHash = 'a1d12c5d0e5b989f5727a07f1700b2a11b243ca6cbc47bee12b709db9d5f5f66';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });

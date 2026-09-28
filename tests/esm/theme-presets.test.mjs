@@ -158,7 +158,7 @@ test('theme definitions load before consumers and contain the complete token fou
     '--et-border-subtle', '--et-border-strong', '--et-border-solid',
     '--et-accent-hover', '--et-accent-pressed', '--et-accent-glow', '--et-accent-soft', '--et-accent-outline',
     '--et-danger-soft', '--et-surface-veil', '--et-surface-gloss',
-    '--et-inset-background', '--et-panel-gradient', '--et-card-gradient', '--et-card-hover-gradient', '--et-toggle-on-gradient',
+    '--et-inset-background', '--et-panel-gradient', '--et-card-gradient', '--et-card-hover-gradient', '--et-toggle-on-gradient', '--et-toggle-danger-gradient',
     '--et-control-gradient', '--et-control-hover-gradient', '--et-control-active-gradient', '--et-input-gradient',
     '--et-panel-shadow', '--et-card-shadow', '--et-control-shadow', '--et-control-hover-shadow', '--et-focus-ring',
     '--et-scrim', '--et-on-accent', '--et-on-status', '--et-transition-fast', '--et-transition-medium',
@@ -182,8 +182,8 @@ test('theme definitions load before consumers and contain the complete token fou
   }
 });
 
-test('preset blocks contain the ten keys, color scheme and toggle surface', () => {
-  const expectedNames = new Set([...THEME_KEYS, '--et-color-scheme', '--et-toggle-on-gradient']);
+test('preset blocks contain the ten keys, color scheme and toggle surfaces', () => {
+  const expectedNames = new Set([...THEME_KEYS, '--et-color-scheme', '--et-toggle-on-gradient', '--et-toggle-danger-gradient']);
   for (const preset of THEME_PRESETS.filter(({ id }) => id !== DEFAULT_THEME_ID)) {
     const actualNames = new Set(declarations(ruleBody(themeCss, `html[data-theme="${preset.id}"]`)).keys());
     assert.deepEqual(actualNames, expectedNames, preset.id);
@@ -303,9 +303,11 @@ test('theme ids normalize and presets maintain readable foregrounds', () => {
     assert.ok(contrast(color('--et-text-primary'), color('--et-base')) >= 4.5, `${preset.id}: text/base`);
     assert.ok(contrast(color('--et-on-status'), color('--et-success')) >= 4.5, `${preset.id}: on-status/success`);
     assert.ok(contrast(color('--et-on-status'), color('--et-danger')) >= 4.5, `${preset.id}: on-status/danger`);
-    const toggleStops = splitTopLevel(vars.get('--et-toggle-on-gradient').slice('linear-gradient('.length, -1)).slice(1);
-    for (const stop of toggleStops) {
-      assert.ok(contrast(color('--et-on-accent'), resolveColor(stop, vars)) >= 4.5, `${preset.id}: toggle foreground`);
+    for (const gradient of ['--et-toggle-on-gradient', '--et-toggle-danger-gradient']) {
+      const toggleStops = splitTopLevel(vars.get(gradient).slice('linear-gradient('.length, -1)).slice(1);
+      for (const stop of toggleStops) {
+        assert.ok(contrast(color('--et-on-accent'), resolveColor(stop, vars)) >= 4.5, `${preset.id}: ${gradient} foreground`);
+      }
     }
     for (const [left, right] of [
       ['--et-graph-trace', '--et-graph-base'],

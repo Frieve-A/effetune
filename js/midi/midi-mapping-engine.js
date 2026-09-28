@@ -2,6 +2,7 @@ import {
   denormalizeDSPAutomationValue,
   normalizeDSPAutomationValue
 } from '../audio/dsp-params.generated.js';
+import { getAppTarget } from './app-targets.js';
 import {
   canonicalizeTargetValue,
   getTargetValueRange,
@@ -129,11 +130,11 @@ export class MidiMappingEngine {
     state.physical = true;
     if (isAbsolute(mapping)) {
       const normalized = this.normalizeAbsolute(mapping, value);
-      if (mapping.target.type === '_global') {
+      if (mapping.target.type === '_global' && targetKind === 'bool') {
         const active = normalized >= 0.5;
         const previous = this.absoluteThresholds.get(mapping.id) || false;
         this.absoluteThresholds.set(mapping.id, active);
-        if (active && !previous) state.edges.push({ pressed: true, delta: 1 });
+        if (active && !previous) state.edges.push({ pressed: true, delta: mapping.map.dir });
       } else {
         state.absolute = normalized;
       }
@@ -174,7 +175,10 @@ export class MidiMappingEngine {
   }
 
   getTargetKind(mapping) {
-    if (mapping.target.type === '_global' || mapping.target.param === '_enabled') return 'bool';
+    if (mapping.target.param === '_enabled') return 'bool';
+    if (mapping.target.type === '_global') {
+      return getAppTarget(mapping.target.param)?.kind === 'float' ? 'float' : 'bool';
+    }
     return this.adapter.resolve(
       mapping.target.type,
       mapping.target.param,
@@ -230,24 +234,23 @@ export class MidiMappingEngine {
         const mapping = this.store?.mappings.find(candidate => candidate.id === id);
         if (!mapping) continue;
         hasPhysicalEvent ||= pending.physical;
-        const targets = mapping.target.type === '_global'
-          ? []
-          : this.resolveTargets(mapping.target.type, mapping.target.instance);
+        const resolution = this.resolveMapping(mapping);
         const previousAbsolute = this.absoluteApplied.get(id);
-        const signature = this.absoluteApplicationSignature(mapping, targets);
+        const signature = this.absoluteApplicationSignature(mapping, resolution.targets);
         if (pending.absolute !== undefined &&
             (previousAbsolute?.value !== pending.absolute || previousAbsolute.signature !== signature)) {
-          const applied = this.applyAbsolute(mapping, pending.absolute, targets);
-          changed = applied || changed;
-          if (applied) this.absoluteApplied.set(id, { value: pending.absolute, signature });
-          else this.absoluteApplied.delete(id);
+          changed = this.applyAbsolute(mapping, pending.absolute, resolution) || changed;
+          // Record every delivery attempt, not only pipeline changes: app targets
+          // never report a change. The signature names the targets, so a value
+          // sent while no target existed is re-applied once one appears.
+          this.absoluteApplied.set(id, { value: pending.absolute, signature });
         }
-        if (pending.relative) changed = this.applyRelative(mapping, pending.relative) || changed;
+        if (pending.relative) changed = this.applyRelative(mapping, pending.relative, resolution) || changed;
         for (const edge of pending.edges) {
-          changed = this.applyEdge(mapping, edge) || changed;
+          changed = this.applyEdge(mapping, edge, resolution) || changed;
         }
         for (const event of pending.automationActions) {
-          changed = this.applyAutomationAction(mapping, event) || changed;
+          changed = this.applyAutomationAction(mapping, event, resolution) || changed;
         }
       }
     };
@@ -276,21 +279,13 @@ export class MidiMappingEngine {
       identities.join(',')].join('|');
   }
 
-  applyAbsolute(mapping, normalized, targets = this.resolveTargets(
-    mapping.target.type, mapping.target.instance
-  )) {
-    if (mapping.target.type === '_global') return false;
+  applyAbsolute(mapping, normalized, { targets, resolved }) {
     if (targets.length === 0) return false;
     if (mapping.target.param === '_enabled') {
       const on = normalized >= 0.5;
       targets.forEach(plugin => this.applyEnabled(plugin, on));
       return true;
     }
-    const resolved = this.adapter.resolve(
-      mapping.target.type,
-      mapping.target.param,
-      mapping.target.element
-    );
     if (!resolved) return false;
     const { lo, hi } = getMappedNormalizedRange(mapping, resolved.descriptor);
     const mapped = lo + normalized * (hi - lo);
@@ -298,15 +293,8 @@ export class MidiMappingEngine {
     return this.applyParameterTargets(targets, resolved, realValue);
   }
 
-  applyRelative(mapping, delta) {
-    const targets = this.resolveTargets(mapping.target.type, mapping.target.instance);
-    if (targets.length === 0 || mapping.target.param === '_enabled') return false;
-    const resolved = this.adapter.resolve(
-      mapping.target.type,
-      mapping.target.param,
-      mapping.target.element
-    );
-    if (!resolved) return false;
+  applyRelative(mapping, delta, { targets, resolved }) {
+    if (targets.length === 0 || !resolved) return false;
     const basePlugin = targets[0];
     const currentReal = this.adapter.read(basePlugin, resolved);
     const signature = this.relativeAccumulatorSignature(mapping, basePlugin);
@@ -329,20 +317,20 @@ export class MidiMappingEngine {
     );
     const realValue = denormalizeDSPAutomationValue(resolved.descriptor, accumulator.normalized);
     const changed = this.applyParameterTargets(targets, resolved, realValue);
-    accumulator.lastReal = realValue;
+    // Adopt the held value only when it is the requested value rounded to the
+    // target's step, so rounding does not reset the accumulator every tick.
+    // A clamped value differs by more and re-seeds the next tick instead.
+    const heldReal = this.adapter.read(basePlugin, resolved);
+    accumulator.lastReal = Math.abs(heldReal - realValue) <= (resolved.descriptor.step || 0) / 2
+      ? heldReal
+      : realValue;
     this.accumulators.set(mapping.id, accumulator);
     return changed;
   }
 
-  applyAutomationAction(mapping, event) {
+  applyAutomationAction(mapping, event, { targets, resolved }) {
     if (event.kind !== 'timer' && event.kind !== 'discrete') return false;
-    const targets = this.resolveTargets(mapping.target.type, mapping.target.instance);
-    if (targets.length === 0 || mapping.target.param === '_enabled') return false;
-    const resolved = this.adapter.resolve(
-      mapping.target.type,
-      mapping.target.param,
-      mapping.target.element
-    );
+    if (targets.length === 0) return false;
     if (!resolved || (resolved.descriptor.kind !== 'float' && resolved.descriptor.kind !== 'int')) {
       return false;
     }
@@ -388,12 +376,9 @@ export class MidiMappingEngine {
     ].join('|');
   }
 
-  applyEdge(mapping, edge) {
-    if (mapping.target.type === '_global') {
-      if (!edge.pressed) return false;
-      return this.applyGlobal(mapping.target.param);
-    }
-    const targets = this.resolveTargets(mapping.target.type, mapping.target.instance);
+  applyEdge(mapping, edge, resolution) {
+    const { targets, resolved, action } = resolution;
+    if (action) return edge.pressed ? action.run(this.window, Math.sign(edge.delta)) : false;
     if (targets.length === 0) return false;
     if (mapping.target.param === '_enabled') {
       const current = Boolean(targets[0].enabled);
@@ -401,12 +386,11 @@ export class MidiMappingEngine {
       targets.forEach(plugin => this.applyEnabled(plugin, on));
       return true;
     }
-    const resolved = this.adapter.resolve(
-      mapping.target.type,
-      mapping.target.param,
-      mapping.target.element
-    );
     if (!resolved) return false;
+    if (resolved.app?.step) {
+      resolved.app.step(targets[0], Math.sign(edge.delta), mapping.map.lo, mapping.map.hi);
+      return false;
+    }
     if (resolved.descriptor.kind === 'bool') {
       const current = Boolean(this.adapter.read(targets[0], resolved));
       const on = mapping.map.buttonMode === 'momentary' ? edge.pressed : !current;
@@ -424,19 +408,39 @@ export class MidiMappingEngine {
           (range.maximum - range.minimum + 1));
       return this.applyParameterTargets(targets, resolved, values[nextIndex]);
     }
-    return this.applyRelative(mapping, Math.sign(edge.delta));
+    return this.applyRelative(mapping, Math.sign(edge.delta), resolution);
   }
 
   applyParameterTargets(targets, resolved, realValue) {
     const core = this.window?.pipelineManager?.core;
     let changed = false;
     for (const plugin of targets) {
-      if (!this.adapter.apply(plugin, resolved, realValue)) continue;
+      // App targets are not pipeline state: no worklet update, URL, or history.
+      if (!this.adapter.apply(plugin, resolved, realValue) || resolved.strategy === 'app') continue;
       core?.updateWorkletPlugin?.(plugin);
       plugin.syncUIControls?.();
       changed = true;
     }
     return changed;
+  }
+
+  resolveMapping(mapping) {
+    const { type, instance, param, element } = mapping.target;
+    if (type === '_global') {
+      const app = getAppTarget(param);
+      if (app?.kind !== 'float') return { targets: [], resolved: null, action: app };
+      const target = app.target(this.window);
+      return {
+        targets: target ? [target] : [],
+        resolved: this.adapter.resolve(type, param, element),
+        action: null
+      };
+    }
+    return {
+      targets: this.resolveTargets(type, instance),
+      resolved: param === '_enabled' ? null : this.adapter.resolve(type, param, element),
+      action: null
+    };
   }
 
   resolveTargets(type, rule = 'first') {
@@ -461,21 +465,6 @@ export class MidiMappingEngine {
       }
     }
     this.window?.pipelineManager?.core?.updateAllPluginDisplayState?.();
-  }
-
-  applyGlobal(param) {
-    if (param === 'masterBypass') {
-      const toggle = this.window?.pipelineManager?.core?.masterToggle;
-      if (!toggle?.click) return false;
-      toggle.click();
-      return true;
-    }
-    if (param === 'abToggle') {
-      if (!this.window?.uiManager?.togglePipeline) return false;
-      void this.window.uiManager.togglePipeline();
-      return true;
-    }
-    return false;
   }
 
   scheduleHistorySave() {

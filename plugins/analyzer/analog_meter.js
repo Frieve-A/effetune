@@ -489,7 +489,7 @@ class AnalogMeterPlugin extends PluginBase {
         const rows = this.parameterRows = {};
         // Two columns on desktop, one on mobile (css/effetune.css and css/effetune-mobile.css).
         const parameters = document.createElement('div');
-        parameters.className = 'analog-meter-parameters';
+        parameters.className = 'analyzer-parameters';
         parameters.appendChild(this.createSelectControl(
             'Mode', ANALOG_METER_MODES, this.md, value => this.setParameters({ md: value }), 'md'
         ));
@@ -639,6 +639,8 @@ class AnalogMeterPlugin extends PluginBase {
         // The host options supply textContext, drawSignal, needleColor, showAxes, and showAxisNumbers.
         this.drawMeterCells(context, palette, canvas.width, canvas.height, grids, {
             ...options,
+            // Visualizer meters sit directly on the scene without the outer frame.
+            showFrame: false,
             // Like the other Visualizer graphs, text uses the base label size in graph pixels,
             // independent of the item's size.
             fontSize: () => 12 * (this.graphDpr || 1)
@@ -687,7 +689,7 @@ class AnalogMeterPlugin extends PluginBase {
         return standard ? 'Program' : 'Program (reference)';
     }
 
-    // options: showAxes (frame, dial, and ticks), showAxisNumbers (all text), textContext,
+    // options: showAxes (frame, dial, and ticks), showFrame (false hides only the frame), showAxisNumbers (all text), textContext,
     // drawSignal and needleColor for the needle and hub, and fontSize(width, height).
     drawCell(context, palette, scale, x, y, width, height, channel, now, options = {}) {
         const axes = options.showAxes !== false;
@@ -695,17 +697,15 @@ class AnalogMeterPlugin extends PluginBase {
         const text = options.textContext ?? context;
         const dpr = this.graphDpr || 1;
         const inset = 4 * dpr;
-        if (axes) {
+        if (axes && options.showFrame !== false) {
             context.strokeStyle = palette.grid;
             context.lineWidth = dpr;
             context.strokeRect(x + inset, y + inset, width - 2 * inset, height - 2 * inset);
         }
 
-        const program = channel < 0;
-        const textLines = program ? 3 : 1;
         const fontSize = options.fontSize ? options.fontSize(width, height)
             : Math.max(9, Math.min(14, width / dpr / 22)) * dpr;
-        const bottomSpace = (textLines + 0.8) * fontSize * 1.25;
+        const bottomSpace = 1.8 * fontSize * 1.25;
         const radians = ANALOG_METER_ARC_DEGREES * Math.PI / 180;
         const pivotX = x + width / 2;
         const pivotY = y + height - inset - bottomSpace;
@@ -844,20 +844,58 @@ class AnalogMeterPlugin extends PluginBase {
         context.textAlign = 'center';
         context.textBaseline = 'top';
         context.font = `${fontSize}px monospace`;
-        let lineY = pivotY + fontSize * 0.8;
-        text.fillText(db === null ? '---' : scale.readout(db), pivotX, lineY);
-        if (!program || !this.reading?.program) return;
+        text.fillText(db === null ? '---' : scale.readout(db), pivotX, pivotY + fontSize * 0.8);
+        if (channel >= 0 || !this.reading?.program) return;
+        // A fixed-width sample keeps the statistics still while the readout changes.
+        const readoutHalf = context.measureText('-88.8 LUFS').width / 2;
+        this.drawProgramStats(context, text, palette, x, y + height - inset * 2, width, readoutHalf, fontSize);
+    }
+
+    // The program meter keeps the channel meters' dial geometry; its loudness statistics fill the
+    // two lower corners beside the readout, below the needle's sweep, as label/value tables.
+    drawProgramStats(context, text, palette, x, bottom, width, readoutHalf, fontSize) {
         const values = this.reading.program;
         const lufs = value => value <= ANALOG_METER_SILENCE_DB ? '-∞' : value.toFixed(1);
-        context.font = `${fontSize * 0.85}px monospace`;
-        context.fillStyle = palette.label;
-        lineY += fontSize * 1.25;
-        text.fillText(`M ${lufs(values.momentary)}  S ${lufs(values.shortTerm)}  ` +
-            `I ${this.reading.integratedValid ? lufs(values.integrated) : '---'} LUFS`, pivotX, lineY);
-        lineY += fontSize * 1.1;
-        text.fillText(`LRA ${this.reading.lraValid ? values.lra.toFixed(1) : '---'} LU  ` +
-            `TP ${lufs(values.maxTruePeak)} dBTP  ${formatAnalogMeterDuration(values.integratedSeconds)}`,
-        pivotX, lineY);
+        const tables = [
+            [
+                ['M', `${lufs(values.momentary)} LUFS`],
+                ['S', `${lufs(values.shortTerm)} LUFS`],
+                ['I', `${this.reading.integratedValid ? lufs(values.integrated) : '---'} LUFS`]
+            ],
+            [
+                ['LRA', `${this.reading.lraValid ? values.lra.toFixed(1) : '---'} LU`],
+                ['TP', `${lufs(values.maxTruePeak)} dBTP`],
+                ['Time', formatAnalogMeterDuration(values.integratedSeconds)]
+            ]
+        ];
+        const margin = 4 * (this.graphDpr || 1) + fontSize * 0.5;
+        let size = fontSize * 0.9;
+        context.font = `${size}px monospace`;
+        const labelWidths = tables.map(rows => Math.max(...rows.map(([label]) => context.measureText(label).width)));
+        const valueWidths = tables.map(rows => Math.max(...rows.map(([, value]) => context.measureText(value).width)));
+        const gap = size * 0.6;
+        const tableWidth = Math.max(labelWidths[0] + valueWidths[0], labelWidths[1] + valueWidths[1]) + gap;
+        const available = width / 2 - margin - readoutHalf - fontSize * 0.6;
+        if (available <= 0) return;
+        // Narrow cells shrink the tables rather than letting them run into the readout.
+        const fit = tableWidth > available ? available / tableWidth : 1;
+        size *= fit;
+        const scaledWidth = tableWidth * fit;
+        const lineHeight = size * 1.3;
+        context.font = `${size}px monospace`;
+        context.textBaseline = 'bottom';
+        tables.forEach((rows, index) => {
+            const left = index === 0 ? x + margin : x + width - margin - scaledWidth;
+            rows.forEach(([label, value], row) => {
+                const lineY = bottom - (rows.length - 1 - row) * lineHeight;
+                context.fillStyle = palette.label;
+                context.textAlign = 'left';
+                text.fillText(label, left, lineY);
+                context.fillStyle = palette.text;
+                context.textAlign = 'right';
+                text.fillText(value, left + scaledWidth, lineY);
+            });
+        });
     }
 
     cleanup() {

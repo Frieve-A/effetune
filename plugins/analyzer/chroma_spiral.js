@@ -226,20 +226,24 @@ class ChromaSpiralPlugin extends PluginBase {
         this.ensureDspTelemetrySubscription();
         const container = document.createElement('div');
         container.className = 'plugin-parameter-ui';
-        container.appendChild(this.createRadioGroup('Color', [
+        // Two columns on desktop, one on mobile (css/effetune.css and css/effetune-mobile.css).
+        const parameters = document.createElement('div');
+        parameters.className = 'analyzer-parameters';
+        parameters.appendChild(this.createRadioGroup('Color', [
             { value: 0, label: 'Normal' }, { value: 1, label: 'Normal 2' },
             { value: 2, label: 'Note Colors' }
         ], this.dm, value => this.setParameters({ dm: Number(value) }), 'dm'));
-        container.appendChild(this.createParameterControl('Lowest Octave', 1, 8, 1, this.lo,
+        parameters.appendChild(this.createParameterControl('Lowest Octave', 1, 8, 1, this.lo,
             value => this.setParameters({ lo: value }), '', 'lo'));
-        container.appendChild(this.createParameterControl('Highest Octave', 1, 9, 1, this.hi,
+        parameters.appendChild(this.createParameterControl('Highest Octave', 1, 9, 1, this.hi,
             value => this.setParameters({ hi: value }), '', 'hi'));
-        container.appendChild(this.createParameterControl('Frequency Tilt', -6, 6, 0.5, this.ft,
+        parameters.appendChild(this.createParameterControl('Frequency Tilt', -6, 6, 0.5, this.ft,
             value => this.setParameters({ ft: value }), 'dB/oct', 'ft'));
-        container.appendChild(this.createParameterControl('Level Range', 6, 96, 1, this.lr,
+        parameters.appendChild(this.createParameterControl('Level Range', 6, 96, 1, this.lr,
             value => this.setParameters({ lr: value }), 'dB', 'lr'));
-        container.appendChild(this.createParameterControl('Display Floor', -120, -24, 1, this.df,
+        parameters.appendChild(this.createParameterControl('Display Floor', -120, -24, 1, this.df,
             value => this.setParameters({ df: value }), 'dB', 'df'));
+        container.appendChild(parameters);
         const graph = this.createResponsiveGraph({
             maxWidth: 640, aspectRatio: '1 / 1', mobileAspectRatio: '1 / 1',
             onResize: ({ canvas, dpr }) => {
@@ -414,8 +418,15 @@ class ChromaSpiralPlugin extends PluginBase {
             }
             if (pitch >= fontSize + 2 * dpr) {
                 ctx.textAlign = 'right';
+                // Octave numbers sit on the spiral itself; a Visualizer palette can match the text color.
+                const outline = this.displayOptions?.visualizerAxisLabels;
+                ctx.strokeStyle = palette('graph-bg-deep');
+                ctx.lineWidth = 2 * dpr;
+                ctx.lineJoin = 'round';
                 for (let octave = this.lo; octave <= this.hi; octave++) {
-                    textContext.fillText(String(octave), -6 * dpr, -inner - (octave - this.lo) * pitch);
+                    const y = -inner - (octave - this.lo) * pitch;
+                    if (outline) textContext.strokeText(String(octave), -6 * dpr, y);
+                    textContext.fillText(String(octave), -6 * dpr, y);
                 }
             }
         }

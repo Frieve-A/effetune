@@ -1,4 +1,5 @@
 import { loadConfig, saveConfig } from '../electron/config-store.js';
+import { getAppTarget } from './app-targets.js';
 import {
   canonicalizeAutomationAmount,
   canonicalizeTargetValue,
@@ -20,7 +21,6 @@ const INSTANCE_RULES = new Set(['first', 'last', 'all']);
 const CC_MODES = new Set(['abs', 'rel2c', 'relBin', 'relSign']);
 const AXIS_MODES = new Set(['rel', 'abs']);
 const SENSITIVITIES = new Set([0.25, 0.5, 1, 2, 4]);
-const GLOBAL_PARAMS = new Set(['masterBypass', 'abToggle']);
 const CLOCK_COMPONENTS = new Set(['hour', 'minute', 'second']);
 const CLOCK_SHAPES = new Set(['ramp', 'sin', 'cos']);
 const AUTOMATION_BEHAVIORS = new Set(['direct', 'random', 'randomWalk']);
@@ -221,7 +221,8 @@ export class MidiMappingStore {
     const element = Number.isSafeInteger(target.element) && target.element >= 0 ? target.element : 0;
     if (typeof type !== 'string' || typeof param !== 'string') return null;
     if (type === '_global') {
-      if (!GLOBAL_PARAMS.has(param)) return null;
+      // Clock and timer automation never drive application operations.
+      if (!getAppTarget(param) || VIRTUAL_SOURCE_KINDS.has(source.kind)) return null;
     } else if (param === '_enabled') {
       if (!this.hasPluginType(type)) return null;
     } else if (!this.adapter.isAssignable(type, param, element)) {

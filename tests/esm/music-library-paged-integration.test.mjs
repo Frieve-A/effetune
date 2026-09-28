@@ -3748,6 +3748,13 @@ test('paged collection pages start at the page top and preserve scroll across re
       assert.equal(view.content.scrollTop, 430, `${currentView} retained navigation scroll`);
       assert.equal(view.pagedNavigationRestorePosition, null);
 
+      // A folder with only subfolders has no row anchor, so its query restart requests a reset.
+      view.pagedResetScrollOnCommit = true;
+      view.pagedNavigationRestorePosition = { queryFingerprint, contentScrollTop: 430 };
+      view.renderPagedCommitted(state);
+      assert.equal(view.content.scrollTop, 430, `${currentView} navigation scroll wins over reset`);
+      assert.equal(view.pagedResetScrollOnCommit, false);
+
       for (const scrollTop of [80, 430]) {
         view.content.scrollTop = scrollTop;
         view.content.listeners.get('scroll')();

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { MidiControllerManager } from '../../js/midi/midi-controller-manager.js';
+import { MidiMappingEngine } from '../../js/midi/midi-mapping-engine.js';
 
 function harness(mappings, { requestMidiAccess, midiAccessTimeoutMs } = {}) {
   let requests = 0;
@@ -282,10 +283,11 @@ test('MCU feedback keeps targeting the saved same-name output slot after another
     getDeviceProtocol() { return 'mcu'; }
   };
   const localInputs = { cancelLearn() {}, dispose() {} };
-  const engine = { dispose() {}, resolveTargets() { return []; } };
+  const windowRef = { pipelineManager: { core: { enabled: true } } };
+  const engine = new MidiMappingEngine({ windowRef });
   const scheduler = { dispose() {} };
   const manager = new MidiControllerManager({
-    windowRef: { pipelineManager: { core: { enabled: true } } },
+    windowRef,
     navigatorRef: {}, store, localInputSources: localInputs, engine,
     automationScheduler: scheduler
   });

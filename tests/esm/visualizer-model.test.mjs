@@ -25,16 +25,18 @@ test('layout share links round-trip without the background image and reject inva
 });
 
 test('original analyzer parameters and optional note octave mapping normalize in one place', () => {
-    assert.deepEqual(normalizeParams('spectrum'), { dr: -96, pt: 12, sc: 'log-hq', kb: false, kl: 100, dm: 'line', quantizeBars: true,
+    assert.deepEqual(normalizeParams('spectrum'), { dr: -96, pt: 12, sc: 'log-hq', kb: false, kl: 100, mf: 40000, dm: 'line', quantizeBars: true, bc: 48, ds: 1,
         orientation: 'horizontal', cf: 0, pk: true, ph: 0, pf: 1, sm: 0, gainDb: 0, showAxes: false, showAxisNumbers: false });
     assert.equal(createItem('spectrogram', 'new-spectrogram').params.sc, 'log-hq');
     assert.equal(createDefaultLayout().items[0].params.sc, 'log-hq');
     assert.equal(normalizeParams('spectrum', { sc: 'log' }).sc, 'log');
     assert.equal(normalizeParams('spectrum', { orientation: 'diagonal' }).orientation, 'horizontal');
+    assert.deepEqual([100, 20400, 99999].map(mf => normalizeParams('spectrum', { mf }).mf), [1000, 20000, 40000]);
     assert.deepEqual(normalizeParams('spectrum', { orientation: 'vertical', dm: 'bar', sc: 'linear', pt: 10 }),
-        { dr: -96, pt: 10, sc: 'linear', kb: false, kl: 100, dm: 'bar', quantizeBars: true, orientation: 'vertical',
+        { dr: -96, pt: 10, sc: 'linear', kb: false, kl: 100, mf: 40000, dm: 'bar', quantizeBars: true, bc: 48, ds: 1, orientation: 'vertical',
             cf: 0, pk: true, ph: 0, pf: 1, sm: 0, gainDb: 0, showAxes: false, showAxisNumbers: false });
     assert.equal(normalizeParams('spectrum', { dm: 'bar', quantizeBars: false }).quantizeBars, false);
+    assert.deepEqual(['bc', 'ds'].map(key => normalizeParams('spectrum', { bc: 300, ds: 2.3 })[key]), [128, 2.5]);
     assert.equal(normalizeParams('spectrogram', { sc: 'linear' }).sc, 'linear');
     const savedLayout = createDefaultLayout();
     savedLayout.items[0].params.sc = 'log';
@@ -42,7 +44,7 @@ test('original analyzer parameters and optional note octave mapping normalize in
     const restored = normalizeLayout(savedLayout).items[0].params;
     assert.deepEqual([restored.sc, restored.kb, restored.showAxes, restored.showAxisNumbers], ['log', true, true, true]);
     assert.deepEqual(normalizeParams('spectrogram', { dr: -200, pt: 15, sc: 'log-hq', kb: true, kl: 250, gainDb: 30, showAxes: false, showAxisNumbers: true }),
-        { dr: -144, pt: 14, sc: 'log-hq', kb: true, kl: 200, gainDb: 24, showAxes: false, showAxisNumbers: true });
+        { dr: -144, pt: 14, sc: 'log-hq', kb: true, kl: 200, mf: 40000, gainDb: 24, showAxes: false, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('stereo'),
         { wt: 0.1, gainDb: 0, pk: true, ph: 0, pf: 1, showCorrelation: true, showBalance: true, showAxes: false, showAxisNumbers: false });
     assert.deepEqual(normalizeParams('stereo', { showCorrelation: false, showBalance: false, pf: 0.1 }),
@@ -104,7 +106,7 @@ test('item color modes preserve independent solid color and gradient settings', 
     stereo.palette.mode = 'heatmap';
     assert.equal(normalizeLayout({ ...createDefaultLayout(), items: [stereo] }).items[0].palette.mode, 'solid');
     const meter = createItem('level-meter', 'meter');
-    assert.deepEqual(meter.params, { dr: -96, orientation: 'horizontal', showLevelValues: false,
+    assert.deepEqual(meter.params, { dr: -96, orientation: 'horizontal', showLevelValues: false, ds: 0,
         cf: 1, pk: true, ph: 1, pf: 1, showAxes: false, showAxisNumbers: false });
     assert.equal(meter.channel, null);
     assert.equal(meter.palette.mode, 'solid');
@@ -114,7 +116,7 @@ test('item color modes preserve independent solid color and gradient settings', 
     assert.equal(restoredMeter.palette.mode, 'heatmap');
     assert.equal(restoredMeter.params.showAxes, true);
     assert.deepEqual(normalizeParams('level-meter', { dr: -61, orientation: 'vertical', showLevelValues: true }),
-        { dr: -61, orientation: 'vertical', showLevelValues: true, cf: 1, pk: true, ph: 1, pf: 1, showAxes: false, showAxisNumbers: false });
+        { dr: -61, orientation: 'vertical', showLevelValues: true, ds: 0, cf: 1, pk: true, ph: 1, pf: 1, showAxes: false, showAxisNumbers: false });
     assert.equal(normalizeParams('level-meter', { dr: -200 }).dr, -144);
     assert.equal(normalizeParams('level-meter', { dr: -20 }).dr, -48);
     assert.equal(normalizeParams('level-meter', { orientation: 'diagonal' }).orientation, 'horizontal');
@@ -243,7 +245,7 @@ test('saved layouts accept only missing newly defaulted fields and retain strict
     assert.deepEqual(decodeLayoutShare(encodePipelineState(original)), original);
     assert.equal(Object.hasOwn(original, 'graphScale'), false, 'Validation does not rewrite the input');
     for (const [type, keys] of Object.entries({
-        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm'], spectrogram: ['kl'], notes: ['kl'],
+        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
         stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf'], chroma: ['cf']
     })) {
         const layout = { ...createDefaultLayout(), items: [createItem(type, type)] };
@@ -335,6 +337,20 @@ test('Trail Feedback zoom, rotation, and flow persist without invalidating older
     assert.equal(normalizeLayout(layout).items[0].effects[0].flowY, -1);
 });
 
+test('Backplate settings default, clamp, and stay item-only', () => {
+    const layout = createDefaultLayout();
+    layout.items[0].effects = [normalizeEffect({ type: 'backplate' })];
+    const { fill, fillOpacity, border, borderWidth, radius, margin, amount } = layout.items[0].effects[0];
+    assert.deepEqual({ fill, fillOpacity, border, borderWidth, radius, margin, amount },
+        { fill: '#000000', fillOpacity: 0.5, border: '#ffffff', borderWidth: 0, radius: 16, margin: 0, amount: 1 });
+    assert.equal(validateLayout(layout), true);
+    Object.assign(layout.items[0].effects[0], { fill: 'red', fillOpacity: 2, borderWidth: 99, radius: -5, margin: -300 });
+    const restored = normalizeLayout(layout).items[0].effects[0];
+    assert.deepEqual([restored.fill, restored.fillOpacity, restored.borderWidth, restored.radius, restored.margin], ['#000000', 1, 20, 0, -200]);
+    assert.equal(validateLayout(layout), false);
+    assert.equal(normalizeEffect({ type: 'backplate' }, 'background'), null);
+});
+
 test('text font choices and emphasis persist without affecting non-text items', () => {
     assert.equal(FONT_FAMILIES.length, 9);
     for (const type of ['title', 'album', 'artist']) {
@@ -396,8 +412,8 @@ test('layout theme colors retain sparse compatibility and snapshot fixed Graphit
 test('system presets retain valid layouts for every aspect ratio', () => {
     let count = 0;
     const types = new Set();
-    const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope',
-        'Now Playing', 'Neon Pulse', 'Chroma Mandala'];
+    const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope', 'Hi-Fi Deck', 'Vintage VU',
+        'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala'];
     for (const aspect of ASPECTS) {
         const presets = JSON.parse(readFileSync(new URL(`../../presets/visualizer/${ASPECT_FILES[aspect]}`, import.meta.url)));
         assert.deepEqual(Object.keys(presets), names);
@@ -410,7 +426,8 @@ test('system presets retain valid layouts for every aspect ratio', () => {
         assert.deepEqual(nowPlaying[0].rect, { x: 0, y: 0, w: 1, h: 1 });
         const [pulse, reflection] = presets['Neon Pulse'].items;
         assert.equal(reflection.flipY, true);
-        assert.ok(Math.abs(reflection.rect.y - (pulse.rect.y + pulse.rect.h)) < 1e-9);
+        const reflectionGap = reflection.rect.y - (pulse.rect.y + pulse.rect.h);
+        assert.ok(reflectionGap >= 0 && reflectionGap < 0.01);
         for (const layout of Object.values(presets)) {
             count++;
             assert.equal(layout.aspect, aspect);
@@ -427,7 +444,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 35);
-    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'notes', 'chroma'])
+    assert.equal(count, 50);
+    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase'])
         assert.equal(types.has(type), true);
 });

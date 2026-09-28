@@ -258,30 +258,18 @@ export class DragDropManager {
             return pipeline.length;
         }
 
-        // Get the number of columns.
+        // Columns hold consecutive pipeline items, but their sizes depend on item heights,
+        // so count the items actually placed in the preceding columns.
         const columns = document.querySelectorAll('.pipeline-column');
-        const columnCount = columns.length;
         const totalPlugins = pipeline.length;
-        
-        // Guard against division by zero if there are no columns.
-        if (columnCount === 0) {
+        if (columns.length === 0) {
             return totalPlugins; // If pipeline is empty, this will be 0
         }
+        let calculatedIndex = positionInColumn;
+        for (let i = 0; i < columnIndex && i < columns.length; i++) {
+            calculatedIndex += columns[i].children.length;
+        }
 
-        // Calculate plugins per column based on the current pipeline length.
-        // This logic assumes column-first filling.
-        const pluginsPerColumn = Math.ceil(totalPlugins / columnCount);
-
-        // Calculate the actual insertion index in the pipeline array.
-        // Ensure index doesn't exceed the total number of plugins.
-        // Calculate the base index based on column-first filling.
-        let calculatedIndex = columnIndex * pluginsPerColumn + positionInColumn;
-
-        // Adjust index if dropping into a column that isn't the last *full* column
-        // Example: 3 columns, 7 plugins (3, 3, 1). Dropping at col 0, pos 1 = index 1.
-        // Dropping at col 1, pos 0 = index 3. Dropping at col 2, pos 0 = index 6.
-        // The formula columnIndex * pluginsPerColumn + positionInColumn works correctly for column-first filling.
-        
         const finalIndex = Math.min(calculatedIndex, totalPlugins);
         return finalIndex;
     }

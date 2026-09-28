@@ -1,22 +1,26 @@
 import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, EFFECT_CATALOG, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
+import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
 
 // Identifies copied Visualizer items in clipboard text.
 const CLIPBOARD_KEY = 'effetuneVisualizerItems';
+// Mac turns Ctrl+click into a secondary click, so Cmd+click selects behind there, as in Illustrator.
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const selectsBehind = event => (IS_MAC ? event.metaKey : event.ctrlKey) && !event.shiftKey;
 
 const ACTION_ICONS = {
     up: ['move-up-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 8l5.4 8.8H6.6z"/></svg>'],
     down: ['move-down-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M12 16l5.4-8.8H6.6z"/></svg>'],
-    front: ['bring-to-front-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5"/><rect x="9" y="9" width="10" height="10" rx="1.5" fill="currentColor"/></svg>'],
-    back: ['send-to-back-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M6.5 5h7A1.5 1.5 0 0 1 15 6.5V9h-4.5A1.5 1.5 0 0 0 9 10.5V15H6.5A1.5 1.5 0 0 1 5 13.5v-7A1.5 1.5 0 0 1 6.5 5z" fill="currentColor"/><rect x="9" y="9" width="10" height="10" rx="1.5"/></svg>'],
+    front: ['header-button bring-to-front-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5"/><rect x="9" y="9" width="10" height="10" rx="1.5" fill="currentColor"/></svg>'],
+    back: ['header-button send-to-back-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M6.5 5h7A1.5 1.5 0 0 1 15 6.5V9h-4.5A1.5 1.5 0 0 0 9 10.5V15H6.5A1.5 1.5 0 0 1 5 13.5v-7A1.5 1.5 0 0 1 6.5 5z" fill="currentColor"/><rect x="9" y="9" width="10" height="10" rx="1.5"/></svg>'],
     delete: ['delete-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>'],
-    left: ['align-left-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M4 3v18"/><rect x="7" y="6" width="12" height="4" rx="1"/><rect x="7" y="14" width="7" height="4" rx="1"/></svg>'],
-    hcenter: ['align-hcenter-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/></svg>'],
-    right: ['align-right-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M20 3v18"/><rect x="5" y="6" width="12" height="4" rx="1"/><rect x="10" y="14" width="7" height="4" rx="1"/></svg>'],
-    top: ['align-top-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 4h18"/><rect x="6" y="7" width="4" height="12" rx="1"/><rect x="14" y="7" width="4" height="7" rx="1"/></svg>'],
-    vcenter: ['align-vcenter-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/></svg>'],
-    bottom: ['align-bottom-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 20h18"/><rect x="6" y="5" width="4" height="12" rx="1"/><rect x="14" y="10" width="4" height="7" rx="1"/></svg>']
+    left: ['header-button align-left-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M4 3v18"/><rect x="7" y="6" width="12" height="4" rx="1"/><rect x="7" y="14" width="7" height="4" rx="1"/></svg>'],
+    hcenter: ['header-button align-hcenter-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/></svg>'],
+    right: ['header-button align-right-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M20 3v18"/><rect x="5" y="6" width="12" height="4" rx="1"/><rect x="10" y="14" width="7" height="4" rx="1"/></svg>'],
+    top: ['header-button align-top-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 4h18"/><rect x="6" y="7" width="4" height="12" rx="1"/><rect x="14" y="7" width="4" height="7" rx="1"/></svg>'],
+    vcenter: ['header-button align-vcenter-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/></svg>'],
+    bottom: ['header-button align-bottom-button', '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M3 20h18"/><rect x="6" y="5" width="4" height="12" rx="1"/><rect x="14" y="10" width="4" height="7" rx="1"/></svg>']
 };
 const STYLE_ICONS = {
     flipX: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 6 2 12l6 6V6zm8 0 6 6-6 6V6z"/></svg>',
@@ -70,9 +74,8 @@ export class VisualizerEditor {
         this.root = document.createElement('aside');
         this.root.className = 'visualizer-editor visualizer-editor-inspector plugin-parameter-ui';
         this.root.hidden = true;
-        // Selected item ids; empty means Background. The anchor is where Shift+click ranges start.
+        // Selected item ids; empty means Background.
         this.selection = new Set();
-        this.anchor = null;
         const divisions = Number(localStorage.getItem('effetune_visualizer_grid_divisions'));
         this.gridDivisions = GRID_DIVISIONS.includes(divisions) ? divisions : 0;
         this.itemBounds = document.createElement('div');
@@ -98,6 +101,7 @@ export class VisualizerEditor {
         view.stage.addEventListener('pointermove', event => this.drag(event));
         view.stage.addEventListener('pointerup', () => this.endDrag());
         view.stage.addEventListener('pointercancel', () => this.endDrag());
+        view.stage.addEventListener('contextmenu', event => this.openContextMenu(event));
         view.stage.tabIndex = -1;
         view.stage.addEventListener('keydown', event => this.onStageKeyDown(event));
         view.stage.addEventListener('keyup', () => this.view.commitPending());
@@ -106,6 +110,7 @@ export class VisualizerEditor {
     t(key, fallback) { return this.view.t(key, fallback); }
     setOpen(open) {
         this.open = open;
+        if (!open) this.closeContextMenu();
         this.navigation.hidden = !open;
         this.root.hidden = !open;
         this.view.stage.classList.toggle('editing', open);
@@ -154,17 +159,25 @@ export class VisualizerEditor {
             ? { id: selected[0].id, copy: structuredClone(selected[0]) } : null;
     }
     // Front and back move the selection as a group; up and down swap each selected item with its unselected neighbor.
+    // Returns null when the order would not change.
     reorderedItems(kind) {
         const items = this.view.layout.items, chosen = item => this.selection.has(item.id);
-        if (kind === 'front') return [...items.filter(item => !chosen(item)), ...items.filter(chosen)];
-        if (kind === 'back') return [...items.filter(chosen), ...items.filter(item => !chosen(item))];
-        const next = [...items];
-        if (kind === 'up') {
-            for (let i = 1; i < next.length; i++) if (chosen(next[i]) && !chosen(next[i - 1])) [next[i - 1], next[i]] = [next[i], next[i - 1]];
-        } else {
-            for (let i = next.length - 2; i >= 0; i--) if (chosen(next[i]) && !chosen(next[i + 1])) [next[i], next[i + 1]] = [next[i + 1], next[i]];
+        let next;
+        if (kind === 'front') next = [...items.filter(item => !chosen(item)), ...items.filter(chosen)];
+        else if (kind === 'back') next = [...items.filter(chosen), ...items.filter(item => !chosen(item))];
+        else {
+            next = [...items];
+            if (kind === 'up') {
+                for (let i = 1; i < next.length; i++) if (chosen(next[i]) && !chosen(next[i - 1])) [next[i - 1], next[i]] = [next[i], next[i - 1]];
+            } else {
+                for (let i = next.length - 2; i >= 0; i--) if (chosen(next[i]) && !chosen(next[i + 1])) [next[i], next[i + 1]] = [next[i + 1], next[i]];
+            }
         }
-        return next;
+        return next.every((value, index) => value === items[index]) ? null : next;
+    }
+    applyOrder(next) {
+        this.view.layout.items.splice(0, this.view.layout.items.length, ...next);
+        this.changed(true);
     }
     // Every item moves inside the selection bounds, so no snapping or clamping is needed.
     align(kind) {
@@ -180,25 +193,28 @@ export class VisualizerEditor {
         this.changed();
     }
     selectedItems() { return this.view.layout.items.filter(item => this.selection.has(item.id)); }
-    clearSelection() { this.selection = new Set(); this.anchor = null; }
+    clearSelection() { this.selection = new Set(); }
     deselectAll() { this.clearSelection(); this.refresh(); }
     selectAll() { this.selection = new Set(this.view.layout.items.map(item => item.id)); this.refresh(); }
+    // Items under the point, frontmost first.
+    itemsAt(point) {
+        return this.view.layout.items.filter(({ rect }) => point.x >= rect.x && point.y >= rect.y &&
+            point.x <= rect.x + rect.w && point.y <= rect.y + rect.h).reverse();
+    }
+    // Picks the item a click selects. Ctrl+click steps from the frontmost selected item under the pointer
+    // to the one behind it and wraps to the front; with nothing there selected it starts behind the front item.
+    clickTarget(hits, event) {
+        if (!selectsBehind(event) || !hits.length) return hits[0];
+        const current = hits.findIndex(item => this.selection.has(item.id));
+        return hits[(Math.max(current, 0) + 1) % hits.length];
+    }
     // Applies an item click and returns whether a drag may start from it.
-    clickItem(id, event) {
-        const toggle = event.ctrlKey || event.metaKey;
-        if (event.shiftKey && this.anchor) {
-            const ids = this.view.layout.items.map(item => item.id);
-            const [first, last] = [ids.indexOf(this.anchor), ids.indexOf(id)].sort((a, b) => a - b);
-            const range = ids.slice(first, last + 1);
-            this.selection = new Set(toggle ? [...this.selection, ...range] : range);
-            return false;
-        }
-        this.anchor = id;
+    clickItem(id, event, toggle = event.shiftKey) {
         if (toggle) {
             if (!this.selection.delete(id)) this.selection.add(id);
             return false;
         }
-        if (!this.selection.has(id)) this.selection = new Set([id]);
+        if (selectsBehind(event) || !this.selection.has(id)) this.selection = new Set([id]);
         return true;
     }
     // Drops gestures and selected ids that no longer match a replaced layout.
@@ -208,7 +224,6 @@ export class VisualizerEditor {
         this.marquee.hidden = true;
         const ids = new Set(this.view.layout.items.map(item => item.id));
         for (const id of this.selection) if (!ids.has(id)) this.selection.delete(id);
-        if (!ids.has(this.anchor)) this.anchor = null;
     }
     button(parent, label, action) {
         const button = document.createElement('button');
@@ -371,7 +386,8 @@ export class VisualizerEditor {
         for (const [id, label] of [['', this.t('visualizer.background', 'Background')],
             ...layout.items.map((value, index) => [value.id, `${index + 1}. ${this.t(`visualizer.type.${value.type}`, value.type)}`])]) {
             const option = this.button(list, label, event => {
-                if (id) this.clickItem(id, event); else this.clearSelection();
+                // The list has nothing behind an item, so Ctrl+click toggles there like Shift+click.
+                if (id) this.clickItem(id, event, event.shiftKey || event.ctrlKey || event.metaKey); else this.clearSelection();
                 this.refresh();
                 if (id) this.view.stage.focus({ preventScroll: true });
             });
@@ -402,10 +418,7 @@ export class VisualizerEditor {
         for (const [kind, key, fallback] of [['up', 'moveUp', 'Move up'], ['down', 'moveDown', 'Move down'],
             ['front', 'front', 'Bring to front'], ['back', 'back', 'Send to back']]) {
             const next = this.reorderedItems(kind);
-            const button = this.iconButton(order, kind, this.t(`visualizer.${key}`, fallback), () => {
-                layout.items.splice(0, layout.items.length, ...next); this.changed(true);
-            });
-            button.disabled = next.every((value, index) => value === layout.items[index]);
+            this.iconButton(order, kind, this.t(`visualizer.${key}`, fallback), () => this.applyOrder(next)).disabled = !next;
         }
         this.iconButton(order, 'delete', this.t('visualizer.delete', 'Delete'), () => this.deleteSelected());
         if (!single) {
@@ -479,6 +492,8 @@ export class VisualizerEditor {
         ]);
         const range = (key, label, min, max, step, format) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, format });
         const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value));
+        // Bar segment size in dB; 0 draws continuous bars.
+        const stepFormat = value => value > 0 ? `${value.toFixed(1)} dB` : this.t('visualizer.value.continuous', 'Continuous');
         // Peak Hold and Peak Fall Time only matter while the peak indicator (pk) is shown.
         const peakControls = (fallMin = 0.1) => {
             check('pk', 'Peak');
@@ -494,16 +509,30 @@ export class VisualizerEditor {
             check('kb', 'Keyboard');
             // 100% is half the length of real piano keys; 200% is the real proportion.
             range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
+            range('mf', 'Max Frequency', 1000, 40000, 1000, value => `${value / 1000} kHz`);
             if (item.type === 'spectrum') {
-                let quantize;
+                // Bar-only controls toggle in place, so dragging a slider never rebuilds the panel.
+                const disabled = () => ({ bars: params.dm !== 'bar', quantize: params.dm !== 'bar' || params.ds === 0 });
+                let bands, segment, quantize;
+                const syncBarFields = () => {
+                    const state = disabled();
+                    bands.disabled = segment.disabled = state.bars;
+                    quantize.disabled = state.quantize;
+                };
                 this.field(parent, this.t('visualizer.param.dm', 'Display'), 'select', params.dm, value => {
                     update('dm', value);
-                    quantize.disabled = value !== 'bar';
+                    syncBarFields();
                 }, { values: [['line', this.t('visualizer.paramChoice.line', 'Line')],
                     ['bar', this.t('visualizer.paramChoice.bar', 'Bar')]] });
+                bands = this.field(parent, this.t('visualizer.param.bc', 'Bands'), 'range', params.bc,
+                    value => update('bc', value), { min: 8, max: 128, step: 1, format: String, disabled: disabled().bars });
+                segment = this.field(parent, this.t('visualizer.param.ds', 'dB per Segment'), 'range', params.ds, value => {
+                    update('ds', value);
+                    syncBarFields();
+                }, { min: 0, max: 12, step: 0.5, format: stepFormat, disabled: disabled().bars });
                 quantize = this.field(parent, this.t('visualizer.param.quantizeBars', 'Quantize'),
                     'checkbox', params.quantizeBars, value => update('quantizeBars', value),
-                    { disabled: params.dm !== 'bar' });
+                    { disabled: disabled().quantize });
                 orientation();
                 range('sm', 'Smoothing', 0, 1, 0.01, value => `${value.toFixed(2)} oct`);
                 range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
@@ -527,6 +556,7 @@ export class VisualizerEditor {
         } else if (item.type === 'level-meter') {
             range('dr', 'DB Range', -144, -48, 1, value => `${value} dB`);
             orientation();
+            range('ds', 'dB per Segment', 0, 12, 0.5, stepFormat);
             check('showLevelValues', 'Level values');
             range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
             peakControls();
@@ -702,6 +732,20 @@ export class VisualizerEditor {
                         { min: -1, max: 1, step: .05, format: value => `${value}%`, disabled: !effect.enabled });
                 }
             }
+            if (effect.type === 'backplate') {
+                const set = key => value => { effect[key] = value; this.changed(); };
+                const percent = value => `${Math.round(value * 100)}%`;
+                this.field(block, this.t('visualizer.backplateFill', 'Fill color'), 'color', effect.fill, set('fill'), { disabled: !effect.enabled });
+                this.field(block, this.t('visualizer.backplateFillOpacity', 'Fill opacity'), 'range', effect.fillOpacity, set('fillOpacity'),
+                    { min: 0, max: 1, step: .01, format: percent, disabled: !effect.enabled });
+                this.field(block, this.t('visualizer.backplateBorder', 'Border color'), 'color', effect.border, set('border'), { disabled: !effect.enabled });
+                this.field(block, this.t('visualizer.backplateBorderWidth', 'Border width'), 'range', effect.borderWidth, set('borderWidth'),
+                    { min: 0, max: 20, step: .5, format: String, disabled: !effect.enabled });
+                this.field(block, this.t('visualizer.backplateRadius', 'Corner radius'), 'range', effect.radius, set('radius'),
+                    { min: 0, max: 200, step: 1, format: String, disabled: !effect.enabled });
+                this.field(block, this.t('visualizer.backplateMargin', 'Margin'), 'range', effect.margin, set('margin'),
+                    { min: -200, max: 200, step: 1, format: String, disabled: !effect.enabled });
+            }
             this.field(block, this.t('visualizer.modulation', 'Modulation'), 'radio', effect.mod.source, value => { effect.mod.source = value; this.changed(true); }, { values: ['none', 'time', 'level', 'bass'].map(value => [value, this.t(`visualizer.value.${value}`, value)]), disabled: !effect.enabled });
             this.field(block, this.t('visualizer.depth', 'Depth'), 'range', effect.mod.depth, value => { effect.mod.depth = value; this.changed(); }, { min: 0, max: 1, step: .01, disabled: !effect.enabled || effect.mod.source === 'none' });
             this.field(block, this.t('visualizer.speed', 'Speed'), 'range', effect.mod.speed, value => { effect.mod.speed = value; this.changed(); }, { min: 0, max: 8, step: .1, disabled: !effect.enabled || effect.mod.source !== 'time' });
@@ -733,17 +777,17 @@ export class VisualizerEditor {
         return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
     }
     startDrag(event) {
-        if (!this.open || event.target.closest('button')) return;
+        // Secondary clicks, including Ctrl+click on Mac, are left to the context menu.
+        if (!this.open || event.button > 0 || (IS_MAC && event.ctrlKey) || event.target.closest('button')) return;
         const point = this.point(event);
         const corner = event.target.dataset.corner;
-        const hit = corner ? this.selectedItems()[0] : [...this.view.layout.items].reverse().find(value => point.x >= value.rect.x && point.y >= value.rect.y && point.x <= value.rect.x + value.rect.w && point.y <= value.rect.y + value.rect.h);
-        // Range and toggle clicks only change the selection; they never start a drag.
+        const hit = corner ? this.selectedItems()[0] : this.clickTarget(this.itemsAt(point), event);
+        // Shift+click only toggles the selection; it never starts a drag.
         if (hit && !corner && !this.clickItem(hit.id, event)) { this.refresh(); return; }
         this.view.stage.focus({ preventScroll: true });
         event.preventDefault(); this.view.stage.setPointerCapture(event.pointerId);
         if (!hit) {
-            const additive = event.ctrlKey || event.metaKey || event.shiftKey;
-            if (!additive) this.clearSelection();
+            if (!event.shiftKey) this.clearSelection();
             this.marqueeStart = { point, base: new Set(this.selection) };
             this.refresh();
             return;
@@ -874,6 +918,75 @@ export class VisualizerEditor {
         for (let index = items.length - 1; index >= 0; index--) if (this.selection.has(items[index].id)) items.splice(index, 1);
         this.clearSelection();
         this.changed(true);
+    }
+    // Right-clicking an unselected item selects it first; a selected item or empty space keeps the selection.
+    openContextMenu(event) {
+        if (!this.open || event.target.closest('button')) return;
+        event.preventDefault();
+        // A touch long press that already moved belongs to the drag or marquee.
+        if (this.dragging?.moved || (this.marqueeStart && !this.marquee.hidden)) return;
+        this.dragging = null; this.marqueeStart = null;
+        const hit = this.itemsAt(this.point(event))[0];
+        if (hit && !this.selection.has(hit.id)) this.selection = new Set([hit.id]);
+        this.refresh();
+        const { history } = this.view, none = !this.selection.size;
+        const front = this.reorderedItems('front'), back = this.reorderedItems('back');
+        this.showContextMenu(event, [
+            [this.t('ui.title.undo', 'Undo'), !history.canUndo, () => this.view.stepHistory('undo')],
+            [this.t('ui.title.redo', 'Redo'), !history.canRedo, () => this.view.stepHistory('redo')],
+            null,
+            [this.t('visualizer.cut', 'Cut items'), none, () => this.cutSelected()],
+            [this.t('visualizer.copy', 'Copy items'), none, () => this.copySelected()],
+            [this.t('visualizer.paste', 'Paste items'), false, () => this.view.pasteFromClipboard()],
+            [this.t('visualizer.duplicate', 'Duplicate'), none, () => this.insertCopies(this.selectedItems(), true)],
+            [this.t('visualizer.delete', 'Delete'), none, () => this.deleteSelected()],
+            null,
+            [this.t('visualizer.selectAll', 'Select all'), !this.view.layout.items.length, () => this.selectAll()],
+            null,
+            [this.t('visualizer.front', 'Bring to front'), !front, () => this.applyOrder(front)],
+            [this.t('visualizer.back', 'Send to back'), !back, () => this.applyOrder(back)]
+        ]);
+    }
+    // Entries are [label, disabled, action] or null for a separator.
+    showContextMenu(event, entries) {
+        this.closeContextMenu();
+        const menu = document.createElement('div');
+        menu.className = 'visualizer-context-menu';
+        menu.setAttribute('role', 'menu');
+        for (const entry of entries) {
+            if (!entry) { menu.appendChild(document.createElement('hr')); continue; }
+            const [label, disabled, action] = entry;
+            const button = this.button(menu, label, () => { this.closeContextMenu(true); action(); });
+            button.setAttribute('role', 'menuitem');
+            button.disabled = disabled;
+        }
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+        document.body.appendChild(menu);
+        clampMenuToViewport(menu);
+        const dismiss = pointerEvent => { if (!menu.contains(pointerEvent.target)) this.closeContextMenu(); };
+        const blur = () => this.closeContextMenu();
+        menu.addEventListener('keydown', keyEvent => {
+            const items = [...menu.querySelectorAll('button:not(:disabled)')];
+            const step = { ArrowDown: 1, ArrowUp: -1 }[keyEvent.key];
+            if (keyEvent.key === 'Escape') this.closeContextMenu(true);
+            else if (step) items[(items.indexOf(document.activeElement) + step + items.length) % items.length]?.focus();
+            else return;
+            keyEvent.preventDefault(); keyEvent.stopPropagation();
+        });
+        document.addEventListener('pointerdown', dismiss, true);
+        window.addEventListener('blur', blur);
+        this.contextMenu = { menu, dismiss, blur };
+        menu.querySelector('button:not(:disabled)')?.focus();
+    }
+    // Focus returns to the stage when the menu closes from the keyboard or runs an action.
+    closeContextMenu(restoreFocus = false) {
+        if (!this.contextMenu) return;
+        document.removeEventListener('pointerdown', this.contextMenu.dismiss, true);
+        window.removeEventListener('blur', this.contextMenu.blur);
+        this.contextMenu.menu.remove();
+        this.contextMenu = null;
+        if (restoreFocus) this.view.stage.focus({ preventScroll: true });
     }
     onStageKeyDown(event) {
         if (!this.open || event.target !== this.view.stage || !this.selection.size) return;

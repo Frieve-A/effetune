@@ -170,6 +170,10 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
   });
   assert.equal(menuState['view.pipelineAnalyzer'].label, 'label:menu.view.pipelineAnalyzer');
   assert.equal(menuState['view.pipelineAnalyzer'].checked, false);
+  assert.equal(menuState['view.visualizerFeed'].label, 'label:menu.view.visualizerFeed');
+  assert.equal(menuState['view.visualizerFeedOff'].label, 'label:menu.view.visualizerFeedOff');
+  assert.equal(menuState['view.visualizerFeedShowWhileInactive'].label,
+    'label:menu.view.visualizerFeedShowWhileInactive');
   assert.equal(menuState['toggle-fullscreen'].label, 'label:menu.view.toggleFullscreen');
   assert.equal(menuState['view.miniPlayer'].label, 'label:menu.view.miniPlayer');
   assert.equal(menuState['help.discord'].label, 'Discord');

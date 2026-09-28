@@ -157,6 +157,7 @@ function createMenuState() {
     'menu.view': { label: 'View X' },
     'view.visualizer': { label: 'Visualizer X', enabled: false },
     'view.pipelineAnalyzer': { label: 'Analyzer X', checked: true },
+    'view.visualizerFeed': { label: 'Feed X' },
     'menu.settings': { label: 'Settings X' },
     'menu.help': { label: 'Help X' },
     unknown: { label: 'Ignored' }
@@ -211,6 +212,11 @@ function createHarness(options = {}) {
       }
     },
     ipcMain,
+    screen: {
+      getAllDisplays() {
+        return [{ id: 1, label: 'Display', scaleFactor: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 } }];
+      }
+    },
     shell: {
       async openExternal(url) {
         calls.push(['shell.openExternal', url]);
@@ -257,6 +263,9 @@ function createHarness(options = {}) {
     },
     getMainWindow() {
       return mainWindow;
+    },
+    getWindowState() {
+      return {};
     },
     getIsFirstLaunch() {
       return options.isFirstLaunch ?? true;
@@ -824,8 +833,8 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
           submenu: [
             'view.reload', 'separator', 'view.resetZoom', 'view.zoomIn',
             'view.zoomOut', 'separator', 'view.effectPipeline',
-            'view.musicLibrary', 'view.visualizer', 'view.pipelineAnalyzer', 'separator',
-            'toggle-fullscreen', 'view.miniPlayer'
+            'view.musicLibrary', 'view.visualizer', 'view.pipelineAnalyzer',
+            'view.visualizerFeed', 'separator', 'toggle-fullscreen', 'view.miniPlayer'
           ]
         },
         {
@@ -845,6 +854,9 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(translatedMenu.getMenuItemById('toggle-fullscreen').role, 'togglefullscreen');
     assert.equal(translatedMenu.getMenuItemById('view.reload').accelerator, 'CommandOrControl+R');
     assert.equal(translatedMenu.getMenuItemById('view.miniPlayer').accelerator, 'CommandOrControl+Shift+M');
+    assert.equal(translatedMenu.getMenuItemById('view.visualizerFeed').label, 'Feed X');
+    // A single display cannot host a clean feed.
+    assert.equal(translatedMenu.getMenuItemById('view.visualizerFeed').enabled, false);
     const menuIds = [];
     const collectIds = items => {
       for (const item of items) {
@@ -865,6 +877,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
       'menu.view',
       'view.reload', 'view.resetZoom', 'view.zoomIn', 'view.zoomOut',
       'view.effectPipeline', 'view.musicLibrary', 'view.visualizer', 'view.pipelineAnalyzer',
+      'view.visualizerFeed', 'view.visualizerFeedOff', 'view.visualizerFeedShowWhileInactive',
       'toggle-fullscreen', 'view.miniPlayer',
       'menu.settings',
       'settings.config', 'settings.audioDevices', 'settings.performanceBenchmark',

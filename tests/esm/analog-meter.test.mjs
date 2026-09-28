@@ -303,7 +303,7 @@ test('Analog Meter Reset posts resetPluginState and parameters follow the mode',
     const { plugin } = await loadPlugin({ workletNode });
     const ui = plugin.createUI();
     assert.equal(plugin.resetButton.style.display, 'none');
-    const parameters = ui.children.find(child => child.className === 'analog-meter-parameters');
+    const parameters = ui.children.find(child => child.className === 'analyzer-parameters');
     assert.equal(parameters.children.length, 11);
     const hidden = () => Object.entries(plugin.parameterRows)
         .filter(([, row]) => row.style.display === 'none')

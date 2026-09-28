@@ -25,7 +25,7 @@ function setup(items = []) {
         applyLayout() {}, warn: (...args) => warnings.push(args)
     });
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
-        view, open: true, selection: new Set(), anchor: null, gridDivisions: 0,
+        view, open: true, selection: new Set(), gridDivisions: 0,
         marquee: { hidden: true, style: {} }, render() {}, updateSelection() {}
     });
     view.editor = editor;
@@ -36,6 +36,8 @@ function setup(items = []) {
 const pointer = (x, y, extra = {}) => ({ target: { dataset: {}, closest: () => null }, clientX: x * 1000, clientY: y * 1000,
     pointerId: 1, preventDefault() {}, ...extra });
 const ids = editor => [...editor.selection];
+// The editor selects behind with Cmd+click on Mac and Ctrl+click elsewhere.
+const behind = /Mac|iPhone|iPad/.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true };
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const rects = items => items.map(({ rect }) => [Math.round(rect.x * 1e9) / 1e9, Math.round(rect.y * 1e9) / 1e9]);
 
@@ -87,11 +89,10 @@ test('Drags, Alt+drag copies, and slider input each record one history entry whe
 
 test('Undo and Redo restore layouts without adding entries and prune the selection', () => {
     const { view, editor, layout } = setup([item('a', .1, .1)]);
-    layout.items.push(item('b', .5, .5)); editor.selection = new Set(['a', 'b']); editor.anchor = 'b'; editor.changed(true);
+    layout.items.push(item('b', .5, .5)); editor.selection = new Set(['a', 'b']); editor.changed(true);
     view.stepHistory('undo');
     assert.deepEqual(view.layout.items.map(value => value.id), ['a']);
     assert.deepEqual(ids(editor), ['a']);
-    assert.equal(editor.anchor, null);
     assert.equal(view.history.entries.length, 2);
     view.stepHistory('redo');
     assert.deepEqual(view.layout.items.map(value => value.id), ['a', 'b']);
@@ -104,14 +105,14 @@ test('Undo and Redo restore layouts without adding entries and prune the selecti
     assert.deepEqual(view.layout.items.map(value => value.id), ['a', 'b']);
 });
 
-test('Ctrl+click toggles, Ctrl+A selects all, and a selection moves as a group', async () => {
+test('Shift+click toggles, Ctrl+A selects all, and a selection moves as a group', async () => {
     const { view, editor, layout } = setup([item('a', .1, .1), item('b', .5, .3), item('c', .7, .7)]);
     editor.startDrag(pointer(.15, .15));
     editor.endDrag();
-    editor.startDrag(pointer(.55, .35, { ctrlKey: true }));
+    editor.startDrag(pointer(.55, .35, { shiftKey: true }));
     assert.equal(editor.dragging, null);
     assert.deepEqual(ids(editor), ['a', 'b']);
-    editor.startDrag(pointer(.55, .35, { metaKey: true }));
+    editor.startDrag(pointer(.55, .35, { shiftKey: true }));
     assert.deepEqual(ids(editor), ['a']);
     await withGlobals({ document: { body: { classList: { contains: name => name === 'view-visualizer' } } } }, () => {
         view.onEditKeyDown({ key: 'a', ctrlKey: true, target: { inRoot: true, matches: () => false }, preventDefault() {} });
@@ -184,18 +185,25 @@ test('Delete removes every selected item from any non-text control, and Esc clea
     });
 });
 
-test('Shift+click selects a range from the anchor and marquee selection adds fully enclosed items', () => {
-    const { view, editor, layout } = setup([item('a', .1, .1), item('b', .5, .3), item('c', .7, .7), item('d', .1, .7)]);
-    editor.startDrag(pointer(.55, .35, { shiftKey: true }));
-    assert.deepEqual(ids(editor), ['b'], 'without an anchor Shift+click selects like a normal click');
+test('Ctrl+click selects the next item behind under the pointer and wraps to the front', () => {
+    const { editor } = setup([item('a', .1, .1, .4, .4), item('b', .2, .2, .4, .4), item('c', .3, .3, .4, .4), item('d', .8, .8, .1, .1)]);
+    const order = [];
+    for (let step = 0; step < 4; step++) {
+        editor.startDrag(pointer(.35, .35, behind));
+        assert.notEqual(editor.dragging, null, 'the item selected behind can be dragged at once');
+        editor.endDrag();
+        order.push(...ids(editor));
+    }
+    assert.deepEqual(order, ['b', 'a', 'c', 'b']);
+    editor.startDrag(pointer(.85, .85, behind));
     editor.endDrag();
-    editor.startDrag(pointer(.75, .75, { shiftKey: true }));
-    assert.equal(editor.dragging, null);
-    assert.deepEqual(ids(editor), ['b', 'c']);
-    assert.equal(editor.anchor, 'b');
-    editor.startDrag(pointer(.15, .15, { shiftKey: true }));
-    assert.deepEqual(ids(editor), ['a', 'b']);
+    assert.deepEqual(ids(editor), ['d'], 'a lone item under the pointer selects itself');
+});
+
+test('Marquee selection adds fully enclosed items, with Shift adding to the selection', () => {
+    const { view, editor, layout } = setup([item('a', .1, .1), item('b', .5, .3), item('c', .7, .7), item('d', .1, .7)]);
     const entries = view.history.entries.length;
+    editor.selection = new Set(['c']);
     editor.startDrag(pointer(.05, .05));
     assert.deepEqual(ids(editor), []);
     editor.drag(pointer(.75, .55));
@@ -203,12 +211,52 @@ test('Shift+click selects a range from the anchor and marquee selection adds ful
     assert.deepEqual(ids(editor), ['a', 'b']);
     editor.endDrag();
     assert.equal(editor.marquee.hidden, true);
-    editor.startDrag(pointer(.05, .65, { ctrlKey: true }));
+    editor.startDrag(pointer(.05, .65, { shiftKey: true }));
     editor.drag(pointer(.35, .95));
     editor.endDrag();
     assert.deepEqual(ids(editor), ['a', 'b', 'd']);
+    editor.startDrag(pointer(.05, .65, behind));
+    editor.drag(pointer(.35, .95));
+    editor.endDrag();
+    assert.deepEqual(ids(editor), ['d'], 'Ctrl on empty space starts a new marquee');
     assert.equal(view.history.entries.length, entries);
     assert.deepEqual(rects(layout.items), [[.1, .1], [.5, .3], [.7, .7], [.1, .7]]);
+});
+
+test('Right-click selects the item under the pointer and opens a menu whose entries match the state', () => {
+    const { view, editor, layout } = setup([item('a', .1, .1), item('b', .5, .3), item('c', .7, .7)]);
+    withMessages(view);
+    let entries = null;
+    editor.showContextMenu = (event, value) => { entries = Object.fromEntries(value.filter(Boolean).map(([label, disabled, action]) => [label, { disabled, action }])); };
+    const secondary = (x, y) => pointer(x, y, { button: 2 });
+    editor.startDrag(secondary(.55, .35));
+    assert.equal(editor.dragging, undefined, 'a secondary button never starts a drag');
+    assert.deepEqual(ids(editor), []);
+    editor.openContextMenu(secondary(.05, .95));
+    assert.deepEqual(ids(editor), [], 'empty space keeps the selection');
+    assert.equal(entries.Delete.disabled, true);
+    assert.equal(entries['Paste items'].disabled, false);
+    assert.equal(entries.Undo.disabled, true);
+    editor.selection = new Set(['a', 'b']);
+    editor.openContextMenu(secondary(.55, .35));
+    assert.deepEqual(ids(editor), ['a', 'b'], 'a selected item keeps the whole selection');
+    assert.equal(entries['Bring to front'].disabled, false);
+    entries['Bring to front'].action();
+    assert.deepEqual(layout.items.map(value => value.id), ['c', 'a', 'b']);
+    editor.openContextMenu(secondary(.75, .75));
+    assert.deepEqual(ids(editor), ['c'], 'an unselected item becomes the selection');
+    assert.equal(entries['Send to back'].disabled, true);
+    entries.Duplicate.action();
+    assert.equal(layout.items.length, 4);
+    entries = null;
+    editor.openContextMenu(secondary(.15, .15));
+    assert.equal(entries.Undo.disabled, false);
+    entries.Undo.action();
+    assert.equal(view.layout.items.length, 3);
+    editor.open = false;
+    entries = null;
+    editor.openContextMenu(secondary(.15, .15));
+    assert.equal(entries, null, 'outside Edit the browser menu is left alone');
 });
 
 // Globals for the clipboard paths: the Visualizer view is showing and the Electron clipboard holds `clip.text`.

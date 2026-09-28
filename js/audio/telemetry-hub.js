@@ -1,4 +1,4 @@
-import { VISUAL_SYNC_QUEUE_LIMIT } from './visual-sync.js';
+import { VISUAL_SYNC_QUEUE_LIMIT, dropVisualSyncOverflow } from './visual-sync.js';
 
 export const TELEMETRY_HEADER_BYTES = 16;
 
@@ -251,8 +251,8 @@ export class TelemetryHub {
         }
         const payload = new DataView(frame.payload.buffer.slice(frame.payload.byteOffset,
             frame.payload.byteOffset + frame.payload.byteLength));
-        if (this.visualSyncQueue.length >= this.queueLimit) {
-            this.visualSyncQueue.shift();
+        if (dropVisualSyncOverflow(this.visualSyncQueue, entry => entry.frame.tapId === frame.tapId &&
+            entry.frame.frameType === frame.frameType, this.queueLimit)) {
             this.stats.visualSyncDropped++;
         }
         this.visualSyncQueue.push({ due, sourcePort, frame: Object.freeze({ ...frame, payload }) });

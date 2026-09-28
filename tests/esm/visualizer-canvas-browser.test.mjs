@@ -25,14 +25,14 @@ test('Spectrum gradient directions follow frequency and level after rotating the
             for (const orientation of ['horizontal', 'vertical']) for (const dm of ['bar', 'line']) {
                 const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;
                 const item = createItem('spectrum', 'spectrum');
-                Object.assign(item.params, { orientation, dm, quantizeBars: false });
+                Object.assign(item.params, { orientation, dm, ds: 0 });
                 item.palette.mode = 'gradient';
                 item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
                 const display = createAnalyzerDisplay(item, canvas, sources), plugin = display.plugin;
                 plugin.collectSpectrumLevels = width => new Map(Array.from({ length: width }, (_, x) => [x, [-24, -24]]));
                 const width = orientation === 'vertical' ? 400 : 800;
                 const height = orientation === 'vertical' ? 800 : 400;
-                const count = width < 500 ? SPECTRUM_NARROW_BAR_COUNT : SPECTRUM_WIDE_BAR_COUNT;
+                const count = item.params.bc;
                 const frequencyX = fraction => dm === 'bar'
                     ? (Math.floor(count * fraction) + .5) * width / count : width * fraction;
                 const pixel = (fraction, level) => {
@@ -383,8 +383,11 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
         for (const type of ['spectrum', 'spectrogram', 'stereo', 'notes', 'notes-vertical', 'notes-keyless', 'notes-vertical-keyless']) {
             const rows = results.filter(row => row.type === type), baseline = rows[0].labels;
             assert.ok(baseline.length > 0, `${type} has labels`);
-            if (type.endsWith('keyless')) assert.ok(baseline.every(label => label.color === '#666666'),
-                `${type} labels use the default dark graph label color`);
+            if (type.endsWith('keyless')) {
+                assert.ok(baseline.filter(label => label.method === 'fillText').every(label => label.color === '#666666'),
+                    `${type} labels use the default dark graph label color`);
+                assert.ok(baseline.some(label => label.method === 'strokeText'), `${type} labels over the roll are outlined`);
+            }
             for (const row of [...rows.slice(1, 4), ...results.filter(row => row.type === 'effect-labels' && row.analyzer === type)]) {
                 assert.equal(row.labels.length, baseline.length, type);
                 row.labels.forEach((label, index) => {
@@ -676,7 +679,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                         color: method === 'strokeText' ? itemContext.strokeStyle : itemContext.fillStyle,
                         lineWidth: itemContext.lineWidth, lineJoin: itemContext.lineJoin
                     });
-                    if (text.endsWith(' dB')) localValues.push({ text, color: itemContext.fillStyle });
+                    if (text.endsWith(' dB')) localValues.push({ text, method, color: itemContext.fillStyle });
                     native(text, ...args);
                 };
             }
@@ -741,7 +744,8 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
                 label.color === '#000000' && label.lineWidth === 2 && label.lineJoin === 'round'));
         }
         assert.equal(results.wide.stageValues.length, 0, 'A fitting value stays in the item canvas');
-        assert.deepEqual(results.wide.localValues.map(label => label.text), ['L -6.0 dB']);
+        assert.deepEqual(results.wide.localValues.map(label => [label.method, label.text]),
+            [['strokeText', 'L -6.0 dB'], ['fillText', 'L -6.0 dB']], 'The value is outlined over its bar');
         assert.ok(results.wide.axisStrokes.every(label => label.font === '12px Arial'));
         assert.equal(results.range.dbStart, -61);
         assert.equal(results.range.dbRange, 61);

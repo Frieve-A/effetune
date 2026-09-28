@@ -143,23 +143,17 @@ export class McuProtocol {
   }
 
   readFeedback(mapping) {
-    if (mapping.target.type === '_global') {
-      const value = mapping.target.param === 'masterBypass'
-        ? !this.window?.pipelineManager?.core?.enabled
-        : this.window?.audioManager?.currentPipeline === 'B';
+    const { targets, resolved, action } = this.engine.resolveMapping(mapping);
+    if (action) {
+      if (!action.state) return null;
+      const value = Boolean(action.state(this.window));
       return { kind: 'bool', value, normalized: value ? 1 : 0 };
     }
-    const targets = this.engine.resolveTargets(mapping.target.type, mapping.target.instance);
     if (targets.length === 0) return null;
     if (mapping.target.param === '_enabled') {
       const value = Boolean(targets[0].enabled);
       return { kind: 'bool', value, normalized: value ? 1 : 0 };
     }
-    const resolved = this.adapter.resolve(
-      mapping.target.type,
-      mapping.target.param,
-      mapping.target.element
-    );
     if (!resolved) return null;
     const value = this.adapter.read(targets[0], resolved);
     const normalizedValue = normalizeDSPAutomationValue(resolved.descriptor, value);

@@ -442,6 +442,9 @@ contextBridge.exposeInMainWorld(
     saveConfig: (cfg) => ipcRenderer.invoke('save-config', withoutOpenHomeOwnedConfig(cfg)),
     setMiniPlayerMode: (options) => ipcRenderer.invoke('set-mini-player-mode', options),
     setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
+    // Returns the clean feed state ({ open, visible }); updates follow on onVisualizerFeedState.
+    setVisualizerFeedAllowed: (allowed) => ipcRenderer.invoke('set-visualizer-feed-allowed', allowed === true),
+    onVisualizerFeedState: (callback) => addSingleArgIpcListener('visualizer-feed-state', callback),
     
     // Signal that the renderer is ready to receive music files
     signalReadyForMusicFiles: () => {

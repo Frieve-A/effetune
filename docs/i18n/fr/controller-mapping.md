@@ -27,9 +27,18 @@ Avec Minuteur, réglez **Intervalle (secondes)** sur 1 ou plus. **Modifier de la
 
 La **Planification** propose **Intervalle**, **Une fois** et **Tous les jours**. L'intervalle va de 1 à 2 147 483,647 secondes et mesure le temps écoulé pendant l'exécution de l'application. En cas de retard, une seule modification est appliquée, puis l'intervalle suivant repart de cet instant, sans rejouer les événements manqués. Une fois utilise la **Date** et l'**Heure** locales ; Tous les jours utilise l'heure locale et attend le lendemain si l'heure du jour est passée. Les deux suivent le calendrier et l'horloge locaux de l'ordinateur, y compris les changements manuels et l'heure d'été ; Tous les jours ne s'exécute qu'une fois au maximum par date locale. Une échéance passée apparaît comme **Expiré** et n'est pas rattrapée ; placez la date ou l'heure dans le futur pour la réarmer.
 
-Horloge et Minuteur ne contrôlent que les paramètres numériques des effets, pas Enabled, les listes, Master Bypass ou A/B Toggle. Les actions aléatoires sont aussi disponibles pour un bouton ou une touche physique affecté à un paramètre numérique. Si l'application ou l'ordinateur retarde un événement, une seule modification est appliquée à la reprise, sans rejouer les événements manqués. Une même configuration ne reproduit pas toujours la même suite aléatoire.
+Horloge et Minuteur ne contrôlent que les paramètres numériques des effets, pas Activé, les listes ni les opérations de Global, y compris Vitesse de lecture. Les actions aléatoires sont aussi disponibles pour un bouton ou une touche physique affecté à un paramètre numérique. Si l'application ou l'ordinateur retarde un événement, une seule modification est appliquée à la reprise, sans rejouer les événements manqués. Une même configuration ne reproduit pas toujours la même suite aléatoire.
 
-**Premier** et **Dernier** choisissent la première ou la dernière instance correspondante. **Tous** applique la même valeur à toutes et prend la première comme valeur de départ des réglages relatifs. **Enabled** active ou désactive l'effet ; **Global** propose Master Bypass et A/B Toggle. Min et Max limitent la course et se saisissent dans l'unité affichée pour le paramètre ; inversez-les pour inverser le sens. Commencez avec Sensitivity 1.
+**Premier** et **Dernier** choisissent la première ou la dernière instance correspondante. **Tous** applique la même valeur à toutes et prend la première comme valeur de départ des réglages relatifs. **Activé** active ou désactive l'effet.
+
+**Global** commande l'application et le lecteur de musique plutôt qu'un effet : **Bypass général**, **Basculer A/B**, **Lecture/Pause**, **Arrêter**, **Piste suivante/précédente**, **Avancer/reculer de 10 s**, **Vitesse de lecture**, **Conserver la hauteur**, **Répétition**, **Aléatoire** et **Préréglage suivant/précédent**.
+
+- Pour Piste suivante/précédente, Avancer/reculer de 10 s et Préréglage suivant/précédent, le **Sens** détermine la direction : **+** avance et **−** recule. Avec un encodeur sans fin ou une molette jog, le déplacement suit le sens de rotation.
+- **Vitesse de lecture** varie en continu avec un fader ou un potentiomètre, 1x se trouvant au centre. Un bouton ou une touche passe à la vitesse standard suivante dans son Sens.
+- **Préréglage suivant/précédent** parcourt vos préréglages utilisateur par ordre de nom et repart de l'autre extrémité une fois arrivé au bout.
+- Les opérations du lecteur sont sans effet tant que le lecteur de musique est fermé. Si le navigateur n'autorise pas le démarrage de l'audio, la lecture ne peut pas être lancée depuis le contrôleur ; lancez-la avec le bouton Lecture du lecteur.
+
+Min et Max limitent la course et se saisissent dans l'unité affichée pour le paramètre ; inversez-les pour inverser le sens. Commencez avec Sensitivity 1.
 
 ## Sources de commande
 

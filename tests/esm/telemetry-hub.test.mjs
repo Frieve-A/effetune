@@ -205,8 +205,10 @@ test('visual sync schedules independent taps by deadline and returns copied pack
   assert.deepEqual(delivered, [1]);
   send(40, 4); send(50, 5);
   assert.equal(hub.getStats().visualSyncDropped, 1);
+  send(45, 6, 8);
+  assert.equal(hub.getStats().visualSyncDropped, 1, 'the limit applies per stream');
   now = 50; timer();
-  assert.deepEqual(delivered, [1, 4, 5]);
+  assert.deepEqual(delivered, [1, 4, 6, 5]);
   assert.equal(timer, null);
   for (const clear of [() => hub.clearSubscriptions(), () => hub.setPort(null),
     () => hub.setVisualSyncResolver(null)]) {

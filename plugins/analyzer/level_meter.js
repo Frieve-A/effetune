@@ -559,6 +559,10 @@ class LevelMeterPlugin extends PluginBase {
         const channelGap = numDrawableChannels > 1 ? 2 * dpr : 0;
         const channelSpan = (vertical ? this.canvasWidth : this.canvasHeight) / numDrawableChannels;
         const channelSize = channelSpan - channelGap;
+        const meterLength = vertical ? this.canvasHeight : this.canvasWidth;
+        // A host may split the bar into segments of segmentDb dB, drawn like the Spectrum Analyzer's quantized bars.
+        const segmentPitch = options?.segmentDb > 0 ? meterLength * options.segmentDb / this.dbRange : 0;
+        const fullBlockCount = segmentPitch ? Math.floor(meterLength / segmentPitch) : 0;
 
         for (let channel = 0; channel < numDrawableChannels; channel++) {
             const start = channel * channelSpan;
@@ -567,9 +571,9 @@ class LevelMeterPlugin extends PluginBase {
             const fallingLevel = this.lv[channel] - this.FALL_RATE * extrapolation;
             const projectedLevel = this.raw[channel] > fallingLevel ? this.raw[channel] : fallingLevel;
             const level = projectedLevel < -144 ? -144 : projectedLevel;
-            const rawLevelLength = (vertical ? this.canvasHeight : this.canvasWidth) *
-                (level - this.dbStart) / this.dbRange;
-            const levelLength = rawLevelLength < 0 ? 0 : rawLevelLength;
+            const rawLevelLength = meterLength * (level - this.dbStart) / this.dbRange;
+            const clampedLength = rawLevelLength < 0 ? 0 : rawLevelLength;
+            const levelLength = segmentPitch ? Math.floor(clampedLength / segmentPitch) * segmentPitch : clampedLength;
 
             // Draw peak hold
             let peakLevel = this.pl[channel];
@@ -582,8 +586,7 @@ class LevelMeterPlugin extends PluginBase {
             } else if (peakLevel < level) {
                 peakLevel = level;
             }
-            const peakPosition = (vertical ? this.canvasHeight : this.canvasWidth) *
-                (peakLevel - this.dbStart) / this.dbRange;
+            const peakPosition = meterLength * (peakLevel - this.dbStart) / this.dbRange;
             const drawSignal = target => {
                 let style = options?.traceStyle?.(target, start,
                     vertical ? this.canvasHeight : this.canvasWidth, channelSize);
@@ -602,8 +605,26 @@ class LevelMeterPlugin extends PluginBase {
                 target.fillStyle = style;
                 if (vertical) target.fillRect(start + dpr, this.canvasHeight - levelLength, channelSize, levelLength);
                 else target.fillRect(0, start + dpr, levelLength, channelSize);
+                const palette = options?.themePalette ?? window.ThemePalette;
+                if (segmentPitch) {
+                    // Cut the bar body into segments with gaps in the background color.
+                    target.fillStyle = palette?.get('graph-bg-deep') ?? '';
+                    for (let position = segmentPitch; position < levelLength; position += segmentPitch) {
+                        if (vertical) target.fillRect(start + dpr, this.canvasHeight - position - dpr / 2, channelSize, dpr);
+                        else target.fillRect(position - dpr / 2, start + dpr, dpr, channelSize);
+                    }
+                }
                 if (!showPeaks) return;
-                target.fillStyle = (options?.themePalette ?? window.ThemePalette)?.get('text-primary') ?? '';
+                if (segmentPitch) {
+                    // The peak lights the whole segment it falls in.
+                    const blocks = Math.ceil(peakPosition / segmentPitch);
+                    const blockEnd = (blocks < fullBlockCount ? blocks : fullBlockCount) * segmentPitch - dpr / 2;
+                    target.fillStyle = style;
+                    if (vertical) target.fillRect(start + dpr, this.canvasHeight - blockEnd, channelSize, segmentPitch - dpr);
+                    else target.fillRect(blockEnd - segmentPitch + dpr, start + dpr, segmentPitch - dpr, channelSize);
+                    return;
+                }
+                target.fillStyle = palette?.get('text-primary') ?? '';
                 if (vertical) target.fillRect(start + dpr, this.canvasHeight - peakPosition - dpr,
                     channelSize, 2 * dpr);
                 else target.fillRect(peakPosition - dpr, start + dpr, 2 * dpr, channelSize);

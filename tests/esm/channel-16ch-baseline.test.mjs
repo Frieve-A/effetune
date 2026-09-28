@@ -131,9 +131,9 @@ test('Matrix scrolling derives its height from the button dimensions and keeps b
   const css = fs.readFileSync(new URL('../../plugins/basics/matrix.css', import.meta.url), 'utf8');
   assert.match(css, /--matrix-visible-rows:\s*8/);
   assert.match(css, /--matrix-row-height:\s*calc\(var\(--matrix-button-box\)/);
-  assert.match(css, /max-height:\s*calc\(var\(--matrix-row-height\).*var\(--matrix-visible-rows\)/);
+  assert.match(css, /max-height:\s*calc\(var\(--matrix-title-height\)\s*\+\s*var\(--matrix-row-height\)\s*\*\s*\(1\s*\+\s*var\(--matrix-visible-rows\)/);
   assert.match(css, /overflow:\s*auto/);
-  assert.match(css, /min-height:\s*var\(--matrix-button-box\)/);
+  assert.match(css, /\.matrix-button\s*\{[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--matrix-button-box\)/s);
   assert.match(css, /body\.layout-mobile \.matrix-table-wrapper\s*\{\s*--matrix-button-box:\s*40px/);
   assert.match(css, /\.matrix-sticky-header\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*background-color:\s*color-mix\(in srgb,\s*var\(--et-surface-13\),\s*var\(--et-graph-bg-deep\) 25%\)/s);
   assert.match(css, /\.matrix-sticky-channel-header\s*\{[^}]*position:\s*sticky;[^}]*top:\s*var\(--matrix-title-height\)/s);

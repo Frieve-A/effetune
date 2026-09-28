@@ -163,7 +163,8 @@ test('Spectrum Analyzer places Keyboard after every other setting and keeps its 
   plugin.isHeldByUser = () => false;
 
   const ui = plugin.createUI();
-  const rows = ui.children.filter(child => child.className.includes('parameter-row'));
+  const parameters = ui.children.find(child => child.className === 'analyzer-parameters');
+  const rows = parameters.children.filter(child => child.className.includes('parameter-row'));
   assert.deepEqual(rows.map(row => row.children[0].textContent), [
     'DB Range (dB):',
     'Points:',
@@ -172,7 +173,8 @@ test('Spectrum Analyzer places Keyboard after every other setting and keeps its 
     'Color:',
     'Keyboard:'
   ]);
-  assert.equal(ui.children.at(-2), rows.at(-1));
+  assert.equal(parameters.children.at(-1), rows.at(-1));
+  assert.equal(ui.children.at(-2), parameters);
   assert.deepEqual(helperCalls.map(({ kind, label, key }) => ({ kind, label, key })), [
     { kind: 'parameter', label: 'DB Range', key: 'dr' },
     { kind: 'radio', label: 'Frequency Scale', key: 'sc' },

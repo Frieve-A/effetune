@@ -29,7 +29,7 @@ Choose **Add Automation** when you want a numeric effect parameter to change wit
 - For **Timer**, **Schedule** offers **Interval**, **Once**, and **Daily**. Interval uses **Interval (seconds)** from 1 through 2,147,483.647 seconds. Once uses a local **Date** and **Time**; Daily uses a local Time and waits until the next day if today's time has passed.
 - Under **Action**, **Change by amount** adds or subtracts **Amount** each time, **Random value in range** chooses a new value between Min and Max, and **Random step from current value** moves up or down by Amount from the current value.
 
-Clock and Timer automations are available only for numeric effect parameters. They cannot target Enabled, list parameters, Master Bypass, or A/B Toggle. Clock uses the selected time wave directly; random actions are available for Timer and for physical button or key mappings that target a numeric parameter.
+Clock and Timer automations are available only for numeric effect parameters. They cannot target Enabled, list parameters, or Global operations, including Playback Speed. Clock uses the selected time wave directly; random actions are available for Timer and for physical button or key mappings that target a numeric parameter.
 
 Automation is intended for changes that happen no faster than once per second. Interval measures elapsed app runtime rather than following the wall clock. If the app or computer delays a Timer event, EffeTune applies one change when it resumes, starts the next interval from there, and does not replay every missed event.
 
@@ -47,7 +47,14 @@ Once and Daily follow the computer's local calendar and clock, including later c
 - **First** controls the first matching effect in the current pipeline.
 - **Last** controls the last matching effect.
 - **All** sends the same value to every matching effect, using the first one as the starting value for relative changes.
-- **Enabled** toggles an effect on or off. **Global** offers Master Bypass and A/B Toggle.
+- **Enabled** toggles an effect on or off.
+
+**Global** controls the app and the music player instead of an effect: **Master Bypass**, **A/B Toggle**, **Play/Pause**, **Stop**, **Next/Previous Track**, **Seek ±10 s**, **Playback Speed**, **Preserve Pitch**, **Repeat**, **Shuffle**, and **Next/Previous Preset**.
+
+- For Next/Previous Track, Seek ±10 s, and Next/Previous Preset, **Direction** chooses the way: **+** moves forward and **−** moves back. An endless encoder or jog wheel moves in the direction you turn it.
+- **Playback Speed** changes continuously with a fader or knob, with 1x at the center. A button or key moves to the next standard speed in its Direction.
+- **Next/Previous Preset** steps through your user presets in name order and wraps around at either end.
+- Player operations do nothing while the music player is closed. If the browser does not allow audio to start, playback cannot begin from the controller; start it with the player's Play button instead.
 
 Min and Max limit the usable part of a parameter's range. Enter them in the unit shown for that parameter. Swap them to reverse the direction. Sensitivity changes the size of relative steps; begin at 1 and adjust only if movement feels too slow or too fast.
 
