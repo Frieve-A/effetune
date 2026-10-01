@@ -18,8 +18,18 @@ class RollingPcmCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.enabled = true;
+    this.captureFrame = 0;
+    this.startFrame = null;
+    this.firstSamples = null;
+    this.previousContextFrame = null;
     this.port.onmessage = event => {
       if (event.data?.type === 'set-enabled') this.enabled = event.data.enabled === true;
+      if (event.data?.type === 'capture') {
+        this.firstSamples = event.data.firstSamples;
+        this.totalFrames = event.data.totalFrames;
+        this.tolerance = event.data.tolerance;
+        this.duplicateTimestamp = event.data.duplicateTimestamp === true;
+      }
     };
   }
 
@@ -30,10 +40,33 @@ class RollingPcmCaptureProcessor extends AudioWorkletProcessor {
       if (input[channel]) output[channel].set(input[channel]);
       else output[channel].fill(0);
     }
-    if (this.enabled && input.length > 0) {
-      const planes = input.map(plane => plane.slice());
-      this.port.postMessage({ frame: currentFrame, planes }, planes.map(plane => plane.buffer));
+    // Count every rendered quantum, including silence: context timestamps can repeat at source boundaries.
+    const captureFrame = this.captureFrame;
+    this.captureFrame += output[0]?.length ?? 0;
+    if (this.enabled) {
+      if (this.startFrame === null && this.firstSamples) {
+        for (let offset = 0; offset < output[0].length; offset++) {
+          if (this.firstSamples.every((sample, channel) =>
+            Math.abs(output[channel][offset] - sample) <= this.tolerance)) {
+            this.startFrame = captureFrame + offset;
+            break;
+          }
+        }
+      }
+      let contextFrame = currentFrame;
+      if (this.duplicateTimestamp && this.startFrame !== null &&
+          captureFrame >= this.startFrame + 128 && !this.timestampDuplicated) {
+        contextFrame = this.previousContextFrame;
+        this.timestampDuplicated = true;
+      }
+      const planes = output.map(plane => plane.slice());
+      this.port.postMessage({ captureFrame, frame: contextFrame, planes }, planes.map(plane => plane.buffer));
+      if (this.startFrame !== null && this.captureFrame >= this.startFrame + this.totalFrames) {
+        this.port.postMessage({ type: 'complete', startFrame: this.startFrame });
+        this.enabled = false;
+      }
     }
+    this.previousContextFrame = currentFrame;
     return true;
   }
 }
@@ -110,7 +143,13 @@ test('capture AudioWorklet preserves every frame of an independent sequential so
           channelCountMode: 'explicit'
         });
         const blocks = [];
-        capture.port.onmessage = event => blocks.push(event.data);
+        let captureStartFrame;
+        let resolveCapture;
+        const captured = new Promise(resolve => { resolveCapture = resolve; });
+        capture.port.onmessage = ({ data }) => {
+          if (data.type === 'complete') { captureStartFrame = data.startFrame; resolveCapture(); }
+          else blocks.push(data);
+        };
         capture.connect(context.destination);
         const buffer = context.createBuffer(2, frameCount, sampleRate);
         for (let channel = 0; channel < 2; channel++) {
@@ -119,6 +158,9 @@ test('capture AudioWorklet preserves every frame of an independent sequential so
             plane[frame] = ((frame * 17 + channel * 101) % 997) / 1100 - 0.45;
           }
         }
+        capture.port.postMessage({ type: 'capture', totalFrames: frameCount, tolerance: 0,
+          firstSamples: [buffer.getChannelData(0)[0], buffer.getChannelData(1)[0]],
+          duplicateTimestamp: true });
         const source = context.createBufferSource();
         source.buffer = buffer;
         source.connect(capture);
@@ -129,7 +171,7 @@ test('capture AudioWorklet preserves every frame of an independent sequential so
         let timeoutId;
         try {
           await Promise.race([
-            ended,
+            Promise.all([ended, captured]),
             new Promise((_, reject) => {
               timeoutId = setTimeout(() => reject(new Error('capture timeout')), 5000);
             })
@@ -137,19 +179,18 @@ test('capture AudioWorklet preserves every frame of an independent sequential so
         } finally {
           clearTimeout(timeoutId);
         }
-        await new Promise(resolve => setTimeout(resolve, 100));
         const actual = Array.from({ length: 2 }, () => new Float32Array(frameCount));
         const seen = new Uint8Array(frameCount);
         const orderedFrames = [];
         for (const block of blocks) {
-          orderedFrames.push(block.frame);
-          const blockEnd = block.frame + (block.planes[0]?.length ?? 0);
-          const from = Math.max(startFrame, block.frame);
-          const to = Math.min(startFrame + frameCount, blockEnd);
+          orderedFrames.push(block.captureFrame);
+          const blockEnd = block.captureFrame + (block.planes[0]?.length ?? 0);
+          const from = Math.max(captureStartFrame, block.captureFrame);
+          const to = Math.min(captureStartFrame + frameCount, blockEnd);
           for (let absolute = from; absolute < to; absolute++) {
-            const target = absolute - startFrame;
-            const sourceOffset = absolute - block.frame;
-            seen[target] = 1;
+            const target = absolute - captureStartFrame;
+            const sourceOffset = absolute - block.captureFrame;
+            seen[target]++;
             for (let channel = 0; channel < 2; channel++) {
               actual[channel][target] = block.planes[channel][sourceOffset];
             }
@@ -164,7 +205,7 @@ test('capture AudioWorklet preserves every frame of an independent sequential so
           }
         }
         const relevantFrames = orderedFrames.filter(frame =>
-          frame + 128 > startFrame && frame < startFrame + frameCount);
+          frame + 128 > captureStartFrame && frame < captureStartFrame + frameCount);
         const sequenceGaps = relevantFrames.slice(1).filter((frame, index) =>
           frame !== relevantFrames[index] + 128).length;
         capture.port.postMessage({ type: 'set-enabled', enabled: false });
@@ -172,11 +213,15 @@ test('capture AudioWorklet preserves every frame of an independent sequential so
         await context.close();
         return {
           missingFrames: seen.reduce((count, value) => count + (value === 0 ? 1 : 0), 0),
+          duplicateFrames: seen.reduce((count, value) => count + (value > 1 ? 1 : 0), 0),
           sequenceGaps,
-          maxError
+          maxError,
+          contextFrameDeltaGaps: blocks.slice(1).filter((block, index) => block.frame !== blocks[index].frame + 128).length
         };
       });
-      assert.deepEqual(result, { missingFrames: 0, sequenceGaps: 0, maxError: 0 });
+      const { contextFrameDeltaGaps, ...pcmResult } = result;
+      assert.ok(contextFrameDeltaGaps > 0, 'The control must exercise duplicated context timestamps.');
+      assert.deepEqual(pcmResult, { missingFrames: 0, duplicateFrames: 0, sequenceGaps: 0, maxError: 0 });
     } finally {
       await page?.close();
       await browser?.close();
@@ -249,7 +294,17 @@ test('production Worker transport preserves PCM across a scheduled current-to-ne
             channelCountMode: 'explicit'
           });
           const blocks = [];
-          capture.port.onmessage = event => blocks.push(event.data);
+          let captureStartFrame;
+          let resolveCapture;
+          const captured = new Promise(resolve => { resolveCapture = resolve; });
+          capture.port.onmessage = ({ data }) => {
+            if (data.type === 'complete') { captureStartFrame = data.startFrame; resolveCapture(); }
+            else blocks.push(data);
+          };
+          capture.port.postMessage({ type: 'capture', totalFrames, tolerance: 0.00004,
+            firstSamples: [
+              references[0].getChannelData(0)[0], references[0].getChannelData(1)[0]
+            ] });
           capture.connect(context.destination);
           let currentEnded = 0;
           let nextEnded = 0;
@@ -291,7 +346,7 @@ test('production Worker transport preserves PCM across a scheduled current-to-ne
           let timeoutId;
           try {
             await Promise.race([
-              nextEndedPromise,
+              Promise.all([nextEndedPromise, captured]),
               playbackFailure,
               new Promise((_, reject) => {
                 timeoutId = setTimeout(() => reject(new Error('scheduled transport timeout')), 20000);
@@ -300,16 +355,15 @@ test('production Worker transport preserves PCM across a scheduled current-to-ne
           } finally {
             clearTimeout(timeoutId);
           }
-          await new Promise(resolve => setTimeout(resolve, 100));
           const actual = Array.from({ length: channelCount }, () => new Float32Array(totalFrames));
           const seen = new Uint8Array(totalFrames);
           for (const block of blocks) {
-            const blockEnd = block.frame + (block.planes[0]?.length ?? 0);
-            const from = Math.max(startFrame, block.frame);
-            const to = Math.min(startFrame + totalFrames, blockEnd);
+            const blockEnd = block.captureFrame + (block.planes[0]?.length ?? 0);
+            const from = Math.max(captureStartFrame, block.captureFrame);
+            const to = Math.min(captureStartFrame + totalFrames, blockEnd);
             for (let absolute = from; absolute < to; absolute++) {
-              const target = absolute - startFrame;
-              const sourceOffset = absolute - block.frame;
+              const target = absolute - captureStartFrame;
+              const sourceOffset = absolute - block.captureFrame;
               seen[target]++;
               for (let channel = 0; channel < channelCount; channel++) {
                 actual[channel][target] = block.planes[channel][sourceOffset];
@@ -353,6 +407,8 @@ test('production Worker transport preserves PCM across a scheduled current-to-ne
             currentFrames,
             nextFrames,
             totalFrames,
+            captureContextFrameDeltaGaps: blocks.slice(1).filter((block, index) =>
+              block.frame !== blocks[index].frame + 128).length,
             observedLogicalFrames: seen.reduce((count, value) => count + (value === 1 ? 1 : 0), 0),
             missingFrames: seen.reduce((count, value) => count + (value === 0 ? 1 : 0), 0),
             duplicateFrames: seen.reduce((count, value) => count + (value > 1 ? 1 : 0), 0),
@@ -384,7 +440,8 @@ test('production Worker transport preserves PCM across a scheduled current-to-ne
       assert.equal(result.currentFrames, 192000);
       assert.equal(result.nextFrames, 96000);
       assert.equal(result.totalFrames, 288000);
-      assert.equal(result.observedLogicalFrames, result.totalFrames);
+      assert.equal(result.observedLogicalFrames, result.totalFrames,
+        `context timestamp gaps: ${result.captureContextFrameDeltaGaps}`);
       assert.equal(result.missingFrames, 0);
       assert.equal(result.duplicateFrames, 0);
       assert.ok(result.maxError < 0.00004, `captured max error ${result.maxError}`);
