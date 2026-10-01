@@ -24,6 +24,8 @@
   "help:inputChannel": "Sélectionnez le canal auquel le microphone de calibration est connecté pour le périphérique audio sélectionné.",
   "label:audioOutput": "Périphérique de sortie audio :",
   "help:audioOutput": "Sélectionnez le périphérique audio qui diffuse le signal de mesure.",
+  "label:outputChannelCount": "Nombre de canaux du périphérique de sortie :",
+  "help:outputChannelCount": "Choisissez le nombre correspondant à votre périphérique de sortie (6 pour 5.1, 8 pour 7.1). Les signaux de test et les mesures utilisent toujours ce nombre, même si vous ne mesurez que certains canaux.",
   "label:outputChannel": "Canal de sortie :",
   "help:outputChannel": "Sélectionnez un ou plusieurs canaux de sortie à mesurer. L’option Tous les canaux désélectionne les canaux individuels.",
   "help:audioInput": "Spécifiez le périphérique d'entrée audio auquel le microphone de mesure est connecté.",

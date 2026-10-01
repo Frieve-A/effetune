@@ -21,6 +21,7 @@ import {
   Oscilloscope,
   PitchMeter,
   Phaser,
+  RhythmAnalyzer,
   Spectrogram,
   NoteSpectrogram,
   SpectrumAnalyzer,
@@ -202,6 +203,20 @@ test('dependent cross-field rules match across constructors, JSON, and partial e
         if (values.minimumMidi > values.maximumMidi) {
           [values.minimumMidi, values.maximumMidi] =
             [values.maximumMidi, values.minimumMidi];
+        }
+        return values;
+      }
+    },
+    {
+      type: 'RhythmAnalyzer',
+      EffectClass: RhythmAnalyzer,
+      supplied: { minimumBpm: 180, maximumBpm: 90 },
+      canonical: { minimumBpm: 180, maximumBpm: 225 },
+      updates: { minimumBpm: 60, maximumBpm: 180 },
+      canonicalize(parameters) {
+        const values = { ...parameters };
+        if (values.maximumBpm < values.minimumBpm * 1.25) {
+          values.maximumBpm = values.minimumBpm * 1.25;
         }
         return values;
       }
@@ -887,6 +902,24 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         assert.ok(frame.cents >= -50 && frame.cents <= 50);
         assert.ok(frame.confidence > 0 && frame.confidence <= 1);
         assert.ok(Number.isFinite(frame.levelDb));
+      }
+    },
+    {
+      effect: new RhythmAnalyzer({ id: 'rhythm' }),
+      kind: 'rhythmAnalyzer',
+      verify(frame) {
+        assert.equal(frame.sampleRate, 48000);
+        assert.ok(frame.generation > 0);
+        assert.ok(frame.envelopeHopSamples > 0);
+        assert.ok(frame.envelopeFrameCount > 0);
+        assert.ok(frame.timeSeconds > 0);
+        assert.ok(frame.latencySeconds > 0);
+        assert.equal(frame.locked, false);
+        assert.equal(frame.periodSeconds, 0);
+        assert.ok(frame.combBestBpm >= 40 && frame.combBestBpm <= 240);
+        assert.equal(frame.tempogram.length, 192);
+        assert.ok(frame.tempogram.every(value => value >= 0 && value <= 1));
+        assert.ok(frame.events.length <= 16);
       }
     },
     {

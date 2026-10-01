@@ -2,24 +2,36 @@
 #include "learned_model.generated.h"
 #include "learned_model_test_fixture.h"
 #include "multires_features.h"
-#include "pitch_context.h"
-
-#include <array>
-#include <cmath>
-#include <cstdio>
-#include <limits>
-
 #include "octave_model.generated.h"
 #include "octave_model_fixture.generated.h"
 #include "octave_pair_features.h"
+#include "pitch_context.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
 
 namespace {
 using effetune::plugins::analyzer::HeapTreeEvaluator;
-using effetune::plugins::analyzer::HeapTreeModelView;
 namespace model_fixture = effetune::plugins::analyzer::learned_model_fixture;
 namespace production_model = effetune::plugins::analyzer::learned_model;
 
 int failures = 0;
+
+// Each int16 leaf lies within half a step of its trained value, which bounds the margin error.
+template <std::uint32_t OutputCount, typename Model>
+double leafRoundingBound(const Model &model) noexcept {
+  double bound = 1.0e-12;
+  for (std::uint32_t tree = 0u; tree < model.tree_count; ++tree) {
+    float step = 0.0F;
+    for (std::uint32_t output = 0u; output < OutputCount; ++output)
+      step = std::max(step, model.leaf_scales[tree * OutputCount + output]);
+    bound += 0.5 * std::abs(model.scale) * step;
+  }
+  return bound;
+}
 
 #define CHECK(condition)                                                                           \
   do {                                                                                             \
@@ -29,51 +41,15 @@ int failures = 0;
     }                                                                                              \
   } while (false)
 
-void testHeapRoutingAndStrictSplit() {
-  constexpr std::array<std::uint8_t, 3> split_features = {0u, 1u, 1u};
-  constexpr std::array<float, 3> thresholds = {1.0F, 2.0F, 3.0F};
-  constexpr std::array<double, 4> leaves = {10.0, 20.0, 30.0, 40.0};
-  const HeapTreeModelView model = {
-      2u, 1u, 2u, 2.0, 0.5, split_features.data(), thresholds.data(), leaves.data()};
-  const std::array<std::array<float, 2>, 4> inputs = {
-      std::array<float, 2>{1.0F, 2.0F},
-      std::array<float, 2>{1.0F, 3.0F},
-      std::array<float, 2>{2.0F, 3.0F},
-      std::array<float, 2>{2.0F, 4.0F},
-  };
-  constexpr std::array<double, 4> expected = {20.5, 40.5, 60.5, 80.5};
-  std::array<const float *, 4> rows = {inputs[0].data(), inputs[1].data(), inputs[2].data(),
-                                       inputs[3].data()};
-  std::array<double, 4> staged{};
-  staged.fill(HeapTreeEvaluator::initialMargin(model));
-  HeapTreeEvaluator::accumulateTree4(model, rows.data(), 4u, 0u, staged.data());
-  for (std::uint32_t sample = 0u; sample < inputs.size(); ++sample) {
-    CHECK(HeapTreeEvaluator::margin(model, inputs[sample].data()) == expected[sample]);
-    CHECK(staged[sample] == expected[sample]);
-  }
-
-  auto equal = inputs[2];
-  equal[0] = std::nextafter(1.0F, std::numeric_limits<float>::infinity());
-  CHECK(HeapTreeEvaluator::margin(model, equal.data()) == 60.5);
-}
-
-void testStableSigmoidAndExcessProbability() {
-  CHECK(HeapTreeEvaluator::probability(-1000.0) == 0.0F);
-  CHECK(HeapTreeEvaluator::probability(1000.0) == 1.0F);
-  CHECK(HeapTreeEvaluator::probability(0.0) == 0.5F);
-  CHECK(HeapTreeEvaluator::excessProbability(0.1F, 0.2F) == 0.0F);
-  CHECK(std::abs(HeapTreeEvaluator::excessProbability(0.6F, 0.2F) - 0.5F) < 1.0e-6F);
-  CHECK(HeapTreeEvaluator::excessProbability(1.0F, 0.2F) == 1.0F);
-}
-
 void testFullModelReferenceMargins() {
   constexpr auto model = production_model::model();
   static_assert(model_fixture::kFeatureSchemaVersion == production_model::kFeatureSchemaVersion);
   static_assert(model_fixture::kFeatureCount == production_model::kFeatureCount);
+  const double tolerance = leafRoundingBound<1u>(model);
   for (std::uint32_t sample = 0u; sample < model_fixture::kSampleCount; ++sample) {
     const auto *features = model_fixture::kFeatures.data() + sample * model_fixture::kFeatureCount;
     const double margin = HeapTreeEvaluator::margin(model, features);
-    CHECK(std::abs(margin - model_fixture::kExpectedMargins[sample]) <= 1.0e-12);
+    CHECK(std::abs(margin - model_fixture::kExpectedMargins[sample]) <= tolerance);
   }
 }
 
@@ -93,7 +69,8 @@ void testBatchedReferenceMargins() {
   }
   for (auto row = 0u; row < rows.size(); ++row) {
     CHECK(margins[row] == HeapTreeEvaluator::margin(model, rows[row]));
-    CHECK(std::abs(margins[row] - model_fixture::kExpectedMargins[samples[row]]) <= 1.0e-12);
+    CHECK(std::abs(margins[row] - model_fixture::kExpectedMargins[samples[row]]) <=
+          leafRoundingBound<1u>(model));
   }
 }
 
@@ -135,52 +112,7 @@ void testPitchContextPartitioning() {
   whole.update(base, 0u, 88u);
   CHECK(whole.values() == partitioned.values());
 }
-void testOctaveModelReferenceMargins() {
-  namespace model = effetune::plugins::analyzer::octave_model;
-  namespace fixture = effetune::plugins::analyzer::octave_model_fixture;
-  std::array<const float *, 4> rows{};
-  std::array<double, 16> margins{};
-  for (auto row = 0u; row < 4u; ++row)
-    rows[row] = fixture::kFeatures.data() + row * model::kFeatureCount;
-  // Match the runtime prefix and partial final batch, leaving inactive rows untouched.
-  HeapTreeEvaluator::accumulateTrees4<4u>(model::model(), rows.data(), 0u, 128u, margins.data());
-  const auto prefix = margins;
-  HeapTreeEvaluator::accumulateTrees4<4u>(model::model(), rows.data(), 128u, model::kTreeCount,
-                                          margins.data(), 3u);
-  for (auto value = 0u; value < 12u; ++value)
-    CHECK(std::abs(margins[value] - fixture::kExpectedMargins[value]) <= 1.0e-6);
-  for (auto value = 12u; value < 16u; ++value)
-    CHECK(margins[value] == prefix[value]);
-  HeapTreeEvaluator::accumulateTrees4<4u>(model::model(), rows.data() + 3u, 128u, model::kTreeCount,
-                                          margins.data() + 12u, 1u);
-  for (auto value = 12u; value < 16u; ++value)
-    CHECK(std::abs(margins[value] - fixture::kExpectedMargins[value]) <= 1.0e-6);
-}
 
-void testOctaveFeatureTransposition() {
-  using effetune::plugins::analyzer::OctavePairFeatures;
-  OctavePairFeatures::BaseFrame short_frame{}, long_frame{}, shifted_short{}, shifted_long{};
-  for (auto pitch = 0u; pitch < 87u; ++pitch)
-    for (auto feature = 0u; feature < 45u; ++feature) {
-      short_frame[pitch][feature] = static_cast<float>(pitch * 100u + feature);
-      long_frame[pitch][feature] = -short_frame[pitch][feature];
-      shifted_short[pitch + 1u][feature] = short_frame[pitch][feature];
-      shifted_long[pitch + 1u][feature] = long_frame[pitch][feature];
-    }
-  OctavePairFeatures original, shifted;
-  original.update(short_frame, long_frame, 0u, 12u);
-  shifted.update(shifted_short, shifted_long, 0u, 5u);
-  shifted.update(shifted_short, shifted_long, 5u, 12u);
-  for (auto pair = 0u; pair < 11u; ++pair)
-    CHECK(original.values()[pair] == shifted.values()[pair + 1u]);
-  const auto &row = original.values()[0];
-  CHECK(row[0] == short_frame[3][0]);
-  CHECK(row[45] == long_frame[3][0]);
-  CHECK(row[90] == short_frame[3][0] - short_frame[3][1]);
-  CHECK(row[98] == long_frame[2][0]);
-  CHECK(row[106] == short_frame[15][0]);
-  CHECK(row[211] == long_frame[16][22]);
-}
 void testMultiresolutionPartitioning() {
   using effetune::plugins::analyzer::MultiresolutionFeatures;
   using effetune::plugins::analyzer::PitchContextFeatures;
@@ -208,11 +140,57 @@ void testMultiresolutionPartitioning() {
     for (const auto value : row)
       CHECK(value == 0.0F);
 }
+
+void testOctaveModelReferenceMargins() {
+  namespace model = effetune::plugins::analyzer::octave_model;
+  namespace fixture = effetune::plugins::analyzer::octave_model_fixture;
+  std::array<const float *, 4> rows{};
+  std::array<double, 16> margins{};
+  for (auto row = 0u; row < 4u; ++row)
+    rows[row] = fixture::kFeatures.data() + row * model::kFeatureCount;
+  // Match the runtime prefix and partial final batch, leaving inactive rows untouched.
+  HeapTreeEvaluator::accumulateTrees4<4u>(model::model(), rows.data(), 0u, 128u, margins.data());
+  const auto prefix = margins;
+  HeapTreeEvaluator::accumulateTrees4<4u>(model::model(), rows.data(), 128u, model::kTreeCount,
+                                          margins.data(), 3u);
+  const double tolerance = leafRoundingBound<4u>(model::model());
+  for (auto value = 0u; value < 12u; ++value)
+    CHECK(std::abs(margins[value] - fixture::kExpectedMargins[value]) <= tolerance);
+  for (auto value = 12u; value < 16u; ++value)
+    CHECK(margins[value] == prefix[value]);
+  HeapTreeEvaluator::accumulateTrees4<4u>(model::model(), rows.data() + 3u, 128u, model::kTreeCount,
+                                          margins.data() + 12u, 1u);
+  for (auto value = 12u; value < 16u; ++value)
+    CHECK(std::abs(margins[value] - fixture::kExpectedMargins[value]) <= tolerance);
+}
+
+void testOctaveFeatureTransposition() {
+  using effetune::plugins::analyzer::OctavePairFeatures;
+  OctavePairFeatures::BaseFrame short_frame{}, long_frame{}, shifted_short{}, shifted_long{};
+  for (auto pitch = 0u; pitch < 87u; ++pitch)
+    for (auto feature = 0u; feature < 45u; ++feature) {
+      short_frame[pitch][feature] = static_cast<float>(pitch * 100u + feature);
+      long_frame[pitch][feature] = -short_frame[pitch][feature];
+      shifted_short[pitch + 1u][feature] = short_frame[pitch][feature];
+      shifted_long[pitch + 1u][feature] = long_frame[pitch][feature];
+    }
+  OctavePairFeatures original, shifted;
+  original.update(short_frame, long_frame, 0u, 12u);
+  shifted.update(shifted_short, shifted_long, 0u, 5u);
+  shifted.update(shifted_short, shifted_long, 5u, 12u);
+  for (auto pair = 0u; pair < 11u; ++pair)
+    CHECK(original.values()[pair] == shifted.values()[pair + 1u]);
+  const auto &row = original.values()[0];
+  CHECK(row[0] == short_frame[3][0]);
+  CHECK(row[45] == long_frame[3][0]);
+  CHECK(row[90] == short_frame[3][0] - short_frame[3][1]);
+  CHECK(row[98] == long_frame[2][0]);
+  CHECK(row[106] == short_frame[15][0]);
+  CHECK(row[211] == long_frame[16][22]);
+}
 } // namespace
 
 int main() {
-  testHeapRoutingAndStrictSplit();
-  testStableSigmoidAndExcessProbability();
   testFullModelReferenceMargins();
   testBatchedReferenceMargins();
   testPitchContextPartitioning();

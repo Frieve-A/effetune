@@ -491,6 +491,23 @@ function prepareLegacyParametersV1(effectType, source) {
       delete parameters[key];
     }
   }
+  if (effectType === 'RhythmAnalyzer') {
+    if (Object.hasOwn(parameters, 'sp')) {
+      // Span (beats per row) only controls the beat-grid display.
+      if (![4, 6, 8, 12, 16].includes(parameters.sp)) {
+        throw new ValidationError('Legacy RhythmAnalyzer contains invalid sp display state.');
+      }
+      delete parameters.sp;
+    }
+    // Panel toggles (tempogram strip, main lanes, echo rows, beat lens) only control the display.
+    for (const key of ['vt', 'vm', 've', 'vl']) {
+      if (!Object.hasOwn(parameters, key)) continue;
+      if (typeof parameters[key] !== 'boolean') {
+        throw new ValidationError(`Legacy RhythmAnalyzer contains invalid ${key} display state.`);
+      }
+      delete parameters[key];
+    }
+  }
   if (effectType === 'PitchMeter' && Object.hasOwn(parameters, 'ly')) {
     if (parameters.ly !== 'Vertical' && parameters.ly !== 'Horizontal') {
       throw new ValidationError('Legacy PitchMeter contains invalid layout state.');

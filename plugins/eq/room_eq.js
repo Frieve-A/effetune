@@ -118,10 +118,15 @@ class RoomEqAdditionalEqEditor {
         baseResponse = null,
         correctionLowFrequency = 80,
         correctionHighFrequency = 20000,
-        onChange
+        onChange,
+        plot = null
     } = {}) {
         this.host = host;
         this.id = id;
+        // Optional host plot: { element, freqToX, xToFreq, gainToY, yToGain } with
+        // percentage mappers. The markers then mount into the host's graph element
+        // and the host draws the response.
+        this.plot = plot;
         this._sampleRate = sampleRate;
         this.baseResponse = baseResponse;
         this.onChange = onChange;
@@ -202,58 +207,18 @@ class RoomEqAdditionalEqEditor {
         container.className = 'room-eq-additional-eq-ui';
         container.id = `room-eq-additional-eq-container-${this.id}`;
 
-        const graphContainer = document.createElement('div');
-        graphContainer.className = 'graph-container';
-        graphContainer.style.margin = '10px auto';
-
-        const graph = document.createElement('div');
-        graph.className = 'room-eq-additional-eq-graph graph-axis-titled';
-        graph.id = `room-eq-additional-eq-graph-${this.id}`;
-        graph.setAttribute('data-x-axis-title', 'Frequency (Hz)');
-        graph.setAttribute('data-y-axis-title', 'Level (dB)');
-
-        const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        gridSvg.setAttribute('class', 'room-eq-additional-eq-grid');
-        gridSvg.setAttribute('width', '100%');
-        gridSvg.setAttribute('height', '100%');
-        for (const frequency of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
-            const x = this.freqToX(frequency);
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', `${x}%`);
-            line.setAttribute('x2', `${x}%`);
-            line.setAttribute('y1', '0');
-            line.setAttribute('y2', '100%');
-            gridSvg.appendChild(line);
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', `${x}%`);
-            text.setAttribute('y', '95%');
-            text.setAttribute('text-anchor', 'middle');
-            text.textContent = frequency >= 1000 ? `${frequency / 1000}k` : frequency;
-            gridSvg.appendChild(text);
+        let graph;
+        if (this.plot) {
+            graph = this.plot.element;
+            graph.classList.add('room-eq-additional-eq-ui');
+        } else {
+            const graphContainer = document.createElement('div');
+            graphContainer.className = 'graph-container';
+            graphContainer.style.margin = '10px auto';
+            graph = this._createGraph();
+            graphContainer.appendChild(graph);
+            container.appendChild(graphContainer);
         }
-        for (const gain of [-18, -12, -6, 0, 6, 12, 18]) {
-            const y = this.gainToY(gain);
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', '0');
-            line.setAttribute('x2', '100%');
-            line.setAttribute('y1', `${y}%`);
-            line.setAttribute('y2', `${y}%`);
-            gridSvg.appendChild(line);
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', '2%');
-            text.setAttribute('y', `${y}%`);
-            text.setAttribute('dominant-baseline', 'middle');
-            text.textContent = `${gain}`;
-            gridSvg.appendChild(text);
-        }
-        graph.appendChild(gridSvg);
-
-        const responseSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        responseSvg.setAttribute('class', 'room-eq-additional-eq-response');
-        responseSvg.setAttribute('width', '100%');
-        responseSvg.setAttribute('height', '100%');
-        responseSvg.setAttribute('preserveAspectRatio', 'none');
-        graph.appendChild(responseSvg);
 
         const markers = [];
         for (let index = 0; index < ROOM_EQ_ADDITIONAL_EQ_BANDS.length; index += 1) {
@@ -332,14 +297,11 @@ class RoomEqAdditionalEqEditor {
             controlsContainer.appendChild(this._createBandControls(index));
         }
 
-        graphContainer.appendChild(graph);
-        container.appendChild(graphContainer);
         container.appendChild(controlsContainer);
         this.graphContainer = graph;
-        this.responseSvg = responseSvg;
         this.markers = markers;
         this.uiContainer = container;
-        this.observeGraphResize(graph);
+        if (!this.plot) this.observeGraphResize(graph);
         this.uiCreated = true;
         this.setUIValues();
         setTimeout(() => {
@@ -347,6 +309,59 @@ class RoomEqAdditionalEqEditor {
             this.updateResponse();
         }, 0);
         return container;
+    }
+
+    _createGraph() {
+        const graph = document.createElement('div');
+        graph.className = 'room-eq-additional-eq-graph graph-axis-titled';
+        graph.id = `room-eq-additional-eq-graph-${this.id}`;
+        graph.setAttribute('data-x-axis-title', 'Frequency (Hz)');
+        graph.setAttribute('data-y-axis-title', 'Level (dB)');
+
+        const gridSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        gridSvg.setAttribute('class', 'room-eq-additional-eq-grid');
+        gridSvg.setAttribute('width', '100%');
+        gridSvg.setAttribute('height', '100%');
+        for (const frequency of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+            const x = this.freqToX(frequency);
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', `${x}%`);
+            line.setAttribute('x2', `${x}%`);
+            line.setAttribute('y1', '0');
+            line.setAttribute('y2', '100%');
+            gridSvg.appendChild(line);
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', `${x}%`);
+            text.setAttribute('y', '95%');
+            text.setAttribute('text-anchor', 'middle');
+            text.textContent = frequency >= 1000 ? `${frequency / 1000}k` : frequency;
+            gridSvg.appendChild(text);
+        }
+        for (const gain of [-18, -12, -6, 0, 6, 12, 18]) {
+            const y = this.gainToY(gain);
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '0');
+            line.setAttribute('x2', '100%');
+            line.setAttribute('y1', `${y}%`);
+            line.setAttribute('y2', `${y}%`);
+            gridSvg.appendChild(line);
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', '2%');
+            text.setAttribute('y', `${y}%`);
+            text.setAttribute('dominant-baseline', 'middle');
+            text.textContent = `${gain}`;
+            gridSvg.appendChild(text);
+        }
+        graph.appendChild(gridSvg);
+
+        const responseSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        responseSvg.setAttribute('class', 'room-eq-additional-eq-response');
+        responseSvg.setAttribute('width', '100%');
+        responseSvg.setAttribute('height', '100%');
+        responseSvg.setAttribute('preserveAspectRatio', 'none');
+        graph.appendChild(responseSvg);
+        this.responseSvg = responseSvg;
+        return graph;
     }
 
     _createBandControls(index) {
@@ -555,12 +570,14 @@ class RoomEqAdditionalEqEditor {
     }
 
     freqToX(frequency) {
+        if (this.plot) return this.plot.freqToX(frequency);
         const value = Math.max(10, Math.min(frequency, 40000));
         return (Math.log10(value) - Math.log10(10)) /
             (Math.log10(40000) - Math.log10(10)) * 100;
     }
 
     xToFreq(xPercent) {
+        if (this.plot) return this.plot.xToFreq(xPercent);
         return Math.pow(
             10,
             Math.log10(10) + xPercent / 100 * (Math.log10(40000) - Math.log10(10))
@@ -568,10 +585,12 @@ class RoomEqAdditionalEqEditor {
     }
 
     gainToY(gain) {
+        if (this.plot) return this.plot.gainToY(gain);
         return 50 - gain / 20 * 50;
     }
 
     yToGain(yPercent) {
+        if (this.plot) return this.plot.yToGain(yPercent);
         return -(yPercent - 50) / 50 * 20;
     }
 
@@ -614,7 +633,8 @@ class RoomEqAdditionalEqEditor {
     }
 
     getGraphPlotArea(container = this.graphContainer) {
-        return GraphPlotArea.from(container);
+        // A host plot maps over its whole element, so it has no inset margin.
+        return this.plot ? GraphPlotArea.from(container, 0) : GraphPlotArea.from(container);
     }
 
     updateMarkers() {

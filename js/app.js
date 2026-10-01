@@ -89,7 +89,10 @@ async function writePipelineStateToFile() {
 }
 
 // Set up listener for pipeline state request from main process (for window close)
-registerPipelineStateCloseHandler(getPipelineStateForSave);
+registerPipelineStateCloseHandler(
+    getPipelineStateForSave,
+    () => window.audioManager?.fadeOutOutputForTeardown?.()
+);
 
 // Function to load pipeline state from file when in Electron environment
 async function loadPipelineState(forceLoad = false) {
@@ -372,6 +375,7 @@ class App {
     async openFeaturePage(path) {
         const isMeasurementPage = /(?:^|\/)measurement\/measurement\.html$/.test(path);
         if (!isMeasurementPage) {
+            await this.audioManager.fadeOutOutputForTeardown?.();
             window.location.href = path;
             return;
         }
@@ -386,14 +390,18 @@ class App {
             window.electronIntegration?.isElectronEnvironment?.() === true;
 
         if (isElectron && window.electronAPI?.openFrequencyResponseMeasurement) {
+            const fadeToken = await this.audioManager.fadeOutOutputForTeardown?.();
+            let opened = false;
             try {
                 const result = await window.electronAPI.openFrequencyResponseMeasurement(pipelineState);
-                if (!result?.success) {
+                opened = result?.success === true;
+                if (!opened) {
                     console.error('Failed to open Frequency Response Measurement:', result?.error);
                 }
             } catch (error) {
                 console.error('Failed to open Frequency Response Measurement:', error);
             }
+            if (!opened) this.audioManager.fadeInOutputForToken?.(fadeToken);
             return;
         }
 
@@ -422,6 +430,7 @@ class App {
             this.uiManager.setError('error.featureNavigationFailed', true);
             return;
         }
+        await this.audioManager.fadeOutOutputForTeardown?.();
         window.location.href = path;
     }
 
@@ -433,14 +442,18 @@ class App {
             console.error('Failed to prepare the effect pipeline for reload:', error);
         }
 
+        const fadeToken = await this.audioManager.fadeOutOutputForTeardown?.();
+        let reloaded = false;
         try {
             const result = await window.electronAPI?.reloadWindow?.(pipelineState);
-            if (!result?.success) {
+            reloaded = result?.success === true;
+            if (!reloaded) {
                 console.error('Failed to reload the application:', result?.error);
             }
         } catch (error) {
             console.error('Failed to reload the application:', error);
         }
+        if (!reloaded) this.audioManager.fadeInOutputForToken?.(fadeToken);
     }
 
     async initialize() {
@@ -521,9 +534,10 @@ class App {
             // startup/CLI/tray preset) have been posted to the worklet by now.
             // The output gain has been held at 0 since initAudioOutput so nothing
             // could leak through. Finish the optional JS/WASM choice while the
-            // graph is still private, then publish it with one safety fade.
+            // graph is still private, then publish it with one safety fade
+            // once the worklet plays that publication at full level.
             await this.audioManager.waitForDspActivationBeforeOutput?.();
-            this.audioManager.fadeInOutput();
+            await this.audioManager.fadeInOutputWhenReady();
 
             // Power ownership starts only after the initial graph and output
             // safety fade are fully established.
@@ -1183,6 +1197,10 @@ class App {
         }
 
         const powerController = this.audioManager.powerPolicyController;
+        const reportSystemResumeFailure = error => {
+            console.warn('Audio recovery after system resume failed:', error);
+            this.uiManager.setError('error.audioResetFailed', true);
+        };
         const resumeAudioFromInteraction = () => {
             if (document.hidden) return;
             if (powerController?.enabled) {
@@ -1190,6 +1208,10 @@ class App {
                     Promise.resolve(
                         powerController.requestResumeFromUserInteraction?.()
                     ).catch(error => {
+                        if (this.audioManager.needsSystemResumeRecovery) {
+                            reportSystemResumeFailure(error);
+                            return;
+                        }
                         console.warn('Audio processing resume after user interaction failed:', error);
                     });
                 } catch (error) {
@@ -1197,11 +1219,13 @@ class App {
                 }
                 return;
             }
-            if (this.audioManager.audioContext?.state === 'suspended') {
-                Promise.resolve(this.audioManager.audioContext.resume()).catch(error => {
-                    console.warn('AudioContext resume after user interaction failed:', error);
-                });
-            }
+            Promise.resolve(this.audioManager.contextManager?.resumeAudioContext?.()).catch(error => {
+                if (this.audioManager.needsSystemResumeRecovery) {
+                    reportSystemResumeFailure(error);
+                    return;
+                }
+                console.warn('AudioContext resume after user interaction failed:', error);
+            });
         };
         // Page-lifecycle events are registered on their specified targets in
         // capture phase because freeze/resume do not reliably bubble.
@@ -1271,6 +1295,12 @@ class App {
         }
         document.addEventListener('keydown', resumeAudioFromInteraction);
         window.addEventListener?.('focus', resumeAudioFromInteraction, true);
+
+        window.electronAPI?.onSystemResume?.(() => {
+            this.audioManager.handleSystemResume().then(error => {
+                if (error) reportSystemResumeFailure(error);
+            }).catch(reportSystemResumeFailure);
+        });
 
         // Handle audio device changes (e.g., USB device reconnected)
         if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {

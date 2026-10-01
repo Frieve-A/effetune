@@ -1343,3 +1343,43 @@ SIMD. All four checks had zero misses against the 0.6667 ms deadline. These
 short checks establish processing headroom for both sparse and dense routing;
 they do not erase the remaining spikes in the continuous matrix or establish a
 hard real-time guarantee for every host.
+
+### Tonal Balance EQ
+
+Measured on 2026-09-30 from commit `de98ad22` plus the working-tree Tonal Balance
+EQ implementation, with Node v24.13.0 on a 13th Gen Intel Core i9-13900KF and
+Windows NT 10.0.26200.0. The production Emscripten 6.0.2 scalar and SIMD artifacts
+used `-O3 -flto`, with `-msimd128` added for SIMD. Each point used one second of
+audio, 128-frame blocks, two warmups, 20 measured repetitions and the default
+parameters.
+
+```text
+node tools/dsp-parity/bench.mjs --type TonalBalanceEQPlugin --modes wasm,simd --sample-rates 96000,192000 --channels 2,16 --block-size 128 --duration 1 --warmup 2 --repetitions 20 --params '{}' --quantum-stats --json out/benchmarks/tonal-balance-eq.json
+```
+
+| Sample rate / channels | Variant | Realtime | Median | Average | p99 | Max | Misses |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 96 kHz / 2 ch | WASM | 22.47x | 0.0445 s | 1.72% | 3.25% | 19.98% | 0 |
+| 96 kHz / 2 ch | WASM SIMD | 28.73x | 0.0348 s | 1.26% | 3.25% | 28.31% | 0 |
+| 96 kHz / 16 ch | WASM | 5.96x | 0.1678 s | 7.82% | 14.25% | 30.16% | 0 |
+| 96 kHz / 16 ch | WASM SIMD | 10.10x | 0.0990 s | 4.34% | 10.00% | 28.29% | 0 |
+| 192 kHz / 2 ch | WASM | 13.48x | 0.0742 s | 3.21% | 7.25% | 33.78% | 0 |
+| 192 kHz / 2 ch | WASM SIMD | 17.68x | 0.0566 s | 2.32% | 7.25% | 13.35% | 0 |
+| 192 kHz / 16 ch | WASM | 3.06x | 0.3264 s | 15.73% | 29.75% | 125.59% | 1 |
+| 192 kHz / 16 ch | WASM SIMD | 5.11x | 0.1958 s | 9.03% | 21.50% | 147.11% | 1 |
+
+The 96 kHz stereo SIMD point meets the 10x realtime limit, and every stereo point
+has zero deadline misses. Its average of 1.26% is within the 1-2% target, but the
+p99 of 3.25% is above it. The 16-channel points are reported only; the single
+misses at 192 kHz / 16 channels are not gated. One paired Volume control
+measured the environment's isolated wall-clock spikes:
+
+```text
+node tools/dsp-parity/bench.mjs --type VolumePlugin --modes simd --sample-rates 96000 --channels 2 --block-size 128 --duration 1 --warmup 2 --repetitions 20 --quantum-stats --json out/benchmarks/tonal-balance-eq-control.json
+```
+
+The Volume control measured 96.96x realtime, 0.0103 s median, 0.03% average,
+0.25% p99, 22.46% maximum, and zero misses. The Tonal Balance EQ maxima of
+13-34% in the stereo cells are the same size as this spike, so they are
+attributed to operating-system jitter rather than to the kernel's per-quantum
+work.

@@ -16,7 +16,8 @@ const SOURCE_TYPES = Object.freeze({
         parse: 'parseTelemetryFrame' },
     chroma: { type: 'ChromaSpiralPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM },
     phase: { type: 'PhaseSelectEqPlugin', frameType: 20 },
-    'analog-meter': { type: 'AnalogMeterPlugin', frameType: TelemetryFrameType.TAP_ANALOG_METER }
+    'analog-meter': { type: 'AnalogMeterPlugin', frameType: TelemetryFrameType.TAP_ANALOG_METER },
+    'rhythm-analyzer': { type: 'RhythmAnalyzerPlugin', frameType: 28 }
 });
 
 const usesAudioModulation = (effects, modulator) => Array.isArray(effects) &&
@@ -61,6 +62,8 @@ function analysisSettings(type, input = {}) {
     if (type === 'analog-meter') return { params: {
         md: input.md ?? 'VU', it: input.it ?? 0.3, at: input.at ?? 5, rt: input.rt ?? 1.5, ln: input.ln ?? 0
     }, gainDb: 0 };
+    // Only the BPM range affects analysis; the display settings never restart the source.
+    if (type === 'rhythm-analyzer') return { params: { mn: input.mn ?? 40, mx: input.mx ?? 240 }, gainDb: 0 };
     const gainDb = type === 'notes' ? 0 :
         Number.isFinite(input.gainDb) ? Math.max(-24, Math.min(24, Math.round(input.gainDb))) : 0;
     if (type === 'spectrum' || type === 'spectrogram') {

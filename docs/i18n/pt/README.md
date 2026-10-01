@@ -277,6 +277,8 @@ Para medir a resposta em frequência do seu sistema de áudio e criar uma corre�
 4. Gere uma correção de EQ paramétrico que pode ser importada diretamente no EffeTune
 5. Aplique a correção para obter uma reprodução sonora mais precisa e neutra
 
+Defina **Número de canais do dispositivo de saída** conforme a configuração do dispositivo: **6** para 5.1 ou **8** para 7.1. As opções de canal de saída e de largura de banda por canal ficam limitadas a esse intervalo. Os sinais de teste, as medições e a repetição da medição de um canal usam esse número mesmo quando apenas alguns canais são selecionados. Por exemplo, mantenha **6** ao medir somente Ch 3 (central) e Ch 4 (subwoofer) em um dispositivo 5.1.
+
 Para um sistema multicanal, selecione **Todos os Canais** para medir todas as saídas juntas, ou itens individuais de **Canal de Saída** para medi-los um por vez. Em **Configurações avançadas**, escolha **Desativado**, **A mesma para todos os canais** ou **Por canal** para a largura de banda do sweep. Com **Por canal**, use **Canal a configurar** para definir a faixa de frequências de cada canal de saída selecionado. Durante o ajuste de nível, o **Modo de canal** começa em **Rotação automática**; selecione um canal de sinal de teste ou **Manual** quando necessário.
 
 Se você já tiver um arquivo WAV de resposta ao impulso, escolha **Importar** e selecione-o. O EffeTune salva cada canal do WAV como um resultado de medição, para que ele possa ser selecionado no Room EQ e em qualquer outro recurso que use medições salvas.
@@ -335,6 +337,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Analyzer  | Note Spectrogram | Mostra as alturas estimadas ao longo do tempo em um piano roll         | [Detalhes](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope       | Visualização de forma de onda em tempo real                             | [Detalhes](plugins/analyzer.md#oscilloscope)         |
 | Analyzer  | Pitch Meter | Acompanha uma frequência fundamental e sua afinação ao longo do tempo | [Detalhes](plugins/analyzer.md#pitch-meter) |
+| Analyzer  | Rhythm Analyzer | Mostra o andamento, os toques tempo a tempo, e o quanto cada parte se adianta ou se atrasa | [Detalhes](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram        | Exibe variações do espectro de frequências ao longo do tempo            | [Detalhes](plugins/analyzer.md#spectrogram)          |
 | Analyzer  | Spectrum Analyzer  | Mostra a força dos graves, médios e agudos em tempo real                | [Detalhes](plugins/analyzer.md#spectrum-analyzer)    |
 | Analyzer  | Stereo Meter       | Visualiza o equilíbrio estéreo e a correlação entre canais              | [Detalhes](plugins/analyzer.md#stereo-meter)         |
@@ -376,6 +379,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | EQ        | Narrow Range | Combinação de filtros passa-alta e passa-baixa | [Detalhes](plugins/eq.md#narrow-range) |
 | EQ        | Room EQ | Correção FIR baseada em medições de sala salvas | [Detalhes](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ | Equalizador tilt para modelagem rápida de tonalidade | [Detalhes](plugins/eq.md#tilt-eq) |
+| EQ        | Tonal Balance EQ | Corrige automaticamente o equilíbrio tonal de longo prazo rumo a um alvo por estilo musical | [Detalhes](plugins/eq.md#tonal-balance-eq) |
 | EQ        | Tone Control | Controle de tonalidade de três bandas | [Detalhes](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | Passa a música por uma cadeia modelada de transmissão e recepção AM | [Detalhes](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | Redução de profundidade de bits e efeito de retenção de ordem zero | [Detalhes](plugins/lofi.md#bit-crusher) |

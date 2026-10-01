@@ -567,6 +567,10 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       window.audioPreferences = preferences;
       if (window.electronIntegration) window.electronIntegration.audioPreferences = preferences;
 
+      // The main process reloads the window with the saved devices; silence
+      // the output before that teardown.
+      if (isElectron) await window.audioManager?.fadeOutOutputForTeardown?.();
+
       // Update AudioWorklet with the new channel configuration
       if (isElectron && window.audioManager && window.audioManager.updateAudioConfig) {
         window.audioManager.updateAudioConfig(preferences);

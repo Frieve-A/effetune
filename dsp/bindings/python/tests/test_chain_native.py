@@ -197,6 +197,11 @@ class NativeChainTests(unittest.TestCase):
                 "pitch",
             ),
             (
+                effetune.RhythmAnalyzer(id="rhythm"),
+                effetune.RhythmAnalyzerTelemetryFrame,
+                "rhythmAnalyzer",
+            ),
+            (
                 effetune.SpectrumAnalyzer(id="spectrum", points=10),
                 effetune.SpectrumTelemetryFrame,
                 "spectrum",
@@ -291,6 +296,20 @@ class NativeChainTests(unittest.TestCase):
                         self.assertGreater(frame.confidence, 0)
                         self.assertLessEqual(frame.confidence, 1)
                         self.assertTrue(math.isfinite(frame.level_db))
+                    elif kind == "rhythmAnalyzer":
+                        self.assertEqual(frame.sample_rate, 48_000)
+                        self.assertGreater(frame.generation, 0)
+                        self.assertGreater(frame.envelope_hop_samples, 0)
+                        self.assertGreater(frame.envelope_frame_count, 0)
+                        self.assertGreater(frame.time_seconds, 0)
+                        self.assertGreater(frame.latency_seconds, 0)
+                        self.assertFalse(frame.locked)
+                        self.assertEqual(frame.period_seconds, 0)
+                        self.assertGreaterEqual(frame.comb_best_bpm, 40)
+                        self.assertLessEqual(frame.comb_best_bpm, 240)
+                        self.assertEqual(len(frame.tempogram), 192)
+                        self.assertTrue(all(0 <= value <= 1 for value in frame.tempogram))
+                        self.assertLessEqual(len(frame.events), 16)
                     elif kind == "spectrum":
                         self.assertEqual(frame.sample_rate, 48_000)
                         self.assertEqual(frame.points, 10)
@@ -1177,7 +1196,7 @@ class NativeChainTests(unittest.TestCase):
             topology="automatic",
         )
         source_four_channels = np.vstack((source, source))
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 108)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 110)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None

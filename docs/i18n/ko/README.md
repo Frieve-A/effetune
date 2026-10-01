@@ -280,6 +280,8 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 4. EffeTune으로 바로 가져올 수 있는 파라메트릭 EQ 보정을 생성합니다.
 5. 보정을 적용해 더 정확하고 중립적인 재생음을 얻습니다.
 
+**출력 장치 채널 수**를 출력 장치 구성에 맞게 설정하세요. 5.1은 **6**, 7.1은 **8**입니다. 출력 채널과 채널별 대역폭 설정의 선택 항목은 이 범위 안에서 표시됩니다. 일부 채널만 선택하더라도 테스트 신호, 측정, 개별 채널 재측정에는 이 채널 수를 사용합니다. 예를 들어 5.1 장치에서 Ch 3(센터)과 Ch 4(서브우퍼)만 측정할 때도 **6**으로 설정하세요.
+
 다중 채널 시스템에서는 모든 출력을 함께 측정하려면 **모든 채널**을 선택하고, 하나씩 측정하려면 개별 **출력 채널**을 선택합니다. **고급 설정**에서 스윕 대역폭으로 **끔**, **모든 채널에 동일하게 적용**, **채널별** 중 하나를 선택합니다. **채널별**에서는 **설정할 채널**을 사용하여 선택한 각 출력 채널의 주파수 범위를 설정합니다. 레벨 조정 중 **채널 모드**는 처음에 **자동 순환**으로 시작합니다. 필요하면 테스트 신호 채널을 선택하거나 **수동**을 선택합니다.
 
 임펄스 응답 WAV 파일이 있다면 **가져오기**를 선택해 파일을 지정하십시오. EffeTune은 WAV의 각 채널을 측정 결과로 저장하므로 Room EQ와 저장된 측정을 사용하는 다른 기능에서 선택할 수 있습니다.
@@ -342,6 +344,7 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | Analyzer | Note Spectrogram | 시간에 따른 추정 음높이를 피아노 롤로 표시 | [세부 정보](plugins/analyzer.md#note-spectrogram) |
 | Analyzer | Oscilloscope | 실시간 파형 시각화 | [세부 정보](plugins/analyzer.md#oscilloscope) |
 | Analyzer | Pitch Meter | 하나의 기본 주파수와 튜닝 변화를 시간에 따라 추적 | [세부 정보](plugins/analyzer.md#pitch-meter) |
+| Analyzer | Rhythm Analyzer | 템포, 박자마다의 발음, 각 파트가 박자보다 앞서거나 뒤처지는 정도를 표시 | [세부 정보](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer | Spectrogram | 시간에 따른 주파수 스펙트럼 변화를 표시 | [세부 정보](plugins/analyzer.md#spectrogram) |
 | Analyzer | Spectrum Analyzer | 저역, 중역, 고역의 강도를 실시간으로 표시 | [세부 정보](plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer | Stereo Meter | 스테레오 밸런스와 채널 상관을 시각화 | [세부 정보](plugins/analyzer.md#stereo-meter) |
@@ -383,6 +386,7 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | EQ | Narrow Range | 하이패스와 로우패스 필터의 조합 | [세부 정보](plugins/eq.md#narrow-range) |
 | EQ | Room EQ | 저장된 룸 측정에 기반한 FIR 보정 | [세부 정보](plugins/eq.md#room-eq) |
 | EQ | Tilt EQ | 빠른 톤 조정을 위한 틸트 이퀄라이저 | [세부 정보](plugins/eq.md#tilt-eq) |
+| EQ | Tonal Balance EQ | 장기적인 음색 균형을 음악 스타일별 목표에 맞춰 자동 보정 | [세부 정보](plugins/eq.md#tonal-balance-eq) |
 | EQ | Tone Control | 3밴드 톤 컨트롤 | [세부 정보](plugins/eq.md#tone-control) |
 | Lo-Fi | AM Radio Simulator | 음악을 모델링한 AM 송출·수신 체인으로 변환 | [세부 정보](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi | Bit Crusher | 비트 깊이 감소와 제로 오더 홀드 효과 | [세부 정보](plugins/lofi.md#bit-crusher) |

@@ -1,6 +1,7 @@
 import { isLayerEffect, paletteColor, paletteGradient } from './visualizer-effects.js';
-import { THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR } from './visualizer-model.js';
+import { THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, REFERENCE_WIDTH, RHYTHM_BEAT_STYLE_DEFAULTS } from './visualizer-model.js';
 import { createBallistics, stepBallistics } from './visualizer-ballistics.js';
+import { drawStyledText } from './visualizer-text.js';
 
 const ANALYZERS = {
     spectrum: ['SpectrumAnalyzerPlugin', 'handleDspSpectrumTelemetry', 'drawGraph'],
@@ -11,7 +12,8 @@ const ANALYZERS = {
     chroma: ['ChromaSpiralPlugin', 'handleTelemetry', 'drawGraph'],
     'level-meter': ['LevelMeterPlugin', 'handleDspLevelTelemetry', 'updateMeter'],
     phase: ['PhaseSelectEqPlugin', 'handleDspTelemetry', 'drawVisualizerPhaseMap'],
-    'analog-meter': ['AnalogMeterPlugin', 'handleVisualizerTelemetry', 'drawVisualizerMeter']
+    'analog-meter': ['AnalogMeterPlugin', 'handleVisualizerTelemetry', 'drawVisualizerMeter'],
+    'rhythm-analyzer': ['RhythmAnalyzerPlugin', 'handleVisualizerTelemetry', 'drawVisualizerRhythm']
 };
 
 // Input channel numbers behind the two-channel scratch of a source: null, L, R, a pair such as 34, or one channel.
@@ -226,6 +228,14 @@ class AnalyzerDisplay {
             options.showCorrelation = params.showCorrelation;
             options.showBalance = params.showBalance;
         }
+        if (this.type === 'rhythm-analyzer') {
+            options.showBeat = params.showBeat;
+            options.showBpm = params.showBpm;
+            options.beatStyle = { ...RHYTHM_BEAT_STYLE_DEFAULTS, ...item.style };
+            options.textScale = this.textScale;
+            options.drawBpm = (context, value, color, fitRadius) => this.drawSignal(context, target =>
+                drawStyledText(target, value, item.style, plugin.canvas.width, plugin.canvas.height, this.textScale, color, fitRadius));
+        }
         // The effect's on-screen visibility gate does not apply to this host.
         if (this.type === 'phase') plugin.isVisible = true;
         if (Object.keys(changed).length) {
@@ -355,8 +365,12 @@ class AnalyzerDisplay {
                 ? (position, level) => styles[Math.max(0, Math.min(255, Math.round((byLevel ? level : position) * 255)))]
                 : () => item.palette.color;
         }
-        if (this.type === 'analog-meter') {
-            options.needleColor = mode === 'solid' ? () => item.palette.color : position => colorCss(paletteRgb(position));
+        // Solid, or the gradient color at a 0..1 position along the needle's dial or the tempo axis.
+        const positionColor = mode === 'solid' ? () => item.palette.color : position => colorCss(paletteRgb(position));
+        if (this.type === 'analog-meter') options.needleColor = positionColor;
+        if (this.type === 'rhythm-analyzer') {
+            options.markerColor = positionColor;
+            options.tempogramColor = mode === 'gradient' ? positionColor : null;
         }
         if (this.type === 'stereo') {
             // Keep the original age buckets, fading into the scene beneath the graph.
@@ -396,7 +410,8 @@ class AnalyzerDisplay {
         }
     }
 
-    draw(item, time, cssWidth, themeColors) {
+    draw(item, time, cssWidth, themeColors, textScale = this.plugin.canvas.width / (item.rect.w * REFERENCE_WIDTH)) {
+        this.textScale = textScale;
         this.flipX = item.flipX;
         this.flipY = item.flipY;
         const themeKey = JSON.stringify(themeColors || {});

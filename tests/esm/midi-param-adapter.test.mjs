@@ -211,7 +211,7 @@ test('ParamAdapter reachability matches the frozen exclusions for every generate
       assert.equal(changed, true, `${id} must change through the adapter`);
     }
   }
-  assert.equal(descriptorCount, 976);
+  assert.equal(descriptorCount, 1011);
   assert.deepEqual(observedUnassignable, UNASSIGNABLE_DESCRIPTORS);
 });
 

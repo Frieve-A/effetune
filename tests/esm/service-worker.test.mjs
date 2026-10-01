@@ -18,6 +18,16 @@ const backupRuntimeDependencies = [
   'features/measurement/audio-utils/channel-selection.js',
   'features/measurement/audio-utils/output-routing.js'
 ];
+// Loaded on demand by Tonal Balance EQ's Copy as PEQ.
+const peqCopyRuntimeDependencies = [
+  'features/measurement/peq-calculator/design-utils.js',
+  'features/measurement/peq-calculator/filter-response.js',
+  'features/measurement/peq-calculator/optimization.js',
+  'features/measurement/peq-calculator/peak-detection.js',
+  'features/measurement/peq-calculator/peq-calculator.js',
+  'features/measurement/peq-calculator/smoothing.js',
+  'features/measurement/ui/peq-clipboard.js'
+];
 
 function createResponse(name, ok = true) {
   return {
@@ -141,7 +151,9 @@ function createPrecacheFixture(t) {
   writeFixtureFile(root, 'features/effetune-benchmark.js', 'export const benchmark = true;\n');
   writeFixtureFile(root, 'features/effetune-benchmark-score.js', 'export const score = true;\n');
   writeFixtureFile(root, 'features/benchmark-score-reference.js', 'export const reference = true;\n');
-  for (const relativePath of backupRuntimeDependencies) writeFixtureFile(root, relativePath, 'export {};\n');
+  for (const relativePath of [...backupRuntimeDependencies, ...peqCopyRuntimeDependencies]) {
+    writeFixtureFile(root, relativePath, 'export {};\n');
+  }
   writeFixtureFile(root, 'js/app.js', 'console.log("first");\n');
   writeFixtureFile(root, 'plugins/plugins.txt', 'plugins/test.js\n');
   writeFixtureFile(root, 'plugins/test.js', 'class TestPlugin {}\n');
@@ -227,6 +239,11 @@ test('precache includes the measurement dependency closure used by backup adapte
   for (const relativePath of backupRuntimeDependencies) {
     assert.ok(precacheUrls.has(`./${relativePath}`), `${relativePath} should be precached`);
   }
+});
+
+test('precache includes the PEQ fitter loaded by Copy as PEQ', () => {
+  const { urls } = buildPrecacheSource();
+  for (const relativePath of peqCopyRuntimeDependencies) assert.ok(urls.includes(relativePath), relativePath);
 });
 
 test('precache includes release WebAssembly DSP artifacts and omits debug builds', t => {

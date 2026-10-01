@@ -33,12 +33,15 @@ from .telemetry import (
     NoteSpectrogramTelemetryFrame,
     OscilloscopeTelemetryFrame,
     PitchMeterTelemetryFrame,
+    RhythmAnalyzerTelemetryEvent,
+    RhythmAnalyzerTelemetryFrame,
     SpectrogramHqTelemetryFrame,
     SpectrogramTelemetryFrame,
     SpectrumHqTelemetryFrame,
     SpectrumTelemetryFrame,
     StereoTelemetryFrame,
     TelemetryFrame,
+    TonalBalanceEQTelemetryFrame,
 )
 
 # Keep mutable public catalog data isolated from runtime validation metadata.
@@ -72,6 +75,8 @@ __all__ = [
     "NoteSpectrogramTelemetryFrame",
     "OscilloscopeTelemetryFrame",
     "PitchMeterTelemetryFrame",
+    "RhythmAnalyzerTelemetryEvent",
+    "RhythmAnalyzerTelemetryFrame",
     "SpectrogramHqTelemetryFrame",
     "SpectrogramTelemetryFrame",
     "SpectrumHqTelemetryFrame",
@@ -80,6 +85,7 @@ __all__ = [
     "StateError",
     "Stream",
     "TelemetryFrame",
+    "TonalBalanceEQTelemetryFrame",
     "ValidationError",
     "__version__",
     "import_legacy_preset",

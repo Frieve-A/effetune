@@ -328,6 +328,14 @@ async function instantiateDspBinding(payload, options) {
       ...options.processorOptions
     }
   });
+  if (!options.gate) {
+    // Most tests observe the pipeline directly: hold the output gate open and
+    // apply every mutation immediately.
+    processor.transition.phase = 'open';
+    processor.transition.gain = 1;
+    processor.mutationDiscontinuity = () => false;
+    processor.latencyPlansDiffer = () => false;
+  }
   const send = async data => {
     processor.port.onmessage({ data });
     await flushAsyncWork();
@@ -663,6 +671,40 @@ test('frequency preview mixes only source channels before JS, WASM and bypass pr
   }
 });
 
+test('frequency preview pauses every Tonal measurement across insertion and parameter updates', async () => {
+  const type = 'TonalBalanceEQPlugin';
+  const spec = JSON.parse(await fs.readFile(path.join(repoRoot, 'dsp/plugins/eq/tonal_balance_eq/params.json'), 'utf8'));
+  assert.equal(spec.fields.at(-1).name, 'measurementPaused');
+  const params = new Float32Array(spec.fields.reduce((count, field) => count + (field.count ?? 1), 0));
+  const h = await createWorkletHarness({ bindingOptions: {
+    capabilities: { abiVersion: 1, simd: false, kernels: [{ name: type, hash: 0x1234, byteCapacity: 0, kernelIndex: 0 }] }
+  } });
+  const plugin = id => pluginConfig({ id, type, wasmParams: params });
+  await h.send({ type: 'dspModule', module: {} });
+  await h.send({ type: 'dspEnableTypes', types: [type] });
+  await h.send({ type: 'updatePlugins', plugins: [plugin(7), plugin(8)], masterBypass: false });
+  const latest = id => h.binding.calls.filter(call => call[0] === 'instanceSetParams' &&
+    call[1] === h.processor.wasmInstances.get(id).id).at(-1)[2];
+  assert.equal(latest(7).at(-1), 0);
+  await h.send({ type: 'frequencyPreview', frequency: 440 });
+  assert.equal(latest(7).at(-1), 1);
+  assert.equal(latest(8).at(-1), 1);
+  assert.equal(params.at(-1), 0, 'host control must not alter saved plugin parameters');
+  const calls = h.binding.calls.length;
+  await h.send({ type: 'frequencyPreview', frequency: 1000 });
+  assert.equal(h.binding.calls.length, calls, 'retuning keeps the same measurement pause');
+  const updated = params.slice();
+  updated[1] = 50;
+  await h.send({ type: 'updatePlugin', plugin: { ...plugin(7), wasmParams: updated } });
+  assert.equal(latest(7)[1], 50);
+  assert.equal(latest(7).at(-1), 1);
+  await h.send({ type: 'addPlugin', plugin: plugin(9) });
+  assert.equal(latest(9).at(-1), 1);
+  await h.send({ type: 'frequencyPreview', frequency: null });
+  for (const id of [7, 8, 9]) assert.equal(latest(id).at(-1), 0);
+  assert.equal(latest(7)[1], 50);
+});
+
 test('frequency preview ramps, keeps phase on retuning and stops on reset or Nyquist', async () => {
   const h = await createWorkletHarness();
   const input = [new Float32Array(64)];
@@ -955,6 +997,12 @@ test('worklet defers overload monitoring until the output fade has finished', as
     messagesOf(harness.posts, 'audioProcessingOverload').map(entry => entry.message.active),
     [true, false]
   );
+});
+
+test('worklet asks for bytes when a compiled module cannot be deserialized', async () => {
+  const harness = await createWorkletHarness();
+  harness.processor.port.onmessageerror({ data: null });
+  assert.equal(messagesOf(harness.posts, 'dspModuleRejected').length, 1);
 });
 
 test('worklet reconciles pre-module plugins, adopts every arena bus, and manages instance lifecycle', async () => {
@@ -2407,6 +2455,18 @@ test('worklet answers latency queries and applies ABX-only output delay separate
   await harness.send({ type: 'setOutputDelay', requestId: 19, samples: 0 });
   const immediate = processBlock(harness.processor, 0.25);
   assert.ok(immediate.every(channel => channel.every(sample => sample === 0.25)));
+});
+
+test('worklet output delay follows output channel count changes', async () => {
+  const harness = await createWorkletHarness();
+  await harness.send({ type: 'setOutputDelay', requestId: 1, samples: 132 });
+  for (const channelCount of [8, 2]) {
+    await harness.send({ type: 'updateAudioConfig', outputChannels: channelCount });
+    const first = processBlock(harness.processor, 1, channelCount);
+    assert.ok(first.every(channel => channel.every(sample => sample === 0)), `${channelCount}ch`);
+    const second = processBlock(harness.processor, 1, channelCount);
+    assert.ok(second.every(channel => channel[3] === 0 && channel[4] === 1), `${channelCount}ch`);
+  }
 });
 
 test('worklet restores the input block and falls back to hybrid after pipeline failure', async () => {
@@ -4589,6 +4649,7 @@ test('background display DSP bypass keeps normal WASM active and leaves the nati
     'NoteSpectrogramPlugin',
     'OscilloscopePlugin',
     'PitchMeterPlugin',
+    'RhythmAnalyzerPlugin',
     'SpectrogramPlugin',
     'SpectrumAnalyzerPlugin',
     'StereoMeterPlugin'
@@ -6944,4 +7005,606 @@ test('Chroma Spiral JS fallback prepares a spectrum HQ analyzer and packet pool'
   assert.equal(context.multiresSpectrum.type, 4);
   assert.equal(context.multiresSpectrum.count, 2048);
   assert.ok(harness.processor.hqPacketPool.length > 0);
+});
+
+// --- Output gate around discontinuous pipeline changes ---
+
+// Fake binding whose instances report the latency stacked with their
+// parameters (wasmParams = [gain, latency]) and apply them immediately.
+function createParameterLatencyBinding(options = {}) {
+  const params = new Map();
+  const binding = createBinding({
+    ...options,
+    instanceLatency: id => params.get(id)?.[1] ?? 0,
+    instanceProcessImpl(id, view, channels, frames) {
+      const gain = params.get(id)?.[0] ?? 1;
+      for (let index = 0; index < channels * frames; index++) view[index] *= gain;
+    }
+  });
+  const setParams = binding.instanceSetParams;
+  binding.instanceSetParams = (id, values, hash) => {
+    params.set(id, [...values]);
+    return setParams(id, values, hash);
+  };
+  return binding;
+}
+
+function latencyPlugin(overrides = {}) {
+  return pluginConfig({ wasmParams: Float32Array.of(1, 0), ...overrides });
+}
+
+async function createGatedWasmHarness(plugins, harnessOptions = {}) {
+  const binding = harnessOptions.binding ?? createParameterLatencyBinding();
+  const harness = await createWorkletHarness({ gate: true, binding, ...harnessOptions });
+  await harness.send({ type: 'updatePlugins', plugins, masterBypass: false });
+  await harness.send({ type: 'dspEnableTypes', types: [...new Set(plugins.map(plugin => plugin.type))] });
+  await harness.send({ type: 'dspModule', module: {} });
+  return harness;
+}
+
+// A 1 kHz sine at 0.5 amplitude steps at most 0.066 per sample; a gate ramp
+// adds 1/480 per sample, so any step above this is a discontinuity.
+const CONTINUOUS_STEP = 0.2;
+
+function createSineSource() {
+  let phase = 0;
+  let last = null;
+  let maxStep = 0;
+  const step = 2 * Math.PI * 1000 / 48000;
+  return {
+    process(processor, channelCount = 2, frameCount = 128) {
+      const input = Array.from({ length: channelCount }, () => new Float32Array(frameCount));
+      for (let frame = 0; frame < frameCount; frame++) {
+        const sample = Math.sin(phase) * 0.5;
+        phase += step;
+        for (const channel of input) channel[frame] = sample;
+      }
+      const output = Array.from({ length: channelCount }, () => new Float32Array(frameCount));
+      assert.equal(processor.process([input], [output], {}), true);
+      for (const sample of output[0]) {
+        if (last !== null) {
+          const delta = sample > last ? sample - last : last - sample;
+          if (delta > maxStep) maxStep = delta;
+        }
+        last = sample;
+      }
+      return output;
+    },
+    get maxStep() { return maxStep; },
+    resetMaxStep() { maxStep = 0; }
+  };
+}
+
+function runUntilOpen(processor, source, limit = 64) {
+  for (let block = 0; block < limit; block++) {
+    if (processor.transition.phase === 'open') return block;
+    source.process(processor);
+  }
+  assert.fail(`gate did not open: ${processor.transition.phase}`);
+}
+
+function setParamsCalls(binding) {
+  return binding.calls.filter(call => call[0] === 'instanceSetParams').map(call => call[2]);
+}
+
+test('P1: add, remove and reorder keep unrelated compensation lines and the output line', async () => {
+  for (const routing of ['merge', 'output']) {
+    const harness = await createWorkletHarness();
+    await registerIdentityFallback(harness);
+    await registerFrequencyShifterFallback(harness);
+    const delayed = frequencyShifterPluginConfig({ id: 7, channel: routing === 'merge' ? 'A' : 'L',
+      outputBus: routing === 'merge' ? 1 : 0 });
+    const plugins = routing === 'merge'
+      ? [delayed, pluginConfig({ id: 8, outputBus: 1 }), pluginConfig({ id: 9, inputBus: 1 })]
+      : [delayed];
+    await harness.send({ type: 'updatePlugins', plugins, masterBypass: false });
+    const line = plan => routing === 'merge' ? plan.nodeActions.get(8).delayLine : plan.outputDelayLine;
+    const original = line(harness.processor.dspLatencyPlan);
+    assert.ok(original);
+    const added = pluginConfig({ id: 10, channel: 'L' });
+    await harness.send({ type: 'addPlugin', plugin: added });
+    assert.equal(harness.processor.plugins.at(-1).id, 10);
+    assert.equal(line(harness.processor.dspLatencyPlan), original, routing);
+    await harness.send({ type: 'reorderPlugin', fromIndex: plugins.length, toIndex: 0 });
+    assert.equal(harness.processor.plugins[0].id, 10);
+    assert.equal(line(harness.processor.dspLatencyPlan), original, routing);
+    await harness.send({ type: 'removePlugin', pluginId: 10 });
+    assert.equal(harness.processor.plugins.length, plugins.length);
+    assert.equal(line(harness.processor.dspLatencyPlan), original, routing);
+  }
+});
+
+test('gate: a parameter-only update keeps the gate open and the output continuous', async () => {
+  const plugin = latencyPlugin({ wasmParams: Float32Array.of(1, 64) });
+  const harness = await createGatedWasmHarness([plugin]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  source.resetMaxStep();
+  for (let gain = 1.01; gain < 1.05; gain += 0.01) {
+    await harness.send({ type: 'updatePlugin',
+      plugin: { ...plugin, wasmParams: Float32Array.of(gain, 64) } });
+    assert.equal(harness.processor.transition.phase, 'open');
+    source.process(harness.processor);
+  }
+  assert.ok(source.maxStep < CONTINUOUS_STEP, `max step ${source.maxStep}`);
+  assert.equal(setParamsCalls(harness.binding).at(-1)[0], Math.fround(1.04));
+});
+
+test('gate: a latency-changing parameter closes the gate and re-stacks the old parameters', async () => {
+  const plugin = latencyPlugin({ wasmParams: Float32Array.of(2, 64) });
+  const harness = await createGatedWasmHarness([plugin]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  const before = setParamsCalls(harness.binding).length;
+
+  await harness.send({ type: 'updatePlugin', plugin: { ...plugin, wasmParams: Float32Array.of(2, 200) } });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  assert.deepEqual(setParamsCalls(harness.binding).slice(before), [[2, 200], [2, 64]]);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 64);
+
+  // Closing renders the old parameters at a falling gain.
+  source.process(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'closing');
+  assert.equal(harness.processor.plugins[0].wasmParams[1], 64);
+  assert.ok(harness.processor.transition.gain < 1);
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  assert.equal(harness.processor.transition.gain, 0);
+  assert.deepEqual(setParamsCalls(harness.binding).at(-1), [2, 200]);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 200);
+  assert.equal(messagesOf(harness.posts, 'dspLatency').at(-1).message.samples, 200);
+
+  runUntilOpen(harness.processor, source);
+  assert.ok(source.maxStep < CONTINUOUS_STEP, `max step ${source.maxStep}`);
+});
+
+test('gate: removing a latency plugin applies at the gain-0 block end and primes before opening', async () => {
+  const plugins = [
+    latencyPlugin({ id: 7, wasmParams: Float32Array.of(1, 100) }),
+    latencyPlugin({ id: 8, wasmParams: Float32Array.of(1, 100) })
+  ];
+  const harness = await createGatedWasmHarness(plugins);
+  await harness.send({ type: 'setOutputDelay', requestId: 1, samples: 40 });
+  assert.equal(messagesOf(harness.posts, 'outputDelaySet').length, 1);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 200);
+
+  await harness.send({ type: 'removePlugin', pluginId: 8 });
+  for (let block = 0; block < 3; block++) {
+    processBlock(harness.processor);
+    assert.equal(harness.processor.transition.phase, 'closing');
+    assert.equal(harness.processor.plugins.length, 2);
+  }
+  // The gain reaches 0 in the 4th block (480 samples); the queue is applied at its end.
+  const commitFrame = harness.processor.currentFrame + 128;
+  processBlock(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  assert.equal(harness.processor.transition.commitFrame, commitFrame);
+  assert.equal(harness.processor.plugins.length, 1);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 100);
+
+  // Silence for totalSamples + outputDelaySamples = 140 frames, then the ramp.
+  const primed = processBlock(harness.processor);
+  assert.ok(primed[0].every(sample => sample === 0));
+  assert.equal(harness.processor.transition.phase, 'settling');
+  const opening = processBlock(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'opening');
+  assert.ok(opening[0].subarray(0, 12).every(sample => sample === 0));
+  assert.equal(opening[0][12], Math.fround(1 / 480));
+  assert.equal(opening[0][13], Math.fround(2 / 480));
+});
+
+test('gate: an output delay change while open answers outputDelaySet when the queue commits', async () => {
+  const harness = await createGatedWasmHarness([latencyPlugin()]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  await harness.send({ type: 'setOutputDelay', requestId: 2, samples: 40 });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  assert.equal(messagesOf(harness.posts, 'outputDelaySet').length, 0);
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  assert.deepEqual({ ...messagesOf(harness.posts, 'outputDelaySet').at(-1).message }, {
+    type: 'outputDelaySet', requestId: 2, samples: 40
+  });
+  assert.equal(harness.processor.outputDelaySamples, 40);
+});
+
+test('gate: in-process latency drift is adopted immediately in series and gated across compensation lines', async () => {
+  let latency = 114;
+  const binding = createBinding({ instanceLatency: id => id === 100 ? latency : 0, instanceProcessImpl() {} });
+  const serial = await createGatedWasmHarness([pluginConfig({ id: 7 })], { binding });
+  const source = createSineSource();
+  runUntilOpen(serial.processor, source);
+  assert.equal(serial.processor.dspLatencyPlan.totalSamples, 114);
+  latency = 200;
+  source.process(serial.processor);
+  assert.equal(serial.processor.transition.phase, 'open');
+  assert.equal(serial.processor.dspLatencyPlan.totalSamples, 200);
+  assert.equal(messagesOf(serial.posts, 'dspLatency').at(-1).message.samples, 200);
+
+  latency = 114;
+  const parallelBinding = createBinding({ instanceLatency: id => id === 100 ? latency : 0, instanceProcessImpl() {} });
+  const parallel = await createGatedWasmHarness([
+    pluginConfig({ id: 7, outputBus: 1 }), pluginConfig({ id: 8, outputBus: 1 }), pluginConfig({ id: 9, inputBus: 1 })
+  ], { binding: parallelBinding });
+  runUntilOpen(parallel.processor, source);
+  const previous = parallel.processor.dspLatencyPlan.nodeActions.get(8);
+  assert.deepEqual([...previous.delays], [114, 114]);
+  latency = 200;
+  source.process(parallel.processor);
+  assert.equal(parallel.processor.transition.phase, 'closing');
+  assert.equal(parallel.processor.dspLatencyPlan.nodeActions.get(8), previous);
+  while (parallel.processor.transition.phase === 'closing') source.process(parallel.processor);
+  assert.equal(parallel.processor.transition.phase, 'settling');
+  assert.deepEqual([...parallel.processor.dspLatencyPlan.nodeActions.get(8).delays], [200, 200]);
+  runUntilOpen(parallel.processor, source);
+});
+
+test('gate: settling re-primes only for discontinuous changes and fades in once', async () => {
+  const plugin = latencyPlugin({ wasmParams: Float32Array.of(1, 100) });
+  const harness = await createGatedWasmHarness([plugin]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  await harness.send({ type: 'updatePlugin', plugin: { ...plugin, wasmParams: Float32Array.of(1, 200) } });
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  const commitFrame = harness.processor.transition.commitFrame;
+
+  await harness.send({ type: 'updatePlugin', plugin: { ...plugin, wasmParams: Float32Array.of(1.5, 200) } });
+  assert.equal(harness.processor.transition.phase, 'settling');
+  assert.equal(harness.processor.transition.commitFrame, commitFrame);
+  assert.equal(setParamsCalls(harness.binding).at(-1)[0], 1.5);
+  source.process(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  await harness.send({ type: 'updatePlugin', plugin: { ...plugin, wasmParams: Float32Array.of(1.5, 300) } });
+  assert.equal(harness.processor.transition.phase, 'settling');
+  assert.equal(harness.processor.transition.commitFrame, harness.processor.currentFrame);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 300);
+
+  let openings = 0;
+  for (let block = 0; block < 64 && harness.processor.transition.phase !== 'open'; block++) {
+    const wasOpening = harness.processor.transition.phase === 'opening';
+    source.process(harness.processor);
+    if (!wasOpening && harness.processor.transition.phase === 'opening') openings++;
+  }
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.equal(openings, 1);
+  assert.ok(source.maxStep < CONTINUOUS_STEP, `max step ${source.maxStep}`);
+});
+
+test('gate: messages arriving while closing are applied in order at gain 0', async () => {
+  const harness = await createGatedWasmHarness([latencyPlugin({ id: 7, wasmParams: Float32Array.of(1, 100) })]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  const applied = [];
+  const apply = harness.processor.applyPortMessage.bind(harness.processor);
+  harness.processor.applyPortMessage = data => { applied.push(data.type); return apply(data); };
+
+  await harness.send({ type: 'removePlugin', pluginId: 7 });
+  await harness.send({ type: 'addPlugin', plugin: latencyPlugin({ id: 8 }) });
+  await harness.send({ type: 'setPluginAsset', pluginId: 8, slot: 0, payload: assetPayload() });
+  await harness.send({ type: 'configurePowerPolicy', enabled: false, workletGraphGeneration: 0, topologyRevision: 0 });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  assert.deepEqual(applied, []);
+  assert.equal(harness.processor.transition.queue.length, 4);
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.deepEqual(applied, ['removePlugin', 'addPlugin', 'setPluginAsset', 'configurePowerPolicy']);
+  assert.deepEqual(harness.processor.plugins.map(plugin => plugin.id), [8]);
+});
+
+test('gate: a processing-state reset commits queued changes and opens the gate', async () => {
+  const harness = await createGatedWasmHarness([latencyPlugin({ id: 7, wasmParams: Float32Array.of(1, 100) })]);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  await harness.send({ type: 'resetProcessingState', requestId: 1 });
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.equal(processBlock(harness.processor)[0][100], 1);
+
+  await harness.send({ type: 'removePlugin', pluginId: 7 });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  await harness.send({ type: 'resetProcessingState', requestId: 2 });
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.equal(harness.processor.transition.gain, 1);
+  assert.equal(harness.processor.transition.queue.length, 0);
+  assert.equal(harness.processor.plugins.length, 0);
+  assert.deepEqual(messagesOf(harness.posts, 'processingStateReset').map(post => post.message.ok), [true, true]);
+});
+
+test('gate: non-executing blocks apply immediately, drain the queue, and startup rises from 0', async () => {
+  const plugin = latencyPlugin({ id: 7, wasmParams: Float32Array.of(1, 100) });
+  const harness = await createGatedWasmHarness([plugin]);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  // Startup primes the 100-sample plan first, then ramps from 0.
+  const first = processBlock(harness.processor);
+  assert.equal(harness.processor.transition.phase, 'opening');
+  assert.ok(first[0].subarray(0, 100).every(sample => sample === 0));
+  assert.equal(first[0][100], Math.fround(1 / 480));
+  assert.equal(first[0][101], Math.fround(2 / 480));
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+
+  // Full processing keeps cycling the gate even when the input is silent.
+  processBlock(harness.processor, 0);
+  await harness.send({ type: 'updatePlugin', plugin: { ...plugin, wasmParams: Float32Array.of(1, 200) } });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  // A non-executing block drains the queue right away.
+  const silence = Array.from({ length: 2 }, () => new Float32Array(128));
+  assert.equal(harness.processor.process([[]], [silence], {}), true);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  assert.equal(harness.processor.transition.gain, 0);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 200);
+  while (harness.processor.transition.phase === 'settling') source.process(harness.processor);
+  assert.ok(harness.processor.transition.gain <= 128 / 480, `opening gain ${harness.processor.transition.gain}`);
+  runUntilOpen(harness.processor, source);
+
+  // After a non-executing block, a discontinuous change applies with the gate open.
+  assert.equal(harness.processor.process([[]], [silence], {}), true);
+  await harness.send({ type: 'updatePlugin', plugin: { ...plugin, wasmParams: Float32Array.of(1, 300) } });
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 300);
+
+  // Master bypass with the power policy off is an ordinary gate cycle.
+  source.process(harness.processor);
+  await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: true });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.equal(harness.processor.masterBypass, true);
+  runUntilOpen(harness.processor, source);
+  await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+  assert.equal(harness.processor.transition.phase, 'closing');
+});
+
+test('gate: gate flag, dspEnableTypes membership and FIR Crossover inserts decide a cycle', async () => {
+  const plugins = [pluginConfig({ id: 7 })];
+  const harness = await createGatedWasmHarness(plugins);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  await harness.send({ type: 'updatePlugins', plugins, masterBypass: false });
+  assert.equal(harness.processor.transition.phase, 'open');
+  await harness.send({ type: 'updatePlugins', plugins, masterBypass: false, gate: true });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  while (harness.processor.transition.phase !== 'open') source.process(harness.processor);
+
+  await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin', 'OtherPlugin'] });
+  assert.equal(harness.processor.transition.phase, 'open');
+  await harness.send({ type: 'dspEnableTypes', types: [] });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  assert.equal(harness.processor.wasmInstances.has(7), true);
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  assert.equal(harness.processor.wasmInstances.has(7), false);
+
+  for (const [outputChannels, expected] of [[4, 'closing'], [2, 'open']]) {
+    const fir = await createWorkletHarness({ gate: true, outputChannels,
+      bindingOptions: { assetState: 0 } });
+    await fir.send({ type: 'updatePlugins', plugins: [], masterBypass: false });
+    while (fir.processor.transition.phase !== 'open') processBlock(fir.processor, 1, outputChannels);
+    await fir.send({ type: 'addPlugin', plugin: pluginConfig({ id: 8, type: 'IRReverbPlugin', wasmParams: undefined }) });
+    assert.equal(fir.processor.transition.phase, 'open');
+    await fir.send({ type: 'addPlugin', plugin: pluginConfig({ id: 9, type: 'FIRCrossoverPlugin', wasmParams: undefined }) });
+    assert.equal(fir.processor.transition.phase, expected, `${outputChannels} channels`);
+  }
+});
+
+test('gate: a new instance with latency cycles the gate even when the plan is unchanged', async () => {
+  for (const [latency, expected] of [[64, 'closing'], [0, 'open']]) {
+    const harness = await createGatedWasmHarness([latencyPlugin({ id: 7, wasmParams: Float32Array.of(1, latency) })]);
+    const source = createSineSource();
+    runUntilOpen(harness.processor, source);
+    source.resetMaxStep();
+    await harness.send({ type: 'updatePlugins', masterBypass: false,
+      plugins: [latencyPlugin({ id: 17, wasmParams: Float32Array.of(1, latency) })] });
+    assert.equal(harness.processor.transition.phase, expected, `WASM latency ${latency}`);
+    runUntilOpen(harness.processor, source);
+    assert.deepEqual(harness.processor.plugins.map(plugin => plugin.id), [17]);
+    assert.equal(harness.processor.dspLatencyPlan.totalSamples, latency);
+    assert.ok(source.maxStep < CONTINUOUS_STEP, `max step ${source.maxStep}`);
+  }
+
+  const js = await createWorkletHarness({ gate: true });
+  await registerFrequencyShifterFallback(js);
+  await js.send({ type: 'updatePlugins', plugins: [frequencyShifterPluginConfig({ id: 7 })], masterBypass: false });
+  const source = createSineSource();
+  runUntilOpen(js.processor, source);
+  await js.send({ type: 'updatePlugins', plugins: [frequencyShifterPluginConfig({ id: 17 })], masterBypass: false });
+  assert.equal(js.processor.transition.phase, 'closing');
+});
+
+test('gate: dspModule with executing WASM plugins disables the engine at gain 0', async () => {
+  const harness = await createGatedWasmHarness([pluginConfig({ id: 7 })]);
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  assert.equal(harness.processor.wasmInstances.get(7)?.ready, true);
+  const closes = () => harness.binding.calls.filter(call => call[0] === 'close').length;
+  assert.equal(closes(), 0);
+  await harness.send({ type: 'dspModule', module: {} });
+  assert.equal(harness.processor.transition.phase, 'closing');
+  assert.equal(closes(), 0);
+  while (harness.processor.transition.phase === 'closing') source.process(harness.processor);
+  await flushAsyncWork();
+  assert.equal(closes(), 1);
+  assert.equal(harness.processor.dspLive, true);
+
+  const idle = await createWorkletHarness({ gate: true });
+  await idle.send({ type: 'updatePlugins', plugins: [pluginConfig({ id: 7 })], masterBypass: false });
+  while (idle.processor.transition.phase !== 'open') processBlock(idle.processor);
+  await idle.send({ type: 'dspModule', module: {} });
+  assert.equal(idle.processor.transition.phase, 'open');
+});
+
+// Instance 8 stands in for IR Reverb: no latency until its asset is staged,
+// then PREPARING until `ready` is set, and 128 samples of latency.
+async function createAssetInsertHarness() {
+  const control = { ready: false };
+  const staged = new Set();
+  const binding = createBinding({
+    capabilities: { abiVersion: 1, simd: false, kernels: [{
+      name: 'VolumePlugin', hash: 0x1234, byteCapacity: 0, assetCapacity: 4096, kernelIndex: 0
+    }] },
+    instanceLatency: id => staged.has(id) ? 128 : 0,
+    assetState: id => !staged.has(id) ? 0 : (control.ready ? 3 : 2),
+    instanceProcessImpl() {}
+  });
+  const setAsset = binding.instanceSetAsset;
+  binding.instanceSetAsset = (id, ...rest) => { staged.add(id); return setAsset(id, ...rest); };
+  const harness = await createGatedWasmHarness([pluginConfig({ id: 7 })], { binding });
+  const source = createSineSource();
+  runUntilOpen(harness.processor, source);
+  const cycles = { closings: 0, openings: 0 };
+  const run = blocks => {
+    for (let block = 0; block < blocks; block++) {
+      const before = harness.processor.transition.phase;
+      source.process(harness.processor);
+      const after = harness.processor.transition.phase;
+      if (before !== after && after === 'opening') cycles.openings++;
+    }
+  };
+  const send = async data => {
+    const before = harness.processor.transition.phase;
+    await harness.send(data);
+    if (before !== 'closing' && harness.processor.transition.phase === 'closing') cycles.closings++;
+  };
+  const insert = pluginConfig({ id: 8, assetPending: true });
+  const stage = { type: 'setPluginAsset', pluginId: 8, slot: 0, formatTag: 1, headBlock: 128,
+    rateDivider: 1, pathCount: 0, inputCount: 0, processingChannels: 2, footprintBytes: 36,
+    payload: assetPayload() };
+  return { harness, control, cycles, run, send, insert, stage };
+}
+
+test('gate: a pending asset insert holds settling through staging, latency and output delay', async () => {
+  const { harness, control, cycles, run, send, insert, stage } = await createAssetInsertHarness();
+  await send({ type: 'updatePlugins', plugins: [pluginConfig({ id: 7 }), insert], masterBypass: false, gate: true });
+  run(300);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  await send(stage);
+  await send({ type: 'updatePlugin', plugin: { ...insert, assetPending: false } });
+  run(20);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  control.ready = true;
+  run(1);
+  assert.equal(harness.processor.dspLatencyPlan.totalSamples, 128);
+  assert.equal(messagesOf(harness.posts, 'dspLatency').at(-1).message.samples, 128);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  await send({ type: 'setOutputDelay', requestId: 1, samples: 40 });
+  run(8);
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.deepEqual(cycles, { closings: 1, openings: 1 });
+});
+
+test('gate: an asset insert that never settles opens at the hold cap', async () => {
+  const { harness, cycles, run, send, insert } = await createAssetInsertHarness();
+  await send({ type: 'updatePlugins', plugins: [pluginConfig({ id: 7 }), insert], masterBypass: false });
+  run(1120);
+  assert.equal(harness.processor.transition.phase, 'settling');
+  run(16);
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.deepEqual(cycles, { closings: 1, openings: 1 });
+});
+
+test('gate: awaitOutputReady answers only once the startup publication plays at full level', async () => {
+  const { harness, control, run, send, insert, stage } = await createAssetInsertHarness();
+  const transition = harness.processor.transition;
+  const answers = () => messagesOf(harness.posts, 'outputReady').map(post => ({ ...post.message }));
+  // The startup DSP publication reaches a worklet whose gate already opened.
+  await send({ type: 'updatePlugins', plugins: [pluginConfig({ id: 7 }), insert], masterBypass: false, gate: true });
+  await send({ type: 'awaitOutputReady', requestId: 5 });
+  assert.equal(transition.phase, 'closing');
+  while (transition.phase === 'closing') {
+    run(1);
+    assert.deepEqual(answers(), []);
+  }
+  run(20);
+  assert.equal(transition.phase, 'settling');
+  assert.deepEqual([...transition.assetHolds], [8]);
+  assert.deepEqual(answers(), []);
+  await send(stage);
+  await send({ type: 'updatePlugin', plugin: { ...insert, assetPending: false } });
+  control.ready = true;
+  while (transition.phase !== 'open') {
+    assert.deepEqual(answers(), []);
+    run(1);
+  }
+  assert.deepEqual(answers(), [{ type: 'outputReady', requestId: 5 }]);
+
+  // An already open gate answers in the next quantum.
+  await send({ type: 'awaitOutputReady', requestId: 6 });
+  assert.equal(answers().length, 1);
+  run(1);
+  assert.deepEqual(answers().at(-1), { type: 'outputReady', requestId: 6 });
+});
+
+test('gate: the startup JS-to-WASM publication holds outputReady until the restaged asset is active', async () => {
+  for (const channel of ['L', 'A']) {
+    const control = { ready: false };
+    const staged = new Set();
+    const binding = createBinding({
+      capabilities: { abiVersion: 1, simd: false, kernels: [{
+        name: 'VolumePlugin', hash: 0x1234, byteCapacity: 0, assetCapacity: 4096, kernelIndex: 0
+      }] },
+      instanceLatency: id => staged.has(id) && control.ready ? 128 : 0,
+      assetState: id => !staged.has(id) ? 0 : (control.ready ? 3 : 2),
+      instanceProcessImpl() {}
+    });
+    const setAsset = binding.instanceSetAsset;
+    binding.instanceSetAsset = (id, ...rest) => { staged.add(id); return setAsset(id, ...rest); };
+    const harness = await createWorkletHarness({ gate: true, binding });
+    const processor = harness.processor;
+    const transition = processor.transition;
+    const source = createSineSource();
+    const run = blocks => { for (let block = 0; block < blocks; block++) source.process(processor); };
+    const answered = () => messagesOf(harness.posts, 'outputReady').length !== 0;
+    const plugins = [pluginConfig({ id: 7 }), pluginConfig({ id: 8, channel })];
+    // A running context opens the gate before the JS publication arrives;
+    // the same ids are published again once the DSP module is ready.
+    run(4);
+    await harness.send({ type: 'updatePlugins', plugins, masterBypass: false });
+    await harness.send({ type: 'setPluginAsset', pluginId: 8, slot: 0, formatTag: 1, headBlock: 128,
+      rateDivider: 1, pathCount: 0, inputCount: 0, processingChannels: 2, footprintBytes: 36,
+      payload: assetPayload() });
+    await harness.send({ type: 'dspModule', module: {} });
+    run(20);
+    assert.equal(transition.phase, 'open');
+    await harness.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+    await harness.send({ type: 'updatePlugins', plugins, masterBypass: false });
+    await harness.send({ type: 'awaitOutputReady', requestId: 5 });
+    run(200);
+    assert.equal(transition.phase, 'settling', channel);
+    assert.deepEqual([...transition.assetHolds], [8], channel);
+    assert.equal(answered(), false, channel);
+    control.ready = true;
+    for (let blocks = 0; !answered(); blocks++) {
+      assert.ok(blocks < 64, channel);
+      run(1);
+    }
+    for (let block = 0; block < 64; block++) {
+      run(1);
+      assert.equal(transition.phase, 'open', channel);
+    }
+  }
+});
+
+test('gate: plugin and output delay changes during master bypass keep the gate open', async () => {
+  const { harness, run, send, insert } = await createAssetInsertHarness();
+  await send({ type: 'updatePlugins', plugins: [pluginConfig({ id: 7 })], masterBypass: true });
+  run(16);
+  assert.equal(harness.processor.transition.phase, 'open');
+  await send({ type: 'updatePlugins', plugins: [pluginConfig({ id: 7 }), insert], masterBypass: true, gate: true });
+  await send({ type: 'addPlugin', plugin: latencyPlugin({ id: 9, wasmParams: Float32Array.of(1, 64) }) });
+  await send({ type: 'setOutputDelay', requestId: 1, samples: 40 });
+  assert.equal(harness.processor.transition.phase, 'open');
+  assert.equal(harness.processor.plugins.length, 3);
+});
+
+test('gate: candidate plans mark new compensation lines without allocating them', async () => {
+  const harness = await createGatedWasmHarness([
+    latencyPlugin({ id: 7, outputBus: 1, wasmParams: Float32Array.of(1, 64) }),
+    latencyPlugin({ id: 8, outputBus: 1 }), latencyPlugin({ id: 9, inputBus: 1 })
+  ]);
+  const processor = harness.processor;
+  const adopted = processor.dspLatencyPlan;
+  assert.equal(typeof adopted.nodeActions.get(8).delayLine.reset, 'function');
+  const candidate = processor.computeDspLatencyPlan(processor.plugins, processor.executionLatencySnapshot,
+    processor.jsFallbackAdmissions, null, false);
+  const line = candidate.nodeActions.get(8).delayLine;
+  assert.ok(Object.isFrozen(line) && Object.keys(line).length === 0);
+  assert.equal(processor.latencyPlansDiffer(adopted, candidate, true), true);
 });

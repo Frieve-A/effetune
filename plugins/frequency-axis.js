@@ -225,7 +225,8 @@
         ['SpectrogramPlugin', ['graph-container', 20, 40000]],
         ['NoteSpectrogramPlugin', ['graph-container', 0, 0]],
         ['PitchMeterPlugin', ['graph-container', 0, 0]],
-        ['PhaseSelectEqPlugin', ['graph-container', 20, 40000]]
+        ['PhaseSelectEqPlugin', ['graph-container', 20, 40000]],
+        ['TonalBalanceEQPlugin', ['graph-container', 0, 0]]
     ].map(([name, [graph, minFreq, maxFreq, inset = 0]]) => [name, {
         plotSelector: `.${graph}${inset ? '' : ' canvas'}`,
         ...(inset ? { mountSelector: `.${graph}` } : {}),
@@ -312,6 +313,13 @@
             };
         };
     }
+    targets.get('TonalBalanceEQPlugin').axisCheck = ['freqToX: frequency =>', 'xToFreq: x =>'];
+    targets.get('TonalBalanceEQPlugin').axis = (plugin, box) => ({
+        orientation: 'x', length: box.width, crossLength: box.height, gutter: 0,
+        // The target-adjust editor uses the canvas's band-centre axis.
+        toPos: frequency => plugin._adjustEditor.freqToX(frequency) / 100 * box.width,
+        toFreq: position => plugin._adjustEditor.xToFreq(clamp(position / box.width, 0, 1) * 100)
+    });
     targets.get('PhaseSelectEqPlugin').axisCheck = ['_frequencyToY(frequency)', '_yToFrequency(y)', 'this.sampleRate * 0.49'];
     targets.get('PhaseSelectEqPlugin').axis = (plugin, box) => ({
         orientation: 'y', length: box.height, crossLength: box.width, gutter: 0,

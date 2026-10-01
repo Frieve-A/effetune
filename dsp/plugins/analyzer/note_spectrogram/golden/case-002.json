@@ -22,7 +22,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:587db366d61fb5ef85410bf5c9794444bb5e1698c23077700b29ed8de96b99da",
+  "referenceHash": "sha256:50ae8e8828195347d0a72f7cdfd8ed5e0613ad70b00c65c1ce462f5a97e106e9",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type NoteSpectrogramPlugin --promote-production-native",
   "outputFloats": 773,
   "byteLength": 3092,

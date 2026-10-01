@@ -150,7 +150,7 @@ test('DSP landing explains the cross-surface workflow without competitor framing
   assert.match(landing, /What stays consistent \{#library-strengths\}/);
   assert.match(
     landing,
-    /Nine analyzers expose opt-in decoded observations/
+    /Ten analyzers and Tonal Balance EQ expose opt-in decoded observations/
   );
   assert.match(landing, /all other catalog telemetry remains metadata-only/);
   assert.doesNotMatch(landing, /v0\.1 has no public observation API/);
@@ -318,6 +318,7 @@ test('analyzer telemetry documentation matches the public Phase 1 facade', () =>
     'LevelMeter',
     'Oscilloscope',
     'PitchMeter',
+    'RhythmAnalyzer',
     'SpectrumAnalyzer',
     'Spectrogram',
     'StereoMeter'

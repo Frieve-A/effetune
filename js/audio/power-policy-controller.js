@@ -338,7 +338,11 @@ export class PowerPolicyController {
     async start() {
         if (this.started || this.disposed) return this.getSnapshot();
         this.started = true;
-        if (!this.enabled) return this.getSnapshot();
+        if (!this.enabled) {
+            // Native stream recovery remains available when power saving is disabled.
+            this.audioManager.contextManager?.setPowerStateDelegate?.(this);
+            return this.getSnapshot();
+        }
         this._synchronizeResourceGenerations();
         const restoredRelease = this.sessionJournal.restoreManualResumeRecord?.();
         if (restoredRelease?.manualResumeRequired === true) {
@@ -2468,6 +2472,12 @@ export class PowerPolicyController {
     }
 
     beginUserGestureResume(resumeKind = ResumeKind.UNEXPECTED_RECOVERY, inheritedRollback = null) {
+        if (this.audioManager.needsSystemResumeRecovery) {
+            return this.audioManager.recoverFromSystemResume().then(error => {
+                if (error) throw new Error(error);
+                return this.beginUserGestureResume(resumeKind, inheritedRollback);
+            });
+        }
         if (!this.enabled) return this.audioManager.contextManager?.resumeAudioContext?.();
         if (resumeKind === ResumeKind.UNEXPECTED_RECOVERY &&
             this.effectiveState !== AudioPowerState.SUSPENDED &&
@@ -2835,10 +2845,15 @@ export class PowerPolicyController {
     }
 
     ensureActive(resumeKind = ResumeKind.UNEXPECTED_RECOVERY) {
+        if (this.audioManager.needsSystemResumeRecovery) {
+            return this.beginUserGestureResume(resumeKind);
+        }
         if (!this.enabled) return this.audioManager.contextManager?.resumeAudioContext?.();
-        const inputResumeRequired = this.manualResumeRequired === true &&
-            (resumeKind === ResumeKind.DEDICATED_INPUT ||
-                resumeKind === ResumeKind.MIXED_PLAY);
+        const needsInput = resumeKind === ResumeKind.DEDICATED_INPUT ||
+            resumeKind === ResumeKind.MIXED_PLAY;
+        const input = needsInput ? this.audioManager.ioManager?.getInputSnapshot?.() : null;
+        const inputResumeRequired = needsInput && (this.manualResumeRequired === true ||
+            (input?.inputConfigured === true && input.state !== InputResourceState.LIVE));
         if (this._isFullyActive() && !inputResumeRequired) {
             return Promise.resolve(true);
         }

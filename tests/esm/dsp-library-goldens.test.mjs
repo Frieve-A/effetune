@@ -18,10 +18,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 1017;
-const EFFECT_COUNT = 108;
-const WORKLET_GOLDEN_CASE_COUNT = 110;
-const NON_IDENTITY_EFFECT_COUNT = 99;
+const GOLDEN_CASE_COUNT = 1029;
+const EFFECT_COUNT = 110;
+const WORKLET_GOLDEN_CASE_COUNT = 112;
+const NON_IDENTITY_EFFECT_COUNT = 100;
 
 test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {
   const { cases } = await discoverFrozenGoldenCases(repoRoot);
@@ -475,7 +475,7 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
     352800,
     384000
   ]);
-  assert.deepEqual(inventory.channels, [1, 2, 3, 4, 5, 6, 8]);
+  assert.deepEqual(inventory.channels, [1, 2, 3, 4, 5, 6, 8, 16]);
   assert.deepEqual(inventory.blockSizes, [
     1,
     17,

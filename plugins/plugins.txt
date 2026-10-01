@@ -26,6 +26,7 @@ analyzer/level_meter: Level Meter | Analyzer | LevelMeterPlugin | css
 analyzer/note_spectrogram: Note Spectrogram | Analyzer | NoteSpectrogramPlugin
 analyzer/oscilloscope: Oscilloscope | Analyzer | OscilloscopePlugin | css
 analyzer/pitch_meter: Pitch Meter | Analyzer | PitchMeterPlugin
+analyzer/rhythm_analyzer: Rhythm Analyzer | Analyzer | RhythmAnalyzerPlugin
 analyzer/spectrogram: Spectrogram | Analyzer | SpectrogramPlugin | css
 analyzer/spectrum_analyzer: Spectrum Analyzer | Analyzer | SpectrumAnalyzerPlugin | css
 analyzer/stereo_meter: Stereo Meter | Analyzer | StereoMeterPlugin | css
@@ -68,6 +69,7 @@ eq/loudness_equalizer: Loudness Equalizer | EQ | LoudnessEqualizerPlugin | css
 eq/narrow_range: Narrow Range | EQ | NarrowRangePlugin | css
 eq/room_eq: Room EQ | EQ | RoomEqPlugin | css
 eq/tilt_eq: Tilt EQ | EQ | TiltEQPlugin | css
+eq/tonal_balance_eq: Tonal Balance EQ | EQ | TonalBalanceEQPlugin | css
 eq/tone_control: Tone Control | EQ | ToneControlPlugin | css
 lofi/am_radio_simulator: AM Radio Simulator | Lo-Fi | AMRadioSimulatorPlugin | css
 lofi/bit_crusher: Bit Crusher | Lo-Fi | BitCrusherPlugin

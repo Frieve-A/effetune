@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 108 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 110 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -21,6 +21,7 @@ Browse all 108 semantic types registered in the v1 binding catalog. The list rem
 - [Note Spectrogram](/dsp/effects/note-spectrogram/) (`NoteSpectrogram`) — Passes audio through while exposing detected pitch confidence across the 88-key piano range at five positions per semitone. <span data-effect-tags="analyzer  "></span>
 - [Oscilloscope](/dsp/effects/oscilloscope/) (`Oscilloscope`) — Passes audio through while the host-side EffeTune app can display its waveform. <span data-effect-tags="analyzer  "></span>
 - [Pitch Meter](/dsp/effects/pitch-meter/) (`PitchMeter`) — Passes audio through while exposing one detected fundamental pitch, cents offset, confidence, and level. <span data-effect-tags="analyzer  "></span>
+- [Rhythm Analyzer](/dsp/effects/rhythm-analyzer/) (`RhythmAnalyzer`) — Passes audio through while exposing detected tempo, a per-cycle beat raster of hits, swing, and per-band timing offsets. <span data-effect-tags="analyzer  "></span>
 - [Spectrogram](/dsp/effects/spectrogram/) (`Spectrogram`) — Passes audio through while the host-side EffeTune app can display frequency content over time. <span data-effect-tags="analyzer  "></span>
 - [Spectrum Analyzer](/dsp/effects/spectrum-analyzer/) (`SpectrumAnalyzer`) — Passes audio through while the host-side EffeTune app can display its frequency spectrum. <span data-effect-tags="analyzer  "></span>
 - [Stereo Meter](/dsp/effects/stereo-meter/) (`StereoMeter`) — Passes audio through while the host-side EffeTune app can display stereo level and phase relationships. <span data-effect-tags="analyzer  "></span>
@@ -75,6 +76,7 @@ Browse all 108 semantic types registered in the v1 binding catalog. The list rem
 - [Narrow Range](/dsp/effects/narrow-range/) (`NarrowRange`) — Restricts audio to a configurable frequency range. <span data-effect-tags="eq  "></span>
 - [Room EQ](/dsp/effects/room-eq/) (`RoomEQ`) — Applies an externally prepared room-correction impulse response. <span data-effect-tags="eq seeded asset"></span>
 - [Tilt EQ](/dsp/effects/tilt-eq/) (`TiltEQ`) — Tilts the tonal balance around a configurable pivot frequency. <span data-effect-tags="eq  "></span>
+- [Tonal Balance EQ](/dsp/effects/tonal-balance-eq/) (`TonalBalanceEQ`) — Measures the long-term spectrum and gently corrects it toward the typical tonal balance of released music. An averaging time of 100 s means no time limit: the measurement averages everything since creation or reset. <span data-effect-tags="eq  "></span>
 - [Tone Control](/dsp/effects/tone-control/) (`ToneControl`) — Adjusts bass, midrange, and treble with broad tone-control curves. <span data-effect-tags="eq  "></span>
 
 ## Lo-fi and simulation

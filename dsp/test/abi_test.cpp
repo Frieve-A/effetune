@@ -498,6 +498,51 @@ void testPipelineChannelAlignment() {
   }
 }
 
+void testUnrelatedInstanceDestructionPreservesPipeline() {
+  constexpr std::uint32_t kFrames = 128u, kLatency = 192u;
+  auto engine_storage = std::make_unique<Engine>();
+  Engine &engine = *engine_storage;
+  ET_CHECK(engine.prepare(48000.0F, 2u, kFrames, 0u) == ET_OK);
+  const et_instance delay = engine.createInstance("TestDelayPlugin");
+  ET_CHECK(delay != 0u);
+  const auto routing = pipelineDescriptor({{delay, 0u, 0u, 0}});
+  ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+           ET_OK);
+  // Channel 1 uses the kernel delay; channel 2 holds the same impulse in output compensation.
+  std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+  engine.combined()[0] = engine.combined()[kFrames] = 1.0F;
+  ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+  Engine::PipelineLatencySnapshot snapshot;
+  Engine::PipelineLatencyUpdate update;
+  ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+  ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, update) == ET_OK);
+
+  // A Visualizer instance shares the engine but is not a node in its audio pipeline.
+  const et_instance visualizer = engine.createInstance("TestGainPlugin");
+  ET_CHECK(visualizer != 0u);
+  engine.destroyInstance(visualizer);
+  ET_CHECK(engine.resetInstance(visualizer) == ET_ERR_ARGS);
+  ET_CHECK(engine.pipelineLatency() == kLatency);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_OK);
+  std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+  ET_CHECK(engine.processPipeline(2u, kFrames, static_cast<double>(kFrames) / 48000.0, 0u) ==
+           ET_OK);
+  for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+    for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+      ET_CHECK(engine.combined()[channel * kFrames + frame] ==
+               (frame == kLatency - kFrames ? 1.0F : 0.0F));
+    }
+  }
+
+  // Destroying an actual pipeline member must still invalidate processing and pending updates.
+  ET_CHECK(engine.capturePipelineLatencySnapshot(snapshot) == ET_OK);
+  ET_CHECK(Engine::preparePipelineLatencyUpdate(snapshot, update) == ET_OK);
+  engine.destroyInstance(delay);
+  ET_CHECK(engine.pipelineLatency() == 0u);
+  ET_CHECK(engine.processPipeline(2u, kFrames, 0.1, 0u) == ET_ERR_STATE);
+  ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_ERR_STATE);
+}
+
 void testDynamicPipelineLatency() {
   constexpr std::uint32_t kFrames = 64u;
   constexpr std::uint32_t kLimiterHash = 0xb531a24au;
@@ -835,6 +880,7 @@ void runAbiTests() {
   testPipelineValidationAndRouting();
   testPipelineLatencyCompensation();
   testPipelineChannelAlignment();
+  testUnrelatedInstanceDestructionPreservesPipeline();
   testDynamicPipelineLatency();
   testDynamicLatencyHistory();
   testPipelineDescriptorFuzz();

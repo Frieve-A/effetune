@@ -101,6 +101,10 @@ test('Notes and Chroma range edits preserve the requested endpoint for every sel
                 ['low', [1, 7], [1, 2], 6, [6, 7], [6, 6]],
                 ['high', [8, 9], [1, 7], 6, [6, 6], [1, 6]],
                 ['low', [1, 2], [1, 7], 6, [6, 6], [6, 7]]
+            ]],
+            ['rhythm-analyzer', 'mn', 'mx', 'Min BPM', 'Max BPM', [
+                ['high', [40, 240], [150, 240], 100, [40, 100], [80, 100]],
+                ['low', [40, 180], [40, 50], 180, [180, 225], [180, 225]]
             ]]
         ]) for (const [endpoint, firstRange, otherRange, value, expectedFirst, expectedOther] of cases) {
             for (const multiple of [false, true]) {
@@ -194,6 +198,91 @@ test('Phase Map edits its axis, level range, reference floor, and persistence wi
     assert.equal(persistence.options.format(1.2), '1.2 s');
     axis.change('balance');
     assert.equal(item.params.ax, 'balance');
+});
+
+test('Rhythm Analyzer edits its tempo range and span', () => {
+    const fields = [], changes = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        t: (key, fallback) => fallback,
+        field(_parent, label, type, value, change, options) { fields.push({ label, type, value, change, options }); },
+        changed: render => changes.push(render)
+    });
+    const item = createItem('rhythm-analyzer', 'rhythm');
+    editor.parameters({}, item);
+    assert.deepEqual(fields.map(field => field.label), ['Min BPM', 'Max BPM', 'Span (beats)',
+        'Beat', 'BPM', 'Tempogram', 'Timing lanes', 'Echo rows', 'Beat lens',
+        'Axes and grid', 'Axis labels and numbers']);
+    const [minimum, maximum, span, beat, bpm, tempogram, timingLanes, echoRows, beatLens] = fields;
+    assert.deepEqual([minimum.options.min, minimum.options.max, maximum.options.min, maximum.options.max], [40, 192, 50, 240]);
+    assert.equal(maximum.options.format(120), '120 BPM');
+    assert.deepEqual(span.options.values.map(([value]) => value), ['4', '6', '8', '12', '16']);
+    span.change('12');
+    assert.equal(item.params.sp, 12);
+    assert.deepEqual(changes, [false], 'Span does not rebuild the panel');
+
+    assert.deepEqual([tempogram.type, timingLanes.type, echoRows.type, beatLens.type],
+        ['checkbox', 'checkbox', 'checkbox', 'checkbox']);
+    assert.deepEqual([tempogram.value, timingLanes.value, echoRows.value, beatLens.value], [true, true, true, true]);
+    assert.deepEqual([beat.type, bpm.type, beat.value, bpm.value], ['checkbox', 'checkbox', true, true]);
+    beat.change(false);
+    bpm.change(false);
+    assert.deepEqual([item.params.showBeat, item.params.showBpm], [false, false]);
+    tempogram.change(false);
+    timingLanes.change(false);
+    echoRows.change(false);
+    beatLens.change(false);
+    assert.deepEqual([item.params.vt, item.params.vm, item.params.ve, item.params.vl], [false, false, false, false]);
+    assert.deepEqual(changes, [false, false, false, false, false, false, false], 'Panel toggles do not rebuild the panel');
+});
+
+test('Rhythm Analyzer circle settings edit size, border, opacity, colors and BPM fitting', () => {
+    const fields = [], changes = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        t: (_key, fallback) => fallback,
+        group: (_parent, label) => label,
+        field(parent, label, type, value, change, options) { fields.push({ parent, label, type, value, change, options }); },
+        changed: render => changes.push(render)
+    });
+    const item = createItem('rhythm-analyzer', 'rhythm');
+    editor.textStyle({}, item.style, item.type);
+    const circle = fields.filter(field => field.parent === 'Beat circle');
+    assert.deepEqual(circle.map(field => field.label), ['Circle size', 'Border width', 'Fill opacity', 'Beat hold time', 'Beat decay time', 'Border opacity',
+        'Use palette colors', 'Fill color', 'Border color', 'Fit BPM inside circle']);
+    assert.equal(circle[0].options.format(90), '90%');
+    assert.equal(circle[2].options.format(.3), '30%');
+    assert.equal(circle[3].options.format(50), '50 ms');
+    assert.equal(circle[4].options.format(90), '90 ms');
+    assert.equal(circle[7].options.disabled, true);
+    circle[0].change(60);
+    circle[1].change(4);
+    circle[2].change(.5);
+    circle[3].change(50);
+    circle[4].change(200);
+    circle[5].change(.7);
+    circle[6].change(false);
+    circle[7].change('#123456');
+    circle[8].change('#abcdef');
+    circle[9].change(false);
+    assert.deepEqual([item.style.beatSize, item.style.beatLineWidth, item.style.beatFillOpacity, item.style.beatStrokeOpacity,
+        item.style.beatUsePalette, item.style.beatFillColor, item.style.beatStrokeColor, item.style.beatFitBpm, item.style.beatHoldTime, item.style.beatDecayTime],
+    [60, 4, .5, .7, false, '#123456', '#abcdef', false, 50, 200]);
+    assert.equal(changes[6], true, 'Changing palette use refreshes the color controls');
+    fields.length = 0;
+    editor.textStyle({}, item.style, item.type);
+    assert.equal(fields.find(field => field.label === 'Fill color').options.disabled, false);
+});
+
+test('Rhythm Analyzer beat lens checkbox uses a distinct label key from the Notes volume checkbox', () => {
+    const seenKeys = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        t: (key, fallback) => { seenKeys.push(key); return fallback; },
+        field(_parent, label, type, value, change, options) { this.fields = this.fields || []; this.fields.push({ label, type, value, change, options }); },
+        changed() {}
+    });
+    const item = createItem('rhythm-analyzer', 'rhythm');
+    editor.parameters({}, item);
+    assert.ok(seenKeys.includes('visualizer.param.beatLens'), 'lens checkbox must use the beatLens label key');
+    assert.ok(!seenKeys.includes('visualizer.param.vl'), 'lens checkbox must not reuse the vl label key (Notes Volume)');
 });
 
 test('Fall time, smoothing, and the Peak toggle appear per type and hide Peak Hold/Fall Time when Peak is off', async () => {

@@ -33,10 +33,11 @@ function collectTestFiles(directory, extension) {
 }
 
 function collectCoverageIncludeArgs(directory, { exclude = [] } = {}) {
-  const excludedFiles = new Set(exclude.map(normalizeRepoPath));
-  return collectFiles(directory, '.js')
-    .filter(file => !excludedFiles.has(file))
-    .map(file => `--test-coverage-include=${file}`);
+  // Keep the same file selection without exceeding Windows' command-line limit.
+  return [
+    `--test-coverage-include=${toRepoPath(directory)}/**/*.js`,
+    ...exclude.map(file => `--test-coverage-exclude=${normalizeRepoPath(file)}`)
+  ];
 }
 
 function runNodeTestPhase(name, args, env = {}) {

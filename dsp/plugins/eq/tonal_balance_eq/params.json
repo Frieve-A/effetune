@@ -1,0 +1,23 @@
+{
+  "type": "TonalBalanceEQPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": { "abs": 0.00002, "policy": "per-sample" },
+  "fields": [
+    { "name": "target", "key": "tg", "kind": "enum", "values": ["All", "Classical", "Electronic", "Pop", "Rock", "Tilt"], "step": 1, "default": "All", "automation": true },
+    { "name": "amount", "key": "am", "kind": "float", "min": 0, "max": 100, "step": 1, "default": 100, "unit": "%", "automation": true },
+    { "name": "range", "key": "rg", "kind": "float", "min": 0, "max": 12, "step": 0.5, "default": 6, "unit": "dB", "automation": true },
+    { "name": "smoothing", "key": "sm", "kind": "float", "min": 0.1667, "max": 2, "step": 0.01, "default": 0.5, "unit": "oct", "automation": { "normalization": "log" } },
+    { "name": "averagingTime", "key": "at", "kind": "float", "min": 0.1, "max": 100, "step": 0.1, "default": 30, "unit": "s", "automation": { "normalization": "log" } },
+    { "name": "low", "key": "lo", "kind": "float", "min": 20, "max": 200, "step": 1, "default": 20, "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "high", "key": "hi", "kind": "float", "min": 2000, "max": 20000, "step": 1, "default": 16000, "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "averageSpl", "key": "sp", "kind": "float", "min": 60, "max": 96, "step": 0.1, "default": 83, "unit": "dB", "automation": true },
+    { "name": "adjustEnabled", "key": "ea", "kind": "bool", "count": 5, "step": 1, "default": true, "automation": true },
+    { "name": "adjustType", "key": "ta", "kind": "enum", "count": 5, "values": ["pk", "ls", "hs"], "step": 1, "default": "pk", "automation": true },
+    { "name": "adjustFrequency", "key": "fa", "kind": "float", "count": 5, "min": 20, "max": 20000, "step": 1, "default": [100, 316, 1000, 3160, 10000], "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "adjustGain", "key": "ga", "kind": "float", "count": 5, "min": -20, "max": 20, "step": 0.1, "default": 0, "unit": "dB", "automation": true },
+    { "name": "adjustQ", "key": "qa", "kind": "float", "count": 5, "min": 0.1, "max": 10, "step": 0.01, "default": 0.7, "automation": true },
+    { "name": "tiltSlope", "key": "ts", "kind": "float", "min": -18, "max": 0, "step": 0.1, "default": -6, "unit": "dB/oct", "automation": true },
+    { "name": "tiltCorner", "key": "tc", "kind": "float", "min": 20, "max": 1000, "step": 1, "default": 250, "unit": "Hz", "automation": { "normalization": "log" } },
+    { "name": "measurementPaused", "key": "mp", "kind": "bool", "step": 1, "default": false }
+  ]
+}

@@ -338,6 +338,9 @@ contextBridge.exposeInMainWorld(
     onWindowVisibilityChanged: (callback) => {
       return addSingleArgIpcListener('window-visibility-changed', callback);
     },
+    onSystemResume: (callback) => {
+      return addNoArgIpcListener('system-resume', callback);
+    },
     
     // Get app version
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),

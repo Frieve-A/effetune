@@ -1226,18 +1226,32 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
 
     assert.equal(harness.document.body.children.length, 1);
     assert.equal(harness.document.head.children.length, 1);
-    assert.match(harness.document.body.children[0].innerHTML, /class="config-dialog-content"/);
-    assert.match(harness.document.body.children[0].innerHTML, /class="config-dialog-column config-dialog-power-column"/);
     const dialogMarkup = harness.document.body.children[0].innerHTML;
-    assert.ok(
-      dialogMarkup.indexOf('id="physical-control-section"') <
-      dialogMarkup.indexOf('id="power-saving-section"')
+    const categories = [
+      'general', 'startup', 'display', 'powerSaving', 'offlineOutput', 'controllers', 'remoteControl'
+    ];
+    const panelOf = id => {
+      const index = dialogMarkup.indexOf(`id="${id}"`);
+      return categories.findLast(category => dialogMarkup.indexOf(`id="config-panel-${category}"`) < index);
+    };
+    assert.deepEqual(
+      ['language-select', 'hardware-acceleration', 'auto-launch', 'preset-select', 'visual-sync',
+        'power-saving-section', 'offline-output-section', 'controller-mapping-btn', 'openhome-section']
+        .map(panelOf),
+      ['general', 'general', 'startup', 'startup', 'display',
+        'powerSaving', 'offlineOutput', 'controllers', 'remoteControl']
     );
-    assert.doesNotMatch(
-      /<div class="dialog-buttons">[\s\S]*?controller-mapping-btn/.exec(dialogMarkup)?.[0] || '',
-      /controller-mapping-btn/
+    assert.equal(
+      harness.document.getElementById('config-category-controllers').textContent,
+      'label:dialog.config.physicalControl'
     );
-    assert.match(harness.document.head.children[0].textContent, /grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+    assert.equal(harness.document.getElementById('config-category-general').getAttribute('aria-current'), 'true');
+    assert.equal(harness.document.getElementById('config-panel-general').hidden, false);
+    assert.equal(harness.document.getElementById('config-panel-powerSaving').hidden, true);
+    await harness.document.getElementById('config-category-powerSaving').dispatchEvent('click');
+    assert.equal(harness.document.getElementById('config-category-general').getAttribute('aria-current'), 'false');
+    assert.equal(harness.document.getElementById('config-panel-general').hidden, true);
+    assert.equal(harness.document.getElementById('config-panel-powerSaving').hidden, false);
     assert.match(harness.document.head.children[0].textContent, /body\.layout-mobile \.config-dialog-content/);
     assert.match(harness.document.head.children[0].textContent, /@media \(max-width: 700px\)/);
     assert.equal(harness.document.getElementById('config-title').textContent, 'label:dialog.config.title');

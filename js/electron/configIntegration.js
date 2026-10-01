@@ -31,6 +31,19 @@ import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-regist
 
 export { loadConfig, saveConfig };
 
+const CONFIG_CATEGORY_LABEL_KEYS = {
+  general: 'dialog.config.category.general',
+  startup: 'dialog.config.category.startup',
+  display: 'dialog.config.category.display',
+  powerSaving: 'dialog.config.powerSaving.title',
+  offlineOutput: 'dialog.config.offlineOutput.title',
+  controllers: 'dialog.config.physicalControl',
+  remoteControl: 'dialog.config.openHome.title'
+};
+
+// The dialog reopens on the category the user viewed last in this session.
+let selectedConfigCategory = 'general';
+
 export async function showConfigDialog(isElectron, currentConfig) {
   // Load the latest config from file to ensure we have the most recent settings
   const config = {
@@ -65,7 +78,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     config.startupPreset = presetNames[0];
   }
 
-  const electronOnlySections = isElectron ? `
+  const electronStartupSections = isElectron ? `
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="auto-launch" ${config.autoLaunch ? 'checked' : ''}>
@@ -77,7 +90,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
           <input type="checkbox" id="start-min" ${config.startMinimized ? 'checked' : ''}>
           <label for="start-min" id="config-start-min-label"></label>
         </div>
-      </div>
+      </div>` : '';
+
+  const electronGeneralSections = isElectron ? `
       <div class="device-section">
         <div class="checkbox-container">
           <input type="checkbox" id="tray" ${config.minimizeToTray ? 'checked' : ''}>
@@ -96,7 +111,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
           <label for="hardware-acceleration" id="hardware-acceleration-label"></label>
         </div>
         <div class="power-mode-help" id="hardware-acceleration-help"></div>
-      </div>
+      </div>` : '';
+
+  const openHomeSection = isElectron ? `
       <div class="device-section" id="openhome-section">
         <label class="section-label" id="openhome-title"></label>
         <div class="openhome-name-row">
@@ -113,7 +130,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       </div>` : '';
 
   const powerSavingSection = `
-      <div class="device-section power-saving-section" id="power-saving-section">
+      <div class="device-section" id="power-saving-section">
         <label class="section-label" id="power-saving-title"></label>
         <div class="power-mode-group" id="power-mode-group" role="radiogroup" aria-labelledby="power-saving-title">
           <div class="power-mode-option">
@@ -160,13 +177,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
       </div>`;
 
   const physicalControlSection = `
-      <div class="device-section power-saving-section" id="physical-control-section">
+      <div class="device-section" id="physical-control-section">
         <label class="section-label" id="physical-control-title"></label>
         <button type="button" class="library-button" id="controller-mapping-btn"></button>
       </div>`;
 
   const offlineOutputSection = `
-      <div class="device-section power-saving-section offline-output-section" id="offline-output-section">
+      <div class="device-section" id="offline-output-section">
         <label class="section-label" id="offline-output-title"></label>
         <div class="offline-output-row">
           <label for="offline-output-format" id="offline-output-format-label"></label>
@@ -183,12 +200,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="offline-output-help" id="offline-output-help"></div>
       </div>`;
 
-  const dialogHTML = `
-    <div class="config-dialog">
-      <h2 id="config-title"></h2>
-      <div class="config-dialog-content">
-        <div class="config-dialog-column">
-          ${electronOnlySections}
+  const categoryPanels = {
+    general: `
           <div class="device-section">
             <label class="section-label" for="language-select" id="config-language-label"></label>
             <select id="language-select" class="config-select"></select>
@@ -197,24 +210,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
             <label class="section-label" for="theme-select" id="config-theme-label"></label>
             <select id="theme-select" class="config-select"></select>
           </div>
-          <div class="device-section">
-            <div class="checkbox-container">
-              <input type="checkbox" id="visual-sync" aria-describedby="visual-sync-help" ${isVisualSyncEnabled(config) ? 'checked' : ''}>
-              <label for="visual-sync" id="visual-sync-label"></label>
-            </div>
-            <div class="power-mode-help" id="visual-sync-help"></div>
-          </div>
-          <div class="device-section" role="group" aria-labelledby="spectrum-overlay-title">
-            <div class="section-label" id="spectrum-overlay-title"></div>
-            <div class="spectrum-overlay-row">
-              <label for="spectrum-overlay-quality" id="spectrum-overlay-quality-label"></label>
-              <select id="spectrum-overlay-quality" class="config-select"></select>
-            </div>
-            <div class="spectrum-overlay-row">
-              <label for="spectrum-overlay-display" id="spectrum-overlay-display-label"></label>
-              <select id="spectrum-overlay-display" class="config-select"></select>
-            </div>
-          </div>
+          ${electronGeneralSections}`,
+    startup: `
+          ${electronStartupSections}
           <div class="device-section">
             <label class="section-label" id="config-startup-view-label"></label>
             <div class="radio-container">
@@ -246,12 +244,46 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <label for="pl-preset" id="config-pipeline-preset-label"></label>
               <select id="preset-select" class="config-select" ${config.pipelineStartup === 'preset' ? '' : 'disabled'}></select>
             </div>
+          </div>`,
+    display: `
+          <div class="device-section">
+            <div class="checkbox-container">
+              <input type="checkbox" id="visual-sync" aria-describedby="visual-sync-help" ${isVisualSyncEnabled(config) ? 'checked' : ''}>
+              <label for="visual-sync" id="visual-sync-label"></label>
+            </div>
+            <div class="power-mode-help" id="visual-sync-help"></div>
           </div>
-        </div>
-        <div class="config-dialog-column config-dialog-power-column">
-          ${physicalControlSection}
-          ${powerSavingSection}
-          ${offlineOutputSection}
+          <div class="device-section" role="group" aria-labelledby="spectrum-overlay-title">
+            <div class="section-label" id="spectrum-overlay-title"></div>
+            <div class="spectrum-overlay-row">
+              <label for="spectrum-overlay-quality" id="spectrum-overlay-quality-label"></label>
+              <select id="spectrum-overlay-quality" class="config-select"></select>
+            </div>
+            <div class="spectrum-overlay-row">
+              <label for="spectrum-overlay-display" id="spectrum-overlay-display-label"></label>
+              <select id="spectrum-overlay-display" class="config-select"></select>
+            </div>
+          </div>`,
+    powerSaving: powerSavingSection,
+    offlineOutput: offlineOutputSection,
+    controllers: physicalControlSection,
+    ...(isElectron ? { remoteControl: openHomeSection } : {})
+  };
+  const categories = Object.keys(categoryPanels);
+  if (!categories.includes(selectedConfigCategory)) selectedConfigCategory = categories[0];
+
+  const dialogHTML = `
+    <div class="config-dialog">
+      <h2 id="config-title"></h2>
+      <div class="config-dialog-content">
+        <nav class="config-category-list">
+          ${categories.map(category => `
+          <button type="button" class="config-category-button" id="config-category-${category}" aria-controls="config-panel-${category}"></button>`).join('')}
+        </nav>
+        <div class="config-category-panels" id="config-category-panels">
+          ${categories.map(category => `
+          <div class="config-category-panel" id="config-panel-${category}">${categoryPanels[category]}
+          </div>`).join('')}
         </div>
       </div>
       <div class="dialog-buttons">
@@ -285,36 +317,69 @@ export async function showConfigDialog(isElectron, currentConfig) {
       padding: 20px;
       width: 760px;
       max-width: calc(100vw - 32px);
-      max-height: calc(100vh - 40px);
-      overflow-y: auto;
+      height: min(600px, calc(100vh - 40px));
+      display: flex;
+      flex-direction: column;
       box-sizing: border-box;
       color: var(--et-text-primary);
     }
     .config-dialog h2 {
       margin-top: 0;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
       color: var(--et-text-primary);
     }
     .config-dialog-content {
+      flex: 1 1 auto;
+      min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 24px;
+      grid-template-columns: 200px minmax(0, 1fr);
+      border-top: 1px solid var(--et-surface-20);
     }
-    .config-dialog-column {
+    .config-category-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 12px 12px 12px 0;
+      border-right: 1px solid var(--et-surface-20);
+      overflow-y: auto;
+    }
+    .config-category-button {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--et-surface-89);
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+    }
+    .config-category-button:hover {
+      background-color: var(--et-surface-13);
+      color: var(--et-text-primary);
+    }
+    .config-category-button[aria-current="true"] {
+      background-color: var(--et-surface-17);
+      box-shadow: inset 3px 0 0 var(--et-accent);
+      color: var(--et-text-primary);
+      font-weight: bold;
+    }
+    .config-category-panels {
       min-width: 0;
+      padding: 16px 4px 0 24px;
+      overflow-y: auto;
+    }
+    .config-category-panel[hidden] {
+      display: none;
     }
     .device-section {
-      margin-bottom: 15px;
+      margin-bottom: 18px;
     }
     .device-section .section-label {
       display: block;
       margin-bottom: 8px;
       font-weight: bold;
       color: var(--et-text-primary);
-    }
-    .power-saving-section {
-      padding-left: 24px;
-      border-left: 1px solid var(--et-surface-20);
     }
     .power-mode-option {
       margin-bottom: 9px;
@@ -480,7 +545,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .dialog-buttons {
       display: flex;
       justify-content: flex-end;
-      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--et-surface-20);
     }
     .dialog-buttons button {
       padding: 8px 16px;
@@ -496,13 +562,21 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     body.layout-mobile .config-dialog-content {
       grid-template-columns: minmax(0, 1fr);
-      gap: 0;
+      grid-template-rows: auto minmax(0, 1fr);
     }
-    body.layout-mobile .power-saving-section {
-      padding-top: 12px;
+    body.layout-mobile .config-category-list {
+      flex-direction: row;
+      padding: 8px 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--et-surface-20);
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    body.layout-mobile .config-category-button {
+      white-space: nowrap;
+    }
+    body.layout-mobile .config-category-panels {
       padding-left: 0;
-      border-top: 1px solid var(--et-surface-20);
-      border-left: 0;
     }
     @media (max-width: 700px) {
       .config-dialog {
@@ -510,13 +584,21 @@ export async function showConfigDialog(isElectron, currentConfig) {
       }
       .config-dialog-content {
         grid-template-columns: minmax(0, 1fr);
-        gap: 0;
+        grid-template-rows: auto minmax(0, 1fr);
       }
-      .power-saving-section {
-        padding-top: 12px;
+      .config-category-list {
+        flex-direction: row;
+        padding: 8px 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--et-surface-20);
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+      .config-category-button {
+        white-space: nowrap;
+      }
+      .config-category-panels {
         padding-left: 0;
-        border-top: 1px solid var(--et-surface-20);
-        border-left: 0;
       }
       .power-mode-help,
       .power-saving-warning,
@@ -858,8 +940,25 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
   }
 
+  function selectCategory(category) {
+    selectedConfigCategory = category;
+    for (const candidate of categories) {
+      const selected = candidate === category;
+      const button = document.getElementById(`config-category-${candidate}`);
+      button.setAttribute('aria-current', String(selected));
+      if (selected) button.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      document.getElementById(`config-panel-${candidate}`).hidden = !selected;
+    }
+    const panels = document.getElementById('config-category-panels');
+    if (panels) panels.scrollTop = 0;
+  }
+
   function renderDialogTexts() {
     document.getElementById('config-title').textContent = t('dialog.config.title');
+    for (const category of categories) {
+      document.getElementById(`config-category-${category}`).textContent =
+        t(CONFIG_CATEGORY_LABEL_KEYS[category]);
+    }
     const autoLaunchLabel = document.getElementById('config-auto-launch-label');
     if (autoLaunchLabel) autoLaunchLabel.textContent = t('dialog.config.autoLaunch');
     const startMinLabel = document.getElementById('config-start-min-label');
@@ -1107,6 +1206,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
   }
 
   renderDialogTexts();
+  selectCategory(selectedConfigCategory);
+  for (const category of categories) {
+    document.getElementById(`config-category-${category}`)
+      .addEventListener('click', () => selectCategory(category));
+  }
 
   const autoLaunch = document.getElementById('auto-launch');
   if (autoLaunch) {

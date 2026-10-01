@@ -1,4 +1,4 @@
-import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, EFFECT_CATALOG, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
+import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, RHYTHM_SPANS, EFFECT_CATALOG, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
@@ -38,6 +38,8 @@ const GRID_DIVISIONS = [4, 8, 20, 40, 80];
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const midiNoteName = midi => `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
 const round = value => Math.round(value * 1000000) / 1000000;
+// Catalog choices are listed alphabetically by their displayed name.
+const byLabel = values => values.sort((a, b) => a[1].localeCompare(b[1]));
 // Copies every value of source that differs from base onto target. Nested objects are compared key by key,
 // so one changed parameter leaves the others alone; arrays such as effects or color stops are copied whole.
 const copyChanges = (source, base, target, skip = []) => {
@@ -47,14 +49,19 @@ const copyChanges = (source, base, target, skip = []) => {
         else if (JSON.stringify(value) !== JSON.stringify(base?.[key])) target[key] = structuredClone(value);
     }
 };
-const RANGE_ENDPOINTS = { notes: ['mn', 'mx'], chroma: ['lo', 'hi'] };
-// Keep the edited endpoint and move its partner only when the range would invert.
+const RANGE_ENDPOINTS = { notes: ['mn', 'mx'], chroma: ['lo', 'hi'], 'rhythm-analyzer': ['mn', 'mx'] };
+// The Rhythm Analyzer keeps Max BPM >= 1.25 x Min BPM so the tempo search range stays
+// non-degenerate (see normalizeParams).
+const RANGE_MIN_RATIO = { 'rhythm-analyzer': 1.25 };
+// Keep the edited endpoint and move its partner only when the range would invert or become
+// narrower than the type's minimum ratio.
 const adjustRangeEndpoint = (item, key) => {
     const endpoints = Object.hasOwn(RANGE_ENDPOINTS, item.type) ? RANGE_ENDPOINTS[item.type] : [];
-    if (!endpoints.includes(key) || item.params[endpoints[0]] <= item.params[endpoints[1]]) return null;
-    const otherKey = endpoints.find(endpoint => endpoint !== key);
-    item.params[otherKey] = item.params[key];
-    return otherKey;
+    const [low, high] = endpoints, ratio = RANGE_MIN_RATIO[item.type] ?? 1, params = item.params;
+    if (!endpoints.includes(key) || params[high] >= params[low] * ratio) return null;
+    if (key === low) params[high] = Math.ceil(params[low] * ratio);
+    else params[low] = Math.floor(params[high] / ratio);
+    return key === low ? high : low;
 };
 const rectStyle = rect => ({ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` });
 // Bounding box of the given items in normalized stage units.
@@ -312,7 +319,7 @@ export class VisualizerEditor {
         caption.textContent = label;
         const controls = document.createElement('div');
         controls.className = 'visualizer-style-toggles';
-        const textItem = ['title', 'album', 'artist'].includes(item.type);
+        const textItem = TEXT_STYLE_TYPES.includes(item.type);
         for (const key of textItem ? ['flipX', 'flipY', 'bold', 'italic'] : ['flipX', 'flipY']) {
             const target = key === 'bold' || key === 'italic' ? item.style : item;
             const name = this.t(key === 'bold' || key === 'italic' ? `visualizer.style.${key}` : `visualizer.${key}`,
@@ -369,7 +376,7 @@ export class VisualizerEditor {
         });
         const addRow = document.createElement('div');
         addRow.className = 'visualizer-select-action-row visualizer-navigation-add-row'; scene.appendChild(addRow);
-        const add = this.field(addRow, this.t('visualizer.item', 'Item'), 'select', 'spectrum', () => {}, { values: ITEM_TYPES.map(type => [type, this.t(`visualizer.type.${type}`, type)]) });
+        const add = this.field(addRow, this.t('visualizer.item', 'Item'), 'select', 'spectrum', () => {}, { values: byLabel(ITEM_TYPES.map(type => [type, this.t(`visualizer.type.${type}`, type)])) });
         const addItem = this.button(addRow, this.t('visualizer.add', 'Add'), () => {
             if (layout.items.length >= MAX_ITEMS) return;
             const item = createItem(add.value);
@@ -445,19 +452,36 @@ export class VisualizerEditor {
         if (VISUAL_TYPES.includes(item.type)) this.parameters(properties, item);
         if (item.type === 'artwork') this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
-        else if (!VISUAL_TYPES.includes(item.type)) this.textStyle(properties, item.style);
+        else if (TEXT_STYLE_TYPES.includes(item.type)) this.textStyle(properties, item.style, item.type);
         if (item.type !== 'artwork') this.palette(this.root, item.palette, item.type);
         this.effects(this.root, item.effects, 'item', item.type);
     }
 
-    textStyle(parent, style) {
-        const value = key => style[key] ?? TEXT_DECORATION_DEFAULTS[key];
+    textStyle(parent, style, type = null) {
+        const value = key => style[key] ?? TEXT_DECORATION_DEFAULTS[key] ?? RHYTHM_BEAT_STYLE_DEFAULTS[key];
         const set = key => next => { style[key] = next; this.changed(); };
         const label = (key, fallback) => this.t(`visualizer.style.${key}`, fallback);
         const select = (group, key, fallback, values) => this.field(group, label(key, fallback), 'select', value(key), set(key),
             { values: values.map(([entry, name]) => [entry, this.t(`visualizer.value.${entry}`, name)]) });
-        const range = (group, key, fallback, min, max, step = 1) => this.field(group, label(key, fallback), 'range', value(key), set(key),
-            { min, max, step, format: next => String(next) });
+        const range = (group, key, fallback, min, max, step = 1, format = String) => this.field(group, label(key, fallback), 'range', value(key), set(key),
+            { min, max, step, format });
+        if (type === 'rhythm-analyzer') {
+            const circle = this.group(parent, label('beatCircle', 'Beat circle'));
+            const percent = next => `${Math.round(next * 100)}%`;
+            range(circle, 'beatSize', 'Circle size', 10, 100, 1, next => `${next}%`);
+            range(circle, 'beatLineWidth', 'Border width', 0, 20, 0.5);
+            range(circle, 'beatFillOpacity', 'Fill opacity', 0, 1, 0.01, percent);
+            range(circle, 'beatHoldTime', 'Beat hold time', 0, 1000, 10, next => `${next} ms`);
+            range(circle, 'beatDecayTime', 'Beat decay time', 10, 2000, 10, next => `${next} ms`);
+            range(circle, 'beatStrokeOpacity', 'Border opacity', 0, 1, 0.01, percent);
+            this.field(circle, label('beatUsePalette', 'Use palette colors'), 'checkbox', value('beatUsePalette'), next => {
+                style.beatUsePalette = next; this.changed(true);
+            });
+            for (const [key, fallback] of [['beatFillColor', 'Fill color'], ['beatStrokeColor', 'Border color']]) {
+                this.field(circle, label(key, fallback), 'color', value(key), set(key), { disabled: value('beatUsePalette') });
+            }
+            this.field(circle, label('beatFitBpm', 'Fit BPM inside circle'), 'checkbox', value('beatFitBpm'), set('beatFitBpm'));
+        }
         select(parent, 'fontFamily', 'Font', FONT_FAMILIES);
         range(parent, 'fontSize', 'Text size', 8, 200);
         select(parent, 'align', 'Alignment', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]);
@@ -479,10 +503,11 @@ export class VisualizerEditor {
     parameters(parent, item) {
         const params = item.params;
         const analogMeter = item.type === 'analog-meter';
+        const rhythm = item.type === 'rhythm-analyzer';
         const update = (key, value) => {
             params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
-                (analogMeter && ['sc', 'ln', 'ls'].includes(key)) ? Number(value) : value;
-            // Mode and PPM Scale decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time. Rebuild the panel for these.
+                (analogMeter && ['sc', 'ln', 'ls'].includes(key)) || (rhythm && key === 'sp') ? Number(value) : value;
+            // Mode and PPM Scale decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time.
             this.changed((analogMeter && (key === 'md' || key === 'sc')) || key === 'pk');
         };
         const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values });
@@ -492,6 +517,22 @@ export class VisualizerEditor {
         ]);
         const range = (key, label, min, max, step, format) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, format });
         const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value));
+        // Integer range endpoints; an endpoint dragged past its partner carries the partner along.
+        const rangePair = (entries, format) => {
+            const sliders = {};
+            for (const [key, label, min, max, labelKey = key] of entries) {
+                sliders[key] = this.field(parent, this.t(`visualizer.param.${labelKey}`, label), 'range', params[key], value => {
+                    params[key] = value;
+                    const otherKey = adjustRangeEndpoint(item, key);
+                    if (otherKey) {
+                        sliders[otherKey].value = params[otherKey];
+                        sliders[otherKey].nextElementSibling.textContent = format(params[otherKey]);
+                        window.uiManager?.refreshRangeFillStyling?.(sliders[otherKey]);
+                    }
+                    this.changed(false, false, key);
+                }, { min, max, step: 1, format });
+            }
+        };
         // Bar segment size in dB; 0 draws continuous bars.
         const stepFormat = value => value > 0 ? `${value.toFixed(1)} dB` : this.t('visualizer.value.continuous', 'Continuous');
         // Peak Hold and Peak Fall Time only matter while the peak indicator (pk) is shown.
@@ -585,19 +626,7 @@ export class VisualizerEditor {
             range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
         } else if (item.type === 'chroma') {
             select('dm', 'Display', [['0', this.t('visualizer.value.dots', 'Dots')], ['1', this.t('visualizer.value.fill', 'Fill')]]);
-            const octaveSliders = {};
-            for (const [key, label, min, max] of [['lo', 'Lowest Octave', 1, 8], ['hi', 'Highest Octave', 1, 9]]) {
-                octaveSliders[key] = this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => {
-                    params[key] = value;
-                    const otherKey = adjustRangeEndpoint(item, key);
-                    if (otherKey) {
-                        octaveSliders[otherKey].value = value;
-                        octaveSliders[otherKey].nextElementSibling.textContent = String(value);
-                        window.uiManager?.refreshRangeFillStyling?.(octaveSliders[otherKey]);
-                    }
-                    this.changed(false, false, key);
-                }, { min, max, step: 1, format: value => String(value) });
-            }
+            rangePair([['lo', 'Lowest Octave', 1, 8], ['hi', 'Highest Octave', 1, 9]], value => String(value));
             range('ft', 'Frequency Tilt', -6, 6, 0.5, value => `${value} dB/oct`);
             range('lr', 'Level Range', 6, 96, 1, value => `${value} dB`);
             range('df', 'Display Floor', -120, -24, 1, value => `${value} dB`);
@@ -626,6 +655,17 @@ export class VisualizerEditor {
             if (active('ln')) select('ln', 'Needle', choices(['Momentary', 'Short-term']));
             if (active('tg')) range('tg', 'Target', -36, -10, 1, value => `${value} LUFS`);
             if (active('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
+        } else if (rhythm) {
+            rangePair([['mn', 'Min BPM', 40, 192, 'bpmMin'], ['mx', 'Max BPM', 50, 240, 'bpmMax']],
+                value => `${value} BPM`);
+            select('sp', 'Span (beats)', RHYTHM_SPANS.map(value => [String(value), String(value)]));
+            check('showBeat', 'Beat');
+            check('showBpm', 'BPM');
+            check('vt', 'Tempogram');
+            check('vm', 'Timing lanes');
+            check('ve', 'Echo rows');
+            // 'vl' already labels the Notes item's Volume checkbox; the lens checkbox uses its own label key.
+            this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value));
         }
         if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, value => `${value > 0 ? '+' : ''}${value} dB`);
         check('showAxes', 'Axes and grid');
@@ -664,7 +704,7 @@ export class VisualizerEditor {
         const presetRow = document.createElement('div');
         presetRow.className = 'visualizer-select-action-row'; group.appendChild(presetRow);
         const choices = this.field(presetRow, this.t('visualizer.gradient', 'Gradient'), 'select', '', () => {},
-            { values: GRADIENT_PRESETS.map(({ id, name }) => [id, name]) });
+            { values: byLabel(GRADIENT_PRESETS.map(({ id, name }) => [id, name])) });
         this.button(presetRow, this.t('visualizer.apply', 'Apply'), () => {
             const colors = GRADIENT_PRESETS.find(entry => entry.id === choices.value).colors;
             palette.stops = colors.map((color, i) => ({ pos: colors.length === 1 ? 0 : i / (colors.length - 1), color }));
@@ -691,10 +731,12 @@ export class VisualizerEditor {
 
     effects(parent, effects, target, itemType) {
         const group = this.group(parent, this.t('visualizer.effects', 'Effects'));
-        const types = Object.entries(EFFECT_CATALOG).filter(([type, entry]) => entry.allowedOn.includes(target) && (type !== 'ken-burns' || target === 'background' || itemType === 'artwork'));
+        const types = byLabel(Object.entries(EFFECT_CATALOG)
+            .filter(([type, entry]) => entry.allowedOn.includes(target) && (type !== 'ken-burns' || target === 'background' || itemType === 'artwork'))
+            .map(([key, entry]) => [key, this.t(`visualizer.effect.${key}`, entry.label)]));
         const addRow = document.createElement('div');
         addRow.className = 'visualizer-select-action-row'; group.appendChild(addRow);
-        const chooser = this.field(addRow, this.t('visualizer.effect', 'Effect'), 'select', types[0][0], () => {}, { values: types.map(([key, entry]) => [key, this.t(`visualizer.effect.${key}`, entry.label)]) });
+        const chooser = this.field(addRow, this.t('visualizer.effect', 'Effect'), 'select', types[0][0], () => {}, { values: types });
         const addEffect = this.button(addRow, this.t('visualizer.add', 'Add'), () => {
             if (effects.length >= MAX_EFFECTS) return;
             effects.push(normalizeEffect({ type: chooser.value }, target)); this.changed(true);

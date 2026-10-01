@@ -280,6 +280,50 @@
       ],
       "assets": []
     },
+    "RhythmAnalyzer": {
+      "internalType": "RhythmAnalyzerPlugin",
+      "layoutHash": 3135264869,
+      "floatCount": 3,
+      "packedParameters": [
+        {
+          "publicName": "minimumBpm",
+          "field": "minimumBpm",
+          "keys": [
+            "mn"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "maximumBpm",
+          "field": "maximumBpm",
+          "keys": [
+            "mx"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "metronomeClick",
+          "field": "metronomeClick",
+          "keys": [
+            "ck"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
     "Spectrogram": {
       "internalType": "SpectrogramPlugin",
       "layoutHash": 1047398425,
@@ -3393,6 +3437,226 @@
             "sl"
           ],
           "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        }
+      ],
+      "assets": []
+    },
+    "TonalBalanceEQ": {
+      "internalType": "TonalBalanceEQPlugin",
+      "layoutHash": 173902948,
+      "floatCount": 36,
+      "packedParameters": [
+        {
+          "publicName": "target",
+          "field": "target",
+          "keys": [
+            "tg"
+          ],
+          "offset": 0,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "amount",
+          "field": "amount",
+          "keys": [
+            "am"
+          ],
+          "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "range",
+          "field": "range",
+          "keys": [
+            "rg"
+          ],
+          "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "smoothing",
+          "field": "smoothing",
+          "keys": [
+            "sm"
+          ],
+          "offset": 3,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "averagingTime",
+          "field": "averagingTime",
+          "keys": [
+            "at"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "low",
+          "field": "low",
+          "keys": [
+            "lo"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "high",
+          "field": "high",
+          "keys": [
+            "hi"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "averageSpl",
+          "field": "averageSpl",
+          "keys": [
+            "sp"
+          ],
+          "offset": 7,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "adjustEnabled",
+          "field": "adjustEnabled",
+          "keys": [
+            "ea0",
+            "ea1",
+            "ea2",
+            "ea3",
+            "ea4"
+          ],
+          "offset": 8,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "adjustType",
+          "field": "adjustType",
+          "keys": [
+            "ta0",
+            "ta1",
+            "ta2",
+            "ta3",
+            "ta4"
+          ],
+          "offset": 13,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "adjustFrequency",
+          "field": "adjustFrequency",
+          "keys": [
+            "fa0",
+            "fa1",
+            "fa2",
+            "fa3",
+            "fa4"
+          ],
+          "offset": 18,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "adjustGain",
+          "field": "adjustGain",
+          "keys": [
+            "ga0",
+            "ga1",
+            "ga2",
+            "ga3",
+            "ga4"
+          ],
+          "offset": 23,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "adjustQ",
+          "field": "adjustQ",
+          "keys": [
+            "qa0",
+            "qa1",
+            "qa2",
+            "qa3",
+            "qa4"
+          ],
+          "offset": 28,
+          "count": 5,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tiltSlope",
+          "field": "tiltSlope",
+          "keys": [
+            "ts"
+          ],
+          "offset": 33,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "tiltCorner",
+          "field": "tiltCorner",
+          "keys": [
+            "tc"
+          ],
+          "offset": 34,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "measurementPaused",
+          "field": "measurementPaused",
+          "keys": [
+            "mp"
+          ],
+          "offset": 35,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -10329,6 +10593,7 @@
     "dsp/plugins/analyzer/note_spectrogram/params.json": "dsp/plugins/analyzer/note_spectrogram/golden/index.json",
     "dsp/plugins/analyzer/oscilloscope/params.json": "dsp/plugins/analyzer/oscilloscope/golden/index.json",
     "dsp/plugins/analyzer/pitch_meter/params.json": "dsp/plugins/analyzer/pitch_meter/golden/index.json",
+    "dsp/plugins/analyzer/rhythm_analyzer/params.json": "dsp/plugins/analyzer/rhythm_analyzer/golden/index.json",
     "dsp/plugins/analyzer/spectrogram/params.json": "dsp/plugins/analyzer/spectrogram/golden/index.json",
     "dsp/plugins/analyzer/spectrum_analyzer/params.json": "dsp/plugins/analyzer/spectrum_analyzer/golden/index.json",
     "dsp/plugins/analyzer/stereo_meter/params.json": "dsp/plugins/analyzer/stereo_meter/golden/index.json",
@@ -10371,6 +10636,7 @@
     "dsp/plugins/eq/narrow_range/params.json": "dsp/plugins/eq/narrow_range/golden/index.json",
     "dsp/plugins/eq/room_eq/params.json": "dsp/plugins/eq/room_eq/golden/index.json",
     "dsp/plugins/eq/tilt_eq/params.json": "dsp/plugins/eq/tilt_eq/golden/index.json",
+    "dsp/plugins/eq/tonal_balance_eq/params.json": "dsp/plugins/eq/tonal_balance_eq/golden/index.json",
     "dsp/plugins/eq/tone_control/params.json": "dsp/plugins/eq/tone_control/golden/index.json",
     "dsp/plugins/lofi/am_radio_simulator/params.json": "dsp/plugins/lofi/am_radio_simulator/golden/index.json",
     "dsp/plugins/lofi/bit_crusher/params.json": "dsp/plugins/lofi/bit_crusher/golden/index.json",
@@ -10432,5 +10698,5 @@
     "dsp/plugins/spatial/spatial_mapper/params.json": "dsp/plugins/spatial/spatial_mapper/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "66175f0d1430a20521b7c33db53a7a088a2eabc835c36c050369e67903112137"
+  "contractDigest": "2210eb06b9ab0c4a503445dbc6f98abec45197ff603d18a1c4f4c8eca732fb6a"
 }

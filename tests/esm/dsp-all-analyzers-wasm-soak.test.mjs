@@ -44,7 +44,8 @@ const analyzers = [
   ['SpectrogramPlugin', 204, TelemetryFrameType.TAP_SPECTROGRAM_COL, 1],
   ['StereoMeterPlugin', 205, TelemetryFrameType.TAP_STEREO_FIELD, 2],
   ['NoteSpectrogramPlugin', MULTI_F0_TAP_ID, 24, 3],
-  ['PitchMeterPlugin', PITCH_METER_TAP_ID, TelemetryFrameType.TAP_PITCH_METER, 1]
+  ['PitchMeterPlugin', PITCH_METER_TAP_ID, TelemetryFrameType.TAP_PITCH_METER, 1],
+  ['RhythmAnalyzerPlugin', 210, TelemetryFrameType.TAP_RHYTHM_ANALYZER, 1]
 ];
 
 function deterministicNoise(sample, channel) {

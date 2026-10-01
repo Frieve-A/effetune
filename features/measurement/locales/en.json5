@@ -24,6 +24,8 @@
   "help:inputChannel": "Select the channel to which the calibration microphone is connected for the selected audio input device.", // Help text for input channel
   "label:audioOutput": "Audio Output Device:", // Label for audio output device selection
   "help:audioOutput": "Select the audio device that outputs the measurement signal.", // Help text for audio output
+  "label:outputChannelCount": "Output Device Channels:",
+  "help:outputChannelCount": "Match the output device's channel layout (6 for 5.1, 8 for 7.1). Test signals and measurements always use this channel count, even when measuring only some channels.",
   "label:outputChannel": "Output Channel:", // Label for output channel selection
   "help:outputChannel": "Select one or more output channels to measure. Selecting All Channels clears the individual channel selections.", // Help text for output channel
   "help:audioInput": "Specify the audio input device to which the measurement microphone is connected.", // Help text for audio input

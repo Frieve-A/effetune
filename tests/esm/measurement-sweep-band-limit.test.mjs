@@ -98,7 +98,10 @@ function createMeasurementSettingsDocument() {
         }
     });
     const outputControls = ['all', 'left', 'right', '2', '3', '4', '5', '6', '7']
-        .map(value => createNode({ value, type: 'checkbox', checked: value === 'all' }));
+        .map(value => {
+            const label = createNode();
+            return createNode({ value, type: 'checkbox', checked: value === 'all', closest: () => label });
+        });
     const sweepBandModes = ['off', 'common', 'perChannel'].map(value =>
         createNode({ value, type: 'radio', checked: value === 'common' }));
     for (const control of sweepBandModes) {
@@ -115,6 +118,7 @@ function createMeasurementSettingsDocument() {
     const input = value => createNode({ value });
     const elements = new Map([
         ['sampleRate', input('48000')], ['inputChannel', input('left')],
+        ['outputChannelCount', input('2')],
         ['sweepLength', input('65536')], ['averaging', input('1')],
         ['sweepMinFreq', input('20')], ['sweepMaxFreq', input('20000')],
         ['sweepBandChannelMinFreq', input('20')], ['sweepBandChannelMaxFreq', input('20000')],
@@ -155,11 +159,15 @@ test('settings restore adapts released sweep bands and prioritizes current per-c
         storage.loadUserSettings = () => restoredSettings;
         storage.saveUserSettings = settings => { savedSettings = settings; };
         try {
-            restoredSettings = { sweepBandLimited: true, sweepMinFreq: '5000', sweepMaxFreq: '18000' };
+            restoredSettings = { outputChannelCount: 6,
+                sweepBandLimited: true, sweepMinFreq: '5000', sweepMaxFreq: '18000' };
             window.app.loadUserSettings();
             window.app.saveUserSettings();
             assert.deepEqual(savedSettings.sweepBand.common, { minFreq: 5000, maxFreq: 18000 });
             assert.equal(savedSettings.sweepBand.mode, 'common');
+            assert.equal(savedSettings.outputChannelCount, 6);
+            assert.equal(savedSettings.sweepBand.perChannel.length, 6);
+            assert.equal(document.getElementById('sweepBandChannel').children.length, 6);
 
             restoredSettings = { sweepBandLimited: false, sweepMinFreq: '5000', sweepMaxFreq: '18000' };
             window.app.loadUserSettings();

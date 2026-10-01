@@ -5,8 +5,8 @@
 // same-origin child document directly; this module owns its placement and when it
 // may be seen. The feed shows only while EffeTune is the active app (unless Show
 // While Inactive is on), the main window does not overlap the feed display, and the
-// renderer allows it (the Visualizer is not already on screen in the main window
-// and no Double Blind Test is running). Escape on the feed turns it off.
+// renderer allows it (no Double Blind Test is running). Escape on the feed turns
+// it off.
 const { screen } = require('electron');
 const constants = require('./constants');
 const windowState = require('./window-state');

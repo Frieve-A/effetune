@@ -1,0 +1,28 @@
+/* The Averaging Time box shows "∞" at its top position, so it is a text field sized like the standard 80 px number box. */
+.plugin-parameter-ui .parameter-row input.tonal-balance-eq-averaging-time-value,
+body.layout-mobile .plugin-parameter-ui .parameter-row input.tonal-balance-eq-averaging-time-value {
+    flex: 0 0 80px;
+    width: 80px;
+    min-width: 0;
+}
+
+/* The Target adjust handles share the graph with the cursor readout (z-index 5); keep them above its legend rows. */
+.tonal-balance-eq-graph .room-eq-additional-eq-marker {
+    z-index: 6;
+}
+
+/* Reset and Copy as PEQ share the row; Copy as PEQ dims until the graph shows an EQ curve. */
+.tonal-balance-eq-plugin-ui .tonal-balance-eq-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.tonal-balance-eq-plugin-ui .tonal-balance-eq-buttons > button {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.tonal-balance-eq-plugin-ui .tonal-balance-eq-copy-peq-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

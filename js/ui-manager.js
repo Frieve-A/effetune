@@ -2237,13 +2237,13 @@ export class UIManager {
         await this.visualizerView.initialized;
     }
 
-    // Electron clean feed: the main process shows it only while the Visualizer is
-    // not already on screen here and no Double Blind Test could reveal track details.
+    // Electron clean feed: the main process shows it only while no Double Blind Test
+    // could reveal track details.
     reportVisualizerFeedAllowed() {
         const api = window.electronAPI;
         if (typeof api?.setVisualizerFeedAllowed !== 'function') return;
         this.stopVisualizerFeedState ||= api.onVisualizerFeedState(state => this.applyVisualizerFeedState(state));
-        const allowed = !document.body.classList.contains('view-visualizer') && !this.isDoubleBlindActive();
+        const allowed = !this.isDoubleBlindActive();
         if (allowed === this.visualizerFeedAllowed) return;
         this.visualizerFeedAllowed = allowed;
         api.setVisualizerFeedAllowed(allowed).then(state => this.applyVisualizerFeedState(state),
@@ -2657,7 +2657,7 @@ export class UIManager {
     }
 
     /**
-     * Switch to a specific pipeline with the same output dip as the A/B toggle.
+     * Switch to a specific pipeline, letting the worklet output gate hide the change.
      * @param {string} pipeline - 'A' or 'B'
      */
     async switchPipelineWithTransition(pipeline) {

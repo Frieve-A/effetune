@@ -172,6 +172,15 @@ The Playwright install command is needed only when Chromium is not already avail
 The smoke-test runner starts and stops its own temporary loopback server; do not start a
 separate development server for this command.
 
+Windows sleep-resume recovery also requires `npm run test:rolling-pcm:electron`.
+For hardware verification, play audio through both standard and low-latency output,
+put Windows to sleep, and confirm that playback and live input recover without a
+page reload after waking. Check that the effect settings and playback position are
+preserved. With audio intentionally suspended by the power policy, waking Windows
+must leave it suspended; requesting audio again should recreate the audio resources
+before resuming. Automated resume tests simulate the notification and resource
+states; actual driver recovery requires this hardware check.
+
 ### 4. Build and Test the DSP Core
 
 The committed WebAssembly DSP artifacts let JavaScript-only contributors run the app
@@ -200,24 +209,48 @@ npm run test:dsp:parity
   native-test warning check before building the modules.
 - `test:dsp:parity` checks both shipped modules against the committed JavaScript goldens.
 
-Note Spectrogram stores its three learned models as `.bin` files with small JSON
-manifests in `dsp/plugins/analyzer/note_spectrogram/`. Replace a complete binary and
+Note Spectrogram (`learned_model`, `fine_model`, and `octave_model` in
+`dsp/plugins/analyzer/note_spectrogram/`) and Rhythm Analyzer (`rhythm_d_low`,
+`rhythm_d_mid`, `rhythm_d_high`, `g2_level`, and `g2_hazard` in
+`dsp/plugins/analyzer/rhythm_analyzer/`) ship learned tree models as `.bin` files
+with small JSON manifests. The shared `dsp/plugins/analyzer/tree_models/` folder
+owns the format, the evaluator (`heap_tree_model.h`), the tools (`compact_model.py`
+and `embed_models.py`), and `models.cmake`, which lists every model and embeds it
+into the `effetune_tree_models` target. Replace a complete binary and
 its manifest when updating a model; retain the training provenance and update the
-reference fixtures if the predictions change. The binary format is concatenated
-split feature indices (`uint8`), split thresholds (IEEE 754 binary32), and leaf
-values (binary32 or binary64 as specified by `leafType`), all little-endian. Align
-each array to its element width with zero padding. The manifest records format
-version 1, model dimensions, constants, output count, source-model hash, and the
-SHA-256 of the complete binary. Do not quantize values during export.
+reference fixtures if the predictions change. The binary format concatenates, in
+order and all little-endian: split feature indices (`uint8`); split thresholds;
+for `index8` thresholds, the per-feature borders (IEEE 754 binary32) and their
+start offsets (`uint32`); leaf values; and for `int16` leaves, one binary32 scale
+per tree and output. Align each array to its element width with zero padding.
+`thresholdType` is `float` (binary32 values) or `index8` (indices into the
+feature's strictly increasing borders). `leafType` is `float`, `double`, or
+`int16` (value = stored integer × scale). The manifest records format version 1,
+model dimensions, constants, output count, threshold and leaf types, the border
+count for `index8`, the source-model hash, and the SHA-256 of the complete binary.
+Export float thresholds and float or double leaves, then run
+`python compact_model.py <manifest.json>` to rewrite the model in place. It
+converts the thresholds to `index8` when no feature has more than 256 distinct
+thresholds, which is exact. Add `--int16-leaves` to also quantize float leaves;
+this is lossy, so accept it only after evaluating the model's predictions.
 
 CMake runs `embed_models.py` when a model or its generator changes, validating the
-hash, dimensions, feature indices, and finite numeric values. It produces small
-declaration headers and embeds the data directly in a read-only section: assembler
-`.incbin` for Linux, macOS, and WASM, or a relocation-free COFF object for MSVC x64
-and ARM64. Generated files stay in the build directory. Models require no runtime
-file access, decoding, allocation, or extra copy, and do not pass through the C++
-compiler as millions of numeric literals. Binary inputs are hashed byte-for-byte
+hash, dimensions, feature and threshold indices, border order, and finite numeric
+values. It produces small declaration headers and embeds the data directly in a
+read-only section: assembler `.incbin` for Linux, macOS, and WASM, or a
+relocation-free COFF object for MSVC x64 and ARM64. Generated files stay in the
+build directory. Models require no runtime file access, decoding pass, allocation,
+or extra copy, and do not pass through the C++ compiler as millions of numeric
+literals. Binary inputs are hashed byte-for-byte
 by the DSP artifact freshness check. Model reader tests run in native CTest.
+
+Rhythm Analyzer's other learned or fitted values ship as generated headers
+(`tc_tcn_weights.h`, `g2_tables.generated.h`, `dec_const.h`, and `rhythm_d_tables.h`).
+Each of its models and headers carries a `<name>.provenance.json` file that records the SHA-256 of the shipped
+file, the training data with its licences and attribution, the training parameters,
+and the runtime decision; update it together with the artifact. The training and
+export generators are not part of the tree, so these artifacts are replaced whole
+and are not regenerated by any build step.
 
 Regenerate an affected golden whenever DSP behavior or an input that defines
 the golden changes. Those inputs include the reference implementation, cases,

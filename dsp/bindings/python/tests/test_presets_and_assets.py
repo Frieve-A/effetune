@@ -534,6 +534,50 @@ class PresetAndAssetTests(unittest.TestCase):
                         "pipeline": [{"name": "Analog Meter", "parameters": parameters}]
                     })
 
+    def test_legacy_rhythm_analyzer_validates_and_discards_beat_grid_display(self) -> None:
+        document, _ = presets.import_legacy_preset({
+            "pipeline": [{
+                "name": "Rhythm Analyzer",
+                "parameters": {"mn": 60, "mx": 180, "sp": 12},
+            }]
+        })
+        self.assertEqual(document["chain"][0]["type"], "RhythmAnalyzer")
+        self.assertEqual(
+            document["chain"][0]["parameters"],
+            {"minimumBpm": 60, "maximumBpm": 180, "metronomeClick": False},
+        )
+        for parameters in (
+            {"sp": 5}, {"sp": "8"}, {"sp": 3}, {"sp": 8.5}, {"sp": True},
+        ):
+            with self.subTest(parameters=parameters):
+                with self.assertRaises(effetune.ValidationError):
+                    presets.import_legacy_preset({
+                        "pipeline": [{"name": "Rhythm Analyzer", "parameters": parameters}]
+                    })
+
+    def test_legacy_rhythm_analyzer_validates_and_discards_panel_toggle_display(self) -> None:
+        document, _ = presets.import_legacy_preset({
+            "pipeline": [{
+                "name": "Rhythm Analyzer",
+                "parameters": {
+                    "mn": 60, "mx": 180,
+                    "vt": False, "vm": True, "ve": False, "vl": True,
+                },
+            }]
+        })
+        self.assertEqual(document["chain"][0]["type"], "RhythmAnalyzer")
+        self.assertEqual(
+            document["chain"][0]["parameters"],
+            {"minimumBpm": 60, "maximumBpm": 180, "metronomeClick": False},
+        )
+        for key in ("vt", "vm", "ve", "vl"):
+            for value in (0, 1, "0", "true", None):
+                with self.subTest(key=key, value=value):
+                    with self.assertRaises(effetune.ValidationError):
+                        presets.import_legacy_preset({
+                            "pipeline": [{"name": "Rhythm Analyzer", "parameters": {key: value}}]
+                        })
+
     def test_legacy_analyzer_color_and_stereo_gain_are_validated_and_discarded(self) -> None:
         effects = (
             ("Pitch Meter", {"rf": 442, "cl": "Rainbow"}, {"referenceA4": 442}),

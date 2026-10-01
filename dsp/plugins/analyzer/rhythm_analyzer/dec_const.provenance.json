@@ -1,0 +1,263 @@
+{
+  "artifact": "dec_const.h",
+  "header": "dec_const.h",
+  "header_sha256": "883ba2114fa0d72d6f6bcab466fb8add465ca4cd917d5756b6b2c70b5b643a4b",
+  "contents": "the tempo lattice tables, transition and initial-tempo statistics, clock-noise and per-band event models, existence chains, level prior and the decoder settings of the frozen configuration",
+  "runtime_decision": "Compiled into the DSP module as fixed values. The decoder reads them at run time and learns nothing; the lanes and the activation network only supply evidence.",
+  "fitted_values": [
+    {
+      "values": "tempo transitions and initial tempo distribution",
+      "fitted_on": "Slakh2100-redux train split, 806 tracks (audible beat times)"
+    },
+    {
+      "values": "clock noise and per-band event model",
+      "fitted_on": "Slakh2100-redux train split (806 tracks) and Groove MIDI train fold (303 clips), the tracks with a stable audible-beat offset, with sources weighted equally"
+    },
+    {
+      "values": "existence chains (per-band visibility of the beat events)",
+      "fitted_on": "Slakh2100-redux train split (732 tracks, 288892 beats), Groove MIDI train fold (205 clips, 37500 beats), public-domain MusicNet recordings (155 recordings, 84902 beats) and Winterreise HU33 (24 recordings, 3834 beats), sources weighted equally",
+      "note": "beat labels of the public-domain MusicNet recordings and of Winterreise HU33 are score beats placed by interpolation. The existence model read every public-domain MusicNet and Winterreise HU33 recording, including those that are also in the real-recording validation set used for selection."
+    },
+    {
+      "values": "level prior (how the perceived tempo relates to the annotated beat level)",
+      "fitted_on": "outputs of the activation network on the training tracks of the six training sources (Slakh2100-redux 806, Groove MIDI 303, MusicNet public domain 123, GuitarSet 288, Candombe 33, BRID 79; folds 1 to 4 for the real recordings), sources weighted equally. Fold 0 of the real recordings and Winterreise HU33 were not read."
+    },
+    {
+      "values": "activation class prior and level-model class prior",
+      "fitted_on": "as in tc_tcn_weights.provenance.json and g2_level.provenance.json"
+    }
+  ],
+  "decoder_settings": {
+    "chosen_by_selection": {
+      "gamma": 0.5,
+      "level_switch_confirmation": "one beat",
+      "stride": 2,
+      "g2_weight": "0.5 / window seconds",
+      "bank_beta": 0,
+      "bank_time_limit_s": 15,
+      "exist_q": 0.00001,
+      "exist_lo0": 2.5
+    },
+    "derived_or_specified": "the 4 s seed replay window (derived), the commit probability 0.95, the stand-in silence rule (-70 dBFS for 24 ticks) and the 64-tick bank reach (specified)",
+    "selection_only_sets": [
+      {
+        "set": "owner development half",
+        "items": "11 excerpts, 10.6 minutes",
+        "licence_class": "personal recordings supplied by the project owner, with machine-produced beat labels; no licence record; not redistributed",
+        "used_for": "choosing the decoder settings, which sources feed the level prior, and the component set of the frozen configuration",
+        "trained_on": false
+      },
+      {
+        "set": "symptom scenes at 48 kHz",
+        "items": "32 scenes",
+        "licence_class": "synthetic data generated for this project (no third-party material)",
+        "used_for": "choosing the decoder settings",
+        "trained_on": false
+      },
+      {
+        "set": "synthetic rhythm items",
+        "items": "31 items, 20.7 minutes",
+        "licence_class": "synthetic data generated for this project (no third-party material)",
+        "used_for": "choosing the decoder settings",
+        "trained_on": false
+      },
+      {
+        "set": "no-beat items",
+        "items": "4 items: sustained pad, pink noise, Poisson drums, Poisson plucks",
+        "licence_class": "synthetic data generated for this project (no third-party material)",
+        "used_for": "checking that no beat is reported",
+        "trained_on": false
+      },
+      {
+        "set": "Slakh2100-redux validation split",
+        "items": "170 tracks",
+        "licence_class": "CC BY 4.0 (audio and labels)",
+        "used_for": "choosing the decoder settings",
+        "trained_on": false
+      },
+      {
+        "set": "Groove MIDI validation fold",
+        "items": "42 clips",
+        "licence_class": "CC BY 4.0 (audio and labels)",
+        "used_for": "choosing the decoder settings",
+        "trained_on": false
+      },
+      {
+        "set": "joined-song validation set",
+        "items": "90 joins of validation-fold Slakh and Groove clips with gaps of digital zero or pink noise",
+        "licence_class": "CC BY 4.0 material joined with synthetic data generated for this project (no third-party material)",
+        "used_for": "choosing the decoder settings",
+        "trained_on": false
+      },
+      {
+        "set": "real-recording validation",
+        "items": "125 tracks, fold 0 of MusicNet (public-domain recordings), GuitarSet, Candombe, BRID and Winterreise HU33",
+        "licence_class": "public-domain audio and CC BY 4.0 / CC BY 3.0 labels, or CC BY 4.0 (see dataset_attribution)",
+        "used_for": "choosing the decoder settings",
+        "trained_on": false
+      },
+      {
+        "set": "expressive-music development set",
+        "items": "105 tracks: 24 tracks of the Winterreise SC06 performance and 81 MusicNet recordings that are not public domain",
+        "licence_class": "evaluation only: the SC06 audio is CC BY-NC-ND 3.0 (https://creativecommons.org/licenses/by-nc-nd/3.0/, no modified redistribution) and the MusicNet recordings are not verified public domain",
+        "used_for": "a go/no-go check of the frozen configuration; it did not choose any value",
+        "trained_on": false
+      }
+    ]
+  },
+  "training_exclusion": "The Winterreise HU33 recordings and the MusicNet fold 0 recordings were not used for the level prior; HU33 was read for the existence chains (see fitted_values).",
+  "dataset_attribution": [
+    {
+      "name": "Slakh2100-redux",
+      "creators": "Ethan Manilow, Gordon Wichern, Prem Seetharaman, Jonathan Le Roux",
+      "citation": "Manilow, Wichern, Seetharaman and Le Roux, \"Cutting Music Source Separation Some Slakh: A Dataset to Study the Impact of Training Data Quality and Quantity\", IEEE WASPAA 2019",
+      "material_uri": "https://www.slakh.com/",
+      "split_source": "https://github.com/ethman/slakh-utils/blob/master/splits/redux.json",
+      "audio": {
+        "description": "mix audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "beat times taken from the MIDI tempo map",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "also_credited": [
+        {
+          "name": "Lakh MIDI Dataset v0.1",
+          "creators": "Colin Raffel",
+          "citation": "Colin Raffel, \"Learning-Based Methods for Comparing Sequences, with Applications to Audio-to-MIDI Alignment and Matching\", PhD thesis, Columbia University, 2016",
+          "material_uri": "https://colinraffel.com/projects/lmd/",
+          "license": "CC BY 4.0",
+          "license_uri": "https://creativecommons.org/licenses/by/4.0/",
+          "role": "the MIDI files that Slakh2100-redux renders to audio"
+        }
+      ],
+      "used": "train split: audio-derived events and audible beat times, 806 tracks",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "Groove MIDI Dataset v1.0.0",
+      "creators": "Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman",
+      "citation": "Gillick, Roberts, Engel, Eck and Bamman, \"Learning to Groove with Inverse Sequence Transformations\", ICML 2019",
+      "material_uri": "https://magenta.tensorflow.org/datasets/groove",
+      "split_source": "the dataset's own train, validation and test split (info.csv in the archive)",
+      "audio": {
+        "description": "audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "performed beat times taken from the MIDI",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "used": "train fold: 303 clips",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "MusicNet",
+      "creators": "John Thickstun, Zaid Harchaoui, Sham M. Kakade",
+      "citation": "Thickstun, Harchaoui and Kakade, \"Learning Features of Music from Scratch\", ICLR 2017",
+      "material_uri": "https://zenodo.org/records/5120004",
+      "split_source": "a fold assignment (folds 0 to 4) made for this project; only public-domain recordings are trained on",
+      "audio": {
+        "description": "only recordings whose source is public domain: Kimiko Ishizaka (Open Well-Tempered Clavier), Paul Pitman, and the Musopen collection",
+        "license": "public domain (no attribution required)",
+        "license_uri": "https://creativecommons.org/publicdomain/mark/1.0/"
+      },
+      "labels": {
+        "description": "approximate beat times derived from the aligned note labels and the time signatures of the MusicNet MIDI files",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "used": "public-domain recordings: existence chains (155 recordings) and the level prior (folds 1 to 4, 123 recordings)",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "GuitarSet v1.1.0",
+      "creators": "Qingyang Xi, Rachel M. Bittner, Johan Pauwels, Xuzhou Ye, Juan P. Bello",
+      "citation": "Xi, Bittner, Pauwels, Ye and Bello, \"GuitarSet: A Dataset for Guitar Transcription\", ISMIR 2018",
+      "material_uri": "https://zenodo.org/records/3371780",
+      "split_source": "a fold assignment (folds 0 to 4) made for this project",
+      "audio": {
+        "description": "mono microphone audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "beat times from the JAMS beat grid of the annotations",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "used": "level prior, folds 1 to 4: 288 tracks",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "Uruguayan candombe drumming - beat and downbeat tracking data set",
+      "creators": "Luis Jure, Martin Rocamora",
+      "citation": "Jure and Rocamora, \"Uruguayan candombe drumming - beat and downbeat tracking data set\", Zenodo",
+      "material_uri": "https://zenodo.org/records/6533068",
+      "split_source": "a fold assignment (folds 0 to 4) made for this project",
+      "audio": {
+        "description": "audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "annotated beat times",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "used": "level prior, folds 1 to 4: 33 tracks",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "Brazilian Rhythmic Instruments Dataset (BRID)",
+      "creators": "Lucas S. Maia, Pedro D. de Tomaz Junior, Magdalena Fuentes, Martin Rocamora, Luiz W. P. Biscainho, Mauricio V. M. da Costa, Sara Cohen",
+      "citation": "Maia et al., \"Brazilian Rhythmic Instruments Dataset (BRID)\", Zenodo, doi:10.5281/zenodo.14051323",
+      "material_uri": "https://doi.org/10.5281/zenodo.14051323",
+      "split_source": "a fold assignment (folds 0 to 4) made for this project",
+      "audio": {
+        "description": "audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "annotated beat times",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "used": "level prior, folds 1 to 4: 79 tracks",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "Schubert Winterreise Dataset v2.1",
+      "creators": "Christof Weiss, Frank Zalkow, Vlora Arifi-Muller, Meinard Muller, Hendrik Vincent Koops, Anja Volk, Harald G. Grohganz",
+      "citation": "Weiss et al., \"Schubert Winterreise Dataset: A Multimodal Scenario for Music Analysis\", ACM Journal on Computing and Cultural Heritage 14(2), 2021",
+      "material_uri": "https://zenodo.org/records/10839767",
+      "split_source": "the 24 songs of the HU33 performance",
+      "audio": {
+        "description": "the HU33 performance only",
+        "license": "Public Domain Mark 1.0",
+        "license_uri": "https://creativecommons.org/publicdomain/mark/1.0/"
+      },
+      "labels": {
+        "description": "measure-position annotations of the dataset authors; beat times were interpolated between the annotated measure positions using the score meter (an adaptation of the annotations)",
+        "license": "CC BY 3.0 Unported",
+        "license_uri": "https://creativecommons.org/licenses/by/3.0/"
+      },
+      "used": "existence chains: 24 recordings of the HU33 performance",
+      "trained_on": true,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    }
+  ],
+  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the Winterreise SC06 performance, and the Slakh and Groove test splits."
+}

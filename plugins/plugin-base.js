@@ -1347,6 +1347,45 @@ class PluginBase {
         }
     }
 
+    // Wires the number input of a slider/number parameter row. While typing,
+    // only a finite in-range value is applied (setter + slider) and the field
+    // is never rewritten, so partial keystrokes such as "1" of "150" survive.
+    // Blur or Enter clamps (non-finite restores the last applied value), writes
+    // the formatted value back and calls the setter only when it changed.
+    // Returns the { value } tracker the caller's slider and sync paths update.
+    _bindNumberInput(valueInput, slider, min, max, initialValue, setter, toSlider, format) {
+        const initial = parseFloat(initialValue);
+        const applied = { value: Number.isFinite(initial) ? initial : min };
+
+        valueInput.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (!(val >= min && val <= max)) return;
+            slider.value = toSlider(val);
+            setter(val);
+            applied.value = val;
+        });
+
+        const commit = (e) => {
+            const val = parseFloat(e.target.value);
+            const finiteVal = Number.isFinite(val) ? val : applied.value;
+            const clampedVal = finiteVal < min ? min : (finiteVal > max ? max : finiteVal);
+            e.target.value = format(clampedVal);
+            slider.value = toSlider(clampedVal);
+            if (clampedVal !== applied.value) {
+                setter(clampedVal);
+                applied.value = clampedVal;
+            }
+        };
+        valueInput.addEventListener('blur', commit);
+        valueInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                commit(e);
+                e.preventDefault(); // Prevent form submission if inside a form
+            }
+        });
+        return applied;
+    }
+
     // Helper function to create slider/number input parameter controls
     // `toDisplay` is an optional modelValue => displayValue transform for the
     // controls whose widget range is a scaled view of the stored value (e.g. a
@@ -1402,58 +1441,24 @@ class PluginBase {
         valueInput.value = value;
         valueInput.autocomplete = "off";
 
+        const applied = this._bindNumberInput(valueInput, slider, min, max, value, setter, toSlider, String);
+
         slider.addEventListener('input', (e) => {
             const val = fromSlider(parseFloat(e.target.value));
             if (!Number.isFinite(val)) return;
             setter(val);
-            lastAppliedValue = val;
+            applied.value = val;
             valueInput.value = logarithmic ? String(val) : e.target.value; // Keep number input synced
         });
 
-        let lastAppliedValue = parseFloat(value);
-        if (!Number.isFinite(lastAppliedValue)) {
-            lastAppliedValue = min;
-        }
-
-        valueInput.addEventListener('input', (e) => {
-            // Allow typing slightly outside bounds temporarily before clamping on blur/enter
-            const val = parseFloat(e.target.value);
-            if (!Number.isFinite(val)) return;
-            // Update slider thumb, clamping it within bounds
-            slider.value = toSlider(Math.max(min, Math.min(max, val)));
-            setter(val); // Update internal value immediately
-            lastAppliedValue = val;
-        });
-
-        // Clamp value on blur or Enter key press for the number input
-        const clampAndUpdate = (e) => {
-            const val = parseFloat(e.target.value);
-            const finiteVal = Number.isFinite(val) ? val : lastAppliedValue;
-            const clampedVal = Math.max(min, Math.min(max, finiteVal));
-            if (clampedVal !== lastAppliedValue) {
-                setter(clampedVal);
-                lastAppliedValue = clampedVal;
-            }
-            e.target.value = clampedVal;
-            slider.value = toSlider(clampedVal);
-        };
-        valueInput.addEventListener('blur', clampAndUpdate);
-        valueInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                clampAndUpdate(e);
-                e.preventDefault(); // Prevent form submission if inside a form
-            }
-        });
-
-
         this._registerUIControl(modelKey, [slider, valueInput], (modelValue) => {
-            // lastAppliedValue is already in display units, so convert first.
+            // applied.value is already in display units, so convert first.
             const numericValue = parseFloat(toDisplay ? toDisplay(modelValue) : modelValue);
-            if (!Number.isFinite(numericValue) || numericValue === lastAppliedValue) return;
+            if (!Number.isFinite(numericValue) || numericValue === applied.value) return;
             slider.value = toSlider(numericValue);
             window.uiManager?.refreshRangeFillStyling?.(slider);
             valueInput.value = numericValue.toFixed(step < 0.01 ? 3 : (step < 0.1 ? 2 : (step < 1 ? 1 : 0)));
-            lastAppliedValue = numericValue;
+            applied.value = numericValue;
         });
 
         row.appendChild(labelEl);
@@ -1519,54 +1524,29 @@ class PluginBase {
         valueInput.min = min;
         valueInput.max = max;
         valueInput.step = step;
-        valueInput.value = value.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
+        const format = val => val.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
+        valueInput.value = format(value);
         valueInput.autocomplete = "off";
+
+        const applied = this._bindNumberInput(valueInput, slider, min, max, value, setter, linearToLogSlider, format);
 
         slider.addEventListener('input', (e) => {
             const linearValue = logSliderToLinear(parseFloat(e.target.value));
-            valueInput.value = linearValue.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
+            valueInput.value = format(linearValue);
             setter(linearValue);
-        });
-
-        valueInput.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value) || min;
-            const clampedVal = Math.max(min, Math.min(max, val));
-            e.target.value = clampedVal.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
-            slider.value = linearToLogSlider(clampedVal);
-            setter(clampedVal);
-        });
-
-        // Clamp value on blur or Enter key press for the number input
-        const clampAndUpdate = (e) => {
-            const val = parseFloat(e.target.value) || min;
-            const clampedVal = Math.max(min, Math.min(max, val));
-            if (clampedVal !== val) {
-                e.target.value = clampedVal.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
-                slider.value = linearToLogSlider(clampedVal);
-                setter(clampedVal);
-            } else if (isNaN(val)) {
-                e.target.value = min.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
-                slider.value = linearToLogSlider(min);
-                setter(min);
-            }
-        };
-        valueInput.addEventListener('blur', clampAndUpdate);
-        valueInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                clampAndUpdate(e);
-                e.preventDefault();
-            }
+            applied.value = linearValue;
         });
 
         this._registerUIControl(modelKey, [slider, valueInput], (modelValue) => {
             // The displayed (and compared) value is in display units, so convert first.
             const numericValue = parseFloat(toDisplay ? toDisplay(modelValue) : modelValue);
             if (!Number.isFinite(numericValue) || numericValue <= 0) return;
-            const formatted = numericValue.toFixed(step < 0.1 ? 2 : (step < 1 ? 1 : 0));
+            const formatted = format(numericValue);
             if (valueInput.value === formatted) return;
             slider.value = linearToLogSlider(numericValue);
             window.uiManager?.refreshRangeFillStyling?.(slider);
             valueInput.value = formatted;
+            applied.value = numericValue;
         });
 
         row.appendChild(labelEl);

@@ -24,6 +24,8 @@
 "help:inputChannel": "चयनित ऑडियो इनपुट डिवाइस के लिए उस चैनल का चयन करें जिसमें कैलिब्रेशन माइक्रोफोन जुड़ा है।", // Help text for input channel
 "label:audioOutput": "ऑडियो आउटपुट डिवाइस:", // Label for audio output device selection
 "help:audioOutput": "उस ऑडियो डिवाइस का चयन करें जो माप संकेत आउटपुट करता है।", // Help text for audio output
+  "label:outputChannelCount": "आउटपुट डिवाइस के चैनलों की संख्या:",
+  "help:outputChannelCount": "आउटपुट डिवाइस की व्यवस्था के अनुसार संख्या चुनें (5.1 के लिए 6, 7.1 के लिए 8)। केवल कुछ चैनल मापने पर भी परीक्षण संकेत और मापन हमेशा इसी संख्या का उपयोग करते हैं।",
 "label:outputChannel": "आउटपुट चैनल:", // Label for output channel selection
 "help:outputChannel": "मापने के लिए एक या अधिक आउटपुट चैनल चुनें। सभी चैनल चुनने पर अलग-अलग चैनलों का चयन हट जाता है।", // Help text for output channel
 "help:audioInput": "उस ऑडियो इनपुट डिवाइस को निर्दिष्ट करें जिसमें माप माइक्रोफोन जुड़ा है।", // Help text for audio input

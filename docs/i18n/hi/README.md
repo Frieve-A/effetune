@@ -277,6 +277,8 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 4. ऐसा parametric EQ correction बनाएं जिसे सीधे EffeTune में import किया जा सके
 5. अधिक accurate और neutral sound reproduction के लिए correction लागू करें
 
+**आउटपुट डिवाइस के चैनलों की संख्या** अपने डिवाइस की व्यवस्था के अनुसार चुनें: 5.1 के लिए **6** या 7.1 के लिए **8**। आउटपुट चैनल और हर चैनल की बैंडविड्थ के विकल्प इसी सीमा में दिखाई देते हैं। केवल कुछ चैनल चुनने पर भी परीक्षण संकेत, मापन और किसी एक चैनल का दोबारा मापन इसी संख्या का उपयोग करते हैं। उदाहरण के लिए, 5.1 डिवाइस पर केवल Ch 3 (सेंटर) और Ch 4 (सबवूफ़र) मापते समय भी **6** रखें।
+
 मल्टीचैनल सिस्टम के लिए, सभी आउटपुट को एक साथ मापने हेतु **सभी चैनल** चुनें, या उन्हें एक-एक करके मापने के लिए अलग-अलग **आउटपुट चैनल** चुनें। **उन्नत सेटिंग्स** में स्वीप बैंडविड्थ के लिए **बंद**, **सभी चैनलों के लिए समान** या **प्रति चैनल** चुनें। **प्रति चैनल** में हर चुने हुए आउटपुट चैनल की आवृत्ति सीमा सेट करने के लिए **कॉन्फ़िगर करने वाला चैनल** का उपयोग करें। स्तर समायोजन के दौरान **चैनल मोड** शुरू में **स्वचालित क्रम परिवर्तन** रहता है; जरूरत होने पर परीक्षण संकेत चैनल चुनें या **मैन्युअल** चुनें।
 
 अगर आपके पास impulse-response WAV file पहले से है, तो **Import** चुनकर उसे select करें। EffeTune WAV के हर channel को measurement result के रूप में सेव करता है, इसलिए उसे Room EQ और saved measurements इस्तेमाल करने वाले दूसरे features में चुना जा सकता है।
@@ -335,6 +337,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | Analyzer  | Note Spectrogram | समय के साथ अनुमानित pitch को piano roll में दिखाता है | [विवरण](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | waveform को real time में दिखाता है | [विवरण](plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Pitch Meter | समय के साथ एक मूल आवृत्ति और उसकी tuning को ट्रैक करता है | [विवरण](plugins/analyzer.md#pitch-meter) |
+| Analyzer  | Rhythm Analyzer | tempo, हर beat की hit, और हर part के beat से आगे या पीछे बजने को दिखाता है | [विवरण](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram | समय के साथ frequency spectrum में बदलाव दिखाता है | [विवरण](plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | bass, mids और treble की strength real time में दिखाता है | [विवरण](plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer  | Stereo Meter | stereo balance और channel correlation को visualize करता है | [विवरण](plugins/analyzer.md#stereo-meter) |
@@ -376,6 +379,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | EQ        | Narrow Range | high-pass और low-pass filters का combination | [विवरण](plugins/eq.md#narrow-range) |
 | EQ        | Room EQ      | सेव की गई room measurements पर आधारित FIR correction | [विवरण](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ      | quick tone shaping के लिए tilt equalizer | [विवरण](plugins/eq.md#tilt-eq) |
+| EQ        | Tonal Balance EQ | लंबी अवधि के tonal balance को music style के target की ओर अपने-आप correct करता है | [विवरण](plugins/eq.md#tonal-balance-eq) |
 | EQ        | Tone Control | three-band tone control | [विवरण](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | संगीत को मॉडल की गई AM प्रसारण और रिसीवर शृंखला से गुजारता है | [विवरण](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | bit depth reduction और zero-order hold effect | [विवरण](plugins/lofi.md#bit-crusher) |

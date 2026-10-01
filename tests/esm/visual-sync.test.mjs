@@ -14,6 +14,8 @@ test('visual sync capture ages follow FFT, staged slot, HQ and pitch window form
   }
   assert.equal(rules.NoteSpectrogramPlugin.generationFrames({}, 48000, 'wasm'), 8192 + 960);
   assert.equal(rules.PitchMeterPlugin.generationFrames({ rf: 440, mn: 69 }, 48000, 'wasm'), 360 + 480);
+  assert.equal(rules.RhythmAnalyzerPlugin.generationFrames({}, 48000, 'wasm'), 1024 / 2 + 2 * 128);
+  assert.equal(rules.RhythmAnalyzerPlugin.generationFrames({}, 96000, 'wasm'), 2048 / 2 + 2 * 256);
   assert.equal(rules.OscilloscopePlugin.generationFrames({ dt: 0.01 }, 48000, 'wasm'), 240);
   assert.equal(rules.StereoMeterPlugin.generationFrames({ wt: 0.1 }, 48000, 'wasm'), 2400);
   assert.equal(rules.spectrumOverlay.generationFrames(), 2048);

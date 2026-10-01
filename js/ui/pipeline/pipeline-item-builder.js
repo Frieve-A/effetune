@@ -687,7 +687,7 @@ export class PipelineItemBuilder {
                     return;
                 }
 
-                historyManager.saveStateAtomicallyIfChanged();
+                historyManager.saveStateAtomicallyIfChanged(this);
             }.bind(plugin);
         }
     }

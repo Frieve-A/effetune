@@ -107,6 +107,12 @@ def _canonicalize_processing_parameters(
             canonical["maximumFrequency"],
             canonical["minimumFrequency"],
         )
+    elif (
+        effect_type == "RhythmAnalyzer"
+        and canonical["maximumBpm"] < canonical["minimumBpm"] * 1.25
+    ):
+        # Max BPM >= 1.25 x Min BPM keeps the tempo search range non-degenerate (same rule as the effect).
+        canonical["maximumBpm"] = canonical["minimumBpm"] * 1.25
     elif effect_type == "Chorus" and canonical["depth"] > canonical["delay"]:
         canonical["depth"] = canonical["delay"]
     elif (

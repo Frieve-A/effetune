@@ -1,0 +1,11 @@
+{
+  "defaults": { "sampleRate": 48000, "blockSize": 128, "channels": 2, "channelMode": "stereo", "params": {} },
+  "cases": [
+    { "id": "stereo-96k-short-averaging-time-sweep", "stimulus": "sweep", "sampleRate": 96000, "frames": 96000, "params": { "at": 0.1 } },
+    { "id": "stationary-noise-variable-block", "stimulus": "noise", "blockSize": 97, "frames": 32768, "params": { "at": 0.3, "tg": "Tilt", "ts": -4.5, "tc": 400 } },
+    { "id": "sq50-44k-rock-narrow-range", "stimulus": "sq50", "sampleRate": 44100, "blockSize": 63, "frames": 30720, "params": { "tg": "Rock", "am": 50, "rg": 12, "sm": 2, "at": 0.3, "lo": 60, "hi": 8000, "sp": 70, "ta0": "ls", "fa0": 200, "ga0": 4, "qa0": 0.7, "fa1": 1000, "ga1": -3, "qa1": 0.8, "ta2": "hs", "fa2": 4000, "ga2": 3, "qa2": 0.7 } },
+    { "id": "sixteen-channel-short", "stimulus": "noise", "channels": 16, "frames": 8192 },
+    { "id": "silence", "stimulus": "silence", "frames": 2048 },
+    { "id": "infinite-averaging-time-tone", "stimulus": "sin1k", "frames": 28672, "params": { "at": 100 } }
+  ]
+}

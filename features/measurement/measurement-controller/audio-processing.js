@@ -213,7 +213,7 @@ const AudioProcessing = {
                     this.measurementConfig.audioOutputId,
                     outputChannel,
                     {},
-                    explicitOutputChannels
+                    this.measurementConfig.outputChannelCount ?? explicitOutputChannels
                 );
                 if (operation.settled || this.activeSweepOperation !== operation) {
                     releaseMeasurementOutputRoute(outputRoute);

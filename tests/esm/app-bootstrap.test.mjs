@@ -2,10 +2,32 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  registerPipelineStateCloseHandler,
   registerServiceWorker,
   startApplication
 } from '../../js/app-bootstrap.js';
 import { flushMicrotasks } from '../helpers/global-test-utils.mjs';
+
+test('pipeline close handler sends state only after the output fade completes', async () => {
+  const calls = [];
+  let closeCallback;
+  let finishFade;
+  const electronAPI = {
+    onRequestPipelineStateForClose(callback) { closeCallback = callback; },
+    sendPipelineStateForClose(state) { calls.push(['send', state]); }
+  };
+  registerPipelineStateCloseHandler(() => ['state'], () => {
+    calls.push(['fade']);
+    return new Promise(resolve => { finishFade = resolve; });
+  }, electronAPI);
+
+  const closing = closeCallback();
+  await flushMicrotasks();
+  assert.deepEqual(calls, [['fade']]);
+  finishFade();
+  await closing;
+  assert.deepEqual(calls, [['fade'], ['send', ['state']]]);
+});
 
 test('registerServiceWorker registers the web service worker on load', async () => {
   const loadHandlers = [];

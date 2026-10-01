@@ -260,6 +260,41 @@
       "assets": []
     },
     {
+      "type": "RhythmAnalyzer",
+      "parameters": [
+        {
+          "name": "minimumBpm",
+          "type": "number",
+          "count": 1,
+          "default": 40,
+          "minimum": 40,
+          "maximum": 192
+        },
+        {
+          "name": "maximumBpm",
+          "type": "number",
+          "count": 1,
+          "default": 240,
+          "minimum": 50,
+          "maximum": 240
+        },
+        {
+          "name": "metronomeClick",
+          "type": "boolean",
+          "count": 1,
+          "default": false
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "rhythmAnalyzer"
+      ],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
       "type": "Spectrogram",
       "parameters": [
         {
@@ -3033,6 +3068,193 @@
       ],
       "seeded": false,
       "telemetry": [],
+      "latency": {
+        "kind": "zero"
+      },
+      "assets": []
+    },
+    {
+      "type": "TonalBalanceEQ",
+      "parameters": [
+        {
+          "name": "target",
+          "type": "string",
+          "count": 1,
+          "default": "All",
+          "values": [
+            "All",
+            "Classical",
+            "Electronic",
+            "Pop",
+            "Rock",
+            "Tilt"
+          ]
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "count": 1,
+          "default": 100,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "name": "range",
+          "type": "number",
+          "count": 1,
+          "default": 6,
+          "unit": "dB",
+          "minimum": 0,
+          "maximum": 12
+        },
+        {
+          "name": "smoothing",
+          "type": "number",
+          "count": 1,
+          "default": 0.5,
+          "unit": "oct",
+          "minimum": 0.1667,
+          "maximum": 2
+        },
+        {
+          "name": "averagingTime",
+          "type": "number",
+          "count": 1,
+          "default": 30,
+          "unit": "s",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        {
+          "name": "low",
+          "type": "number",
+          "count": 1,
+          "default": 20,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 200
+        },
+        {
+          "name": "high",
+          "type": "number",
+          "count": 1,
+          "default": 16000,
+          "unit": "Hz",
+          "minimum": 2000,
+          "maximum": 20000
+        },
+        {
+          "name": "averageSpl",
+          "type": "number",
+          "count": 1,
+          "default": 83,
+          "unit": "dB",
+          "minimum": 60,
+          "maximum": 96
+        },
+        {
+          "name": "adjustEnabled",
+          "type": "boolean",
+          "count": 5,
+          "default": [
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "name": "adjustType",
+          "type": "string",
+          "count": 5,
+          "default": [
+            "pk",
+            "pk",
+            "pk",
+            "pk",
+            "pk"
+          ],
+          "values": [
+            "pk",
+            "ls",
+            "hs"
+          ]
+        },
+        {
+          "name": "adjustFrequency",
+          "type": "number",
+          "count": 5,
+          "default": [
+            100,
+            316,
+            1000,
+            3160,
+            10000
+          ],
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 20000
+        },
+        {
+          "name": "adjustGain",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "unit": "dB",
+          "minimum": -20,
+          "maximum": 20
+        },
+        {
+          "name": "adjustQ",
+          "type": "number",
+          "count": 5,
+          "default": [
+            0.7,
+            0.7,
+            0.7,
+            0.7,
+            0.7
+          ],
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        {
+          "name": "tiltSlope",
+          "type": "number",
+          "count": 1,
+          "default": -6,
+          "unit": "dB/oct",
+          "minimum": -18,
+          "maximum": 0
+        },
+        {
+          "name": "tiltCorner",
+          "type": "number",
+          "count": 1,
+          "default": 250,
+          "unit": "Hz",
+          "minimum": 20,
+          "maximum": 1000
+        },
+        {
+          "name": "measurementPaused",
+          "type": "boolean",
+          "count": 1,
+          "default": false
+        }
+      ],
+      "seeded": false,
+      "telemetry": [
+        "tonalBalance"
+      ],
       "latency": {
         "kind": "zero"
       },
@@ -9030,7 +9252,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "07c4dcb745f6f45206b688a1b0516f433d8652e2fb8adfcad15606f5542cc4ae",
-    "privateLayoutSha256": "66175f0d1430a20521b7c33db53a7a088a2eabc835c36c050369e67903112137"
+    "publicCatalogSha256": "07ccb25325b848ed7ccbd2887d3b25694a8961aa636089801c58a7af6ae5d3ca",
+    "privateLayoutSha256": "2210eb06b9ab0c4a503445dbc6f98abec45197ff603d18a1c4f4c8eca732fb6a"
   }
 }

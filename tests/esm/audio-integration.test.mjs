@@ -669,6 +669,9 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     },
     window: {
       audioManager: {
+        fadeOutOutputForTeardown: async () => {
+          harness.calls.push(['fadeOutOutputForTeardown']);
+        },
         updateAudioConfig: preferences => updateCalls.push(preferences)
       }
     }
@@ -733,6 +736,9 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     latencyHint: 'balanced'
   });
   assert.deepEqual(updateCalls, [saved]);
+  // The Electron save reloads the window, so the output is silenced after the save succeeds.
+  assert.ok(harness.calls.findIndex(call => call[0] === 'fadeOutOutputForTeardown') >
+    harness.calls.findIndex(call => call[0] === 'saveAudioPreferences'));
   assert.deepEqual(callbackCalls, [saved]);
   assert.deepEqual(harness.window.audioPreferences, saved);
   assert.equal(document.body.children.length, 1);

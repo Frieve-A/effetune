@@ -86,7 +86,7 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
         for (const file of ['spectrum_analyzer', 'spectrogram', 'stereo_meter', 'note_spectrogram']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
         }
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer', 'visualizer-editor']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-text', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer', 'visualizer-editor']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const results = await page.evaluate(() => {

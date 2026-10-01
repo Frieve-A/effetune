@@ -21,7 +21,8 @@ const files = {
   SpectrumAnalyzerPlugin: 'analyzer/spectrum_analyzer', SpectrogramPlugin: 'analyzer/spectrogram',
   ChromaSpiralPlugin: 'analyzer/chroma_spiral',
   NoteSpectrogramPlugin: 'analyzer/note_spectrogram', PitchMeterPlugin: 'analyzer/pitch_meter',
-  PhaseSelectEqPlugin: 'spatial/phase_select_eq'
+  PhaseSelectEqPlugin: 'spatial/phase_select_eq',
+  TonalBalanceEQPlugin: 'eq/tonal_balance_eq'
 };
 
 test('all frequency axes match plugin selectors and coordinate definitions', () => {
@@ -69,6 +70,61 @@ test('Chroma pointer coordinates follow C, A and adjacent spiral turns at each g
       assert.equal(axis.pointToFreq(size / 2, size / 2 - size * 2), axes.noteFrequency(geometry.midiEnd));
       assert.equal(axis.pointToFreq(size / 2, size / 2), axes.noteFrequency(geometry.midiLow - 0.5));
     }
+  }
+});
+
+test('Tonal Balance preview follows the rendered band-centre axis and target-adjust handles', () => {
+  const labels = new Map();
+  const ctx = new Proxy({
+    measureText: () => ({ width: 20 }),
+    fillText: (label, x) => labels.set(label, x)
+  }, { get: (object, key) => object[key] ?? (() => {}) });
+  const element = () => ({ append() {}, appendChild() {}, addEventListener() {}, setAttribute() {} });
+  const canvas = { ...element(), width: 640, height: 256, getContext: () => ctx };
+  const sandbox = {
+    window: {}, console, document: { createElement: element },
+    PluginBase: class {
+      registerProcessor() {}
+      registerUIRefresh() {}
+      isGraphPointerActive() { return false; }
+      createSelectControl() { return element(); }
+      createParameterControl() { return element(); }
+      createResponsiveGraph() { return { canvas, container: element(), dispose() {} }; }
+    }
+  };
+  for (const file of ['room_eq', 'tonal_balance_eq']) {
+    vm.runInNewContext(fs.readFileSync(new URL(`../../plugins/eq/${file}.js`, import.meta.url), 'utf8'), sandbox);
+  }
+  const createEditor = sandbox.window.RoomEqPlugin.createAdditionalEqEditor;
+  sandbox.window.RoomEqPlugin.createAdditionalEqEditor = options => {
+    const editor = createEditor(options);
+    editor.createUI = element;
+    editor.updateMarkers = () => {};
+    return editor;
+  };
+  const plugin = new sandbox.window.TonalBalanceEQPlugin();
+  plugin.createAveragingTimeControl = element;
+  plugin.syncControlStates = () => {};
+  plugin.createUI();
+  const target = axes.targets.get('TonalBalanceEQPlugin');
+  const centres = [0, 40].map(band => (10 ** ((band + 1) / 21.4) - 1) * 1000 / 4.37);
+  for (const [width, height] of [[306, 230], [640, 256], [1024, 410]]) {
+    Object.assign(canvas, { width, height });
+    labels.clear();
+    plugin.drawGraph();
+    const axis = axes.getAxis(plugin, target, { width, height });
+    for (const [label, frequency] of [['50', 50], ['100', 100], ['1k', 1000], ['10k', 10000]]) {
+      const renderedX = labels.get(label);
+      assert.ok(Number.isFinite(renderedX), `${width}: ${label} tick rendered`);
+      assert.ok(Math.abs(axis.toFreq(renderedX) / frequency - 1) < 1e-10, `${width}: ${label} preview`);
+      assert.ok(Math.abs(axis.toPos(frequency) - renderedX) < 1e-9, `${width}: ${label} preview cursor`);
+    }
+    for (const frequency of [...centres, 100, 440, 1000, 10000]) {
+      const handleX = plugin._adjustEditor.freqToX(frequency) / 100 * width;
+      assert.ok(Math.abs(axis.toFreq(handleX) / frequency - 1) < 1e-10, `${width}: ${frequency} handle`);
+    }
+    assert.ok(Math.abs(axis.toFreq(-1) / centres[0] - 1) < 1e-10);
+    assert.ok(Math.abs(axis.toFreq(width + 1) / centres[1] - 1) < 1e-10);
   }
 });
 

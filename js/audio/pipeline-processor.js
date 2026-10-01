@@ -49,9 +49,11 @@ export class PipelineProcessor {
     /**
      * Rebuild the audio processing pipeline
      * @param {boolean} isInitializing - Whether this is the initial build
+     * @param {Object} [options]
+     * @param {boolean} [options.gate] - Ask the worklet to crossfade the membership change
      * @returns {Promise<string>} - Empty string on success, error message on failure
      */
-    async rebuildPipeline(isInitializing = false) {
+    async rebuildPipeline(isInitializing = false, { gate = false } = {}) {
         if (!this.contextManager?.audioContext || !this.ioManager) {
             return;
         }
@@ -111,7 +113,8 @@ export class PipelineProcessor {
             this.contextManager.workletNode.port.postMessage({
                 type: 'updatePlugins',
                 plugins: [],
-                masterBypass: true
+                masterBypass: true,
+                ...(gate ? { gate: true } : {})
             });
             return '';
         }
@@ -125,7 +128,8 @@ export class PipelineProcessor {
         this.contextManager.workletNode.port.postMessage({
             type: 'updatePlugins',
             plugins: pluginData,
-            masterBypass: this.masterBypass
+            masterBypass: this.masterBypass,
+            ...(gate ? { gate: true } : {})
         });
         
         return '';
@@ -148,21 +152,21 @@ export class PipelineProcessor {
                 outputChannelCount,
                 commitSampleRate: true
             });
-            if (typeof plugin.getWorkletPluginData === 'function') {
-                return attachPluginExecutionCapabilities(
-                    plugin,
-                    plugin.getWorkletPluginData(params)
-                );
-            }
-            return attachPluginExecutionCapabilities(plugin, {
-                id: plugin.id,
-                type: plugin.constructor.name,
-                enabled: plugin.enabled,
-                parameters: params,
-                inputBus: plugin.inputBus,
-                outputBus: plugin.outputBus,
-                channel: plugin.channel
-            });
+            const data = typeof plugin.getWorkletPluginData === 'function'
+                ? plugin.getWorkletPluginData(params)
+                : {
+                    id: plugin.id,
+                    type: plugin.constructor.name,
+                    enabled: plugin.enabled,
+                    parameters: params,
+                    inputBus: plugin.inputBus,
+                    outputBus: plugin.outputBus,
+                    channel: plugin.channel
+                };
+            // Lets the worklet keep the output gate closed while an inserted
+            // plugin is still resolving its asset on the main thread.
+            data.assetPending = plugin.externalAssetInfo?.pending === true;
+            return attachPluginExecutionCapabilities(plugin, data);
         });
     }
     

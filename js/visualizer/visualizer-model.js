@@ -6,15 +6,18 @@ export const ASPECT_FILES = Object.freeze({
     '1:1': '1x1.json', '9:16': '9x16.json'
 });
 
-export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'chroma', 'phase', 'analog-meter'];
+export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
 // Analyzer graphics (ticks, lines, labels, peak marks) are drawn in these 1280-wide units,
 // so the same geometry looks identical regardless of the output canvas size or window scale.
 export const REFERENCE_WIDTH = 1280;
 export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase'];
 export const META_TYPES = ['artwork', 'title', 'album', 'artist'];
+export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'rhythm-analyzer'];
 export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES];
 export const MAX_ITEMS = 64;
 export const MAX_EFFECTS = 16;
+// Rhythm Analyzer Span (beats) choices, same as the effect.
+export const RHYTHM_SPANS = Object.freeze([4, 6, 8, 12, 16]);
 export const FONT_FAMILIES = Object.freeze([
     ['sans-serif', 'Sans-serif'], ['serif', 'Serif'], ['monospace', 'Monospace'],
     ['system-ui', 'System UI'], ['Arial, Helvetica, sans-serif', 'Arial'],
@@ -127,14 +130,31 @@ const TEXT_DECORATION_RULES = {
 export const TEXT_DECORATION_DEFAULTS = Object.freeze(Object.fromEntries(
     Object.entries(TEXT_DECORATION_RULES).map(([key, rule]) => [key, rule(undefined)])));
 
+const RHYTHM_BEAT_STYLE_RULES = {
+    beatSize: value => Math.round(number(value, 90, 10, 100)),
+    beatLineWidth: value => Math.round(number(value, 2, 0, 20) * 2) / 2,
+    beatFillOpacity: value => Math.round(number(value, 0.3, 0, 1) * 100) / 100,
+    beatHoldTime: value => Math.round(number(value, 0, 0, 1000) / 10) * 10,
+    beatDecayTime: value => Math.round(number(value, 90, 10, 2000) / 10) * 10,
+    beatStrokeOpacity: value => Math.round(number(value, 1, 0, 1) * 100) / 100,
+    beatUsePalette: value => value !== false,
+    beatFillColor: value => color(value, '#40dfff'), // theme-allow: Editable beat fill default.
+    beatStrokeColor: value => color(value, '#40dfff'), // theme-allow: Editable beat border default.
+    beatFitBpm: value => value !== false
+};
+export const RHYTHM_BEAT_STYLE_DEFAULTS = Object.freeze(Object.fromEntries(
+    Object.entries(RHYTHM_BEAT_STYLE_RULES).map(([key, rule]) => [key, rule(undefined)])));
+
 function normalizeStyle(type, input) {
     const style = isRecord(input) ? input : {};
-    if (['title', 'album', 'artist'].includes(type)) return {
-        fontSize: number(style.fontSize, 36, 8, 200),
+    if (TEXT_STYLE_TYPES.includes(type)) return {
+        fontSize: number(style.fontSize, type === 'rhythm-analyzer' ? 96 : 36, 8, 200),
         fontFamily: choice(style.fontFamily, FONT_FAMILIES.map(([family]) => family), 'sans-serif'),
         bold: style.bold === true,
         italic: style.italic === true,
-        align: choice(style.align, ['left', 'center', 'right'], 'left'),
+        align: choice(style.align, ['left', 'center', 'right'], type === 'rhythm-analyzer' ? 'center' : 'left'),
+        ...(type === 'rhythm-analyzer' ? { outlineWidth: 2,
+            ...Object.fromEntries(Object.entries(RHYTHM_BEAT_STYLE_RULES).map(([key, rule]) => [key, rule(style[key])])) } : {}),
         ...Object.fromEntries(Object.entries(TEXT_DECORATION_RULES)
             .filter(([key]) => Object.hasOwn(style, key)).map(([key, rule]) => [key, rule(style[key])]))
     };
@@ -247,6 +267,25 @@ export function normalizeParams(type, input) {
         showAxes: params.showAxes !== false,
         showAxisNumbers: params.showAxisNumbers !== false
     };
+    // Rhythm analysis controls match the effect. Axes and their labels start on;
+    // the beat circle and BPM have independent visibility controls.
+    if (type === 'rhythm-analyzer') {
+        const mn = Math.round(number(params.mn, 40, 40, 192));
+        return {
+            // Max BPM >= 1.25 x Min BPM keeps the tempo search range non-degenerate (same rule as the effect).
+            mn, mx: Math.max(Math.ceil(mn * 1.25), Math.round(number(params.mx, 240, 50, 240))),
+            sp: choice(params.sp, RHYTHM_SPANS, 8),
+            showBeat: params.showBeat !== false,
+            showBpm: params.showBpm !== false,
+            // Panel toggles: tempogram strip, main lanes, echo rows, beat lens. All shown by default.
+            vt: params.vt !== false,
+            vm: params.vm !== false,
+            ve: params.ve !== false,
+            vl: params.vl !== false,
+            showAxes: params.showAxes !== false,
+            showAxisNumbers: params.showAxisNumbers !== false
+        };
+    }
     return {};
 }
 
@@ -343,7 +382,8 @@ export function validateLayout(value) {
     // values and every original field must still match strict normalization.
     const addedParams = {
         spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
-        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf']
+        stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf'],
+        'rhythm-analyzer': ['showBeat', 'showBpm']
     };
     const comparable = {
         ...value,
@@ -352,7 +392,10 @@ export function validateLayout(value) {
             if (!isRecord(item) || !isRecord(item.params) || !Object.hasOwn(addedParams, item.type)) return item;
             const params = { ...item.params }, defaults = normalizeParams(item.type);
             for (const key of addedParams[item.type]) if (!Object.hasOwn(params, key)) params[key] = defaults[key];
-            return { ...item, params };
+            // Rhythm layouts saved before BPM text styling have an empty style.
+            const style = item.type === 'rhythm-analyzer' && isRecord(item.style)
+                ? { ...normalizeStyle(item.type), ...item.style } : item.style;
+            return { ...item, params, style };
         })
     };
     return same(comparable, normalizeLayout(value));

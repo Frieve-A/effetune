@@ -11,7 +11,7 @@ Semantic type: `NoteSpectrogram` · Category: analyzer
 
 Passes audio through while exposing detected pitch confidence across the 88-key piano range at five positions per semitone.
 
-Use the opt-in decoded telemetry callback or subscription API to observe this analyzer. See [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry).
+Use the opt-in decoded telemetry callback or subscription API to observe this effect. See [Compatibility](/dsp/reference/compatibility/#analyzers-and-telemetry).
 
 ## Contract
 
@@ -19,7 +19,7 @@ Use the opt-in decoded telemetry callback or subscription API to observe this an
 - Catalog sample rates: **not declared; this does not mean unsupported**
 - Assets: **none**
 - Catalog-declared latency: **zero**
-- Analyzer telemetry: **decoded semantic observations are available**
+- Telemetry: **decoded semantic observations are available**
 
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|

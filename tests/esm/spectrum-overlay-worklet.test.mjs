@@ -170,6 +170,12 @@ async function instantiateDspBinding() { return globalThis.__binding; }
   const processor = new ProcessorClass({
     processorOptions: { initialOutputChannelCount: 2, lowLatencyMode: false }
   });
+  // This harness observes the pipeline directly: hold the output gate open and
+  // apply every mutation immediately.
+  processor.transition.phase = 'open';
+  processor.transition.gain = 1;
+  processor.mutationDiscontinuity = () => false;
+  processor.latencyPlansDiffer = () => false;
   return {
     binding,
     posts,

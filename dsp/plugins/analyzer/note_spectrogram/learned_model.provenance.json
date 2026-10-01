@@ -24,11 +24,13 @@
     ],
     "trees_per_batch": 32,
     "coarse_storage": {
-      "leaf_type": "binary32",
+      "threshold_type": "index8",
+      "leaf_type": "int16",
+      "leaf_scale_type": "binary32",
       "accumulator_type": "binary64",
-      "maximum_leaf_error": 0.0,
-      "policy": "All 524288 original leaf constants are exactly representable in binary32. Only storage changes; splits, tree addition order, scale and bias are unchanged.",
-      "bytes_saved": 2097152
+      "maximum_leaf_error": 8.73043063620571e-06,
+      "policy": "Split thresholds are 8-bit indices into per-feature sorted binary32 border tables, which is exact. Leaves are rounded to int16 with one binary32 scale (absolute maximum / 32767) per tree. Splits, tree addition order, scale and bias are unchanged.",
+      "bytes_saved": 4623832
     },
     "fine_model_sha256": "98ffb6b277d8a3998d3cfa81a18d9999315b9c76bf4a9fb27f90a302e1f06acc",
     "fine_divisions": 5,
@@ -103,7 +105,9 @@
         4
       ],
       "maximum_depth": 6,
-      "leaf_type": "binary32",
+      "leaf_type": "int16",
+      "leaf_scale_type": "binary32",
+      "maximum_leaf_error": 1.971540041267872e-05,
       "accumulator_type": "binary64",
       "export_check": {
         "source_model_sha256": "2dbb65b003078098d25e1a970800cc4c81289a1da143a1c835ea7e166375212c",

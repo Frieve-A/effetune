@@ -52,9 +52,9 @@ test('production schemas expose the audited automation population', async () => 
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 108);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 91);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 976);
+  assert.equal(entries.length, 110);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 92);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1011);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,15 +86,18 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    'f2b9b978242bb572bcc3a0ba491dd4220d8d1431895774e943ab2b6c50e4ef32'
+    'e322c597ee2b2c99ae4a0305b50430938c4a8dfb1820f949e2b6badbb4410102'
   );
   assert.deepEqual(privateEffects, [
     'AnalogMeterPlugin', 'BassManagementPlugin', 'ChromaSpiralPlugin', 'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
     'GroupDelayPEQPlugin', 'LevelMeterPlugin', 'MatrixPlugin', 'MutePlugin', 'NoteSpectrogramPlugin',
-    'OscilloscopePlugin', 'PitchMeterPlugin', 'PolarityInversionPlugin', 'SpectrogramPlugin',
+    'OscilloscopePlugin', 'PitchMeterPlugin', 'PolarityInversionPlugin', 'RhythmAnalyzerPlugin', 'SpectrogramPlugin',
     'SpectrumAnalyzerPlugin', 'StereoMeterPlugin'
   ]);
   const nonAutomatedByReason = {
+    hostOwned: {
+      TonalBalanceEQPlugin: ['measurementPaused']
+    },
     analyzerOnly: {
       AnalogMeterPlugin: ['mode', 'integration', 'attack', 'release'],
       NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi', 'regularCandidates'],
@@ -103,6 +106,7 @@ test('production schemas expose the audited automation population', async () => 
         'displayLevel', 'verticalOffset'
       ],
       PitchMeterPlugin: ['referenceA4', 'minimumMidi', 'maximumMidi'],
+      RhythmAnalyzerPlugin: ['minimumBpm', 'maximumBpm', 'metronomeClick'],
       SpectrogramPlugin: ['dBRange', 'points', 'highQualityLog'],
       SpectrumAnalyzerPlugin: ['dBRange', 'points', 'highQualityLog'],
       StereoMeterPlugin: ['windowTime']
@@ -219,6 +223,12 @@ test('production schemas expose the audited automation population', async () => 
     'SWRadioSimulatorPlugin.fadingSpeed': [0.1, 10],
     'SWRadioSimulatorPlugin.interferenceOffset': [0.1, 10],
     'TiltEQPlugin.pivotFrequency': [Math.exp(3), Math.exp(9.9)],
+    'TonalBalanceEQPlugin.adjustFrequency': [20, 20000],
+    'TonalBalanceEQPlugin.averagingTime': [0.1, 100],
+    'TonalBalanceEQPlugin.high': [2000, 20000],
+    'TonalBalanceEQPlugin.low': [20, 200],
+    'TonalBalanceEQPlugin.smoothing': [0.1667, 2],
+    'TonalBalanceEQPlugin.tiltCorner': [20, 1000],
     'TubeSimulatorPlugin.actualSpeakerLoad': [2, 32],
     'TubeSimulatorPlugin.inputReference': [0.1, 300],
     'TubeSimulatorPlugin.sourceZ': [0.6, 100],

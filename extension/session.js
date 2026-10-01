@@ -112,7 +112,10 @@ async function initializeAudio(plugins, sampleRate, masterBypass) {
         if (powerState !== power.effectiveState) { powerState = power.effectiveState; publish(); }
     });
     synchronizeTelemetry();
-    audio.ioManager.outputGainNode.gain.setValueAtTime(1, audio.audioContext.currentTime);
+    // The worklet gate opened long before the pipeline arrived, so the live tab
+    // audio is already flowing into the muted output: fade it in once the
+    // published pipeline plays at full level.
+    await audio.fadeInOutputWhenReady();
     status = 'processing';
     return publish();
 }
@@ -124,7 +127,11 @@ async function start(args) {
             mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: args.streamId }
         }, video: false }, 10000);
         for (const track of stream.getTracks()) track.addEventListener('ended', () => {
-            if (stream) failAudio(new Error('Captured stream ended'));
+            if (!stream || !['starting', 'processing'].includes(status)) return;
+            console.info('Captured audio stream ended.');
+            queue = queue.then(() => {
+                if (['starting', 'processing'].includes(status)) return closeAudio();
+            }).catch(console.error);
         }, { once: true });
         return await initializeAudio(args.plugins, args.sampleRate, args.masterBypass);
     } catch (reason) {

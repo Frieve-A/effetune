@@ -61,7 +61,7 @@
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^44.4.5",
+    "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
@@ -271,9 +271,9 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.60.0",
+    "@mediabunny/flac-encoder": "1.61.0",
     "electron-updater": "6.8.9",
-    "mediabunny": "1.60.0",
+    "mediabunny": "1.61.0",
     "music-metadata": "^11.16.1"
   }
 }

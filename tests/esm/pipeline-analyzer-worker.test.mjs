@@ -93,6 +93,7 @@ test('configured processing-state reset keeps the graph and registry but restore
   });
   host.send({ type: 'dspEnableTypes', types: [] });
   host.send({ type: 'updatePlugins', plugins: [pluginConfig()], masterBypass: false });
+  host.send({ type: 'resetProcessingState' });
 
   assert.equal(processConstant(host, 0.25)[0][0], 1);
   assert.equal(processConstant(host, 0.25)[0][0], 2);
@@ -421,6 +422,7 @@ test('generic Worklet telemetry reports rollout-disabled optional DSP without ch
   );
   assert.equal(state?.state, 'bypassed');
   assert.equal(state?.reason, 'rolloutDisabled');
+  host.send({ type: 'resetProcessingState' });
   assert.equal(processConstant(host, 0.25, 1)[0][0], 0.25);
 });
 

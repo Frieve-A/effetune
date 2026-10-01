@@ -353,15 +353,23 @@ export class VisualizerView {
         const width = cover ? Math.max(availableWidth, availableHeight * aspect) : Math.min(availableWidth, availableHeight * aspect);
         const height = width / aspect;
         this.stage.style.width = `${Math.max(1, width)}px`; this.stage.style.height = `${Math.max(1, height)}px`;
-        const dpr = Math.min(window.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
-        const cw = Math.max(1, Math.round(width * dpr)), ch = Math.max(1, Math.round(height * dpr));
-        if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
         const state = this.sources.getStatus();
+        // While the clean feed is shown, it renders once and this view shows the same pixels at the feed resolution.
+        const feed = state === 'ready' && this.feed?.visible ? this.feed.canvas : null;
+        const dpr = Math.min(window.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
+        const cw = feed ? feed.width : Math.max(1, Math.round(width * dpr)), ch = feed ? feed.height : Math.max(1, Math.round(height * dpr));
+        if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
         if (state === 'ready') {
             // Restore the notice text that the unavailable status may have replaced before audio was ready.
             if (!this.noticeActive) this.status.hidden = true;
             else if (this.status.textContent !== this.noticeText) this.status.textContent = this.noticeText;
-            this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality });
+            if (feed) {
+                const ctx = this.canvas.getContext('2d');
+                ctx.clearRect(0, 0, cw, ch);
+                ctx.drawImage(feed, 0, 0);
+            } else {
+                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality });
+            }
         } else {
             this.canvas.getContext('2d').clearRect(0, 0, cw, ch);
             this.status.hidden = false;

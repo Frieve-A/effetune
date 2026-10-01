@@ -312,7 +312,7 @@ test('captured-stream teardown retains input only when explicitly requested', as
     AudioIOManager.prototype.cleanupAudio.call(io);
     assert.equal(stopped, 1);
     let releaseInput;
-    const audio = { _clearSyncedMeasurements() {}, _removeDspVisibilityListener() {},
+    const audio = { async fadeOutOutputForTeardown() {}, _clearSyncedMeasurements() {}, _removeDspVisibilityListener() {},
         powerPolicyController: { dispose() {} },
         ioManager: { cleanupAudio(options) { releaseInput = options.releaseInput; } },
         contextManager: { async closeAudioContext() {} }, updateExposedProperties() {} };

@@ -545,14 +545,57 @@ test('PluginBase parameter controls preserve the last finite value while editing
 
   valueInput.value = '10';
   valueInput.dispatch('input');
-  assert.deepEqual(calls, [0, 10]);
+  assert.deepEqual(calls, [0]);
   assert.equal(valueInput.value, '10');
   assert.equal(Number(slider.value), 0);
 
   valueInput.dispatch('blur');
-  assert.deepEqual(calls, [0, 10, 0]);
+  assert.deepEqual(calls, [0]);
   assert.equal(Number(valueInput.value), 0);
   assert.equal(Number(slider.value), 0);
+});
+
+test('PluginBase linear and logarithmic number inputs apply only in-range keystrokes and clamp on commit', () => {
+  const plugin = createPlugin();
+  for (const [row, min, max, toSlider] of [
+    [(calls) => plugin.createParameterControl('Tempo', 40, 192, 1, 120, v => calls.push(v)), 40, 192, v => v],
+    [(calls) => plugin.createLogarithmicParameterControl('Frequency', 20, 20000, 1, 1000, v => calls.push(v)), 20, 20000,
+      v => ((Math.log10(v) - Math.log10(20)) / (Math.log10(20000) - Math.log10(20))) * 100]
+  ]) {
+    const calls = [];
+    const control = row(calls);
+    const slider = control.children[1];
+    const valueInput = control.children[2];
+    for (const typed of ['1', '15', '150']) {
+      valueInput.value = typed;
+      valueInput.dispatch('input');
+      assert.equal(valueInput.value, typed);
+    }
+    assert.deepEqual(calls, [150]);
+    assert.equal(Number(slider.value), toSlider(150));
+    valueInput.dispatch('blur');
+    assert.deepEqual(calls, [150]);
+    assert.equal(Number(valueInput.value), 150);
+
+    valueInput.value = '99999';
+    valueInput.dispatch('input');
+    assert.deepEqual(calls, [150]);
+    assert.equal(valueInput.value, '99999');
+    valueInput.dispatch('keydown', { key: 'Enter' });
+    assert.deepEqual(calls, [150, max]);
+    assert.equal(Number(valueInput.value), max);
+    assert.equal(Number(slider.value), toSlider(max));
+
+    valueInput.value = '0';
+    valueInput.dispatch('blur');
+    assert.deepEqual(calls, [150, max, min]);
+    assert.equal(Number(valueInput.value), min);
+
+    valueInput.value = '';
+    valueInput.dispatch('blur');
+    assert.deepEqual(calls, [150, max, min]);
+    assert.equal(Number(valueInput.value), min);
+  }
 });
 
 test('Chorus logarithmic Delay and linear Depth retain canonical values', () => {

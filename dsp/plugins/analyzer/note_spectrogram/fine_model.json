@@ -1,8 +1,9 @@
 {
   "formatVersion": 1,
   "sourceModelSha256": "98ffb6b277d8a3998d3cfa81a18d9999315b9c76bf4a9fb27f90a302e1f06acc",
-  "sha256": "dccb15202ff6c9854fc533717018e1d9623088190a8e79a5e1e923ce5aa5fa1c",
+  "sha256": "b660ee0a59fa6eb52f9267f04bf0298d03fb7f344c222ad47d7cd5394f756b2a",
   "outputCount": 1,
+  "thresholdType": "index8",
   "leafType": "double",
   "constants": {
     "FeatureCount": 8,
@@ -11,5 +12,6 @@
     "Scale": 1.0,
     "Bias": 0.0,
     "DecisionMargin": 3.866617351240235
-  }
+  },
+  "borderCount": 335
 }

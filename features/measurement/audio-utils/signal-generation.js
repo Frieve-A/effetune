@@ -142,7 +142,7 @@ async function prepareSerializedWhiteNoiseOutputRoute(
  * @param {number} minFreq - Lower band edge in Hz (default 1 = effectively unlimited)
  * @param {number} maxFreq - Upper band edge in Hz (default null = up to Nyquist)
  */
-async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null, outputBands = null) {
+async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null, outputBands = null, outputChannelCount) {
     validateSignalOutputChannel(channel);
     const operationToken = nextWhiteNoiseOperationToken(this);
     this.whiteNoiseDesiredActive = true;
@@ -178,7 +178,7 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
             operationToken,
             outputDeviceId,
             channel,
-            channel === 'all' && Array.isArray(outputBands) ? outputBands.length : undefined
+            outputChannelCount ?? (channel === 'all' && Array.isArray(outputBands) ? outputBands.length : undefined)
         );
         if (!outputRoute) return false;
         resources.audioElement = outputRoute.audioElement;

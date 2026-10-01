@@ -22,6 +22,7 @@
   "_et_engine_reset",
   "_et_engine_set_telemetry_rate",
   "_et_instance_create",
+  "_et_rhythm_analyzer_warm_up",
   "_et_instance_destroy",
   "_et_instance_reset",
   "_et_instance_latency",

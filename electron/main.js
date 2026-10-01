@@ -373,6 +373,10 @@ function handleSystemResumeForWatchdog() {
   watchdogSystemSuspended = false;
   if (shouldRearm) armRendererWatchdog('system-resume');
   updateOpenHomeEnvironmentAvailability(true);
+  const mainWindow = constants.getMainWindow();
+  if (process.platform === 'win32' && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('system-resume');
+  }
 }
 
 function registerWatchdogPowerEvents() {
@@ -1013,6 +1017,9 @@ function createSplashScreen() {
   });
   
   // Create HTML content for splash window
+  const brandAnimationModuleUrl = JSON.stringify(
+    pathToFileURL(path.join(__dirname, '../js/ui/brand-animation.js')).href
+  ).replace(/[<>\u2028\u2029]/g, character => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
   const splashContent = `
   <!DOCTYPE html>
   <html data-theme="${preset.id}">
@@ -1103,7 +1110,7 @@ function createSplashScreen() {
       </div>
     </div>
     <script type="module">
-      import { startBrandAnimation } from '${pathToFileURL(path.join(__dirname, '../js/ui/brand-animation.js')).href}';
+      import { startBrandAnimation } from ${brandAnimationModuleUrl};
       startBrandAnimation(document.getElementById('splash-canvas'), {
         icon: document.querySelector('.splash-icon'),
         title: document.querySelector('.splash-header h2'),

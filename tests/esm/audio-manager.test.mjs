@@ -52,6 +52,79 @@ function nodeName(node) {
   return node?.name ?? node?.constructor?.name ?? 'target';
 }
 
+test('Windows system resume recreates running audio resources once without saving preferences', async () => {
+  await withGlobals({ window: { electronAPI: { platform: 'win32' } } }, async () => {
+    for (const directOutputMode of [false, true]) {
+      let completeReset;
+      const calls = [];
+      const manager = Object.assign(Object.create(AudioManager.prototype), {
+        contextManager: { audioContext: { state: 'running', sinkId: 'speaker', currentTime: 10 } },
+        ioManager: { directOutputMode },
+        powerPolicyController: { enabled: true, getEffectiveState: () => 'ACTIVE' },
+        reset(preferences) {
+          calls.push(preferences);
+          return new Promise(resolve => { completeReset = resolve; });
+        }
+      });
+      const first = manager.handleSystemResume();
+      const second = manager.handleSystemResume();
+      await flushMicrotasks();
+      assert.equal(manager.needsSystemResumeRecovery, true);
+      assert.equal(first, second);
+      assert.deepEqual(calls, [null]);
+      completeReset('');
+      assert.equal(await first, '');
+      assert.equal(manager.needsSystemResumeRecovery, false);
+    }
+  });
+});
+
+test('Windows system resume defers intentional suspension until audio is requested again', async () => {
+  await withGlobals({ window: { electronAPI: { platform: 'win32' } } }, async () => {
+    let resetCount = 0;
+    const manager = Object.assign(Object.create(AudioManager.prototype), {
+      contextManager: { audioContext: { state: 'suspended' } },
+      powerPolicyController: { enabled: true, getEffectiveState: () => 'SUSPENDED', suspendCause: 'no-route' },
+      reset: async () => { resetCount++; return ''; }
+    });
+    assert.equal(await manager.handleSystemResume(), '');
+    assert.equal(resetCount, 0);
+    assert.equal(manager.needsSystemResumeRecovery, true);
+    assert.equal(await manager.recoverFromSystemResume(), '');
+    assert.equal(resetCount, 1);
+    assert.equal(manager.needsSystemResumeRecovery, false);
+  });
+});
+
+test('failed system resume recovery remains retryable and ignores other hosts or uninitialized audio', async () => {
+  await withGlobals({ window: { electronAPI: { platform: 'win32' } } }, async () => {
+    let attempt = 0;
+    const manager = Object.assign(Object.create(AudioManager.prototype), {
+      contextManager: { audioContext: { state: 'running' } },
+      reset: async () => {
+        if (++attempt === 1) return 'Audio Error: unavailable';
+        if (attempt === 2) throw new Error('device unavailable');
+        return '';
+      }
+    });
+    assert.equal(await manager.handleSystemResume(), 'Audio Error: unavailable');
+    assert.equal(manager.needsSystemResumeRecovery, true);
+    await assert.rejects(manager.recoverFromSystemResume(), /device unavailable/);
+    assert.equal(manager.needsSystemResumeRecovery, true);
+    assert.equal(await manager.recoverFromSystemResume(), '');
+    assert.equal(manager.needsSystemResumeRecovery, false);
+    assert.equal(await manager.recoverFromSystemResume(), '');
+    window.electronAPI.platform = 'darwin';
+    assert.equal(await manager.handleSystemResume(), '');
+    window.electronAPI = null;
+    assert.equal(await manager.handleSystemResume(), '');
+    window.electronAPI = { platform: 'win32' };
+    manager.contextManager.audioContext = null;
+    assert.equal(await manager.handleSystemResume(), '');
+    assert.equal(attempt, 3);
+  });
+});
+
 class FakeAudioParam {
   constructor(name, calls, options = {}) {
     this.name = name;
@@ -409,8 +482,8 @@ function installFakes(manager, calls, options = {}) {
     prepareSectionAwarePluginData() {
       return [];
     },
-    async rebuildPipeline(isInitializing) {
-      calls.push(['pipelineProcessor.rebuildPipeline', isInitializing]);
+    async rebuildPipeline(isInitializing, rebuildOptions) {
+      calls.push(['pipelineProcessor.rebuildPipeline', isInitializing, rebuildOptions]);
       if (options.throwPipelineRebuild) throw new Error('pipeline rebuild failed');
       return options.pipelineRebuildResult ?? '';
     }
@@ -588,6 +661,44 @@ test('releases the DSP visibility listener once when captured streams close repe
   });
 });
 
+test('audio teardown fades the output out before releasing input or closing the graph', async () => {
+  const outputRamps = calls => calls
+    .filter(call => call[0] === 'param.ramp' && call[1] === 'outputGain.gain')
+    .map(call => call[2]);
+
+  await withAudioManager({ autoRunTimers: false }, async ({ calls, manager, timers }) => {
+    manager.powerPolicyController = { dispose() { calls.push(['power.dispose']); } };
+    const closing = manager.closeCapturedStream();
+    await flushMicrotasks();
+    assert.deepEqual(outputRamps(calls), [0]);
+    assert.equal(calls.some(call => call[0] === 'power.dispose'), false);
+    timers.shift()();
+    await closing;
+    assert.equal(calls.some(call => call[0] === 'power.dispose'), true);
+  });
+
+  await withAudioManager({ autoRunTimers: false }, async ({ calls, fakes, manager, timers }) => {
+    manager.ioManager.inputSourceNode = fakes.sourceNode;
+    manager.ioManager.getInputSnapshot = () => ({ state: 'live' });
+    manager.powerPolicyController = {
+      async requestAudioReconfigurationInputRelease() {
+        calls.push(['power.releaseInput']);
+        return false;
+      }
+    };
+    const resetting = manager._doReset();
+    await flushMicrotasks();
+    assert.deepEqual(outputRamps(calls), [0]);
+    assert.equal(calls.some(call => call[0] === 'power.releaseInput'), false);
+    timers.shift()();
+    assert.match(await resetting, /Failed to release/);
+    const releaseIndex = calls.findIndex(call => call[0] === 'power.releaseInput');
+    const fadeInIndex = calls.findIndex(call => call[0] === 'param.ramp' && call[2] === 1);
+    assert.ok(releaseIndex >= 0 && fadeInIndex > releaseIndex);
+    assert.equal(calls.some(call => call[0] === 'io.cleanupAudio'), false);
+  });
+});
+
 test('manages pipeline selection, copying, state, and history integration', async () => {
   await withAudioManager({}, async ({ calls, manager, originalPipelineProcessor, pipelineManager }) => {
     originalPipelineProcessor.registerProcessors();
@@ -678,116 +789,26 @@ test('pipeline copy fallbacks and plugin creation failures leave pipelines usabl
   });
 });
 
-test('switches pipelines with fade transitions, cancellation, and fallback paths', async () => {
-  await withAudioManager({ pipelineRebuildResult: 'switch warning' }, async ({ calls, manager }) => {
-    await assert.rejects(() => manager.setCurrentPipelineWithTransition('C'), /Pipeline must/);
-    assert.equal(await manager.setCurrentPipelineWithTransition('A'), true);
+test('A/B switching requests a worklet-gated rebuild without touching the output gain', async () => {
+  await withAudioManager({}, async ({ calls, manager }) => {
+    const rebuilds = () => calls.filter(call => call[0] === 'pipelineProcessor.rebuildPipeline');
+    assert.throws(() => manager.setCurrentPipelineWithTransition('C'), /Pipeline must/);
+    manager.setCurrentPipelineWithTransition('A');
+    assert.deepEqual(rebuilds(), []);
 
-    const ok = await manager.setCurrentPipelineWithTransition('B', false, { fadeDuration: 0.01, silenceDuration: 0.02 });
-    assert.equal(ok, true);
+    manager.setCurrentPipelineWithTransition('B');
+    await flushMicrotasks();
     assert.equal(manager.currentPipeline, 'B');
-    assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 0), true);
-    assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 1), true);
-  });
+    assert.deepEqual(rebuilds(), [['pipelineProcessor.rebuildPipeline', false, { gate: true }]]);
 
-  await withAudioManager({}, async ({ manager }) => {
     manager.pipelineB = null;
-    assert.equal(await manager.togglePipelineWithTransition(), true);
-    assert.equal(manager.currentPipeline, 'B');
-    assert.equal(await manager.togglePipelineWithTransition(), true);
-    assert.equal(manager.currentPipeline, 'A');
-  });
-
-  await withAudioManager({ outputGainNode: null }, async ({ manager }) => {
-    assert.equal(await manager.setCurrentPipelineWithTransition('B'), true);
-    assert.equal(manager.currentPipeline, 'B');
-  });
-
-  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
-    const pending = manager.setCurrentPipelineWithTransition('B');
-    assert.equal(timers.length, 1);
-    manager._pipelineSwitchSeq++;
-    timers.shift()();
-    assert.equal(await pending, false);
-    assert.equal(manager.currentPipeline, 'A');
-  });
-
-  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
-    const pending = manager.setCurrentPipelineWithTransition('B');
-    timers.shift()();
-    await flushMicrotasks();
-    assert.equal(manager.currentPipeline, 'B');
-    manager._pipelineSwitchSeq++;
-    timers.shift()();
-    assert.equal(await pending, false);
-  });
-
-  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
-    const fades = [];
-    manager.fadeInOutput = () => fades.push(manager.ioManager.outputGainNode);
-    const pending = manager.setCurrentPipelineWithTransition('B');
-    const replacementOutput = { name: 'replacement-output' };
-    manager.contextManager.audioContext = { currentTime: 2 };
-    manager.ioManager.outputGainNode = replacementOutput;
-    manager._advanceAudioGraphGeneration();
-    timers.shift()();
-
-    assert.equal(await pending, false);
-    assert.equal(manager.currentPipeline, 'A');
-    assert.deepEqual(fades, []);
-  });
-
-  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
-    const fades = [];
-    let rejectRebuild;
-    manager.fadeInOutput = () => fades.push(manager.ioManager.outputGainNode);
-    manager.rebuildPipeline = () => new Promise((resolve, reject) => {
-      rejectRebuild = reject;
-    });
-    const pending = manager.setCurrentPipelineWithTransition('B');
-    timers.shift()();
-    await flushMicrotasks();
-    assert.equal(manager.currentPipeline, 'B');
-
-    manager.contextManager.audioContext = { currentTime: 2 };
-    manager.ioManager.outputGainNode = { name: 'replacement-output' };
-    manager._advanceAudioGraphGeneration();
     manager.currentPipeline = 'A';
-    manager.pipeline = manager.pipelineA;
-    rejectRebuild(new Error('stale rebuild failed'));
-
-    assert.equal(await pending, false);
-    assert.equal(manager.currentPipeline, 'A');
-    assert.deepEqual(fades, []);
-  });
-
-  await withAudioManager({ autoRunTimers: false }, async ({ manager, timers }) => {
-    const events = [];
-    let resolveRebuild;
-    manager.dispatchEvent = (...args) => events.push(args);
-    manager.rebuildPipeline = () => new Promise(resolve => {
-      resolveRebuild = resolve;
-    });
-    const pending = manager.setCurrentPipelineWithTransition('B');
-    timers.shift()();
-    await flushMicrotasks();
-
-    manager.contextManager.audioContext = { currentTime: 2 };
-    manager.ioManager.outputGainNode = { name: 'replacement-output' };
-    manager._advanceAudioGraphGeneration();
-    resolveRebuild('');
-
-    assert.equal(await pending, false);
-    assert.deepEqual(events, []);
-  });
-
-  await withAudioManager({}, async ({ manager }) => {
-    manager.fadeOutOutput = () => {
-      throw new Error('fade out exploded');
-    };
-    const ok = await manager.setCurrentPipelineWithTransition('B', true);
-    assert.equal(ok, false);
+    manager.togglePipelineWithTransition();
     assert.equal(manager.currentPipeline, 'B');
+    manager.togglePipelineWithTransition();
+    assert.equal(manager.currentPipeline, 'A');
+    await flushMicrotasks();
+    assert.equal(calls.some(call => call[0].startsWith('param.')), false);
   });
 });
 
@@ -872,6 +893,70 @@ test('initializes audio and worklet phases with success, warnings, messages, and
   });
 });
 
+test('startup fade-in waits for the worklet output-ready answer or its timeout', async () => {
+  await withAudioManager({ autoRunTimers: false }, async ({ calls, manager, timers }) => {
+    const fades = [];
+    manager.fadeInOutput = () => fades.push('in');
+    manager.contextManager.audioContext.state = 'running';
+    const port = manager.contextManager.workletNode.port;
+
+    const answered = manager.fadeInOutputWhenReady();
+    await flushMicrotasks();
+    const request = port.messages.find(message => message.type === 'awaitOutputReady');
+    assert.ok(request);
+    assert.ok(calls.some(call => call[0] === 'setTimeout' && call[1] === 5000));
+    assert.deepEqual(fades, []);
+    port.onmessage({ data: { type: 'outputReady', requestId: request.requestId } });
+    await answered;
+    assert.deepEqual(fades, ['in']);
+
+    const timedOut = manager.fadeInOutputWhenReady();
+    await flushMicrotasks();
+    assert.deepEqual(fades, ['in']);
+    timers.at(-1)();
+    await timedOut;
+    assert.deepEqual(fades, ['in', 'in']);
+    assert.ok(calls.some(call => call[0] === 'console.warn' && String(call[1]).includes('did not confirm')));
+
+    // A context that has not started rendering has no gate cycle to wait for.
+    manager.contextManager.audioContext.state = 'suspended';
+    const posted = port.messages.length;
+    await manager.fadeInOutputWhenReady();
+    assert.deepEqual(fades, ['in', 'in', 'in']);
+    assert.equal(port.messages.length, posted);
+  });
+});
+
+test('startup output-ready wait cannot unmute a newer fade or replacement graph', async () => {
+  for (const replaceGraph of [false, true]) {
+    await withAudioManager({ autoRunTimers: false }, async ({ manager }) => {
+      const fades = [];
+      manager.fadeInOutput = () => fades.push('in');
+      manager.contextManager.audioContext.state = 'running';
+      const port = manager.contextManager.workletNode.port;
+      const pending = manager.fadeInOutputWhenReady();
+      await flushMicrotasks();
+      const request = port.messages.find(message => message.type === 'awaitOutputReady');
+      assert.ok(request);
+      if (replaceGraph) {
+        // Graph replacement cancels outstanding control requests as well.
+        manager._advanceAudioGraphGeneration();
+      } else {
+        manager.fadeOutOutput();
+        port.onmessage({ data: { type: 'outputReady', requestId: request.requestId } });
+      }
+      await pending;
+      assert.deepEqual(fades, []);
+      const current = manager.fadeInOutputWhenReady();
+      await flushMicrotasks();
+      const currentRequest = port.messages.filter(message => message.type === 'awaitOutputReady').at(-1);
+      port.onmessage({ data: { type: 'outputReady', requestId: currentRequest.requestId } });
+      await current;
+      assert.deepEqual(fades, ['in']);
+    });
+  }
+});
+
 test('keeps a cold WASM load valid after the startup wait and activates it when ready', async () => {
   await withAudioManager({ autoRunTimers: false }, async ({ calls, manager, timers }) => {
     let resolveModule;
@@ -891,7 +976,8 @@ test('keeps a cold WASM load valid after the startup wait and activates it when 
     await flushMicrotasks();
     const startupWait = manager.waitForDspActivationBeforeOutput();
     await flushMicrotasks();
-    assert.ok(calls.some(call => call[0] === 'setTimeout' && call[1] === 1000));
+    // The startup wait outlasts normal activation and is capped like output-ready.
+    assert.ok(calls.some(call => call[0] === 'setTimeout' && call[1] === 5000));
     timers.shift()();
     assert.equal(await startupWait, false);
 
@@ -1104,12 +1190,6 @@ test('staged audio config publishes only after resource acquisition and a curren
     manager.updateAudioConfig = async preferences => {
       calls.push(['staged.updateAudioConfig', { ...preferences }]);
       return true;
-    };
-    manager.fadeOutOutputWithOwner = () => {
-      throw new Error('staged config must not mute the master output');
-    };
-    manager.fadeInOutputForOwner = () => {
-      throw new Error('staged config must not change the master output');
     };
 
     const preferences = { outputChannels: 4, lowLatencyOutput: true };
@@ -1883,16 +1963,6 @@ test('fades output with scheduled ramps and immediate fallbacks', async () => {
     );
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 1), true);
     assert.equal(calls.some(call => call[0] === 'param.ramp' && call[2] === 0), true);
-
-    const owner = manager.fadeOutOutputWithOwner(0);
-    assert.equal(manager.fadeInOutputForOwner(owner, 0), true);
-    const staleOwner = manager.fadeOutOutputWithOwner(0);
-    manager.ioManager.outputGainNode = new FakeNode('replacement-output', calls, {
-      gain: new FakeAudioParam('replacement-output.gain', calls)
-    });
-    manager._advanceAudioGraphGeneration();
-    assert.equal(manager.fadeInOutputForOwner(staleOwner, 0), false);
-    assert.equal(manager.ioManager.outputGainNode.gain.value, 1);
   });
 
   await withAudioManager({ audioContext: null }, async ({ manager }) => {

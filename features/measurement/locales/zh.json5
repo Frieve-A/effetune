@@ -24,6 +24,8 @@
 "help:inputChannel": "选择已连接校准麦克风的输入通道。", // Help text for input channel
 "label:audioOutput": "音频输出设备：", // Label for audio output device selection
 "help:audioOutput": "选择用于输出测量信号的音频设备。", // Help text for audio output
+  "label:outputChannelCount": "输出设备声道数：",
+  "help:outputChannelCount": "请按输出设备的声道配置设置（5.1设为6，7.1设为8）。即使只测量部分声道，测试信号和测量也始终使用此声道数。",
 "label:outputChannel": "输出通道：", // Label for output channel selection
 "help:outputChannel": "选择一个或多个要测量的输出通道。选择“所有声道”会清除各个通道的选择。", // Help text for output channel
 "help:audioInput": "指定连接测量麦克风的音频输入设备。", // Help text for audio input

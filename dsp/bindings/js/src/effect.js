@@ -98,6 +98,10 @@ export function canonicalizeProcessingParameters(effectType, parameters) {
       canonical.minimumFrequency > canonical.maximumFrequency) {
     [canonical.minimumFrequency, canonical.maximumFrequency] =
       [canonical.maximumFrequency, canonical.minimumFrequency];
+  } else if (effectType === 'RhythmAnalyzer' &&
+      canonical.maximumBpm < canonical.minimumBpm * 1.25) {
+    // Max BPM >= 1.25 x Min BPM keeps the tempo search range non-degenerate (same rule as the effect).
+    canonical.maximumBpm = canonical.minimumBpm * 1.25;
   } else if (effectType === 'Chorus' && canonical.depth > canonical.delay) {
     canonical.depth = canonical.delay;
   } else if (effectType === 'FrequencyShifter' &&

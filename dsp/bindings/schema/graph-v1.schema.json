@@ -109,6 +109,9 @@
           "$ref": "#/$defs/PitchMeter"
         },
         {
+          "$ref": "#/$defs/RhythmAnalyzer"
+        },
+        {
           "$ref": "#/$defs/Spectrogram"
         },
         {
@@ -233,6 +236,9 @@
         },
         {
           "$ref": "#/$defs/TiltEQ"
+        },
+        {
+          "$ref": "#/$defs/TonalBalanceEQ"
         },
         {
           "$ref": "#/$defs/ToneControl"
@@ -714,6 +720,53 @@
               "minimum": 21,
               "maximum": 108,
               "default": 96
+            }
+          }
+        }
+      }
+    },
+    "RhythmAnalyzer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "RhythmAnalyzer"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minimumBpm": {
+              "type": "number",
+              "minimum": 40,
+              "maximum": 192,
+              "default": 40
+            },
+            "maximumBpm": {
+              "type": "number",
+              "minimum": 50,
+              "maximum": 240,
+              "default": 240
+            },
+            "metronomeClick": {
+              "type": "boolean",
+              "default": false
             }
           }
         }
@@ -4201,6 +4254,204 @@
               "maximum": 12,
               "x-effetune-unit": "dB/oct",
               "default": 0
+            }
+          }
+        }
+      }
+    },
+    "TonalBalanceEQ": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "TonalBalanceEQ"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "All",
+                "Classical",
+                "Electronic",
+                "Pop",
+                "Rock",
+                "Tilt"
+              ],
+              "default": "All"
+            },
+            "amount": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "x-effetune-unit": "%",
+              "default": 100
+            },
+            "range": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12,
+              "x-effetune-unit": "dB",
+              "default": 6
+            },
+            "smoothing": {
+              "type": "number",
+              "minimum": 0.1667,
+              "maximum": 2,
+              "x-effetune-unit": "oct",
+              "default": 0.5
+            },
+            "averagingTime": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 100,
+              "x-effetune-unit": "s",
+              "default": 30
+            },
+            "low": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 200,
+              "x-effetune-unit": "Hz",
+              "default": 20
+            },
+            "high": {
+              "type": "number",
+              "minimum": 2000,
+              "maximum": 20000,
+              "x-effetune-unit": "Hz",
+              "default": 16000
+            },
+            "averageSpl": {
+              "type": "number",
+              "minimum": 60,
+              "maximum": 96,
+              "x-effetune-unit": "dB",
+              "default": 83
+            },
+            "adjustEnabled": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "boolean"
+              },
+              "default": [
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            "adjustType": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "pk",
+                  "ls",
+                  "hs"
+                ]
+              },
+              "default": [
+                "pk",
+                "pk",
+                "pk",
+                "pk",
+                "pk"
+              ]
+            },
+            "adjustFrequency": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 20000,
+                "x-effetune-unit": "Hz"
+              },
+              "default": [
+                100,
+                316,
+                1000,
+                3160,
+                10000
+              ]
+            },
+            "adjustGain": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": -20,
+                "maximum": 20,
+                "x-effetune-unit": "dB"
+              },
+              "default": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "adjustQ": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              },
+              "default": [
+                0.7,
+                0.7,
+                0.7,
+                0.7,
+                0.7
+              ]
+            },
+            "tiltSlope": {
+              "type": "number",
+              "minimum": -18,
+              "maximum": 0,
+              "x-effetune-unit": "dB/oct",
+              "default": -6
+            },
+            "tiltCorner": {
+              "type": "number",
+              "minimum": 20,
+              "maximum": 1000,
+              "x-effetune-unit": "Hz",
+              "default": 250
+            },
+            "measurementPaused": {
+              "type": "boolean",
+              "default": false
             }
           }
         }

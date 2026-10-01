@@ -347,7 +347,7 @@ assert.equal(windowRef.isFirstLaunch, false);
 assert.equal(windowRef.app.initialized, true);
 assert.equal(electronTarget.closeCallback instanceof Function, true);
 assert.equal(electronTarget.ipc.has('load-preset-from-tray'), true);
-electronTarget.closeCallback();
+await electronTarget.closeCallback();
 
 assert.equal(calls.some(call => call[0] === 'isFirstLaunch'), false);
 assert.equal(calls.some(call => call[0] === 'onRequestPipelineStateForClose'), true);

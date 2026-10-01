@@ -397,7 +397,12 @@ void Engine::destroyInstance(et_instance instance) noexcept {
   InstanceSlot *slot = findInstance(instance);
   if (slot != nullptr && !slot->graphOwned) {
     destroySlot(*slot);
-    invalidatePipeline();
+    for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
+      if (pipeline_[index].instance == instance) {
+        invalidatePipeline();
+        break;
+      }
+    }
   }
 }
 

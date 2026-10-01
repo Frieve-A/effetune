@@ -277,6 +277,8 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 4. 生成可直接导入 EffeTune 的参数均衡校正
 5. 应用校正，让播放更准确、更中性
 
+请按输出设备的声道配置设置 **输出设备声道数**：5.1设为 **6**，7.1设为 **8**。输出通道和各声道带宽的选项仅显示此范围内的声道。即使只选择部分声道，测试信号、测量及单声道重新测量也使用此声道数。例如，在5.1设备上仅测量Ch 3（中置）和Ch 4（低音炮）时，仍应设为 **6**。
+
 对于多声道系统，选择 **所有声道** 可同时测量全部输出；选择各个 **输出通道** 则会逐一测量。 在 **高级设置** 中，为扫描带宽选择 **关闭**、**所有声道共用** 或 **按声道**。选择 **按声道** 时，使用 **要配置的声道** 设置每个选定输出声道的频率范围。调整电平时，**通道模式** 默认使用 **自动轮换**；需要时可选择测试信号通道或 **手动**。
 
 如果已有脉冲响应 WAV 文件，请选择**导入**并指定该文件。EffeTune 会将 WAV 的每个声道保存为测量结果，以便在 Room EQ 以及其他使用已保存测量的功能中选择。
@@ -334,6 +336,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Analyzer  | Note Spectrogram | 以钢琴卷帘图显示随时间变化的估算音高 | [详情](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | 实时波形可视化 | [详情](plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Pitch Meter | 随时间跟踪一个基频及其调音偏差 | [详情](plugins/analyzer.md#pitch-meter) |
+| Analyzer  | Rhythm Analyzer | 显示速度、逐拍的发音，以及各声部相对节拍的超前或滞后 | [详情](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram | 显示频谱随时间的变化 | [详情](plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | 实时显示低频、中频和高频的强弱 | [详情](plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer  | Stereo Meter | 可视化立体声平衡与声道相关性 | [详情](plugins/analyzer.md#stereo-meter) |
@@ -375,6 +378,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | EQ        | Narrow Range | 高通和低通滤波器的组合 | [详情](plugins/eq.md#narrow-range) |
 | EQ        | Room EQ | 根据已保存的房间测量进行FIR校正 | [详情](plugins/eq.md#room-eq) |
 | EQ        | Tilt EQ | 倾斜均衡器，用于快速音色塑造 | [详情](plugins/eq.md#tilt-eq)      |
+| EQ        | Tonal Balance EQ | 按音乐风格目标自动校正长期音色平衡 | [详情](plugins/eq.md#tonal-balance-eq) |
 | EQ        | Tone Control | 三频段音色控制 | [详情](plugins/eq.md#tone-control) |
 | Lo-Fi     | AM Radio Simulator | 让音乐经过建模的 AM 广播与接收链路 | [详情](plugins/lofi.md#am-radio-simulator) |
 | Lo-Fi     | Bit Crusher | 降低位深并应用零阶保持效果 | [详情](plugins/lofi.md#bit-crusher) |

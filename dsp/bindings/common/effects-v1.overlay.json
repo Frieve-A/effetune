@@ -44,6 +44,13 @@
       ]
     },
     {
+      "type": "RhythmAnalyzer",
+      "internalType": "RhythmAnalyzerPlugin",
+      "telemetry": [
+        "rhythmAnalyzer"
+      ]
+    },
+    {
       "type": "Spectrogram",
       "internalType": "SpectrogramPlugin",
       "telemetry": [
@@ -541,6 +548,13 @@
           }
         }
       }
+    },
+    {
+      "type": "TonalBalanceEQ",
+      "internalType": "TonalBalanceEQPlugin",
+      "telemetry": [
+        "tonalBalance"
+      ]
     },
     {
       "type": "ToneControl",
@@ -1294,7 +1308,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "07c4dcb745f6f45206b688a1b0516f433d8652e2fb8adfcad15606f5542cc4ae",
-    "privateLayoutSha256": "66175f0d1430a20521b7c33db53a7a088a2eabc835c36c050369e67903112137"
+    "publicCatalogSha256": "07ccb25325b848ed7ccbd2887d3b25694a8961aa636089801c58a7af6ae5d3ca",
+    "privateLayoutSha256": "2210eb06b9ab0c4a503445dbc6f98abec45197ff603d18a1c4f4c8eca732fb6a"
   }
 }

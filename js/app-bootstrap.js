@@ -2,9 +2,15 @@ function getDefaultWindow() {
     return typeof window !== 'undefined' ? window : {};
 }
 
-export function registerPipelineStateCloseHandler(getPipelineStateForSave, electronAPI = getDefaultWindow().electronAPI) {
+export function registerPipelineStateCloseHandler(
+    getPipelineStateForSave,
+    fadeOutOutput,
+    electronAPI = getDefaultWindow().electronAPI
+) {
     if (electronAPI && electronAPI.onRequestPipelineStateForClose) {
-        electronAPI.onRequestPipelineStateForClose(() => {
+        electronAPI.onRequestPipelineStateForClose(async () => {
+            // Silence the output before the window closes.
+            await fadeOutOutput();
             const pipelineState = getPipelineStateForSave();
             electronAPI.sendPipelineStateForClose(pipelineState);
         });

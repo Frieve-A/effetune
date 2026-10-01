@@ -1181,6 +1181,26 @@ function pluginExecutionUnsupportedReason(plugin, sampleRate, outputChannelCount
     }
     return null;
 }
+// Port messages that change the pipeline and therefore pass the output gate.
+const MUTATION_MESSAGE_TYPES = new Set([
+    'updatePlugin',
+    'updatePlugins',
+    'batchUpdatePlugins',
+    'addPlugin',
+    'removePlugin',
+    'reorderPlugin',
+    'reset',
+    'setOutputDelay',
+    'dspEnableTypes',
+    'dspModule'
+]);
+const EMPTY_NODE_ACTIONS = new Map();
+// Stands in for every delay line a candidate plan would allocate: only the
+// identity change against the adopted plan matters for the predicate.
+const CANDIDATE_DELAY_LINE = Object.freeze({});
+// Upper bound for holding the gate closed while an inserted instance waits
+// for its asset (a main-thread failure may never clear the pending flag).
+const ASSET_HOLD_SECONDS = 3;
 const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
     'BassManagementPlugin',
     'FIRCrossoverPlugin',
@@ -1214,6 +1234,7 @@ const DISPLAY_ONLY_DSP_TYPES = new Set([
     'NoteSpectrogramPlugin',
     'OscilloscopePlugin',
     'PitchMeterPlugin',
+    'RhythmAnalyzerPlugin',
     'SpectrogramPlugin',
     'SpectrumAnalyzerPlugin',
     'StereoMeterPlugin'
@@ -1328,8 +1349,17 @@ class PluginProcessor extends AudioWorkletProcessor {
             : ET_DSP_DEFAULT_MAX_FRAMES;
         this.plugins = [];
         this.frequencyPreview = { frequency: 0, gain: 0, targetGain: 0, phase: 0, buffers: [] };
-        this.FADE_DURATION = 0.010; // 10ms fade for smoother transitions (Not used in process, but kept for context)
+        this.FADE_DURATION = 0.010; // 10ms output gate ramp around discontinuous pipeline changes
         this.currentFrame = 0;
+        // Output gate. A new worklet starts settling at gain 0 so the first
+        // block ramps in only after the compensation lines are primed.
+        // assetHolds: inserted instances whose pending asset keeps settling.
+        this.transition = {
+            phase: 'settling', gain: 0, commitFrame: 0, queue: [], assetHolds: [], assetHoldStart: 0
+        };
+        // awaitOutputReady request IDs answered once the gate is fully open.
+        this.outputReadyRequests = [];
+        this.lastBlockPowerSkipped = false;
         this.pluginProcessors = new Map();
         this.pluginContexts = new Map();
         this.processorRegistrationErrors = new Set();
@@ -1513,16 +1543,59 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         };
 
-        // Message handler
+        // Message handler. While the gate is closing every message waits in
+        // order so mutations land only once the output has reached gain 0.
+        // A processing-state reset clears the output itself, so it commits
+        // the queue at once instead of waiting for the ramp.
         this.port.onmessage = (event) => {
-            const data = event.data;
+            if (this.transition.phase === 'closing' && event.data.type !== 'resetProcessingState') {
+                this.transition.queue.push(event.data);
+                return;
+            }
+            this.handlePortMessage(event.data);
+        };
+        // Chromium cannot deserialize a compiled WebAssembly.Module in the
+        // audio worklet scope. A compiled module is the only payload that can
+        // fail here, so ask the main thread to resend it as bytes at once.
+        this.port.onmessageerror = () => {
+            this.port.postMessage({ type: 'dspModuleRejected' });
+        };
+    }
+
+    handlePortMessage(data) {
+        if (MUTATION_MESSAGE_TYPES.has(data.type)) this.handleMutation(data);
+        else this.applyPortMessage(data);
+    }
+
+    // M: a mutation that would be audible as a discontinuity closes the gate
+    // first and is applied from the queue at gain 0. Nothing is gated while
+    // the previous block did not execute the pipeline.
+    handleMutation(data) {
+        const transition = this.transition;
+        const discontinuous = !(transition.phase === 'open' && this.lastBlockPowerSkipped) &&
+            this.mutationDiscontinuity(data);
+        if (discontinuous && (transition.phase === 'open' || transition.phase === 'opening')) {
+            transition.phase = 'closing';
+            transition.queue.push(data);
+            return;
+        }
+        const previousPlugins = this.plugins;
+        const previousReady = discontinuous ? this.readyWasmInstanceIds() : null;
+        this.applyPortMessage(data);
+        if (discontinuous && transition.phase === 'settling') {
+            transition.commitFrame = this.currentFrame;
+            this.holdAssetInserts(previousPlugins, previousReady);
+        }
+    }
+
+    applyPortMessage(data) {
             switch(data.type) {
                 case 'setSpectrumTapRoute': {
                     const wasActive = this.isSpectrumTapRoutingActive();
                     if (data.enabled) this.spectrumTapRoute.add(data.pluginId);
                     else this.spectrumTapRoute.delete(data.pluginId);
                     // Visibility changes must never rebuild latency compensation.
-                    if (this.isSpectrumTapRoutingActive() !== wasActive) this.refreshDspPipeline(null, true);
+                    if (this.isSpectrumTapRoutingActive() !== wasActive) this.refreshDspPipeline();
                     break;
                 }
                 case 'setSpectrumTap':
@@ -1556,14 +1629,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                     }
                     break;
                 case 'updatePlugin':
-                    this._invalidatePowerSkipForMutation();
-                    this.updatePlugin(data.plugin);
-                    break;
                 case 'updatePlugins':
+                case 'batchUpdatePlugins':
+                case 'addPlugin':
+                case 'removePlugin':
+                case 'reorderPlugin':
                     this._invalidatePowerSkipForMutation();
-                    // this.isOfflineProcessing = data.isOfflineProcessing ?? false; // Store if needed elsewhere
-                    this.masterBypass = data.masterBypass ?? false;
-                    this.updatePlugins(data.plugins);
+                    this.adoptPluginState(this.nextPluginState(data));
                     if (this.masterBypass) this.clearAudioProcessingOverload();
                     break;
                 case 'setAudioProcessingOverloadMonitoring':
@@ -1582,6 +1654,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                             // Invalidate combined buffer if channel count changes drastically
                             this.combinedBuffer = null;
                             this.prewarmBufferPoolViews();
+                            // The output delay line is sized per channel.
+                            this.setOutputDelay(this.outputDelaySamples);
                             dspConfigurationChanged = true;
                             console.log(`Audio config updated: output channels = ${this.outputChannelCount}`);
                         }
@@ -1670,6 +1744,9 @@ class PluginProcessor extends AudioWorkletProcessor {
                         samples: this.outputDelaySamples
                     });
                     break;
+                case 'awaitOutputReady':
+                    this.outputReadyRequests.push(data.requestId);
+                    break;
                 case 'requestJsFallbackBudgetState':
                     this.publishJsFallbackBudgetState(data.requestId);
                     break;
@@ -1679,22 +1756,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                 case 'registerProcessor':
                     this._invalidatePowerSkipForMutation();
                     this.registerPluginProcessor(data.pluginType, data.processor);
-                    break;
-                case 'batchUpdatePlugins':
-                    this._invalidatePowerSkipForMutation();
-                    this.batchUpdatePlugins(data.plugins || []);
-                    break;
-                case 'addPlugin':
-                    this._invalidatePowerSkipForMutation();
-                    this.addPlugin(data.plugin, data.index);
-                    break;
-                case 'removePlugin':
-                    this._invalidatePowerSkipForMutation();
-                    this.removePlugin(data.pluginId);
-                    break;
-                case 'reorderPlugin':
-                    this._invalidatePowerSkipForMutation();
-                    this.reorderPlugin(data.fromIndex, data.toIndex);
                     break;
                 case 'resetProcessingState':
                     this.resetConfiguredProcessingState(data.requestId);
@@ -1728,7 +1789,13 @@ class PluginProcessor extends AudioWorkletProcessor {
                     const valid = Number.isFinite(data.frequency) && data.frequency > 0 &&
                         data.frequency < globalThis.sampleRate * 0.5;
                     if (valid) preview.frequency = data.frequency;
+                    const wasActive = preview.targetGain > 0;
                     preview.targetGain = valid ? 1 : 0;
+                    if (wasActive !== valid) {
+                        for (const plugin of this.plugins) {
+                            if (plugin.type === 'TonalBalanceEQPlugin') this.reconcileDspPluginSafely(plugin);
+                        }
+                    }
                     break;
                 }
                 case 'userActivity':
@@ -1802,7 +1869,6 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this.prepareTemporalStateAndResume(data);
                     break;
             }
-        };
     }
 
     _matchesPowerIdentity(data) {
@@ -1951,6 +2017,10 @@ class PluginProcessor extends AudioWorkletProcessor {
         let ok = true;
         let error = null;
         try {
+            // The reset is a commit point: queued mutations land first so the
+            // state they create is cleared below, then the gate opens because
+            // only fresh signal from the cleared state follows.
+            if (this.transition.phase === 'closing') this.commitTransitionQueue();
             if (this.dspLive && this.dspBinding) {
                 const status = this.dspBinding.reset();
                 if (status !== 0) throw new Error(`DSP reset failed with status ${status}`);
@@ -1974,6 +2044,10 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this.resetSpectrumTapState(tap);
             }
             this.outputDelayLine?.reset();
+            this.transition.phase = 'open';
+            this.transition.gain = 1;
+            this.transition.commitFrame = 0;
+            this.transition.assetHolds.length = 0;
         } catch (resetError) {
             ok = false;
             error = resetError?.message || String(resetError);
@@ -2956,10 +3030,18 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
 
         if (plugin.wasmParams instanceof Float32Array && (plugin.wasmParamsHash >>> 0) === kernel.paramsHash) {
-            const wasmParams = FIR_CONVOLVER_PLUGIN_TYPES.has(plugin.type) &&
+            let wasmParams = FIR_CONVOLVER_PLUGIN_TYPES.has(plugin.type) &&
                 this.dspDeferredAssetStages.has(`${plugin.id}:0`)
                 ? this.firReplacementDryParams(plugin.wasmParams)
                 : plugin.wasmParams;
+            if (plugin.type === 'TonalBalanceEQPlugin') {
+                // measurementPaused is the final host-owned field; keep saved parameters intact.
+                const paused = this.frequencyPreview.targetGain > 0 ? 1 : 0;
+                if (wasmParams[wasmParams.length - 1] !== paused) {
+                    wasmParams = wasmParams.slice();
+                    wasmParams[wasmParams.length - 1] = paused;
+                }
+            }
             const numericStatus = this.dspBinding.instanceSetParams(
                 entry.id,
                 wasmParams,
@@ -3152,6 +3234,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             retainedReplayEpoch,
             replayFailure
         }, replayEpoch);
+        this.releaseAssetHold(pluginId);
     }
 
     dspAssetFootprintBytes(excludedPluginId = null, excludedSlot = null) {
@@ -3407,6 +3490,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             (data?.replayEpoch !== undefined && replayEpoch === null)) {
             return;
         }
+        this.releaseAssetHold(pluginId);
         const deferredKey = `${pluginId}:${slot}`;
         const replacementDeferred = this.dspDeferredAssetStages.delete(deferredKey);
         if (replacementDeferred) this.restoreFirParams(pluginId);
@@ -3462,7 +3546,8 @@ class PluginProcessor extends AudioWorkletProcessor {
         return preparing;
     }
 
-    captureJsFallbackAdmissions() {
+    // Pure with respect to processor state: the adopter writes the statistics.
+    captureJsFallbackAdmissions(plugins) {
         const admissions = new Map();
         const costs = new Map();
         const sampleRate = this.dspSampleRate || globalThis.sampleRate;
@@ -3473,7 +3558,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         let intrinsicCapacityExceeded = false;
         let insideSection = false;
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of plugins) {
             if (plugin.type === 'SectionPlugin') {
                 insideSection = true;
                 sectionEnabled = Boolean(plugin.enabled);
@@ -3516,12 +3601,14 @@ class PluginProcessor extends AudioWorkletProcessor {
                 capacityExceeded = true;
             }
         }
-        this.jsFallbackSampleChannelCosts = costs;
-        this.jsFallbackRequiredSampleChannels = requiredSampleChannels;
-        this.jsFallbackAdmittedSampleChannels = usedSampleChannels;
-        this.jsFallbackCapacityExceeded = capacityExceeded;
-        this.jsFallbackIntrinsicCapacityExceeded = intrinsicCapacityExceeded;
-        return admissions;
+        return {
+            admissions,
+            costs,
+            requiredSampleChannels,
+            admittedSampleChannels: usedSampleChannels,
+            capacityExceeded,
+            intrinsicCapacityExceeded
+        };
     }
 
     publishJsFallbackBudgetState(requestId) {
@@ -3553,12 +3640,17 @@ class PluginProcessor extends AudioWorkletProcessor {
     }
 
     refreshJsFallbackAdmissions() {
-        const admissions = this.captureJsFallbackAdmissions();
+        const budget = this.captureJsFallbackAdmissions(this.plugins);
         const changed = !this.executionAdmissionSnapshotsEqual(
             this.jsFallbackAdmissions,
-            admissions
+            budget.admissions
         );
-        this.jsFallbackAdmissions = admissions;
+        this.jsFallbackAdmissions = budget.admissions;
+        this.jsFallbackSampleChannelCosts = budget.costs;
+        this.jsFallbackRequiredSampleChannels = budget.requiredSampleChannels;
+        this.jsFallbackAdmittedSampleChannels = budget.admittedSampleChannels;
+        this.jsFallbackCapacityExceeded = budget.capacityExceeded;
+        this.jsFallbackIntrinsicCapacityExceeded = budget.intrinsicCapacityExceeded;
         return changed;
     }
 
@@ -3570,15 +3662,15 @@ class PluginProcessor extends AudioWorkletProcessor {
         return true;
     }
 
-    isJsFallbackAdmitted(plugin) {
-        return this.jsFallbackAdmissions.get(plugin.id) !== false;
+    isJsFallbackAdmitted(plugin, admissions = this.jsFallbackAdmissions) {
+        return admissions.get(plugin.id) !== false;
     }
 
-    captureExecutionLatencySnapshot() {
+    captureExecutionLatencySnapshot(plugins = this.plugins, admissions = this.jsFallbackAdmissions) {
         const snapshot = new Map();
         const sampleRate = this.dspSampleRate || globalThis.sampleRate;
-        for (const plugin of this.plugins) {
-            if (this.isPluginExecutionBypassed(plugin)) continue;
+        for (const plugin of plugins) {
+            if (this.isPluginExecutionBypassed(plugin, admissions)) continue;
             const entry = this.dspLive && this.dspBinding
                 ? this.wasmInstances.get(plugin.id)
                 : null;
@@ -3604,10 +3696,26 @@ class PluginProcessor extends AudioWorkletProcessor {
         return true;
     }
 
+    // D: latency that changed inside the instances (asset stages, kernel
+    // reconfiguration, admission) is adopted through the gate when the plan
+    // difference is audible; a closing gate adopts it once the queue drains.
     refreshDspPipelineForLatencyChange() {
+        const transition = this.transition;
+        if (transition.phase === 'closing') return false;
         this.refreshJsFallbackAdmissions();
         const snapshot = this.captureExecutionLatencySnapshot();
         if (this.executionLatencySnapshotsEqual(this.executionLatencySnapshot, snapshot)) {
+            return false;
+        }
+        // A settling gate is silent already: adopt directly and re-prime it.
+        let discontinuous = transition.phase === 'settling';
+        if (!discontinuous && !(transition.phase === 'open' && this.lastBlockPowerSkipped)) {
+            const candidate = this.masterBypass ? null : this.computeDspLatencyPlan(
+                this.plugins, snapshot, this.jsFallbackAdmissions, this.dspLatencyPlan, false);
+            discontinuous = this.latencyPlansDiffer(this.dspLatencyPlan, candidate, false);
+        }
+        if (discontinuous && (transition.phase === 'open' || transition.phase === 'opening')) {
+            transition.phase = 'closing';
             return false;
         }
         if (this.dspPipelineReady) {
@@ -3615,23 +3723,43 @@ class PluginProcessor extends AudioWorkletProcessor {
         } else {
             this.rebuildDspLatencyPlan(snapshot);
         }
+        if (discontinuous && transition.phase === 'settling') transition.commitFrame = this.currentFrame;
         return true;
+    }
+
+    // Allocation-free check run after every executing block. The master
+    // bypass and sleep dry copies do not execute the pipeline.
+    hasExecutionLatencyDrift() {
+        if (!this.dspLive || this.masterBypass || this.audioLevelMonitoring.isSleepMode) return false;
+        const snapshot = this.executionLatencySnapshot;
+        try {
+            for (const plugin of this.plugins) {
+                const entry = this.wasmInstances.get(plugin.id);
+                if (!entry?.ready) continue;
+                const expected = snapshot.get(plugin.id);
+                if (expected === undefined) continue;
+                if ((this.dspBinding.instanceLatency(entry.id) >>> 0) !== expected) return true;
+            }
+        } catch (error) {
+            this.reportDspFailure('latency', error?.message || String(error));
+        }
+        return false;
     }
 
     refreshDisplayDspRouting() {
         ++this.dspExecutionGeneration;
         if (this.spectrumTapRoute.size === 0 && !this.hasActiveDisplayDspExecutionBypass(true)) return;
-        this.refreshDspPipeline(null, true);
+        this.refreshDspPipeline();
     }
 
-    refreshDspPipeline(latencySnapshot = null, preserveLatencyHistory = false) {
+    refreshDspPipeline(latencySnapshot = null) {
         if (!(latencySnapshot instanceof Map)) {
             this.refreshJsFallbackAdmissions();
             latencySnapshot = this.captureExecutionLatencySnapshot();
         }
         this.dspPipelineReady = false;
         this.dspPipelinePluginCount = 0;
-        this.rebuildDspLatencyPlan(latencySnapshot, preserveLatencyHistory);
+        this.rebuildDspLatencyPlan(latencySnapshot);
         if (!this.dspLive || !this.dspBinding) {
             return;
         }
@@ -3728,27 +3856,37 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspLatencyPlan = null;
     }
 
-    rebuildDspLatencyPlan(latencySnapshot = null, preserveLatencyHistory = false) {
+    rebuildDspLatencyPlan(latencySnapshot = null) {
         if (!(latencySnapshot instanceof Map)) {
             this.refreshJsFallbackAdmissions();
             latencySnapshot = this.captureExecutionLatencySnapshot();
         }
-        const previousPlan = preserveLatencyHistory ? this.dspLatencyPlan : null;
-        this.resetDspLatencyPlan();
         this.executionLatencySnapshot = latencySnapshot;
-        if (this.masterBypass) {
+        // The current plan is always the history: delay lines whose delays and
+        // targets are unchanged keep their queued audio across any mutation.
+        const plan = this.masterBypass ? null : this.computeDspLatencyPlan(
+            this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
+        this.dspLatencyPlan = plan;
+        if (plan) {
+            this.publishDspPipelineLatency(plan.totalSamples, this.dspLive || plan.totalSamples > 0);
+        } else {
             this.publishDspPipelineLatency(0, false);
-            return;
         }
+    }
 
+    // Pure plan computation: nothing on the processor changes, so a candidate
+    // plan for a pending mutation can be compared against the current one.
+    // A candidate (allocateLines false) marks each new line with a shared
+    // placeholder, which differs by identity exactly as a fresh line would.
+    computeDspLatencyPlan(plugins, latencySnapshot, admissions, previousPlan, allocateLines = true) {
+        const createLine = (count, maximum) => (allocateLines
+            ? new WorkletSampleDelayLine(count, maximum)
+            : CANDIDATE_DELAY_LINE);
         const channelCount = Number.isInteger(this.outputChannelCount) &&
             this.outputChannelCount > 0 && this.outputChannelCount <= ET_DSP_MAX_CHANNELS
             ? this.outputChannelCount
             : 0;
-        if (channelCount === 0) {
-            this.publishDspPipelineLatency(0, false);
-            return;
-        }
+        if (channelCount === 0) return null;
 
         const latency = Array.from({ length: 5 }, () => new Uint32Array(channelCount));
         const hasContent = Array.from({ length: 5 }, () => new Uint8Array(channelCount));
@@ -3757,14 +3895,14 @@ class PluginProcessor extends AudioWorkletProcessor {
         const tapPositions = {};
         let insideSection = false;
         let sectionEnabled = true;
-        for (const plugin of this.plugins) {
+        for (const plugin of plugins) {
             if (plugin.type === 'SectionPlugin') {
                 insideSection = true;
                 sectionEnabled = Boolean(plugin.enabled);
                 continue;
             }
             if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
-            const executionBypassed = this.isPluginExecutionBypassed(plugin);
+            const executionBypassed = this.isPluginExecutionBypassed(plugin, admissions);
 
             const inputBus = plugin.inputBus;
             const outputBus = plugin.outputBus;
@@ -3800,8 +3938,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             const incomingLatency = inputLatency + pluginLatency;
             if (!Number.isSafeInteger(incomingLatency) || incomingLatency > 0xffffffff) {
                 console.error('DSP pipeline latency exceeds the supported sample range.');
-                this.publishDspPipelineLatency(0, false);
-                return;
+                return null;
             }
             for (let channel = firstChannel; channel < endChannel; channel++) {
                 const delay = inputLatency - (hasContent[inputBus][channel] ? latency[inputBus][channel] : 0);
@@ -3835,22 +3972,28 @@ class PluginProcessor extends AudioWorkletProcessor {
             tapPositions[plugin.id] = { input: inputLatency, output: incomingLatency,
                 execution: this.dspLive && this.wasmInstances.get(plugin.id)?.ready ? 'wasm' : 'js' };
             if (maximumDelay > 0 || maximumInputDelay > 0) {
+                // A line is reused only on the same route: after a bus or
+                // channel change its queue holds audio from the old source.
+                const route = `${inputBus}:${outputBus}:${plugin.channel}`;
                 const previousAction = previousPlan?.nodeActions.get(plugin.id);
-                const unchanged = previousAction?.delays.length === channelCount &&
+                const sameRoute = previousAction?.route === route &&
+                    previousAction.delays.length === channelCount;
+                const unchanged = sameRoute &&
                     delays.every((delay, channel) => delay === previousAction.delays[channel] &&
                         targets[channel] === previousAction.targets[channel]);
-                const inputUnchanged = previousAction?.inputDelays.length === channelCount &&
+                const inputUnchanged = sameRoute &&
                     inputDelays.every((delay, channel) => delay === previousAction.inputDelays[channel]);
                 nodeActions.set(plugin.id, {
+                    route,
                     targets,
                     delays,
                     delayLine: maximumDelay > 0
                         ? (unchanged ? previousAction.delayLine :
-                            new WorkletSampleDelayLine(channelCount, maximumDelay)) : null,
+                            createLine(channelCount, maximumDelay)) : null,
                     inputDelays,
                     inputDelayLine: maximumInputDelay > 0
                         ? (inputUnchanged ? previousAction.inputDelayLine :
-                            new WorkletSampleDelayLine(channelCount, maximumInputDelay)) : null
+                            createLine(channelCount, maximumInputDelay)) : null
                 });
             }
         }
@@ -3871,17 +4014,38 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         const outputUnchanged = previousPlan?.outputDelays.length === channelCount &&
             outputDelays.every((delay, channel) => delay === previousPlan.outputDelays[channel]);
-        this.dspLatencyPlan = {
+        return {
             nodeActions,
             tapPositions,
             outputDelays,
             outputDelayLine: maximumOutputDelay > 0
                 ? (outputUnchanged ? previousPlan.outputDelayLine :
-                    new WorkletSampleDelayLine(channelCount, maximumOutputDelay))
+                    createLine(channelCount, maximumOutputDelay))
                 : null,
             totalSamples
         };
-        this.publishDspPipelineLatency(totalSamples, this.dspLive || totalSamples > 0);
+    }
+
+    // Discontinuity predicate between the adopted plan and a candidate built
+    // with the adopted plan as history: any delay line that is dropped or
+    // replaced (instead of reused by identity) loses its queued audio, and a
+    // new line that delays already-flowing audio (a destination-bus delay or
+    // an input alignment) inserts a gap. A new line that only delays incoming
+    // audio (targets 2) starts empty and is inaudible.
+    latencyPlansDiffer(current, next, includeTotalSamples) {
+        const currentActions = current?.nodeActions ?? EMPTY_NODE_ACTIONS;
+        const nextActions = next?.nodeActions ?? EMPTY_NODE_ACTIONS;
+        for (const [pluginId, action] of currentActions) {
+            const candidate = nextActions.get(pluginId);
+            if (!candidate || candidate.delayLine !== action.delayLine ||
+                candidate.inputDelayLine !== action.inputDelayLine) return true;
+        }
+        for (const [pluginId, action] of nextActions) {
+            if (currentActions.has(pluginId)) continue;
+            if (action.inputDelayLine || action.targets.includes(1)) return true;
+        }
+        if ((current?.outputDelayLine ?? null) !== (next?.outputDelayLine ?? null)) return true;
+        return includeTotalSamples && (current?.totalSamples ?? 0) !== (next?.totalSamples ?? 0);
     }
 
     applyDspMergeCompensation(pluginId, processMode, pairStartChannel, singleChannelIndex,
@@ -3938,10 +4102,12 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
     }
 
+    normalizeOutputDelay(samples) {
+        return Number.isInteger(samples) && samples > 0 && samples <= 0xffffffff ? samples : 0;
+    }
+
     setOutputDelay(samples) {
-        const normalized = Number.isInteger(samples) && samples > 0 && samples <= 0xffffffff
-            ? samples
-            : 0;
+        const normalized = this.normalizeOutputDelay(samples);
         this.outputDelaySamples = normalized;
         this.outputDelayLine = normalized > 0
             ? new WorkletSampleDelayLine(this.outputChannelCount, normalized)
@@ -4228,6 +4394,8 @@ class PluginProcessor extends AudioWorkletProcessor {
             inputBus: params.inputBus ?? pluginConfig?.inputBus ?? 0,
             outputBus: params.outputBus ?? pluginConfig?.outputBus ?? 0,
             channel: params.channel ?? pluginConfig?.channel ?? null,
+            // Partial updates omit the flag; only an explicit false clears it.
+            assetPending: pluginConfig?.assetPending ?? previousPlugin?.assetPending === true,
             executionCapabilities: typeof __EFFECTUNE_WASM_ONLY__ !== 'undefined' && __EFFECTUNE_WASM_ONLY__
                 ? { ...pluginConfig?.executionCapabilities, requiresWasm: pluginConfig?.type !== 'SectionPlugin' }
                 : pluginConfig?.executionCapabilities ?? previousPlugin?.executionCapabilities ?? null
@@ -4266,76 +4434,258 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.visualizerTapNeedsPump = true;
     }
 
-    hasSamePluginRouting(left, right) {
-        return left.id === right.id && left.type === right.type &&
-            left.enabled === right.enabled && left.inputBus === right.inputBus &&
-            left.outputBus === right.outputBus && left.channel === right.channel;
-    }
-
-    updatePlugin(pluginConfig) {
-        if (!pluginConfig) return;
-        ++this.dspExecutionGeneration;
-        const index = this.plugins.findIndex(p => p.id === pluginConfig.id);
-        if (index !== -1) {
-            const normalizedPlugin = this.normalizePluginConfig(
-                pluginConfig,
-                this.plugins[index]
-            );
-            const preserveLatencyHistory = this.hasSamePluginRouting(this.plugins[index], normalizedPlugin);
-            this.dspPipelineReady = false;
-            try {
-                this.plugins[index] = normalizedPlugin;
-                this.reconcileDspPluginSafely(normalizedPlugin);
-            } finally {
-                this.refreshDspPipeline(null, preserveLatencyHistory);
-                this.publishWasmOnlyExecutionStates();
+    // Next pipeline state = f(current state, message). Plugin objects that
+    // the message does not touch are kept by identity so adoption and the
+    // candidate plan can tell untouched nodes from replaced ones.
+    nextPluginState(data) {
+        const plugins = this.plugins;
+        let next = plugins;
+        let masterBypass = this.masterBypass;
+        let outputDelaySamples = this.outputDelaySamples;
+        const replace = (config) => {
+            const index = next.findIndex(plugin => plugin.id === config?.id);
+            if (index === -1) return index;
+            if (next === plugins) next = plugins.slice();
+            next[index] = this.normalizePluginConfig(config, plugins[index]);
+            return index;
+        };
+        switch (data.type) {
+            case 'updatePlugin':
+                replace(data.plugin);
+                break;
+            case 'batchUpdatePlugins':
+                for (const config of data.plugins || []) replace(config);
+                break;
+            case 'updatePlugins':
+                next = data.plugins.map(config => this.normalizePluginConfig(config));
+                masterBypass = data.masterBypass ?? false;
+                break;
+            case 'addPlugin': {
+                if (!data.plugin) break;
+                if (replace(data.plugin) !== -1) break;
+                const index = Number.isInteger(data.index)
+                    ? (data.index < 0 ? 0 : (data.index > plugins.length ? plugins.length : data.index))
+                    : plugins.length;
+                next = plugins.slice();
+                next.splice(index, 0, this.normalizePluginConfig(data.plugin));
+                break;
             }
-
-            // console.log(`Updated plugin: ${pluginConfig.id}`);
-        } else {
-            // console.warn(`Plugin with id ${pluginConfig.id} not found for updating.`);
-            // Optionally add the plugin if it's meant to be dynamic
-            // this.plugins.push(pluginConfig);
-            // this.updatePlugin(pluginConfig); // Re-run to normalize properties
+            case 'removePlugin':
+                next = plugins.filter(plugin => plugin.id !== data.pluginId);
+                break;
+            case 'reorderPlugin': {
+                const from = data.fromIndex;
+                if (!Number.isInteger(from) || !Number.isInteger(data.toIndex) ||
+                    from < 0 || from >= plugins.length) break;
+                const to = data.toIndex < 0 ? 0
+                    : (data.toIndex >= plugins.length ? plugins.length - 1 : data.toIndex);
+                next = plugins.slice();
+                next.splice(to, 0, next.splice(from, 1)[0]);
+                break;
+            }
+            case 'reset':
+                next = [];
+                masterBypass = false;
+                outputDelaySamples = 0;
+                break;
+            case 'setOutputDelay':
+                outputDelaySamples = this.normalizeOutputDelay(data.samples);
+                break;
         }
+        return { plugins: next, masterBypass, outputDelaySamples };
     }
 
-    updatePlugins(pluginConfigs) {
+    adoptPluginState({ plugins, masterBypass }) {
         ++this.dspExecutionGeneration;
-        const normalizedPlugins = pluginConfigs.map(p => this.normalizePluginConfig(p));
-        // Parameter updates retain queued audio; topology changes start new routes.
-        // The latency planner also checks each delay before reusing its history.
-        const preserveLatencyHistory = this.plugins.length === normalizedPlugins.length &&
-            this.plugins.every((plugin, index) => this.hasSamePluginRouting(plugin, normalizedPlugins[index]));
+        this.masterBypass = masterBypass;
         this.dspPipelineReady = false;
+        const previous = this.plugins;
+        this.plugins = plugins;
         try {
-            this.plugins = normalizedPlugins;
-            const activeIds = new Set(normalizedPlugins.map(plugin => plugin.id));
-            for (const ids of [this.spectrumTapRoute, this.spectrumTaps, this.spectrumTapState]) {
-                for (const id of ids.keys()) {
-                    if (!activeIds.has(id)) ids.delete(id);
-                }
+            for (const plugin of previous) {
+                if (!plugins.some(candidate => candidate.id === plugin.id)) this.forgetPlugin(plugin.id);
             }
-            this.reconcileDspInstances();
+            for (const plugin of plugins) {
+                if (!previous.includes(plugin)) this.reconcileDspPluginSafely(plugin);
+            }
         } finally {
-            this.refreshDspPipeline(null, preserveLatencyHistory);
+            this.refreshDspPipeline();
             this.publishWasmOnlyExecutionStates();
         }
-        // Clear contexts for plugins that might have been removed?
-        // Or handle context cleanup based on removed IDs.
-        // For simplicity, we keep existing contexts; they won't be used if plugin is gone.
-        // console.log(`Updated plugin chain (${this.plugins.length} plugins)`);
     }
 
-    batchUpdatePlugins(pluginConfigs) {
-        for (const pluginConfig of pluginConfigs) {
-            this.updatePlugin(pluginConfig);
+    forgetPlugin(pluginId) {
+        this.pluginContexts.delete(pluginId);
+        this.spectrumTapRoute.delete(pluginId);
+        this.spectrumTaps.delete(pluginId);
+        this.spectrumTapState.delete(pluginId);
+        this.dspAssetCache.delete(pluginId);
+        this.dspAssetStates.delete(pluginId);
+        this.dspAssetStateRevisions.delete(pluginId);
+        this.dspAssetStateReplayEpochs.delete(pluginId);
+        for (const [key, deferred] of this.dspDeferredAssetStages) {
+            if (deferred.pluginId === pluginId) this.dspDeferredAssetStages.delete(key);
+        }
+        try {
+            this.destroyDspInstance(pluginId);
+        } catch (error) {
+            this.failDspEngine('reconcile', error?.message || String(error));
         }
     }
 
-    wasmOnlyExecutionState(plugin, engineStopped = false) {
+    // M: would applying this message be audible as a discontinuity?
+    mutationDiscontinuity(data) {
+        switch (data.type) {
+            case 'dspEnableTypes': {
+                if (!this.dspLive) return false;
+                const types = new Set((Array.isArray(data.types) ? data.types : [])
+                    .filter(type => !this.dspFailedTypes.has(type)));
+                return this.plugins.some(plugin => plugin.enabled &&
+                    types.has(plugin.type) !== this.dspEnabledTypes.has(plugin.type));
+            }
+            case 'dspModule':
+                return this.dspLive && this.plugins.some(plugin =>
+                    plugin.enabled && this.wasmInstances.get(plugin.id)?.ready === true);
+        }
+        const next = this.nextPluginState(data);
+        if (next.masterBypass !== this.masterBypass) return true;
+        // The bypass dry copy runs no plugin and no output delay.
+        if (this.masterBypass) return false;
+        if (data.type === 'updatePlugins' && data.gate === true) return true;
+        if (next.outputDelaySamples !== this.outputDelaySamples) return true;
+        if (next.plugins === this.plugins) return false;
+        return this.candidatePlanDiscontinuity(next.plugins);
+    }
+
+    // Builds the plan the candidate list would produce. Instances of changed
+    // nodes receive the candidate parameters so the latency they report is
+    // the candidate's; when the gate must close, the current parameters are
+    // stacked back until the queued message is applied at gain 0.
+    candidatePlanDiscontinuity(plugins) {
+        const restore = [];
+        for (const plugin of plugins) {
+            if (this.plugins.includes(plugin)) continue;
+            const previous = this.plugins.find(candidate => candidate.id === plugin.id);
+            if (previous && (previous.type !== plugin.type || (
+                previous.wasmParams === plugin.wasmParams &&
+                previous.wasmParamsHash === plugin.wasmParamsHash &&
+                previous.wasmParamBytes === plugin.wasmParamBytes))) continue;
+            this.reconcileDspPluginSafely(plugin);
+            if (previous) restore.push(previous);
+        }
+        const admissions = this.captureJsFallbackAdmissions(plugins).admissions;
+        const snapshot = this.captureExecutionLatencySnapshot(plugins, admissions);
+        const candidate = this.computeDspLatencyPlan(
+            plugins, snapshot, admissions, this.dspLatencyPlan, false);
+        const discontinuous = this.latencyPlansDiffer(this.dspLatencyPlan, candidate, true) ||
+            this.silentInsert(plugins, snapshot, admissions);
+        if (discontinuous) {
+            for (const plugin of restore) this.reconcileDspPluginSafely(plugin);
+        }
+        return discontinuous;
+    }
+
+    // A new executing instance outputs silence right after insertion when it
+    // primes a latency buffer (even in place of an equal-latency instance,
+    // which leaves the plan unchanged), still awaits its asset, or is an FIR
+    // Crossover on a route other than a stereo pair whose asset is not active
+    // yet. No latency plan shows any of these.
+    silentInsert(plugins, snapshot, admissions) {
+        let sectionEnabled = true;
+        for (const plugin of plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                sectionEnabled = Boolean(plugin.enabled);
+                continue;
+            }
+            if (!plugin.enabled || !sectionEnabled || !this.isNewInstance(plugin, this.plugins) ||
+                this.isPluginExecutionBypassed(plugin, admissions)) continue;
+            if (snapshot.get(plugin.id) > 0 || this.awaitsAsset(plugin)) return true;
+            if (plugin.type !== 'FIRCrossoverPlugin') continue;
+            const selection = workletRoutingSelection(plugin.channel, this.outputChannelCount);
+            if (!selection || selection.requiredChannels === 2) continue;
+            const entry = this.wasmInstances.get(plugin.id);
+            const state = entry
+                ? this.dspBinding.instanceAssetState(entry.id, 0)
+                : (this.dspAssetStates.get(plugin.id)?.get(0) ?? 0);
+            if ((state & 0xff) !== 3) return true;
+        }
+        return false;
+    }
+
+    // An instance is new to the output when its node was absent or of another
+    // type, or, given the previously ready WASM ids, when this change swapped
+    // its execution to a newly ready WASM instance (JS to WASM).
+    isNewInstance(plugin, plugins, previousReady = null) {
+        const previous = plugins.find(candidate => candidate.id === plugin.id);
+        return !previous || previous.type !== plugin.type ||
+            (previousReady !== null && !previousReady.has(plugin.id));
+    }
+
+    readyWasmInstanceIds() {
+        const ids = new Set();
+        if (!this.dspLive) return ids;
+        for (const [id, entry] of this.wasmInstances) {
+            if (entry.ready === true) ids.add(id);
+        }
+        return ids;
+    }
+
+    // Allocation-free: a ready instance whose asset is staged or preparing,
+    // or that the main thread still reports as resolving one.
+    awaitsAsset(plugin) {
+        if (!this.dspLive || this.wasmInstances.get(plugin.id)?.ready !== true) return false;
+        const state = (this.dspAssetStates.get(plugin.id)?.get(0) ?? 0) & 0xff;
+        return state === 1 || state === 2 || (state === 0 && plugin.assetPending === true);
+    }
+
+    // Records the executing instances a transition inserted that still await
+    // their asset; settling holds until each one settles or the cap expires.
+    holdAssetInserts(previousPlugins, previousReady) {
+        const transition = this.transition;
+        if (this.masterBypass) return;
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                sectionEnabled = Boolean(plugin.enabled);
+                continue;
+            }
+            if (!plugin.enabled || !sectionEnabled || !this.isNewInstance(plugin, previousPlugins, previousReady) ||
+                !this.awaitsAsset(plugin) || transition.assetHolds.includes(plugin.id)) continue;
+            if (transition.assetHolds.length === 0) transition.assetHoldStart = this.currentFrame;
+            transition.assetHolds.push(plugin.id);
+        }
+    }
+
+    releaseAssetHold(pluginId) {
+        const holds = this.transition.assetHolds;
+        const index = holds.indexOf(pluginId);
+        if (index !== -1) holds.splice(index, 1);
+    }
+
+    // Per settling block, allocation-free. Holds end on ACTIVE or ERROR,
+    // pending cleared, disable, removal, master bypass, or the time cap.
+    isAssetHoldActive() {
+        const transition = this.transition;
+        const holds = transition.assetHolds;
+        const cap = ASSET_HOLD_SECONDS * (this.dspSampleRate || globalThis.sampleRate);
+        if (!this.masterBypass && this.currentFrame - transition.assetHoldStart < cap) {
+            let sectionEnabled = true;
+            for (const plugin of this.plugins) {
+                if (plugin.type === 'SectionPlugin') {
+                    sectionEnabled = Boolean(plugin.enabled);
+                    continue;
+                }
+                if (plugin.enabled && sectionEnabled && holds.includes(plugin.id) &&
+                    this.awaitsAsset(plugin)) return true;
+            }
+        }
+        holds.length = 0;
+        return false;
+    }
+
+    wasmOnlyExecutionState(plugin, engineStopped = false, admissions = this.jsFallbackAdmissions) {
         if (engineStopped) return { state: 'bypassed', reason: 'engineStopped' };
-        const capacityExceeded = !this.isJsFallbackAdmitted(plugin);
+        const capacityExceeded = !this.isJsFallbackAdmitted(plugin, admissions);
         const entry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
         if (capacityExceeded) {
             if (entry?.ready) return { state: 'active', reason: null };
@@ -4370,14 +4720,14 @@ class PluginProcessor extends AudioWorkletProcessor {
             : { state: 'pending', reason: null };
     }
 
-    isPluginExecutionBypassed(plugin) {
+    isPluginExecutionBypassed(plugin, admissions = this.jsFallbackAdmissions) {
         if (this.isDisplayDspExecutionBypassed(plugin)) return true;
-        if (!this.isJsFallbackAdmitted(plugin)) {
+        if (!this.isJsFallbackAdmitted(plugin, admissions)) {
             const entry = this.dspLive ? this.wasmInstances.get(plugin.id) : null;
             if (!entry?.ready) return true;
         }
         return requiresWasmExecution(plugin)
-            ? this.wasmOnlyExecutionState(plugin).state !== 'active'
+            ? this.wasmOnlyExecutionState(plugin, false, admissions).state !== 'active'
             : pluginExecutionUnsupportedReason(
                 plugin,
                 this.dspSampleRate,
@@ -4385,9 +4735,14 @@ class PluginProcessor extends AudioWorkletProcessor {
             ) !== null;
     }
 
+    // A Rhythm Analyzer with its metronome click on writes audio, so it is not display-only.
+    isDisplayOnlyDsp(plugin) {
+        return DISPLAY_ONLY_DSP_TYPES.has(plugin?.type) &&
+            !(plugin.type === 'RhythmAnalyzerPlugin' && plugin.parameters?.ck === true);
+    }
+
     isDisplayDspExecutionBypassed(plugin) {
-        return this.powerPolicy.displayDspBypassed === true &&
-            DISPLAY_ONLY_DSP_TYPES.has(plugin?.type);
+        return this.powerPolicy.displayDspBypassed === true && this.isDisplayOnlyDsp(plugin);
     }
 
     isSpectrumTapAcquisitionActive() {
@@ -4409,7 +4764,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 continue;
             }
             if (!plugin.enabled || (insideSection && !sectionEnabled)) continue;
-            if (DISPLAY_ONLY_DSP_TYPES.has(plugin.type)) return true;
+            if (this.isDisplayOnlyDsp(plugin)) return true;
         }
         return false;
     }
@@ -4440,80 +4795,6 @@ class PluginProcessor extends AudioWorkletProcessor {
         }
         for (const pluginId of this.dspExecutionStates.keys()) {
             if (!activeIds.has(pluginId)) this.dspExecutionStates.delete(pluginId);
-        }
-    }
-
-    addPlugin(pluginConfig, index) {
-        if (!pluginConfig) return;
-        ++this.dspExecutionGeneration;
-        const existingIndex = this.plugins.findIndex(p => p.id === pluginConfig.id);
-        const normalizedPlugin = this.normalizePluginConfig(
-            pluginConfig,
-            existingIndex === -1 ? null : this.plugins[existingIndex]
-        );
-        this.dspPipelineReady = false;
-        if (existingIndex !== -1) {
-            try {
-                this.plugins[existingIndex] = normalizedPlugin;
-                this.reconcileDspPluginSafely(normalizedPlugin);
-            } finally {
-                this.refreshDspPipeline();
-                this.publishWasmOnlyExecutionStates();
-            }
-            return;
-        }
-
-        const insertIndex = Number.isInteger(index)
-            ? (index < 0 ? 0 : (index > this.plugins.length ? this.plugins.length : index))
-            : this.plugins.length;
-        try {
-            this.plugins.splice(insertIndex, 0, normalizedPlugin);
-            this.reconcileDspPluginSafely(normalizedPlugin);
-        } finally {
-            this.refreshDspPipeline();
-            this.publishWasmOnlyExecutionStates();
-        }
-    }
-
-    removePlugin(pluginId) {
-        const index = this.plugins.findIndex(p => p.id === pluginId);
-        if (index === -1) return;
-        ++this.dspExecutionGeneration;
-        this.dspPipelineReady = false;
-        try {
-            this.plugins.splice(index, 1);
-            this.pluginContexts.delete(pluginId);
-            this.spectrumTapRoute.delete(pluginId);
-            this.spectrumTaps.delete(pluginId);
-            this.spectrumTapState.delete(pluginId);
-            this.dspAssetCache.delete(pluginId);
-            this.dspAssetStates.delete(pluginId);
-            this.dspAssetStateRevisions.delete(pluginId);
-            this.dspAssetStateReplayEpochs.delete(pluginId);
-            for (const [key, deferred] of this.dspDeferredAssetStages) {
-                if (deferred.pluginId === pluginId) this.dspDeferredAssetStages.delete(key);
-            }
-            try {
-                this.destroyDspInstance(pluginId);
-            } catch (error) {
-                this.failDspEngine('reconcile', error?.message || String(error));
-            }
-        } finally {
-            this.refreshDspPipeline();
-            this.publishWasmOnlyExecutionStates();
-        }
-    }
-
-    reorderPlugin(fromIndex, toIndex) {
-        if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
-        if (fromIndex < 0 || fromIndex >= this.plugins.length) return;
-        const targetIndex = toIndex < 0 ? 0 : (toIndex >= this.plugins.length ? this.plugins.length - 1 : toIndex);
-        this.dspPipelineReady = false;
-        try {
-            const [plugin] = this.plugins.splice(fromIndex, 1);
-            this.plugins.splice(targetIndex, 0, plugin);
-        } finally {
-            this.refreshDspPipeline();
         }
     }
 
@@ -4887,10 +5168,86 @@ class PluginProcessor extends AudioWorkletProcessor {
         const outputBlockSize = outputs?.[0]?.[0]?.length;
         const blockSize = inputBlockSize || outputBlockSize || ET_DSP_DEFAULT_MAX_FRAMES;
         const startedAt = this.audioProcessingClockNow();
+        const blockStart = this.currentFrame;
+        this.lastBlockPowerSkipped = false;
         const keepAlive = this.processPipeline(inputs, outputs, parameters);
+        if (!this.lastBlockPowerSkipped && this.hasExecutionLatencyDrift()) {
+            this.refreshDspPipelineForLatencyChange();
+        }
+        if (this.transition.phase !== 'open') this.applyTransitionGain(outputs[0], blockStart, blockSize);
+        if (this.outputReadyRequests.length !== 0) this.answerOutputReady();
         if (this.visualizerTapNeedsPump) this.pumpDspTelemetry(blockSize);
         this.finishPipelineCpuMeasurement(startedAt, blockSize);
         return keepAlive;
+    }
+
+    // Output gate. closing: ramp to 0, then apply the queued mutations and
+    // start settling. settling: hold 0 until the compensation lines have been
+    // primed for the new plan, then opening: ramp back to 1.
+    applyTransitionGain(output, blockStart, frameCount) {
+        const transition = this.transition;
+        const channelCount = output?.length ?? 0;
+        const step = 1 / (this.FADE_DURATION * (this.dspSampleRate || globalThis.sampleRate));
+        let gain = transition.gain;
+        if (transition.phase === 'closing') {
+            for (let frame = 0; frame < frameCount; frame++) {
+                gain -= step;
+                if (gain < 0) gain = 0;
+                for (let channel = 0; channel < channelCount; channel++) output[channel][frame] *= gain;
+            }
+            transition.gain = gain;
+            if (gain === 0 || this.lastBlockPowerSkipped) this.commitTransitionQueue();
+            return;
+        }
+        let start = 0;
+        if (transition.phase === 'settling') {
+            if (transition.assetHolds.length !== 0 && this.isAssetHoldActive()) {
+                transition.commitFrame = blockStart + frameCount;
+            }
+            const readyFrame = transition.commitFrame +
+                (this.dspLatencyPlan?.totalSamples ?? 0) + this.outputDelaySamples;
+            start = readyFrame - blockStart;
+            if (start < 0) start = 0;
+            if (start > frameCount) start = frameCount;
+            for (let channel = 0; channel < channelCount; channel++) output[channel].fill(0, 0, start);
+            if (start === frameCount) return;
+            transition.phase = 'opening';
+        }
+        for (let frame = start; frame < frameCount; frame++) {
+            gain += step;
+            if (gain > 1) gain = 1;
+            for (let channel = 0; channel < channelCount; channel++) output[channel][frame] *= gain;
+        }
+        transition.gain = gain;
+        if (gain === 1) transition.phase = 'open';
+    }
+
+    // The published pipeline plays at full level: the gate is open, so the
+    // mutation queue is empty and no asset hold is active.
+    answerOutputReady() {
+        const transition = this.transition;
+        if (transition.phase !== 'open' || transition.assetHolds.length !== 0) return;
+        for (const requestId of this.outputReadyRequests) {
+            this.port.postMessage({ type: 'outputReady', requestId });
+        }
+        this.outputReadyRequests.length = 0;
+    }
+
+    // Settling always starts from gain 0, also when a non-executing block
+    // committed a partly closed gate. The queued messages are already
+    // decided, so they are applied without evaluating the predicate again.
+    commitTransitionQueue() {
+        const transition = this.transition;
+        transition.phase = 'settling';
+        transition.gain = 0;
+        transition.commitFrame = this.currentFrame;
+        const queue = transition.queue;
+        transition.queue = [];
+        const previousPlugins = this.plugins;
+        const previousReady = this.readyWasmInstanceIds();
+        for (const data of queue) this.applyPortMessage(data);
+        this.refreshDspPipelineForLatencyChange();
+        this.holdAssetInserts(previousPlugins, previousReady);
     }
 
     _mixFrequencyPreview(input) {
@@ -4952,6 +5309,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 this._finishPowerRender(0, 0, emptyBlockSize, emptyInputReason, false);
             }
             // Keep processor alive, even with no input, as input might appear later.
+            this.lastBlockPowerSkipped = true;
             this.clearAudioProcessingOverload();
             return true;
         }
@@ -5007,6 +5365,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                         blockSize,
                         inputActivity ? 'host-temporal-resume-required' : null
                     );
+                    this.lastBlockPowerSkipped = true;
                     this.clearAudioProcessingOverload();
                     return true;
                 }
@@ -5017,6 +5376,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                     power.skippedFrameCount += blockSize;
                     this.currentFrame += blockSize;
                     this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
+                    this.lastBlockPowerSkipped = true;
                     this.clearAudioProcessingOverload();
                     return true;
                 }
@@ -5049,6 +5409,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 power.skippedFrameCount += blockSize;
                 this.currentFrame += blockSize;
                 this._finishPowerRender(powerInputPower, 0, blockSize);
+                this.lastBlockPowerSkipped = true;
                 this.clearAudioProcessingOverload();
                 return true;
             } else if (directive === 'bypass-transport') {
@@ -5058,6 +5419,7 @@ class PluginProcessor extends AudioWorkletProcessor {
                 power.skippedFrameCount += blockSize;
                 this.currentFrame += blockSize;
                 this._finishPowerRender(powerInputPower, powerInputPower, blockSize);
+                this.lastBlockPowerSkipped = true;
                 this.clearAudioProcessingOverload();
                 return true;
             }

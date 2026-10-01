@@ -20,6 +20,7 @@ import {
     normalizeOutputChannelSelection,
     resolveCheckboxToggle
 } from './audio-utils/channel-selection.js';
+import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -27,19 +28,30 @@ let configSubmissionPromise = null;
 let backFromSweepTransitionPromise = null;
 const sweepBandChannelValues = new Map();
 
+function getOutputChannelCount() {
+    const count = Number(document.getElementById('outputChannelCount').value);
+    return SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(count) ? count : 2;
+}
+
 function getSweepBandEditorChannels(selection = getOutputChannelSelection()) {
-    return selection.includes('all') ? INDIVIDUAL_CHANNELS : selection;
+    return selection.includes('all') ? INDIVIDUAL_CHANNELS.slice(0, getOutputChannelCount()) : selection;
 }
 
 function getOutputChannelSelection() {
     return normalizeOutputChannelSelection(
-        [...document.querySelectorAll('#outputChannel input:checked')].map(input => input.value)
+        [...document.querySelectorAll('#outputChannel input:checked')]
+            .filter(input => !input.disabled).map(input => input.value)
     );
 }
 
 function applyOutputChannelSelection(selection) {
-    const selected = new Set(normalizeOutputChannelSelection(selection));
+    const available = new Set(['all', ...INDIVIDUAL_CHANNELS.slice(0, getOutputChannelCount())]);
+    const selected = new Set(normalizeOutputChannelSelection(
+        normalizeOutputChannelSelection(selection).filter(channel => available.has(channel))
+    ));
     document.querySelectorAll('#outputChannel input[type="checkbox"]').forEach(input => {
+        input.disabled = !available.has(input.value);
+        input.closest('label').hidden = input.disabled;
         input.checked = selected.has(input.value);
     });
     syncMultichannelControls([...selected]);
@@ -148,7 +160,7 @@ function getSweepBandConfiguration() {
     return {
         mode: getSweepBandMode(),
         common,
-        perChannel: INDIVIDUAL_CHANNELS.map(channel => {
+        perChannel: INDIVIDUAL_CHANNELS.slice(0, getOutputChannelCount()).map(channel => {
             const values = sweepBandChannelValues.get(channel) || common;
             return { channel, minFreq: values.minFreq, maxFreq: values.maxFreq };
         })
@@ -344,6 +356,7 @@ function setupEventConnections() {
             audioInputId: document.getElementById('audioInput').value,
             audioOutput: document.getElementById('audioOutput').options[document.getElementById('audioOutput').selectedIndex].text,
             audioOutputId: document.getElementById('audioOutput').value,
+            outputChannelCount: getOutputChannelCount(),
             sampleRate: parseInt(document.getElementById('sampleRate').value),
             sweepLength: document.getElementById('sweepLength').value,
             sweepBand: getSweepBandConfiguration(),
@@ -634,6 +647,7 @@ function saveUserSettings(event) {
         // Measurement config settings
         sampleRate: document.getElementById('sampleRate').value,
         inputChannel: document.getElementById('inputChannel').value,
+        outputChannelCount: getOutputChannelCount(),
         outputChannel: outputChannels.length > 1 ? 'multi' : outputChannels[0],
         ...(outputChannels.length > 1 ? { outputChannels } : {}),
         sweepLength: document.getElementById('sweepLength').value,
@@ -691,6 +705,9 @@ function loadUserSettings() {
         // Measurement config settings
         if (settings.sampleRate) document.getElementById('sampleRate').value = settings.sampleRate;
         if (settings.inputChannel) document.getElementById('inputChannel').value = settings.inputChannel;
+        if (SUPPORTED_OUTPUT_CHANNEL_COUNTS.includes(settings.outputChannelCount)) {
+            document.getElementById('outputChannelCount').value = settings.outputChannelCount;
+        }
         applyOutputChannelSelection(settings.outputChannels || settings.outputChannel || 'all');
         if (settings.sweepLength) document.getElementById('sweepLength').value = settings.sweepLength;
         const legacySweepBand = typeof settings.sweepBandLimited === 'boolean' ? {
@@ -877,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load user settings when app starts
     loadUserSettings();
-    syncMultichannelControls();
+    applyOutputChannelSelection(getOutputChannelSelection());
 
     // Apply Nyquist limits to the sweep frequency inputs based on current sample rate
     updateSweepFreqLimits();
@@ -893,6 +910,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('inputChannel').addEventListener('change', saveUserSettings);
     document.getElementById('outputChannel').addEventListener('change', saveUserSettings);
+    document.getElementById('outputChannelCount').addEventListener('change', () => {
+        applyOutputChannelSelection(getOutputChannelSelection());
+        saveUserSettings();
+    });
     document.getElementById('sweepLength').addEventListener('change', saveUserSettings);
     document.getElementById('sweepBandMode').addEventListener('change', () => {
         updateSweepBandLimitControls();

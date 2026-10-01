@@ -41,7 +41,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(plugins/analyzer/note_spectrogram/models.cmake)
+include(plugins/analyzer/tree_models/models.cmake)
 
 add_library(
   pffft STATIC
@@ -94,8 +94,11 @@ if(NOT EMSCRIPTEN)
   # Golden parity requires separate multiply-add rounding in these kernels.
   set_property(
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/analog_meter/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/rhythm_analyzer/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/attack_tonal_balance/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/eq/tonal_balance_eq/calibrate_tables.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/eq/tonal_balance_eq/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/bluetooth_sbc_simulator/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/cassette_artifacts/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/lofi/tape_artifacts/kernel.cpp"
@@ -118,7 +121,7 @@ target_include_directories(
   effetune_dsp_core
   PUBLIC include bindings/generated
   PRIVATE core generated/cpp)
-target_link_libraries(effetune_dsp_core PUBLIC pffft effetune_note_models)
+target_link_libraries(effetune_dsp_core PUBLIC pffft effetune_tree_models)
 target_compile_definitions(
   effetune_dsp_core
   PRIVATE $<$<BOOL:${ET_SIMD}>:ET_SIMD=1>
@@ -293,13 +296,21 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_rhythm_analyzer_tests
+    SOURCES plugins/analyzer/rhythm_analyzer/native_test.cpp
+    INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
     effetune_dsp_note_spectrogram_tests
     SOURCES plugins/analyzer/note_spectrogram/native_test.cpp
     INCLUDE_DIRS core
     WRAP_MALLOC)
   et_add_dsp_test(
-    effetune_dsp_multi_f0_heap_tree_model_tests
-    SOURCES plugins/analyzer/note_spectrogram/heap_tree_model_test.cpp)
+    effetune_dsp_note_spectrogram_model_tests
+    SOURCES plugins/analyzer/note_spectrogram/model_test.cpp)
+  et_add_dsp_test(
+    effetune_dsp_heap_tree_model_tests
+    SOURCES plugins/analyzer/tree_models/heap_tree_model_test.cpp)
   et_add_dsp_test(
     effetune_dsp_stereo_meter_tests
     SOURCES plugins/analyzer/stereo_meter/native_test.cpp)
@@ -543,6 +554,22 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     SOURCES plugins/eq/group_delay_peq/native_test.cpp
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_tonal_balance_eq_tests
+    SOURCES plugins/eq/tonal_balance_eq/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
+  if(MSVC)
+    # AutomationCatalog.h carries UTF-8 display strings.
+    target_compile_options(effetune_dsp_tonal_balance_eq_tests PRIVATE /utf-8)
+  endif()
+  if(NOT ET_NATIVE_TEST_WARNING_CHECK)
+    # Standalone generator of calibration_tables.h (not a test).
+    add_executable(effetune_dsp_tonal_balance_eq_calibrate
+                   plugins/eq/tonal_balance_eq/calibrate_tables.cpp)
+    target_include_directories(effetune_dsp_tonal_balance_eq_calibrate PRIVATE core)
+    target_link_libraries(effetune_dsp_tonal_balance_eq_calibrate PRIVATE effetune_dsp_core)
+  endif()
   et_add_dsp_test(
     effetune_dsp_bandwidth_extender_tests
     SOURCES plugins/saturation/bandwidth_extender/native_test.cpp

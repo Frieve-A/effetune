@@ -220,7 +220,8 @@ const LevelAdjustment = {
             channel,
             band.minFreq,
             band.maxFreq,
-            outputBands
+            outputBands,
+            this.measurementConfig.outputChannelCount
         );
     },
 

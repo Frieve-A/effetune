@@ -237,6 +237,10 @@ input[type="radio"] {
     gap: 8px;
 }
 
+.channel-checkbox-group label[hidden] {
+    display: none;
+}
+
 .channel-checkbox-group label {
     display: inline-flex;
     align-items: center;

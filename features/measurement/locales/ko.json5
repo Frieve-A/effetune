@@ -24,6 +24,8 @@
   "help:inputChannel": "선택한 오디오 입력 장치에 보정 마이크가 연결된 채널을 선택하세요.",
   "label:audioOutput": "오디오 출력 장치:",
   "help:audioOutput": "측정 신호를 출력하는 오디오 장치를 선택하세요.",
+  "label:outputChannelCount": "출력 장치 채널 수:",
+  "help:outputChannelCount": "출력 장치 구성에 맞게 설정하세요(5.1은 6, 7.1은 8). 일부 채널만 측정하더라도 테스트 신호와 측정에는 항상 이 채널 수를 사용합니다.",
   "label:outputChannel": "출력 채널:",
   "help:outputChannel": "측정할 출력 채널을 하나 이상 선택하세요. 모든 채널을 선택하면 개별 채널 선택이 해제됩니다.",
   "help:audioInput": "측정 마이크가 연결된 오디오 입력 장치를 지정하세요.",

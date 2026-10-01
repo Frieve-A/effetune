@@ -24,6 +24,8 @@
   "help:inputChannel": "Выберите канал, к которому подключён калибровочный микрофон для выбранного устройства ввода аудио.", // Help text for input channel
   "label:audioOutput": "Устройство для вывода аудио:", // Label for audio output device selection
   "help:audioOutput": "Выберите аудиоустройство, которое воспроизводит измерительный сигнал.", // Help text for audio output
+  "label:outputChannelCount": "Число каналов устройства вывода:",
+  "help:outputChannelCount": "Укажите число каналов согласно конфигурации устройства вывода (6 для 5.1, 8 для 7.1). Тестовые сигналы и измерения всегда используют это число, даже при измерении только некоторых каналов.",
   "label:outputChannel": "Выходной канал:", // Label for output channel selection
   "help:outputChannel": "Выберите один или несколько выходных каналов для измерения. При выборе «Все каналы» отдельные каналы снимаются.", // Help text for output channel
   "help:audioInput": "Укажите устройство ввода аудио, к которому подключён измерительный микрофон.", // Help text for audio input

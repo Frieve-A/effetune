@@ -149,21 +149,20 @@ export class PipelineWorkletSync {
      */
     preparePluginData(plugin) {
         const parameters = this.getPluginParameters(plugin);
-        if (typeof plugin.getWorkletPluginData === 'function') {
-            return attachPluginExecutionCapabilities(
-                plugin,
-                plugin.getWorkletPluginData(parameters)
-            );
-        }
-        return attachPluginExecutionCapabilities(plugin, {
-            id: plugin.id,
-            type: plugin.constructor.name,
-            enabled: plugin.enabled,
-            parameters: parameters,
-            inputBus: plugin.inputBus,
-            outputBus: plugin.outputBus,
-            channel: plugin.channel
-        });
+        const data = typeof plugin.getWorkletPluginData === 'function'
+            ? plugin.getWorkletPluginData(parameters)
+            : {
+                id: plugin.id,
+                type: plugin.constructor.name,
+                enabled: plugin.enabled,
+                parameters: parameters,
+                inputBus: plugin.inputBus,
+                outputBus: plugin.outputBus,
+                channel: plugin.channel
+            };
+        // Same flag as PipelineProcessor.prepareSectionAwarePluginData.
+        data.assetPending = plugin.externalAssetInfo?.pending === true;
+        return attachPluginExecutionCapabilities(plugin, data);
     }
 
     /**

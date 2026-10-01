@@ -4336,6 +4336,7 @@ body.layout-mobile :is(
 }
 /* Visualizer shares the main view shell and remains mounted in mini mode. */
 body.view-visualizer:not(.layout-mobile):not(.layout-mini-player) { display: block; width: auto; }
+body.view-visualizer:not(.layout-mobile) .sidebar-button { display: none; }
 #visualizerView { display: none; min-width: 0; width: 100%; box-sizing: border-box; }
 body.view-visualizer #visualizerView { display: block; }
 body.view-visualizer .main-container,

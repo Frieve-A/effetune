@@ -1,0 +1,46 @@
+{
+  "generator": "dsp/plugins/eq/tonal_balance_eq/calibrate_tables.cpp",
+  "generator_sha256": "fc4cbafdfb376e3e63e7afbc39d0bd12dde5eab8c99a2cf8c212c9dbc4692fb4",
+  "analysis_sha256": "9458516ed00786595804200aeb2c02f0e9f2a5639574cfef1b7e3d4ed8e9c39a",
+  "output": "calibration_tables.h",
+  "signal": {"kind": "gaussian white noise", "std": 0.10000000000000001, "channels": 1, "seed": 12345},
+  "precision_targets": {"gap_zero_se_over_sigma_tau_max": 0.20000000000000001, "sigma_relative_se": 0.070000000000000007, "minimum_segments": 8, "segment_seconds": 1200.0, "settle_seconds": 600.0},
+  "length_rule": "segments of 20 tau_max are independent windows; the run is extended until the realised standard errors (spread of the segment estimates) meet the targets",
+  "rho_lags_summed": 3,
+  "evidence_z": 3.0,
+  "elapsed_seconds": 57.443925700000001,
+  "families": [
+    {
+      "name": "44100",
+      "sample_rate": 44100.0,
+      "fft_size": 4096,
+      "hop_size": 1024,
+      "seconds_analysed": 13799.804807256238,
+      "segments": 11,
+      "converged": true,
+      "evidence_seconds": 0.24081780816720749,
+      "realised": {
+        "worst_gap_zero_se_over_sigma_tau_max": 0.13568194594504029,
+        "worst_sigma_relative_se": 0.069346369962056301,
+        "worst_abs_rho_lag4_to_8": 0.005059149094308317,
+        "worst_abs_gap_mean_minus_gap_zero_db": 0.30581363680239027
+      }
+    },
+    {
+      "name": "48000",
+      "sample_rate": 48000.0,
+      "fft_size": 4096,
+      "hop_size": 1024,
+      "seconds_analysed": 12600.0,
+      "segments": 10,
+      "converged": true,
+      "evidence_seconds": 0.22209910608052752,
+      "realised": {
+        "worst_gap_zero_se_over_sigma_tau_max": 0.12981114582426426,
+        "worst_sigma_relative_se": 0.066477275254891569,
+        "worst_abs_rho_lag4_to_8": 0.0047117732389848578,
+        "worst_abs_gap_mean_minus_gap_zero_db": 0.28448123132316838
+      }
+    }
+  ]
+}

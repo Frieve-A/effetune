@@ -91,6 +91,20 @@
                     </div>
                     <div class="explanation-text" data-i18n="help:audioOutput">Select the audio device that outputs the measurement signal.</div>
                     <div class="form-group">
+                        <label for="outputChannelCount" data-i18n="label:outputChannelCount">Output Device Channels:</label>
+                        <select id="outputChannelCount" required>
+                            <option value="2" selected>2</option>
+                            <option value="4">4</option>
+                            <option value="6">6</option>
+                            <option value="8">8</option>
+                            <option value="10">10</option>
+                            <option value="12">12</option>
+                            <option value="14">14</option>
+                            <option value="16">16</option>
+                        </select>
+                    </div>
+                    <div class="explanation-text" data-i18n="help:outputChannelCount">Match the output device's channel layout (6 for 5.1, 8 for 7.1). Test signals and measurements always use this channel count, even when measuring only some channels.</div>
+                    <div class="form-group">
                         <label for="outputChannel" data-i18n="label:outputChannel">Output Channel:</label>
                         <div id="outputChannel" class="channel-checkbox-group">
                             <label class="all-channels-choice"><input type="checkbox" value="all" checked><span data-i18n="option:all">All Channels</span></label>

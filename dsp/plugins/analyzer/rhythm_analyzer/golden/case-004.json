@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "RhythmAnalyzerPlugin",
+  "id": "four-channel-passthrough",
+  "stimulus": "fs",
+  "sampleRate": 48000,
+  "channels": 4,
+  "frameCount": 635,
+  "blockSize": 127,
+  "channelMode": "all4",
+  "channel": "A",
+  "caseIndex": 3,
+  "seed": "0xeffe7a5d",
+  "params": {
+    "mn": 40,
+    "mx": 240,
+    "ck": false
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:50ae8e8828195347d0a72f7cdfd8ed5e0613ad70b00c65c1ce462f5a97e106e9",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type RhythmAnalyzerPlugin --promote-production-native",
+  "outputFloats": 2540,
+  "byteLength": 10160,
+  "binary": "case-004.f32"
+}

@@ -148,7 +148,7 @@ test('Gradient direction survives presets and sharing while existing layouts kee
         assert.equal(normalizeLayout(layout).items[0].palette.direction, 'frequency');
         assert.equal(validateLayout(layout), false);
     }
-    for (const type of ['oscilloscope', 'stereo', 'level-meter', 'analog-meter', 'title']) {
+    for (const type of ['oscilloscope', 'stereo', 'level-meter', 'analog-meter', 'rhythm-analyzer', 'title']) {
         const item = createItem(type, type);
         item.palette.direction = 'intensity';
         assert.equal(Object.hasOwn(normalizeLayout({ ...createDefaultLayout(), items: [item] }).items[0].palette, 'direction'), false);
@@ -204,6 +204,46 @@ test('Analog Meter defaults, steps, and axes follow the Analog Meter effect', ()
     assert.equal(validateLayout(layout), true);
     assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params, meter.params);
     meter.params.at = 7.55;
+    assert.equal(validateLayout(layout), false);
+});
+
+test('Rhythm Analyzer defaults and bounds follow the Rhythm Analyzer effect', () => {
+    const rhythm = createItem('rhythm-analyzer', 'rhythm');
+    assert.deepEqual(rhythm.params, { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: true, vm: true, ve: true, vl: true, showAxes: true, showAxisNumbers: true });
+    assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 250, mx: 60.4, sp: 5 }),
+        { mn: 192, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: true, vm: true, ve: true, vl: true, showAxes: true, showAxisNumbers: true });
+    assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 10, mx: 900, sp: 12, showAxes: false }),
+        { mn: 40, mx: 240, sp: 12, showBeat: true, showBpm: true, vt: true, vm: true, ve: true, vl: true, showAxes: false, showAxisNumbers: true });
+    assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 40, mx: 240, sp: 8, vt: false, vm: false, ve: false, vl: false }),
+        { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: false, ve: false, vl: false, showAxes: true, showAxisNumbers: true });
+    assert.deepEqual(paletteModesForType('rhythm-analyzer'), ['solid', 'gradient']);
+    rhythm.params = { mn: 60, mx: 180, sp: 12, showBeat: false, showBpm: true, vt: true, vm: false, ve: true, vl: false, showAxes: true, showAxisNumbers: true };
+    rhythm.palette.mode = 'gradient';
+    const layout = { ...createDefaultLayout(), items: [rhythm] };
+    assert.equal(validateLayout(layout), true);
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params, rhythm.params);
+    Object.assign(rhythm.style, { fontSize: 120, fontFamily: 'serif', align: 'right', verticalAlign: 'bottom', bold: true, outlineWidth: 2,
+        beatSize: 75, beatLineWidth: 5, beatFillOpacity: .5, beatStrokeOpacity: .8, beatUsePalette: false, beatHoldTime: 50, beatDecayTime: 200,
+        beatFillColor: '#123456', beatStrokeColor: '#abcdef', beatFitBpm: false });
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0], rhythm);
+    const old = structuredClone(layout);
+    delete old.items[0].params.showBeat;
+    delete old.items[0].params.showBpm;
+    old.items[0].style = {};
+    assert.equal(validateLayout(old), true, 'Older Rhythm layouts still load');
+    assert.equal(normalizeLayout(old).items[0].style.align, 'center');
+    assert.equal(normalizeLayout(old).items[0].style.fontSize, 96);
+    assert.equal(normalizeLayout(old).items[0].style.beatSize, 90);
+    assert.equal(normalizeLayout(old).items[0].style.beatFitBpm, true);
+    const previous = structuredClone(layout);
+    for (const key of Object.keys(previous.items[0].style)) if (key.startsWith('beat')) delete previous.items[0].style[key];
+    assert.equal(validateLayout(previous), true, 'Saved BPM typography remains valid without circle settings');
+    const invalid = structuredClone(layout);
+    Object.assign(invalid.items[0].style, { beatSize: 500, beatLineWidth: -2, beatFillOpacity: 2, beatStrokeOpacity: -1 });
+    const normalized = normalizeLayout(invalid).items[0].style;
+    assert.deepEqual([normalized.beatSize, normalized.beatLineWidth, normalized.beatFillOpacity, normalized.beatStrokeOpacity], [100, 0, 1, 0]);
+    assert.equal(validateLayout(invalid), false);
+    rhythm.params.sp = 5;
     assert.equal(validateLayout(layout), false);
 });
 

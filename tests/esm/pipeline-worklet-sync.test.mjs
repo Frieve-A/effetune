@@ -130,7 +130,8 @@ test('worklet update methods send full plugin payloads and update the URL', asyn
     parameters: { gain: -2 },
     inputBus: 1,
     outputBus: 2,
-    channel: 'L'
+    channel: 'L',
+    assetPending: false
   });
   assert.equal(messages[1].type, 'updatePlugin');
   assert.equal(messages[2].type, 'updatePlugin');
@@ -208,7 +209,8 @@ test('master bypass synchronizes processor state and worklet payloads', async ()
       parameters: { mix: 1 },
       inputBus: null,
       outputBus: null,
-      channel: null
+      channel: null,
+      assetPending: false
     }],
     masterBypass: 1
   });

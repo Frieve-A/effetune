@@ -195,10 +195,12 @@ export class MeasurementController {
         
         const outputChannels = selectionFromConfig(configSnapshot);
         const multiChannel = isMultiChannelSelection(outputChannels);
-        if (outputChannels[0] === 'all' && configSnapshot.sweepBand?.mode === 'perChannel') {
+        if (configSnapshot.outputChannelCount !== undefined ||
+            (outputChannels[0] === 'all' && configSnapshot.sweepBand?.mode === 'perChannel')) {
             await audioUtils.waitForWhiteNoiseRouteIdle?.();
             const route = await prepareMeasurementOutputRoute(
-                audioUtils.audioContext, configSnapshot.audioOutputId, 'all');
+                audioUtils.audioContext, configSnapshot.audioOutputId, outputChannels.at(-1), {},
+                configSnapshot.outputChannelCount);
             configSnapshot.outputChannelCount = route.outputChannels;
             releaseMeasurementOutputRoute(route);
         }

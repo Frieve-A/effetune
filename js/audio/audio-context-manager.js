@@ -545,7 +545,8 @@ export class AudioContextManager {
      * @returns {Promise<void>}
      */
     async resumeAudioContext({ bypassPowerPolicy = false, resumeKind = 'unexpected-recovery' } = {}) {
-        if (!bypassPowerPolicy && this.powerStateDelegate?.enabled) {
+        if (!bypassPowerPolicy && (this.powerStateDelegate?.enabled ||
+            this.powerStateDelegate?.audioManager?.needsSystemResumeRecovery)) {
             return this.powerStateDelegate.ensureActive?.(resumeKind);
         }
         if (this.audioContext && this.audioContext.state === 'running') {

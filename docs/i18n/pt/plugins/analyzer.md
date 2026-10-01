@@ -1,6 +1,6 @@
 ---
 title: "Plugins de Análise - EffeTune"
-description: "Plugins de análise de áudio, incluindo Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Spectrogram, Spectrum Analyzer e Stereo Meter."
+description: "Plugins de análise de áudio, incluindo Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Rhythm Analyzer, Spectrogram, Spectrum Analyzer e Stereo Meter."
 lang: pt
 ---
 
@@ -16,6 +16,7 @@ Uma coleção de plugins que permitem visualizar sua música de maneiras fascina
 - [Note Spectrogram](#note-spectrogram) - Mostra as alturas estimadas ao longo do tempo em um piano roll
 - [Oscilloscope](#oscilloscope) - Exibe visualização da forma de onda em tempo real
 - [Pitch Meter](#pitch-meter) - Acompanha uma frequência fundamental e sua afinação ao longo do tempo
+- [Rhythm Analyzer](#rhythm-analyzer) - Mostra o andamento, os toques tempo a tempo, e o quanto cada parte se adianta ou se atrasa
 - [Spectrogram](#spectrogram) - Cria padrões visuais bonitos a partir da sua música
 - [Spectrum Analyzer](#spectrum-analyzer) - Mostra as diferentes frequências na sua música
 - [Stereo Meter](#stereo-meter) - Visualiza o balanço estéreo e o movimento do som
@@ -245,6 +246,75 @@ Acompanha uma frequência fundamental (F0) por vez em um piano roll móvel de do
 - **Lowest Note** - Define o limite inferior da faixa exibida e analisada. Padrão: C2. O menor ajuste disponível é A0.
 - **Highest Note** - Define o limite superior da faixa exibida e analisada. Padrão: C7. O maior ajuste disponível é C8.
 - A entrada estéreo é analisada pela média dos dois primeiros canais; a entrada mono é usada diretamente. Conteúdo com polaridades muito opostas pode se cancelar na média e não deixar traço de altura.
+
+## Rhythm Analyzer
+
+Calcula o andamento da sua música e mostra, tempo a tempo, onde caem os toques de bateria e instrumentos e o quanto cada parte está adiantada ou atrasada. Use-o para descobrir o BPM de uma música, verificar quanto swing um groove tem, ver se a caixa fica atrasada em relação ao tempo, ou localizar onde entra um fill ou muda um padrão. O som só muda se o **Metronome Click** estiver ativado.
+
+### Guia de uso
+
+- **Verifique o andamento**: toque uma música com um pulso claro e estável. Em poucos segundos, o cabeçalho mostra o BPM com **LOCKED**, e o tempograma marca esse mesmo andamento como **adopted**. O analisador às vezes segue um nível de tempo diferente daquele que você marca com o pé, então observe também **×½**, **×2** e **strongest** no cabeçalho: se algum deles combinar com o ritmo do seu pé, esse é o andamento que você sente.
+- **Ouça onde cai o tempo**: ative o **Metronome Click** para ouvir um clique em cada tempo detectado. Se os cliques caem no pulso que você marca com o pé, o analisador encontrou o tempo. Se caem entre as batidas do seu pé, ou no dobro ou na metade da sua velocidade, o analisador está seguindo outra posição ou nível de tempo; veja **Corrija um travamento no dobro ou na metade do andamento** abaixo e **Limitações**.
+- **Coloque-o por último ao usar o clique**: o clique é misturado ao áudio que sai do analisador, então qualquer efeito depois dele também processa o clique. Coloque o Rhythm Analyzer no fim da cadeia de efeitos enquanto ouve com o clique.
+- **Desligue o clique antes de processar arquivos**: com o **Metronome Click** ativado, os cliques são gravados em qualquer arquivo que você processar. Desligue-o antes.
+- **Corrija um travamento no dobro ou na metade do andamento**: se uma balada lenta trava no dobro do seu andamento, diminua o **Max BPM** abaixo desse valor (por exemplo, para 100 em uma balada de 60 BPM). Se uma música rápida trava na metade da velocidade, aumente o **Min BPM** acima desse valor. A análise recomeça com os novos limites.
+- **Leia um groove estável**: com música programada ou tocada com clique, os pontos ficam perto do centro de suas faixas, e **jitter** fica perto de 0 ms. Quando uma parte toca sistematicamente atrasada ou adiantada em relação às demais, seus pontos ficam acima ou abaixo do centro da faixa, nas mesmas posições todas as vezes. Uma caixa que chega 15 ms atrás do bumbo e do chimbal, por exemplo, aparece como pontos Mid acima do centro da faixa nos tempos 2 e 4, e como uma marca Mid rotulada +15 na coluna **1** da lente de batida.
+- **Leia o swing**: **swing** mostra o quanto o contratempo está atrasado: 1.00:1 é reto, 2.00:1 é um shuffle de tercinas completo, e valores intermediários são um swing mais leve. Em música claramente com swing, a lente de batida coloca os toques do contratempo na coluna **⅔** em vez de **&**.
+- **Encontre fills e mudanças de seção**: um anel marca um toque que a mesma banda não tocou na mesma posição nem um nem dois intervalos antes. Enquanto um padrão se repete, poucos anéis aparecem; um fill ou os primeiros compassos de uma nova seção mostram muitos. As linhas de eco abaixo das faixas principais permitem comparar o novo padrão com os anteriores.
+- **Quando aparece searching**: enquanto o pulso não está claro, o cabeçalho mostra **searching** com o último andamento travado entre parênteses, as faixas continuam rolando nesse andamento dentro de uma área sombreada, e os toques são desenhados como círculos vazados, sem medição de adiantamento ou atraso. O analisador trava depois de ficar seguro do pulso por um tempo inteiro. Com um pulso claro e estável, isso leva alguns segundos; música clássica e execuções com rubato podem levar mais tempo. Quando a música para, o analisador deixa de mostrar o pulso em menos de meio segundo e trava de novo quando a música volta.
+
+### Parâmetros
+
+- **Min BPM** (40 a 192; padrão 40) - Define o andamento mais baixo em que o analisador pode travar. Aumente quando o analisador travar na metade do andamento que você sente.
+- **Max BPM** (50 a 240; padrão 240) - Define o andamento mais alto em que o analisador pode travar. Diminua quando o analisador travar no dobro do andamento que você sente. O analisador só trava em andamentos entre o **Min BPM** e o **Max BPM**, mas o andamento mostrado pode passar um pouco dos limites quando a música acelera ou desacelera. O **Max BPM** é sempre mantido em pelo menos 1,25 vez o **Min BPM**; quando uma alteração romperia essa relação, o outro limite se move automaticamente. Mudar qualquer um dos dois reinicia a análise. O tempograma sempre cobre de 30 a 480 BPM, e as linhas **×½** e **×2** podem cair fora dos limites escolhidos.
+- **Metronome Click** (ligado ou desligado; padrão desligado) - Adiciona um clique curto e agudo em cada tempo detectado ao áudio que passa pelo plugin. Os cliques só tocam enquanto o analisador está travado e param quando ele volta a **searching**. O clique tem um nível fixo de cerca de −10 dBFS e é somado aos canais 1 e 2 (canal 1 para entrada mono); os demais canais não são alterados. Quando desligado, o áudio passa sem alteração. Ligar ou desligar não reinicia a análise.
+- **Span (beats)** (4, 6, 8, 12 ou 16; padrão 8) - Define quantos tempos as faixas principais e cada linha de eco mostram, e a que distância no passado os anéis fazem a comparação. Isso muda apenas a exibição, não a análise. Um valor que cobre compassos inteiros alinha um padrão que se repete entre as linhas de eco, por exemplo 8 para dois compassos em 4/4 ou 6 para dois compassos em 3/4.
+- **Tempogram**, **Timing lanes**, **Echo rows**, **Beat lens** (ligado ou desligado; padrão ligado) - Mostram ou ocultam o tempograma, as faixas principais, as linhas de eco e a lente de batida. Os painéis restantes crescem para ocupar o espaço, e o cabeçalho permanece sempre visível. Ocultar um painel muda apenas a exibição: a análise continua, e o painel volta a mostrar todo o seu histórico quando você o reativa.
+
+### Guia de visualização
+
+A exibição tem cinco partes: o cabeçalho, o tempograma, as faixas principais, as linhas de eco e a lente de batida. Em uma exibição larga, a lente de batida fica à direita das faixas; em uma exibição alta, todas as partes ficam empilhadas de cima para baixo. Ao ocultar painéis com suas caixas de seleção, os painéis restantes ocupam o espaço; o cabeçalho permanece sempre visível. Os toques são organizados em três bandas: **Low** (bumbo e baixo), **Mid** (caixa, vozes e a maioria dos instrumentos) e **High** (chimbal e pratos). Todas as bandas usam a mesma cor; nas faixas, nas linhas de eco e na lente de batida, cada banda tem sua própria fileira, com **High** no topo e **Low** embaixo. Os nomes dos eixos, os valores das marcações e os rótulos de fileira **High**, **Mid** e **Low** são desenhados sobre os gráficos. A exibição conta apenas tempos; não detecta compassos nem o primeiro tempo.
+
+- **Cabeçalho**:
+  - A lâmpada de batida à esquerda do BPM acende a cada tempo previsto pelo analisador e depois esmaece rapidamente, mostrando o tempo que ele está seguindo; o **Metronome Click** toca nos mesmos tempos. Todo tempo acende da mesma forma, porque o analisador não sabe onde começa um compasso. Enquanto o analisador está em busca (**searching**), a lâmpada é um anel vazado.
+  - Enquanto o analisador segue os tempos, mostra o BPM e **LOCKED**. Enquanto não os encontrou, mostra **searching**, com o último andamento travado como **(N BPM held)**.
+  - **×½** e **×2** - A metade e o dobro do andamento mostrado.
+  - **strongest** - O andamento que no momento se repete com mais força na música. Costuma coincidir com o andamento travado; quando difere, é uma alternativa provável.
+  - **swing** - A proporção entre a primeira e a segunda metade de um tempo, a partir da posição típica do contratempo nos últimos 32 tempos. 1.00:1 é reto e 2.00:1 é um shuffle de tercinas.
+  - **jitter** - A dispersão aleatória típica dos toques em torno de sua posição média na lente de batida, em ms. Partes precisas e programadas ficam perto de 0; uma execução mais solta resulta em valores mais altos.
+  - Uma legenda dos símbolos: **○ no beat lock**, **◎ new vs N / 2N beats ago**, e **beat re-aligned** para a linha tracejada.
+  - Um valor ainda não disponível é mostrado como —.
+- **Tempograma**: mostra os últimos 20 segundos, com **Time** correndo da esquerda para a direita e **Tempo (BPM)** em uma escala logarítmica de 30 a 480, com seus valores na borda esquerda. O brilho mostra com que clareza a música se repete em cada andamento: só uma repetição clara e forte aparece brilhante, uma repetição fraca ou pouco clara fica apagada, e o silêncio permanece escuro. Andamentos relacionados, como a metade e o dobro do andamento, costumam aparecer como linhas mais fracas. Enquanto o analisador está travado, uma linha sólida mostra o andamento travado, e linhas tracejadas mostram a metade e o dobro dele; seus rótulos **adopted**, **×2** e **×½** ficam na borda direita, logo acima de cada linha. Essas linhas ficam mais fracas quando o analisador está menos seguro do pulso.
+- **Faixas principais**: os tempos mais recentes, tantos quanto **Span (beats)** define, com o mais recente na borda direita; o título diz **Last N beats**. Linhas sólidas as dividem em três gráficos de desvio, uma faixa por banda com o nome na borda esquerda, com **Beats** no eixo horizontal e **Timing (ms)** no vertical. Linhas verticais marcam os tempos, e linhas mais fracas as colcheias; elas só são desenhadas onde o analisador estava travado. Cada ponto é um toque detectado, ligado ao centro da faixa por uma haste; quanto maior o ponto, mais seguro o analisador está desse toque.
+  - A altura de um ponto em sua faixa mostra se ele chegou adiantado ou atrasado: acima do centro da faixa (0 ms) é atrasado, abaixo é adiantado. Linhas pontilhadas marcadas **+20** e **−20** indicam ±20 ms, e toques além de ±30 ms ficam na borda da faixa. O desvio é medido a partir da posição de semicolcheia ou de tercina mais próxima, conforme a grade que a música segue, e é mostrado em relação ao desvio habitual dos 16 tempos anteriores. Por isso, um atraso constante compartilhado por todas as partes não aparece; as faixas mostram o quanto cada toque difere da média recente.
+  - Um círculo vazado é um toque ocorrido sem travamento. Ele fica no centro da faixa porque não tem desvio medido.
+  - Um anel ao redor de um ponto marca um toque que a mesma banda não tocou na mesma posição nem um nem dois intervalos antes. Os anéis começam a aparecer um intervalo depois de um travamento ou realinhamento.
+  - Uma área sombreada rotulada **searching** marca o período sem travamento.
+  - Uma linha tracejada marca onde a grade de tempos foi realinhada sem perder o travamento, quando o analisador mudou para um novo andamento ou deslocou a posição dos tempos. A lente de batida, o swing e o jitter recomeçam a partir daí.
+- **Linhas de eco**: ciclos de tantos tempos quanto **Span (beats)** define, empilhados com o mais recente em cima e separados por traços. O eixo horizontal é **Beats**, e o vertical, **Cycles ago**, numera cada linha. Enquanto as faixas principais estão visíveis, as linhas começam um ciclo atrás, em 1, e o título diz **Previous N-beat cycles**. Com as faixas principais ocultas, a linha de cima é o ciclo atual, em 0, o título diz **Recent N-beat cycles** e, quando há espaço, essa linha traz os nomes das bandas. Como os tempos se alinham verticalmente, um padrão que se repete a cada ciclo forma colunas verticais, e uma mudança as rompe. As linhas de eco mostram a banda de cada toque, com **High** no alto de cada linha e **Low** embaixo, mas não o seu desvio. Círculos vazados, anéis, sombreamento e linhas tracejadas têm o mesmo significado que nas faixas principais.
+- **Lente de batida**: resume os desvios dos últimos 32 tempos desde o travamento ou realinhamento atual. As colunas são posições dentro de um tempo, ao longo do eixo **Position in beat**: **1** (no tempo), **e**, **&** e **a** para semicolcheias, e **⅓** e **⅔** para tercinas. Cada banda tem sua própria fileira, com o nome na borda esquerda.
+  - A marca vertical mostra o quanto aquela banda toca, em média, adiantada (esquerda) ou atrasada (direita) naquela posição. A escala no topo cobre ±30 ms, com marcas em ±20 ms. A barra sombreada ao redor da marca mostra a dispersão (± um desvio padrão). Uma marca mais opaca significa que a posição é tocada com mais frequência; uma posição precisa de pelo menos quatro toques para aparecer.
+  - Quando os valores são atualizados, a posição das marcas e a largura das barras mudam suavemente em direção aos novos valores, cada vez mais devagar à medida que se aproximam deles.
+  - Os desvios são medidos em relação ao conjunto como um todo: se tudo tocar junto, cada marca fica no centro. A lente mostra como as partes diferem entre si.
+  - Desvios de 3 ms ou mais são rotulados em ms. Desvios menores são desenhados sem rótulo, porque diferenças entre bandas abaixo de cerca de 3 ms não podem ser medidas com confiabilidade.
+  - Enquanto o analisador não está travado, a lente mostra **waiting for a steady beat**.
+- **LOCKED** e a opacidade das linhas de andamento mostram o quão seguro o analisador está do pulso. Elas não mostram o quão precisa é a execução; a imprecisão rítmica é mostrada apenas pela altura dos pontos, pelo **jitter** e pelas barras da lente.
+- O botão **Reset** limpa a exibição e reinicia a análise, por exemplo ao trocar de música.
+- A entrada estéreo é analisada pela média dos dois primeiros canais; a entrada mono é usada diretamente.
+
+### Exibição Visual
+- Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto. Nas faixas e linhas de eco, a leitura mostra há quantos tempos o ponto ocorreu, e a banda e o desvio do toque mais próximo (— para um círculo vazado). No tempograma, mostra o andamento e o instante sob o cursor, **Salience** (a força com que a música se repete nesse andamento; 100% significa uma repetição clara e forte) e o andamento adotado, **Adopted**; na lente de batida, o desvio e a dispersão de cada banda naquela posição.
+
+### Limitações
+
+- A precisão pode diminuir em músicas com grandes variações de andamento, sem seção rítmica ou executadas com instrumentos acústicos. Música tranquila tocada em andamento livre sem percussão, música ambiente e sons sustentados permanecem em **searching**. Algumas gravações expressivas, como piano solo ou interpretações de música clássica, nunca chegam a travar.
+- O analisador pode se estabelecer em um nível de pulso diferente do que um ouvinte escolheria, e então a lâmpada e o clique podem seguir o dobro, a metade, dois terços ou uma vez e meia o andamento que você sente. Em música clássica, em execuções com rubato e em algumas outras, ele também demora mais para travar e salta brevemente para outro nível com mais frequência do que em música de pulso estável. **×½**, **×2** e **strongest** mostram os andamentos alternativos prováveis. Se o andamento detectado ou a posição do pulso não corresponder ao que você ouve, tente restringir a faixa com **Min BPM** e **Max BPM** em torno do andamento esperado e ouça novamente.
+- Com padrões rítmicos esparsos, do tipo clave, o pulso pode travar no contratempo.
+- Quando o andamento muda continuamente, como em uma aceleração gradual ou um rubato livre, o pulso acompanha a mudança com um pequeno atraso, então o clique pode soar um pouco adiantado ou atrasado até o andamento se estabilizar.
+- Em algumas músicas de andamento estável, a posição dos tempos é ocasionalmente realinhada, indicada pela linha tracejada, mesmo que a música não tenha mudado.
+- Em mixagens densas e gravações ruidosas, as faixas **Mid** e **High** mostram mais pontos onde nenhum instrumento realmente tocou. A faixa **Low** deixa passar algumas notas graves do piano.
+- Não há detecção de compasso ou métrica: a exibição é organizada apenas por tempos e não mostra onde começa um compasso.
+- A análise completa funciona a 8; 11,025; 16; 22,05; 24; 32; 44,1; 48; 88,2; 96; 176,4; 192; 352,8 e 384 kHz. Em qualquer outra taxa de amostragem, como 64 kHz, o analisador usa um método mais simples: o pulso e os toques ficam menos precisos, e depois que a música para, o pulso continua sendo mostrado por vários segundos.
 
 ## Spectrogram
 

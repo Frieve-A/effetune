@@ -36,6 +36,7 @@ function canvas() {
 
 function runtime() {
     let constructions = 0, registrations = 0;
+    const clock = { now: 1000 };
     class PluginBase {
         constructor() { constructions++; }
         registerProcessor() { registrations++; }
@@ -48,9 +49,9 @@ function runtime() {
     const document = { createElement: () => canvas() };
     for (const file of ['frequency-axis', 'analyzer/spectrum_analyzer', 'analyzer/spectrogram', 'analyzer/oscilloscope', 'analyzer/stereo_meter',
         'analyzer/note_spectrogram', 'analyzer/chroma_spiral', 'analyzer/level_meter', 'analyzer/analog_meter',
-        'spatial/phase_select_eq']) {
+        'analyzer/rhythm_analyzer', 'spatial/phase_select_eq']) {
         vm.runInNewContext(readFileSync(new URL(`../../plugins/${file}.js`, import.meta.url), 'utf8'),
-            { window, document, PluginBase, performance: { now: () => 1000 }, Float32Array, DataView, ArrayBuffer,
+            { window, document, PluginBase, performance: { now: () => clock.now }, Float32Array, DataView, ArrayBuffer,
                 MultiresSpectrum: globalThis.MultiresSpectrum, console });
     }
     const subscribers = new Map();
@@ -58,7 +59,7 @@ function runtime() {
         subscribeItem(id, callback) { subscribers.set(id, callback); return () => subscribers.delete(id); },
         getFrame: () => null, getModulators: () => ({ level: 0, bass: 0 })
     };
-    return { window, document, sources, subscribers, counts: () => [constructions, registrations] };
+    return { window, document, sources, subscribers, clock, counts: () => [constructions, registrations] };
 }
 
 function noteFrame(index = 1) {
@@ -137,7 +138,8 @@ test('Visualizer uses the original analyzer drawing methods without constructing
             ['notes', 'NoteSpectrogramPlugin', 'drawGraph'],
             ['level-meter', 'LevelMeterPlugin', 'updateMeter'],
             ['phase', 'PhaseSelectEqPlugin', 'drawVisualizerPhaseMap'],
-            ['analog-meter', 'AnalogMeterPlugin', 'drawVisualizerMeter']
+            ['analog-meter', 'AnalogMeterPlugin', 'drawVisualizerMeter'],
+            ['rhythm-analyzer', 'RhythmAnalyzerPlugin', 'drawVisualizerRhythm']
         ]) {
             const baseline = env.counts();
             const item = createItem(type, type), target = canvas();
@@ -180,6 +182,120 @@ test('Analog Meter folds a single selected channel and names it after the input 
         assert.equal(display.plugin.cellTitle(0), 'Ch 2 (reference)');
         display.draw(item, 1, 400);
         assert.ok(target.context.calls.some(([key]) => key === 'stroke'));
+        display.dispose();
+    });
+});
+
+test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('rhythm-analyzer', 'rhythm');
+        const target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const payload = new DataView(new ArrayBuffer(1344));
+        const source = {};
+        [[0, 48000, 'Float32'], [4, 1, 'Uint32'], [8, 480, 'Uint32'], [12, 100, 'Uint32'], [16, 1, 'Float32'],
+            [28, 2, 'Uint32'], [32, 1, 'Uint32'], [36, 1, 'Uint32'], [40, .8, 'Float32'], [44, .5, 'Float32'],
+            [48, 150, 'Uint32'], [56, 3, 'Uint32'], [60, 120, 'Float32']]
+            .forEach(([offset, value, kind]) => payload[`set${kind}`](offset, value, true));
+        for (let bin = 0; bin < 192; bin++) payload.setFloat32(64 + bin * 4, bin === 96 ? 1 : .1, true);
+        [[1, 2, .02, 0], [1, 3, .97, 1]].forEach(([epoch, beat, beatFraction, band], index) => {
+            const base = 832 + index * 32;
+            payload.setUint32(base, 90 + index * 50, true);
+            payload.setUint32(base + 8, epoch, true);
+            payload.setInt32(base + 12, beat, true);
+            payload.setFloat32(base + 16, beatFraction, true);
+            payload.setFloat32(base + 20, .5, true);
+            payload.setFloat32(base + 24, .7, true);
+            payload.setUint8(base + 28, band);
+        });
+        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        assert.equal(display.plugin.activeGeneration, 1);
+        display.draw(item, 1, 400);
+        assert.ok(target.context.calls.some(([key]) => key === 'stroke' || key === 'fill' || key === 'fillRect'));
+        assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === '120.0 BPM'), 'BPM overlays the graphs');
+        Object.assign(item.params, { vt: false, vm: false, ve: false, vl: false, showAxes: false, showAxisNumbers: false });
+        const draws = [];
+        target.context.measureText = text => ({ width: text.length * Number(/([\d.]+)px/.exec(target.context.font)?.[1] || 12) * .55 });
+        target.context.fillText = (text, x, y, maxWidth) => draws.push({ text, x, y, maxWidth,
+            font: target.context.font, align: target.context.textAlign, baseline: target.context.textBaseline,
+            spacing: target.context.letterSpacing, shadowBlur: target.context.shadowBlur });
+        const redraw = () => { draws.length = 0; target.context.calls.length = 0; display.draw(item, 1, 400, undefined, 2); };
+        const arcs = () => target.context.calls.filter(call => call[0] === 'arc');
+        redraw();
+        assert.equal(display.plugin._readoutFrame.header.length, 0);
+        assert.equal(display.plugin._readoutFrame.panels.length, 0);
+        assert.deepEqual(arcs().map(call => call.slice(1, 3)), [[400, 200]]);
+        assert.ok(arcs()[0][3] > 100, 'Beat circle is large enough to see without graphs');
+        assert.deepEqual(draws.map(({ text, x, y, align, baseline }) => ({ text, x, y, align, baseline })),
+            [{ text: '120.0 BPM', x: 400, y: 200, align: 'center', baseline: 'middle' }]);
+        assert.ok(parseFloat(draws[0].font) < 192, 'BPM scales down to fit inside the circle');
+        item.style.beatFitBpm = false;
+        redraw();
+        assert.equal(draws[0].font, '192px sans-serif', 'Automatic fitting can be disabled');
+        item.style.beatFitBpm = true;
+
+        payload.setUint32(48, 100, true);
+        payload.setUint32(12, 101, true);
+        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        redraw();
+        assert.ok(target.context.calls.some(call => call[0] === 'globalAlpha' && call[1] > .25 && call[1] <= .3), 'Circle lights on the detected beat');
+        payload.setUint32(12, 110, true);
+        payload.setUint32(48, 150, true);
+        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        redraw();
+        const pulse = () => target.context.calls.find(call => call[0] === 'globalAlpha' && call[1] !== 1)?.[1];
+        const expectedPulse = (age, hold, decay) => .3 * Math.exp(-Math.max(0, age - hold) / decay);
+        assert.ok(Math.abs(pulse() - expectedPulse(100, 0, 90)) < 1e-6, 'Circle fades exponentially between beats');
+        item.style.beatHoldTime = 50;
+        redraw();
+        assert.ok(Math.abs(pulse() - expectedPulse(100, 50, 90)) < 1e-6);
+        item.style.beatDecayTime = 200;
+        redraw();
+        assert.ok(Math.abs(pulse() - expectedPulse(100, 50, 200)) < 1e-6, 'A longer decay time fades more slowly');
+        item.style.beatHoldTime = 200;
+        redraw();
+        assert.equal(pulse(), .3, 'The hold time maintains full opacity');
+        Object.assign(item.style, { beatHoldTime: 0, beatDecayTime: 90 });
+        env.clock.now += 45;
+        redraw();
+        assert.ok(Math.abs(pulse() - expectedPulse(145, 0, 90)) < 1e-6, 'The pulse fades between telemetry frames');
+        payload.setUint32(12, 150, true);
+        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        redraw();
+        assert.equal(pulse(), .3, 'The next detected beat restarts the pulse');
+        payload.setUint32(32, 0, true);
+        payload.setUint32(12, 151, true);
+        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        redraw();
+        assert.equal(target.context.calls.some(call => call[0] === 'fill'), false, 'Searching leaves a hollow circle');
+        assert.equal(draws[0].text, '(120.0) BPM', 'Held tempo is distinguished from a locked tempo');
+
+        Object.assign(item.style, { fontSize: 120, fontFamily: 'serif', bold: true, italic: true, align: 'right',
+            verticalAlign: 'bottom', letterSpacing: 4, textCase: 'lower', outlineWidth: 2, shadowBlur: 3 });
+        item.params.showBeat = false;
+        redraw();
+        assert.equal(arcs().length, 0);
+        assert.deepEqual(draws[0], { text: '(120.0) bpm', x: 804, y: 396, maxWidth: 792,
+            font: 'italic bold 240px serif', align: 'right', baseline: 'bottom', spacing: '8px', shadowBlur: 6 });
+        item.params.showBeat = true;
+        item.params.showBpm = false;
+        redraw();
+        assert.equal(draws.length, 0);
+        assert.equal(arcs().length, 1, 'Beat works without BPM');
+        Object.assign(item.style, { beatSize: 50, beatLineWidth: 6, beatStrokeOpacity: .4, beatUsePalette: false,
+            beatFillColor: '#112233', beatStrokeColor: '#abcdef', beatFillOpacity: .6 });
+        redraw();
+        assert.equal(arcs()[0][3], 94, 'Circle diameter and border width follow the saved style');
+        assert.equal(target.context.lineWidth, 12, 'Circle border scales with the scene like text');
+        assert.ok(target.context.calls.some(call => call[0] === 'strokeStyle' && call[1] === '#abcdef'));
+        assert.ok(target.context.calls.some(call => call[0] === 'globalAlpha' && call[1] === .4));
+        item.style.beatLineWidth = 0;
+        redraw();
+        assert.equal(target.context.calls.some(call => call[0] === 'stroke'), false, 'A zero-width border is hidden');
+        item.params.showBeat = false;
+        redraw();
+        assert.equal(arcs().length, 0, 'Both indicators can be hidden');
         display.dispose();
     });
 });

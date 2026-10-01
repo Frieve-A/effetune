@@ -81,6 +81,55 @@ def _hq_packet(
     return packet
 
 
+def _rhythm_packet(locked: bool = True, events: int = 1) -> bytearray:
+    packet = bytearray(16 + 1344)
+    struct.pack_into("<HHIIH", packet, 0, 28, 1, 13, 0, 1344)
+    struct.pack_into(
+        "<fIIIffII", packet, 16, 48_000.0, 2, 256, 500, 3.5, 0.032, 1, events
+    )
+    if locked:
+        struct.pack_into("<IIffIfI", packet, 48, 1, 3, 2.5, 0.5, 510, 0.25, 7)
+    struct.pack_into("<f", packet, 16 + 60, 120.0)
+    struct.pack_into("<f", packet, 16 + 64 + 4 * 91, 1.0)
+    struct.pack_into("<f", packet, 16 + 64 + 4 * 43, 0.5)
+    for index in range(events):
+        struct.pack_into(
+            "<IfIifffBB",
+            packet,
+            16 + 832 + index * 32,
+            480 + index,
+            0.75,
+            3 if locked else 0,
+            -1 if locked else 0,
+            0.875 if locked else 0.0,
+            0.5 if locked else 0.0,
+            0.8,
+            2,
+            0 if locked else 1,
+        )
+    return packet
+
+
+def _tonal_balance_packet() -> bytearray:
+    packet = bytearray(16 + 1564)
+    struct.pack_into("<HHIIH", packet, 0, 29, 1, 14, 0, 1564)
+    struct.pack_into(
+        "<fHHBBHffI", packet, 16, 96_000.0, 41, 128, 0b1111, 2, 0, -18.5, -1.25, 900
+    )
+    for offset, value in (
+        (24, 71.5),
+        (188, 0.75),
+        (352, 0.5),
+        (516, -2.5),
+        (680, 3.25),
+        (844, 1.5),
+    ):
+        struct.pack_into("<f", packet, 16 + offset + 4 * 10, value)
+    packet[16 + 1008 + 10] = 0b11101
+    struct.pack_into("<f", packet, 16 + 1052 + 4 * 127, -3.75)
+    return packet
+
+
 def _pitch_packet(midi: float) -> bytes:
     packet = bytearray(60)
     struct.pack_into("<HHIIH", packet, 0, 26, 1, 9, 0, 44)
@@ -193,6 +242,133 @@ class TelemetryDecoderTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assertEqual(decode(packet), [])
+
+    def test_rhythm_analyzer_decodes_tracker_tempogram_and_events(self) -> None:
+        nodes = {13: ("RhythmAnalyzer", "rhythm", 0)}
+
+        def decode(packet: bytes) -> list[effetune.TelemetryFrame]:
+            return _decode_telemetry_packet(packet, nodes, 0)[0]
+
+        (frame,) = decode(bytes(_rhythm_packet()))
+        self.assertIsInstance(frame, effetune.RhythmAnalyzerTelemetryFrame)
+        self.assertEqual(frame.kind, "rhythmAnalyzer")
+        self.assertEqual(frame.sample_rate, 48_000)
+        self.assertEqual(frame.generation, 2)
+        self.assertEqual(frame.envelope_hop_samples, 256)
+        self.assertEqual(frame.envelope_frame_count, 500)
+        self.assertEqual(frame.time_seconds, 3.5)
+        self.assertAlmostEqual(frame.latency_seconds, 0.032, places=6)
+        self.assertEqual(frame.dropped_events, 1)
+        self.assertTrue(frame.locked)
+        self.assertEqual(frame.lock_epoch, 3)
+        self.assertEqual(frame.confidence, 2.5)
+        self.assertEqual(frame.period_seconds, 0.5)
+        self.assertEqual(frame.next_beat_frame, 510)
+        self.assertEqual(frame.next_beat_fraction, 0.25)
+        self.assertEqual(frame.next_beat_index, 7)
+        self.assertEqual(frame.comb_best_bpm, 120)
+        self.assertEqual(len(frame.tempogram), 192)
+        self.assertEqual(frame.tempogram[91], 1)
+        self.assertEqual(frame.tempogram[43], 0.5)
+        (event,) = frame.events
+        self.assertIsInstance(event, effetune.RhythmAnalyzerTelemetryEvent)
+        self.assertEqual(
+            (event.frame, event.fraction, event.lock_epoch, event.beat_index),
+            (480, 0.75, 3, -1),
+        )
+        self.assertEqual((event.beat_fraction, event.period_seconds), (0.875, 0.5))
+        self.assertAlmostEqual(event.strength, 0.8, places=6)
+        self.assertEqual((event.band, event.unlocked), (2, False))
+
+        (unlocked,) = decode(bytes(_rhythm_packet(locked=False, events=16)))
+        self.assertFalse(unlocked.locked)
+        self.assertEqual(len(unlocked.events), 16)
+        self.assertTrue(all(event.unlocked for event in unlocked.events))
+
+        for name, offset, fmt, value in (
+            ("zero generation", 4, "<I", 0),
+            ("zero envelope hop", 8, "<I", 0),
+            ("17 events", 28, "<I", 17),
+            ("unknown tracker flag", 32, "<I", 3),
+            ("locked without period", 44, "<f", 0.0),
+            ("tempogram above one", 64, "<f", 1.5),
+            ("fraction of one", 836, "<f", 1.0),
+            ("unknown band", 860, "<B", 3),
+            ("unknown event flag", 861, "<B", 2),
+            ("zero strength", 856, "<f", 0.0),
+        ):
+            with self.subTest(name=name):
+                packet = _rhythm_packet()
+                struct.pack_into(fmt, packet, 16 + offset, value)
+                self.assertEqual(decode(bytes(packet)), [])
+        short = _rhythm_packet()
+        struct.pack_into("<H", short, 12, 1340)
+        self.assertEqual(decode(bytes(short)), [])
+        unlocked_with_period = _rhythm_packet(locked=False)
+        struct.pack_into("<f", unlocked_with_period, 16 + 44, 0.5)
+        self.assertEqual(decode(bytes(unlocked_with_period)), [])
+
+    def test_tonal_balance_decodes_band_statistics_target_and_response(
+        self,
+    ) -> None:
+        nodes = {14: ("TonalBalanceEQ", "tonal", 1)}
+
+        def decode(packet: bytes) -> list[effetune.TelemetryFrame]:
+            return _decode_telemetry_packet(packet, nodes, 0)[0]
+
+        (frame,) = decode(bytes(_tonal_balance_packet()))
+        self.assertIsInstance(frame, effetune.TonalBalanceEQTelemetryFrame)
+        self.assertEqual(frame.kind, "tonalBalance")
+        self.assertEqual(frame.sample_rate, 96_000)
+        self.assertEqual(frame.target_index, 2)
+        self.assertEqual(
+            (
+                frame.absolute_gate,
+                frame.relative_gate,
+                frame.loudness_valid,
+                frame.target_valid,
+            ),
+            (True, True, True, True),
+        )
+        self.assertEqual((frame.loudness_lkfs, frame.makeup_db), (-18.5, -1.25))
+        self.assertEqual(frame.gated_hop_count, 900)
+        bands = (
+            frame.level_db,
+            frame.persistence,
+            frame.presence,
+            frame.command_db,
+            frame.target_mu_db,
+            frame.target_sigma_db,
+            frame.band_flags,
+        )
+        self.assertEqual({len(values) for values in bands}, {41})
+        self.assertEqual(
+            tuple(values[10] for values in bands),
+            (71.5, 0.75, 0.5, -2.5, 3.25, 1.5, 0b11101),
+        )
+        self.assertEqual(len(frame.response_db), 128)
+        self.assertEqual(frame.response_db[127], -3.75)
+
+        for name, offset, fmt, value in (
+            ("band count", 4, "<H", 40),
+            ("grid count", 6, "<H", 127),
+            ("unknown state flag", 8, "<B", 0b10000),
+            ("reserved header", 10, "<H", 1),
+            ("loudness without validity", 8, "<B", 0b1011),
+            ("non-finite level", 24, "<f", math.nan),
+            ("presence above one", 352, "<f", 1.5),
+            ("negative sigma", 844, "<f", -1.0),
+            ("unknown band flag", 1008, "<B", 0b100000),
+            ("reserved band bytes", 1051, "<B", 1),
+            ("non-finite response", 1052, "<f", math.inf),
+        ):
+            with self.subTest(name=name):
+                packet = _tonal_balance_packet()
+                struct.pack_into(fmt, packet, 16 + offset, value)
+                self.assertEqual(decode(bytes(packet)), [])
+        short = _tonal_balance_packet()
+        struct.pack_into("<H", short, 12, 1560)
+        self.assertEqual(decode(bytes(short)), [])
 
     def test_pitch_preserves_fractional_estimates_within_endpoint_half_rows(
         self,

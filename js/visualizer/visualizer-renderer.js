@@ -1,9 +1,10 @@
 import { createLayer, drawBackplates, paletteGradient, VisualizerEffects } from './visualizer-effects.js';
 
+import { drawStyledText } from './visualizer-text.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
-import { REFERENCE_WIDTH, TEXT_DECORATION_DEFAULTS } from './visualizer-model.js';
+import { REFERENCE_WIDTH } from './visualizer-model.js';
 
-const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'chroma', 'level-meter', 'phase', 'analog-meter']);
+const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
 
 export class VisualizerRenderer {
     constructor(canvas) {
@@ -70,7 +71,7 @@ export class VisualizerRenderer {
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
                 state.display ||= createAnalyzerDisplay(item, state.canvas, sources);
-                state.display?.draw(item, time, width / graphScale, layout.background.themeColors);
+                state.display?.draw(item, time, width / graphScale, layout.background.themeColors, stageScale);
             } else if (changed) {
                 this.drawItem(state, item, metadata, image, time, editing);
                 state.signature = signature; state.frame = frame; state.image = image;
@@ -137,37 +138,9 @@ export class VisualizerRenderer {
                 this.drawCover(ctx, image, w, h); ctx.restore();
             }
         } else if (['title', 'album', 'artist'].includes(item.type)) {
-            const style = { ...TEXT_DECORATION_DEFAULTS, ...item.style };
             const raw = metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
-            const text = style.textCase === 'upper' ? raw.toUpperCase() : style.textCase === 'lower' ? raw.toLowerCase() : raw;
-            const scale = this.canvas.width / REFERENCE_WIDTH, outline = style.outlineWidth * scale, spacing = style.letterSpacing * scale;
-            ctx.save();
-            ctx.fillStyle = item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time);
-            ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize * scale}px ${style.fontFamily || 'sans-serif'}`;
-            ctx.letterSpacing = `${spacing}px`;
-            ctx.textAlign = style.align;
-            ctx.textBaseline = style.verticalAlign;
-            // Keep the outline inside the item box; letter spacing also trails the last glyph.
-            const x = style.align === 'center' ? (w + spacing) / 2 : style.align === 'right' ? w - outline + spacing : outline;
-            const y = style.verticalAlign === 'top' ? outline : style.verticalAlign === 'bottom' ? h - outline : h / 2;
-            const maxWidth = Math.max(1, w - outline * 2);
-            if (style.shadowOpacity > 0 && (style.shadowBlur || style.shadowX || style.shadowY)) {
-                ctx.shadowColor = `${style.shadowColor}${Math.round(style.shadowOpacity * 255).toString(16).padStart(2, '0')}`;
-                ctx.shadowBlur = style.shadowBlur * scale;
-                ctx.shadowOffsetX = style.shadowX * scale;
-                ctx.shadowOffsetY = style.shadowY * scale;
-            }
-            if (outline > 0) {
-                // The fill covers the inner half of the stroke, so double it; only the
-                // outline casts the shadow to avoid a doubled, darker shadow.
-                ctx.strokeStyle = style.outlineColor;
-                ctx.lineWidth = outline * 2;
-                ctx.lineJoin = 'round';
-                ctx.strokeText(text, x, y, maxWidth);
-                ctx.shadowColor = 'transparent';
-            }
-            ctx.fillText(text, x, y, maxWidth);
-            ctx.restore();
+            drawStyledText(ctx, raw, item.style, w, h, this.canvas.width / REFERENCE_WIDTH,
+                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time));
         }
     }
 

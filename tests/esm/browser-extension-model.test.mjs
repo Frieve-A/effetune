@@ -456,6 +456,32 @@ test('extension routed presets and live bus edits reach the stereo WASM pipeline
     });
 });
 
+test('capture start fades the already flowing tab audio in instead of stepping the output gain', async () => {
+    const calls = [];
+    const audio = {
+        pipeline: [], masterBypass: false, audioContext: { sampleRate: 48000, currentTime: 1 },
+        workletNode: { port: { postMessage() {} } },
+        pipelineProcessor: { setPipeline() {} },
+        powerPolicyController: { subscribe() {}, handlePageLifecycleEvent() {} },
+        ioManager: { outputGainNode: { gain: { setValueAtTime: () => calls.push('step') } } },
+        async initializeCapturedStream() { calls.push('capture'); },
+        setFrequencyPreview() {}, setVisualizerSources() {}, getDspExecutionStateSnapshot: () => [],
+        fadeInOutputWhenReady: async () => calls.push('fadeIn')
+    };
+    const sessionContext = vm.createContext({
+        window: { irLibraryService: { async refresh() {} }, addEventListener() {} }, console, Map, Promise, harnessAudio: audio,
+        createPipelineModels: async () => [], activatePipelineModels: async () => {},
+        replayDspExecutionStates() {}, serializePipeline: () => [], capturePreparationStatuses: () => []
+    });
+    const sessionSource = (await readFile(new URL('../../extension/session.js', import.meta.url), 'utf8'))
+        .replace(/^import .*;\r?\n/gm, '');
+    vm.runInContext(sessionSource, sessionContext);
+    vm.runInContext('audio = harnessAudio; port = { postMessage() {} };', sessionContext);
+    const state = await sessionContext.initializeAudio([], 48000, false);
+    assert.equal(state.status, 'processing');
+    assert.deepEqual(calls, ['capture', 'fadeIn']);
+});
+
 test('live capture remains in Monitoring past the full-suspend deadline without releasing input', () => {
     const identity = { policyGeneration: 1, topologyRevision: 1, workletGraphGeneration: 1, inputGeneration: 1 };
     const facts = {
@@ -495,10 +521,10 @@ test('WASM-only worklets treat Sections as structure while retaining effect fail
     const processor = new Processor({ processorOptions: { initialOutputChannelCount: 2 } });
     processor.dspEnableTypesReceived = true;
     for (const enabled of [true, false, true]) {
-        processor.updatePlugins([
+        processor.handlePortMessage({ type: 'updatePlugins', plugins: [
             { id: 1, type: 'SectionPlugin', enabled, parameters: {} },
             { id: 2, type: 'VolumePlugin', enabled: true, parameters: { vl: 0 } }
-        ]);
+        ] });
         assert.equal(processor.plugins[0].executionCapabilities.requiresWasm, false);
         assert.equal(processor.plugins[1].executionCapabilities.requiresWasm, true);
     }

@@ -1,9 +1,10 @@
 {
   "formatVersion": 1,
   "sourceModelSha256": "2021cf1c31e91dbf1a1a0a60a4301e8143f34de3699037670ce1ee43d17d02fc",
-  "sha256": "f89ca0711319786cdb3cd41e8bcdde5266c4584c0a3fcccd608212f84dbdca60",
+  "sha256": "162933f2c877d41623a5065ce35edd55e8a8d666ac47280ea737eaa5ecabf942",
   "outputCount": 1,
-  "leafType": "float",
+  "thresholdType": "index8",
+  "leafType": "int16",
   "constants": {
     "FeatureSchemaVersion": 9,
     "FeatureCount": 133,
@@ -12,5 +13,6 @@
     "Scale": 1.0,
     "Bias": 0.0,
     "Prior": 0.04301359357254645
-  }
+  },
+  "borderCount": 16389
 }

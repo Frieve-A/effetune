@@ -56,8 +56,9 @@ function configureDestinationChannels(destination, outputChannels) {
     const maxChannels = Number(destination?.maxChannelCount) || 2;
     if (maxChannels < outputChannels) {
         throw new MeasurementOutputError(
-            `The selected output device supports ${maxChannels} channels, but measurement Output Channel ` +
-            `requires ${outputChannels}. Select a compatible device or a lower output channel.`
+            `The selected output device supports ${maxChannels} channels, but measurement output ` +
+            `is set to ${outputChannels} channels. Check the device's channel configuration and ` +
+            'the Output Device Channels setting, then try again.'
         );
     }
 
@@ -69,14 +70,14 @@ function configureDestinationChannels(destination, outputChannels) {
         console.error('Could not configure measurement output channels:', error);
         throw new MeasurementOutputError(
             `The selected output device could not be configured for ${outputChannels} channels. ` +
-            'Check the selected measurement device and output channel, then try again.'
+            'Check the selected measurement device and Output Device Channels setting, then try again.'
         );
     }
 
     if (destination.channelCount !== outputChannels) {
         throw new MeasurementOutputError(
             `The selected output device did not accept the configured ${outputChannels}-channel layout. ` +
-            'Check the selected measurement device and output channel, then try again.'
+            'Check the selected measurement device and Output Device Channels setting, then try again.'
         );
     }
 }
@@ -213,7 +214,7 @@ async function prepareMeasurementOutputRoute(
 
     // Measurement routing intentionally does not use EffeTune's playback channel
     // setting. A measurement may use a different device and channel layout, so its
-    // layout is derived only from the selected measurement channel and device.
+    // layout uses the measurement device channel count when configured.
     const outputChannels = explicitOutputChannels ?? getMeasurementOutputChannelCount(
         outputChannel,
         audioContext.destination.maxChannelCount

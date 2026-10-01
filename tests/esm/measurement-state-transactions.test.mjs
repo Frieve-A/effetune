@@ -837,7 +837,8 @@ test('channel redo commits one replacement and preserves prior state for failure
                 measurementConfig: {
                     ...measurementConfig(),
                     outputChannel: 'multi',
-                    outputChannels: ['left', '2']
+                    outputChannels: ['left', '2'],
+                    outputChannelCount: 6
                 },
                 currentMeasurement: {
                     id: 'redo',
@@ -870,7 +871,11 @@ test('channel redo commits one replacement and preserves prior state for failure
         peakDb: -3,
         sweepLimited: true
     };
-    const success = createRedoController(async () => replacement);
+    const success = createRedoController(async (_buffer, channel, width) => {
+        assert.equal(channel, 'left');
+        assert.equal(width, 6);
+        return replacement;
+    });
     const untouchedChannel = success.currentPoint.channels[1];
     assert.equal(await success.controller.redoChannel('left'), true);
     assert.strictEqual(success.controller.currentPoint.channels[1], untouchedChannel);
@@ -906,7 +911,7 @@ test('channel redo commits one replacement and preserves prior state for failure
     assert.equal(notifications.length, 2);
 });
 
-test('per-channel sweeps resolve bands, reset the level graph and retain calibrations', async t => {
+test('per-channel sweeps retain the configured output width, bands and calibrations', async t => {
     const originals = {
         document: globalThis.document,
         setInterval: globalThis.setInterval,
@@ -955,7 +960,8 @@ test('per-channel sweeps resolve bands, reset the level graph and retain calibra
         measurementConfig: {
             ...measurementConfig(),
             outputChannel: 'multi',
-            outputChannels: ['left', '2']
+            outputChannels: ['left', '2'],
+            outputChannelCount: 6
         },
         currentMeasurement: {
             id: 'calibrated-multi',
@@ -978,7 +984,8 @@ test('per-channel sweeps resolve bands, reset the level graph and retain calibra
         },
         drawLevelGraphGrid() {},
         updateFrequencyResponseGraph() {},
-        async playAndRecordSweep(_buffer, channel) {
+        async playAndRecordSweep(_buffer, channel, width) {
+            assert.equal(width, 6);
             observed.push(['play', channel, this.interfaceCalibrationImpulseResponse]);
             now += 10000;
             return { frequencyResponse: [[100, 0]], maxSignalLevel: -20 };
@@ -1242,6 +1249,34 @@ test('unlimited sweep records the full FFT bandwidth', async t => {
         measurement.sweepMaxFreq,
         (fftLength / 2 - 1) * 48000 / fftLength
     );
+});
+
+test('measurement setup and test signals preserve a configured six-channel device', async t => {
+    installMeasurementStartEnvironment(t, null, null);
+    const context = audioUtils.audioContext;
+    context.destination = { maxChannelCount: 8, channelCount: 2 };
+    context.sinkId = '';
+    context.setSinkId = async id => { context.sinkId = id; };
+    const controller = new MeasurementController();
+    controller.prepareForLevelAdjustment = async () => {
+        assert.equal(context.destination.channelCount, 6);
+        assert.equal(context.sinkId, 'output-id');
+    };
+    const config = { ...measurementConfig(), outputChannel: 'multi',
+        outputChannels: ['2', '3'], outputChannelCount: 6 };
+    const measurement = await controller.startNewMeasurement(config);
+    assert.equal(measurement.outputChannelCount, 6);
+    assert.equal(controller.measurementConfig.outputChannelCount, 6);
+    globalThis.document = { getElementById: () => ({ value: '-12' }) };
+    const channels = [];
+    t.mock.method(audioUtils, 'startWhiteNoise', async (_level, _device, channel, _min, _max, _bands, width) => {
+        assert.equal(width, 6);
+        channels.push(channel);
+        return true;
+    });
+    await controller.restartWhiteNoiseForChannel('2');
+    await controller.restartWhiteNoiseForChannel('3');
+    assert.deepEqual(channels, ['2', '3']);
 });
 
 test('channel calibration accepts matching bands and rejects an undersized common band', async t => {

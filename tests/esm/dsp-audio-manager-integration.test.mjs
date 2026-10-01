@@ -532,8 +532,8 @@ test('AudioManager startup wait publishes JavaScript while a valid WASM load con
         resolveDspLoad = resolve;
       });
       const starts = [];
-      manager._reinitializeDspWorklet = async (workletNode, types, options) => {
-        starts.push({ workletNode, types, muteOutput: options.muteOutput });
+      manager._reinitializeDspWorklet = async (workletNode, types) => {
+        starts.push({ workletNode, types });
         return true;
       };
 
@@ -573,7 +573,7 @@ test('AudioManager startup wait publishes JavaScript while a valid WASM load con
       resolveDspLoad(info);
       assert.equal(await pendingLoad, true);
       assert.equal(manager.dspModuleInfo, info);
-      assert.deepEqual(starts, [{ workletNode: node, types: [], muteOutput: true }]);
+      assert.deepEqual(starts, [{ workletNode: node, types: [] }]);
     } finally {
       globalThis.setTimeout = originalSetTimeout;
       globalThis.clearTimeout = originalClearTimeout;
@@ -1085,8 +1085,8 @@ test('AudioManager starts a delayed DSP module only on the worklet that requeste
       manager.registerPipelineProcessors = () => {};
       manager.loadDspForWorklet = () => new Promise(resolve => { resolveDsp = resolve; });
       const starts = [];
-      manager._reinitializeDspWorklet = async (node, types, options) => {
-        starts.push({ node, types, options });
+      manager._reinitializeDspWorklet = async (node, types) => {
+        starts.push({ node, types });
         return true;
       };
 
@@ -1102,8 +1102,7 @@ test('AudioManager starts a delayed DSP module only on the worklet that requeste
 
       assert.deepEqual(starts, replaceBeforeResolve ? [] : [{
         node: requestedNode,
-        types: [],
-        options: { muteOutput: false }
+        types: []
       }]);
       assert.equal(manager.dspModuleInfo, replaceBeforeResolve ? null : info);
     }
@@ -1128,8 +1127,8 @@ test('AudioManager applies only the newest primary DSP load when requests resolv
     manager.updateExposedProperties = () => {};
     manager.registerPipelineProcessors = () => {};
     manager.loadDspForWorklet = () => new Promise(resolve => resolvers.push(resolve));
-    manager._reinitializeDspWorklet = async (node, types, options) => {
-      starts.push({ node, info: manager.dspModuleInfo, types, options });
+    manager._reinitializeDspWorklet = async (node, types) => {
+      starts.push({ node, info: manager.dspModuleInfo, types });
       return true;
     };
 
@@ -1150,8 +1149,7 @@ test('AudioManager applies only the newest primary DSP load when requests resolv
     assert.deepEqual(starts, [{
       node: newNode,
       info: newInfo,
-      types: [],
-      options: { muteOutput: false }
+      types: []
     }]);
 
     resolvers[0](oldInfo);
@@ -1160,8 +1158,7 @@ test('AudioManager applies only the newest primary DSP load when requests resolv
     assert.deepEqual(starts, [{
       node: newNode,
       info: newInfo,
-      types: [],
-      options: { muteOutput: false }
+      types: []
     }]);
   });
 });
@@ -1661,6 +1658,56 @@ test('AudioManager retries an unacknowledged compiled module with retained bytes
   });
 });
 
+test('AudioManager resends bytes as soon as the worklet rejects a compiled module', async () => {
+  await withGlobals({
+    window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: {} },
+    document: { hidden: false }
+  }, async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const timers = new Map();
+    let nextTimer = 1;
+    globalThis.setTimeout = callback => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    };
+    globalThis.clearTimeout = id => timers.delete(id);
+    try {
+      const manager = createManager();
+      const bytes = Uint8Array.of(0, 97, 115, 109).buffer;
+      manager.dspModuleInfo = {
+        module: { compiled: true },
+        bytes,
+        moduleCloneable: true,
+        simd: true,
+        meta: { kernels: [] },
+        paramPackers: new Map()
+      };
+      const node = createNode('main');
+      manager.workletNode = node;
+      manager.contextManager = { workletNode: node };
+
+      manager.startDspOnWorklet(node);
+      const token = manager._dspReadyTokens.get(node);
+      manager.handleWorkletMessage({ data: { type: 'dspModuleRejected' } }, node);
+      const moduleMessages = node.port.messages.filter(entry => entry.message.type === 'dspModule');
+      assert.equal(moduleMessages.length, 2);
+      assert.ok(moduleMessages[1].message.bytes instanceof ArrayBuffer);
+      assert.equal(moduleMessages[1].message.token, token);
+      assert.equal(manager.dspModuleInfo.moduleCloneable, false);
+      assert.equal(timers.size, 0);
+
+      // A duplicate rejection does not resend.
+      manager.handleWorkletMessage({ data: { type: 'dspModuleRejected' } }, node);
+      assert.equal(node.port.messages.filter(entry => entry.message.type === 'dspModule').length, 2);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+    }
+  });
+});
+
 test('AudioManager ready fallback does not trust capabilities from a replaced worklet', async () => {
   await withGlobals({
     window: { location: { pathname: '/app/index.html', search: '' }, audioPreferences: {} },
@@ -1904,13 +1951,11 @@ test('AudioManager clears pipeline latency immediately on master bypass', async 
   });
 });
 
-test('AudioManager hides a delayed stateful DSP switch behind a bounded output transition', async () => {
+test('AudioManager leaves a single-worklet DSP switch to the worklet output gate', async () => {
   await withGlobals({ window: {} }, async () => {
     const manager = createManager();
     const node = createNode('main');
     const preparedPlugins = [{ id: 9, type: 'DelayPlugin', parameters: { feedback: 0.8 } }];
-    const waits = [];
-    const transitions = [];
     const events = [];
     manager.workletNode = node;
     manager.contextManager = { workletNode: node, audioContext: { currentTime: 1 } };
@@ -1920,25 +1965,17 @@ test('AudioManager hides a delayed stateful DSP switch behind a bounded output t
       paramPackers: new Map([['DelayPlugin', { hash: 0x1234, pack() { return Float32Array.of(1); } }]])
     };
     manager.pipelineProcessor = { prepareSectionAwarePluginData: () => preparedPlugins };
-    manager.fadeOutOutput = duration => {
-      transitions.push(['fadeOut', duration]);
-      return ++manager._outputFadeToken;
+    manager.fadeOutOutput = () => {
+      throw new Error('a single-worklet DSP switch must not touch the output gain');
     };
-    manager.fadeInOutput = duration => transitions.push(['fadeIn', duration]);
-    manager._waitForDspTransition = seconds => new Promise(resolve => {
-      waits.push({ seconds, resolve });
-    });
+    manager.fadeInOutput = () => {
+      throw new Error('a single-worklet DSP switch must not touch the output gain');
+    };
     manager.dispatchEvent = (type, data) => events.push({ type, data });
     const ready = { type: 'dspReady', abiVersion: 1, kernels: [{ name: 'DelayPlugin' }], simd: false };
 
     manager.handleWorkletMessage({ data: ready }, node);
-    const transitionPromise = manager._dspReadyTransitionPromise;
-    assert.deepEqual(transitions, [['fadeOut', 0.04]]);
-    assert.equal(messageOf(node.port, 'updatePlugins'), undefined);
-    assert.equal(waits[0].seconds, 0.04);
-
-    waits.shift().resolve();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
+    assert.equal(await manager._dspReadyTransitionPromise, true);
     const update = messageOf(node.port, 'updatePlugins').message;
     const enableIndex = node.port.messages.findIndex(entry => entry.message.type === 'dspEnableTypes');
     const updateIndex = node.port.messages.findIndex(entry => entry.message.type === 'updatePlugins');
@@ -1946,12 +1983,6 @@ test('AudioManager hides a delayed stateful DSP switch behind a bounded output t
     assert.ok(enableIndex < updateIndex);
     assert.equal(update.plugins, preparedPlugins);
     assert.deepEqual(events, [{ type: 'dspReady', data: ready }]);
-    assert.equal(waits[0].seconds, 0.05);
-    assert.deepEqual(transitions, [['fadeOut', 0.04]]);
-
-    waits.shift().resolve();
-    await transitionPromise;
-    assert.deepEqual(transitions, [['fadeOut', 0.04], ['fadeIn', 0.04]]);
   });
 });
 
@@ -1977,11 +2008,7 @@ test('AudioManager publishes startup DSP readiness while the output is still pri
       throw new Error('startup DSP publication must not publish the master output');
     };
 
-    const activation = manager._reinitializeDspWorklet(
-      node,
-      ['DelayPlugin'],
-      { muteOutput: false }
-    );
+    const activation = manager._reinitializeDspWorklet(node, ['DelayPlugin']);
     manager.handleWorkletMessage({
       data: { type: 'dspReady', abiVersion: 1, kernels: [{ name: 'DelayPlugin' }], simd: false }
     }, node);
@@ -2021,7 +2048,7 @@ test('AudioManager safely activates DSP readiness that arrives after the startup
     };
     manager._waitForDspTransition = async () => {};
 
-    const activation = manager._reinitializeDspWorklet(node, [], { muteOutput: false });
+    const activation = manager._reinitializeDspWorklet(node, []);
     manager._releaseDspActivationWait(node);
     assert.equal(await activation, false);
 
@@ -2032,7 +2059,7 @@ test('AudioManager safely activates DSP readiness that arrives after the startup
     assert.ok(transition);
     assert.equal(await transition, true);
 
-    assert.deepEqual(fades, ['out', ['in', 7]]);
+    assert.deepEqual(fades, []);
     assert.ok(messageOf(node.port, 'updatePlugins'));
     assert.deepEqual(messageOf(node.port, 'dspEnableTypes').message.types, []);
   });
@@ -2199,17 +2226,24 @@ test('AudioManager active parallel reset invalidates before awaiting muted graph
     manager._parallelInputTap = createNode('tap');
     manager.dispatchEvent = (type, data) => events.push({ type, data });
     manager.initAudio = async () => 'Audio Error: stop';
+    manager.fadeOutOutputForTeardown = async () => {
+      events.push({ type: 'fadeOut' });
+      return 1;
+    };
+    manager.fadeInOutput = () => events.push({ type: 'fadeIn' });
     const epoch = manager._primaryWorkletEpoch;
 
     const resetting = manager._doReset();
-    assert.equal(events[0].type, 'parallelInvalidated');
-    assert.equal(events[0].data.reason, 'audioReset');
-    assert.equal(events[0].data.restorePrimaryDsp, false);
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    assert.deepEqual(events.map(event => event.type), ['fadeOut', 'parallelInvalidated']);
+    assert.equal(events[1].data.reason, 'audioReset');
+    assert.equal(events[1].data.restorePrimaryDsp, false);
     assert.equal(manager._parallelActive, false);
     assert.equal(manager._parallelWorkletB, auxiliary);
     assert.equal(manager._primaryWorkletEpoch, epoch + 1);
     await resetting;
     assert.equal(manager._parallelWorkletB, null);
+    assert.equal(events.some(event => event.type === 'fadeIn'), false);
   });
 });
 
@@ -2555,11 +2589,10 @@ test('AudioManager keeps owned output muted when primary DSP teardown throws or 
   });
 });
 
-test('AudioManager invalidates ready transition tokens when a fatal failure wins before fade', async () => {
+test('AudioManager invalidates ready transition tokens when a fatal failure wins before apply', async () => {
   await withGlobals({ window: {} }, async () => {
     const manager = createManager();
     const main = createNode('main');
-    const waits = [];
     const events = [];
     const fades = [];
     manager.workletNode = main;
@@ -2572,7 +2605,6 @@ test('AudioManager invalidates ready transition tokens when a fatal failure wins
       return ++manager._outputFadeToken;
     };
     manager.fadeInOutput = () => fades.push('in');
-    manager._waitForDspTransition = () => new Promise(resolve => waits.push(resolve));
     manager.dispatchEvent = (type, data) => events.push({ type, data });
 
     manager.handleWorkletMessage({
@@ -2582,14 +2614,45 @@ test('AudioManager invalidates ready transition tokens when a fatal failure wins
     manager.handleWorkletMessage({
       data: { type: 'dspFailed', stage: 'runtime', error: 'fatal' }
     }, main);
-    waits[0]();
     assert.equal(await transition, false);
 
     assert.equal(messageOf(main.port, 'updatePlugins'), undefined);
     assert.equal(events.some(event => event.type === 'dspReady'), false);
     assert.equal(events.some(event => event.type === 'dspFailed'), true);
     assert.equal(manager.dspCapabilities, null);
-    assert.deepEqual(fades, ['out', 'in']);
+    assert.deepEqual(fades, []);
+  });
+});
+
+test('AudioManager fades only graph rewiring transitions and never holds a fixed silence', async () => {
+  await withGlobals({ window: {} }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const events = [];
+    manager.workletNode = main;
+    manager.contextManager = { workletNode: main, audioContext: { currentTime: 1 } };
+    manager.ioManager = { outputGainNode: { name: 'gain' } };
+    manager.fadeOutOutput = () => {
+      events.push('out');
+      return ++manager._outputFadeToken;
+    };
+    manager.fadeInOutput = () => events.push('in');
+    manager._waitForDspTransition = async seconds => { events.push(['wait', seconds]); };
+    const run = options => manager._runDspOutputTransition([main], () => {
+      events.push('apply');
+      return true;
+    }, manager._audioGraphGeneration, options);
+
+    assert.equal(await run({ beforeUnmute: () => events.push('unmute') }), true);
+    assert.deepEqual(events, ['out', ['wait', 0.04], 'apply', 'unmute', 'in']);
+
+    events.length = 0;
+    assert.equal(await run({ muteOutput: false, beforeUnmute: () => events.push('unmute') }), true);
+    assert.deepEqual(events, ['apply', 'unmute']);
+
+    events.length = 0;
+    assert.equal(await run(), true);
+    assert.deepEqual(events, ['apply']);
   });
 });
 
@@ -2907,49 +2970,27 @@ test('AudioManager graph generations isolate deferred DSP transitions', async ()
     const manager = createManager();
     const oldNode = createNode('old');
     const newNode = createNode('new');
-    const oldContext = { currentTime: 1 };
-    const newContext = { currentTime: 2 };
-    const oldGain = { name: 'old-gain' };
-    const newGain = { name: 'new-gain' };
-    const waits = [];
-    const fades = [];
     manager.workletNode = oldNode;
-    manager.contextManager = { workletNode: oldNode, audioContext: oldContext };
-    manager.ioManager = { outputGainNode: oldGain };
+    manager.contextManager = { workletNode: oldNode, audioContext: { currentTime: 1 } };
+    manager.ioManager = { outputGainNode: { name: 'old-gain' } };
     manager.dspModuleInfo = { meta: { kernels: [] }, paramPackers: new Map() };
     manager.pipelineProcessor = { prepareSectionAwarePluginData: () => [] };
-    manager.fadeOutOutput = () => {
-      fades.push(['out', manager.ioManager.outputGainNode.name]);
-      return ++manager._outputFadeToken;
-    };
-    manager.fadeInOutput = () => fades.push(['in', manager.ioManager.outputGainNode.name]);
-    manager._waitForDspTransition = () => new Promise(resolve => waits.push(resolve));
 
     manager.handleWorkletMessage({ data: { type: 'dspReady', kernels: [], simd: false } }, oldNode);
     const oldTransition = manager._dspReadyTransitionPromise;
-    assert.deepEqual(fades, [['out', 'old-gain']]);
 
     manager.workletNode = newNode;
-    manager.contextManager = { workletNode: newNode, audioContext: newContext };
-    manager.ioManager = { outputGainNode: newGain };
+    manager.contextManager = { workletNode: newNode, audioContext: { currentTime: 2 } };
+    manager.ioManager = { outputGainNode: { name: 'new-gain' } };
     manager._advanceAudioGraphGeneration();
     manager.handleWorkletMessage({ data: { type: 'dspReady', kernels: [], simd: false } }, newNode);
     const newTransition = manager._dspReadyTransitionPromise;
     assert.notEqual(newTransition, oldTransition);
-    assert.deepEqual(fades, [['out', 'old-gain'], ['out', 'new-gain']]);
 
-    waits[0]();
-    await oldTransition;
-    assert.equal(manager._dspReadyTransitionPromise, newTransition);
+    assert.equal(await oldTransition, false);
     assert.equal(messageOf(oldNode.port, 'updatePlugins'), undefined);
-    assert.deepEqual(fades, [['out', 'old-gain'], ['out', 'new-gain']]);
-
-    waits[1]();
-    for (let index = 0; index < 4; index++) await Promise.resolve();
-    waits[2]();
-    await newTransition;
+    assert.equal(await newTransition, true);
     assert.ok(messageOf(newNode.port, 'updatePlugins'));
-    assert.deepEqual(fades.at(-1), ['in', 'new-gain']);
   });
 });
 
@@ -4765,6 +4806,34 @@ test('visual sync retains primary latency taps through real DBT enable and disab
     manager._advanceAudioGraphGeneration();
     assert.deepEqual(manager.dspLatencyTaps, {});
     assert.equal(manager._recomputeVisualSyncDelay(), 0);
+  });
+});
+
+
+test('visual sync answers a worklet latency report without the debounce', async () => {
+  await withGlobals({ window: {} }, async () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const { context } = configureParallelManager(manager, main);
+    context.sampleRate = 48000;
+    context.outputLatency = 0.01;
+    class SpectrumAnalyzerPlugin extends VolumePlugin {
+      getParameters() { return { pt: 12 }; }
+    }
+    manager.pipeline = manager.pipelineA = [new SpectrumAnalyzerPlugin(7, 'A')];
+    const report = output => manager.handleWorkletMessage({ data: { type: 'dspLatency', samples: 0,
+      sampleRate: 48000, compensated: false, taps: { 7: { input: 0, output, execution: 'js' } } } }, main);
+    report(0);
+    await manager.setVisualSyncEnabled(true);
+    const before = main.port.outputDelaySamples;
+    manager._scheduleVisualSyncUpdate();
+
+    report(4800);
+    assert.equal(manager._visualSyncUpdateTimer, null);
+    assert.notEqual(main.port.outputDelaySamples, before);
+    assert.equal(messageOf(main.port, 'setOutputDelay').message.samples, before);
+    assert.equal(main.port.messages.filter(entry => entry.message.type === 'setOutputDelay').at(-1)
+      .message.samples, main.port.outputDelaySamples);
   });
 });
 

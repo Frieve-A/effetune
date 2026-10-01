@@ -255,7 +255,8 @@ test('rebuildPipeline sends section-aware plugin data from the global pipeline',
         parameters: { gain: 3 },
         inputBus: 1,
         outputBus: 2,
-        channel: 'L'
+        channel: 'L',
+        assetPending: false
       }],
       masterBypass: false
     });
@@ -284,7 +285,8 @@ test('master bypass preserves plugin membership when rebuilding non-empty pipeli
         parameters: {},
         inputBus: undefined,
         outputBus: undefined,
-        channel: undefined
+        channel: undefined,
+        assetPending: false
       }],
       masterBypass: true
     });
@@ -308,7 +310,8 @@ test('prepareSectionAwarePluginData tolerates a missing audio context sample rat
     parameters: { mix: 0.5 },
     inputBus: undefined,
     outputBus: undefined,
-    channel: undefined
+    channel: undefined,
+    assetPending: false
   }]);
   assert.deepEqual(calls[0], ['getParameters', {
     sampleRate: null,

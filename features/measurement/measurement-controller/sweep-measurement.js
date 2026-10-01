@@ -153,8 +153,8 @@ const SweepMeasurement = {
             
             const selection = selectionFromConfig(this.measurementConfig);
             const multiChannel = isMultiChannelSelection(selection);
-            const routeWidth = multiChannel ? maxRequiredChannelCount(selection)
-                : this.currentMeasurement.outputChannelCount;
+            const routeWidth = this.measurementConfig.outputChannelCount ?? (multiChannel
+                ? maxRequiredChannelCount(selection) : this.currentMeasurement.outputChannelCount);
             // Update the graph to show the entire measurement duration
             this.drawLevelGraphGrid(ctx, canvas.width, canvas.height);
 
@@ -429,7 +429,7 @@ const SweepMeasurement = {
     async redoChannel(channelToken) {
         if (!this.currentPoint?.channels?.some(entry => entry.channel === channelToken)) return false;
         const selection = selectionFromConfig(this.measurementConfig);
-        const routeWidth = maxRequiredChannelCount(selection);
+        const routeWidth = this.measurementConfig.outputChannelCount ?? maxRequiredChannelCount(selection);
         this.sweepCancelRequested = false;
         for (const id of ['measurementActionsExplanation', 'redoBtn',
             'saveAndContinueBtn', 'saveAndFinishBtn']) setDisplay(id, 'none');

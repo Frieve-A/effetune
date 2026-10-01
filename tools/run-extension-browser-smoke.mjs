@@ -135,7 +135,8 @@ async function waitForState(page, predicate, description, timeoutMs = transition
     state = await extensionRequest(page, 'getState');
     const session = predicate.tabId
       ? state.sessions.find(item => item.tabId === predicate.tabId) : state.sessions[0];
-    if ((!predicate.status || session?.status === predicate.status ||
+    if ((!predicate.removed || !session) &&
+        (!predicate.status || session?.status === predicate.status ||
           (predicate.status === 'stopped' && !session)) &&
         (!predicate.powerState || session?.powerState === predicate.powerState) &&
         (!Object.hasOwn(predicate, 'presetName') || session?.presetName === predicate.presetName)) return state;
@@ -776,6 +777,58 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
     const editor = await context.newPage();
     await editor.goto(`chrome-extension://${extensionId}/extension/editor.html`, { waitUntil: 'load' });
     await editor.waitForSelector('#editorStatus:text-is("Processing")', { timeout: transitionTimeoutMs });
+    await runNamedPhase('Visualizer capture continuity', 30_000, async () => {
+      const captureState = async () => JSON.parse(await offscreenRuntime.evaluate(`JSON.stringify({
+        live: window.audioManager?.stream?.getAudioTracks()[0]?.readyState === 'live',
+        sameTrack: window.audioManager?.stream?.getAudioTracks()[0] === globalThis.__extensionSmokeVisualizerTrack,
+        time: window.audioManager?.audioContext?.currentTime,
+        sources: window.audioManager?.visualizerSources?.length || 0,
+        taps: window.audioManager?.visualizerSources?.map(source => source.tapId).join(',')
+      })`));
+      const assertRunning = async (expectedSources, previousTaps) => {
+        const before = await captureState();
+        const deadline = Date.now() + transitionTimeoutMs;
+        for (;;) {
+          const state = await extensionRequest(editor, 'getState');
+          const capture = await captureState();
+          assert.ok(state.sessions.some(session => session.tabId === sourceTabId && session.status === 'processing'),
+            'Visualizer changes stopped the captured tab.');
+          assert.ok(capture.live && capture.sameTrack, 'Visualizer changes replaced or stopped the captured stream.');
+          if (capture.time > before.time + 0.1 && (expectedSources ? capture.sources > 0 : capture.sources === 0) &&
+              (previousTaps === undefined || capture.taps !== previousTaps)) break;
+          assert.ok(Date.now() < deadline, 'Visualizer sources or audio processing did not settle.');
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        assert.equal((await editor.evaluate(() => chrome.tabCapture.getCapturedTabs()))
+          .find(item => item.tabId === sourceTabId)?.status, 'active');
+      };
+      await offscreenRuntime.evaluate('globalThis.__extensionSmokeVisualizerTrack = window.audioManager.stream.getAudioTracks()[0]');
+      await editor.locator('#editorVisualizerButton').click();
+      await editor.waitForSelector('body.view-visualizer');
+      await assertRunning(true);
+      await editor.locator('.visualizer-presets').click();
+      const alternatePreset = editor.locator('.preset-dialog-system-preset:not(.active)').first();
+      const previousTaps = (await captureState()).taps;
+      await alternatePreset.click();
+      await assertRunning(true, previousTaps);
+      await editor.locator('.preset-dialog-close').click();
+      await editor.locator('#editorVisualizerButton').click();
+      await editor.waitForSelector('body:not(.view-visualizer)');
+      await assertRunning(false);
+
+      // Keep the view open while replacing the capture, as when starting from the toolbar.
+      await editor.locator('#editorVisualizerButton').click();
+      await assertRunning(true);
+      await extensionRequest(editor, 'stop');
+      await assertCaptureReleased(editor, offscreenRuntime, sourcePage, 'stopped', initialPipelineFingerprint);
+      await extensionRequest(editor, 'start', { tabId: sourceTabId });
+      await editor.waitForSelector('#editorStatus:text-is("Processing")', { timeout: transitionTimeoutMs });
+      await offscreenRuntime.evaluate('globalThis.__extensionSmokeVisualizerTrack = window.audioManager.stream.getAudioTracks()[0]');
+      await assertRunning(true);
+      await editor.locator('#editorVisualizerButton').click();
+      await assertRunning(false);
+      await offscreenRuntime.evaluate('delete globalThis.__extensionSmokeVisualizerTrack');
+    });
     const representativePipeline = [
       { nm: 'Section', en: true, cm: 'Browser smoke', ib: 0, ob: 0, ch: 'A' },
       { nm: 'Volume', en: true, vl: -18, ib: 0, ob: 0, ch: 'A' },
@@ -951,7 +1004,19 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
     const firstAfterStop = await waitForState(editor, { tabId: sourceTabId, status: 'processing' },
       'Stopping the second tab interrupted the first tab.');
     assert.equal(firstAfterStop.sessions.find(session => session.tabId === sourceTabId).plugins[0].ir, latestIrId);
+    const firstPipelineBeforeClose = firstAfterStop.sessions.find(session => session.tabId === sourceTabId).plugins;
+    await offscreenRuntime.evaluate('globalThis.__extensionSmokeTabCloseTrack = window.audioManager.stream.getAudioTracks()[0]');
+    await grantTabCapture(cdp, browserCdp, extensionId, secondPage);
+    const restartedSecond = await extensionRequest(editor, 'start', { tabId: secondTabId });
+    assert.equal(restartedSecond.sessions.find(session => session.tabId === secondTabId).status, 'processing');
     await secondPage.close();
+    const firstAfterClose = await waitForState(editor, { tabId: secondTabId, removed: true },
+      'Closing the captured second tab did not remove its session.');
+    const remainingFirst = firstAfterClose.sessions.find(session => session.tabId === sourceTabId);
+    assert.equal(remainingFirst.status, 'processing', 'Closing the second tab interrupted the first tab.');
+    assert.deepEqual(remainingFirst.plugins, firstPipelineBeforeClose);
+    assert.equal(await offscreenRuntime.evaluate('globalThis.__extensionSmokeTabCloseTrack === window.audioManager.stream.getAudioTracks()[0] && globalThis.__extensionSmokeTabCloseTrack.readyState === "live"'), true);
+    await offscreenRuntime.evaluate('delete globalThis.__extensionSmokeTabCloseTrack');
 
     await offscreenRuntime.evaluate(`globalThis.__extensionSmokeTrack = window.audioManager.stream.getAudioTracks()[0]`);
     const changedRate = await modelRequest(editor, 'setSampleRate', { sampleRate: 44100 });

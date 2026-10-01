@@ -93,6 +93,54 @@ test('explicit width cannot bypass output channel validation', async () => {
   );
 });
 
+test('selected channels retain the configured device layout, including all channels', async () => {
+  for (const count of [6, 8]) {
+    const destination = createDestination(16);
+    const audioContext = { destination };
+    for (const channel of ['left', '2', '3', 'all']) {
+      const route = await prepareMeasurementOutputRoute(audioContext, null, channel, {}, count);
+      assert.equal(route.outputChannels, count);
+      assert.equal(destination.channelCount, count);
+    }
+  }
+  await assert.rejects(
+    prepareMeasurementOutputRoute({ destination: createDestination(2) }, null, 'left', {}, 6),
+    MeasurementOutputError
+  );
+});
+
+test('center and subwoofer test signals use six output channels', async () => {
+  const destination = createDestination(8);
+  const connections = [];
+  const mergers = [];
+  const node = () => ({ connect() {}, disconnect() {} });
+  const audioContext = {
+    sampleRate: 8,
+    destination,
+    createBuffer(_count, length) {
+      const data = new Float32Array(length);
+      return { getChannelData: () => data };
+    },
+    createBufferSource: () => ({ ...node(), start() {}, stop() {} }),
+    createGain: () => ({ ...node(), gain: {}, connect: (...args) => connections.push(args) }),
+    createChannelMerger(count) {
+      mergers.push(count);
+      return node();
+    }
+  };
+  const harness = { audioContext, ensureAudioContextRunning: async () => true };
+  for (const channel of ['2', '3']) {
+    try {
+      assert.equal(await startWhiteNoise.call(harness, -12, null, channel, 1, null, null, 6), true);
+      assert.equal(destination.channelCount, 6);
+      assert.equal(connections.at(-1)[2], Number(channel));
+    } finally {
+      stopWhiteNoise.call(harness);
+    }
+  }
+  assert.deepEqual(mergers, [6, 6]);
+});
+
 test('direct measurement output selects the requested device before configuring its layout', async () => {
   const destination = createDestination(8);
   const calls = [];

@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "sourceModelSha256": "12eb3374a0affa8d8e9291544c3e2e708916ab4e07337e481f60db239b4a02a0",
+  "sha256": "d8aa3f0d87836269654717d82a6f06b8176a215ff60022a5ea9025849829431f",
+  "outputCount": 1,
+  "thresholdType": "index8",
+  "leafType": "int16",
+  "constants": {
+    "FeatureCount": 36,
+    "TreeCount": 256,
+    "Depth": 6,
+    "Scale": 1.0,
+    "Bias": 0.0
+  },
+  "borderCount": 1117
+}

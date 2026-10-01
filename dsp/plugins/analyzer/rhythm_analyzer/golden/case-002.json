@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "type": "RhythmAnalyzerPlugin",
+  "id": "mono-variable-block",
+  "stimulus": "imp",
+  "sampleRate": 44100,
+  "channels": 1,
+  "frameCount": 773,
+  "blockSize": 97,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 1,
+  "seed": "0xeffe7a5f",
+  "params": {
+    "mn": 40,
+    "mx": 240,
+    "ck": false
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:50ae8e8828195347d0a72f7cdfd8ed5e0613ad70b00c65c1ce462f5a97e106e9",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type RhythmAnalyzerPlugin --promote-production-native",
+  "outputFloats": 773,
+  "byteLength": 3092,
+  "binary": "case-002.f32"
+}

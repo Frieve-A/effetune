@@ -24,6 +24,8 @@
   "help:inputChannel": "Selecione o canal ao qual o microfone de calibração está conectado para o dispositivo de entrada de áudio selecionado.",
   "label:audioOutput": "Dispositivo de Saída de Áudio:",
   "help:audioOutput": "Selecione o dispositivo de áudio que emite o sinal de medição.",
+  "label:outputChannelCount": "Número de canais do dispositivo de saída:",
+  "help:outputChannelCount": "Defina o valor conforme a configuração do dispositivo de saída (6 para 5.1, 8 para 7.1). Os sinais de teste e as medições sempre usam esse número, mesmo ao medir apenas alguns canais.",
   "label:outputChannel": "Canal de Saída:",
   "help:outputChannel": "Selecione um ou mais canais de saída para medir. Selecionar Todos os Canais desmarca os canais individuais.",
   "help:audioInput": "Especifique o dispositivo de entrada de áudio ao qual o microfone de medição está conectado.",

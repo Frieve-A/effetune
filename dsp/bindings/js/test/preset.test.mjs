@@ -127,6 +127,34 @@ test('legacy Analog Meter validates and discards its meter-face settings', () =>
   }
 });
 
+test('legacy Rhythm Analyzer validates and discards its beat-grid display settings', () => {
+  const document = importLegacyPreset({
+    pipeline: [{ name: 'Rhythm Analyzer', parameters: { mn: 60, mx: 180, sp: 12 } }]
+  });
+  assert.equal(document.chain[0].type, 'RhythmAnalyzer');
+  assert.deepEqual(document.chain[0].parameters, { minimumBpm: 60, maximumBpm: 180, metronomeClick: false });
+  for (const parameters of [{ sp: 5 }, { sp: '8' }, { sp: 3 }, { sp: 8.5 }]) {
+    assert.throws(() => importLegacyPreset({
+      pipeline: [{ name: 'Rhythm Analyzer', parameters }]
+    }), ValidationError, JSON.stringify(parameters));
+  }
+});
+
+test('legacy Rhythm Analyzer validates and discards its panel-toggle display settings', () => {
+  const document = importLegacyPreset({
+    pipeline: [{ name: 'Rhythm Analyzer', parameters: { mn: 60, mx: 180, vt: false, vm: true, ve: false, vl: true } }]
+  });
+  assert.equal(document.chain[0].type, 'RhythmAnalyzer');
+  assert.deepEqual(document.chain[0].parameters, { minimumBpm: 60, maximumBpm: 180, metronomeClick: false });
+  for (const key of ['vt', 'vm', 've', 'vl']) {
+    for (const value of [0, 1, '0', 'true', null]) {
+      assert.throws(() => importLegacyPreset({
+        pipeline: [{ name: 'Rhythm Analyzer', parameters: { [key]: value } }]
+      }), ValidationError, JSON.stringify({ [key]: value }));
+    }
+  }
+});
+
 test('legacy analyzer color and Stereo Meter gain are validated and discarded', () => {
   const effects = [
     { name: 'Pitch Meter', parameters: { rf: 442, cl: 'Rainbow' }, expected: { referenceA4: 442 } },

@@ -59,6 +59,12 @@ const rules = {
         return Math.ceil(Math.max(3.1 * rate / frequency + 4, rate * 0.015)) / 2 +
             clamp(Math.round(rate * 0.01 / 16) * 16, 16, 8192);
     }),
+    // Half the onset STFT window plus the staged hop and the one-frame peak look-ahead.
+    RhythmAnalyzerPlugin: rule((p, rate) => {
+        const pow2 = (value, low, high) => 2 ** Math.round(Math.log2(clamp(value, low, high)));
+        const hop = pow2(0.00267 * rate, 8, 4096);
+        return Math.max(pow2(0.0213 * rate, 64, 32768), 4 * hop) / 2 + 2 * hop;
+    }),
     OscilloscopePlugin: rule((p, rate) => clamp(Math.floor(rate * bounded(p.dt, 0.01, 0.001, 0.1)), 1, 65536) / 2),
     StereoMeterPlugin: rule((p, rate) => Math.ceil(rate * bounded(p.wt, 0.1, 0.01, 1)) / 2),
     spectrumOverlay: rule((params, rate) => params?.quality === 'hq'

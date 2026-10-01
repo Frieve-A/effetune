@@ -245,6 +245,23 @@ test('atomic changed-only saves preserve an active operation for equal snapshots
   assert.equal(manager.history[1].pipelineA[0].gain, 1);
 });
 
+test('atomic plugin saves ignore unrecorded changes in other plugins', () => {
+  const automated = createSourcePlugin('Radio', { serialized: { nm: 'Radio', st: 0.3 } });
+  const updating = createSourcePlugin('Room', { serialized: { nm: 'Room', dl: 0 } });
+  const runtime = createRuntime({ pipelineA: [automated, updating] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  manager.saveState();
+
+  automated.serialized.st = 0.4;
+  assert.equal(manager.saveStateAtomicallyIfChanged(updating), false);
+  assert.equal(manager.history.length, 1);
+
+  updating.serialized.dl = 1;
+  assert.equal(manager.saveStateAtomicallyIfChanged(updating), true);
+  assert.equal(manager.history.length, 2);
+  assert.equal(manager.history[1].pipelineA[1].dl, 1);
+});
+
 test('token ownership remains at the tip when the history limit shifts', () => {
   const plugin = createSourcePlugin('Tone', { serialized: { nm: 'Tone', gain: 0 } });
   const runtime = createRuntime({ pipelineA: [plugin] });

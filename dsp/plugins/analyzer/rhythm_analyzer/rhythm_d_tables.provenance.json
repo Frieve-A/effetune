@@ -1,0 +1,85 @@
+{
+  "artifact": "rhythm_d_tables.h",
+  "header": "rhythm_d_tables.h",
+  "header_sha256": "eedc15d6a3dfaa0bb9b26289dc50d138cfdf59c43bc4dde8452aba641443269e",
+  "contents": "sub-band layout, rate-conversion filter parameters (up/down factors, tap counts, cutoffs and the Kaiser beta; the filters, FFT windows and twiddles are computed from them in prepare()), and the per-band detector constants (noise floors, excess coefficients, refractory frames, operating thresholds, candidate window, stationary-fluctuation table)",
+  "runtime_decision": "Compiled into the DSP module as fixed values for the three band detectors.",
+  "fitted_values": [
+    {
+      "values": "noise floors, excess coefficients and the stationary-fluctuation table (49 levels)",
+      "fitted_on": "Monte Carlo runs on synthetic noise (stationary-fluctuation table: seeds 74000000 + level index)"
+    },
+    {
+      "values": "operating threshold, Low band 0.42",
+      "fitted_on": "raised from its validation optimum so that every stationary-noise condition of the synthetic false-alarm check meets the specification"
+    },
+    {
+      "values": "operating thresholds Mid 0.24 and High 0.44; candidate window 1 s and minimum ratio 1/4",
+      "fitted_on": "chosen on the Slakh2100-redux validation split and Groove MIDI validation fold (312 tracks) for the best F-measure (selection only)"
+    }
+  ],
+  "selection_only_sets": [
+    {
+      "set": "Slakh2100-redux validation split and Groove MIDI validation fold",
+      "items": "312 tracks",
+      "licence_class": "CC BY 4.0 (audio and labels)",
+      "used_for": "choosing the operating thresholds, the candidate window and the minimum ratio",
+      "trained_on": false
+    }
+  ],
+  "dataset_attribution": [
+    {
+      "name": "Slakh2100-redux",
+      "creators": "Ethan Manilow, Gordon Wichern, Prem Seetharaman, Jonathan Le Roux",
+      "citation": "Manilow, Wichern, Seetharaman and Le Roux, \"Cutting Music Source Separation Some Slakh: A Dataset to Study the Impact of Training Data Quality and Quantity\", IEEE WASPAA 2019",
+      "material_uri": "https://www.slakh.com/",
+      "split_source": "https://github.com/ethman/slakh-utils/blob/master/splits/redux.json",
+      "audio": {
+        "description": "mix audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "beat times taken from the MIDI tempo map",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "also_credited": [
+        {
+          "name": "Lakh MIDI Dataset v0.1",
+          "creators": "Colin Raffel",
+          "citation": "Colin Raffel, \"Learning-Based Methods for Comparing Sequences, with Applications to Audio-to-MIDI Alignment and Matching\", PhD thesis, Columbia University, 2016",
+          "material_uri": "https://colinraffel.com/projects/lmd/",
+          "license": "CC BY 4.0",
+          "license_uri": "https://creativecommons.org/licenses/by/4.0/",
+          "role": "the MIDI files that Slakh2100-redux renders to audio"
+        }
+      ],
+      "used": "validation split: choice of thresholds and window (no weights or tables fitted)",
+      "trained_on": false,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    },
+    {
+      "name": "Groove MIDI Dataset v1.0.0",
+      "creators": "Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman",
+      "citation": "Gillick, Roberts, Engel, Eck and Bamman, \"Learning to Groove with Inverse Sequence Transformations\", ICML 2019",
+      "material_uri": "https://magenta.tensorflow.org/datasets/groove",
+      "split_source": "the dataset's own train, validation and test split (info.csv in the archive)",
+      "audio": {
+        "description": "audio",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "labels": {
+        "description": "performed beat times taken from the MIDI",
+        "license": "CC BY 4.0",
+        "license_uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "used": "validation fold: choice of thresholds and window (no weights or tables fitted)",
+      "trained_on": false,
+      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+    }
+  ],
+  "synthetic_data": "synthetic data generated for this project (no third-party material)",
+  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the Winterreise SC06 performance, and the Slakh and Groove test splits."
+}

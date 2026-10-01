@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
+import { AudioManager } from '../../js/audio-manager.js';
+import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { validatePowerSnapshot } from '../../js/audio/power-snapshot.js';
 
@@ -1871,6 +1873,105 @@ test('stale worklet identities are ignored and a user gesture can resume require
   assert.notEqual(harness.controller.getEffectiveState(), 'SUSPENDED');
 });
 
+test('explicit activation recovers deferred system resume while hidden, including reset re-entry', { timeout: 2000 }, async () => {
+  for (const entry of ['ensureActive', 'requestResumeFromUserGesture']) {
+    const harness = createHarness({ pageHidden: true });
+    const { controller, audioManager } = harness;
+    let recoveries = 0;
+    let allowRebuild;
+    const rebuildAllowed = new Promise(resolve => { allowRebuild = resolve; });
+    Object.defineProperty(audioManager, 'needsSystemResumeRecovery',
+      Object.getOwnPropertyDescriptor(AudioManager.prototype, 'needsSystemResumeRecovery'));
+    audioManager._systemResumeRecoveryPending = true;
+    audioManager.recoverFromSystemResume = AudioManager.prototype.recoverFromSystemResume;
+    audioManager.reset = async () => {
+      recoveries++;
+      audioManager._resetInProgress = true;
+      await rebuildAllowed;
+      audioManager.contextManager.audioContext = { ...harness.context };
+      // Reset resumes its replacement context before its own promise settles.
+      assert.equal(audioManager.needsSystemResumeRecovery, false);
+      assert.equal(await controller.ensureActive('player-only-play'), true);
+      audioManager._resetInProgress = false;
+      return '';
+    };
+    let activated = false;
+    const pending = controller[entry]('player-only-play').then(result => {
+      activated = true;
+      return result;
+    });
+    await harness.flush();
+    assert.equal(recoveries, 1);
+    assert.equal(activated, false);
+    let secondActivated = false;
+    const second = controller.ensureActive('player-only-play').then(result => {
+      secondActivated = true;
+      return result;
+    });
+    await harness.flush();
+    assert.equal(secondActivated, false);
+    assert.equal(recoveries, 1);
+    allowRebuild();
+    assert.equal(await pending, true);
+    assert.equal(await second, true);
+    assert.equal(audioManager.needsSystemResumeRecovery, false);
+  }
+});
+
+test('disabled power policy still retries failed stream recovery through the public context resume', { timeout: 2000 }, async () => {
+  const { controller, audioManager } = createHarness({ pageHidden: true });
+  const contextManager = Object.assign(new AudioContextManager(), audioManager.contextManager);
+  audioManager.contextManager = contextManager;
+  controller.enabled = false;
+  await controller.start();
+  assert.equal(contextManager.powerStateDelegate, controller);
+  Object.defineProperty(audioManager, 'needsSystemResumeRecovery',
+    Object.getOwnPropertyDescriptor(AudioManager.prototype, 'needsSystemResumeRecovery'));
+  audioManager._systemResumeRecoveryPending = true;
+  audioManager.recoverFromSystemResume = AudioManager.prototype.recoverFromSystemResume;
+  let resets = 0;
+  const oldContext = contextManager.audioContext;
+  oldContext.resume = () => assert.fail('the stale running context must not be resumed');
+  audioManager.reset = async () => {
+    if (++resets === 1) return 'Audio Error: unavailable';
+    audioManager._resetInProgress = true;
+    try {
+      contextManager.audioContext = { state: 'running' };
+      await contextManager.resumeAudioContext();
+      return '';
+    } finally {
+      audioManager._resetInProgress = false;
+    }
+  };
+  await assert.rejects(contextManager.resumeAudioContext(), /unavailable/);
+  assert.equal(audioManager.needsSystemResumeRecovery, true);
+  assert.equal(contextManager.audioContext, oldContext);
+  // Player and remote activation use this same fallback without a DOM event.
+  await contextManager.resumeAudioContext({ resumeKind: 'player-only-play' });
+  assert.equal(resets, 2);
+  assert.notEqual(contextManager.audioContext, oldContext);
+  assert.equal(audioManager.needsSystemResumeRecovery, false);
+  await contextManager.resumeAudioContext();
+  assert.equal(resets, 2);
+  controller.dispose();
+  assert.equal(contextManager.powerStateDelegate, null);
+});
+
+test('failed deferred system recovery does not activate playback and can be retried', async () => {
+  const harness = createHarness({ contextState: 'suspended', pageHidden: true });
+  const { controller, audioManager, context } = harness;
+  audioManager.needsSystemResumeRecovery = true;
+  audioManager.recoverFromSystemResume = async () => 'Audio Error: unavailable';
+  await assert.rejects(controller.ensureActive('player-only-play'), /unavailable/);
+  assert.equal(context.state, 'suspended');
+  audioManager.recoverFromSystemResume = async () => {
+    audioManager.needsSystemResumeRecovery = false;
+    return '';
+  };
+  assert.equal(await controller.ensureActive('player-only-play'), true);
+  assert.equal(context.state, 'running');
+});
+
 test('gesture begin and ensureActive share one in-flight context and input acquisition', async () => {
   const harness = createHarness({
     contextState: 'suspended',
@@ -3540,6 +3641,28 @@ test('user interaction resumes the current route and restores a released routed 
   assert.equal(reacquireCount, 1);
   assert.equal(harness.inputState.state, 'live');
   assert.equal(harness.controller.getSnapshot().manualResumeRequired, false);
+});
+
+test('an ended configured input is reacquired even when the context and DSP still appear active', async () => {
+  const harness = createHarness({ inputDeviceId: 'mic', input: {
+    state: 'ended', inputAvailability: 'unknown', inputGeneration: 4,
+    inputConfigured: true, inputSourcePresent: false, trackState: 'ended'
+  } });
+  harness.controller.effectiveState = 'ACTIVE';
+  harness.controller.processingDirective = 'full-process';
+  harness.controller.transition = { state: 'stable' };
+  harness.controller.manualResumeRequired = false;
+  let reacquireCount = 0;
+  const originalReacquire = harness.audioManager.ioManager.beginReacquireAudioInput
+    .bind(harness.audioManager.ioManager);
+  harness.audioManager.ioManager.beginReacquireAudioInput = () => {
+    reacquireCount++;
+    return originalReacquire();
+  };
+  assert.equal(await harness.controller.ensureActive('dedicated-input'), true);
+  await harness.flush();
+  assert.equal(reacquireCount, 1);
+  assert.equal(harness.inputState.state, 'live');
 });
 
 test('user interaction reuses the existing resume kind for each current route', async () => {

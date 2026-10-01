@@ -258,7 +258,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ---
 
 uint8array-extras
-Version: 1.5.0
+Version: 1.6.0
 License: MIT
 
 license

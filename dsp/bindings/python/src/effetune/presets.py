@@ -366,6 +366,19 @@ def _prepare_legacy_parameters_v1(
                 or not minimum <= value <= maximum
             ):
                 raise ValidationError(f"legacy AnalogMeter contains invalid {key} display state")
+    if effect_type == "RhythmAnalyzer":
+        if "sp" in parameters:
+            # Span (beats per row) only controls the beat-grid display.
+            span = parameters.pop("sp")
+            if type(span) is not int or span not in (4, 6, 8, 12, 16):
+                raise ValidationError("legacy RhythmAnalyzer contains invalid sp display state")
+        # Panel toggles (tempogram strip, main lanes, echo rows, beat lens) only control the display.
+        for key in ("vt", "vm", "ve", "vl"):
+            if key not in parameters:
+                continue
+            value = parameters.pop(key)
+            if type(value) is not bool:
+                raise ValidationError(f"legacy RhythmAnalyzer contains invalid {key} display state")
     processing_enabled = True
     if effect_type == "Matrix" and "mx" in parameters:
         if "matrixRoutes" in parameters:

@@ -149,8 +149,8 @@ test('DSP model freshness hashes binary bytes without UTF-8 decoding', t => {
     assert.equal(inputs.has(`${directory}${model}.bin`), true);
     assert.equal(inputs.has(`${directory}${model}.json`), true);
   }
-  assert.equal(inputs.has(`${directory}embed_models.py`), true);
-  assert.equal(inputs.has(`${directory}models.cmake`), true);
+  assert.equal(inputs.has('dsp/plugins/analyzer/tree_models/embed_models.py'), true);
+  assert.equal(inputs.has('dsp/plugins/analyzer/tree_models/models.cmake'), true);
 
   // Both byte sequences decode to the same replacement character as UTF-8.
   // Intercept synchronous reads so parallel tests never see a changed model file.
