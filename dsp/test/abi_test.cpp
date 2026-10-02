@@ -5,6 +5,7 @@
 #include "engine.h"
 #include "nothrow_storage.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -872,12 +873,68 @@ void testAssetLifecycle() {
 
 } // namespace
 
+void testPipelineObserver() {
+  auto engine = std::make_unique<Engine>();
+  ET_CHECK(engine->prepare(48000.0F, 8u, 128u, 0u) == ET_OK);
+  const auto instance = engine->createInstance("TestGainPlugin");
+  const float gain = 2.0F;
+  ET_CHECK(engine->setInstanceParams(instance, &gain, 1u, kTestHash, 0u) == ET_OK);
+  struct Observation {
+    et_instance instance = 0;
+    std::uint32_t calls = 0, channels = 0, frames = 0, latency = 0;
+    float input = 0, output = 0;
+    bool paired = true;
+  } observation;
+  engine->setPipelineObserver(
+      [](void *context, et_instance observed, const float *audio, std::uint32_t channels,
+         std::uint32_t frames, std::uint32_t latency, bool before) noexcept {
+        auto &result = *static_cast<Observation *>(context);
+        result.paired = result.paired && before == ((result.calls & 1u) == 0u);
+        ++result.calls;
+        result.instance = observed;
+        result.channels = channels;
+        result.frames = frames;
+        result.latency = latency;
+        if (before)
+          result.input = audio[0];
+        else
+          result.output = audio[0];
+      },
+      &observation);
+  for (const auto route : {descriptor(instance, 0u, 0u, -2), descriptor(instance, 0u, 4u, -2),
+                           descriptor(instance, 0u, 0u, 17), descriptor(instance, 0u, 4u, 3)}) {
+    ET_CHECK(engine->configurePipeline(route.data(), static_cast<std::uint32_t>(route.size())) ==
+             ET_OK);
+    for (const auto frames : {1u, 37u, 128u}) {
+      for (std::uint32_t channel = 0; channel < 8u; ++channel)
+        std::fill_n(engine->combined() + channel * frames, frames, static_cast<float>(channel + 1));
+      observation = {};
+      {
+        allocation_guard::Scope scope;
+        ET_CHECK(engine->processPipeline(8u, frames, 0.0, 0u) == ET_OK);
+      }
+      ET_CHECK(observation.calls == 2u && observation.paired && observation.instance == instance);
+      ET_CHECK(observation.frames == frames && observation.latency == 0u);
+      ET_CHECK(observation.channels == (route[15] == 254u ? 8u : route[15] == 17u ? 2u : 1u));
+      ET_CHECK(observation.input == (route[15] == 254u ? 1.0F : route[15] == 17u ? 3.0F : 4.0F));
+      ET_CHECK(observation.output == observation.input * gain);
+      observation = {};
+      ET_CHECK(engine->processPipeline(8u, frames, 0.0, 1u) == ET_OK);
+      ET_CHECK(observation.calls == 0u);
+    }
+  }
+  engine->setPipelineObserver(nullptr, nullptr);
+  ET_CHECK(engine->processPipeline(8u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(observation.calls == 0u);
+}
+
 void runAbiTests() {
   testAllocationGuardScope();
   testAudioThreadEnablesDenormalFlush();
   testNothrowStorageContract();
   testDiscoveryAndLifecycle();
   testPipelineValidationAndRouting();
+  testPipelineObserver();
   testPipelineLatencyCompensation();
   testPipelineChannelAlignment();
   testUnrelatedInstanceDestructionPreservesPipeline();
