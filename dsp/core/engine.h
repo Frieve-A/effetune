@@ -27,6 +27,18 @@ public:
   Engine(const Engine &) = delete;
   Engine &operator=(const Engine &) = delete;
 
+  // Optional, synchronous observation of the actual routed pipeline PCM, before
+  // and after a kernel, before destination-bus mixing. Audio is borrowed planar
+  // storage with frame_count stride. Register only while the engine is idle;
+  // the callback must not allocate, block, mutate audio or reenter the engine.
+  using PipelineObserver = void (*)(void *context, et_instance instance, const float *audio,
+                                    std::uint32_t channel_count, std::uint32_t frame_count,
+                                    std::uint32_t latency_samples, bool before) noexcept;
+  void setPipelineObserver(PipelineObserver observer, void *context) noexcept {
+    pipeline_observer_ = observer;
+    pipeline_observer_context_ = context;
+  }
+
   et_status prepare(float sample_rate, std::uint32_t max_channels, std::uint32_t max_frames,
                     std::uint32_t telemetry_ring_bytes) noexcept;
   et_status reset() noexcept;
@@ -158,7 +170,8 @@ private:
   et_status validateProcessArgs(const float *audio, std::uint32_t channel_count,
                                 std::uint32_t frame_count, double time_seconds) const noexcept;
   void processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
-                   std::uint32_t frame_count, double time_seconds) noexcept;
+                   std::uint32_t frame_count, double time_seconds,
+                   et_instance pipeline_instance = 0) noexcept;
   void maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) noexcept;
   void invalidatePipeline() noexcept;
   void invalidateGraph() noexcept;
@@ -173,6 +186,8 @@ private:
                          std::uint32_t frame_count) noexcept;
 
   Arena arena_;
+  PipelineObserver pipeline_observer_ = nullptr;
+  void *pipeline_observer_context_ = nullptr;
   TelemetryRing telemetry_;
   std::array<InstanceSlot, kMaxInstances> instances_{};
   std::array<PipelineNode, kMaxPipelineNodes> pipeline_{};

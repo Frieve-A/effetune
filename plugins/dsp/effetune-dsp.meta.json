@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:3932387a248572b3843f139f160c2b1a710be64980e196686c694baf022664d8",
+  "sourceDigest": "sha256:68f917c955686e9eb2236a1fad657402b1434e117f25b78f8dee1498a64aa85f",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:284f551cde27ea313562b6b8cd3218bfeb7a6afe324cc550e019c13ed4699963",
+    "digest": "sha256:645fc93663840f73d04c8c2be904887ec140bd57d4888df4801449f46325bc2a",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:4bd7f05a1da8d37b08ec721e5939974d938150cfd39828dd9c216a042dd934da"
+        "sha256": "sha256:61aa99d21c27ef49ba5337af99c7aa83036bb1ca2301d4c25f2fd3b15fe60f99"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:adfd0803379be00cde6002d97561271dfd3ad788e38b0df31628c907da527e98"
+        "sha256": "sha256:1849583318bdf597f2c965c9d73e9b561d6879415c68fe7983257b7202e4de17"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -1109,7 +1109,7 @@
     }
   ],
   "sizes": {
-    "baseline": 5315549,
-    "simd": 5483622
+    "baseline": 5315674,
+    "simd": 5483747
   }
 }

@@ -569,8 +569,15 @@ void Engine::maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) 
 }
 
 void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
-                         std::uint32_t frame_count, double time_seconds) noexcept {
+                         std::uint32_t frame_count, double time_seconds,
+                         et_instance pipeline_instance) noexcept {
   slot.kernel->applyPendingParameters();
+  const bool observed = pipeline_instance != 0u && pipeline_observer_ != nullptr;
+  const auto latency = observed ? slot.kernel->latencySamples() : 0u;
+  if (observed) {
+    pipeline_observer_(pipeline_observer_context_, pipeline_instance, audio, channel_count,
+                       frame_count, latency, true);
+  }
 #if defined(__EMSCRIPTEN__)
   const bool add_noise_after = requiresPostKernelDenormalNoise(*slot.descriptor);
   prepareDenormalProtectedInput(audio, channel_count, frame_count, time_seconds, sample_rate_,
@@ -583,6 +590,10 @@ void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel
   }
 #endif
   maybeWriteTelemetry(slot, frame_count);
+  if (observed) {
+    pipeline_observer_(pipeline_observer_context_, pipeline_instance, audio, channel_count,
+                       frame_count, latency, false);
+  }
 }
 
 et_status Engine::processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
@@ -966,12 +977,12 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
     if (node.channelSpec == -2) {
       if (node.inputBus == node.outputBus) {
         align_input(input, 0u, channel_count);
-        processSlot(*slot, input, channel_count, frame_count, time_seconds);
+        processSlot(*slot, input, channel_count, frame_count, time_seconds, node.instance);
       } else {
         float *routed = arena_.scratch(0);
         std::memcpy(routed, input, total_floats * sizeof(float));
         align_input(routed, 0u, channel_count);
-        processSlot(*slot, routed, channel_count, frame_count, time_seconds);
+        processSlot(*slot, routed, channel_count, frame_count, time_seconds, node.instance);
         for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
           float *target = output + channel * frame_count;
           float *source = routed + channel * frame_count;
@@ -1010,7 +1021,7 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
                   frame_count * sizeof(float));
     }
     align_input(routed, first_channel, routed_channels);
-    processSlot(*slot, routed, routed_channels, frame_count, time_seconds);
+    processSlot(*slot, routed, routed_channels, frame_count, time_seconds, node.instance);
     for (std::uint32_t channel = 0; channel < routed_channels; ++channel) {
       float *target = output + (first_channel + channel) * frame_count;
       float *source = routed + channel * frame_count;
