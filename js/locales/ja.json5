@@ -220,6 +220,7 @@
 
   "menu.settings": "設定",
   "menu.settings.config": "環境設定...",
+  "menu.settings.remoteControl": "リモートコントロール...",
   "menu.settings.audioDevices": "オーディオ設定...",
   "menu.settings.install": "アプリをインストール",
   "menu.settings.performanceBenchmark": "パフォーマンスベンチマーク",

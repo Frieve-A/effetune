@@ -92,6 +92,7 @@
       "startup-audio.html",
       "effetune.html",
       "css/**/*",
+      "remote.html",
       "sw.js",
       "sw-precache.js",
       "manifest.json",
@@ -274,6 +275,8 @@
     "@mediabunny/flac-encoder": "1.61.0",
     "electron-updater": "6.8.9",
     "mediabunny": "1.61.0",
-    "music-metadata": "^11.16.1"
+    "music-metadata": "^11.16.1",
+    "qrcode-generator": "^2.0.4",
+    "ws": "^8.22.0"
   }
 }

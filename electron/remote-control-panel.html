@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<title>Remote Control</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f4f6;
+    --card: #ffffff;
+    --fg: #1d1d1f;
+    --muted: #6e6e73;
+    --line: #d9d9de;
+    --accent: #2f6fe4;
+    --error: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e;
+      --card: #2a2a2d;
+      --fg: #f2f2f7;
+      --muted: #a1a1a6;
+      --line: #3a3a3e;
+      --accent: #5b8def;
+      --error: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.45 system-ui, "Segoe UI", "Yu Gothic UI", sans-serif;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  .status { color: var(--muted); margin-top: 6px; min-height: 1.45em; }
+  .status.error { color: var(--error); }
+  .devices { list-style: none; margin: 4px 0 0; padding: 0; color: var(--muted); font-size: 12px; }
+  .devices[hidden] { display: none; }
+  .switch { position: relative; width: 46px; height: 26px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch span {
+    position: absolute; inset: 0; border-radius: 13px; background: var(--line);
+    transition: background 0.15s; cursor: pointer;
+  }
+  .switch span::before {
+    content: ""; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px;
+    border-radius: 50%; background: #fff; transition: transform 0.15s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::before { transform: translateX(20px); }
+  .switch input:disabled + span { opacity: 0.5; cursor: default; }
+  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #pairing { margin-top: 16px; }
+  #pairing[hidden] { display: none; }
+  .qr {
+    display: block; margin: 0 auto; width: 100%; max-width: 300px; aspect-ratio: 1;
+    background: #fff; border-radius: 8px; image-rendering: pixelated;
+  }
+  select, button {
+    font: inherit; color: var(--fg); background: var(--card);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .field { margin-top: 12px; }
+  .field label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .url {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    word-break: break-all; user-select: all;
+    padding: 8px; border: 1px solid var(--line); border-radius: 6px;
+  }
+  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="row">
+      <h1>Remote Control</h1>
+      <label class="switch" title="Remote Control">
+        <input type="checkbox" id="enabled" aria-label="Remote Control">
+        <span></span>
+      </label>
+    </div>
+    <div class="status" id="status"></div>
+    <ul class="devices" id="devices" hidden></ul>
+
+    <div id="pairing" hidden>
+      <img class="qr" id="qr" alt="QR code of the connection URL">
+      <div class="field" id="address-field" hidden>
+        <label for="address">Network</label>
+        <select id="address"></select>
+      </div>
+      <div class="field">
+        <label>Pairing link</label>
+        <div class="url" id="url"></div>
+      </div>
+      <div class="actions">
+        <button type="button" id="copy">Copy link</button>
+        <button type="button" id="regenerate">New token</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const api = window.remotePanel;
+  const $ = id => document.getElementById(id);
+  let status = null;
+  let selected = 0;
+  let busy = false;
+
+  function statusText(s) {
+    if (s.error) return { text: `Could not start: ${s.error}`, error: true };
+    if (!s.enabled) return { text: 'Off', error: false };
+    if (!s.running) return { text: 'Starting…', error: false };
+    const clients = s.clients === 1 ? '1 device connected' : `${s.clients} devices connected`;
+    const busy = s.requestedPort && s.requestedPort !== s.port ? ` (${s.requestedPort} was busy)` : '';
+    return { text: `On · port ${s.port}${busy} · ${clients}`, error: false };
+  }
+
+  function render() {
+    if (!status) return;
+    $('enabled').checked = status.enabled;
+    $('enabled').disabled = busy;
+    $('regenerate').disabled = busy;
+    const st = statusText(status);
+    $('status').textContent = st.text;
+    $('status').classList.toggle('error', st.error);
+    const devices = status.running ? (status.devices || []) : [];
+    const list = $('devices');
+    list.replaceChildren(...devices.map(d => {
+      const li = document.createElement('li');
+      li.textContent = `${d.app || 'Unknown app'}${d.version ? ' ' + d.version : ''}` +
+        `${d.build ? ` (${d.build})` : ''}${d.address ? ` · ${d.address}` : ''}`;
+      return li;
+    }));
+    list.hidden = devices.length === 0;
+    const addresses = status.addresses || [];
+    $('pairing').hidden = !(status.running && addresses.length);
+    if (!addresses.length) return;
+    if (selected >= addresses.length) selected = 0;
+    const select = $('address');
+    $('address-field').hidden = addresses.length < 2;
+    select.replaceChildren(...addresses.map((a, i) => {
+      const option = document.createElement('option');
+      option.value = String(i);
+      option.textContent = `${a.address} (${a.name})`;
+      option.selected = i === selected;
+      return option;
+    }));
+    const current = addresses[selected];
+    $('url').textContent = current.webUrl;
+    if (current.webQr) $('qr').src = current.webQr;
+    else $('qr').removeAttribute('src');
+  }
+
+  async function run(task) {
+    busy = true;
+    render();
+    try {
+      status = await task();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  $('enabled').addEventListener('change', event => {
+    const enabled = event.target.checked;
+    status = { ...status, enabled, error: null };
+    run(() => api.setEnabled(enabled));
+  });
+  $('address').addEventListener('change', event => {
+    selected = Number(event.target.value) || 0;
+    render();
+  });
+  $('regenerate').addEventListener('click', () => run(() => api.regenerateToken()));
+  let copyTimer = null;
+  $('copy').addEventListener('click', async () => {
+    let ok = false;
+    try { ok = await api.copyLink(selected); } catch (_) { ok = false; }
+    if (ok) {
+      $('copy').textContent = 'Copied';
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => { $('copy').textContent = 'Copy link'; }, 1500);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents($('url'));
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    }
+  });
+
+  api.onStatus(next => { status = next; render(); });
+  api.getStatus().then(next => { status = next; render(); });
+</script>
+</body>
+</html>
