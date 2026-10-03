@@ -140,6 +140,8 @@ function createPrecacheFixture(t) {
     'css/effetune-theme.css',
     'css/effetune-mobile.css',
     'css/effetune-library.css',
+    'css/effetune-remote.css',
+    'remote.html',
     'css/pipeline-analyzer.css',
     'css/user-data-backup.css',
     'manifest.json',

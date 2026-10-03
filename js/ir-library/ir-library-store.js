@@ -12,6 +12,22 @@ import {
 export const IR_LIBRARY_INDEX_VERSION = 1;
 export const IR_LIBRARY_INDEX_NAME = 'index.json';
 
+// Listeners told after the library gained or lost an entry (any store instance in this page).
+// The LAN remote control uses it to tell connected clients that the IR list changed.
+const changeListeners = new Set();
+
+export function subscribeIrLibraryChanges(listener) {
+  if (typeof listener !== 'function') return () => {};
+  changeListeners.add(listener);
+  return () => { changeListeners.delete(listener); };
+}
+
+function notifyIrLibraryChanged() {
+  for (const listener of [...changeListeners]) {
+    try { listener(); } catch (error) { console.warn('IR library change listener failed:', error); }
+  }
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const ID_PATTERN = /^[a-f0-9]{24}$/;
@@ -406,6 +422,7 @@ export class IrLibraryStore {
         throw error;
       }
       this.#touchOriginal(identity.irId);
+      notifyIrLibraryChanged();
       return { entry: clone(entry), duplicate: false };
     } catch (error) {
       throw safeFailure(error, this.diagnostic, 'save this impulse response');
@@ -462,6 +479,7 @@ export class IrLibraryStore {
         throw error;
       }
       this.#touchOriginal(identity.irId);
+      notifyIrLibraryChanged();
       return { entry: clone(entry), duplicate: false };
     } catch (error) {
       throw safeFailure(error, this.diagnostic, 'save this impulse response');
@@ -488,6 +506,7 @@ export class IrLibraryStore {
       throw safeFailure(error, this.diagnostic, 'remove this impulse response');
     }
     this.#touchOriginal(irId);
+    notifyIrLibraryChanged();
     for (const name of [...entry.originals.map(item => item.storageName), entry.analysis.storageName]) {
       if (this.#isStorageNameReferenced(name)) continue;
       try {

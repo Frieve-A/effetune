@@ -550,6 +550,11 @@ class App {
                 await this.uiManager.setOpenHomeRemoteRuntimeReady?.();
             }
 
+            // LAN remote control (remote-v1); does nothing unless enabled in main.
+            import('./remote/remote-control.js')
+                .then(module => module.startRemoteControl(window))
+                .catch(error => console.warn('Remote control unavailable:', error));
+
             // Set up event listeners and finalize initialization
             this.setupEventListeners();
 

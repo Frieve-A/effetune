@@ -6,6 +6,7 @@ const defaultRoot = path.resolve(__dirname, '..');
 const includeRoots = ['css', 'js', 'plugins', 'images', 'presets'];
 const explicit = [
   'effetune.html',
+  'remote.html',
   'features/effetune-benchmark.js',
   'features/effetune-benchmark-score.js',
   'features/benchmark-score-reference.js',

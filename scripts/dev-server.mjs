@@ -16,6 +16,7 @@ const webAppRootFiles = new Set([
   'effetune.html',
   'manifest.json',
   'package.json',
+  'remote.html',
   'sw-precache.js',
   'sw.js'
 ]);

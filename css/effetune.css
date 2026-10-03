@@ -989,6 +989,7 @@ body.layout-mobile #pipelineStats {
 .pipeline-header-right .copy-button,
 .pipeline-header-right .paste-button,
 .pipeline-header-right .share-button,
+.pipeline-header-right .remote-control-button,
 .pipeline-header-right .pipeline-analyzer-button,
 .pipeline-header-right .column-control-button {
     margin-left: 0;
@@ -1011,6 +1012,59 @@ body.layout-mobile #pipelineStats {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* Remote Control (LAN) status icon, the size of the neighbouring Share button: dim when
+   off, accent while listening, with a count badge while devices are connected.
+   Shown by the Electron app only. */
+.remote-control-button {
+    position: relative;
+    height: 24px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.remote-control-button[hidden],
+.remote-control-badge[hidden] {
+    display: none;
+}
+
+.remote-control-button[data-state="off"] {
+    opacity: 0.5;
+}
+
+/* On (listening or connected) looks like the app's other "on" buttons
+   (the selected tab, the active player buttons): filled with the accent. */
+.remote-control-button[data-state="listening"],
+.remote-control-button[data-state="connected"] {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--et-accent) 95%, transparent), var(--et-accent-pressed));
+    border-color: var(--et-accent-hover);
+    color: var(--et-on-accent);
+    box-shadow: 0 5px 16px color-mix(in srgb, var(--et-accent) 24%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.remote-control-button[data-state="error"] {
+    color: var(--et-danger);
+}
+
+.remote-control-badge {
+    position: absolute;
+    top: -3px;
+    right: -4px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    box-sizing: border-box;
+    border-radius: 7px;
+    background-color: var(--et-on-accent);
+    color: var(--et-accent-pressed);
+    font-size: 10px;
+    font-weight: bold;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
 }
 
 /* Pipeline toggle and menu styles */
