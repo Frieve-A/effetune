@@ -82,6 +82,13 @@
     padding: 8px; border: 1px solid var(--line); border-radius: 6px;
   }
   .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  #join-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .join-row { display: flex; gap: 8px; }
+  .join-row input {
+    flex: 1; min-width: 0; font: inherit; color: var(--fg); background: var(--card);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+  }
+  .join-error { color: var(--error); margin-top: 6px; min-height: 1.45em; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -109,6 +116,18 @@
       <div class="actions">
         <button type="button" id="copy">Copy link</button>
         <button type="button" id="regenerate">New token</button>
+      </div>
+    </div>
+
+    <div id="join-section">
+      <div class="field">
+        <label for="join-input">Join another EffeTune</label>
+        <div class="join-row">
+          <input type="text" id="join-input" spellcheck="false" autocomplete="off"
+                 placeholder="http://192.168.0.5:47300/?t=…">
+          <button type="button" id="join">Join</button>
+        </div>
+        <div class="join-error" id="join-error" role="alert"></div>
       </div>
     </div>
   </div>
@@ -188,6 +207,20 @@
     render();
   });
   $('regenerate').addEventListener('click', () => run(() => api.regenerateToken()));
+  async function join() {
+    const error = $('join-error');
+    error.textContent = '';
+    let result;
+    try {
+      result = await api.join($('join-input').value);
+    } catch (failure) {
+      result = { ok: false, error: 'The window could not be opened.' };
+    }
+    if (result && result.ok) $('join-input').value = '';
+    else error.textContent = (result && result.error) || 'The window could not be opened.';
+  }
+  $('join').addEventListener('click', join);
+  $('join-input').addEventListener('keydown', event => { if (event.key === 'Enter') join(); });
   let copyTimer = null;
   $('copy').addEventListener('click', async () => {
     let ok = false;

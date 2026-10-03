@@ -20,6 +20,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
 const { createStaticHandler, isAllowedHost, isAllowedOrigin } = require('./remote-static-server.cjs');
+const { closeAllClientWindows, openRemoteClientWindow } = require('./remote-client-window.cjs');
 
 const CHANNELS = Object.freeze({
   rendererReady: 'remote-v1:renderer-ready',
@@ -37,6 +38,7 @@ const PANEL_CHANNELS = Object.freeze({
   getStatus: 'remote-panel-v1:get-status',
   setEnabled: 'remote-panel-v1:set-enabled',
   regenerateToken: 'remote-panel-v1:regenerate-token',
+  join: 'remote-panel-v1:join',
   copyLink: 'remote-panel-v1:copy-link',
   status: 'remote-panel-v1:status'
 });
@@ -598,6 +600,22 @@ class RemoteControlHost {
     return panel;
   }
 
+  // Does host:port name this very server? (Joining it would only show the app itself.)
+  isOwnAddress(host, port) {
+    if (!this.listening || port !== this.port) return false;
+    if (host === 'localhost' || host === '[::1]' || host.startsWith('127.')) return true;
+    return (this.lan?.candidates || []).some(candidate => candidate.address === host);
+  }
+
+  // Settings > Remote Control > Join another EffeTune.
+  joinRemote(input) {
+    return openRemoteClientWindow(input, {
+      getMainWindow: this.getMainWindow,
+      isSelf: (host, port) => this.isOwnAddress(host, port),
+      log: (...args) => this.log(...args)
+    });
+  }
+
   // Copy button: the main process puts the link of the offered address on the system clipboard
   // (navigator.clipboard needs focus and a permission the panel window does not reliably have).
   copyLink(index) {
@@ -1082,6 +1100,7 @@ class RemoteControlHost {
     if (this.panelWindow && !this.panelWindow.isDestroyed()) {
       try { this.panelWindow.destroy(); } catch (_) { /* ignore */ }
     }
+    closeAllClientWindows();
     await this.stop({ reason: 'shutdown' });
   }
 }
@@ -1119,7 +1138,8 @@ function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
       await host.regenerateToken();
       return host.getStatus({ withQr: true });
     }],
-    [PANEL_CHANNELS.copyLink, (host, index) => host.copyLink(index)]
+    [PANEL_CHANNELS.copyLink, (host, index) => host.copyLink(index)],
+    [PANEL_CHANNELS.join, (host, input) => host.joinRemote(typeof input === 'string' ? input.slice(0, 600) : '')]
   ]);
   for (const [channel, handler] of panelHandlers) {
     ipcMain.handle(channel, (event, ...args) => {

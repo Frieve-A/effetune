@@ -191,7 +191,8 @@ The Remote Control window shows this link and its QR code (the same ones apps us
 of EffeTune, without the player, library, audio settings or measurement tools. It keeps the token
 in `localStorage`, removes `t` from the address bar and opens `ws://<same host:port>/?t=<token>`.
 The hosted web version (https) cannot do this: a browser refuses `ws://` to a LAN address from an
-https page, which is why the desktop app serves the page itself.
+https page, which is why the desktop app serves the page itself. The desktop app can also join
+another one: **Join another EffeTune** in the same window opens a client window for a pasted link.
 
 - Static files: `GET` and `HEAD` only. Only the files the web version precaches
   (`sw-precache.js`, without `effetune.html`, `sw.js`, `sw-precache.js` and `manifest.json`) are
