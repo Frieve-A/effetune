@@ -227,7 +227,7 @@ Every `state` message (replies and pushes) also carries:
 | `host` | the computer's host name, for display. |
 
 `hello` may carry `"sync":1` (and `"build":"browser"` or `"desktop-client"` for the web client). It
-only makes the connection receive `presetsChanged`.
+only makes the connection receive `presetsChanged` and `irsChanged`.
 
 ### Stage ids
 
@@ -288,6 +288,16 @@ apply.
 
 `{"op":"presetsChanged"}` (no `seq`) is pushed to `sync` connections whenever the stored presets
 change.
+
+`{"op":"irsChanged"}` (no `seq`) is pushed to `sync` connections whenever the IR library gains or
+loses an entry (an import in the app, an upload with `putIR`, a backup restore, a removal). It
+carries no payload: the client calls `listIRs` and fetches what it is missing with `getIR`. The
+host waits for a pause of 400 ms before sending (at most 3 s while imports keep coming), so a
+folder import produces a few notices, not one per file. The notice also reaches the connection
+whose `putIR` caused it; re-listing then finds nothing new. Connections without `"sync":1` never
+receive it.
+A removal also sends it, so a client that uploads its own IRs should only send what was added on
+its side since its last listing: uploading everything the host lacks would undo the removal at once.
 
 ### Transport details
 

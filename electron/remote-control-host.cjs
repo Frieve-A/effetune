@@ -31,7 +31,8 @@ const CHANNELS = Object.freeze({
   request: 'remote-v1:request',
   status: 'remote-v1:status',
   getStatus: 'remote-v1:get-status',
-  presetsChanged: 'remote-v1:presets-changed'
+  presetsChanged: 'remote-v1:presets-changed',
+  irsChanged: 'remote-v1:irs-changed'
 });
 
 const PANEL_CHANNELS = Object.freeze({
@@ -52,6 +53,8 @@ const MAX_WS_BYTES = 4 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 10000;
 const IR_REQUEST_TIMEOUT_MS = 120000;
 const MAX_PENDING_REQUESTS = 32;
+const IRS_CHANGED_DEBOUNCE_MS = 400;   // a folder import is one notice, not one per file
+const IRS_CHANGED_MAX_WAIT_MS = 3000;  // but a long import still shows up while it runs
 const STATE_MIN_INTERVAL_MS = 100; // <= 10 Hz
 const ORIGIN_WINDOW_MS = 300;      // late snapshots still belong to the last command
 const PING_INTERVAL_MS = 15000;
@@ -231,6 +234,8 @@ class RemoteControlHost {
     this.panelWindow = null;
     this.disposed = false;
     this.toggleQueue = Promise.resolve();
+    this.irsChangedTimer = null;
+    this.irsChangedFirstAt = null;
     activeHost = this;
   }
 
@@ -547,6 +552,9 @@ class RemoteControlHost {
     this.dirtyTimer = null;
     clearTimeout(this.broadcastTimer);
     this.broadcastTimer = null;
+    clearTimeout(this.irsChangedTimer);
+    this.irsChangedTimer = null;
+    this.irsChangedFirstAt = null;
     this.pendingOrigin = null;
     const wasRunning = this.listening;
     this.listening = false;
@@ -997,6 +1005,32 @@ class RemoteControlHost {
     return true;
   }
 
+  // The IR library gained or lost an entry. Debounced: an import of many files notifies once
+  // the burst pauses (or every few seconds while it keeps going).
+  handleIrsChanged() {
+    if (!this.wss) return false;
+    const now = Date.now();
+    if (this.irsChangedFirstAt === null) this.irsChangedFirstAt = now;
+    if (this.irsChangedTimer) clearTimeout(this.irsChangedTimer);
+    const wait = Math.max(0, Math.min(
+      IRS_CHANGED_DEBOUNCE_MS,
+      this.irsChangedFirstAt + IRS_CHANGED_MAX_WAIT_MS - now
+    ));
+    this.irsChangedTimer = setTimeout(() => this.flushIrsChanged(), wait);
+    this.irsChangedTimer.unref?.();
+    return true;
+  }
+
+  flushIrsChanged() {
+    this.irsChangedTimer = null;
+    this.irsChangedFirstAt = null;
+    if (!this.wss) return;
+    const message = JSON.stringify({ op: 'irsChanged' });
+    for (const ws of this.wss.clients) {
+      if (ws.authenticated && ws.sync && ws.readyState === 1) ws.send(message);
+    }
+  }
+
   // ---- IR transfer -------------------------------------------------------
 
   async onGetIr(ws, msg, seq) {
@@ -1116,6 +1150,7 @@ function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
     [CHANNELS.response, (host, response) => (host ? host.handleRendererResponse(response) : false)],
     [CHANNELS.state, (host, snapshot) => (host ? host.handleRendererState(snapshot) : false)],
     [CHANNELS.presetsChanged, host => (host ? host.handlePresetsChanged() : false)],
+    [CHANNELS.irsChanged, host => (host ? host.handleIrsChanged() : false)],
     [CHANNELS.openPanel, host => { host?.openPanel(); return !!host; }],
     [CHANNELS.getStatus, host => (host ? host.getBriefStatus() : { enabled: false })]
   ]);

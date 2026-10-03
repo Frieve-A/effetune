@@ -297,14 +297,16 @@ test('preload exposes the versioned remote control bridge', async () => {
   await bridge.respond({ requestId: 'r1', ok: true });
   await bridge.publishState({ epoch: 'abcd0123', pipeline: [] });
   await bridge.notifyPresets();
+  await bridge.notifyIrs();
   await bridge.openPanel();
   await bridge.getStatus();
-  assert.deepEqual(harness.invocations.slice(-7), [
+  assert.deepEqual(harness.invocations.slice(-8), [
     ['remote-v1:renderer-ready', {}],
     ['remote-v1:renderer-unavailable', {}],
     ['remote-v1:response', { requestId: 'r1', ok: true }],
     ['remote-v1:state', { epoch: 'abcd0123', pipeline: [] }],
     ['remote-v1:presets-changed', {}],
+    ['remote-v1:irs-changed', {}],
     ['remote-v1:open-panel', {}],
     ['remote-v1:get-status', {}]
   ]);

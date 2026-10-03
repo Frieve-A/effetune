@@ -9,6 +9,7 @@ import {
 } from '../utils/serialization-utils.js';
 import { identifySingleIr } from '../ir-library/ir-library-id.js';
 import { isSupportedIrFileName } from '../ir-library/audio-header-metadata.js';
+import { subscribeIrLibraryChanges } from '../ir-library/ir-library-store.js';
 import { initRemoteControlButton } from './remote-control-button.js';
 import {
     applyMasterBypass,
@@ -59,6 +60,7 @@ class RemoteControl {
         this.historyTimer = null;
         this.disposeRequestListener = null;
         this.disposeStatusListener = null;
+        this.disposeIrWatch = null;
         // Snapshots are only published while the server in main is running.
         this.active = false;
         // Stage ids and the epoch live in this renderer: ids are only comparable
@@ -162,6 +164,11 @@ class RemoteControl {
                 return result;
             };
         }
+        // Clients that keep an IR copy are told when the IR library gains or loses an entry
+        // (imports from the app, from any client, from a backup restore).
+        this.disposeIrWatch = subscribeIrLibraryChanges(() => {
+            try { self.api.notifyIrs?.()?.catch?.(() => {}); } catch (_) { /* ignore */ }
+        });
         // Safety net for mutations that do not reach updateURL.
         this.pollTimer = setInterval(() => this.schedulePublish(), SAFETY_POLL_MS);
     }

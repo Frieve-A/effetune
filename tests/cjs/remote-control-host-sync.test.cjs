@@ -167,6 +167,46 @@ test('legacy params acks carry rev and a legacy client never sees presetsChanged
   }
 });
 
+test('irsChanged reaches sync clients once per burst and never legacy clients', async () => {
+  const { host } = makeHost();
+  try {
+    await host.start();
+    host.setRendererReady();
+    const legacy = await open();
+    const sync = await open();
+    legacy.send({ op: 'hello', v: 1, seq: 1, app: 'EffectDeck' });
+    sync.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
+    await legacy.next(m => m.op === 'state' && m.seq === 1);
+    await sync.next(m => m.op === 'state' && m.seq === 1);
+    for (let i = 0; i < 20; i += 1) assert.equal(host.handleIrsChanged(), true);
+    const first = await sync.next(m => m.op === 'irsChanged');
+    assert.equal('seq' in first, false);
+    await new Promise(resolve => setTimeout(resolve, 700));
+    assert.equal(sync.messages.filter(m => m.op === 'irsChanged').length, 1, 'a burst is one notice');
+    host.handleIrsChanged();
+    await sync.next(m => m.op === 'irsChanged');
+    assert.equal(legacy.messages.some(m => m.op === 'irsChanged'), false);
+    legacy.ws.close();
+    sync.ws.close();
+  } finally {
+    await host.dispose();
+  }
+});
+
+test('a pending irsChanged is dropped when the host stops', async () => {
+  const { host } = makeHost();
+  try {
+    await host.start();
+    host.setRendererReady();
+    host.handleIrsChanged();
+    await host.stop({ reason: 'test' });
+    assert.equal(host.irsChangedTimer, null);
+    assert.equal(host.handleIrsChanged(), false);
+  } finally {
+    await host.dispose();
+  }
+});
+
 test('presets op replies with the stored presets', async () => {
   const { host } = makeHost();
   try {

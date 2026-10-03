@@ -11,7 +11,7 @@ import {
   resetIrLibraryMigrationForTests,
   subscribeIrLibraryMigrationProgress
 } from '../../js/ir-library/ir-library-factory.js';
-import { IR_LIBRARY_INDEX_NAME, IrLibraryStore } from '../../js/ir-library/ir-library-store.js';
+import { IR_LIBRARY_INDEX_NAME, IrLibraryStore, subscribeIrLibraryChanges } from '../../js/ir-library/ir-library-store.js';
 import { chooseName, prepareItems } from '../../js/user-data-backup/portable.js';
 import {
   IR_LIBRARY_INDEX_TOO_LARGE_CODE,
@@ -348,6 +348,26 @@ test('IR store persists v1 originals, filenames, analysis, and reuses duplicates
     backend.existenceChecks.sort(),
     [first.entry.originals[0].storageName]
   );
+});
+
+test('IR library change listeners hear new and removed entries but not duplicates', async () => {
+  const store = await new IrLibraryStore(new MemoryBackend(), { onDiagnostic() {} }).open();
+  let heard = 0;
+  const stop = subscribeIrLibraryChanges(() => { heard += 1; });
+  const throwing = subscribeIrLibraryChanges(() => { throw new Error('listener bug'); });
+  const request = { bytes: encode('notify IR bytes'), fileName: 'Room.wav', analysis: {} };
+  const first = await store.importSingle(request);
+  assert.equal(heard, 1);
+  await store.importSingle(request);
+  assert.equal(heard, 1, 'a duplicate import changes nothing');
+  assert.equal(await store.remove(first.entry.irId), true);
+  assert.equal(heard, 2);
+  assert.equal(await store.remove(first.entry.irId), false);
+  assert.equal(heard, 2);
+  stop();
+  throwing();
+  await store.importSingle(request);
+  assert.equal(heard, 2, 'unsubscribed listeners hear nothing');
 });
 
 test('duplicate imports verify full identity and atomically repair missing or corrupt originals', async () => {

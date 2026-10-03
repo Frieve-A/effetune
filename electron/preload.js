@@ -175,6 +175,7 @@ const remoteV1 = Object.freeze({
   respond: response => ipcRenderer.invoke('remote-v1:response', response),
   publishState: snapshot => ipcRenderer.invoke('remote-v1:state', snapshot),
   notifyPresets: () => ipcRenderer.invoke('remote-v1:presets-changed', {}),
+  notifyIrs: () => ipcRenderer.invoke('remote-v1:irs-changed', {}),
   openPanel: () => ipcRenderer.invoke('remote-v1:open-panel', {}),
   getStatus: () => ipcRenderer.invoke('remote-v1:get-status', {}),
   onRequest: callback => addSingleArgIpcListener('remote-v1:request', callback),

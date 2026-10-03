@@ -4,6 +4,7 @@
 // Events (CustomEvent, detail in brackets):
 //   state [message]    every "state" message (hello and get replies, pushes)
 //   presetsChanged     the host's stored presets changed
+//   irsChanged         the host's IR library changed
 //   status [{ status, code?, attempt? }]
 //     status: 'connecting' | 'open' | 'reconnecting' | 'unauthorized'
 //   'unauthorized' (close code 4401, the pairing code changed) is final.
@@ -215,6 +216,8 @@ export class RemoteSession extends EventTarget {
             this.dispatchEvent(new CustomEvent('state', { detail: message }));
         } else if (message.op === 'presetsChanged') {
             this.dispatchEvent(new CustomEvent('presetsChanged'));
+        } else if (message.op === 'irsChanged') {
+            this.dispatchEvent(new CustomEvent('irsChanged'));
         }
     }
 

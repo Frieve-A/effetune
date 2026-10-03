@@ -289,3 +289,19 @@ test('the audio stand-in reports plugin and topology changes unless they are app
     assert.equal(manager.currentPipeline, 'A');
     assert.equal(manager.getActivePowerWorklets()[0], manager.workletNode);
 });
+
+test('presetsChanged and irsChanged pushes become events', async () => {
+    const env = makeEnv();
+    const { session } = makeSession(env);
+    const events = [];
+    session.addEventListener('presetsChanged', () => events.push('presets'));
+    session.addEventListener('irsChanged', () => events.push('irs'));
+    session.start();
+    const socket = FakeSocket.instances[0];
+    socket.open();
+    socket.receive({ op: 'irsChanged' });
+    socket.receive({ op: 'presetsChanged' });
+    socket.receive({ op: 'irsChanged' });
+    assert.deepEqual(events, ['irs', 'presets', 'irs']);
+    session.stop();
+});

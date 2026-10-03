@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { startRemoteControl } from '../../js/remote/remote-control.js';
+import { IrLibraryStore } from '../../js/ir-library/ir-library-store.js';
 
 class FakePlugin {
     constructor(name, id) {
@@ -37,7 +38,8 @@ async function setup({ presets = { Demo: { plugins: [{ nm: 'Volume', en: true, v
         rendererUnavailable: async () => {},
         publishState: async snapshot => { published.push(snapshot); },
         respond: async response => { responses.push(response); },
-        notifyPresets: async () => { calls.push('notifyPresets'); }
+        notifyPresets: async () => { calls.push('notifyPresets'); },
+        notifyIrs: async () => { calls.push('notifyIrs'); }
     };
     const pipeline = [];
     const audioManager = {
@@ -245,4 +247,23 @@ test('worklet commits and preset saves are announced without waiting for the pol
     api.status({ enabled: false });
     controller.setActive(false);
     clearTimeout(controller.publishTimer);
+});
+
+test('an IR library change is announced to the host', async () => {
+    const { controller, calls } = await setup();
+    const files = new Map();
+    const backend = {
+        read: async name => files.get(name) ?? null,
+        exists: async name => files.has(name),
+        writeAtomic: async (name, bytes) => { files.set(name, bytes); },
+        remove: async name => { files.delete(name); },
+        list: async () => [...files.keys()],
+        cleanupTemporary: async () => {}
+    };
+    const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+    const imported = await store.importSingle({ bytes: new TextEncoder().encode('bridge IR'), fileName: 'A.wav', analysis: {} });
+    assert.equal(calls.filter(call => call === 'notifyIrs').length, 1);
+    await store.remove(imported.entry.irId);
+    assert.equal(calls.filter(call => call === 'notifyIrs').length, 2);
+    controller.disposeIrWatch?.();
 });
