@@ -183,7 +183,9 @@ test('preload keeps OpenHome settings under the versioned host API', async () =>
     language: 'ja',
     openHomeRemoteControl: false,
     openHomeDeviceId: 'renderer-controlled-id',
-    openHomeFriendlyName: 'renderer-controlled-name'
+    openHomeFriendlyName: 'renderer-controlled-name',
+    remoteControlEnabled: true,
+    remoteControlToken: 'renderer-controlled-token'
   };
 
   await harness.exposed.electronAPI.saveConfig(config);
@@ -193,7 +195,9 @@ test('preload keeps OpenHome settings under the versioned host API', async () =>
     language: 'ja',
     openHomeRemoteControl: false,
     openHomeDeviceId: 'renderer-controlled-id',
-    openHomeFriendlyName: 'renderer-controlled-name'
+    openHomeFriendlyName: 'renderer-controlled-name',
+    remoteControlEnabled: true,
+    remoteControlToken: 'renderer-controlled-token'
   });
 });
 
@@ -278,6 +282,48 @@ test('preload exposes only the versioned OpenHome control bridge', async () => {
   assert.deepEqual(resets, [{ resetId: 'reset-2' }]);
   removeReset();
   assert.equal(harness.listeners.has('openhome-v1:reset'), false);
+  assert.equal(Object.hasOwn(bridge, 'invoke'), false);
+  assert.equal(Object.hasOwn(bridge, 'send'), false);
+});
+
+test('preload exposes the versioned remote control bridge', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const bridge = harness.exposed.electronAPI.remoteV1;
+
+  assert.equal(bridge.apiVersion, 1);
+  await bridge.rendererReady();
+  await bridge.rendererUnavailable();
+  await bridge.respond({ requestId: 'r1', ok: true });
+  await bridge.publishState({ epoch: 'abcd0123', pipeline: [] });
+  await bridge.notifyPresets();
+  await bridge.notifyIrs();
+  await bridge.openPanel();
+  await bridge.getStatus();
+  assert.deepEqual(harness.invocations.slice(-8), [
+    ['remote-v1:renderer-ready', {}],
+    ['remote-v1:renderer-unavailable', {}],
+    ['remote-v1:response', { requestId: 'r1', ok: true }],
+    ['remote-v1:state', { epoch: 'abcd0123', pipeline: [] }],
+    ['remote-v1:presets-changed', {}],
+    ['remote-v1:irs-changed', {}],
+    ['remote-v1:open-panel', {}],
+    ['remote-v1:get-status', {}]
+  ]);
+
+  const requests = [];
+  const removeRequest = bridge.onRequest(request => requests.push(request));
+  harness.listeners.get('remote-v1:request')({}, { requestId: 'r2', message: { op: 'hello' } });
+  assert.deepEqual(requests, [{ requestId: 'r2', message: { op: 'hello' } }]);
+  removeRequest();
+  assert.equal(harness.listeners.has('remote-v1:request'), false);
+
+  const statuses = [];
+  const removeStatus = bridge.onStatus(status => statuses.push(status));
+  harness.listeners.get('remote-v1:status')({}, { enabled: true });
+  assert.deepEqual(statuses, [{ enabled: true }]);
+  removeStatus();
+  assert.equal(harness.listeners.has('remote-v1:status'), false);
   assert.equal(Object.hasOwn(bridge, 'invoke'), false);
   assert.equal(Object.hasOwn(bridge, 'send'), false);
 });

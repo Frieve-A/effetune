@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- The response header of the server that sends this page pins connect-src to its exact host (policies
+         intersect). This one names ws: as well because Safari/WebKit does not let 'self' cover a ws:// URL of the
+         same host, so without it the meta policy alone would block the WebSocket there. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws:">
+    <meta name="robots" content="noindex">
+    <script src="js/theme-boot.js"></script>
+    <title>EffeTune Remote</title>
+    <link rel="stylesheet" href="css/effetune.css">
+    <link rel="stylesheet" href="css/effetune-mobile.css">
+    <link rel="stylesheet" href="css/effetune-theme.css">
+    <link rel="stylesheet" href="css/pipeline-analyzer.css">
+    <link rel="stylesheet" href="css/effetune-remote.css">
+    <link rel="icon" href="images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="images/icon_192x192.png" type="image/png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="images/icon_180x180.png">
+</head>
+<body class="remote-client">
+    <header class="remote-bar">
+        <img src="images/icon_64x64.png" alt="" width="28" height="28">
+        <span class="remote-dot" id="remoteDot" data-state="connecting"></span>
+        <span class="remote-status" id="remoteStatus">Connecting…</span>
+        <span class="remote-host" id="remoteHost"></span>
+    </header>
+    <p id="remoteMessage" class="remote-message" role="status" aria-live="polite" hidden></p>
+    <p id="remoteNotice" class="remote-notice" role="alert" hidden></p>
+    <div id="remoteOverlay" class="remote-overlay" hidden>
+        <p id="remoteOverlayText">Connecting…</p>
+    </div>
+
+    <div class="main-container">
+        <div class="plugin-list-shell">
+            <div class="plugin-list" id="pluginList">
+                <div class="plugin-list-header">
+                    <div class="tab-switcher" id="tabSwitcher">
+                        <button class="tab-button active" id="effectsTab" type="button">Effects</button>
+                        <button class="tab-button" id="systemPresetsTab" type="button">S.Presets</button>
+                        <button class="tab-button" id="userPresetsTab" type="button">U.Preset</button>
+                    </div>
+                    <h2 id="availableEffectsTitle" style="display: none;">Available Effects</h2>
+                    <input type="text" id="effectSearchInput" class="effect-search-input" placeholder="Search effects..." style="display: none;">
+                    <button type="button" class="input-clear-button effect-search-clear-button" id="effectSearchClearButton" title="Clear search" aria-label="Clear search">&times;</button>
+                    <button class="header-button search-button" id="effectSearchButton" title="Search effects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M20 20l-4.9-4.9"/></svg></button>
+                </div>
+                <!-- Plugin list will be populated by JavaScript -->
+            </div>
+            <div class="plugin-list-pull-tab" id="pluginListPullTab">◀</div>
+        </div>
+
+        <div class="pipeline" id="pipeline">
+            <div class="pipeline-header">
+                <button class="toggle-button master-toggle" type="button" title="Toggle all effects">ON</button>
+                <span class="pipeline-title">Effect Pipeline</span>
+                <div class="pipeline-toggle-container">
+                    <button class="header-button pipeline-toggle-button" id="pipelineToggleButton" type="button" title="Toggle A/B">A</button>
+                    <div class="pipeline-menu-container">
+                        <button class="header-button pipeline-menu-button" id="pipelineMenuButton" type="button" title="Pipeline menu">▼</button>
+                        <div class="pipeline-menu" id="pipelineMenu">
+                            <button class="pipeline-menu-item" id="copyAToBButton" type="button">A → B</button>
+                            <button class="pipeline-menu-item" id="copyBToAButton" type="button">B → A</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="pipeline-header-right">
+                    <div class="pipeline-toolbar-group">
+                        <button class="header-button pipeline-preset-button" id="pipelinePresetButton" type="button" title="Pipeline Presets"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+                    </div>
+                    <div class="pipeline-toolbar-group">
+                        <button class="header-button undo-button" id="undoButton" type="button" title="Undo">↶</button>
+                        <button class="header-button redo-button" id="redoButton" type="button" title="Redo">↷</button>
+                    </div>
+                    <div class="pipeline-toolbar-group">
+                        <button class="column-control-button" id="decreaseColumnsButton" type="button" title="Decrease columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M5.5 12h13"/></svg></button>
+                        <button class="column-control-button" id="increaseColumnsButton" type="button" title="Increase columns"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M12 5.5v13M5.5 12h13"/></svg></button>
+                    </div>
+                </div>
+            </div>
+            <div id="pipelineList">
+                <div class="pipeline-empty" id="pipelineEmpty">
+                    Drag plugins here to build your effect pipeline
+                </div>
+                <!-- Columns and plugin items will be added here by JS -->
+            </div>
+            <div id="pipelineStats">
+                <div id="pipelineLatency"></div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="js/remote/remote-client.js"></script>
+</body>
+</html>

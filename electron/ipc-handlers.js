@@ -1,4 +1,5 @@
 const { app, ipcMain, shell, systemPreferences, Menu, clipboard, screen } = require('electron');
+const { openRemoteControlPanel } = require('./remote-control-host.cjs');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -539,6 +540,10 @@ function createApplicationMenuTemplate(menuState = {}) {
         item('settings.config', {
           label: 'Config...',
           click: () => sendToRenderer('config-app')
+        }),
+        item('settings.remoteControl', {
+          label: 'Remote Control...',
+          click: () => openRemoteControlPanel()
         }),
         item('settings.audioDevices', {
           label: 'Audio Configuration...',

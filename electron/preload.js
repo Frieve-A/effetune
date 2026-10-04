@@ -166,12 +166,31 @@ const openHomeV1 = Object.freeze({
   onStatus: callback => addSingleArgIpcListener('openhome-v1:status', callback)
 });
 
+// LAN remote control (remote-v1). The WebSocket server lives in main; the
+// renderer only answers operations and publishes pipeline snapshots.
+const remoteV1 = Object.freeze({
+  apiVersion: 1,
+  rendererReady: () => ipcRenderer.invoke('remote-v1:renderer-ready', {}),
+  rendererUnavailable: () => ipcRenderer.invoke('remote-v1:renderer-unavailable', {}),
+  respond: response => ipcRenderer.invoke('remote-v1:response', response),
+  publishState: snapshot => ipcRenderer.invoke('remote-v1:state', snapshot),
+  notifyPresets: () => ipcRenderer.invoke('remote-v1:presets-changed', {}),
+  notifyIrs: () => ipcRenderer.invoke('remote-v1:irs-changed', {}),
+  openPanel: () => ipcRenderer.invoke('remote-v1:open-panel', {}),
+  getStatus: () => ipcRenderer.invoke('remote-v1:get-status', {}),
+  onRequest: callback => addSingleArgIpcListener('remote-v1:request', callback),
+  onStatus: callback => addSingleArgIpcListener('remote-v1:status', callback)
+});
+
 function withoutOpenHomeOwnedConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return config;
   const {
     openHomeRemoteControl: _openHomeRemoteControl,
     openHomeDeviceId: _openHomeDeviceId,
     openHomeFriendlyName: _openHomeFriendlyName,
+    // Owned by the remote-control host in main (Settings > Remote Control).
+    remoteControlEnabled: _remoteControlEnabled,
+    remoteControlToken: _remoteControlToken,
     ...rendererOwnedConfig
   } = config;
   return rendererOwnedConfig;
@@ -283,6 +302,8 @@ contextBridge.exposeInMainWorld(
 
     // Versioned OpenHome bridge exposes only bounded player actions and state snapshots.
     openHomeV1,
+
+    remoteV1,
     
     openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
     openExternal: (url) => ipcRenderer.invoke('open-external-url', url),

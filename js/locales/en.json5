@@ -220,6 +220,7 @@
 
   "menu.settings": "Settings",
   "menu.settings.config": "Config...",
+  "menu.settings.remoteControl": "Remote Control...",
   "menu.settings.audioDevices": "Audio Configuration...",
   "menu.settings.install": "Install App",
   "menu.settings.performanceBenchmark": "Performance Benchmark",

@@ -111,6 +111,7 @@ export async function updateApplicationMenu(isElectron) {
       'view.miniPlayer': { label: t('menu.view.miniPlayer') },
       'menu.settings': { label: t('menu.settings') },
       'settings.config': { label: t('menu.settings.config') },
+      'settings.remoteControl': { label: t('menu.settings.remoteControl') },
       'settings.audioDevices': { label: t('menu.settings.audioDevices') },
       'settings.performanceBenchmark': { label: t('menu.settings.performanceBenchmark') },
       'settings.frequencyResponseMeasurement': { label: t('menu.settings.frequencyResponseMeasurement') },

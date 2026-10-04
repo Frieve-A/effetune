@@ -37,6 +37,7 @@ const {
   createOpenHomeControlHost,
   registerOpenHomeIpc
 } = require('./openhome-control-host.cjs');
+const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
 const releaseVersionModulePromise = import(pathToFileURL(
   path.join(__dirname, '../js/release-version.mjs')
 ).href);
@@ -106,6 +107,8 @@ let disposeLibraryCatalogRecoveryIpc = null;
 let libraryCatalogClosePromise = null;
 let openHomeControlHost = null;
 let disposeOpenHomeIpc = null;
+let remoteControlHost = null;
+let disposeRemoteControlIpc = null;
 let disposePowerMonitorEvents = null;
 let appServicesClosePromise = null;
 
@@ -230,9 +233,14 @@ async function closeApplicationServices() {
   disposeOpenHomeIpc = null;
   const openHomeHost = openHomeControlHost;
   openHomeControlHost = null;
+  disposeRemoteControlIpc?.();
+  disposeRemoteControlIpc = null;
+  const remoteHost = remoteControlHost;
+  remoteControlHost = null;
   appServicesClosePromise = Promise.all([
     closeLibraryCatalogRecovery(),
-    openHomeHost?.dispose()
+    openHomeHost?.dispose(),
+    remoteHost?.dispose()
   ]);
   return appServicesClosePromise;
 }
@@ -530,10 +538,12 @@ function createWindow() {
       ipcHandlers.restoreNormalWindowShape?.();
       disarmRendererWatchdog(`navigation:${url}`);
       void openHomeControlHost?.setRendererUnavailable();
+      remoteControlHost?.setRendererUnavailable();
     }
   });
   mainWindow.webContents.on('render-process-gone', () => {
     void openHomeControlHost?.setRendererUnavailable();
+    remoteControlHost?.setRendererUnavailable();
   });
 
   // Register keyboard shortcuts
@@ -1404,6 +1414,21 @@ async function initializeApp() {
     host: openHomeControlHost,
     getMainWindow: () => constants.getMainWindow()
   });
+
+  // LAN remote control (remote-v1). IPC is always registered; the server
+  // runs while Settings > Remote Control is on (or EFFETUNE_REMOTE=1 / --remote).
+  remoteControlHost = new RemoteControlHost({
+    app,
+    getMainWindow: () => constants.getMainWindow(),
+    config: configModule,
+    log: (...args) => console.log(...args)
+  });
+  disposeRemoteControlIpc = registerRemoteControlIpc({
+    ipcMain,
+    getHost: () => remoteControlHost,
+    getMainWindow: () => constants.getMainWindow()
+  });
+  void remoteControlHost.start();
 
   // Every normal launch uses a sacrificial audio-only renderer. Auto-restarts
   // skip it so their startup-grace clock is not reset by a second navigation.
