@@ -1,6 +1,10 @@
 import { buildDspPipelineDescriptor } from '../js/audio/dsp-pipeline-descriptor.js';
 import '../plugins/multires-spectrum.js';
-import { getPluginExecutionCapabilities } from '../js/audio/plugin-execution-capabilities.js';
+import {
+    getPluginExecutionCapabilities,
+    getPluginExecutionChannelMode,
+    getPluginExecutionUnsupportedReason
+} from '../js/audio/plugin-execution-capabilities.js';
 import { getDspRolloutConfig } from '../js/audio/dsp-rollout.js';
 import { instantiateDsp, loadDspModule } from '../js/audio/dsp-wasm-loader.js';
 import {
@@ -98,8 +102,10 @@ export class DspBenchmarkUnavailableError extends Error {
 }
 
 export class DspBenchmarkPluginUnavailableError extends Error {
-    constructor(typeName) {
-        super(`${typeName} is not enabled for WebAssembly DSP benchmarking`);
+    constructor(typeName, reason) {
+        super(reason
+            ? `${typeName}: ${reason}`
+            : `${typeName} is not enabled for WebAssembly DSP benchmarking`);
         this.name = 'DspBenchmarkPluginUnavailableError';
         this.typeName = typeName;
     }
@@ -402,6 +408,22 @@ function getPluginType(plugin) {
     return typeName;
 }
 
+function getBenchmarkFormatUnsupportedReason(plugin, sampleRate, channelCount) {
+    const channelMode = getPluginExecutionChannelMode(
+        channelCount > 2 ? 'A' : (plugin?.channel ?? null),
+        channelCount
+    );
+    const reason = getPluginExecutionUnsupportedReason(plugin, { sampleRate, channelMode });
+    if (reason === 'unsupportedSampleRate') {
+        const rates = getPluginExecutionCapabilities(plugin).supportedSampleRates
+            .map(rate => `${rate / 1000} kHz`).join(' / ');
+        return `supports only ${rates}; select a supported sampling frequency to measure this effect`;
+    }
+    return reason === 'unsupportedChannelMode'
+        ? 'this channel configuration is not supported'
+        : null;
+}
+
 function preparePlugin(plugin, sampleRate, blockSize, channelCount) {
     if (!plugin || typeof plugin.getParameters !== 'function' ||
         typeof plugin.setEnabled !== 'function') {
@@ -545,13 +567,24 @@ class JavascriptBenchmarkRuntime {
         this.closed = false;
     }
 
-    supportsPlugin(plugin) {
-        return getPluginExecutionCapabilities(plugin)?.requiresWasm !== true;
+    getPluginUnsupportedReason(plugin, { channelCount = 2 } = {}) {
+        if (getPluginExecutionCapabilities(plugin)?.requiresWasm === true) {
+            return 'requires WebAssembly DSP';
+        }
+        return getBenchmarkFormatUnsupportedReason(plugin, this.sampleRate, channelCount);
+    }
+
+    supportsPlugin(plugin, options) {
+        return this.getPluginUnsupportedReason(plugin, options) === null;
     }
 
     createPluginSession(plugin, { channelCount, assets }) {
         if (this.closed) throw new Error('JavaScript benchmark runtime is closed');
         requirePositiveInteger(channelCount, 'channelCount', BENCHMARK_DSP_MAX_CHANNELS);
+        const unsupportedReason = this.getPluginUnsupportedReason(plugin, { channelCount });
+        if (unsupportedReason) {
+            throw new DspBenchmarkPluginUnavailableError(getPluginType(plugin), unsupportedReason);
+        }
         if (assets instanceof Map && assets.size > 0) {
             throw new DspBenchmarkPluginUnavailableError(getPluginType(plugin));
         }
@@ -666,11 +699,18 @@ class WasmBenchmarkRuntime {
         this.telemetryPacket = new ArrayBuffer(BENCHMARK_DSP_TELEMETRY_BYTES);
     }
 
-    supportsPlugin(pluginOrType) {
+    getPluginUnsupportedReason(pluginOrType, { channelCount = 2 } = {}) {
         const typeName = typeof pluginOrType === 'string'
             ? pluginOrType
             : getPluginType(pluginOrType);
-        return this.enabledTypes.has(typeName);
+        if (!this.enabledTypes.has(typeName)) {
+            return 'WebAssembly DSP is not enabled for this plugin';
+        }
+        return getBenchmarkFormatUnsupportedReason(pluginOrType, this.sampleRate, channelCount);
+    }
+
+    supportsPlugin(pluginOrType, options) {
+        return this.getPluginUnsupportedReason(pluginOrType, options) === null;
     }
 
     createPluginSession(plugin, { channelCount, assets = new Map() }) {
@@ -681,8 +721,9 @@ class WasmBenchmarkRuntime {
         requirePositiveInteger(channelCount, 'channelCount', BENCHMARK_DSP_MAX_CHANNELS);
 
         const typeName = getPluginType(plugin);
-        if (!this.supportsPlugin(typeName)) {
-            throw new DspBenchmarkPluginUnavailableError(typeName);
+        const unsupportedReason = this.getPluginUnsupportedReason(plugin, { channelCount });
+        if (unsupportedReason) {
+            throw new DspBenchmarkPluginUnavailableError(typeName, unsupportedReason);
         }
         if (!(assets instanceof Map)) {
             throw new TypeError('WebAssembly benchmark assets must be provided as a Map');

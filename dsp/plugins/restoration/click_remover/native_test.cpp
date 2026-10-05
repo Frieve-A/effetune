@@ -323,6 +323,67 @@ void testParityImpulseActivation() {
   check(harness.telemetry() > 0.0F, "the production parity impulse case executes a repair");
 }
 
+void testIsolatedClicksOnPureTone() {
+  constexpr std::uint32_t sample_rate = 48000u;
+  constexpr std::uint32_t frames = 2u * sample_rate;
+  constexpr std::uint32_t channels = 2u;
+  std::vector<float> clean(static_cast<std::size_t>(frames) * channels);
+  for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+    for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+      clean[static_cast<std::size_t>(channel) * frames + frame] = static_cast<float>(
+          0.15 * std::sin(2.0 * kPi * 440.0 * static_cast<double>(frame) / sample_rate));
+    }
+  }
+
+  KernelHarness clean_harness(static_cast<float>(sample_rate));
+  clean_harness.stage({100.0F, 1.0F});
+  const auto clean_output = render(clean_harness, clean, frames, channels, true);
+  const std::uint32_t latency = clean_harness.latency();
+  for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+    check(std::equal(clean.begin() + static_cast<std::size_t>(channel) * frames,
+                     clean.begin() + static_cast<std::size_t>(channel) * frames + frames - latency,
+                     clean_output.begin() + static_cast<std::size_t>(channel) * frames + latency),
+          "a pure tone remains an exact delayed pass-through at maximum sensitivity");
+  }
+  check(clean_harness.telemetry() == 0.0F, "a pure tone does not trigger false repairs");
+
+  for (std::uint32_t length : {1u, 4u, 12u, 24u}) {
+    auto damaged = clean;
+    for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+      for (std::uint32_t offset = 0u; offset < length; ++offset) {
+        damaged[static_cast<std::size_t>(channel) * frames + sample_rate + offset] += 0.8F;
+      }
+    }
+    for (float sensitivity : {0.0F, 50.0F, 75.0F, 100.0F}) {
+      if (length == 24u && sensitivity < 100.0F) {
+        continue;
+      }
+      KernelHarness harness(static_cast<float>(sample_rate));
+      harness.stage({sensitivity, 1.0F});
+      const auto output = render(harness, damaged, frames, channels, false);
+      double maximum_error = 0.0;
+      for (std::uint32_t channel = 0u; channel < channels; ++channel) {
+        for (std::uint32_t frame = sample_rate - 64u; frame < sample_rate + length + 64u; ++frame) {
+          const auto base = static_cast<std::size_t>(channel) * frames;
+          const double error =
+              static_cast<double>(output[base + frame + latency]) - clean[base + frame];
+          maximum_error = std::max(maximum_error, std::abs(error));
+        }
+      }
+      std::printf("Click Remover pure-tone pulse %u sensitivity %.0f maximum error %.6f\n", length,
+                  sensitivity, maximum_error);
+      check(maximum_error < 0.04, "short additive clicks on a pure tone are repaired");
+      check(harness.telemetry() > 0.0F, "pure-tone click repairs are reported");
+      if (sensitivity == 50.0F) {
+        KernelHarness variable(static_cast<float>(sample_rate));
+        variable.stage({sensitivity, 1.0F});
+        check(render(variable, damaged, frames, channels, true) == output,
+              "pure-tone click repair is independent of frame partitioning");
+      }
+    }
+  }
+}
+
 void testSustainedBurstRejection() {
   constexpr std::uint32_t frames = 12000u;
   const auto render_burst = [](std::uint32_t burst_samples) {
@@ -425,6 +486,7 @@ int main() {
   testLatencyAndCleanPassThrough();
   testRepairQualityAndFramePartitioning();
   testParityImpulseActivation();
+  testIsolatedClicksOnPureTone();
   testSustainedBurstRejection();
   testOneIntervalIsOneTelemetryEvent();
   testSilenceDegenerateAr();

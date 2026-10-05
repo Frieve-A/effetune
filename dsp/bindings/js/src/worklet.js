@@ -140,7 +140,7 @@ export class EffeTuneNode extends AudioWorkletNodeBase {
     });
     for (const effect of activeEffects(document)) {
       validateEffectSampleRate(effect, context.sampleRate);
-      channelRange(effect.channel, channels);
+      channelRange(effect.channel, channels, effect.type);
     }
 
     const processorUrl = validateProcessorUrl(

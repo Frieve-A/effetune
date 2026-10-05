@@ -35,6 +35,8 @@ struct Event {
 };
 constexpr std::uint32_t kTelemetryType = 28u, kTelemetryVersion = 1u, kPayloadBytes = 1344u;
 constexpr std::uint32_t kTempogramBins = 192u, kMaxEvents = 16u, kEventCapacity = 64u;
+static_assert(kTempogramBins == static_cast<std::uint32_t>(rhythm_a3::dec::kMapBins),
+              "the tempo map fills the tempogram");
 constexpr std::uint32_t kCandidates = 241u, kCaptureChunk = 256u, kMaxRing = 16u;
 constexpr double kBands[3][2] = {{30.0, 200.0}, {200.0, 4000.0}, {4000.0, 16000.0}};
 // Detector: SuperFlux (3-bin reference max filter), mean + 3.5 sd threshold with floors.
@@ -402,8 +404,7 @@ public:
       binary_io::writeF32(p + 52u, unitFraction(position - whole));
       binary_io::writeU32(p + 56u, static_cast<std::uint32_t>(index));
     }
-    binary_io::writeF32(p + 60u, static_cast<float>(best_bpm_));
-    writeTempogram(p + 64u);
+    writeTempogram(p + 60u);
     for (std::uint32_t k = 0u; k < count; ++k) {
       const auto &event = events_[(event_read_ + k) % kEventCapacity];
       auto *slot = p + 832u + 32u * k;
@@ -531,7 +532,7 @@ private:
       if (stage == 0u) {
         analyseFrame();
       } else {
-        // H3: base channels and tcn_g for the tick closed by this hop's frame, if any.
+        // H3: base channels and the TCN for the tick closed by this hop's frame, if any.
         a3_->fe.runTick();
         if (envelope_ready_) {
           envelope_ready_ = false;
@@ -1033,8 +1034,20 @@ private:
     } else
       bad_phase_ = 0u;
   }
+  // The strongest tempo (BPM) and the tempogram column after it: at A3 rates A3's tempo map and
+  // its peak, otherwise the fallback tracker's comb best and onset ACF. Silence (the same activity
+  // gate as the confidence) writes an all-zero column.
   void writeTempogram(std::uint8_t *output) const noexcept {
     std::array<float, kTempogramBins> column{};
+    if (a3_) {
+      const double strongest = a3_->decoder().tempoMap(column.data());
+      const bool active = envelope_mean_ > kMinActivity;
+      binary_io::writeF32(output, static_cast<float>(strongest));
+      for (std::uint32_t i = 0u; i < kTempogramBins; ++i)
+        binary_io::writeF32(output + 4u + 4u * i, active ? column[i] : 0.0f);
+      return;
+    }
+    binary_io::writeF32(output, static_cast<float>(best_bpm_));
     double peak = 0.0;
     const double inverse = 1.0 / (acf_[0] + 1e-12);
     for (std::uint32_t i = 0u; i < kTempogramBins; ++i) {
@@ -1047,12 +1060,11 @@ private:
       column[i] = static_cast<float>(value > 0.0 ? value : 0.0);
       peak = column[i] > peak ? column[i] : peak;
     }
-    // Silence (the same activity gate as the confidence) writes an all-zero column.
     const double scale = envelope_mean_ > kMinActivity
                              ? 1.0 / (peak > kTempogramFloor ? peak : kTempogramFloor)
                              : 0.0;
     for (std::uint32_t i = 0u; i < kTempogramBins; ++i)
-      binary_io::writeF32(output + 4u * i, static_cast<float>(column[i] * scale));
+      binary_io::writeF32(output + 4u + 4u * i, static_cast<float>(column[i] * scale));
   }
   std::array<Buffer, 3> buffers_;
   std::unique_ptr<Transform> transform_;

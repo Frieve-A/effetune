@@ -140,6 +140,7 @@ test('rollout enables only shipped kernels with matching generated layouts', () 
     'TremoloPlugin',
     'WowFlutterPlugin',
     'OscillatorPlugin',
+    'AdaptivePredictionEffectPlugin',
     'HornResonatorPlugin',
     'HornResonatorPlusPlugin',
     'ModalResonatorPlugin',

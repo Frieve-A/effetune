@@ -6,6 +6,12 @@ lang: en
 
 # Version History
 
+### Version 2.13.0 (TBD, 2026)
+- Added Adaptive Prediction effect
+- Added Guitar to the Visualizer
+- Improved Note Spectrogram and Rhythm Analyzer accuracy
+- Various minor improvements
+
 ### Version 2.12.0 (Oct 2, 2026)
 - Added Analog Meter, Rhythm Analyzer and Tonal Balance EQ effects
 - Added Phase Map and Analog Meter to the Visualizer, along with extensive feature enhancements

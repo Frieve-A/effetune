@@ -33,6 +33,23 @@ const publicTypes = publicCatalog.effects
 assert.deepEqual(fixtureTypes, overlayTypes);
 assert.deepEqual(fixtureTypes, publicTypes);
 
+function statistics(audio, startFrame = 0) {
+  let peak = 0;
+  let power = 0;
+  let samples = 0;
+  for (const channel of audio) {
+    for (let frame = startFrame; frame < channel.length; frame++) {
+      const sample = channel[frame];
+      assert.ok(Number.isFinite(sample), 'Nonfinite source-generation output.');
+      const magnitude = sample < 0 ? -sample : sample;
+      if (magnitude > peak) peak = magnitude;
+      power += sample * sample;
+      samples++;
+    }
+  }
+  return { peak, rms: Math.sqrt(power / samples) };
+}
+
 const visited = [];
 const mismatches = [];
 for (const effect of catalog.effects) {
@@ -52,25 +69,45 @@ for (const effect of catalog.effects) {
     variant: 'baseline',
     ...(setup.assetResolver ? { assetResolver: setup.assetResolver } : {})
   });
+  let stream;
   try {
     const input = Array.from(
       { length: setup.channels },
-      () => new Float32Array(fixture.frames)
+      () => new Float32Array(member?.frames ?? fixture.frames)
     );
-    const output = await chain.process(input, {
-      sampleRate,
-      seed: 0,
-      blockSize: 128
-    });
-    const peak = output.reduce(
-      (maximum, channel) => channel.reduce(
-        (channelMaximum, sample) =>
-          Math.abs(sample) > channelMaximum ? Math.abs(sample) : channelMaximum,
-        maximum
-      ),
-      0
-    );
-    const nonzero = peak > 1e-7;
+    const options = { sampleRate, seed: 0, blockSize: 128 };
+    let output;
+    if (member?.warmup) {
+      stream = await chain.stream({ ...options, channels: setup.channels });
+      const untrained = await stream.process(input);
+      assert.ok(statistics(untrained).peak <= 1e-7,
+        `${effect.type} must remain silent before training.`);
+      for (const [name, value] of Object.entries(member.warmup.parameters)) {
+        stream.setParam(effect.type, name, value);
+      }
+      const training = Array.from({ length: setup.channels }, () => Float32Array.from(
+        { length: member.warmup.frames },
+        (_, frame) => member.warmup.amplitude *
+          Math.sin(2 * Math.PI * member.warmup.frequencyHz * frame / sampleRate)
+      ));
+      await stream.process(training);
+      for (const [name, value] of Object.entries(member.parameters)) {
+        stream.setParam(effect.type, name, value);
+      }
+      output = await stream.process(input);
+    } else {
+      output = await chain.process(input, options);
+    }
+    const { peak } = statistics(output);
+    const measured = statistics(output, member?.measureStartFrame ?? 0);
+    if (member?.maximumPeak !== undefined) {
+      assert.ok(peak <= member.maximumPeak, `${effect.type} exceeded its output bound.`);
+    }
+    if (member?.minimumRms !== undefined) {
+      assert.ok(measured.rms > member.minimumRms,
+        `${effect.type} did not sustain generation after training.`);
+    }
+    const nonzero = measured.peak > 1e-7;
     if (nonzero !== Boolean(member)) {
       mismatches.push({
         type: effect.type,
@@ -80,6 +117,7 @@ for (const effect of catalog.effects) {
       });
     }
   } finally {
+    stream?.close();
     chain.close();
   }
 }

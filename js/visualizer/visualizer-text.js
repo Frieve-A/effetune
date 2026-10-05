@@ -1,6 +1,6 @@
 import { TEXT_DECORATION_DEFAULTS } from './visualizer-model.js';
 
-// Shared typography for metadata and the Rhythm Analyzer BPM overlay.
+// Shared typography for metadata, decoration text, and the Rhythm Analyzer BPM overlay.
 export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fitRadius) {
     const style = { ...TEXT_DECORATION_DEFAULTS, ...inputStyle };
     const text = style.textCase === 'upper' ? raw.toUpperCase() : style.textCase === 'lower' ? raw.toLowerCase() : raw;
@@ -28,7 +28,9 @@ export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fit
     ctx.textBaseline = style.verticalAlign;
     // Keep the outline inside the item box; letter spacing also trails the last glyph.
     const x = style.align === 'center' ? (w + spacing) / 2 : style.align === 'right' ? w - outline + spacing : outline;
-    const y = style.verticalAlign === 'top' ? outline : style.verticalAlign === 'bottom' ? h - outline : h / 2;
+    const lines = text.split(/\r\n|\r|\n/), lineHeight = style.fontSize * scale * 1.2;
+    const lineSpan = (lines.length - 1) * lineHeight;
+    const y = style.verticalAlign === 'top' ? outline : style.verticalAlign === 'bottom' ? h - outline - lineSpan : (h - lineSpan) / 2;
     const maxWidth = Math.max(1, w - outline * 2);
     if (style.shadowOpacity > 0 && (style.shadowBlur || style.shadowX || style.shadowY)) {
         ctx.shadowColor = `${style.shadowColor}${Math.round(style.shadowOpacity * 255).toString(16).padStart(2, '0')}`;
@@ -42,9 +44,9 @@ export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fit
         ctx.strokeStyle = style.outlineColor;
         ctx.lineWidth = outline * 2;
         ctx.lineJoin = 'round';
-        ctx.strokeText(text, x, y, maxWidth);
+        lines.forEach((line, index) => ctx.strokeText(line, x, y + index * lineHeight, maxWidth));
         ctx.shadowColor = 'transparent';
     }
-    ctx.fillText(text, x, y, maxWidth);
+    lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight, maxWidth));
     ctx.restore();
 }

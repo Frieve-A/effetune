@@ -1855,7 +1855,6 @@ test('Electron rolling deactivation freezes paused position and ignores a late W
         const window = BrowserWindow.getAllWindows()[0];
         return {
           minimized: window.isMinimized(),
-          visible: window.isVisible(),
           focused: window.isFocused()
         };
       });
@@ -1909,8 +1908,8 @@ test('Electron rolling deactivation freezes paused position and ignores a late W
         };
       });
 
+      // A minimized window's native visibility is platform-dependent.
       assert.equal(nativeDeactivation.minimized, true);
-      assert.equal(nativeDeactivation.visible, false);
       assert.ok(result.hiddenPosition >= setup.positionFrame);
       assert.equal(result.playingWhileHidden, true);
       assert.equal(result.paused, true);

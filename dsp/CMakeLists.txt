@@ -74,6 +74,7 @@ set(
   core/graph.cpp
   core/partitioned_convolver.cpp
   core/registry.cpp
+  core/spectrum_tap.cpp
   core/telemetry.cpp)
 
 set_property(
@@ -107,6 +108,7 @@ if(NOT EMSCRIPTEN)
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/click_remover/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/clip_restorer/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/restoration/noise_reduction/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/resonator/adaptive_prediction_effect/kernel.cpp"
     APPEND
     PROPERTY COMPILE_OPTIONS
              "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffp-contract=off>")
@@ -328,6 +330,7 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(effetune_dsp_primitives_tests SOURCES test/primitives_test.cpp)
+  et_add_dsp_test(effetune_dsp_spectrum_tap_tests SOURCES test/spectrum_tap_test.cpp INCLUDE_DIRS core WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_dynamics_group_a_tests
     SOURCES test/dynamics_group_a_frame_test.cpp)
@@ -488,6 +491,11 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     effetune_dsp_horn_resonator_tests
     SOURCES plugins/resonator/horn_native_test.cpp
     INCLUDE_DIRS core
+    WRAP_MALLOC)
+  et_add_dsp_test(
+    effetune_dsp_adaptive_prediction_effect_tests
+    SOURCES plugins/resonator/adaptive_prediction_effect/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
     WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_modal_resonator_tests

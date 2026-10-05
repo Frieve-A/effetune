@@ -83,6 +83,8 @@ Vos périphériques d'entrée et de sortie peuvent être en bouclage. Assurez-vo
 | Pas de sortie audio | Pour l'application web, vérifiez que les sorties du système d'exploitation et du navigateur pointent vers votre DAC/AMP. Pour l'application de bureau, vérifiez le périphérique de sortie dans **Configuration audio**. |
 | D'autres lecteurs signalent "CABLE Input en cours d'utilisation" | Assurez-vous qu'aucune autre application n'utilise **CABLE Input**. |
 
+Les effets qui nécessitent WebAssembly affichent un message en haut de leur panneau lorsqu’ils ne peuvent pas fonctionner. Activez **Utiliser le traitement audio WebAssembly** dans **Configuration audio**. Si cette option est déjà activée, réinitialisez l’audio ou rechargez EffeTune. Le message disparaît dès que l’effet fonctionne à nouveau.
+
 ### 2.5. Discordance de sortie multicanal
 EffeTune produit les canaux dans l'ordre numérique, jusqu'à 16 canaux. Faites correspondre **Canaux de sortie :** à la configuration du périphérique. Pour une installation 7.1ch, réglez le périphérique et EffeTune sur 8ch et utilisez les libellés de canaux du périphérique pour router les canaux arrière. Pour une installation à 16 canaux, sélectionnez 16 canaux aux deux endroits et vérifiez le mappage du périphérique.
 

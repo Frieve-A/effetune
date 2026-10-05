@@ -1,0 +1,67 @@
+Additional third-party notices for the EffeTune desktop app
+==========================================================
+
+License files supplied by other dependencies are retained inside node_modules.
+
+lazy-val v1.0.5
+--------------
+Upstream author: Vladimir Krivosheev
+Source: https://github.com/develar/lazy-val
+Published package: https://registry.npmjs.org/lazy-val/-/lazy-val-1.0.5.tgz
+Declared license: MIT
+
+The upstream package declares MIT but does not include a license-text file.
+Its declared MIT license terms are reproduced below.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+qrcode-generator v2.0.4
+----------------------
+Source: https://github.com/kazuhikoarase/qrcode-generator
+Upstream license: https://github.com/kazuhikoarase/qrcode-generator/blob/master/LICENSE
+Published package: https://registry.npmjs.org/qrcode-generator/-/qrcode-generator-2.0.4.tgz
+
+The upstream package retains copyright notices and declares MIT, but omits the
+repository's license-text file. That license is reproduced below.
+Additional source copyright notices: Copyright (c) 2011 and 2016 Kazuhiko Arase.
+The word 'QR Code' is registered trademark of DENSO WAVE INCORPORATED.
+
+MIT License
+
+Copyright (c) 2009 Kazuhiko Arase
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

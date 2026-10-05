@@ -1,3 +1,6 @@
+import '../../plugins/multires-spectrum.js';
+export const SpectrumTapContract = globalThis.SpectrumTapContract;
+
 // Deterministic capture age and staged-analysis completion bounds, in context frames.
 export const VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS = 0.5;
 // Entries held per stream; the total grows with the number of synced streams.
@@ -67,8 +70,10 @@ const rules = {
     }),
     OscilloscopePlugin: rule((p, rate) => clamp(Math.floor(rate * bounded(p.dt, 0.01, 0.001, 0.1)), 1, 65536) / 2),
     StereoMeterPlugin: rule((p, rate) => Math.ceil(rate * bounded(p.wt, 0.1, 0.01, 1)) / 2),
-    spectrumOverlay: rule((params, rate) => params?.quality === 'hq'
-        ? spectrumAge({ pt: 12, sc: 'log-hq' }, rate, 'js', true) : 2048)
+    spectrumOverlay: rule((params, rate) => {
+        const timing = SpectrumTapContract.profile(params?.quality, rate);
+        return timing.windowAgeFrames + timing.completionFrames;
+    })
 };
 for (const name of [
     'CompressorPlugin', 'GatePlugin', 'ExpanderPlugin', 'BrickwallLimiterPlugin',
@@ -126,7 +131,8 @@ export function dropVisualSyncOverflow(queue, sameStream, limit = VISUAL_SYNC_QU
 // These payloads record capture-end time on the worklet processing timeline.
 export function telemetryCaptureTiming(frame, contextFrameOffset) {
     if (!Number.isFinite(contextFrameOffset)) return null;
-    const note = frame?.frameType === 24 && frame.formatVersion === 3 && frame.payload?.byteLength === 3548;
+    // Note Spectrogram telemetry v4 (see plugins/analyzer/note_spectrogram.js).
+    const note = frame?.frameType === 24 && frame.formatVersion === 4 && frame.payload?.byteLength === 5312;
     const spectrogram = frame?.frameType === 5 && frame.formatVersion === 1 && frame.payload?.byteLength === 268;
     if (!note && !spectrogram) return null;
     const sampleRate = frame.payload.getFloat32(0, true);

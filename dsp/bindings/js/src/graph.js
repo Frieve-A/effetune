@@ -58,9 +58,10 @@ function validateChannels(channels) {
 function validateLayout(state, sampleRate, channels) {
   const effective = effectiveNodeIds(state.document);
   for (const node of state.document.nodes) {
-    if (node.enabled && effective.has(node.id)) validateEffectSampleRate(node, sampleRate);
+    const processesAudio = node.enabled && effective.has(node.id);
+    if (processesAudio) validateEffectSampleRate(node, sampleRate);
     try {
-      channelRange(node.channel, channels);
+      channelRange(node.channel, channels, processesAudio ? node.type : undefined);
     } catch (error) {
       if (error instanceof ValidationError) {
         throw new ValidationError(error.message, {

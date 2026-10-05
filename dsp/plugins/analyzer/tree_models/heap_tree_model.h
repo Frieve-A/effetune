@@ -27,6 +27,8 @@ template <typename LeafValue, typename Threshold = float> struct BasicHeapTreeMo
   const float *borders = nullptr;
   const std::uint32_t *border_offsets = nullptr;
   const float *leaf_scales = nullptr;
+
+  constexpr std::uint32_t splitCount() const noexcept { return tree_count * ((1u << depth) - 1u); }
 };
 using HeapTreeModelView = BasicHeapTreeModelView<double>;
 using FloatHeapTreeModelView = BasicHeapTreeModelView<float>;

@@ -1,10 +1,11 @@
-// A3 beat clock: the front end and tcn_g (TcFrontEnd), the 2 Hz G2 update and hooks (G2Engine) and
-// the decoder (DecDecoder), wired at their real delays. The kernel feeds the analysis stream
+// A3 beat clock: the front end and the TCN (TcFrontEnd), the 2 Hz G2 update and hooks (G2Engine)
+// and the decoder (DecDecoder), wired at their real delays. The kernel feeds the analysis stream
 // (sample), the hop and frame hooks (fe) and calls quantum() once per render quantum.
 #pragma once
 #include <cstdint>
 
 #include "dec_decoder.h"
+#include "decaying_max.h"
 #include "g2_engine.h"
 #include "tc_frontend.h"
 
@@ -29,6 +30,7 @@ public:
   bool prepare(double analysisRate, double deviceRate) noexcept {
     if (!fe.prepare(analysisRate) || !g2_.prepare(static_cast<int>(analysisRate)))
       return false;
+    fe.setChroma(&g2_.chroma());
     tickDevice_ = 4.0 * fe.rate().hop * deviceRate / analysisRate;
     return reset();
   }
@@ -42,6 +44,7 @@ public:
   bool reset() noexcept {
     fe.reset();
     g2_.reset();
+    quiet_.reset();
     setup_ = {};
     setup_.t0a = tc::kG1T0;
     setup_.lata = tc::kG1Latency;
@@ -85,7 +88,12 @@ public:
       for (int b = 0; b < 3; ++b)
         for (int q = 0; q < 4; ++q)
           flux[b][q] = t.v0.flux[q][b];
-      g2_.pushTick(flux, t.v0.bandDb, t.v0.rmsDb, t.v0.lvl);
+      if (t.v0.restart) {
+        g2_.restart(t.v0.k, samples_);
+        quiet_.reset();
+      }
+      const bool quiet = quiet_.push(t.v0.rmsDb);
+      g2_.pushTick(flux, t.v0.bandDb, t.v0.rmsDb, t.v0.lvl, quiet);
       if (ticksIn_ - (actNext_ < nextTick_ ? actNext_ : nextTick_) >= kTickRing) {
         ++dropped_;
         continue;
@@ -93,9 +101,14 @@ public:
       TickRow &row = ticks_[ticksIn_ & (kTickRing - 1)];
       for (int c = 0; c < 3; ++c)
         row.act[c] = t.act[c];
-      row.rmsDb = t.v0.rmsDb;
+      row.quiet = quiet;
+      row.fire = t.v0.fire;
+      row.priorRestart = t.priorRestart;
       ++ticksIn_;
     }
+    TcPriorRow prior;
+    while (fe.popPriorRow(prior))
+      dec_.pushPrior(prior.base, prior.s, prior.grid);
     TcEvent e;
     while (fe.popEvent(e)) {
       if (probe.event != nullptr)
@@ -122,13 +135,15 @@ public:
       if (split && n > 0)
         service();
       pushInputs(n);
-      const float rms = ticks_[n & (kTickRing - 1)].rmsDb;
+      const TickRow &row = ticks_[n & (kTickRing - 1)];
+      if (row.priorRestart)
+        dec_.restartPrior();
       if (split) {
-        dec_.tickFront(rms);
+        dec_.tickFront(row.quiet, row.fire);
         midPending_ = true;
         midTick_ = n;
       } else {
-        finishTick(dec_.tickBegin(rms), n);
+        finishTick(dec_.tickBegin(row.quiet, row.fire), n);
       }
       worked = true;
     }
@@ -138,6 +153,7 @@ public:
 
   [[nodiscard]] dec::DecClockView view() const noexcept { return dec_.clockView(); }
   void setBeatSink(dec::DecDecoder::BeatSink sink) noexcept { dec_.beatSink = sink; }
+  void setMasterProbe(dec::DecDecoder::MasterProbe sink) noexcept { dec_.masterProbe = sink; }
   [[nodiscard]] const dec::DecDecoder &decoder() const noexcept { return dec_; }
   [[nodiscard]] const G2Engine &g2() const noexcept { return g2_; }
   // Ticks or events refused by a full queue (0 in normal operation).
@@ -151,8 +167,11 @@ private:
   static constexpr std::uint32_t kEventRing = 64u;
   struct TickRow {
     float act[3];
-    float rmsDb;
+    bool quiet;        // RelativeQuiet bit of the tick (stand-in Z input)
+    bool fire;         // cold reset of the decoder at this tick
+    bool priorRestart; // the TD prior's rows start afresh at this tick
   };
+  static_assert(TdpTrees::kGrid == static_cast<std::uint32_t>(dec::kTdGrid));
 
   // Inputs available at decoder tick n: activation rows, events by availability and every published
   // G2 update.
@@ -194,6 +213,7 @@ private:
   }
 
   G2Engine g2_;
+  RelativeQuiet quiet_; // the one quiet state behind fe_silent and stand-in Z
   dec::DecDecoder dec_;
   dec::DecSetup setup_{};
   TickRow ticks_[kTickRing] = {};

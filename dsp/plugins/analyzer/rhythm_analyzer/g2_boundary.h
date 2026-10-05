@@ -94,7 +94,13 @@ public:
     nextId_ = 0;
     openCount_ = 0;
     stats_ = {};
+    origin_ = 0;
+    restartAt_ = -1;
   }
+
+  // Cold reset at tick r: the first call that needs tick r starts a fresh tracker at r (spawn ids
+  // continue). Calls before it still belong to the old stream.
+  void restart(std::int64_t r) noexcept { restartAt_ = r; }
 
   [[nodiscard]] const Stats &stats() const noexcept { return stats_; }
 
@@ -103,6 +109,8 @@ public:
     Result &res = result_;
     res.newCount = 0;
     res.rowCount = 0;
+    if (restartAt_ >= 0 && atTicks(t) > restartAt_)
+      startAt(restartAt_);
     const std::int64_t K = stream_->ticks();
     const std::int64_t k1 = min64(atTicks(t), K);
     const double Ls = level(song_);
@@ -198,6 +206,22 @@ public:
   }
 
 private:
+  void startAt(std::int64_t r) noexcept {
+    song_ = {};
+    song_.k = r;
+    k_ = r;
+    run0_ = -1;
+    runZ_ = false;
+    histClear();
+    haveGap_ = false;
+    gapT1_ = 0.0;
+    novPrev_ = kInf;
+    lastSpawn_ = -kInf;
+    openCount_ = 0;
+    origin_ = r;
+    restartAt_ = -1;
+  }
+
   static constexpr std::int64_t kMask = G2Stream::kTickRing - 1;
   static constexpr double kInf = std::numeric_limits<double>::infinity();
 
@@ -410,7 +434,7 @@ private:
     const double nan = std::numeric_limits<double>::quiet_NaN();
     for (int i = 0; i < 5; ++i)
       terms[i] = nan;
-    const std::int64_t k0 = atTicks(w0) > 0 ? atTicks(w0) : 0;
+    const std::int64_t k0 = atTicks(w0) > origin_ ? atTicks(w0) : origin_;
     const std::int64_t k1 = min64(atTicks(t), K);
     const std::int64_t n = k1 > k0 ? k1 - k0 : 0;
     noteWindow(n);
@@ -456,7 +480,7 @@ private:
     const double wEff = static_cast<double>(k1c - k0c) / T::kFps;
     const std::int64_t k1 = min64(atTicks(t), stream_->ticks());
     const std::int64_t kr = static_cast<std::int64_t>(std::nearbyint(wEff * T::kFps));
-    const std::int64_t k0 = k1 - kr > 0 ? k1 - kr : 0;
+    const std::int64_t k0 = k1 - kr > origin_ ? k1 - kr : origin_;
     std::int64_t nl = 0;
     for (std::int64_t k = k0; k < k1; ++k)
       if (loud_[k & kMask]) {
@@ -544,6 +568,7 @@ private:
   double lastSpawn_ = -kInf;
   std::int64_t nextId_ = 0;
   int openCount_ = 0;
+  std::int64_t origin_ = 0, restartAt_ = -1; // first tick of the tracker; pending cold reset
   Open open_[kMaxOpen] = {};
   Result result_ = {};
   Stats stats_ = {};

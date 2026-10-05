@@ -16,6 +16,7 @@ import { loadStylesheet, waitForStylesheets } from './utils/classic-script-loade
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
+const RELOAD_PIPELINE_RESTORE_VALUE = 'reload';
 const TRANSIENT_PIPELINE_STATE_STORAGE_KEY = 'effetune_transient_pipeline_state';
 
 function isSuccessfulAudioGraphBuild(result) {
@@ -237,7 +238,8 @@ function markTransientPipelineRestoreRequest(windowRef = window) {
 function consumeTransientPipelineRestoreRequest(windowRef = window) {
     try {
         const params = new URLSearchParams(windowRef.location?.search || '');
-        if (params.get(TRANSIENT_PIPELINE_RESTORE_PARAM) !== TRANSIENT_PIPELINE_RESTORE_VALUE) {
+        const restore = params.get(TRANSIENT_PIPELINE_RESTORE_PARAM);
+        if (restore !== TRANSIENT_PIPELINE_RESTORE_VALUE && restore !== RELOAD_PIPELINE_RESTORE_VALUE) {
             return false;
         }
 
@@ -252,7 +254,7 @@ function consumeTransientPipelineRestoreRequest(windowRef = window) {
         );
         return true;
     } catch (error) {
-        console.warn('Failed to consume feature pipeline restore request:', error);
+        console.warn('Failed to consume pipeline restore request:', error);
         return false;
     }
 }
@@ -703,12 +705,14 @@ class App {
     }
 
     async openConfiguredStartupView() {
-        if (this.restoringTransientPipeline) {
+        const startupParams = new URLSearchParams(captureInitialStartupSearch(window));
+        // Reload restores pipeline data without requesting the effect view; feature returns request it.
+        if (this.restoringTransientPipeline &&
+            startupParams.get(TRANSIENT_PIPELINE_RESTORE_PARAM) !== RELOAD_PIPELINE_RESTORE_VALUE) {
             return;
         }
 
         // Match the has('v') startup-view check; an empty value reaches the invalid-link notice.
-        const startupParams = new URLSearchParams(captureInitialStartupSearch(window));
         if (startupParams.has('v')) {
             try { await this.uiManager?.openSharedVisualizer?.(startupParams.get('v')); }
             catch (error) { console.error('Error opening shared Visualizer layout:', error); }

@@ -355,6 +355,10 @@ class NativeChainTests(unittest.TestCase):
                         self.assertEqual(len(frame.volume_db), 440)
                         self.assertTrue(np.isfinite(frame.volume_db).all())
                         self.assertGreater(max(frame.volume_db), -240)
+                        self.assertEqual(frame.revision_age, 8)
+                        self.assertEqual(len(frame.revised_levels), 440)
+                        self.assertTrue(np.isfinite(frame.revised_levels).all())
+                        self.assertTrue(all(0 <= value <= 1 for value in frame.revised_levels))
                     elif kind == "spectrogram":
                         self.assertEqual(frame.sample_rate, 48_000)
                         self.assertEqual(frame.points, 10)
@@ -1196,7 +1200,7 @@ class NativeChainTests(unittest.TestCase):
             topology="automatic",
         )
         source_four_channels = np.vstack((source, source))
-        self.assertEqual(len(EFFECT_METADATA["effects"]), 110)
+        self.assertEqual(len(EFFECT_METADATA["effects"]), 111)
         for metadata in EFFECT_METADATA["effects"]:
             effect_type = metadata["type"]
             definition = metadata["parameters"][0] if metadata["parameters"] else None

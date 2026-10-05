@@ -232,6 +232,7 @@ et_status Engine::prepare(float sample_rate, std::uint32_t max_channels, std::ui
   max_channels_ = max_channels;
   max_frames_ = max_frames;
   telemetry_rate_hz_ = 60.0F;
+  setHostTransport(nullptr);
   telemetry_.adopt(arena_.telemetryStorage(), arena_.telemetryCapacity());
   prepared_ = true;
   return ET_OK;
@@ -568,8 +569,43 @@ void Engine::maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) 
   slot.kernel->writeTelemetry(writer);
 }
 
+void Engine::setHostTransport(const HostTransport *transport) noexcept {
+  host_transport_set_ = transport != nullptr;
+  if (transport == nullptr) {
+    return;
+  }
+  HostTransport value = *transport;
+  if (!std::isfinite(value.tempoBpm) || !(value.tempoBpm > 0.0)) {
+    value.flags &= ~HostTransport::kTempoValid;
+  }
+  if (!std::isfinite(value.ppqPosition)) {
+    value.flags &= ~HostTransport::kPositionValid;
+  }
+  if (!std::isfinite(value.barStartPpq)) {
+    value.flags &= ~HostTransport::kBarStartValid;
+  }
+  if (value.timeSignatureNumerator == 0u || value.timeSignatureDenominator == 0u) {
+    value.flags &= ~HostTransport::kTimeSignatureValid;
+  }
+  host_transport_ = value;
+}
+
+ProcessInfo Engine::nodeProcessInfo(double time_seconds, std::uint32_t input_latency) noexcept {
+  if (!host_transport_set_) {
+    return {time_seconds};
+  }
+  node_transport_ = host_transport_;
+  constexpr std::uint32_t kAdvancing =
+      HostTransport::kPlaying | HostTransport::kTempoValid | HostTransport::kPositionValid;
+  if ((node_transport_.flags & kAdvancing) == kAdvancing) {
+    node_transport_.ppqPosition -= static_cast<double>(input_latency) * node_transport_.tempoBpm /
+                                   (60.0 * static_cast<double>(sample_rate_));
+  }
+  return {time_seconds, &node_transport_};
+}
+
 void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
-                         std::uint32_t frame_count, double time_seconds,
+                         std::uint32_t frame_count, const ProcessInfo &info,
                          et_instance pipeline_instance) noexcept {
   slot.kernel->applyPendingParameters();
   const bool observed = pipeline_instance != 0u && pipeline_observer_ != nullptr;
@@ -580,13 +616,13 @@ void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel
   }
 #if defined(__EMSCRIPTEN__)
   const bool add_noise_after = requiresPostKernelDenormalNoise(*slot.descriptor);
-  prepareDenormalProtectedInput(audio, channel_count, frame_count, time_seconds, sample_rate_,
+  prepareDenormalProtectedInput(audio, channel_count, frame_count, info.timeSeconds, sample_rate_,
                                 !add_noise_after);
 #endif
-  slot.kernel->process(audio, channel_count, frame_count, {time_seconds});
+  slot.kernel->process(audio, channel_count, frame_count, info);
 #if defined(__EMSCRIPTEN__)
   if (add_noise_after) {
-    addDenormalNoise(audio, channel_count, frame_count, time_seconds, sample_rate_);
+    addDenormalNoise(audio, channel_count, frame_count, info.timeSeconds, sample_rate_);
   }
 #endif
   maybeWriteTelemetry(slot, frame_count);
@@ -611,7 +647,7 @@ et_status Engine::processInstance(et_instance instance, float *audio, std::uint3
     return ET_ERR_STATE;
   }
   allocation_guard::Scope allocation_scope;
-  processSlot(*slot, audio, channel_count, frame_count, time_seconds);
+  processSlot(*slot, audio, channel_count, frame_count, nodeProcessInfo(time_seconds, 0u));
   return ET_OK;
 }
 
@@ -717,6 +753,8 @@ et_status Engine::configurePipeline(const std::uint8_t *descriptor,
   }
   pipeline_ = parsed;
   pipeline_compensation_ = std::move(update.compensation_);
+  pipeline_tap_latency_ = update.tap_latency_;
+  pipeline_input_latency_ = update.input_latency_;
   pipeline_output_delays_ = update.output_delays_;
   pipeline_output_delay_line_ = std::move(update.output_delay_line_);
   pipeline_count_ = node_count;
@@ -749,6 +787,8 @@ et_status Engine::preparePipelineLatencyUpdate(const PipelineLatencySnapshot &sn
   update.ready_ = false;
   update.latency_ = 0u;
   update.compensation_ = {};
+  update.tap_latency_ = {};
+  update.input_latency_ = {};
   update.output_delays_ = {};
   update.output_delay_line_ = {};
   if (snapshot.owner_ == nullptr) {
@@ -798,6 +838,8 @@ et_status Engine::preparePipelineLatencyUpdate(const PipelineLatencySnapshot &sn
         return ET_ERR_DESC;
       }
       const std::uint32_t incoming_latency = input_latency + plugin_latency;
+      update.tap_latency_[index] = {input_latency, incoming_latency};
+      update.input_latency_[index] = input_latency;
       std::uint32_t maximum_input_delay = 0u;
       std::uint32_t maximum_merge_delay = 0u;
       for (std::uint32_t offset = 0u; offset < routed_channels; ++offset) {
@@ -863,6 +905,10 @@ et_status Engine::preparePipelineLatencyUpdate(const PipelineLatencySnapshot &sn
     }
 
     update.latency_ = total_latency;
+    for (auto &tap : update.tap_latency_) {
+      tap.input = total_latency > tap.input ? total_latency - tap.input : 0;
+      tap.output = total_latency > tap.output ? total_latency - tap.output : 0;
+    }
     update.snapshot_ = snapshot;
     update.ready_ = true;
     return ET_OK;
@@ -917,9 +963,23 @@ et_status Engine::applyPipelineLatencyUpdate(PipelineLatencyUpdate &update) noex
   adopt_storage(pipeline_output_delay_line_, update.output_delay_line_);
   pipeline_output_delays_ = update.output_delays_;
   pipeline_latency_samples_ = update.latency_;
+  pipeline_tap_latency_ = update.tap_latency_;
+  pipeline_input_latency_ = update.input_latency_;
   ++pipeline_revision_;
   update.ready_ = false;
   return ET_OK;
+}
+
+bool Engine::pipelineTapLatency(et_instance instance, PipelineTapLatency &latency) const noexcept {
+  if (!pipeline_configured_)
+    return false;
+  for (std::uint32_t i = 0; i < pipeline_count_; ++i) {
+    if (pipeline_[i].instance == instance && pipeline_[i].enabled && pipeline_[i].sectionGate) {
+      latency = pipeline_tap_latency_[i];
+      return true;
+    }
+  }
+  return false;
 }
 
 et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
@@ -961,6 +1021,7 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
     float *input = arena_.bus(node.inputBus);
     float *output = arena_.bus(node.outputBus);
     PipelineCompensation &compensation = pipeline_compensation_[index];
+    const ProcessInfo info = nodeProcessInfo(time_seconds, pipeline_input_latency_[index]);
     // Align only this processor's input. A send must leave its source bus intact.
     const auto align_input = [&](float *audio, std::uint32_t first_channel,
                                  std::uint32_t routed_channels) noexcept {
@@ -977,12 +1038,12 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
     if (node.channelSpec == -2) {
       if (node.inputBus == node.outputBus) {
         align_input(input, 0u, channel_count);
-        processSlot(*slot, input, channel_count, frame_count, time_seconds, node.instance);
+        processSlot(*slot, input, channel_count, frame_count, info, node.instance);
       } else {
         float *routed = arena_.scratch(0);
         std::memcpy(routed, input, total_floats * sizeof(float));
         align_input(routed, 0u, channel_count);
-        processSlot(*slot, routed, channel_count, frame_count, time_seconds, node.instance);
+        processSlot(*slot, routed, channel_count, frame_count, info, node.instance);
         for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
           float *target = output + channel * frame_count;
           float *source = routed + channel * frame_count;
@@ -1021,7 +1082,7 @@ et_status Engine::processPipeline(std::uint32_t channel_count, std::uint32_t fra
                   frame_count * sizeof(float));
     }
     align_input(routed, first_channel, routed_channels);
-    processSlot(*slot, routed, routed_channels, frame_count, time_seconds, node.instance);
+    processSlot(*slot, routed, routed_channels, frame_count, info, node.instance);
     for (std::uint32_t channel = 0; channel < routed_channels; ++channel) {
       float *target = output + (first_channel + channel) * frame_count;
       float *source = routed + channel * frame_count;

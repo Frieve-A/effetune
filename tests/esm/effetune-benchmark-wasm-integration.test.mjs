@@ -14,12 +14,16 @@ import {
   instantiateDsp,
   loadDspModule
 } from '../../js/audio/dsp-wasm-loader.js';
+import { loadBaselinePlugin } from '../helpers/channel-16ch-baseline.mjs';
 
 const SAMPLE_RATE = 48000;
 const BLOCK_SIZE = 128;
 const CHANNEL_COUNT = 2;
 const MATRIX_PARAMS_HASH = 0x07080f45;
 const ROOM_EQ_DEFAULT_TAPS = 32768;
+const AdaptivePredictionEffectPlugin = loadBaselinePlugin(
+  'resonator/adaptive_prediction_effect.js', 'AdaptivePredictionEffectPlugin'
+);
 
 class MatrixPlugin {
   constructor() {
@@ -231,6 +235,82 @@ const variants = [
 ];
 
 for (const variant of variants) {
+  for (const sampleRate of [44100, 48000]) {
+    test(`WebAssembly benchmark ${variant.variant} learns Adaptive Prediction at ${sampleRate} Hz`, async () => {
+      const calls = [];
+      const warnings = [];
+      const dependencies = {
+        warning(message) { warnings.push(message); },
+        loadDspModule(options) {
+          return loadDspModule({
+            ...options,
+            basePath: '',
+            fetchImpl: fetchRepositoryAsset,
+            webAssembly: variant.webAssembly,
+            publishTarget: null,
+            cache: false
+          });
+        },
+        async instantiateDsp(moduleOrBytes, options) {
+          return observeBinding(await instantiateDsp(moduleOrBytes, options), calls);
+        }
+      };
+      const runtime = await createDspBenchmarkRuntime({
+        mode: BENCHMARK_DSP_MODES.WEBASSEMBLY,
+        sampleRate,
+        blockSize: BLOCK_SIZE,
+        preference: { useWasmDsp: true },
+        location: '',
+        basePath: '',
+        dependencies
+      });
+      const plugin = new AdaptivePredictionEffectPlugin();
+      plugin.id = 94;
+      let javascriptCalls = 0;
+      plugin.executeProcessor = () => {
+        javascriptCalls++;
+        throw new Error('JavaScript must not process Adaptive Prediction in a WASM benchmark');
+      };
+      let session = null;
+      try {
+        assert.equal(runtime.supportsPlugin(plugin, { channelCount: CHANNEL_COUNT }), true);
+        assert.equal(runtime.getPluginUnsupportedReason(plugin), null);
+        session = runtime.createPluginSession(plugin, { channelCount: CHANNEL_COUNT });
+        const input = new Float32Array(CHANNEL_COUNT * BLOCK_SIZE);
+        const blocks = Math.ceil(sampleRate / BLOCK_SIZE);
+        let inputPower = 0;
+        let residualPower = 0;
+        for (let block = 0; block < blocks; block++) {
+          for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+            const frequency = channel === 0 ? 440 : 660;
+            for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+              const position = block * BLOCK_SIZE + frame;
+              input[channel * BLOCK_SIZE + frame] =
+                0.25 * Math.sin(2 * Math.PI * frequency * position / sampleRate);
+            }
+          }
+          const output = session.process(input, block * BLOCK_SIZE / sampleRate);
+          assert.equal(output.every(Number.isFinite), true);
+          if (block * BLOCK_SIZE >= sampleRate * 0.75) {
+            for (let index = 0; index < input.length; index++) {
+              inputPower += input[index] * input[index];
+              residualPower += output[index] * output[index];
+            }
+          }
+        }
+        assert.ok(residualPower / inputPower < 0.01,
+          `Residual/input power after learning: ${residualPower / inputPower}`);
+        assert.equal(javascriptCalls, 0);
+        assert.equal(findCall(calls, 'createInstance').args[0], 'AdaptivePredictionEffectPlugin');
+        assert.equal(calls.filter(call => call.name === 'pipelineProcess').length, blocks);
+        assert.deepEqual(warnings, []);
+      } finally {
+        session?.close();
+        runtime.close();
+        plugin.cleanup();
+      }
+    });
+  }
   for (const channelCount of [2, 16]) test(`WebAssembly benchmark ${variant.variant} artifact runs ${channelCount}-channel Matrix in one native pipeline call`, async () => {
     const calls = [];
     const warnings = [];

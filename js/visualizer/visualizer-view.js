@@ -44,29 +44,8 @@ export class VisualizerView {
         this.editButton.addEventListener('click', () => this.setEditing(!this.editor.open));
         this.shareButton = this.root.querySelector('.visualizer-share');
         this.importButton = this.root.querySelector('.visualizer-import');
-        // Labels also serve as the accessible name when the mobile toolbar shows icons only.
-        for (const [button, label] of [
-            [this.editButton, 'Edit'],
-            [this.presetButton, this.t('ui.title.visualizerPresets', 'Visualizer Presets')],
-            [this.shareButton, this.t('visualizer.share', 'Share')],
-            [this.importButton, this.t('visualizer.importLink', 'Import Link')]
-        ]) {
-            button.querySelector('span').textContent = label;
-            button.title = label;
-            button.setAttribute('aria-label', label);
-        }
         [this.undoButton, this.redoButton, this.cutButton, this.copyButton, this.pasteButton] =
             ['undo', 'redo', 'cut', 'copy', 'paste'].map(name => this.root.querySelector(`.${name}-button`));
-        for (const [button, label] of [
-            [this.undoButton, this.t('ui.title.undo', 'Undo')],
-            [this.redoButton, this.t('ui.title.redo', 'Redo')],
-            [this.cutButton, this.t('visualizer.cut', 'Cut items')],
-            [this.copyButton, this.t('visualizer.copy', 'Copy items')],
-            [this.pasteButton, this.t('visualizer.paste', 'Paste items')]
-        ]) {
-            button.title = label;
-            button.setAttribute('aria-label', label);
-        }
         this.undoButton.addEventListener('click', () => this.stepHistory('undo'));
         this.redoButton.addEventListener('click', () => this.stepHistory('redo'));
         this.cutButton.addEventListener('click', () => this.editor.cutSelected());
@@ -77,7 +56,6 @@ export class VisualizerView {
         this.importButton.addEventListener('click', () => this.pasteFromClipboard());
         this.expandButton = this.root.querySelector('.visualizer-expand');
         this.stageHost.appendChild(this.expandButton);
-        this.updateExpandButtonLabel();
         this.expandButton.addEventListener('click', () => this.setExpanded(!this.expanded));
         this.stage.addEventListener('pointermove', () => this.showControls());
         this.stage.addEventListener('pointerdown', () => this.showControls());
@@ -85,13 +63,13 @@ export class VisualizerView {
         this.stageHost.addEventListener('pointerdown', () => this.showControls());
         this.toolbar = this.root.querySelector('.visualizer-toolbar');
         this.qualityLabel = this.root.querySelector('.visualizer-quality-label');
-        this.qualityLabel.querySelector('span').textContent = this.t('visualizer.quality', 'Quality');
         const quality = this.qualityLabel.querySelector('select');
         for (const value of ['auto', 'high', 'low']) {
-            const option = document.createElement('option'); option.value = value; option.textContent = this.t(`visualizer.quality.${value}`, value); quality.appendChild(option);
+            const option = document.createElement('option'); option.value = value; quality.appendChild(option);
         }
         quality.value = this.quality;
         quality.addEventListener('change', () => { this.quality = quality.value; localStorage.setItem('effetune_visualizer_quality', quality.value); });
+        this.updateUITexts();
         document.addEventListener('visibilitychange', () => { if (document.hidden) this.flush(); this.updateVisibility(); });
         window.electronAPI?.onWindowVisibilityChanged?.(() => this.updateVisibility());
         window.addEventListener('pagehide', () => this.flush());
@@ -116,7 +94,42 @@ export class VisualizerView {
     }
 
     t(key, fallback) { const value = this.uiManager.t(key); return value && value !== key ? value : fallback; }
-    notice(key, fallback) { this.noticeText = this.t(key, fallback); this.status.textContent = this.noticeText; this.status.hidden = false; this.noticeActive = true; }
+    updateUITexts() {
+        this.root.setAttribute('aria-label', this.t('ui.title.visualizer', 'Visualizer'));
+        // Labels also serve as the accessible name when the mobile toolbar shows icons only.
+        for (const [button, label] of [
+            [this.editButton, 'Edit'],
+            [this.presetButton, this.t('ui.title.visualizerPresets', 'Visualizer Presets')],
+            [this.shareButton, this.t('visualizer.share', 'Share')],
+            [this.importButton, this.t('visualizer.importLink', 'Import Link')],
+            [this.undoButton, this.t('ui.title.undo', 'Undo')],
+            [this.redoButton, this.t('ui.title.redo', 'Redo')],
+            [this.cutButton, this.t('visualizer.cut', 'Cut items')],
+            [this.copyButton, this.t('visualizer.copy', 'Copy items')],
+            [this.pasteButton, this.t('visualizer.paste', 'Paste items')]
+        ]) {
+            const span = button.querySelector('span');
+            if (span) span.textContent = label;
+            button.title = label;
+            button.setAttribute('aria-label', label);
+        }
+        this.qualityLabel.querySelector('span').textContent = this.t('visualizer.quality', 'Quality');
+        for (const option of this.qualityLabel.querySelector('select').options) {
+            option.textContent = this.t(`visualizer.quality.${option.value}`, option.value);
+        }
+        this.updateExpandButtonLabel();
+        this.editor.updateUITexts();
+        if (this.noticeMessage) {
+            const previousText = this.noticeText;
+            this.noticeText = this.t(this.noticeMessage.key, this.noticeMessage.fallback);
+            if (this.noticeActive && this.status.textContent === previousText) this.status.textContent = this.noticeText;
+        }
+    }
+    notice(key, fallback) {
+        this.noticeMessage = { key, fallback };
+        this.noticeText = this.t(key, fallback);
+        this.status.textContent = this.noticeText; this.status.hidden = false; this.noticeActive = true;
+    }
     fail(error) { console.error('Visualizer operation failed:', error); this.notice('visualizer.loadFailed', 'Visualizer could not be opened. Try again.'); }
     async initialize() {
         try {
@@ -332,32 +345,25 @@ export class VisualizerView {
         const cover = this.expanded || document.body.classList.contains('layout-mini-player');
         let stageRect = rect;
         const hasGutters = this.stageHost.classList.contains('scroll-gutters');
-        if (this.editor.open && document.body.classList.contains('layout-mobile') && !cover) {
-            const gutter = 24;
-            // Compare the canvas at its unguttered size so the margin does not flip each frame.
-            const fullWidth = rect.width / zoom + (hasGutters ? gutter * 2 : 0);
-            const fullHeight = rect.height / zoom + (hasGutters ? gutter * 2 / aspect : 0);
-            const canvasHeight = Math.min(fullHeight, fullWidth / aspect);
-            const bottom = this.uiManager.mobileNav?.nav?.getBoundingClientRect().top ?? window.innerHeight;
-            const needsGutters = fullWidth - canvasHeight * aspect < gutter * 2 &&
-                rect.top + window.scrollY + (fullHeight + canvasHeight) * zoom / 2 >= bottom;
-            if (needsGutters !== hasGutters) {
-                this.stageHost.classList.toggle('scroll-gutters', needsGutters);
-                stageRect = this.stageHost.getBoundingClientRect();
-            }
-        } else if (hasGutters) {
-            this.stageHost.classList.remove('scroll-gutters');
+        // The entire editing viewport handles touch gestures; page scrolling needs space outside it.
+        const needsGutters = !!this.editor.open && document.body.classList.contains('layout-mobile') && !cover;
+        if (needsGutters !== hasGutters) {
+            this.stageHost.classList.toggle('scroll-gutters', needsGutters);
             stageRect = this.stageHost.getBoundingClientRect();
         }
         const availableWidth = stageRect.width / zoom, availableHeight = stageRect.height / zoom;
-        const width = cover ? Math.max(availableWidth, availableHeight * aspect) : Math.min(availableWidth, availableHeight * aspect);
-        const height = width / aspect;
+        const editSize = this.editor.open ? this.editor.updateViewport?.(availableWidth, availableHeight) : null;
+        const width = editSize?.width ?? (cover ? Math.max(availableWidth, availableHeight * aspect) : Math.min(availableWidth, availableHeight * aspect));
+        const height = editSize?.height ?? width / aspect;
         this.stage.style.width = `${Math.max(1, width)}px`; this.stage.style.height = `${Math.max(1, height)}px`;
         const state = this.sources.getStatus();
         // While the clean feed is shown, it renders once and this view shows the same pixels at the feed resolution.
         const feed = state === 'ready' && this.feed?.visible ? this.feed.canvas : null;
         const dpr = Math.min(window.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
-        const cw = feed ? feed.width : Math.max(1, Math.round(width * dpr)), ch = feed ? feed.height : Math.max(1, Math.round(height * dpr));
+        // Edit zoom enlarges the CSS artboard independently of raster size. Cap its longest
+        // raster edge so portrait artboards at 400% cannot allocate enormous effect layers.
+        const renderScale = this.editor.open ? Math.min(dpr, 4096 / width, 4096 / height) : dpr;
+        const cw = feed ? feed.width : Math.max(1, Math.round(width * renderScale)), ch = feed ? feed.height : Math.max(1, Math.round(height * renderScale));
         if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
         if (state === 'ready') {
             // Restore the notice text that the unavailable status may have replaced before audio was ready.

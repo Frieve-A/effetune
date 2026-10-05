@@ -142,7 +142,7 @@ PC 상단, 모바일 **플레이어** 탭 또는 데스크톱 앱 **보기** 메
 10. 각 이펙트의 효과 프리셋 버튼을 클릭하면 해당 이펙트만의 설정을 저장하거나 적용할 수 있습니다
 11. 슬라이더를 세밀하게 조정하려면 Shift 키를 누른 채 드래그합니다. 값은 최소 단위씩 변경됩니다
    - 음수와 양수를 모두 설정할 수 있는 슬라이더는 0부터 현재 값까지 색으로 채워집니다. Ratio 슬라이더는 1.0을 기준으로 채워집니다.
-12. 주파수 또는 음정 축이 있는 지원 그래프에서는 축을 따라 드래그하여 해당 주파수의 -12 dB 사인파를 이펙트 체인을 통해 미리 들을 수 있습니다. 건반이 표시되면 가장 가까운 반음에 맞춰지며, 건반 위로 드래그하면 해당 건반의 음정을 들려줍니다
+12. 주파수 또는 음정 축이 있는 지원 그래프에서는 축을 따라 드래그하여 선택한 주파수를 이펙트 체인을 통해 미리 들을 수 있습니다. **설정 > 일반 > 주파수 미리 듣기 소리**에서 **사인파**(기본값, -12 dB) 또는 선택한 주파수를 중심으로 대역을 제한한 **대역 통과 노이즈**를 선택할 수 있습니다. Note Spectrogram, Pitch Meter, Chroma Spiral과 피아노 건반은 항상 사인파를 사용합니다. 건반이 표시되면 가장 가까운 반음에 맞춰지며, 건반 위로 드래그하면 해당 건반의 음정을 들려줍니다
 
 ### 프리셋 사용하기
 
@@ -418,6 +418,7 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | Modulation | Rotary Speaker | 혼과 드럼의 독립적인 회전을 결합 | [세부 정보](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | 볼륨 기반 모듈레이션 이펙트 | [세부 정보](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | 테이프나 레코드 같은 은은한 피치 흔들림으로 빈티지한 느낌 추가 | [세부 정보](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | 오디오 예측을 학습하여 잔차를 추출하거나 변화하는 공명음을 만듭니다 | [세부 정보](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | 조절 가능한 치수의 혼 공명 시뮬레이션 | [세부 정보](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | 더 부드러운 혼 스피커 공명으로 자연스러운 청취 색채 추가 | [세부 정보](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 최대 5개의 레조네이터를 사용하는 주파수 공명 효과 | [세부 정보](plugins/resonator.md#modal-resonator) |

@@ -8,6 +8,7 @@
 #include "multires_features.h"
 #include "octave_model.generated.h"
 #include "octave_pair_features.h"
+#include "post_model.h"
 #include "spectral_frontend.h"
 
 #include <algorithm>
@@ -47,9 +48,12 @@ constexpr float kConfidenceThreshold = 0.52F;
 constexpr float kConfidenceOdds = kConfidenceThreshold / (1.0F - kConfidenceThreshold);
 constexpr std::uint32_t kMaximumSlots = 512u;
 constexpr std::uint32_t kStageCapacity = 32768u;
-constexpr std::uint32_t kConfidenceOffset = 28u;
+constexpr std::uint32_t kRevisionAgeOffset = 28u;
+constexpr std::uint32_t kConfidenceOffset = 32u;
 constexpr std::uint32_t kLevelOffset = kConfidenceOffset + 4u * kFinePitches;
-constexpr std::uint32_t kPayloadBytes = kLevelOffset + 4u * kFinePitches;
+constexpr std::uint32_t kRevisedOffset = kLevelOffset + 4u * kFinePitches;
+constexpr std::uint32_t kPayloadBytes = kRevisedOffset + 4u * kFinePitches;
+constexpr std::uint32_t kRevisionFrames = note_post::PostModel::kRevisionFrames;
 constexpr std::uint32_t kPendingFrames = 32u;
 constexpr std::uint32_t kFirstMidi = 21u;
 static_assert(learned_model::kFeatureCount == MultiresolutionFeatures::kFeatureCount);
@@ -66,6 +70,8 @@ static_assert(fine_model::kTreeCount > 0u && fine_model::kDepth > 0u);
 static_assert(octave_model::kFeatureCount == OctavePairFeatures::kFeatureCount);
 static_assert(octave_model::kFeatureSchemaVersion == OctavePairFeatures::kSchemaVersion);
 static_assert(octave_model::kTreeCount % kTreesPerTask == 0u);
+static_assert(note_post::PostModel::kPitches == kPitches);
+static_assert(note_post::PostModel::kDivisions == kFineDivisions);
 constexpr std::uint32_t regularPitch(std::uint32_t index) noexcept {
   return index < 3u ? index : index + 24u;
 }
@@ -103,6 +109,7 @@ public:
     features_ = std::make_unique<MultiresolutionFeatures>();
     pair_features_ = std::make_unique<OctavePairFeatures>();
     schedule_ = std::make_unique<Schedule>();
+    post_ = std::make_unique<note_post::PostModel>();
     published_.resize(kPendingFrames);
     for (auto &frame : published_)
       frame.resize(kPayloadBytes);
@@ -115,7 +122,10 @@ public:
     until_frame_ = hop_;
     frame_index_ = 0u;
     pending_read_ = pending_write_ = pending_count_ = 0u;
+    history_head_ = history_frames_ = 0u;
     job_active_ = false;
+    if (post_)
+      post_->reset();
     for (auto &frontend : frontends_)
       if (frontend)
         frontend->reset();
@@ -164,7 +174,7 @@ public:
   }
   void writeTelemetry(TelemetryWriter &writer) noexcept {
     while (ready_ && pending_count_ != 0u) {
-      if (!writer.write(24u, 3u, published_[pending_read_].data(), kPayloadBytes))
+      if (!writer.write(24u, 4u, published_[pending_read_].data(), kPayloadBytes))
         return;
       pending_read_ = (pending_read_ + 1u) % kPendingFrames;
       --pending_count_;
@@ -224,6 +234,9 @@ private:
                   (fine_model::kTreeCount - kLowFineTrees) / kTreesPerTask * kRegularFineGroups,
               kTreesPerTask * 32u * fine_model::kDepth);
     add_range(Stage::Finalize, kFineRows, 180u);
+    add(Stage::PostPrepare, 0u, 0u, 12000u);
+    add_range(Stage::PostRun, note_post::PostModel::tasks(), 2600u);
+    add(Stage::PostFinish, 0u, 0u, 6000u);
     add(Stage::Commit, 0u, 0u, 1u);
     return schedule_->partition(slots_);
   }
@@ -243,8 +256,7 @@ private:
     writeU32(staging_.data() + 16u, frame_index_++);
     writeU32(staging_.data() + 20u, kFineDivisions);
     writeU32(staging_.data() + 24u, generation_);
-    std::fill(staging_.begin() + kConfidenceOffset, staging_.begin() + kLevelOffset,
-              std::uint8_t{0});
+    confidence_history_[history_head_].fill(0.0F);
     for (auto pitch = 0u; pitch < kFinePitches; ++pitch)
       writeF32(staging_.data() + kLevelOffset + pitch * 4u, -240.0F);
   }
@@ -524,7 +536,7 @@ private:
             value = value / (value + (1.0F - value) * kConfidenceOdds);
           }
         }
-        writeF32(staging_.data() + kConfidenceOffset + fine_pitch * 4u, value);
+        confidence_history_[history_head_][fine_pitch] = value;
         auto level = -240.0F;
         if (!frontends_[0]->belowFloor()) {
           constexpr auto cents_ratio = 1.029302236643492;
@@ -564,6 +576,29 @@ private:
         writeF32(staging_.data() + kLevelOffset + fine_pitch * 4u, level);
       }
       break;
+    case Stage::PostPrepare:
+      below_floor_[history_head_] = frontends_[0]->belowFloor();
+      post_->prepare(confidence_history_[history_head_].data());
+      break;
+    case Stage::PostRun:
+      post_->run(static_cast<int>(stage.begin), static_cast<int>(stage.end));
+      break;
+    case Stage::PostFinish: {
+      post_->finish();
+      // With kRevisionFrames + 1 slots, the oldest slot is the frame the revision head targets
+      // once the ring is full; the revised check below guards the earlier frames.
+      const auto oldest = history_head_ + 1u < confidence_history_.size() ? history_head_ + 1u : 0u;
+      const bool revised = history_frames_ >= kRevisionFrames;
+      writeU32(staging_.data() + kRevisionAgeOffset, revised ? kRevisionFrames : 0u);
+      publishConfidences(kConfidenceOffset, history_head_, 0);
+      if (revised)
+        publishConfidences(kRevisedOffset, oldest, 1);
+      else
+        std::fill(staging_.begin() + kRevisedOffset, staging_.end(), std::uint8_t{0});
+      history_head_ = oldest;
+      history_frames_ += revised ? 0u : 1u;
+      break;
+    }
     case Stage::Commit:
       if (pending_count_ == kPendingFrames) {
         pending_read_ = (pending_read_ + 1u) % kPendingFrames;
@@ -576,6 +611,34 @@ private:
     default:
       ready_ = false;
       break;
+    }
+  }
+  // Scales each modelled semitone's fine cells so their peak equals the head probability.
+  // Frames below the analysis floor keep their all-zero GBDT confidences.
+  void publishConfidences(std::uint32_t offset, std::uint32_t frame, int head) noexcept {
+    using note_post::PostModel;
+    const auto &confidences = confidence_history_[frame];
+    for (auto pitch = 0u; pitch < kPitches; ++pitch) {
+      const auto first = pitch * kFineDivisions;
+      const auto modelled = static_cast<int>(pitch) - PostModel::kLowPitch;
+      if (below_floor_[frame] || modelled < 0 || modelled >= PostModel::kOutputPitches ||
+          !inRange(pitch)) {
+        for (auto division = 0u; division < kFineDivisions; ++division)
+          writeF32(staging_.data() + offset + (first + division) * 4u,
+                   confidences[first + division]);
+        continue;
+      }
+      const auto probability = post_->probability(modelled, head);
+      auto peak = 0.0F;
+      for (auto division = 0u; division < kFineDivisions; ++division)
+        peak = confidences[first + division] > peak ? confidences[first + division] : peak;
+      for (auto division = 0u; division < kFineDivisions; ++division) {
+        const auto confidence = confidences[first + division];
+        const auto value = peak <= 0.0F ? (division == kFineDivisions / 2u ? probability : 0.0F)
+                           : confidence == peak ? probability
+                                                : confidence * probability / peak;
+        writeF32(staging_.data() + offset + (first + division) * 4u, value);
+      }
     }
   }
   void selectCandidates(std::uint32_t count, std::uint32_t available) noexcept {
@@ -604,6 +667,10 @@ private:
   std::unique_ptr<MultiresolutionFeatures> features_;
   std::unique_ptr<OctavePairFeatures> pair_features_;
   std::unique_ptr<Schedule> schedule_;
+  std::unique_ptr<note_post::PostModel> post_;
+  // GBDT fine confidences of the current frame and the kRevisionFrames before it.
+  std::array<std::array<float, kFinePitches>, kRevisionFrames + 1u> confidence_history_{};
+  std::array<bool, kRevisionFrames + 1u> below_floor_{};
   std::array<double, kPitches> margins_{};
   std::array<std::uint8_t, kPitches> candidate_pitches_{};
   std::array<const float *, kInitialCandidates> candidate_rows_{};
@@ -620,6 +687,7 @@ private:
   std::uint32_t hop_ = 960u, slots_ = 60u, generation_ = 1u, frame_index_ = 0u;
   std::uint32_t until_frame_ = 960u, until_slot_ = 16u, job_slot_ = 0u;
   std::uint32_t pending_read_ = 0u, pending_write_ = 0u, pending_count_ = 0u;
+  std::uint32_t history_head_ = 0u, history_frames_ = 0u;
   std::uint32_t minimum_pitch_ = 7u, maximum_pitch_ = 70u;
   std::uint32_t requested_regular_candidates_ = 8u;
   std::uint32_t initial_candidate_count_ = 0u, regular_candidate_count_ = 0u;

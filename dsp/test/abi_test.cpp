@@ -524,6 +524,10 @@ void testUnrelatedInstanceDestructionPreservesPipeline() {
   engine.destroyInstance(visualizer);
   ET_CHECK(engine.resetInstance(visualizer) == ET_ERR_ARGS);
   ET_CHECK(engine.pipelineLatency() == kLatency);
+  Engine::PipelineTapLatency tap_latency;
+  ET_CHECK(engine.pipelineTapLatency(delay, tap_latency));
+  ET_CHECK(tap_latency.input == kLatency && tap_latency.output == 0u);
+  ET_CHECK(!engine.pipelineTapLatency(visualizer, tap_latency));
   ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_OK);
   std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
   ET_CHECK(engine.processPipeline(2u, kFrames, static_cast<double>(kFrames) / 48000.0, 0u) ==
@@ -595,6 +599,10 @@ void testDynamicPipelineLatency() {
       ET_CHECK(engine.applyPipelineLatencyUpdate(update) == ET_ERR_STATE);
     }
     ET_CHECK(engine.pipelineLatency() == expected);
+    Engine::PipelineTapLatency tap_latency;
+    ET_CHECK(engine.pipelineTapLatency(left, tap_latency));
+    ET_CHECK(tap_latency.input == expected &&
+             tap_latency.output == expected - engine.instanceLatency(left));
     // Allow the limiter's own control ramp to finish, without resets or reconfiguration.
     for (std::uint32_t block = 0u; block < 16u; ++block) {
       process(false);
@@ -928,6 +936,78 @@ void testPipelineObserver() {
   ET_CHECK(observation.calls == 0u);
 }
 
+void testHostTransport() {
+  constexpr float kRate = 48000.0F;
+  constexpr std::uint32_t kLatency = 192u;
+  auto engine = std::make_unique<Engine>();
+  ET_CHECK(engine->prepare(kRate, 2u, 128u, 0u) == ET_OK);
+  const et_instance head = engine->createInstance("TestGainPlugin");
+  const et_instance delay = engine->createInstance("TestDelayPlugin");
+  const et_instance tail = engine->createInstance("TestGainPlugin");
+  const float unity = 1.0F;
+  ET_CHECK(engine->setInstanceParams(head, &unity, 1u, kTestHash, 0u) == ET_OK);
+  ET_CHECK(engine->setInstanceParams(tail, &unity, 1u, kTestHash, 0u) == ET_OK);
+  const auto chain =
+      pipelineDescriptor({{head, 0u, 0u, -2}, {delay, 0u, 0u, -2}, {tail, 0u, 0u, -2}});
+  ET_CHECK(engine->configurePipeline(chain.data(), static_cast<std::uint32_t>(chain.size())) ==
+           ET_OK);
+  const auto received = [&](et_instance instance) {
+    return testGainTransport(et_engine_instance_kernel_for_testing(engine.get(), instance));
+  };
+  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(received(head) == nullptr && received(tail) == nullptr);
+
+  HostTransport host{};
+  host.flags = HostTransport::kPlaying | HostTransport::kTempoValid |
+               HostTransport::kPositionValid | HostTransport::kBarStartValid |
+               HostTransport::kTimeSignatureValid;
+  host.tempoBpm = 120.0;
+  host.ppqPosition = 10.0;
+  host.barStartPpq = 8.0;
+  host.timeSignatureNumerator = 6u;
+  host.timeSignatureDenominator = 8u;
+  engine->setHostTransport(&host);
+  {
+    allocation_guard::Scope scope;
+    ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  }
+  const HostTransport *first = received(head);
+  const HostTransport *shifted = received(tail);
+  ET_CHECK(first != nullptr && shifted != nullptr);
+  ET_CHECK(first->flags == host.flags && first->ppqPosition == 10.0);
+  ET_CHECK(shifted->flags == host.flags && shifted->tempoBpm == 120.0);
+  ET_CHECK(std::fabs(shifted->ppqPosition - (10.0 - kLatency * 2.0 / kRate)) < 1e-12);
+  ET_CHECK(shifted->barStartPpq == 8.0 && shifted->timeSignatureNumerator == 6u &&
+           shifted->timeSignatureDenominator == 8u);
+
+  // A stopped transport keeps its position; invalid fields drop their flags.
+  host.flags &= ~HostTransport::kPlaying;
+  engine->setHostTransport(&host);
+  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(received(tail) != nullptr && received(tail)->ppqPosition == 10.0);
+  host.flags |= HostTransport::kPlaying;
+  host.tempoBpm = std::nan("");
+  host.barStartPpq = INFINITY;
+  host.timeSignatureDenominator = 0u;
+  engine->setHostTransport(&host);
+  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(received(tail) != nullptr &&
+           received(tail)->flags == (HostTransport::kPlaying | HostTransport::kPositionValid) &&
+           received(tail)->ppqPosition == 10.0);
+
+  engine->setHostTransport(nullptr);
+  ET_CHECK(engine->processPipeline(2u, 128u, 0.0, 0u) == ET_OK);
+  ET_CHECK(received(tail) == nullptr);
+
+  engine->setHostTransport(&host);
+  ET_CHECK(engine->prepare(kRate, 2u, 128u, 0u) == ET_OK);
+  const et_instance fresh = engine->createInstance("TestGainPlugin");
+  std::array<float, 256> audio{};
+  ET_CHECK(engine->processInstance(fresh, audio.data(), 2u, 128u, 0.0) == ET_OK);
+  ET_CHECK(testGainTransport(et_engine_instance_kernel_for_testing(engine.get(), fresh)) ==
+           nullptr);
+}
+
 void runAbiTests() {
   testAllocationGuardScope();
   testAudioThreadEnablesDenormalFlush();
@@ -935,6 +1015,7 @@ void runAbiTests() {
   testDiscoveryAndLifecycle();
   testPipelineValidationAndRouting();
   testPipelineObserver();
+  testHostTransport();
   testPipelineLatencyCompensation();
   testPipelineChannelAlignment();
   testUnrelatedInstanceDestructionPreservesPipeline();

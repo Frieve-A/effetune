@@ -6,6 +6,7 @@
 #include "effetune/kernel.h"
 
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <vector>
 
@@ -65,7 +66,30 @@ public:
     published_payload_.swap(staging_payload_);
     published_payload_bytes_ = static_cast<std::uint16_t>(48u + hq_frame_.cellCount * 8u);
     has_frame_ = true;
+    published_frame_ = hq_frame_;
     ++frame_generation_;
+  }
+
+  [[nodiscard]] std::uint32_t revision() const noexcept { return frame_generation_; }
+
+  // A polling consumer can publish the same analysis without a telemetry ring.
+  [[nodiscard]] bool copySpectrum(float *current, float *peaks,
+                                  MultiresSpectrumFrame &frame) const noexcept {
+    if (!has_frame_)
+      return false;
+    frame = published_frame_;
+    const auto read_float = [](const std::uint8_t *bytes) {
+      const std::uint32_t bits = static_cast<std::uint32_t>(bytes[0]) |
+                                 (static_cast<std::uint32_t>(bytes[1]) << 8u) |
+                                 (static_cast<std::uint32_t>(bytes[2]) << 16u) |
+                                 (static_cast<std::uint32_t>(bytes[3]) << 24u);
+      return std::bit_cast<float>(bits);
+    };
+    for (std::uint32_t i = 0; i < frame.cellCount; ++i) {
+      current[i] = read_float(published_payload_.data() + 48u + i * 4u);
+      peaks[i] = read_float(published_payload_.data() + 48u + (frame.cellCount + i) * 4u);
+    }
+    return true;
   }
 
 private:
@@ -75,6 +99,7 @@ private:
   std::vector<std::uint8_t> published_payload_ = std::vector<std::uint8_t>(kPayloadBytes);
   std::vector<std::uint8_t> staging_payload_ = std::vector<std::uint8_t>(kPayloadBytes);
   MultiresSpectrumFrame hq_frame_;
+  MultiresSpectrumFrame published_frame_;
   float sample_rate_;
   std::uint32_t frame_generation_ = 0u;
   std::uint32_t last_written_generation_ = 0u;

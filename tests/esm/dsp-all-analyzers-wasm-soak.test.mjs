@@ -16,8 +16,8 @@ const PITCH_METER_TAP_ID = 207;
 const MULTI_F0_NOTE_COUNT = 88;
 const MULTI_F0_FINE_DIVISIONS = 5;
 const MULTI_F0_PITCH_COUNT = MULTI_F0_NOTE_COUNT * MULTI_F0_FINE_DIVISIONS;
-const MULTI_F0_PAYLOAD_BYTES = 28 + MULTI_F0_PITCH_COUNT * 8;
-const MULTI_F0_VALUES_OFFSET = 28;
+const MULTI_F0_PAYLOAD_BYTES = 32 + MULTI_F0_PITCH_COUNT * 12;
+const MULTI_F0_VALUES_OFFSET = 32;
 const MULTI_F0_FIRST_MIDI = 21;
 const MULTI_F0_EXPECTED_PITCHES = [69, 72].map(midi => midi - MULTI_F0_FIRST_MIDI);
 const MULTI_F0_PRESENCE_HARMONIC_END_BLOCK = 225;
@@ -43,7 +43,7 @@ const analyzers = [
   ['SpectrumAnalyzerPlugin', 203, TelemetryFrameType.TAP_SPECTRUM, 1],
   ['SpectrogramPlugin', 204, TelemetryFrameType.TAP_SPECTROGRAM_COL, 1],
   ['StereoMeterPlugin', 205, TelemetryFrameType.TAP_STEREO_FIELD, 2],
-  ['NoteSpectrogramPlugin', MULTI_F0_TAP_ID, 24, 3],
+  ['NoteSpectrogramPlugin', MULTI_F0_TAP_ID, 24, 4],
   ['PitchMeterPlugin', PITCH_METER_TAP_ID, TelemetryFrameType.TAP_PITCH_METER, 1],
   ['RhythmAnalyzerPlugin', 210, TelemetryFrameType.TAP_RHYTHM_ANALYZER, 1]
 ];

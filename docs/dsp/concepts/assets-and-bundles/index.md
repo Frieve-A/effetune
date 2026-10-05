@@ -19,6 +19,10 @@ Crosstalk Cancellation requires four prepared filter channels in trueStereo topo
 (LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
 channels. Automatic topology is accepted for this four-channel asset.
 
+[Bass Management](/dsp/effects/bass-management/) requires a low-pass asset only
+for configured Linear routing with Managed inputs or low-pass-filtered LFE inputs;
+see its effect page for the coefficient layout and an executable example.
+
 The examples below run each effect with two distinct caller-owned IRs and require
 finite, non-zero, different output. FIR Crossover uses two coefficient channels,
 accepts stereo in processing lanes 0 and 1, and routes its two bands to four output
@@ -93,7 +97,7 @@ effetune render input.wav convolved.wav --preset cli-bundle --subtype FLOAT
 For WAV output, omitting `--subtype` keeps SoundFile's PCM_16 default; use
 `--subtype FLOAT` when the rendered samples must remain 32-bit floating point.
 
-Python `AssetData` examples for all six types:
+Python `AssetData` examples for the required-asset effects listed above:
 
 ```python
 import numpy as np
@@ -278,7 +282,7 @@ export function assetSetup(effect, sampleRate = 48000, irVariant = 'a') {
 }
 ```
 
-Then run the JavaScript resolver examples for all six types:
+Then run the JavaScript resolver examples for the same effects:
 
 ```js
 import assert from 'node:assert/strict';

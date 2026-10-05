@@ -43,7 +43,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ---
 
 content-type
-Version: 2.1.0
+Version: 3.1.1
 License: MIT
 
 LICENSE
@@ -100,7 +100,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ---
 
 file-type
-Version: 21.3.4
+Version: 22.1.1
 License: MIT
 
 license
@@ -195,7 +195,7 @@ SOFTWARE.
 ---
 
 music-metadata
-Version: 11.16.1
+Version: 12.0.0
 License: MIT
 
 LICENSE.txt

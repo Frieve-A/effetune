@@ -16,6 +16,7 @@
 #include "dec_lattice.h"
 #include "dec_level.h"
 #include "dec_math.h"
+#include "dec_tdprior.h"
 
 namespace effetune::plugins::analyzer::rhythm_a3::dec {
 
@@ -36,6 +37,10 @@ inline constexpr int32_t kOutClicks = 4;
 inline constexpr int32_t kOutEvents = 16;
 inline constexpr int32_t kOutSegments = 4;
 inline constexpr int32_t kOutSpawns = 8;
+// Tempo map (tempoMap): bins of 1/48 octave from 30 BPM, smoothed by a Gaussian of 1.5 bins.
+inline constexpr int32_t kMapBins = 192;
+inline constexpr int32_t kMapRad = 5;
+inline constexpr double kMapSigma = 1.5;
 
 // Segment kinds (a3 kinds keys).
 enum DecKind : int32_t {
@@ -162,6 +167,7 @@ struct DecState {
   int32_t bankState; // DecBankState
   int32_t fifoCount;
   uint32_t hookCalls;
+  int64_t tdStale; // TD prior lookups whose row was no longer held
 };
 
 class DecDecoder {
@@ -171,8 +177,18 @@ public:
     void (*beat)(void *, double time, int64_t epoch, int64_t index, double period) = nullptr;
   };
   BeatSink beatSink;
+  // Development observer (equivalence driver; null in the plugin): every output beat of the level
+  // layer, and whether it would be shown (an a3 master click).
+  struct MasterProbe {
+    void *context = nullptr;
+    void (*beat)(void *, double time, bool shown) = nullptr;
+  };
+  MasterProbe masterProbe;
 
-  DecDecoder() noexcept { reset(defaultSetup()); }
+  DecDecoder() noexcept {
+    initMap();
+    reset(defaultSetup());
+  }
   DecDecoder(const DecDecoder &) = delete;
   DecDecoder &operator=(const DecDecoder &) = delete;
 
@@ -211,11 +227,14 @@ public:
     newSongT_ = -std::numeric_limits<double>::infinity();
     post_ = own_ = pNew_ = 0.0;
     beats_ = 0;
-    shownOn_ = false;
     shownCur_ = 0;
     shownU_ = 0;
     shownPend_ = {false, 0.0, 0};
     outLast_ = -std::numeric_limits<double>::infinity();
+    td_.reset();
+    tdBase_ = 0;
+    tdBaseAct_ = tdBaseT_ = 0.0;
+    tdStale_ = 0;
     swOn_ = false;
     swT0_ = swRef_ = 0.0;
     swT_ = 1.0;
@@ -312,20 +331,35 @@ public:
     return true;
   }
 
-  // Steps 1-7a of tick n; returns the hook request of this tick, if any.
-  DecHookRequest tickBegin(float rmsDb) noexcept {
-    tickFront(rmsDb);
+  // A ready TD prior row (TdpPrior::grid()) of the prior's start at front-end tick `base` (its
+  // reset or last restart), in effect from s seconds of ticks after that start.
+  void pushPrior(int64_t base, double s, const float *grid) noexcept { td_.push(base, s, grid); }
+
+  // Before the tick at which the front end's prior restarted: its rows start afresh, timed from
+  // this tick (until the first of them, the shown output decides on the level mass alone).
+  void restartPrior() noexcept {
+    tdBase_ = n_;
+    tdBaseAct_ = tAct_;
+    tdBaseT_ = static_cast<double>(n_) * kDt;
+  }
+
+  // Steps 1-7a of tick n; returns the hook request of this tick, if any. coldReset: the front end's
+  // long-silence fire at this tick; quiet: the tick's RelativeQuiet bit.
+  DecHookRequest tickBegin(bool quiet, bool coldReset) noexcept {
+    tickFront(quiet, coldReset);
     return tickMid();
   }
 
   // Steps 1-5 of tick n. Leveled schedule: tickFront in the tick's quantum, tickMid, the hook
   // deliveries and tickEnd in the next quantum; out() then holds the records of both calls.
-  void tickFront(float rmsDb) noexcept {
+  void tickFront(bool quiet, bool coldReset) noexcept {
     std::memset(&out_, 0, sizeof(out_));
     t_ = (setup_.t0_fe + static_cast<double>(n_) * kDt) + setup_.lat_fe;
     // 2. stand-in Z
-    quiet_ = rmsDb < kZDbF ? quiet_ + 1 : 0;
+    quiet_ = quiet ? quiet_ + 1 : 0;
     z_ = quiet_ >= kZTicks;
+    if (coldReset)
+      restartCold();
     // 3. Exist judge
     if (exist_.due(t_)) {
       double r[2];
@@ -403,7 +437,7 @@ public:
     consumeEvents();
     if (n_ % kStride == 0) {
       const int32_t bin = kBlk[argmaxFirst(alpha_, kS)];
-      if (committed_ && refreshShown(bin, Refresh::kFrame))
+      if (committed_ && shadowFrame(combBin()))
         ++epoch_;
       writeFrame(bin);
     }
@@ -430,7 +464,7 @@ public:
     v.period = committed_ ? T * shownQ() : 0.0;
     v.post = post_;
     v.hasNext = committed_ && clock_.on;
-    v.next = v.hasNext ? level_.time(shownOn_ ? shownU_ : level_.u, a, T) : 0.0;
+    v.next = v.hasNext ? level_.time(shownU_, a, T) : 0.0;
     v.index = beats_;
     return v;
   }
@@ -472,7 +506,79 @@ public:
     s.bankState = bankState_;
     s.fifoCount = fifoCount_;
     s.hookCalls = hookCalls_;
+    s.tdStale = tdStale_;
     return s;
+  }
+
+  // The tempo map shown in place of the onset tempogram, into kMapBins values: the lattice's tempo
+  // marginal (the bank mix while a bank is open) placed at the tempo of every level group, weighted
+  // 1 at the shown group and, once committed with a prior row, by the TD prior at each other
+  // group's tempo relative to the shown group's (at most 1); smoothed, peak-normalised and
+  // square-rooted for display. Returns the BPM at the peak bin's center. Read-only.
+  double tempoMap(float *map) const noexcept {
+    float m[kN];
+    const bool open = bankState_ == kBankOpen;
+    const float wb = open ? static_cast<float>(pNew_) : 0.f, wa = 1.f - wb;
+    for (int32_t j = 0; j < kN; ++j) {
+      const float *a = alpha_ + kOff[j];
+      float s = 0.f;
+      for (int32_t p = 0; p < kP[j]; ++p)
+        s += a[p];
+      if (open) {
+        const float *b = bankA_ + kOff[j];
+        float sb = 0.f;
+        for (int32_t p = 0; p < kP[j]; ++p)
+          sb += b[p];
+        s = wa * s + wb * sb;
+      }
+      m[j] = s;
+    }
+    const int32_t gs = kLvGrp[shownCur_];
+    float w[kLvG];
+    for (int32_t g = 0; g < kLvG; ++g)
+      w[g] = g == gs ? 1.f : 0.f;
+    if (committed_ && clock_.on) {
+      double a, T;
+      clock_.comb(a, T);
+      int64_t stale = 0; // a local count: the lookup must not change the decoder's state
+      const DecTdRow *r = td_.at(tdBase_, tAct_ - tdBaseAct_, stale);
+      if (r != nullptr && T > 0.0) {
+        const double x = portableLog(60.0 / T), ls = DecTdPrior::lnp(*r, x - kLvLogNd[gs]);
+        for (int32_t g = 0; g < kLvG; ++g)
+          if (g != gs) {
+            const double d = DecTdPrior::lnp(*r, x - kLvLogNd[g]) - ls;
+            w[g] = d < 0.0 ? static_cast<float>(portableExp(d)) : 1.f;
+          }
+      }
+    }
+    float raw[kMapBins];
+    for (int32_t i = 0; i < kMapBins; ++i) {
+      float v = 0.f;
+      for (int32_t g = 0; g < kLvG; ++g) {
+        const int32_t j = mapJ_[g][i];
+        if (w[g] > 0.f && j >= 0)
+          v += w[g] * (m[j] + mapF_[g][i] * (m[j + 1] - m[j]));
+      }
+      raw[i] = v;
+    }
+    float peak = 0.f;
+    int32_t top = 0;
+    for (int32_t i = 0; i < kMapBins; ++i) {
+      const int32_t q0 = i < kMapRad ? kMapRad - i : 0;
+      const int32_t q1 = i + kMapRad >= kMapBins ? kMapRad + (kMapBins - 1 - i) : 2 * kMapRad;
+      float s = 0.f;
+      for (int32_t q = q0; q <= q1; ++q)
+        s += mapK_[q] * raw[i - kMapRad + q];
+      map[i] = s;
+      if (s > peak) {
+        peak = s;
+        top = i;
+      }
+    }
+    const float inv = peak > 0.f ? 1.f / peak : 0.f;
+    for (int32_t i = 0; i < kMapBins; ++i)
+      map[i] = std::sqrt(map[i] * inv);
+    return 30.0 * portableExp((top + .5) / 48.0 * kLn2);
   }
 
 private:
@@ -680,14 +786,14 @@ private:
       if (level_.u <= static_cast<int64_t>(kLvU) * level_.n) {
         const double tu = level_.time(level_.u, a, T);
         if (tu <= t_) {
-          if (!shownOn_)
-            outputBeat(tu);
+          if (masterProbe.beat != nullptr)
+            masterProbe.beat(masterProbe.context, tu, committed_ && !z_ && exist_.shown);
           level_.last = tu;
           level_.u += kLvQ12[level_.cur];
           continue;
         }
       }
-      if (shownOn_ && shownU_ <= static_cast<int64_t>(kLvU) * level_.n) {
+      if (shownU_ <= static_cast<int64_t>(kLvU) * level_.n) {
         const double tu = level_.time(shownU_, a, T);
         if (tu <= t_) {
           outputBeat(tu);
@@ -723,10 +829,8 @@ private:
     ++beats_;
   }
 
-  // The shown output: its hypothesis, output level and next position.
-  [[nodiscard]] int32_t shownHyp() const noexcept { return shownOn_ ? shownCur_ : level_.cur; }
-  [[nodiscard]] double shownQ() const noexcept { return DecLevel::qOf(shownHyp()); }
-  [[nodiscard]] int64_t shownPos() const noexcept { return shownOn_ ? shownU_ : level_.u; }
+  // The shown output's level.
+  [[nodiscard]] double shownQ() const noexcept { return DecLevel::qOf(shownCur_); }
 
   // Whether level group g's nominal output tempo lies in the tempo range at every lattice tempo bin
   // of [b, e) (x1's always does).
@@ -741,53 +845,18 @@ private:
     return true;
   }
 
-  enum class Refresh { kFrame, kG2Row, kReseed };
-
-  // The shown output under the tempo range, at lattice tempo bin `bin`; returns whether it changed.
-  // A level is admissible when its nominal output tempo lies in the range at `bin`. As soon as the
-  // level layer's own output is inadmissible, the heaviest admissible level is shown instead (a
-  // diversion), at its best phase and positioned as a switch; it then changes only by the level
-  // layer's switch rules over admissible levels (on G2 rows) or when it becomes inadmissible
-  // itself. The layer's own output returns on a G2 row or a reseed, and only when admissible with
-  // one lattice bin of margin, positioned the same way. A reseed that keeps the diversion
-  // re-enters it on the new clock.
-  bool refreshShown(int32_t bin, Refresh when) noexcept {
-    bool allowed[kLvG];
-    for (int32_t g = 0; g < kLvG; ++g)
-      allowed[g] = inRange(g, bin, bin + 1);
-    const int32_t own = kLvGrp[level_.cur];
-    if (!shownOn_ && allowed[own])
-      return false;
+  // Lattice tempo bin of the clock's comb period. The shown period is a level of this period, so
+  // the tempo range check must use it rather than the lattice's best bin.
+  [[nodiscard]] int32_t combBin() const noexcept {
     double a, T;
     clock_.comb(a, T);
-    if (shownOn_ && when != Refresh::kFrame) {
-      const BinRange near = latticeNear(bin);
-      if (inRange(own, near.begin, near.end)) {
-        // The level's beats earlier than half an output beat after the last output beat are
-        // skipped, and its last beat becomes the last output beat.
-        level_.u = level_.spaced(level_.cur, level_.u, a, T, outLast_);
-        level_.last = outLast_;
-        shownOn_ = false;
-        return true;
-      }
-    }
-    int32_t h;
-    if (shownOn_ && when != Refresh::kReseed && allowed[kLvGrp[shownCur_]]) {
-      if (when != Refresh::kG2Row)
-        return false;
-      h = level_.decideFrom(shownCur_, shownPend_, allowed, tAct_, T);
-      if (h < 0)
-        return false;
-    } else {
-      double Pg[kLvG];
-      level_.groupMass(Pg);
-      h = level_.best(DecLevel::heaviest(Pg, allowed));
-    }
-    shownOn_ = true;
-    shownCur_ = h;
-    shownPend_.on = false;
-    shownU_ = level_.switchPos(h, a, T, t_, outLast_);
-    return true;
+    return latticeNearest(T / kDt);
+  }
+
+  // The levels whose nominal output tempo lies in the tempo range at lattice tempo bin `bin`.
+  void admissible(int32_t bin, bool *allowed) const noexcept {
+    for (int32_t g = 0; g < kLvG; ++g)
+      allowed[g] = inRange(g, bin, bin + 1);
   }
 
   // 5.
@@ -850,22 +919,7 @@ private:
           double a, T;
           clock_.comb(a, T);
           level_.update(g, a, T);
-          // One epoch per row whose shown output (hypothesis and next position) changed: a
-          // frozen switch shows only when not diverted, and a diversion it starts may keep the
-          // grid it leaves.
-          const int32_t shownH = shownHyp();
-          const int64_t shownU = shownPos();
-          const int32_t h = level_.decide(tAct_, T);
-          const int32_t kind = h < 0 || kLvGrp[h] == kLvGrp[level_.cur] ? kKindLphase : kKindLevel;
-          if (h >= 0)
-            level_.switchTo(h, a, T, t_);
-          refreshShown(kBlk[argmaxFirst(alpha_, kS)], Refresh::kG2Row);
-          if (shownHyp() != shownH || shownPos() != shownU)
-            ++epoch_;
-          if (h >= 0) {
-            countKind(kind);
-            emitSegment(kind, T * level_.q());
-          }
+          shadowG2(tdRow(tAct_ - tdBaseAct_), a, T);
         }
       }
       g2Head_ = (g2Head_ + 1) % kG2Queue;
@@ -985,6 +1039,7 @@ private:
     bankPending_ = true;
     newSongT_ = bank_.t0;
     level_.restart();
+    shownPend_.on = false;
     clock_.renew();
     const int64_t lim = kNext_ - kLcHist;
     for (int64_t k = bank_.k0 > lim ? bank_.k0 : lim; k < kNext_; ++k) {
@@ -993,6 +1048,27 @@ private:
     }
     emitSpawn(1, t_, bank_.L - bank_.LS);
     bankState_ = kBankNone;
+  }
+
+  // Back to the state at load after a long silence; time, epoch, the silence run, op counts and the
+  // input queues are kept.
+  void restartCold() noexcept {
+    initLattice(alpha_);
+    const int64_t ops = clock_.ops;
+    clock_.reset();
+    clock_.ops = ops;
+    committed_ = bankPending_ = swOn_ = false;
+    if (bankState_ != kBankNone)
+      drop();
+    level_.restart();
+    shownPend_.on = false;
+    exist_.reset();
+    out_.hasReset = true;
+    out_.resetT = t_;
+    out_.resetN = n_;
+    out_.resetNc = exist_.nc;
+    usedCount_ = 0;
+    post_ = own_ = 0.0;
   }
 
   void drop() noexcept {
@@ -1043,7 +1119,7 @@ private:
     if (hadOld) {
       clock_.comb(aO, TO);
       tOb = level_.time(level_.u, aO, TO);
-      tSb = level_.time(shownPos(), aO, TO);
+      tSb = level_.time(shownU_, aO, TO);
       TSb = TO * shownQ();
     }
     clock_.seed(a, mo.T, c00, c01, mo.vt);
@@ -1075,21 +1151,130 @@ private:
     }
     double aN, T;
     clock_.comb(aN, T);
-    bool moved = true;
     if (!hadOld)
       level_.reseed(true, T, aN, T, t_, aN, 0.0);
     else
-      moved = level_.reseed(kind == kKindLock || kind == kKindBank, TO, aN, T, t_, tOb, wNew);
-    refreshShown(kBlk[argmaxFirst(alpha_, kS)], Refresh::kReseed);
-    // One epoch when the shown grid moved, by the level layer's own test applied to the shown
-    // output (without a diversion before and after, that test is `moved` itself).
+      level_.reseed(kind == kKindLock || kind == kKindBank, TO, aN, T, t_, tOb, wNew);
+    shadowFollow(tdRow(t_ - tdBaseT_), hadOld, aN, T, tSb);
+    // One epoch and segment when the shown grid moved (its level, or its phase by at least a
+    // quarter of a shown beat).
     const double Ts = T * shownQ();
-    const double e = (level_.time(shownPos(), aN, T) - tSb) / Ts;
+    const double e = (level_.time(shownU_, aN, T) - tSb) / Ts;
     if (!hadOld || std::fabs(portableLog(Ts / TSb)) > kLevelTolG2 ||
-        std::fabs(e - rintEven(e)) >= .25)
+        std::fabs(e - rintEven(e)) >= .25) {
       ++epoch_;
-    if (moved)
-      emitSegment(kind, T * level_.q());
+      emitSegment(kind, Ts);
+    }
+  }
+
+  // tempoMap's tables: for level group g and map bin i, the lattice segment (j, j + 1) holding the
+  // bin's center at that group's tempo and the fraction along it (j = -1 outside the lattice; the
+  // lattice runs from 240 BPM at j = 0 down to 40 BPM); and the normalised Gaussian kernel.
+  void initMap() noexcept {
+    for (int32_t g = 0; g < kLvG; ++g) {
+      double x[kN];
+      for (int32_t j = 0; j < kN; ++j)
+        x[j] = 48.0 * (portableLog(latticeBpm(j) * kLvD[g] / kLvN[g] / 30.0) / kLn2) - .5;
+      for (int32_t i = 0; i < kMapBins; ++i) {
+        mapJ_[g][i] = -1;
+        mapF_[g][i] = 0.f;
+        for (int32_t j = 0; j + 1 < kN; ++j)
+          if (x[j] >= i && x[j + 1] <= i) {
+            mapJ_[g][i] = static_cast<int16_t>(j);
+            mapF_[g][i] = static_cast<float>((x[j] - i) / (x[j] - x[j + 1]));
+            break;
+          }
+      }
+    }
+    double k[2 * kMapRad + 1], s = 0.0;
+    for (int32_t q = -kMapRad; q <= kMapRad; ++q) {
+      k[q + kMapRad] = portableExp(-.5 * q * q / (kMapSigma * kMapSigma));
+      s += k[q + kMapRad];
+    }
+    for (int32_t q = 0; q <= 2 * kMapRad; ++q)
+      mapK_[q] = static_cast<float>(k[q] / s);
+  }
+
+  // The TD prior row in effect at time x since the prior's start, or null.
+  const DecTdRow *tdRow(double x) noexcept { return td_.at(tdBase_, x, tdStale_); }
+
+  // The prior-weighted level mass of the level layer (the octaves of its output level) at period T.
+  void shadowMass(const DecTdRow *r, double T, double *e) const noexcept {
+    double Pg[kLvG];
+    level_.groupMass(Pg);
+    DecTdPrior::eff(Pg, T, r, kLvGrp[level_.cur], e);
+  }
+
+  // The shadow takes hypothesis h now, positioned as a switch.
+  void shadowSwitch(int32_t h, double a, double T) noexcept {
+    shownCur_ = h;
+    shownPend_.on = false;
+    shownU_ = level_.switchPos(h, a, T, t_, outLast_);
+  }
+
+  // A G2 row under the shadow, after the level layer's update (Shadow.decide with free thresholds,
+  // before the level layer's own decision; that switch stays internal). A shadow level outside the
+  // tempo range is diverted to the heaviest admissible level of the weighted mass. Epochs, kinds
+  // and segments follow the shadow.
+  void shadowG2(const DecTdRow *r, double a, double T) noexcept {
+    const int32_t shownH = shownCur_;
+    const int64_t shownU = shownU_;
+    bool allowed[kLvG];
+    admissible(combBin(), allowed);
+    double e[kLvG];
+    shadowMass(r, T, e);
+    int32_t h = level_.decideMass(shownCur_, shownPend_, e, allowed, .5, .5, tAct_, T);
+    const int32_t hm = level_.decide(tAct_, T);
+    if (hm >= 0)
+      level_.switchTo(hm, a, T, t_);
+    if (!allowed[kLvGrp[h < 0 ? shownCur_ : h]])
+      h = level_.best(DecLevel::heaviest(e, allowed));
+    if (h < 0)
+      return;
+    const int32_t kind = kLvGrp[h] == kLvGrp[shownH] ? kKindLphase : kKindLevel;
+    shadowSwitch(h, a, T);
+    if (shownCur_ != shownH || shownU_ != shownU)
+      ++epoch_;
+    countKind(kind);
+    emitSegment(kind, T * shownQ());
+  }
+
+  // A frame under the shadow: it changes only when its level leaves the tempo range.
+  bool shadowFrame(int32_t bin) noexcept {
+    bool allowed[kLvG];
+    admissible(bin, allowed);
+    if (allowed[kLvGrp[shownCur_]])
+      return false;
+    double a, T;
+    clock_.comb(a, T);
+    double e[kLvG];
+    shadowMass(tdRow(tAct_ - tdBaseAct_), T, e);
+    const int32_t shownH = shownCur_;
+    const int64_t shownU = shownU_;
+    shadowSwitch(level_.best(DecLevel::heaviest(e, allowed)), a, T);
+    return shownCur_ != shownH || shownU_ != shownU;
+  }
+
+  // Shadow.follow after the level layer's reseed: x1 after a restart or without an old clock,
+  // otherwise the weighted argmax of the carried mass at the phase nearest the shadow's old grid
+  // (tSb), anchored; then diverted if its level is outside the tempo range.
+  void shadowFollow(const DecTdRow *r, bool hadOld, double a, double T, double tSb) noexcept {
+    int32_t h = 0;
+    if (level_.lastRi >= 0 && hadOld) {
+      double e[kLvG];
+      DecTdPrior::eff(level_.lastPn, T, r, kLvGrp[level_.cur], e);
+      h = DecLevel::nearest(argmaxFirst(e, kLvG), a, T, tSb);
+    }
+    shownCur_ = h;
+    shownPend_.on = false;
+    shownU_ = level_.anchorAt(h, a, T, t_);
+    bool allowed[kLvG];
+    admissible(combBin(), allowed);
+    if (!allowed[kLvGrp[h]]) {
+      double e[kLvG];
+      shadowMass(r, T, e);
+      shadowSwitch(level_.best(DecLevel::heaviest(e, allowed)), a, T);
+    }
   }
 
   // Stable bottom-up merge sort of idx_[0, n) by key_[idx] (Python list.sort with a key).
@@ -1271,14 +1456,21 @@ private:
   int64_t epoch_;
   int64_t beats_; // output beats passed (clickLoop)
 
-  // tempo range and the shown output (refreshShown)
+  // tempo range, and the shown output: the level layer's TD-prior shadow (a3p Shadow), with its own
+  // hypothesis, output position and pending switch over the layer's level posterior
   BinRange bins_;
   bool masked_;
-  bool shownOn_;     // the shown output differs from the level layer's
-  int32_t shownCur_; // its hypothesis
-  int64_t shownU_;   // its output position
+  int32_t shownCur_;
+  int64_t shownU_;
   DecPending shownPend_;
   double outLast_; // time of the last output beat
+  // TD prior: its rows, the prior's start tick with the confirmation and tick times there, and
+  // lookups past the held rows.
+  DecTdPrior td_;
+  int64_t tdBase_;
+  double tdBaseAct_;
+  double tdBaseT_;
+  int64_t tdStale_;
   bool bankPending_;
   double newSongT_;
   double post_;
@@ -1333,6 +1525,11 @@ private:
   int64_t catchCount_, catchMaxTicks_, catchMaxRows_, catchStartN_;
 
   DecTickOut out_;
+
+  // tempoMap tables (initMap)
+  int16_t mapJ_[kLvG][kMapBins];
+  float mapF_[kLvG][kMapBins];
+  float mapK_[2 * kMapRad + 1];
 };
 
 } // namespace effetune::plugins::analyzer::rhythm_a3::dec

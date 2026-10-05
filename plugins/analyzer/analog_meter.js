@@ -158,6 +158,34 @@ function analogMeterSparseLabels(scale) {
     return new Set(labeled.filter((tick, index) => (index - anchor) % 2 === 0));
 }
 
+// Deflection is always affine in the electrical scale position. The needle rotates
+// at a fixed radius; only the dial changes shape. Its endpoints stay on that circle,
+// and its upper arc flattens into the chord between them. Marks are ray/ellipse
+// intersections, not ellipse parameter angles, so every mark matches the needle.
+function analogMeterGeometry(pivotX, baseY, radius, radians, curvature = 1, offset = 0) {
+    const pivotY = baseY + offset;
+    const angleAt = position => -radians + 2 * radians * position;
+    const chordHeight = radius * Math.cos(radians);
+    const centerHeight = (1 - curvature) * chordHeight;
+    const dialDistanceAt = position => {
+        const angle = angleAt(position);
+        const sine = Math.sin(angle), cosine = Math.cos(angle);
+        if (curvature === 0) return chordHeight / cosine;
+        const coefficient = cosine * cosine + curvature * curvature * sine * sine;
+        const discriminant = coefficient * radius * radius - centerHeight * centerHeight * sine * sine;
+        return (centerHeight * cosine + curvature * Math.sqrt(discriminant)) / coefficient;
+    };
+    const needlePoint = (position, distance) => {
+        const angle = angleAt(position);
+        return [pivotX + Math.sin(angle) * distance, pivotY - Math.cos(angle) * distance];
+    };
+    const pointAt = (position, distance) => {
+        // Existing tick lengths are offsets from the dial, measured along the ray.
+        return needlePoint(position, dialDistanceAt(position) + distance - radius);
+    };
+    return { pivotX, pivotY, angleAt, dialDistanceAt, needlePoint, pointAt };
+}
+
 function analogMeterGrid(cellCount, maxColumns = ANALOG_METER_MAX_COLUMNS) {
     const cells = cellCount < 1 ? 1 : cellCount;
     const columns = cells < maxColumns ? cells : maxColumns;
@@ -241,6 +269,7 @@ class AnalogMeterPlugin extends PluginBase {
     static MODES = ANALOG_METER_MODES;
     static scale = analogMeterScale;
     static sparseLabels = analogMeterSparseLabels;
+    static geometry = analogMeterGeometry;
     static grid = analogMeterGrid;
     static aspect = analogMeterAspect;
     static parseTelemetryFrame = parseAnalogMeterFrame;
@@ -692,6 +721,72 @@ class AnalogMeterPlugin extends PluginBase {
     // options: showAxes (frame, dial, and ticks), showFrame (false hides only the frame), showAxisNumbers (all text), textContext,
     // drawSignal and needleColor for the needle and hub, and fontSize(width, height).
     drawCell(context, palette, scale, x, y, width, height, channel, now, options = {}) {
+        const appearance = options.meterAppearance;
+        if (!appearance) {
+            this.drawCellContent(context, palette, scale, x, y, width, height, channel, now, options);
+            return;
+        }
+        const dpr = this.graphDpr || 1;
+        const border = appearance.faceBorderWidth * dpr;
+        const inset = 4 * dpr + border / 2;
+        const rx = Math.max(1, width / 2 - inset), ry = Math.max(1, height / 2 - inset);
+        const circular = appearance.faceShape === 'circle';
+        const faceX = x + width / 2, faceY = y + height / 2;
+        const facePath = target => {
+            target.beginPath();
+            if (appearance.faceShape === 'rectangle') target.rect(faceX - rx, faceY - ry, rx * 2, ry * 2);
+            else target.ellipse(faceX, faceY, circular ? Math.min(rx, ry) : rx,
+                circular ? Math.min(rx, ry) : ry, 0, 0, 2 * Math.PI);
+        };
+        const face = target => {
+            target.save();
+            facePath(target);
+            target.globalAlpha = appearance.faceOpacity;
+            target.fillStyle = appearance.faceColor;
+            target.fill();
+            target.restore();
+        };
+        const clipWindow = target => {
+            if (appearance.faceShape === 'rectangle') { target.beginPath(); target.rect(x, y, width, height); }
+            else facePath(target);
+            target.clip();
+        };
+        if (appearance.faceOpacity > 0) {
+            if (options.drawUnderlay) options.drawUnderlay(context, face);
+            else face(context);
+        }
+        context.save();
+        clipWindow(context);
+        try {
+            const diameter = Math.min(width, height);
+            this.drawCellContent(context, palette, scale,
+                circular ? faceX - diameter / 2 : x, circular ? faceY - diameter / 2 : y,
+                circular ? diameter : width, circular ? diameter : height, channel, now, {
+                ...options,
+                clipNeedle: clipWindow
+            });
+            if (appearance.vignette > 0) {
+                context.save();
+                facePath(context); context.clip();
+                context.translate(faceX, faceY);
+                context.scale(circular ? Math.min(rx, ry) : rx, circular ? Math.min(rx, ry) : ry);
+                const shade = context.createRadialGradient(0, 0, 0.25, 0, 0, appearance.faceShape === 'rectangle' ? Math.SQRT2 : 1);
+                shade.addColorStop(0, 'rgba(0,0,0,0)'); // theme-allow: Optical shading darkens every face color independently of the theme.
+                shade.addColorStop(1, `rgba(0,0,0,${appearance.vignette})`); // theme-allow: Adjustable optical shading, rather than a UI color role.
+                context.fillStyle = shade;
+                context.fillRect(-2, -2, 4, 4);
+                context.restore();
+            }
+        } finally { context.restore(); }
+        if (border > 0) {
+            facePath(context);
+            context.strokeStyle = appearance.faceBorderColor;
+            context.lineWidth = border;
+            context.stroke();
+        }
+    }
+
+    drawCellContent(context, palette, scale, x, y, width, height, channel, now, options = {}) {
         const axes = options.showAxes !== false;
         const numbers = options.showAxisNumbers !== false;
         const text = options.textContext ?? context;
@@ -706,34 +801,42 @@ class AnalogMeterPlugin extends PluginBase {
         const fontSize = options.fontSize ? options.fontSize(width, height)
             : Math.max(9, Math.min(14, width / dpr / 22)) * dpr;
         const bottomSpace = 1.8 * fontSize * 1.25;
-        const radians = ANALOG_METER_ARC_DEGREES * Math.PI / 180;
+        const appearance = options.meterAppearance || {};
+        const radians = (appearance.dialSweep ?? ANALOG_METER_ARC_DEGREES * 2) * Math.PI / 360;
         const pivotX = x + width / 2;
-        const pivotY = y + height - inset - bottomSpace;
+        const baseY = y + height - inset - bottomSpace;
         const topSpace = fontSize * 3.2;
+        // Fit the reference meter once: sweep and dial curvature must not resize
+        // the physical needle. Wider sweeps are cropped by the selected window.
+        const referenceRadians = ANALOG_METER_ARC_DEGREES * Math.PI / 180;
         const radius = Math.max(8 * dpr, Math.min(
-            (width / 2 - inset - fontSize * 1.5) / Math.sin(radians),
-            pivotY - (y + inset + topSpace)
+            (width / 2 - inset - fontSize * 1.5) / Math.sin(referenceRadians),
+            baseY - (y + inset + topSpace)
         ));
-        const angleAt = position => -radians + 2 * radians * position;
-        const pointAt = (position, distance) => {
-            const angle = angleAt(position);
-            return [pivotX + Math.sin(angle) * distance, pivotY - Math.cos(angle) * distance];
+        const { pivotY, pointAt, needlePoint, dialDistanceAt } = analogMeterGeometry(pivotX, baseY, radius, radians,
+            appearance.dialCurvature ?? 1, height * (appearance.pivotOffset ?? 0) / 100);
+        const dialPath = (from, distance) => {
+            context.beginPath();
+            for (let step = 0; step <= 64; step++) {
+                const position = from + (1 - from) * step / 64;
+                // Concentric copies retain the exact ellipse/chord shape of the dial.
+                const [px, py] = needlePoint(position, dialDistanceAt(position) * distance / radius);
+                if (step === 0) context.moveTo(px, py);
+                else context.lineTo(px, py);
+            }
         };
 
         // Dial arc, red zone, and ticks.
         if (axes) {
             context.strokeStyle = palette.label;
             context.lineWidth = dpr;
-            context.beginPath();
-            context.arc(pivotX, pivotY, radius, -Math.PI / 2 - radians, -Math.PI / 2 + radians);
+            dialPath(0, radius);
             context.stroke();
         }
-        if (axes && scale.redFrom !== null) {
+        if (axes && appearance.showRedZone !== false && scale.redFrom !== null) {
             context.strokeStyle = palette.danger;
             context.lineWidth = 3 * dpr;
-            context.beginPath();
-            context.arc(pivotX, pivotY, radius + 2 * dpr,
-                -Math.PI / 2 + angleAt(scale.valuePosition(scale.redFrom)), -Math.PI / 2 + radians);
+            dialPath(scale.valuePosition(scale.redFrom), radius + 2 * dpr);
             context.stroke();
         }
         context.font = `${fontSize * 0.85}px Arial`;
@@ -745,11 +848,13 @@ class AnalogMeterPlugin extends PluginBase {
         let widest = 0;
         let spacing = Infinity;
         for (let i = 0; i < labeled.length; i++) {
-            const labelWidth = context.measureText(labeled[i].label).width;
+            const label = appearance.positiveLabels && labeled[i].value > 0 ? `+${labeled[i].label}` : labeled[i].label;
+            const labelWidth = context.measureText(label).width;
             if (labelWidth > widest) widest = labelWidth;
             if (i === 0) continue;
-            const arc = 2 * radians * labelRadius
-                * Math.abs(scale.valuePosition(labeled[i].value) - scale.valuePosition(labeled[i - 1].value));
+            const [x0, y0] = pointAt(scale.valuePosition(labeled[i - 1].value), labelRadius);
+            const [x1, y1] = pointAt(scale.valuePosition(labeled[i].value), labelRadius);
+            const arc = Math.hypot(x1 - x0, y1 - y0);
             if (arc < spacing) spacing = arc;
         }
         const kept = spacing < widest + fontSize * 0.3 ? analogMeterSparseLabels(scale) : null;
@@ -770,7 +875,36 @@ class AnalogMeterPlugin extends PluginBase {
             if (!numbers || !major || (kept && !kept.has(tick))) continue;
             const [labelX, labelY] = pointAt(position, labelRadius);
             context.fillStyle = reference ? palette.text : palette.label;
-            text.fillText(tick.label, labelX, labelY);
+            text.fillText(appearance.positiveLabels && tick.value > 0 ? `+${tick.label}` : tick.label, labelX, labelY);
+        }
+
+        if (this.md === 'VU' && appearance.showPercent) {
+            context.font = `${fontSize * 0.75}px Arial`;
+            context.textBaseline = 'top';
+            for (const percent of [0, 20, 40, 60, 80, 100]) {
+                const position = percent === 0 ? 0 : scale.valuePosition(20 * Math.log10(percent / 100));
+                if (axes) {
+                    const [x0, y0] = pointAt(position, radius - 3 * dpr);
+                    const [x1, y1] = pointAt(position, radius - 7 * dpr);
+                    context.strokeStyle = palette.label;
+                    context.lineWidth = dpr;
+                    context.beginPath(); context.moveTo(x0, y0); context.lineTo(x1, y1); context.stroke();
+                }
+                if (numbers) {
+                    const [px, py] = pointAt(position, radius - 11 * dpr);
+                    context.fillStyle = palette.label;
+                    text.fillText(percent === 100 ? '100%' : String(percent), px, py);
+                }
+            }
+        }
+        if (numbers && appearance.showSigns) {
+            context.font = `bold ${fontSize * 1.4}px Arial`;
+            context.textAlign = 'center'; context.textBaseline = 'middle';
+            for (const [position, sign] of [[0, '−'], [1, '+']]) {
+                const [px, py] = needlePoint(position, dialDistanceAt(position) * 0.7);
+                context.fillStyle = position === 1 ? palette.danger : palette.text;
+                text.fillText(sign, px, py);
+            }
         }
 
         // Title and unit.
@@ -780,13 +914,13 @@ class AnalogMeterPlugin extends PluginBase {
             context.font = `bold ${fontSize}px Arial`;
             context.textAlign = 'left';
             context.textBaseline = 'top';
-            text.fillText(this.cellTitle(channel), x + inset * 2, y + inset * 2);
+            if (appearance.showChannel !== false) text.fillText(this.cellTitle(channel), x + inset * 2, y + inset * 2);
             context.fillStyle = palette.label;
             context.font = `${fontSize * 0.85}px Arial`;
             context.textAlign = 'right';
             const modeLabel = this.md === 'Loudness' ? (this.ln === 1 ? 'Short-term' : 'Momentary')
                 : (this.md === 'PPM' ? `PPM ${ANALOG_METER_PPM_SCALES[this.sc]}` : this.md);
-            text.fillText(modeLabel, x + width - inset * 2 - (holdMode ? fontSize * 1.2 : 0), y + inset * 2);
+            if (appearance.showMode !== false) text.fillText(modeLabel, x + width - inset * 2 - (holdMode ? fontSize * 1.2 : 0), y + inset * 2);
         }
 
         // Peak hold and the 0 dBFS over lamp.
@@ -821,19 +955,51 @@ class AnalogMeterPlugin extends PluginBase {
         // The needle shows the received ballistic reading as is.
         const db = this.cellReading(channel);
         const needlePosition = db === null ? 0 : scale.dbPosition(db);
-        const [tipX, tipY] = pointAt(needlePosition, radius * 1.02);
+        const [circleX, circleY] = needlePoint(needlePosition, radius);
+        const dx = circleX - pivotX, dy = circleY - pivotY;
+        const length = (appearance.needleLength ?? 102) / 100;
+        const start = length * (appearance.needleStart ?? 0) / 100;
+        const tipX = pivotX + dx * length, tipY = pivotY + dy * length;
+        const baseX = pivotX + dx * start, baseNeedleY = pivotY + dy * start;
         const needleColor = options.needleColor ? options.needleColor(needlePosition) : palette.text;
         const drawNeedle = target => {
+            target.save();
+            options.clipNeedle?.(target);
             target.strokeStyle = needleColor;
-            target.lineWidth = 2 * dpr;
-            target.beginPath();
-            target.moveTo(pivotX, pivotY);
-            target.lineTo(tipX, tipY);
-            target.stroke();
+            target.lineWidth = (appearance.needleWidth ?? 2) * dpr;
             target.fillStyle = needleColor;
             target.beginPath();
-            target.arc(pivotX, pivotY, 3 * dpr, 0, Math.PI * 2);
-            target.fill();
+            const distance = Math.hypot(dx, dy);
+            const nx = -dy / distance, ny = dx / distance;
+            const half = target.lineWidth / 2;
+            if (appearance.needleTip === 'taper') {
+                target.moveTo(baseX + nx * half, baseNeedleY + ny * half);
+                target.lineTo(tipX, tipY);
+                target.lineTo(baseX - nx * half, baseNeedleY - ny * half);
+                target.closePath(); target.fill();
+            } else if (appearance.needleTip === 'arrow') {
+                const aspect = appearance.arrowAspect ?? 1;
+                const head = Math.min((4 + (appearance.needleWidth ?? 2)) * dpr * aspect, distance * (length - start));
+                const headWidth = head / aspect;
+                const bx = tipX - dx / distance * head, by = tipY - dy / distance * head;
+                // Fill the shaft and head together so a thick stroke cannot blunt the tip.
+                target.moveTo(baseX + nx * half, baseNeedleY + ny * half);
+                target.lineTo(bx + nx * half, by + ny * half);
+                target.lineTo(bx + nx * headWidth / 2, by + ny * headWidth / 2);
+                target.lineTo(tipX, tipY);
+                target.lineTo(bx - nx * headWidth / 2, by - ny * headWidth / 2);
+                target.lineTo(bx - nx * half, by - ny * half);
+                target.lineTo(baseX - nx * half, baseNeedleY - ny * half);
+                target.closePath(); target.fill();
+            } else {
+                target.moveTo(baseX, baseNeedleY);
+                target.lineTo(tipX, tipY); target.stroke();
+            }
+            const hubSize = appearance.hubSize ?? (appearance.showHub === false ? 0 : 3);
+            if (hubSize > 0) {
+                target.beginPath(); target.arc(pivotX, pivotY, hubSize * dpr, 0, Math.PI * 2); target.fill();
+            }
+            target.restore();
         };
         if (options.drawSignal) options.drawSignal(context, drawNeedle);
         else drawNeedle(context);
@@ -844,7 +1010,10 @@ class AnalogMeterPlugin extends PluginBase {
         context.textAlign = 'center';
         context.textBaseline = 'top';
         context.font = `${fontSize}px monospace`;
-        text.fillText(db === null ? '---' : scale.readout(db), pivotX, pivotY + fontSize * 0.8);
+        const reading = db === null ? '---' : this.md === 'VU' && appearance.readoutUnit === 'percent'
+            ? `${(db <= ANALOG_METER_SILENCE_DB ? 0 : 100 * 10 ** ((db - this.rl) / 20)).toFixed(1)}%`
+            : scale.readout(db);
+        if (appearance.showReadout !== false) text.fillText(reading, pivotX, baseY + fontSize * 0.8);
         if (channel >= 0 || !this.reading?.program) return;
         // A fixed-width sample keeps the statistics still while the readout changes.
         const readoutHalf = context.measureText('-88.8 LUFS').width / 2;

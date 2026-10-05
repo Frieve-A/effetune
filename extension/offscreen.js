@@ -378,7 +378,7 @@ channel.onmessage = ({ data }) => {
         const session = sessions.get(data.sessionId);
         if (session) {
             session.frequencyPreviewOwner = Number.isFinite(data.frequency) && data.frequency > 0 ? data.clientId : null;
-            requestSession(session, 'frequencyPreview', { frequency: data.frequency }).catch(console.error);
+            requestSession(session, 'frequencyPreview', { frequency: data.frequency, sound: data.sound }).catch(console.error);
         }
     }
     if (data.kind !== 'request' || !MODEL_COMMANDS.has(data.command) || !Number.isInteger(data.requestId)) return;

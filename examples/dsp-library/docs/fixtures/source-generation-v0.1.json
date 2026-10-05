@@ -4,6 +4,28 @@
   "channels": 2,
   "defaultSampleRate": 48000,
   "members": [
+    {
+      "type": "AdaptivePredictionEffect",
+      "parameters": {
+        "gap": 10,
+        "learn": 0.02,
+        "autonomy": 0,
+        "original": 0,
+        "residual": 0,
+        "prediction": 1,
+        "hold": true
+      },
+      "warmup": {
+        "frames": 144000,
+        "frequencyHz": 440,
+        "amplitude": 0.25,
+        "parameters": { "gap": 1, "hold": false }
+      },
+      "frames": 96000,
+      "measureStartFrame": 48000,
+      "minimumRms": 0.00001,
+      "maximumPeak": 1
+    },
     { "type": "AMRadioSimulator", "parameters": {} },
     { "type": "DCOffset", "parameters": { "offset": 0.25 } },
     { "type": "BitCrusher", "parameters": {} },

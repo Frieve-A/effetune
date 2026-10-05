@@ -84,6 +84,8 @@ Your input and output devices may be looping back. Ensure EffeTune's output does
 | No audio output | Check **Audio Configuration**. If your browser cannot select an output device, check that the OS and browser default output point to your DAC/AMP. |
 | Other players report "CABLE Input in use" | Ensure no other application is using **CABLE Input**. |
 
+Effects that require WebAssembly show a notice at the top of their controls when they cannot run. In **Audio Configuration**, enable **Use WebAssembly audio processing**. If it is already enabled, choose **Reset Audio** or reload EffeTune. The notice disappears when the effect is running again.
+
 ### 2.5. Multichannel output mismatch
 EffeTune outputs channels in numeric order, up to 16 channels. Match **Output Channels** to the layout configured for your device. For a 7.1ch setup, set both the device and EffeTune to 8ch and use the device's channel labels when routing rear audio. For a 16-channel setup, select 16 channels in both places and confirm the device's channel mapping.
 

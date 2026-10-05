@@ -22,7 +22,20 @@ Applies a precise gain in decibels.
 |---|---|---:|---|---|---|
 | `volume` | `volume` | number / 1 | `0` | dB | -60 … 24 |
 
+### Gain changes and automation
 
+The initial `volume` setting applies immediately when processing starts. Later
+target changes, including scheduled events and JavaScript `setParam`, move from the current
+linear gain to `10 ** (volume / 20)` over `ceil(sampleRate * 0.005)` samples
+(5 ms, rounded up to whole samples). The interpolation is linear in gain, not dB.
+The event sample uses the first interpolation step; the target is reached on the
+last sample of that interval. A new target during a transition starts a fresh
+5 ms transition from the gain already reached.
+
+At 48 kHz, a target change at frame 128 finishes at frame 367. This smoothing
+reduces abrupt gain changes but means an event does not produce an instantaneous
+level switch or an arbitrary sample-by-sample gain curve. See the executable
+Python and JavaScript [Volume automation examples](/dsp/concepts/streaming-and-events/#volume-automation).
 
 ## EffeTune app documentation
 

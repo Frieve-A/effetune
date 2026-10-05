@@ -499,7 +499,11 @@ class GraphStream:
             )
         for node in self._state["document"]["nodes"]:
             try:
-                _effect_channels(node["channel"], self.channels)
+                _effect_channels(
+                    node["channel"],
+                    self.channels,
+                    node["type"] if node["enabled"] and node["id"] in effective else None,
+                )
             except ValidationError as error:
                 raise ValidationError(
                     str(error),

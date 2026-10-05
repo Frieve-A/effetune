@@ -44,6 +44,9 @@ enum class NoteSpectrogramStage : std::uint8_t {
   PrepareFine,
   EvaluateFine,
   Finalize,
+  PostPrepare,
+  PostRun,
+  PostFinish,
   Commit
 };
 

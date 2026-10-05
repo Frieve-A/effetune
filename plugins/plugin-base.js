@@ -1457,7 +1457,7 @@ class PluginBase {
             if (!Number.isFinite(numericValue) || numericValue === applied.value) return;
             slider.value = toSlider(numericValue);
             window.uiManager?.refreshRangeFillStyling?.(slider);
-            valueInput.value = numericValue.toFixed(step < 0.01 ? 3 : (step < 0.1 ? 2 : (step < 1 ? 1 : 0)));
+            valueInput.value = String(numericValue);
             applied.value = numericValue;
         });
 

@@ -1,0 +1,23 @@
+.adaptive-prediction-effect-ui {
+    min-width: 0;
+}
+
+.ape-parameters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
+    gap: 8px 20px;
+}
+
+.ape-parameters > div {
+    min-width: 0;
+}
+
+.ape-hold-hint {
+    margin: 0;
+    color: var(--et-text-secondary);
+    font-size: 12px;
+}
+
+body.layout-mobile .ape-parameters {
+    grid-template-columns: minmax(0, 1fr);
+}

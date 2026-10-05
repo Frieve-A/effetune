@@ -79,7 +79,7 @@ function harness() {
 }
 
 function noteFrame(index, time, generation = 1) {
-    const payload = new DataView(new ArrayBuffer(3548));
+    const payload = new DataView(new ArrayBuffer(5312));
     payload.setFloat32(0, 48000, true);
     payload.setFloat32(4, time, true);
     payload.setUint16(8, 440, true);
@@ -89,10 +89,10 @@ function noteFrame(index, time, generation = 1) {
     payload.setUint32(20, 5, true);
     payload.setUint32(24, generation, true);
     for (let pitch = 0; pitch < 440; pitch++) {
-        payload.setFloat32(28 + pitch * 4, 0.75, true);
-        payload.setFloat32(1788 + pitch * 4, -12, true);
+        payload.setFloat32(32 + pitch * 4, 0.75, true);
+        payload.setFloat32(1792 + pitch * 4, -12, true);
     }
-    return { tapId: 7, frameType: 24, formatVersion: 3, payload };
+    return { tapId: 7, frameType: 24, formatVersion: 4, payload };
 }
 
 function spectrogramFrame(time) {
@@ -226,6 +226,8 @@ test('Spectrum Overlay uses the same HQ analysis age for output delay and frame 
         h.manager._appliedOutputDelayFrames.set(h.manager._getPrimaryWorkletNode(), delay);
         const due = h.manager._resolveVisualSyncDue(22, 51000, 'spectrumOverlay');
         assert.ok(Math.abs(due - 51000 / 48) < 1 / 48);
+        const timing = globalThis.SpectrumTapContract.timing('hq', 48000, 1, 0, 51000 - 2096, 0);
+        assert.equal(h.manager._resolveVisualSyncDue(22, undefined, 'spectrumOverlay', { timing }), 51000 / 48);
 
         globalThis.window.SpectrumOverlay.quality = 'standard';
         const standardDelay = h.manager._recomputeVisualSyncDelay();

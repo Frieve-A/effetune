@@ -1,5 +1,6 @@
 export type {
   AnalogMeterOptions,
+  AdaptivePredictionEffectOptions,
   ChromaSpiralOptions,
   LevelMeterOptions,
   NoteSpectrogramOptions,
@@ -118,6 +119,7 @@ export type {
 } from './generated-effects.js';
 export {
   AnalogMeter,
+  AdaptivePredictionEffect,
   ChromaSpiral,
   LevelMeter,
   NoteSpectrogram,
@@ -231,6 +233,7 @@ export {
   VinylSimulator,
   WowFlutter,
   createAnalogMeter,
+  createAdaptivePredictionEffect,
   createChromaSpiral,
   createLevelMeter,
   createNoteSpectrogram,
@@ -518,7 +521,7 @@ export interface SpectrumHqTelemetryFrame extends TelemetryFrameBase {
   readonly peakDb: Float32Array;
 }
 
-export interface NoteSpectrogramTelemetryFrame extends TelemetryFrameBase {
+export type NoteSpectrogramTelemetryFrame = TelemetryFrameBase & {
   readonly kind: 'noteSpectrogram';
   readonly sampleRate: number;
   readonly timeSeconds: number;
@@ -529,7 +532,10 @@ export interface NoteSpectrogramTelemetryFrame extends TelemetryFrameBase {
   readonly generation: number;
   readonly levels: Float32Array;
   readonly volumeDb: Float32Array;
-}
+} & (
+  | { readonly revisionAge: 0; readonly revisedLevels: null }
+  | { readonly revisionAge: 8; readonly revisedLevels: Float32Array }
+);
 
 export interface PitchMeterTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'pitch';

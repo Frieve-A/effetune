@@ -35,17 +35,18 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 ## Note Spectrogram
 
-Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves.
+Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves. Between E1 and G6 (the default range), each note's estimate is also refined using that note's recent detections and those of notes at related intervals, such as a semitone, a fifth, or an octave away, which helps distinguish overlapping notes.
 
 ### Visualization Guide
 
 - **Vertical** shows time from left to right, with the keyboard and current sound at the right edge. Higher notes appear toward the top.
 - **Horizontal** places the keyboard at the bottom, with low notes on the left and high notes on the right. New sound appears just above the keyboard, and history scrolls upward.
+- New sound is shown with an immediate pitch estimate. About 160 ms later, that part of the history is updated using the sounds that follow, so recent marks just behind the newest sound may change. This adds no display delay and leaves **Sync Visuals to Audio** alignment unchanged.
 - Lines at each C mark octave boundaries.
 - Pitch rows corresponding to black piano keys use a nearly black gray background so they remain distinguishable when no note is detected.
 - **Normal** uses the theme’s graph trace color; **Note Colors** uses a different color for each note, repeated across octaves. The guide lines between E and F remain visible in both modes.
 - **1/12 Octave** shows one row per semitone. **High (1/60 Octave)** divides each semitone into five rows so that small pitch movement is easier to follow; colors are blended between neighboring notes.
-- Color strength follows the model’s confidence, including weak candidates without a display threshold. Confidence indicates how strongly the model supports a pitch; it is not a calibrated probability.
+- Color strength indicates confidence in each pitch estimate; weak candidates remain visible without a display threshold.
 - With **Volume** on, each detected pitch becomes a bar whose opaque core thickness shows its frequency-corrected relative volume, from 1/60 octave at the bottom of the scale to 1/12 octave at the top. A fade extends 1/120 octave beyond each side of that core, adding 1/60 octave to the total footprint. **Pitch Resolution** changes the bar’s center position, not its core thickness.
 - At the keyboard edge, a soft-edged semicircle extends into the graph and shows the current volume. It responds immediately to increases and falls at 20 dB per second; there is no separate visible peak hold.
 - The volume scale covers 24 dB. Its top follows the louder of a recent reference used to stabilize the history scale (over about one second) and -36 dB, so quieter material remains readable without making louder passages fill the display continuously. This reference is separate from the current-volume semicircle.

@@ -4,6 +4,8 @@ import {
     BACKOFF_MS, CLOSE_UNAUTHORIZED, LIVENESS_TIMEOUT_MS, RemoteSession, TOKEN_STORAGE_KEY, resolveRemoteTarget
 } from '../../js/remote/remote-session.js';
 import { RemoteAudioManager } from '../../js/remote/remote-audio-manager.js';
+import { createRemotePresetHost } from '../../js/remote/remote-client.js';
+import { PresetManager } from '../../js/ui/pipeline/preset-manager.js';
 
 class FakeSocket {
     static instances = [];
@@ -103,6 +105,90 @@ test('requests resolve with their ack, or with the data message that follows it'
     socket.receive({ op: 'ack', seq: 5, ok: false, error: 'invalid-op' });
     assert.equal((await refused).ok, false);
     session.stop();
+});
+
+test('UI commands reject failed acks and resolve only accepted commands', async () => {
+    const { session } = makeSession(makeEnv());
+    session.start();
+    const socket = FakeSocket.instances[0];
+    socket.open();
+    socket.receive({ op: 'ack', seq: 1, ok: true });
+    try {
+        for (const message of [
+            { op: 'history', dir: 'undo' }, { op: 'history', dir: 'redo' },
+            { op: 'slot', slot: 'B' }, { op: 'copySlot', from: 'A', to: 'B' }
+        ]) {
+            const result = session.sendCommand(message);
+            socket.receive({ op: 'ack', seq: socket.sent.at(-1).seq, ok: false, error: 'app-not-ready' });
+            await assert.rejects(result, /app-not-ready/);
+        }
+        const accepted = session.sendCommand({ op: 'slot', slot: 'B' });
+        socket.receive({ op: 'ack', seq: socket.sent.at(-1).seq, ok: true, rev: 9 });
+        assert.equal((await accepted).rev, 9);
+        const disconnected = session.sendCommand({ op: 'history', dir: 'undo' });
+        socket.close(1006);
+        await assert.rejects(disconnected, /closed/);
+    } finally {
+        session.stop();
+    }
+});
+
+test('failed preset commands preserve the active preset and report failure to the shared UI', async t => {
+    const { session } = makeSession(makeEnv());
+    session.start();
+    const socket = FakeSocket.instances[0];
+    socket.open();
+    socket.receive({ op: 'ack', seq: 1, ok: true });
+    const previousWindow = globalThis.window;
+    const messages = [];
+    globalThis.window = {
+        uiManager: {
+            showTransientMessage: key => messages.push(key),
+            setError: key => messages.push(key)
+        }
+    };
+    t.mock.method(console, 'error', () => {});
+    const pipeline = [{ nm: 'Volume', en: true, vl: -3 }];
+    const externalHost = createRemotePresetHost(session, () => pipeline);
+    const manager = { externalHost, currentPresetName: 'Existing' };
+    const stored = { Existing: { plugins: pipeline } };
+    try {
+        const listing = externalHost.getPresets();
+        socket.receive({ op: 'presets', seq: socket.sent.at(-1).seq, presets: stored });
+        assert.deepEqual(await listing, stored);
+
+        for (const [method, argument, op, errorKey] of [
+            ['savePreset', 'New preset', 'savePreset', 'error.failedToSavePreset'],
+            ['loadPreset', 'New preset', 'loadPreset', 'error.failedToLoadPreset'],
+            ['deletePresets', ['Existing'], 'deletePreset', 'error.failedToDeletePreset']
+        ]) {
+            const result = PresetManager.prototype[method].call(manager, argument);
+            const request = socket.sent.at(-1);
+            assert.equal(request.op, op);
+            socket.receive({ op: 'ack', seq: request.seq, ok: false, error: 'request-failed' });
+            assert.equal(await result, false);
+            assert.equal(manager.currentPresetName, 'Existing');
+            assert.equal(messages.at(-1), errorKey);
+            const requestCount = socket.sent.length;
+            assert.deepEqual(await externalHost.getPresets(), stored);
+            assert.equal(socket.sent.length, requestCount, 'failed commands keep the cached presets');
+        }
+
+        const saved = PresetManager.prototype.savePreset.call(manager, 'New preset');
+        const request = socket.sent.at(-1);
+        assert.deepEqual(request.pipeline, pipeline);
+        socket.receive({ op: 'ack', seq: request.seq, ok: true });
+        assert.equal(await saved, true);
+        assert.equal(manager.currentPresetName, 'New preset');
+        const refreshed = externalHost.getPresets();
+        assert.equal(socket.sent.at(-1).op, 'presets');
+        socket.receive({ op: 'presets', seq: socket.sent.at(-1).seq, presets: stored });
+        await refreshed;
+    } finally {
+        session.stop();
+        if (previousWindow === undefined) delete globalThis.window;
+        else globalThis.window = previousWindow;
+    }
 });
 
 test('a closed socket rejects waiting requests and reconnects with growing delays', async () => {

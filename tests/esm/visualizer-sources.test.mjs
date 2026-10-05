@@ -147,11 +147,100 @@ test('Analog Meter sources carry only the detector parameters of the Analog Mete
             ['AnalogMeterPlugin', { md: 'PPM', it: 0.3, at: 5, rt: 1.5, ln: 0 }, 0]);
         assert.equal(subscriptions.get(source.tapId).frameType, 27);
         sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null,
-            params: { ...params, rl: -18, rg: 60, sc: 2, ph: 3, tg: -16, ls: 1 } }] });
+            params: { ...params, rl: -18, rg: 60, sc: 2, ph: 3, tg: -16, ls: 1, dialCurvature: 0,
+                faceShape: 'circle', showPercent: true, needleTip: 'arrow', vignette: 0.8 } }] });
         assert.equal(published.at(-1)[0].tapId, source.tapId);
         sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null, params: { ...params, md: 'VU' } }] });
         assert.notEqual(published.at(-1)[0].tapId, source.tapId);
         sources.dispose();
+    } finally {
+        globalThis.window = oldWindow; globalThis.document = oldDocument;
+    }
+});
+
+test('Guitar sources detect only the playable notes and keep the stream across display edits', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const subscriptions = new Map(), published = [];
+    globalThis.window = {};
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const manager = {
+        telemetryHub: { subscribe(tapId, frameType, callback) {
+            subscriptions.set(tapId, { frameType, callback });
+            return () => subscriptions.delete(tapId);
+        } },
+        setVisualizerSources(sources) { published.push(sources); }
+    };
+    try {
+        const sources = new VisualizerSources(manager);
+        const params = { tn: [40, 45, 50, 55, 59, 64], fm: 0, fx: 12, cp: 0, pm: 'all', lb: 'sharp' };
+        sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params }] });
+        sources.subscribeItem('g', () => {});
+        sources.setVisible(true);
+        const source = published.at(-1)[0];
+        assert.deepEqual([source.type, source.params], ['NoteSpectrogramPlugin', { mn: 40, mx: 76, nc: 6 }]);
+        assert.equal(subscriptions.get(source.tapId).frameType, 24);
+        sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params: { ...params, pm: 'shape', lb: 'interval' } }] });
+        assert.equal(published.at(-1)[0].tapId, source.tapId);
+        sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params: { ...params, cp: 2 } }] });
+        assert.deepEqual(published.at(-1)[0].params, { mn: 42, mx: 76, nc: 6 });
+        sources.dispose();
+    } finally {
+        globalThis.window = oldWindow; globalThis.document = oldDocument;
+    }
+});
+
+test('Guitar and Notes share their DSP source only when analysis settings and channels match', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const subscriptions = new Map(), published = [], received = [];
+    globalThis.window = { NoteSpectrogramPlugin: class {
+        parseTelemetryFrame(frame) { return frame.snapshot; }
+    } };
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const manager = {
+        telemetryHub: { subscribe(tapId, frameType, callback) {
+            subscriptions.set(tapId, { frameType, callback });
+            return () => subscriptions.delete(tapId);
+        } },
+        setVisualizerSources(sources) { published.push(sources); }
+    };
+    try {
+        const sources = new VisualizerSources(manager);
+        const guitar = { id: 'guitar', type: 'guitar', channel: null,
+            params: { tn: [40, 45, 50, 55, 59, 64], fm: 0, fx: 12, cp: 0 } };
+        const notes = { id: 'notes', type: 'notes', channel: null,
+            params: { mn: 40, mx: 76, nc: 6 } };
+        sources.setLayout({ items: [guitar, notes] });
+        sources.setVisible(true);
+        assert.equal(published.at(-1).length, 1);
+        assert.equal(subscriptions.size, 1);
+        const shared = published.at(-1)[0];
+        assert.deepEqual([shared.type, shared.params, shared.channel, shared.gainDb],
+            ['NoteSpectrogramPlugin', { mn: 40, mx: 76, nc: 6 }, null, 0]);
+        assert.equal(subscriptions.get(shared.tapId).frameType, 24);
+        sources.subscribeItem(guitar.id, frame => received.push(frame));
+        sources.subscribeItem(notes.id, frame => received.push(frame));
+        const snapshot = { notes: [40, 64] };
+        subscriptions.get(shared.tapId).callback({ snapshot });
+        assert.equal(sources.getFrame(guitar.id), snapshot);
+        assert.equal(sources.getFrame(notes.id), snapshot);
+        assert.equal(received.length, 2);
+        assert.equal(received[0], received[1]);
+        for (const different of [
+            { ...notes, params: { ...notes.params, mn: 41 } },
+            { ...notes, params: { ...notes.params, mx: 77 } },
+            { ...notes, params: { ...notes.params, nc: 5 } },
+            { ...notes, channel: 'R' }
+        ]) {
+            sources.setLayout({ items: [guitar, different] });
+            assert.equal(published.at(-1).length, 2);
+            assert.equal(subscriptions.size, 2);
+            assert.ok(published.at(-1).some(source => source.tapId === shared.tapId));
+            sources.setLayout({ items: [guitar, notes] });
+            assert.equal(published.at(-1).length, 1);
+            assert.equal(published.at(-1)[0].tapId, shared.tapId);
+        }
+        sources.dispose();
+        assert.equal(subscriptions.size, 0);
     } finally {
         globalThis.window = oldWindow; globalThis.document = oldDocument;
     }

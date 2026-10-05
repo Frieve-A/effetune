@@ -864,6 +864,8 @@ class RemoteControlHost {
   // ---- websocket ---------------------------------------------------------
 
   onConnection(ws, req) {
+    // Rejected peers can still send frames while the close handshake completes.
+    ws.on('error', error => this.log('[remote] WebSocket error:', error?.message || error));
     let supplied = '';
     try {
       supplied = new URL(req.url || '/', 'http://localhost').searchParams.get('t') || '';
@@ -889,7 +891,6 @@ class RemoteControlHost {
     this.log(`[remote] client connected: ${req.socket.remoteAddress}`);
     this.emitStatus();
     ws.on('pong', () => { ws.isAlive = true; });
-    ws.on('error', () => {});
     ws.on('close', () => {
       ws.uploads.clear();
       this.log(`[remote] client disconnected: ${req.socket.remoteAddress}`);

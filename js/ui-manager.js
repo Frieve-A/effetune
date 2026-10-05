@@ -1319,6 +1319,7 @@ export class UIManager {
         this.updatePipelineEmptyContent();
         this.renderLibraryRecoveryShell();
         this.libraryView?.updateUITexts?.();
+        this.visualizerView?.updateUITexts?.();
         const shareButton = document.getElementById('shareButton');
         this.stateManager?.updateLabels?.();
         this.mobileMenu?.updateLabels?.();

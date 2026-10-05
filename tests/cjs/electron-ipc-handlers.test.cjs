@@ -1082,7 +1082,7 @@ test('Measurement navigation failures preserve a previously completed restore', 
   });
 });
 
-test('Reload saves and restores the exact pipeline instead of applying startup policy', async () => {
+test('Reload preserves the exact pipeline and permits the configured startup view', async () => {
   await withHarness({}, async ({ calls, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
     const pipelineState = {
@@ -1103,7 +1103,7 @@ test('Reload saves and restores the exact pipeline instead of applying startup p
       calls.some(call =>
         call[0] === 'window.loadFile' &&
         call[1] === 'effetune.html' &&
-        call[2]?.query?.restorePipeline === 'transient'
+        call[2]?.query?.restorePipeline === 'reload'
       ),
       true
     );

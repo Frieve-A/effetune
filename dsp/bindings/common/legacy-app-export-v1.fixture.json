@@ -113,7 +113,8 @@
     "15Band GEQ": "FifteenBandGEQ",
     "15Band PEQ": "FifteenBandPEQ",
     "5Band Dynamic EQ": "FiveBandDynamicEQ",
-    "5Band FIR PEQ": "FiveBandFIRPEQ"
+    "5Band FIR PEQ": "FiveBandFIRPEQ",
+    "Adaptive Prediction": "AdaptivePredictionEffect"
   },
   "unaliasedDisplayName": "5 Band PEQ",
   "structuredParameters": {

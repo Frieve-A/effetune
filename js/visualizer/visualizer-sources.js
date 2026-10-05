@@ -1,5 +1,6 @@
 import { TelemetryFrameType } from '../audio/telemetry-hub.js';
 import { getDspRolloutConfig } from '../audio/dsp-rollout.js';
+import { guitarAnalysis } from './visualizer-model.js';
 
 const SOURCE_TYPES = Object.freeze({
     spectrum: { type: 'SpectrumAnalyzerPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM,
@@ -13,6 +14,8 @@ const SOURCE_TYPES = Object.freeze({
     'level-meter': { type: 'LevelMeterPlugin', frameType: TelemetryFrameType.TAP_LEVEL,
         parse: 'parseDspLevelTelemetryFrame' },
     notes: { type: 'NoteSpectrogramPlugin', frameType: 24,
+        parse: 'parseTelemetryFrame' },
+    guitar: { type: 'NoteSpectrogramPlugin', frameType: 24,
         parse: 'parseTelemetryFrame' },
     chroma: { type: 'ChromaSpiralPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM },
     phase: { type: 'PhaseSelectEqPlugin', frameType: 20 },
@@ -64,6 +67,8 @@ function analysisSettings(type, input = {}) {
     }, gainDb: 0 };
     // Only the BPM range affects analysis; the display settings never restart the source.
     if (type === 'rhythm-analyzer') return { params: { mn: input.mn ?? 40, mx: input.mx ?? 240 }, gainDb: 0 };
+    // The fretboard's tuning, fret range, and capo decide the detected notes.
+    if (type === 'guitar') return { params: guitarAnalysis(input), gainDb: 0 };
     const gainDb = type === 'notes' ? 0 :
         Number.isFinite(input.gainDb) ? Math.max(-24, Math.min(24, Math.round(input.gainDb))) : 0;
     if (type === 'spectrum' || type === 'spectrogram') {
@@ -81,7 +86,7 @@ function analysisSettings(type, input = {}) {
 }
 
 const sourceKey = (type, channel, params, gainDb) =>
-    JSON.stringify([type, channel, params, gainDb]);
+    JSON.stringify([SOURCE_TYPES[type].type, channel, params, gainDb]);
 
 export class VisualizerSources {
     constructor(audioManager) {

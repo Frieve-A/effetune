@@ -41,8 +41,6 @@ inline constexpr double kConfirm = 0x1.0000000000000p+0;
 inline constexpr float kGammaF = 0x1.0000000000000p-1f;
 // ai exponent (gamma_ev None -> gamma)
 inline constexpr double kGammaEv = 0x1.0000000000000p-1;
-// cfg z_db (float32 rms compared with it)
-inline constexpr float kZDbF = -0x1.1800000000000p+6f;
 // cfg z_ticks
 inline constexpr int32_t kZTicks = 24;
 // cfg w_ev (seed replay window, s)
@@ -2558,16 +2556,16 @@ inline constexpr int32_t kLvPh12[20] = {0, 0, 12, 0, 0, 6,  12, 0,  4,  0,
 inline constexpr int32_t kLvNg[9] = {1, 2, 1, 3, 2, 3, 4, 3, 1};
 // pi0: prior per hypothesis
 inline constexpr double kLvPi0[20] = {
-    0x1.5af13ef1e69f8p-1,  0x1.57ebc7f26618bp-4,  0x1.57ebc7f26618bp-4,  0x1.1be488e30ec51p-5,
-    0x1.86945d1edacafp-8,  0x1.86945d1edacafp-8,  0x1.86945d1edacafp-8,  0x1.5fe15462bc37dp-8,
-    0x1.5fe15462bc37dp-8,  0x1.5b5ffeb81ae3ap-9,  0x1.5b5ffeb81ae3ap-9,  0x1.5b5ffeb81ae3ap-9,
-    0x1.29c41883466b2p-10, 0x1.29c41883466b2p-10, 0x1.29c41883466b2p-10, 0x1.29c41883466b2p-10,
-    0x1.76ef11cbffda3p-8,  0x1.76ef11cbffda3p-8,  0x1.76ef11cbffda3p-8,  0x1.f7f446b13ffbbp-5};
+    0x1.9da7ed30da44ap-1,  0x1.b2be3d8d1f4dbp-6,  0x1.b2be3d8d1f4dbp-6,  0x1.39bf587af5008p-5,
+    0x1.e0fa26ea7caadp-9,  0x1.e0fa26ea7caadp-9,  0x1.e0fa26ea7caadp-9,  0x1.4d66093136cb9p-8,
+    0x1.4d66093136cb9p-8,  0x1.29d674ddc9ca6p-9,  0x1.29d674ddc9ca6p-9,  0x1.29d674ddc9ca6p-9,
+    0x1.29c41771026b3p-10, 0x1.29c41771026b3p-10, 0x1.29c41771026b3p-10, 0x1.29c41771026b3p-10,
+    0x1.bbc5f4f749bf1p-9,  0x1.bbc5f4f749bf1p-9,  0x1.bbc5f4f749bf1p-9,  0x1.db35568bee5c2p-5};
 // P0g: prior per level
 inline constexpr double kLvP0g[9] = {
-    0x1.5af13ef1e69f8p-1, 0x1.57ebc7f26618bp-3, 0x1.1be488e30ec51p-5,
-    0x1.24ef45d724183p-6, 0x1.5fe15462bc37dp-7, 0x1.0487ff0a142acp-7,
-    0x1.29c41883466b2p-8, 0x1.19334d58ffe3ap-6, 0x1.f7f446b13ffbbp-5};
+    0x1.9da7ed30da44ap-1, 0x1.b2be3d8d1f4dbp-5, 0x1.39bf587af5008p-5,
+    0x1.68bb9d2fdd802p-7, 0x1.4d66093136cb9p-7, 0x1.bec1af4caeaf9p-8,
+    0x1.29c41771026b3p-8, 0x1.4cd477b9774f5p-7, 0x1.db35568bee5c2p-5};
 // restart ph = 1.0 / ng[grp]
 inline constexpr double kLvPh0[20] = {
     0x1.0000000000000p+0, 0x1.0000000000000p-1, 0x1.0000000000000p-1, 0x1.0000000000000p+0,
@@ -2599,8 +2597,8 @@ inline constexpr double kLvLogNd[9] = {0x0.0p+0,
                                        -0x1.193ea7aad030bp+0};
 // reseed floor p_l * FPS * HOOK_DT * P0g
 inline constexpr double kLvFloor[9] = {
-    0x1.d8a343a250dd5p-12, 0x1.d48593bf83966p-14, 0x1.82bedbd80790ep-16,
-    0x1.8f1036d7ef4c0p-17, 0x1.df5d519d31c69p-18, 0x1.62eb9a545ef9bp-18,
-    0x1.95a521af2c69bp-19, 0x1.7f13ebbe647b6p-17, 0x1.57445ee253887p-15};
+    0x1.19c2baf1668a9p-11, 0x1.281fc70944800p-15, 0x1.ab6a9ea091494p-16,
+    0x1.eb6caa80b7a3dp-18, 0x1.c62fe70348081p-18, 0x1.304e9bb69afc4p-18,
+    0x1.95a520398afa2p-19, 0x1.c569987695dd3p-18, 0x1.43afd974eaaa5p-15};
 
 } // namespace effetune::plugins::analyzer::rhythm_a3::dec

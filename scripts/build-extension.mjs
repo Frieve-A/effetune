@@ -82,19 +82,29 @@ export async function buildExtension() {
     for (const filename of [...scripts].sort()) {
         const source = staticSource(await fs.readFile(path.join(root, filename), 'utf8'), filename);
         const transformed = await esbuild.transform(source, { loader: 'js', target: 'chrome116', define,
-            minifySyntax: true, keepNames: true, legalComments: 'none' });
+            minifySyntax: true, keepNames: true, legalComments: 'eof' });
         if (/\bnew\s+Function\s*\(|\beval\s*\(/.test(transformed.code)) {
             throw new Error(`Dynamic JavaScript compilation is forbidden in the extension: ${filename}`);
         }
         files.set(filename, Buffer.from(transformed.code));
     }
+    const vendorNotices = [
+        ['js/vendor/jszip-3.10.1.min.js', 'js/vendor/jszip-3.10.1.NOTICE.txt'],
+        ['js/vendor/jsmediatags-3.9.5.min.js', 'js/vendor/jsmediatags-3.9.5.NOTICE.txt'],
+        ['js/vendor/music-metadata-browser.mjs', 'js/vendor/music-metadata-browser.NOTICE.txt'],
+        ['js/vendor/offline-audio-encoders.mjs', 'js/vendor/offline-audio-encoders.NOTICE.txt'],
+        ['js/vendor/rolling-pcm-decoder-worker.mjs', 'js/vendor/rolling-pcm-decoder-worker.NOTICE.txt'],
+        ['js/vendor/sqlite/sqlite3.mjs', 'js/vendor/sqlite/LICENSE.md']
+    ];
     const materials = [
         ...(await walk('extension')).filter(filename => /\.(html|css)$/.test(filename)),
         ...(await walk('plugins')).filter(filename => filename.endsWith('.css')),
         ...(await walk('js/locales')),
         ...(await walk('presets')),
         'plugins/plugins.txt', 'plugins/dsp/effetune-dsp.wasm', 'plugins/dsp/effetune-dsp.simd.wasm',
-        'plugins/dsp/effetune-dsp.meta.json', 'css/effetune.css', 'css/effetune-theme.css', 'css/effetune-mobile.css', 'css/pipeline-analyzer.css',
+        'plugins/dsp/effetune-dsp.meta.json', 'plugins/dsp/NOTICE.txt',
+        ...vendorNotices.filter(([filename]) => scripts.has(filename)).map(([, notice]) => notice),
+        'css/effetune.css', 'css/effetune-theme.css', 'css/effetune-mobile.css', 'css/pipeline-analyzer.css',
         'css/user-data-backup.css',
         'images/icon_128x128.png', 'images/icon_192x192.png', 'images/icon_64x64.png', 'LICENSE'
     ];

@@ -58,6 +58,8 @@ public:
     frames_ = 0;
     for (std::uint32_t c = 0u; c < kClasses; ++c)
       log10_[c] = chroma_[c] = 0.0;
+    for (std::uint32_t c = 0u; c < kClasses; ++c)
+      classPower_[c] = 0.0;
   }
 
   // One analysis-rate sample; true when chroma frame frames() - 1 has just completed.
@@ -89,6 +91,10 @@ public:
   [[nodiscard]] const double *chroma() const noexcept { return chroma_; }
   [[nodiscard]] const double *log10Values() const noexcept { return log10_; }
   [[nodiscard]] std::uint32_t down() const noexcept { return down_; }
+  // Linear taps of the last completed frame (the TD prior's tonal stage): the power of bins
+  // kBinLo .. kBinLo + kBins - 1 and the per-class sums before the floor and log10.
+  [[nodiscard]] const double *power() const noexcept { return power_; }
+  [[nodiscard]] const double *classPower() const noexcept { return classPower_; }
 
 private:
   static constexpr std::uint32_t kInRing =
@@ -118,6 +124,7 @@ private:
         out[c] += part[c];
     }
     for (std::uint32_t c = 0u; c < kClasses; ++c) {
+      classPower_[c] = out[c];
       log10_[c] = g2m::log10(out[c] + g2_tables::kChromaFloor);
       chroma_[c] = rhythm_d::roundHalf(log10_[c]);
     }
@@ -137,6 +144,7 @@ private:
   double power_[kBins] = {};
   double log10_[kClasses] = {};
   double chroma_[kClasses] = {};
+  double classPower_[kClasses] = {};
 };
 
 } // namespace effetune::plugins::analyzer::rhythm_a3

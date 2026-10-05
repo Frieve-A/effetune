@@ -4,7 +4,7 @@ import { drawStyledText } from './visualizer-text.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
 import { REFERENCE_WIDTH } from './visualizer-model.js';
 
-const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
+const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'guitar', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
 
 export class VisualizerRenderer {
     constructor(canvas) {
@@ -62,7 +62,7 @@ export class VisualizerRenderer {
                 state.signature = '';
             }
             const frame = sources.getFrame(item.id);
-            const text = ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null;
+            const text = item.type === 'text' ? item.params.text : ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null;
             // Image identity is checked separately; never copy data URLs into a
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
@@ -79,7 +79,10 @@ export class VisualizerRenderer {
             const signal = state.display?.signalCanvas;
             const flipCanvas = !ANALYZER_TYPES.has(item.type);
             const output = this.effects.apply(item.id, signal || state.canvas, item.effects, time, modulators, this.quality,
-                changed || !flipCanvas, flipCanvas && item.flipX, flipCanvas && item.flipY, stageScale);
+                changed || !flipCanvas, flipCanvas && item.flipX, flipCanvas && item.flipY, stageScale,
+                { width: stage.width, height: stage.height,
+                    centerX: (item.rect.x + item.rect.w / 2) * stage.width,
+                    centerY: (item.rect.y + item.rect.h / 2) * stage.height });
             drawBackplates(ctx, item.rect.x * stage.width, item.rect.y * stage.height, width, height,
                 item.effects, time, modulators, stageScale);
             if (state.display?.underlayCanvas) ctx.drawImage(state.display.underlayCanvas,
@@ -89,7 +92,9 @@ export class VisualizerRenderer {
             ctx.translate((item.rect.x + item.rect.w / 2) * stage.width, (item.rect.y + item.rect.h / 2) * stage.height);
             ctx.scale(flipCanvas && item.flipX ? -1 : 1, flipCanvas && item.flipY ? -1 : 1);
             const paddingX = output.paddingX || 0, paddingY = output.paddingY || 0;
-            ctx.drawImage(output.canvas, -width / 2 - paddingX, -height / 2 - paddingY, width + paddingX * 2, height + paddingY * 2);
+            const bounds = output.bounds;
+            if (bounds) ctx.drawImage(output.canvas, bounds.x, bounds.y, bounds.w, bounds.h);
+            else ctx.drawImage(output.canvas, -width / 2 - paddingX, -height / 2 - paddingY, width + paddingX * 2, height + paddingY * 2);
             ctx.restore();
             if (signal) ctx.drawImage(state.canvas, (item.rect.x + item.rect.w / 2) * stage.width - width / 2,
                 (item.rect.y + item.rect.h / 2) * stage.height - height / 2, width, height);
@@ -103,7 +108,9 @@ export class VisualizerRenderer {
                 const x = (item.rect.x + item.rect.w / 2) * stage.width - width / 2 + labelX;
                 const y = (item.rect.y + item.rect.h / 2) * stage.height - height / 2 + labelY;
                 const draw = method => {
-                    if (minX > maxX) {
+                    // Off-frame labels follow their item and clip naturally at the scene edge.
+                    if (item.rect.x < 0 || item.rect.x + item.rect.w > 1) ctx[method](text, x, y);
+                    else if (minX > maxX) {
                         ctx.textAlign = 'center';
                         ctx[method](text, stage.width / 2, y, Math.max(1, stage.width - 2));
                     } else ctx[method](text, Math.max(minX, Math.min(maxX, x)), y);
@@ -137,11 +144,41 @@ export class VisualizerRenderer {
                 if (item.style.rounded) { ctx.beginPath(); ctx.roundRect(0, 0, w, h, Math.min(w, h) * .06); ctx.clip(); }
                 this.drawCover(ctx, image, w, h); ctx.restore();
             }
-        } else if (['title', 'album', 'artist'].includes(item.type)) {
-            const raw = metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
+        } else if (['title', 'album', 'artist', 'text'].includes(item.type)) {
+            const raw = item.type === 'text' ? item.params.text
+                : metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
             drawStyledText(ctx, raw, item.style, w, h, this.canvas.width / REFERENCE_WIDTH,
-                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time));
+                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h));
+        } else if (item.type === 'shape') {
+            this.drawShape(ctx, item, w, h, time);
         }
+    }
+
+    drawShape(ctx, item, w, h, time) {
+        const style = item.style, scale = this.canvas.width / REFERENCE_WIDTH;
+        const border = Math.min(style.borderWidth * scale, w / 2, h / 2);
+        const inset = border / 2, width = w - border, height = h - border;
+        const paint = item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h);
+        ctx.save();
+        ctx.beginPath();
+        if (style.shape === 'ellipse') {
+            ctx.ellipse(w / 2, h / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+        } else if (style.shape === 'triangle') {
+            ctx.moveTo(w / 2, inset); ctx.lineTo(w - inset, h - inset); ctx.lineTo(inset, h - inset); ctx.closePath();
+        } else if (style.shape === 'line') {
+            ctx.moveTo(inset, h / 2); ctx.lineTo(w - inset, h / 2);
+        } else {
+            ctx.roundRect(inset, inset, width, height, Math.min(style.radius * scale, width / 2, height / 2));
+        }
+        if (style.shape !== 'line' && style.fillOpacity > 0) {
+            ctx.globalAlpha = style.fillOpacity; ctx.fillStyle = paint; ctx.fill();
+        }
+        if (border > 0 && style.borderOpacity > 0) {
+            ctx.globalAlpha = style.borderOpacity;
+            ctx.strokeStyle = style.shape === 'line' ? paint : style.borderColor;
+            ctx.lineWidth = border; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+        }
+        ctx.restore();
     }
 
     drawCover(ctx, image, w, h) {

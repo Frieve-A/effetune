@@ -35,6 +35,10 @@ class PagedDomElement {
     return child;
   }
 
+  append(...children) {
+    children.forEach(child => this.appendChild(child));
+  }
+
   replaceChildren(...children) {
     this.children = [];
     children.forEach(child => this.appendChild(child));
@@ -3128,8 +3132,8 @@ test('paged track properties hydrate complete metadata and the resolved Electron
   ]);
 });
 
-test('paged track headers sort all v2.0 columns and toggle the active direction', () => {
-  const buttons = ['title', 'artist', 'album', 'genre', 'duration'].map(sort => {
+test('paged track headers include track numbers and toggle the active direction', () => {
+  const buttons = ['trackNo', 'title', 'artist', 'album', 'genre', 'duration'].map(sort => {
     const button = new PagedDomElement('button');
     button.dataset.sort = sort;
     return button;
@@ -3143,15 +3147,108 @@ test('paged track headers sort all v2.0 columns and toggle the active direction'
     view.render = () => renders.push([view.sort, view.sortDirection]);
 
     view.createPagedTrackHeader();
+    assert.match(header.innerHTML, /data-sort="trackNo"/);
+    buttons.find(button => button.dataset.sort === 'trackNo').listeners.get('click')();
+    buttons.find(button => button.dataset.sort === 'trackNo').listeners.get('click')();
     buttons.find(button => button.dataset.sort === 'genre').listeners.get('click')();
     buttons.find(button => button.dataset.sort === 'genre').listeners.get('click')();
     buttons.find(button => button.dataset.sort === 'duration').listeners.get('click')();
 
     assert.deepEqual(renders, [
+      ['trackNo', 'asc'],
+      ['trackNo', 'desc'],
       ['genre', 'asc'],
       ['genre', 'desc'],
       ['duration', 'asc']
     ]);
+  });
+});
+
+test('mobile track lists expose a sort dropdown that applies explicit directions and restores preferences', () => {
+  const storage = new Map();
+  return withGlobals({
+    document: {
+      body: { classList: { contains: name => name === 'layout-mobile' } },
+      createElement: tag => new PagedDomElement(tag)
+    },
+    localStorage: {
+      getItem: key => storage.get(key),
+      setItem: (key, value) => storage.set(key, value)
+    }
+  }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.render = () => {};
+    for (const detail of [null, ...['album', 'artist', 'genre', 'subfolder'].map(type => ({
+      type, key: `${type}-1`
+    })), { type: 'folderNode', folderId: 'folder-1', path: '' }]) {
+      view.detail = detail;
+      view.detailSortOverride = false;
+      const query = view.getPagedQuery();
+      const header = view.createPagedSectionHeader({ rows: [] }, 10, true);
+      const select = header.children.find(child => child.className === 'library-entity-sort-control').children[1];
+      assert.ok(select.children.some(option => option.value === 'trackNo:asc'));
+      assert.equal(select.value, `${query.sort}:${query.direction}`);
+      select.value = 'trackNo:desc';
+      select.listeners.get('change')({ currentTarget: select });
+      assert.equal(view.getPagedQuery().sort, 'trackNo');
+      assert.equal(view.getPagedQuery().direction, 'desc');
+      select.listeners.get('change')({ currentTarget: select });
+      assert.equal(view.getPagedQuery().direction, 'desc');
+    }
+    view.detail = { type: 'playlist', key: 'playlist-1' };
+    assert.deepEqual(view.getPagedQuery().scope, { playlistId: 'playlist-1' });
+    const playlistHeader = view.createPagedSectionHeader({ rows: [] }, 10, true);
+    assert.equal(playlistHeader.children.some(child => child.className === 'library-entity-sort-control'), false);
+    view.searchQuery = 'song';
+    assert.equal(view.getPagedQuery().scope, null);
+    const searchHeader = view.createPagedSectionHeader({ rows: [] }, 10, true);
+    const searchSelect = searchHeader.children.find(child => child.className === 'library-entity-sort-control').children[1];
+    searchSelect.value = 'trackNo:desc';
+    searchSelect.listeners.get('change')({ currentTarget: searchSelect });
+    assert.equal(view.getPagedQuery().sort, 'trackNo');
+    assert.equal(view.getPagedQuery().direction, 'desc');
+    view.searchQuery = '';
+    view.detail = null;
+    view.currentView = 'files';
+    let select = view.createTrackSortControl(view.getPagedQuery()).children[1];
+    assert.deepEqual(select.children.map(option => option.value), [
+      'path:asc', 'path:desc', 'duration:asc', 'duration:desc'
+    ]);
+    select.value = 'duration:desc';
+    select.listeners.get('change')({ currentTarget: select });
+    assert.equal(view.getPagedQuery().sort, 'duration');
+
+    view.currentView = 'recent';
+    select = view.createTrackSortControl(view.getPagedQuery()).children[1];
+    assert.equal(select.value, 'added:desc');
+    select.value = 'trackNo:asc';
+    select.listeners.get('change')({ currentTarget: select });
+    assert.equal(view.getPagedQuery().sort, 'trackNo');
+    assert.equal(view.getPagedQuery().direction, 'asc');
+    assert.deepEqual(view.getPagedQuery().scope, { recent: true });
+
+    const restored = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    restored.loadUIState();
+    assert.equal(restored.getPagedQuery().sort, 'trackNo');
+    assert.equal(restored.getPagedQuery().direction, 'desc');
+    restored.currentView = 'recent';
+    assert.equal(restored.getPagedQuery().sort, 'trackNo');
+    assert.equal(restored.getPagedQuery().direction, 'asc');
+  });
+});
+
+test('desktop track and subfolder rows show metadata track numbers and leave missing numbers blank', () => {
+  return withGlobals({ document: { createElement: tag => new PagedDomElement(tag) } }, () => {
+    const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+    view.pagedController = { isSelected: () => false };
+    for (const detail of [null, { type: 'subfolder', key: 'subfolder-1' }]) {
+      view.detail = detail;
+      for (const trackNo of [2, 10, null]) {
+        const row = view.createPagedRow({ trackUid: 'track', title: 'Song', trackNo }, 7,
+          { queryGeneration: 1, pageAttemptId: 1 }, true);
+        assert.ok(row.innerHTML.includes(`<span class="library-track-number-cell" role="gridcell">${trackNo ?? ''}</span>`));
+      }
+    }
   });
 });
 

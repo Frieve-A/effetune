@@ -1644,6 +1644,46 @@ test('all locales include the Web power-saving settings copy', () => {
   ), true);
 });
 
+test('frequency preview sound defaults to sine and persists across dialog openings', async () => {
+  const harness = createConfigHarness();
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const select = harness.document.getElementById('frequency-preview-sound');
+    assert.equal(select.value, 'sine');
+    assert.deepEqual(select.children.map(option => option.value), ['sine', 'bandpassNoise']);
+    assert.equal(harness.document.getElementById('frequency-preview-sound-label').textContent,
+      'label:dialog.config.frequencyPreview.sound');
+    select.value = 'bandpassNoise';
+    await select.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.frequencyPreviewSound, 'bandpassNoise');
+    assert.equal(harness.calls.filter(call => call[0] === 'saveConfig').at(-1)[1].frequencyPreviewSound,
+      'bandpassNoise');
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+    const saved = harness.window.appConfig;
+    harness.window.electronAPI.loadConfig = async () => ({ success: true, config: saved });
+    await showConfigDialog(true, saved);
+    assert.equal(harness.document.getElementById('frequency-preview-sound').value, 'bandpassNoise');
+  });
+});
+
+test('frequency preview sound rolls back when saving fails', async () => {
+  const errors = [];
+  const harness = createConfigHarness({
+    config: { frequencyPreviewSound: 'bandpassNoise' },
+    saveConfigResult: { success: false },
+    uiManager: { setError: message => errors.push(message) }
+  });
+  await withGlobals({ window: harness.window, document: harness.document,
+    console: createConsoleHarness({ error() {} }) }, async () => {
+    await showConfigDialog(true, {});
+    const select = harness.document.getElementById('frequency-preview-sound');
+    select.value = 'sine';
+    await select.dispatchEvent('change');
+    assert.equal(select.value, 'bandpassNoise');
+    assert.equal(errors.length, 1);
+  });
+});
+
 test('overlay spectrum settings persist and apply to the running display', async () => {
   const applied = [];
   const harness = createConfigHarness({

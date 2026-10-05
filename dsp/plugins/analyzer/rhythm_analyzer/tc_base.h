@@ -1,4 +1,4 @@
-// tcn_g's 18 base channels, streaming.
+// The TCN's 18 base channels, streaming.
 // The reference input and base-channel expressions evaluated per tick in float64 with the same
 // operation order: the batch recursions (np.maximum.accumulate, np.minimum.accumulate, scipy
 // lfilter DF2T with and without zi, previous()) become running state. Output rounding as the
@@ -19,7 +19,8 @@ namespace effetune::plugins::analyzer::rhythm_a3 {
 
 class TcBase {
 public:
-  // Order = tcn_g provenance `inputs`: r_L r_M r_H, z_*, lr_*, ld_*, lf_*, bal_LM, bal_HM, flat.
+  // Order = tc_tcn_weights.provenance.json `input_channels`: r_L r_M r_H, z_*, lr_*, ld_*, lf_*,
+  // bal_LM, bal_HM, flat.
   static constexpr std::uint32_t kChannels = 18u;
 
   TcBase() noexcept { reset(); }

@@ -101,6 +101,7 @@
     "Tremolo": ["docs/plugins/modulation.md", "Tremolo"],
     "WowFlutter": ["docs/plugins/modulation.md", "Wow Flutter"],
     "Oscillator": ["docs/plugins/others.md", "Oscillator"],
+    "AdaptivePredictionEffect": ["docs/plugins/resonator.md", "Adaptive Prediction"],
     "HornResonator": ["docs/plugins/resonator.md", "Horn Resonator"],
     "HornResonatorPlus": ["docs/plugins/resonator.md", "Horn Resonator Plus"],
     "ModalResonator": ["docs/plugins/resonator.md", "Modal Resonator"],

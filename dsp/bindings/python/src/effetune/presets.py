@@ -70,7 +70,7 @@ class LegacyImportReport:
 
 
 # App display names whose alphanumeric normalization cannot reach the semantic type
-# or the internal type (leading digits instead of spelled-out numbers). Keys are the
+# or the internal type (numeric or shortened display names). Keys are the
 # exact display names produced by the app's plugin constructors; the JavaScript
 # binding keeps the same table in dsp/bindings/js/src/preset.js and both are pinned
 # to dsp/bindings/common/legacy-app-export-v1.fixture.json.
@@ -80,6 +80,7 @@ _LEGACY_EFFECT_ALIASES_V1 = {
     "15Band PEQ": "FifteenBandPEQ",
     "5Band Dynamic EQ": "FiveBandDynamicEQ",
     "5Band FIR PEQ": "FiveBandFIRPEQ",
+    "Adaptive Prediction": "AdaptivePredictionEffect",
 }
 
 

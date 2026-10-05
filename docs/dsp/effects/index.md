@@ -7,7 +7,7 @@ permalink: /dsp/effects/
 ---
 # Effects
 
-Browse all 110 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
+Browse all 111 semantic types registered in the v1 binding catalog. The list remains readable without JavaScript.
 
 <label for="effect-filter">Filter effects</label>
 <input id="effect-filter" type="search" placeholder="Name, type, category, seeded, or asset" data-dsp-effect-filter>
@@ -117,6 +117,7 @@ Browse all 110 semantic types registered in the v1 binding catalog. The list rem
 
 ## Resonators
 
+- [Adaptive Prediction](/dsp/effects/adaptive-prediction-effect/) (`AdaptivePredictionEffect`) — Learns waveform predictions for residual extraction, prediction replacement, and evolving self-feedback sound. <span data-effect-tags="resonator  "></span>
 - [Horn Resonator](/dsp/effects/horn-resonator/) (`HornResonator`) — Applies a horn-like resonant response to the input. <span data-effect-tags="resonator  "></span>
 - [Horn Resonator Plus](/dsp/effects/horn-resonator-plus/) (`HornResonatorPlus`) — Applies an extended multi-mode horn-like resonant response. <span data-effect-tags="resonator  "></span>
 - [Modal Resonator](/dsp/effects/modal-resonator/) (`ModalResonator`) — Excites configurable resonant modes from the input signal. <span data-effect-tags="resonator  "></span>

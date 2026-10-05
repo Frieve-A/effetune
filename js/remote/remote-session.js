@@ -226,6 +226,14 @@ export class RemoteSession extends EventTarget {
         return this.sendInternal(message, null);
     }
 
+    // UI commands succeed only after the host accepts them. SyncEngine uses
+    // send() directly to handle rejected edits and rebase its pending state.
+    async sendCommand(message) {
+        const ack = await this.send(message);
+        if (ack.ok !== true) throw new Error(ack.error || 'request failed');
+        return ack;
+    }
+
     // Sends a request that answers with a data message of op `dataOp` (after the ack).
     request(message, dataOp) {
         return this.sendInternal(message, dataOp);

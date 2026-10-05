@@ -32,7 +32,69 @@ Separates direct, diffuse, and residual sound and routes each component across a
 | `diffuseMatrix` | `diffuse_matrix` | number / 256 | `[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]` | Not declared in catalog | -1 … 1 |
 | `residualMatrix` | `residual_matrix` | number / 256 | `[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]` | Not declared in catalog | -1 … 1 |
 
+### Spatial Mapper matrix layout and bus width
 
+`directMatrix`, `diffuseMatrix`, and `residualMatrix` each contain exactly
+256 gains: a 16-row by 16-column matrix flattened in row-major order. Rows are
+outputs, columns are analyzed inputs, and all indices are zero-based:
+
+`index = outputChannel * 16 + inputChannel`
+
+The stride is always 16, including a three-channel bus. For example, gain from
+input 0 to output 2 belongs at index 32, not index 2. Use zero for unused routes;
+negative gains invert polarity. Each matrix routes its own separated component,
+and the three routed components are summed. `energyPreservation` can normalize
+component levels, so matrix gains alone do not define the final output amplitude.
+
+`inputChannels` selects the first N channels to analyze (limited to the actual
+bus width); it does not allocate outputs. The processing bus determines output
+width, which is preserved. Add silent channels before processing when additional
+outputs are needed, or provide a Graph layout with that bus width. Only columns
+below the effective input count and rows within the bus participate in routing.
+A channel beyond the analyzed inputs passes through with the effect's delay if
+no component matrix routes any analyzed input to that output; once such a route
+exists, that channel is used as a mapped output instead.
+
+### Center Extract API example
+
+The app's Center Extract preset routes Direct left/right components to output 2
+with gains 0.7, retaining identity matrices for Diffuse and Residual components.
+It uses `directness=90`, `separation=85`, and the other values shown below.
+This example supplies a three-channel bus: stereo input plus a silent center slot.
+The correlated 440 Hz input produces an extracted center signal. The result also
+retains left/right Diffuse and Residual components; it is not a simple mono sum.
+
+```python
+import numpy as np
+import effetune as et
+
+rate = 48_000
+direct = [0.0] * 256
+direct[2 * 16 + 0] = direct[2 * 16 + 1] = 0.7
+identity = [1.0 if row == column else 0.0 for row in range(16) for column in range(16)]
+# These are the app's Center Extract preset values in semantic API names.
+effect = et.SpatialMapper(
+    input_channels=2, bands="24", directness=90, separation=85,
+    diffuse_extraction=50, phase_sensitivity=50, temporal_smoothing=50,
+    energy_preservation=True,
+    direct_matrix=direct, diffuse_matrix=identity, residual_matrix=identity,
+)
+chain = et.Chain([effect])
+t = np.arange(rate, dtype=np.float64) / rate
+audio = np.zeros((3, rate), dtype=np.float32)
+audio[0] = audio[1] = 0.1 * np.sin(2 * np.pi * 440 * t)
+delay = chain.latency_samples(rate, channels=3)
+output = chain.process(np.pad(audio, ((0, 0), (0, delay))), sample_rate=rate)
+aligned = output[:, delay:delay + rate]
+assert aligned.shape == audio.shape
+assert np.isfinite(aligned).all()
+assert np.max(np.abs(aligned[2])) > 0.01
+print("Left, right, extracted center:", aligned.shape)
+```
+
+Use the corresponding camelCase semantic names and the same 256-entry arrays in
+JavaScript options or Chain JSON. Preset labels in the app are not library
+constructor parameters; the example explicitly supplies their values.
 
 ## EffeTune app documentation
 

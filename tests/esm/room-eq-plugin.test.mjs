@@ -6,6 +6,9 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 import { MeasurementStore } from '../../js/measurement-store/client.js';
+import { applyOpsToPipeline, createIdRegistry } from '../../js/remote/pipeline-apply.js';
+import { SyncEngine } from '../../js/remote/remote-sync-engine.mjs';
+import { getSerializablePluginStateShort } from '../../js/utils/serialization-utils.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginSource = await fs.readFile(path.join(repoRoot, 'plugins', 'eq', 'room_eq.js'), 'utf8');
@@ -58,6 +61,8 @@ class PluginBase {
     updateParameters() {
         this.updateCount = (this.updateCount || 0) + 1;
     }
+
+    setEnabled(enabled) { this.enabled = enabled; }
 
     getParameters() {
         return {
@@ -2783,6 +2788,67 @@ test('Room EQ serialized restoration clears omitted channel measurements without
     ]);
     common.cleanup();
     restored.cleanup();
+});
+
+test('remote sync clears Room EQ channel measurements and later edits do not restore them', async () => {
+    const { Plugin } = loadPlugin();
+    const host = new Plugin();
+    const client = new Plugin();
+    host._scheduleDesign = client._scheduleDesign = () => {};
+    host.setParameters({
+        enabled: false, inputBus: 2, outputBus: 3, channel: 'R',
+        ms0: 'left', mn0: 'Left seat', ms15: 'rear', mn15: 'Rear seat'
+    });
+    client.setSerializedParameters({ ...getSerializablePluginStateShort(host) });
+    const registry = createIdRegistry('h');
+    registry.setId(client, 'h.1');
+    const win = {
+        audioManager: { pipeline: [client] },
+        pipelineManager: { expandedPlugins: new Set([client]), selectedPlugins: new Set() },
+        pluginManager: {}
+    };
+    const snapshot = plugin => ({
+        masterBypass: false, slot: 'A', ids: ['h.1'],
+        pipeline: [JSON.parse(JSON.stringify(getSerializablePluginStateShort(plugin)))]
+    });
+    const sent = [];
+    const engine = new SyncEngine({
+        adapter: {
+            snapshot: () => snapshot(client),
+            apply: ops => applyOpsToPipeline(win, ops, { registry })
+        },
+        send: async message => { sent.push(message); return { ok: true, rev: 3 }; },
+        setTimer: () => 1,
+        clearTimer: () => {}
+    });
+    try {
+        engine.onConnected();
+        engine.onState({ ...snapshot(host), epoch: 'test', rev: 1 });
+        host.setParameters({ ms0: '', mn0: '' });
+        engine.onState({ ...snapshot(host), epoch: 'test', rev: 2 });
+        assert.deepEqual(snapshot(client), snapshot(host));
+        assert.equal(client.channelMeasurementIds[0], '');
+        assert.equal(client.channelMeasurementNames[0], '');
+        assert.equal(client.channelMeasurementIds[15], 'rear');
+        assert.deepEqual([client.enabled, client.inputBus, client.outputBus, client.channel], [false, 2, 3, 'R']);
+        assert.equal(engine.divergences, 0);
+
+        engine.noteGesture();
+        client.setParameters({ gn: 1 });
+        engine.markDirty('h.1');
+        engine.flushNow();
+        await Promise.resolve();
+        assert.deepEqual(sent[0].ops, [{ t: 'set', id: 'h.1', p: { gn: 1 } }]);
+        assert.equal(sent.length, 1);
+        applyOpsToPipeline({ ...win, audioManager: { pipeline: [host] } }, sent[0].ops, {
+            registry: { idOf: () => 'h.1' }
+        });
+        assert.deepEqual(snapshot(host), snapshot(client));
+    } finally {
+        engine.onDisconnected();
+        host.cleanup();
+        client.cleanup();
+    }
 });
 
 test('Room EQ reports every assigned measurement as an external asset dependency', () => {

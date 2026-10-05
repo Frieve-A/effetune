@@ -153,6 +153,20 @@ def _pitch_packet(midi: float) -> bytes:
     return bytes(packet)
 
 
+def _note_packet(revision_age: int = 8) -> bytearray:
+    packet = bytearray(16 + 5312)
+    struct.pack_into("<HHIIH", packet, 0, 24, 4, 2, 17, 5312)
+    struct.pack_into(
+        "<ffHHfIIII", packet, 16, 48_000.0, 1.0, 440, 21, 0.02, 50, 5, 3, revision_age
+    )
+    for offset, value in ((32, 0.75), (1788, 0.25), (1792, -12.0), (3548, -240.0)):
+        struct.pack_into("<f", packet, 16 + offset, value)
+    if revision_age != 0:
+        struct.pack_into("<f", packet, 16 + 3552, 0.5)
+        struct.pack_into("<f", packet, 16 + 5308, 1.0)
+    return packet
+
+
 def _analog_meter_packet(
     mode: int,
     channels: list[tuple[float, float]],
@@ -169,6 +183,51 @@ def _analog_meter_packet(
 
 
 class TelemetryDecoderTests(unittest.TestCase):
+    def test_note_spectrogram_v4_decodes_owned_revised_confidences(self) -> None:
+        packet = _note_packet()
+        frames, pending = _decode_telemetry_packet(
+            packet, {2: ("NoteSpectrogram", "notes", 0)}, 2
+        )
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(pending, 0)
+        frame = frames[0]
+        self.assertIsInstance(frame, effetune.NoteSpectrogramTelemetryFrame)
+        self.assertEqual((frame.sequence, frame.dropped), (17, 2))
+        self.assertEqual((frame.sample_rate, frame.time_seconds, frame.first_midi), (48000, 1, 21))
+        self.assertEqual((frame.frame_index, frame.divisions_per_semitone, frame.generation), (50, 5, 3))
+        self.assertEqual(frame.revision_age, 8)
+        self.assertEqual((len(frame.levels), frame.levels[0], frame.levels[-1]), (440, 0.75, 0.25))
+        self.assertEqual((len(frame.volume_db), frame.volume_db[0], frame.volume_db[-1]), (440, -12, -240))
+        self.assertEqual((len(frame.revised_levels), frame.revised_levels[0], frame.revised_levels[-1]), (440, 0.5, 1))
+        packet[:] = bytes(len(packet))
+        self.assertEqual((frame.levels[0], frame.volume_db[0], frame.revised_levels[0]), (0.75, -12, 0.5))
+
+    def test_note_spectrogram_v4_has_no_revision_during_warmup(self) -> None:
+        frames, _ = _decode_telemetry_packet(
+            _note_packet(0), {2: ("NoteSpectrogram", "notes", 0)}, 0
+        )
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0].revision_age, 0)
+        self.assertIsNone(frames[0].revised_levels)
+
+    def test_note_spectrogram_rejects_invalid_revisions_and_obsolete_frames(self) -> None:
+        for format_string, offset, value in (
+            ("<I", 44, 7),
+            ("<f", 3568, math.nan),
+            ("<f", 3568, -0.1),
+            ("<f", 5324, 1.1),
+            ("<H", 2, 3),
+            ("<H", 12, 3548),
+        ):
+            with self.subTest(offset=offset, value=value):
+                packet = _note_packet()
+                struct.pack_into(format_string, packet, offset, value)
+                frames, pending = _decode_telemetry_packet(
+                    packet, {2: ("NoteSpectrogram", "notes", 0)}, 2
+                )
+                self.assertEqual(frames, [])
+                self.assertEqual(pending, 2)
+
     def test_analog_meter_decodes_needle_and_program_records(self) -> None:
         nodes = {11: ("AnalogMeter", "meter", 0)}
 

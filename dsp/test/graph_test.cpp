@@ -2,6 +2,7 @@
 #include "allocation_guard.h"
 #include "effetune/abi.h"
 #include "engine.h"
+#include "test_support.h"
 
 #include <algorithm>
 #include <array>
@@ -277,6 +278,28 @@ void testLatencyCompensationAndPreNodeAlignment() {
   GRAPH_CHECK(audio[latency - 128u] == 1.0F);
   GRAPH_CHECK(audio[128u + latency - 128u] == 1.0F);
   et_engine_destroy(engine);
+}
+
+void testHostTransportFollowsNodeLatency() {
+  auto engine = std::make_unique<effetune::Engine>();
+  GRAPH_CHECK(engine->prepare(48000.0F, 2u, 128u, 0u) == ET_OK);
+  const et_instance delay = engine->createInstance("TestDelayPlugin");
+  const et_instance gain = engine->createInstance("TestGainPlugin");
+  auto serial = descriptor({{delay, "delay", kEnabled | kUniformLatency}, {gain, "gain"}},
+                           {{kEndpoint, 0u, "a", ""}, {0u, 1u, "b", ""}, {1u, kEndpoint, "c", ""}});
+  GRAPH_CHECK(engine->configureGraph(serial.data(), static_cast<std::uint32_t>(serial.size())) ==
+              ET_OK);
+  effetune::HostTransport host{};
+  host.flags = effetune::HostTransport::kPlaying | effetune::HostTransport::kTempoValid |
+               effetune::HostTransport::kPositionValid;
+  host.tempoBpm = 150.0;
+  host.ppqPosition = 4.0;
+  engine->setHostTransport(&host);
+  GRAPH_CHECK(engine->processGraph(2u, 128u, 0.0) == ET_OK);
+  const effetune::HostTransport *received =
+      effetune::test::testGainTransport(et_engine_instance_kernel_for_testing(engine.get(), gain));
+  GRAPH_CHECK(received != nullptr &&
+              std::fabs(received->ppqPosition - (4.0 - 192.0 * 2.5 / 48000.0)) < 1e-12);
 }
 
 void testSixteenChannelLatencySnapshot() {
@@ -678,6 +701,7 @@ int main() {
   testCapabilityAndIdentity();
   testSerialDisabledAndControlMix();
   testLatencyCompensationAndPreNodeAlignment();
+  testHostTransportFollowsNodeLatency();
   testSixteenChannelLatencySnapshot();
   testValidationPreparationAndWideGraph();
   testGraphOwnershipAndSafeUpdates();

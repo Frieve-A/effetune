@@ -115,7 +115,7 @@ test('Rhythm Analyzer effect graph lays out its header at desktop and mobile wid
                     if (window.innerWidth < 768) graph.style.aspectRatio = graph.style.getPropertyValue('--mobile-aspect-ratio');
                     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
                     window.feedRhythm(frame => plugin.handleTelemetry(frame));
-                    plugin.setParameters({ sp: 4 });
+                    plugin.setParameters({ sp: 4, vt: true, ve: true });
                     plugin.drawGraph();
                     const { width, height } = plugin.canvas;
                     const frame = plugin._readoutFrame;

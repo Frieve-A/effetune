@@ -8,12 +8,14 @@
  *     plot(point),  // optional: -> {left, top, width, height} plot rect in surface units (default: the
  *                   // whole surface); point = {x, y} of the pointer in surface units (lets panel layouts
  *                   // return the panel under the pointer, or null outside every panel)
- *     read(x, y),   // -> null | { cursor: string, rows: [{label, color, value, y?}], at?: {x, y}, crosshair? }
+ *     read(x, y),   // -> null | { cursor: string, rows: [{label, color, value, y?}], at?: {x, y}, crosshair?, plainCursor? }
  *                   // x, y, rows[].y and at are in surface units; value is a preformatted string
  *                   // (use GraphReadout.format); color is a CSS color, e.g. 'var(--et-graph-trace)'.
  *                   // A row with a finite y gets a dot at (at?.x ?? x, y) when that lies inside the plot;
  *                   // crosshair lines stay inside the plot; a result crosshair overrides the option for that
- *                   // point (e.g. 'none' over a keyboard gutter). Return null when nothing was drawn.
+ *                   // point (e.g. 'none' over a keyboard gutter); plainCursor: true shows a cursor that names a
+ *                   // category (e.g. 'Beat position 1') as one text instead of splitting off its number.
+ *                   // Return null when nothing was drawn.
  *     avoid(),      // optional: -> [{left, top, width, height}] extra occupied rects in surface units
  *     crosshair,    // 'x' | 'y' | 'xy' | 'none' (default 'x')
  *     legend,       // optional persistent legend [{label, color, opacity?}]; values fill in on hover
@@ -242,8 +244,8 @@
 
     // Renders a value as [prefix][sign slot][number][unit] spans so the CSS can keep the sign slot
     // at a constant width and the number right-aligned (the decimal point stays put while it changes).
-    // Text without a number (e.g. '—') goes into the number span.
-    function setValue(node, text) {
+    // Text without a number (e.g. '—'), or not split, goes into the number span.
+    function setValue(node, text, split = true) {
         if (node.dataset.value === text) return;
         node.dataset.value = text;
         if (!text) {
@@ -261,7 +263,7 @@
             });
             node.append(prefix, sign, number, unit);
         }
-        const [, prefix, sign, number, unit] = VALUE_PARTS.exec(text) || ['', '', '', text, ''];
+        const [, prefix, sign, number, unit] = (split && VALUE_PARTS.exec(text)) || ['', '', '', text, ''];
         setText(node.children[0], prefix);
         setText(node.children[1].firstChild, sign);
         setText(node.children[2], number);
@@ -471,12 +473,12 @@
             root.classList.add('graph-readout-active');
             root.classList.toggle('graph-readout-compact', plotLocal.width < COMPACT_WIDTH);
             if (legend) {
-                setValue(legendCursor, result.cursor);
+                setValue(legendCursor, result.cursor, !result.plainCursor);
                 fillRows(legend, result.rows);
                 holdWidths(legend, scale);
                 return;
             }
-            setValue(boxCursor, result.cursor);
+            setValue(boxCursor, result.cursor, !result.plainCursor);
             fillRows(boxRows, result.rows);
             holdWidths(box, scale);
             const areaRect = rectToLocal(area.getBoundingClientRect(), mountRect, scale);

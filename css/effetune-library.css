@@ -16,6 +16,7 @@
   --library-control-shadow: var(--et-control-shadow);
   --library-focus-ring: var(--et-focus-ring);
   --library-desktop-min-height: 360px;
+  --library-track-columns: 34px 34px 78px minmax(220px, 1fr) minmax(120px, 20%) minmax(120px, 20%) minmax(80px, 12%) 58px 34px;
 }
 
 body.view-library:not(.layout-mobile) .main-container {
@@ -507,7 +508,7 @@ body.view-library:not(.layout-mobile) .library-content {
 .library-track-header {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: 34px 34px minmax(220px, 1fr) minmax(120px, 20%) minmax(120px, 20%) minmax(80px, 12%) 58px 34px;
+  grid-template-columns: var(--library-track-columns);
   align-items: center;
   min-height: 40px;
   gap: 10px;
@@ -1514,7 +1515,7 @@ body.layout-mobile .library-paged-action-toast {
 .library-paged-row {
   min-height: 40px;
   display: grid;
-  grid-template-columns: 34px 34px minmax(220px, 1fr) minmax(120px, 20%) minmax(120px, 20%) minmax(80px, 12%) 58px 34px;
+  grid-template-columns: var(--library-track-columns);
   align-items: center;
   gap: 10px;
   border: 0;
@@ -1563,7 +1564,7 @@ body:not(.layout-mobile) .library-paged-tracks .library-paged-row > .library-pag
 }
 
 .library-paged-playlist-items .library-paged-row {
-  grid-template-columns: 34px 34px minmax(220px, 1fr) minmax(120px, 20%) minmax(120px, 20%) minmax(80px, 12%) 58px 34px 110px;
+  grid-template-columns: var(--library-track-columns) 110px;
 }
 
 .library-paged-playlist-items .library-paged-row.dragging {
@@ -1579,7 +1580,7 @@ body:not(.layout-mobile) .library-paged-tracks .library-paged-row > .library-pag
 }
 
 .library-paged-track-header {
-  grid-template-columns: 34px 34px minmax(220px, 1fr) minmax(120px, 20%) minmax(120px, 20%) minmax(80px, 12%) 58px 34px;
+  grid-template-columns: var(--library-track-columns);
   margin-top: 8px;
   border-bottom: 1px solid var(--library-row-border);
 }
@@ -1804,6 +1805,7 @@ body.layout-mobile .library-paged-media-card > .library-card-subtitle {
   grid-area: 3 / 1;
 }
 
+body.layout-mobile .library-paged-tracks .library-paged-row > .library-track-number-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-artist-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-album-cell,
 body.layout-mobile .library-paged-tracks .library-paged-row > .library-genre-cell,

@@ -481,6 +481,16 @@ function createHarness(options = {}) {
   return { audioContext, audioManager, audioPlayer, calls, manager, playlist, state };
 }
 
+function captureStreamBoundaries(harness) {
+  const frames = [];
+  harness.audioManager.workletNode.port = {
+    postMessage(message) {
+      if (message.type === 'streamBoundary') frames.push(message.frame);
+    }
+  };
+  return frames;
+}
+
 function installMaterializedPlaybackManager(harness, tracks = harness.playlist) {
   const playbackManager = new PlaybackManager(harness.audioPlayer);
   const entries = tracks.map(track => playbackManager.createTrackEntry(track));
@@ -5499,8 +5509,10 @@ test('manual transition invalidates and never consumes the decoded automatic mov
       return { duration: 7 };
     };
     harness.manager.prepareNextTrackBufferWithRepeatMode = () => {};
+    const boundaryFrames = captureStreamBoundaries(harness);
 
     assert.equal(await harness.manager.transitionToNextTrack(tracks[1], 1), true);
+    assert.deepEqual(boundaryFrames, [10 * 48000], 'the committed track starts now');
     assert.equal(harness.manager.currentBuffer.duration, 7);
     assert.deepEqual(calls.filter(call => call[0] === 'manual.prepareTrackBuffer'), [
       ['manual.prepareTrackBuffer', 'Two']
@@ -6642,6 +6654,7 @@ test('catalog WAV pair prepares cross-rate rolling handoff without full decode',
       playbackMode: 'rollingPcm'
     });
 
+    const boundaryFrames = captureStreamBoundaries(harness);
     await harness.manager.prepareNextTrackBufferWithRepeatMode();
 
     const scheduled = harness.manager.scheduledRollingTransition;
@@ -6666,8 +6679,12 @@ test('catalog WAV pair prepares cross-rate rolling handoff without full decode',
       audioElements: 0
     });
 
+    assert.deepEqual(boundaryFrames, [Math.round(expectedBoundary * 96000)]);
+
     assert.equal(harness.manager.commitScheduledRollingTransition(transports[0]), true);
 
+    assert.deepEqual(boundaryFrames, [Math.round(expectedBoundary * 96000)],
+      'the committed reservation is not cancelled');
     assert.equal(harness.state.currentTrackIndex, 1);
     assert.equal(harness.manager.rollingTransport, transports[1]);
     assert.equal(
@@ -7234,8 +7251,10 @@ test('pause cancels only the scheduled node and resume re-arms the same decoded 
     harness.manager.bufferStartTime = 10;
     harness.manager.bufferDuration = 5;
     harness.audioContext.currentTime = 12;
+    const boundaryFrames = captureStreamBoundaries(harness);
 
     await harness.manager.prepareNextTrackBufferWithRepeatMode();
+    assert.deepEqual(boundaryFrames, [15 * 48000]);
     const pendingSource = harness.manager.scheduledBufferTransition.source;
     const prepared = harness.manager.nextBuffer;
     calls.length = 0;
@@ -7253,6 +7272,8 @@ test('pause cancels only the scheduled node and resume re-arms the same decoded 
     assert.equal(harness.manager.nextBuffer, prepared);
     assert.equal(harness.manager.scheduledBufferTransition?.plan, prepared.automaticMovePlan);
     assert.equal(harness.manager.scheduledBufferTransition?.boundaryTime, 23);
+    assert.deepEqual(boundaryFrames, [15 * 48000, null, 23 * 48000],
+      'pause cancels the reserved track start and resume reserves it again');
     assert.equal(
       calls.filter(call => call[0] === 'audioContext.decodeAudioData').length,
       decodeCount

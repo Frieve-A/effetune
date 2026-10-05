@@ -1005,6 +1005,7 @@ test('startup view preference opens library unless explicit URL content takes pr
 test('Visualizer startup distinguishes reflected reloads from explicit URL requests', async () => {
   for (const [search, historyState, expected] of [
     ['', null, true],
+    ['?restorePipeline=reload', null, true],
     ['?p=local', { effetuneReflectedPipeline: 'local', effetuneVisualizer: 1 }, true],
     ['?p=shared', null, false],
     ['?p=shared', { effetuneReflectedPipeline: 'local' }, false],
@@ -1054,6 +1055,61 @@ test('initialize opens the configured Visualizer before the pipeline UI renders'
       assert.ok(visualizerIndex < names.indexOf('ui.updatePipelineUI'));
       assert.equal(names.filter(name => name === 'ui.showVisualizerView').length, 1);
     });
+});
+
+test('Reload restores both pipelines and the configured Visualizer while measurement return opens effects', async () => {
+  const savedState = {
+    pipelineA: [{ name: 'Reload A', enabled: true, parameters: {} }],
+    pipelineB: [{ name: 'Reload B', enabled: false, parameters: {} }],
+    currentPipeline: 'B'
+  };
+  for (const restore of ['reload', 'transient']) {
+    for (const pipelineFirst of [false, true]) {
+      await withAppModule({
+        search: '?mode=compact&restorePipeline=' + restore,
+        hash: '#pipeline-b',
+        originalPipelineStateLoaded: false,
+        pipelineStateLoaded: false,
+        electronAPI: {
+          async getPath() { return '/user'; },
+          async joinPaths(...parts) { return parts.join('/'); },
+          async fileExists() { return true; },
+          async readFile() {
+            return { success: true, content: JSON.stringify(savedState) };
+          }
+        }
+      }, async ({ calls, mod, timers, window }) => {
+        window.appConfig = {
+          startupView: 'visualizer',
+          pipelineStartup: 'preset',
+          startupPreset: 'Startup'
+        };
+        window.electronIntegration = { isElectron: true };
+        const app = new mod.App(createDependencies(calls));
+        if (pipelineFirst) {
+          await app.initializeAndBuildPipeline();
+          await app.applyStartupViewPreference();
+        } else {
+          const initialized = app.initialize();
+          await flushAndRunTimers(timers);
+          await initialized;
+        }
+
+        const names = calls.map(call => call[0]);
+        assert.equal(names.includes('ui.showVisualizerView'), restore === 'reload', restore);
+        if (restore === 'reload' && !pipelineFirst) {
+          assert.ok(names.indexOf('ui.showVisualizerView') < names.indexOf('ui.updatePipelineUI'));
+        }
+        assert.equal(names.includes('presetManager.loadPreset'), false);
+        assert.equal(app.audioManager.currentPipeline, 'B');
+        assert.deepEqual(app.audioManager.pipelineA.map(plugin => plugin.name), ['Reload A']);
+        assert.deepEqual(app.audioManager.pipelineB.map(plugin => plugin.name), ['Reload B']);
+        assert.equal(app.audioManager.pipelineB[0].enabled, false);
+        assert.deepEqual(calls.find(call => call[0] === 'history.replaceState'),
+          ['history.replaceState', {}, '', '/effetune.html?mode=compact#pipeline-b']);
+      });
+    }
+  }
 });
 
 test('initialize opens the configured library startup view before the pipeline UI renders', async () => {

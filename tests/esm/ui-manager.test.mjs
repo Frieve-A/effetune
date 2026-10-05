@@ -1224,6 +1224,23 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
   });
 });
 
+test('language changes refresh the existing Visualizer after loading translations', async () => {
+  await withUIHarness({
+    englishTranslations: { 'visualizer.quality': 'Quality' },
+    jaResponse: { text: JSON.stringify({ 'visualizer.quality': '画質' }) }
+  }, async ({ manager }) => {
+    const labels = [];
+    const visualizer = { updateUITexts: () => labels.push(manager.t('visualizer.quality')) };
+    manager.visualizerView = visualizer;
+
+    await manager.setLanguagePreference('ja', { persist: false });
+    await manager.setLanguagePreference('en', { persist: false });
+
+    assert.deepEqual(labels, ['画質', 'Quality']);
+    assert.equal(manager.visualizerView, visualizer);
+  });
+});
+
 test('shows a temporary prioritized warning for worklet processing overloads', async () => {
   await withUIHarness({
     englishTranslations: {

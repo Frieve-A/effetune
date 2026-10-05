@@ -177,6 +177,7 @@ async function instantiateDspBinding() { return globalThis.__binding; }
   processor.mutationDiscontinuity = () => false;
   processor.latencyPlansDiffer = () => false;
   return {
+    sandbox,
     binding,
     posts,
     processor,
@@ -188,6 +189,7 @@ async function instantiateDspBinding() { return globalThis.__binding; }
       sandbox.currentTime = time;
       const output = [new Float32Array(BLOCK_SIZE), new Float32Array(BLOCK_SIZE)];
       assert.equal(processor.process([input], [output], {}), true);
+      sandbox.currentFrame += BLOCK_SIZE;
       return output;
     }
   };
@@ -281,6 +283,11 @@ test('comparison spectrum tap captures input/output PCM and bypasses measurement
 
   const messages = spectrumMessages(harness);
   assert.deepEqual(messages.map(({ message }) => message.bufferPosition), [2048, 0]);
+  assert.equal(messages[0].message.timing.version, 1);
+  assert.equal(messages[0].message.timing.windowAgeFrames, 2048);
+  assert.equal(messages[0].message.timing.completionFrames, 0);
+  assert.equal(messages[1].message.timing.captureEndFrame - messages[0].message.timing.captureEndFrame, 2048);
+  assert.equal(messages[1].message.timing.frameIndex, 1);
   assert.equal(messages.every(({ message }) =>
     message.spectrumPluginId === 7 && !('pluginId' in message) &&
     message.mode === 'compare' &&
@@ -303,6 +310,21 @@ test('comparison spectrum tap captures input/output PCM and bypasses measurement
   let peak = 1;
   for (let index = 2; index < levels.length; index++) if (levels[index] > levels[peak]) peak = index;
   assert.ok(Math.abs(peak - Math.round(1000 * FFT_SIZE / 48000)) <= 1);
+});
+
+test('capture gaps start a new Spectrum Tap generation on the actual worklet timeline', async () => {
+  const h = await createHarness();
+  await setupFallback(h);
+  await h.send({ type: 'setSpectrumTap', pluginId: 7, enabled: true, mode: 'after' });
+  processBlocks(h, 16);
+  const previous = spectrumMessages(h).at(-1).message.timing;
+  h.sandbox.currentFrame += 4096;
+  const resumedAt = h.sandbox.currentFrame;
+  processBlocks(h, 16);
+  const next = spectrumMessages(h).at(-1).message.timing;
+  assert.ok(next.generation > previous.generation);
+  assert.equal(next.frameIndex, 0);
+  assert.equal(next.captureEndFrame, resumedAt + 2048);
 });
 
 test('comparison aligns input to output across effect latency changes and processing resets', async () => {
@@ -364,6 +386,9 @@ test('HQ comparison uses aligned continuous analysis and quality changes rebuild
   assert.ok(messages.length > 5);
   for (const { message, transfer } of messages) {
     assert.equal(message.quality, 'hq');
+    assert.equal(message.timing.captureEndFrame, hqState.originFrame + message.outputSpectrum.captureEndSample);
+    assert.equal(message.timing.windowAgeFrames, 8192);
+    assert.equal(message.timing.completionFrames, 2096);
     assert.equal(message.inputSpectrum.captureEndSample, message.outputSpectrum.captureEndSample);
     assert.equal(message.inputSpectrum.frameIndex, message.outputSpectrum.frameIndex);
     assert.equal(transfer.length, 4);
@@ -405,7 +430,7 @@ test('After mode omits Before capture and live mode changes reset only the requi
   for (let block = 0; block < 16; block++) harness.process(sineBlock(block * BLOCK_SIZE));
   let message = spectrumMessages(harness).at(-1);
   assert.equal(message.message.mode, 'after');
-  assert.equal(message.message.endFrame, 48128);
+  assert.equal(message.message.endFrame, 48000 + FFT_SIZE / 2);
   assert.equal('inputBuffer' in message.message, false);
   assert.equal(message.transfer.length, 1);
   assert.equal(message.transfer[0], message.message.outputBuffer.buffer);

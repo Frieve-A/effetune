@@ -9,7 +9,7 @@ const RHYTHM_ANALYZER_EVENT_BYTES = 32;
 // Beats per row of the Groove view (JS-only display key sp).
 const RHYTHM_ANALYZER_SPANS = [4, 6, 8, 12, 16];
 // ck is the kernel's Metronome Click; vt/vm/ve/vl show the tempogram, timing lanes, echo rows and beat lens.
-const RHYTHM_ANALYZER_DEFAULTS = Object.freeze({ mn: 40, mx: 240, ck: false, sp: 8, vt: true, vm: true, ve: true, vl: true });
+const RHYTHM_ANALYZER_DEFAULTS = Object.freeze({ mn: 40, mx: 240, ck: false, sp: 8, vt: false, vm: true, ve: false, vl: true });
 const RHYTHM_ANALYZER_PANEL_KEYS = ['vt', 'vm', 've', 'vl'];
 // Allowed ranges of Min BPM (mn) and Max BPM (mx).
 const RHYTHM_ANALYZER_MN_RANGE = [40, 192];
@@ -48,8 +48,8 @@ const RHYTHM_ANALYZER_BAND_NAMES = ['Low', 'Mid', 'High'];
 // Bands from top to bottom (High on top) in lanes, echo rows, lens and readout, and each band's row.
 const RHYTHM_ANALYZER_BAND_ORDER = [2, 1, 0];
 const RHYTHM_ANALYZER_BAND_ROWS = RHYTHM_ANALYZER_BAND_NAMES.map((name, band) => RHYTHM_ANALYZER_BAND_ORDER.indexOf(band));
-// Lens body height, in font sizes, from which a band label fits above its row's marks (0.15 body >= 1.4 font sizes).
-const RHYTHM_ANALYZER_LENS_LABEL_BODY = 1.4 / 0.15;
+// Lens row height, in font sizes, from which a band label fits above its row's marks (0.35 row >= 1.25 font sizes).
+const RHYTHM_ANALYZER_LENS_LABEL_ROW = 1.25 / 0.35;
 // Beat LED fade after each predicted beat, in seconds of analysed time.
 const RHYTHM_ANALYZER_LED_FADE_SECONDS = 0.09;
 const RHYTHM_ANALYZER_MINUS = '−';
@@ -371,6 +371,12 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.lensDisplay = null;
         this.eventSerial = 0;
         this.snapshot = null;
+        this.frameBase = 0;
+        this.epochBase = 0;
+        this.clearBeatLed();
+    }
+
+    clearBeatLed() {
         this.ledNextBeat = null;
         this.ledNextIndex = null;
         this.ledEpoch = null;
@@ -378,6 +384,27 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.ledIndex = null;
         this.ledBeat = null;
         this.ledLevel = 0;
+    }
+
+    // A kernel-side reset (a track boundary of the player, a power resume) restarts the analysis with a newer
+    // generation but keeps the display: the new generation's frames and lock epochs continue after the previous ones.
+    spliceGeneration(generation) {
+        this.activeGeneration = generation;
+        if (this.lastFrameCount !== null) this.frameBase = this.lastFrameCount;
+        this.epochBase += 2 ** 32;
+        this.lastFrameCount = null;
+        this.openSegment = null;
+        this.clearBeatLed();
+    }
+
+    rebaseSnapshot(snapshot) {
+        snapshot.frameCount += this.frameBase;
+        snapshot.nextBeatFrame += this.frameBase;
+        snapshot.lockEpoch += this.epochBase;
+        for (const event of snapshot.events) {
+            event.time += this.frameBase * snapshot.hopSeconds;
+            event.epoch += this.epochBase;
+        }
     }
 
     handleTelemetry(frame) {
@@ -402,9 +429,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
             this.timeFence = null;
         } else if (snapshot.generation !== this.activeGeneration) {
             if (!isNewerRhythmAnalyzerCounter(snapshot.generation, this.activeGeneration)) return;
-            this.clearHistory();
-            this.activeGeneration = snapshot.generation;
+            this.spliceGeneration(snapshot.generation);
         }
+        this.rebaseSnapshot(snapshot);
         const frames = this.lastFrameCount === null ? 0 : (snapshot.frameCount - this.lastFrameCount) >>> 0;
         if (!this.writeTempogram(snapshot)) return;
         // The tracker state and beat clock come first, so the frame's events find their epoch offset.
@@ -507,13 +534,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
     // Beat LED: lights when the analysed position passes a predicted beat and fades over analysed time.
     updateBeatLed(snapshot) {
         if (!snapshot.locked) {
-            this.ledNextBeat = null;
-            this.ledNextIndex = null;
-            this.ledEpoch = null;
-            this.ledBeatEpoch = null;
-            this.ledIndex = null;
-            this.ledBeat = null;
-            this.ledLevel = 0;
+            this.clearBeatLed();
             return;
         }
         const now = snapshot.frameCount * snapshot.hopSeconds;
@@ -928,7 +949,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     fillOpacity: style?.beatFillOpacity ?? 0.3, strokeOpacity: style?.beatStrokeOpacity ?? 1 },
                     (canvas.width - size) / 2, canvas.height / 2 - 0.55 * size, size, lineWidth);
                 target.restore();
-            });
+            }, { palette: style?.beatUsePalette !== false });
         }
         if (options.showBpm !== false) {
             const value = Number.isFinite(bpm) ? locked ? bpm.toFixed(1) : `(${bpm.toFixed(1)})` : RHYTHM_ANALYZER_DASH;
@@ -1128,11 +1149,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
             top = header.bottom + pad;
         }
         const captionRow = showText ? 1.3 * fontSize : 0;
-        // The lens's axis name row below its slot labels; the name's baseline sits 8 px above the bottom edge.
-        const nameRow = showText ? axisFont + 8 * dpr : 0;
         // The lens height from which its band labels fit above their rows' marks; the narrow layout keeps it as the
-        // lens minimum, and the lens compares its own height with this same value.
-        const lensLabelHeight = captionRow + nameRow + RHYTHM_ANALYZER_LENS_LABEL_BODY * fontSize;
+        // lens minimum.
+        const lensLabelHeight = 3 * RHYTHM_ANALYZER_LENS_LABEL_ROW * fontSize;
         const stacked = width < height;
         // Enabled panels top to bottom with their height shares. On landscape canvases the lens sits beside
         // the lanes and echo rows; without them, and on portrait canvases, it takes a row of its own.
@@ -1211,13 +1230,15 @@ class RhythmAnalyzerPlugin extends PluginBase {
 
         const style = {
             palette, showText, showAxes, write, axisName, nameX, tickRight, bandLabels, drawSignal, markerColor, signalColor, positionColor, tempogramColor,
-            fontSize, captionRow, nameRow, lensLabelHeight, pad, dpr
+            fontSize, axisFont, captionRow, pad, dpr
         };
         if (strip) this._drawTempogram(context, strip, scroll, style);
         for (const view of views) this._drawLane(context, view, style);
         if (showAxes && main) separate(main, 3);
         if (showAxes && echo) separate(echo, rows);
-        if (lensRect) this._drawLens(context, lensRect, lens, style);
+        if (showAxes && lensRect) separate(lensRect, 3);
+        // Beside the lanes alone the lens rows continue the lanes' rows, whose band labels then name both.
+        if (lensRect) this._drawLens(context, lensRect, lens, { ...style, bandLabels: besideLens && !echo ? null : bandLabels });
         if (showText && main) {
             caption(`Last ${span} beats`, main.left + pad, main.top - captionRow / 2, main.width - 2 * pad);
             axisName('Timing (ms)', main.left + nameX, main.top + main.height / 2, main.height - pad, true);
@@ -1546,23 +1567,22 @@ class RhythmAnalyzerPlugin extends PluginBase {
         return this.tempogramCanvas;
     }
 
-    // Beat lens: one column per slot in the beat; per band, the offset tick and a ± spread bar.
+    // Beat lens: one column per slot in the beat; per band, the offset tick and a ± spread bar. Its three band
+    // rows match the timing lanes' rows, so beside the lanes each band reads across one line. The scale line runs
+    // along the top, and the slot labels and axis name along the bottom, drawn over the plot as in the lanes.
     _drawLens(context, rect, lens, {
-        palette, showText, showAxes, write, axisName, bandLabels, drawSignal, signalColor, positionColor, fontSize, captionRow, nameRow: fullNameRow, lensLabelHeight, dpr
+        palette, showText, showAxes, write, axisName, bandLabels, drawSignal, signalColor, positionColor, fontSize, axisFont, dpr
     }) {
         const columns = RHYTHM_ANALYZER_SLOT_LABELS.length;
         const columnWidth = rect.width / columns;
-        // Below the body: the slot labels, then the axis name. A rect too short to hold a positive body under them
-        // drops the axis name first, then the slot labels, so nothing is drawn outside the rect.
-        const nameRow = rect.height > captionRow + fullNameRow ? fullNameRow : 0;
-        const labelRow = rect.height > captionRow ? captionRow : 0;
-        const body = rect.height - labelRow - nameRow;
-        if (body <= 0) return;
+        const rowHeight = rect.height / 3;
+        if (rowHeight <= 0) return;
         const centerX = slot => rect.left + (slot + 0.5) * columnWidth;
         const msScale = 0.42 * columnWidth / RHYTHM_ANALYZER_DEVIATION_MS;
         // The scale line keeps its tick half-height (2 px) below the rect top.
-        const scaleY = rect.top + (0.1 * body > 2 * dpr ? 0.1 * body : 2 * dpr);
-        const rowY = row => rect.top + (0.32 + 0.27 * row) * body;
+        const scaleY = rect.top + 3 * dpr;
+        const rowY = index => rect.top + (index + 0.5) * rowHeight;
+        const markHeight = 0.15 * rowHeight;
         if (showAxes) {
             for (let slot = 0; slot < columns; slot++) {
                 const x = centerX(slot);
@@ -1570,7 +1590,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 context.lineWidth = 0.5 * dpr;
                 context.beginPath();
                 context.moveTo(x, scaleY);
-                context.lineTo(x, rect.top + body);
+                context.lineTo(x, rect.top + rect.height);
                 context.stroke();
                 context.strokeStyle = palette.strongGrid;
                 context.lineWidth = 0.8 * dpr;
@@ -1585,26 +1605,31 @@ class RhythmAnalyzerPlugin extends PluginBase {
             }
         }
         if (showText) {
-            if (labelRow) {
-                RHYTHM_ANALYZER_SLOT_LABELS.forEach((label, slot) => {
-                    write(label, centerX(slot), rect.top + body + labelRow / 2, palette.label, 'center');
-                });
+            // The axis name's baseline sits 8 px above the bottom edge, and the slot labels just above it. A short
+            // lens drops the axis name first, then the slot labels, so no text is drawn outside it.
+            const bottom = rect.top + rect.height;
+            const nameRow = axisFont + 8 * dpr;
+            const named = rect.height > nameRow + 1.2 * fontSize;
+            const slotY = bottom - (named ? nameRow : 0) - 0.6 * fontSize;
+            if (slotY >= rect.top) {
+                RHYTHM_ANALYZER_SLOT_LABELS.forEach((label, slot) => write(label, centerX(slot), slotY, palette.label, 'center'));
             }
-            if (nameRow) axisName('Position in beat', rect.left + rect.width / 2, rect.top + rect.height - 8 * dpr, rect.width);
+            if (named) axisName('Position in beat', rect.left + rect.width / 2, bottom - 8 * dpr, rect.width);
         }
-        // The band labels sit just above their row's marks where the rows leave room (a narrow canvas keeps that
-        // room when it can), else on the row. They are drawn before the marks.
-        const labelY = rect.height >= lensLabelHeight ? row => rowY(row) - 0.06 * body - 0.7 * fontSize : rowY;
-        if (showText) bandLabels(rect.left, labelY);
+        // The band labels sit above their row's marks where the rows leave room, else on the row; taller rows lift
+        // them further from the marks, up to a gap of 0.6 font sizes. They are drawn before the marks.
+        const labelLift = 0.35 * rowHeight - 0.55 * fontSize;
+        const labelOffset = markHeight + (labelLift < 1.1 * fontSize ? labelLift : 1.1 * fontSize);
+        const labelY = rowHeight >= RHYTHM_ANALYZER_LENS_LABEL_ROW * fontSize ? index => rowY(index) - labelOffset : rowY;
+        if (showText && bandLabels) bandLabels(rect.left, labelY);
         if (showText && !lens) write('waiting for a steady beat', rect.left + rect.width / 2, rowY(1), palette.label, 'center');
         if (lens?.rows.length) {
             const maxCount = lens.rows.reduce((max, row) => (row.count > max ? row.count : max), 0);
-            const barHeight = 0.06 * body;
             const limit = RHYTHM_ANALYZER_DEVIATION_MS;
             // The offset values sit below their marks. On short lenses a value that would touch its mark is left
             // out, as is one that would touch a label.
             const valueSize = 0.85 * fontSize;
-            const valueClearsMark = 0.05 * body >= 0.5 * valueSize;
+            const valueClearsMark = markHeight >= 0.5 * valueSize;
             context.save();
             context.beginPath();
             context.rect(rect.left, rect.top, rect.width, rect.height);
@@ -1622,13 +1647,13 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     const alpha = 0.35 + 0.65 * row.count / maxCount;
                     target.globalAlpha = 0.3 * alpha;
                     target.fillStyle = color;
-                    target.fillRect(x - row.sd * msScale, y - barHeight / 2, 2 * row.sd * msScale, barHeight);
+                    target.fillRect(x - row.sd * msScale, y - markHeight / 2, 2 * row.sd * msScale, markHeight);
                     target.globalAlpha = alpha;
                     target.strokeStyle = color;
                     target.lineWidth = 2 * dpr;
                     target.beginPath();
-                    target.moveTo(x, y - 0.06 * body);
-                    target.lineTo(x, y + 0.06 * body);
+                    target.moveTo(x, y - markHeight);
+                    target.lineTo(x, y + markHeight);
                     target.stroke();
                 }
                 target.globalAlpha = 1;
@@ -1639,7 +1664,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 const offset = row.offset < -limit ? -limit : row.offset > limit ? limit : row.offset;
                 const x = centerX(row.slot) + offset * msScale;
                 const value = rhythmAnalyzerSigned(row.offset, 0);
-                const valueY = y + 0.11 * body;
+                const valueY = y + 2 * markHeight;
                 if (showText && valueClearsMark && (row.offset < 0 ? -row.offset : row.offset) >= RHYTHM_ANALYZER_LABEL_MIN_MS) {
                     write(value, x, valueY, signalColor, 'center', 'middle', valueSize);
                 }
@@ -1687,6 +1712,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             slot = slot < 0 ? 0 : slot > RHYTHM_ANALYZER_SLOT_LABELS.length - 1 ? RHYTHM_ANALYZER_SLOT_LABELS.length - 1 : slot;
             return {
                 cursor: `Beat position ${RHYTHM_ANALYZER_SLOT_LABELS[slot]}`,
+                plainCursor: true,
                 rows: frame.lensSummary.rows.filter(row => row.slot === slot)
                     .sort((a, b) => RHYTHM_ANALYZER_BAND_ROWS[a.band] - RHYTHM_ANALYZER_BAND_ROWS[b.band])
                     .map(row => ({

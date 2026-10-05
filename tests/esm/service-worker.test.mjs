@@ -145,6 +145,8 @@ function createPrecacheFixture(t) {
     'css/pipeline-analyzer.css',
     'css/user-data-backup.css',
     'manifest.json',
+    'LICENSE',
+    'js/vendor/sqlite/LICENSE.md',
     'sw.js'
   ]) {
     writeFixtureFile(root, relativePath);
@@ -206,6 +208,22 @@ test('precache contains system preset metadata and preset files', () => {
   assert.ok(presetUrls.some(url => url.endsWith('.effetune_preset')));
   for (const presetUrl of presetUrls) {
     assert.ok(precacheUrls.has(presetUrl), `${presetUrl} should be precached`);
+  }
+});
+
+test('precache retains application and third-party notices for offline use', () => {
+  const precacheUrls = loadPrecacheUrls();
+  for (const relativePath of [
+    'LICENSE',
+    'plugins/dsp/NOTICE.txt',
+    'js/vendor/jszip-3.10.1.NOTICE.txt',
+    'js/vendor/jsmediatags-3.9.5.NOTICE.txt',
+    'js/vendor/music-metadata-browser.NOTICE.txt',
+    'js/vendor/offline-audio-encoders.NOTICE.txt',
+    'js/vendor/rolling-pcm-decoder-worker.NOTICE.txt',
+    'js/vendor/sqlite/LICENSE.md'
+  ]) {
+    assert.ok(precacheUrls.has(`./${relativePath}`), `${relativePath} should be precached`);
   }
 });
 

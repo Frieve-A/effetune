@@ -93,7 +93,7 @@
             stop();
             const audio = window.pipelineManager?.audioManager || window.audioManager;
             session = { instance: this, audio, pointerId: event.pointerId, frame: null,
-                point: { x: event.clientX, y: event.clientY }, frequency: null };
+                point: { x: event.clientX, y: event.clientY }, frequency: null, sound: null };
             this.mount.setPointerCapture(event.pointerId);
             event.preventDefault();
             this.update();
@@ -121,9 +121,12 @@
                 const key = axes.hitKey(axis.keys, along, across, axis.gutter, axis.blackDepth);
                 frequency = key ? axes.noteFrequency(key.midi, axis.a4) : axes.nearestSemitone(frequency, axis.a4);
             }
-            if (frequency !== session.frequency) {
+            const sound = !this.target.pitchPreview && !axis.gutter &&
+                window.appConfig?.frequencyPreviewSound === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
+            if (frequency !== session.frequency || sound !== session.sound) {
                 session.frequency = frequency;
-                session.audio?.setFrequencyPreview(frequency);
+                session.sound = sound;
+                session.audio?.setFrequencyPreview(frequency, sound);
             }
             this.draw();
         }

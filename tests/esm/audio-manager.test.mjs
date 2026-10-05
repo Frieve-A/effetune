@@ -30,13 +30,13 @@ test('frequency preview holds one force-active lease through stop ramps and rapi
     clearTimeout(id) { timers.delete(id); }
   }, async () => {
     manager.setFrequencyPreview(440);
-    manager.setFrequencyPreview(880);
+    manager.setFrequencyPreview(880, 'bandpassNoise');
     assert.equal(leases.length, 1);
     assert.deepEqual(leases[0], { reason: 'frequency-preview', options: { mode: 'force-active' }, released: false });
     manager.setFrequencyPreview(null);
     assert.equal(leases[0].released, false);
     assert.equal(timers.size, 1);
-    manager.setFrequencyPreview(220);
+    manager.setFrequencyPreview(220, 'unknown');
     assert.equal(timers.size, 0);
     assert.equal(leases.length, 1);
     manager.setFrequencyPreview(null);
@@ -45,6 +45,7 @@ test('frequency preview holds one force-active lease through stop ramps and rapi
     assert.equal(manager._releaseFrequencyPreviewLease, null);
     assert.deepEqual(messages[0], messages[1]);
     assert.deepEqual(messages[0].map(message => message.frequency), [440, 880, null, 220, null]);
+    assert.deepEqual(messages[0].map(message => message.sound), ['sine', 'bandpassNoise', 'sine', 'sine', 'sine']);
   });
 });
 

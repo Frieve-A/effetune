@@ -139,7 +139,7 @@ Abre **Visualizer** desde la cabecera en PC, la pestaña **Reproductor** en móv
 10. Haz clic en el botón Preajustes de efecto de cada efecto para guardar o aplicar ajustes solo para ese efecto
 11. Para ajustar un control deslizante con precisión, mantenga pulsada la tecla Shift mientras lo arrastra; el valor cambiará de unidad mínima en unidad mínima
    - En los deslizadores que admiten valores negativos y positivos, el relleno va de 0 al valor actual. Los deslizadores Ratio toman 1.0 como punto de partida.
-12. En los gráficos compatibles con eje de frecuencia o notas, arrastra a lo largo del eje para escuchar esa frecuencia como un tono sinusoidal de -12 dB a través de la cadena de efectos. Cuando aparece el teclado, la frecuencia se ajusta al semitono más cercano; si arrastras sobre una tecla, escucharás su nota
+12. En los gráficos compatibles con eje de frecuencia o notas, arrastra a lo largo del eje para escuchar la frecuencia seleccionada a través de la cadena de efectos. En **Configuración > General > Sonido de preescucha de frecuencia**, elige **Onda sinusoidal** (opción predeterminada, -12 dB) o **Ruido de banda limitada**, centrado en la frecuencia seleccionada. Note Spectrogram, Pitch Meter, Chroma Spiral y los teclados de piano siempre usan una onda sinusoidal. Cuando aparece el teclado, la frecuencia se ajusta al semitono más cercano; si arrastras sobre una tecla, escucharás su nota
 
 ### Uso de Presets
 
@@ -411,6 +411,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Modulation | Rotary Speaker | Combina el movimiento independiente de bocina y tambor | [Detalles](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Efecto de modulación basado en volumen | [Detalles](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Añade una sutil fluctuación de tono tipo cinta o disco para carácter vintage | [Detalles](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | Aprende a predecir el audio para extraer el residuo o crear resonancias que evolucionan | [Detalles](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | Simulación de resonancia de bocina con dimensiones personalizables | [Detalles](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Resonancia de bocina más suave para una coloración natural en la escucha | [Detalles](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Efecto de resonancia de frecuencia con hasta 5 resonadores | [Detalles](plugins/resonator.md#modal-resonator) |

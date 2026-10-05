@@ -139,7 +139,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 10. केवल उस इफेक्ट की सेटिंग सहेजने या लागू करने के लिए उसका इफ़ेक्ट प्रीसेट बटन क्लिक करें
 11. स्लाइडर को बारीकी से एडजस्ट करने के लिए उसे ड्रैग करते समय Shift दबाए रखें; मान हर बार एक न्यूनतम स्टेप से बदलेगा
    - ऋणात्मक और धनात्मक दोनों मानों वाले स्लाइडर में रंगा हुआ हिस्सा 0 से वर्तमान मान तक होता है। Ratio स्लाइडर में यह 1.0 से शुरू होता है।
-12. फ़्रीक्वेंसी या नोट अक्ष वाले समर्थित ग्राफ़ में, इफ़ेक्ट चेन से उस फ़्रीक्वेंसी का -12 dB साइन टोन सुनने के लिए अक्ष के साथ ड्रैग करें। पियानो की-बोर्ड दिखने पर टोन सबसे नज़दीकी सेमीटोन पर स्नैप होता है; किसी कुंजी पर ड्रैग करने से उसी कुंजी का सुर सुनाई देता है
+12. फ़्रीक्वेंसी या नोट अक्ष वाले समर्थित ग्राफ़ में, चुनी हुई फ़्रीक्वेंसी को इफ़ेक्ट चेन से सुनने के लिए अक्ष के साथ ड्रैग करें। **विन्यास > सामान्य > फ़्रीक्वेंसी सुनने के लिए ध्वनि** में **साइन तरंग** (डिफ़ॉल्ट, -12 dB) या **बैंड-पास नॉइज़** चुनें, जिसका केंद्र चुनी हुई फ़्रीक्वेंसी पर होता है। Note Spectrogram, Pitch Meter, Chroma Spiral और पियानो की-बोर्ड हमेशा साइन तरंग का उपयोग करते हैं। पियानो की-बोर्ड दिखने पर टोन सबसे नज़दीकी सेमीटोन पर स्नैप होता है; किसी कुंजी पर ड्रैग करने से उसी कुंजी का सुर सुनाई देता है
 
 ### प्रीसेट्स का उपयोग
 
@@ -411,6 +411,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | Modulation | Rotary Speaker | horn और drum की स्वतंत्र rotation को जोड़ता है | [विवरण](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | volume-based modulation effect | [विवरण](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | vintage character के लिए tape या record-style subtle pitch wavering जोड़ता है | [विवरण](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | ऑडियो का अनुमान लगाना सीखकर अवशेष निकालता है या बदलता हुआ अनुनाद बनाता है | [विवरण](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | customizable dimensions वाला horn resonance simulation | [विवरण](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | natural listening color के लिए smoother horn-speaker resonance | [विवरण](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 5 resonators तक वाला frequency resonance effect | [विवरण](plugins/resonator.md#modal-resonator) |

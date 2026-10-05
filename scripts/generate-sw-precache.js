@@ -22,6 +22,8 @@ const explicit = [
   'features/measurement/peq-calculator/smoothing.js',
   'features/measurement/ui/peq-clipboard.js',
   'manifest.json',
+  'LICENSE',
+  'js/vendor/sqlite/LICENSE.md',
   'package.json',
   'sw.js',
   'plugins/plugins.txt'

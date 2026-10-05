@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:68f917c955686e9eb2236a1fad657402b1434e117f25b78f8dee1498a64aa85f",
+  "sourceDigest": "sha256:f26e5185dee78f53b707740612f977478e809b3596b9edf8c6c29de8b26aee4a",
   "emsdkVersion": "6.0.2",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:645fc93663840f73d04c8c2be904887ec140bd57d4888df4801449f46325bc2a",
+    "digest": "sha256:79ab63bdb55e69ab2ba710f4d3bce86b494624e125424f687c81739cc7a9c185",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:61aa99d21c27ef49ba5337af99c7aa83036bb1ca2301d4c25f2fd3b15fe60f99"
+        "sha256": "sha256:aaedc6696adf38ee312a155ae28e02e2e481c111605efa8c65c18b452cfefdae"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:1849583318bdf597f2c965c9d73e9b561d6879415c68fe7983257b7202e4de17"
+        "sha256": "sha256:79500b6294e74cd987b704ca287083d04666e3bef5433f722c6d7313002358bf"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -95,7 +95,7 @@
       {
         "id": "dsp/include/effetune/kernel.h",
         "kind": "file",
-        "sha256": "sha256:077893c235793dd2a250404672bbee43f18e91fd0e24753b96fddc846dc853ff"
+        "sha256": "sha256:3f239f230c9d7fb1a0dfd72d19c77b9db5ff6555b899bc01b3f2e1238e2695ef"
       },
       {
         "id": "dsp/include/effetune/telemetry.h",
@@ -926,6 +926,12 @@
       "assets": []
     },
     {
+      "name": "AdaptivePredictionEffectPlugin",
+      "hash": 3956844272,
+      "byteCapacity": 0,
+      "assets": []
+    },
+    {
       "name": "HornResonatorPlugin",
       "hash": 3233763204,
       "byteCapacity": 0,
@@ -1109,7 +1115,7 @@
     }
   ],
   "sizes": {
-    "baseline": 5315674,
-    "simd": 5483747
+    "baseline": 4174462,
+    "simd": 4354411
   }
 }

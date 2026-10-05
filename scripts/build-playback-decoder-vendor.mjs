@@ -7,7 +7,7 @@ import esbuild from 'esbuild';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = path.join(repoRoot, 'node_modules', 'mediabunny', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-const expectedVersion = '1.61.0';
+const expectedVersion = '1.61.1';
 if (packageJson.version !== expectedVersion) {
   throw new Error(`Expected mediabunny ${expectedVersion}, found ${packageJson.version}`);
 }
@@ -34,7 +34,8 @@ const notice = [
   'EffeTune Rolling PCM Decoder Worker',
   '',
   `Generated from mediabunny ${expectedVersion}.`,
-  'Source: https://github.com/Vanilagy/mediabunny',
+  `Source: https://github.com/Vanilagy/mediabunny/tree/v${expectedVersion}`,
+  'The unmodified Mediabunny source for this bundle is available at the URL above under MPL-2.0.',
   `Bundle SHA-256: ${digest}`,
   '',
   'mediabunny license:',

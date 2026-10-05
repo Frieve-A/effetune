@@ -80,7 +80,9 @@ Analyzer fields:
 | Note Spectrogram | `frameIndex` / `frame_index` | Unsigned observation counter within the current analysis generation |
 | Note Spectrogram | `divisionsPerSemitone` / `divisions_per_semitone` | `5`; each semitone has bins at -40, -20, 0, +20, and +40 cents around its center |
 | Note Spectrogram | `generation` / `generation` | Non-zero analysis generation; a change indicates that analyzer state restarted |
+| Note Spectrogram | `revisionAge` / `revision_age` | 0 when there is no revision, or 8 when revised confidences refer to the frame eight observations earlier in the same generation; subtract this age from `frameIndex` modulo 2^32 to identify that frame |
 | Note Spectrogram | `levels` / `levels` | Pitch confidence in [0, 1] as JavaScript `Float32Array[440]` or Python `tuple[440]`; index `i` maps to MIDI `firstMidi + (i - 2) / divisionsPerSemitone` |
+| Note Spectrogram | `revisedLevels` / `revised_levels` | Revised pitch confidence in [0, 1], with the same shape and pitch indexing as `levels`; null / `None` when `revisionAge` is 0 |
 | Note Spectrogram | `volumeDb` / `volume_db` | Volume in dB as JavaScript `Float32Array[440]` or Python `tuple[440]`, with the same pitch indexing as `levels`; values include a 3 dB/octave correction above 100 Hz, and -240 dB means no level was measured |
 | Pitch | `sampleRate` / `sample_rate` | Hz |
 | Pitch | `timeSeconds` / `time_seconds` | Observation time in seconds on the processing timeline |

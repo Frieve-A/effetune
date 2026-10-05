@@ -136,8 +136,15 @@ def _canonicalize_processing_parameters(
     return canonical
 
 
-def _effect_channels(channel: str, channels: int) -> int:
+def _effect_channels(
+    channel: str, channels: int, effect_type: str | None = None
+) -> int:
     if channel == "all":
+        if effect_type == "AdaptivePredictionEffect" and channels > 2:
+            raise ValidationError(
+                "AdaptivePredictionEffect processes one or two channels; "
+                "select stereo or a single channel."
+            )
         return channels
     if channel == "stereo":
         return min(channels, 2)
@@ -342,7 +349,9 @@ class Stream:
         for index, effect in enabled:
             if effect.effect_type == "BassManagement":
                 validate_bass_management(effect.parameters, effect.channel, effect.assets, self.channels)
-            processing_channels[index] = _effect_channels(effect.channel, self.channels)
+            processing_channels[index] = _effect_channels(
+                effect.channel, self.channels, effect.effect_type
+            )
             metadata = effect_metadata(effect.effect_type)
             rates = metadata.get("sampleRates")
             if rates and self.sample_rate not in rates:

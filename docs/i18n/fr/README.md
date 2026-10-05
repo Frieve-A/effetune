@@ -139,7 +139,7 @@ Ouvrez **Visualizer** depuis l’en-tête, l’onglet mobile **Lecteur** ou le m
 10. Cliquez sur le bouton Préréglages d’effet de chaque effet pour enregistrer ou appliquer des réglages pour cet effet uniquement
 11. Pour régler précisément un curseur, maintenez la touche Maj enfoncée pendant que vous le faites glisser ; la valeur change alors d'une unité minimale à la fois
    - Pour les curseurs acceptant des valeurs négatives et positives, la zone colorée s’étend de 0 à la valeur actuelle. Les curseurs Ratio prennent 1.0 comme point de départ.
-12. Sur les graphiques compatibles dotés d’un axe de fréquences ou de notes, faites glisser le pointeur le long de cet axe pour écouter la fréquence correspondante sous forme de sinus à -12 dB à travers la chaîne d’effets. Lorsqu’un clavier est affiché, la fréquence s’aligne sur le demi-ton le plus proche ; faites glisser le pointeur sur une touche pour écouter sa note
+12. Sur les graphiques compatibles dotés d’un axe de fréquences ou de notes, faites glisser le pointeur le long de cet axe pour écouter la fréquence choisie à travers la chaîne d’effets. Dans **Configuration > Général > Son de préécoute des fréquences**, choisissez **Onde sinusoïdale** (par défaut, -12 dB) ou **Bruit filtré passe-bande**, centré sur la fréquence choisie. Note Spectrogram, Pitch Meter, Chroma Spiral et les claviers de piano utilisent toujours une onde sinusoïdale. Lorsqu’un clavier est affiché, la fréquence s’aligne sur le demi-ton le plus proche ; faites glisser le pointeur sur une touche pour écouter sa note
 
 ### Utilisation des préréglages
 
@@ -411,6 +411,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Modulation | Rotary Speaker | Combine les mouvements indépendants de la trompe et du tambour | [Détails](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Effet de modulation basé sur le volume | [Détails](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Ajoute un léger flottement de hauteur façon bande ou disque pour une couleur vintage | [Détails](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | Apprend à prédire le son pour extraire le résidu ou créer une résonance évolutive | [Détails](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | Simulation de résonance de cornet avec dimensions personnalisables | [Détails](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Résonance de pavillon plus douce pour une couleur d'écoute naturelle | [Détails](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Effet de résonance fréquentielle avec jusqu'à 5 résonateurs | [Détails](plugins/resonator.md#modal-resonator) |

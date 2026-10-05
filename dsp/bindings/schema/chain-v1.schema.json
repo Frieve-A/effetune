@@ -312,6 +312,9 @@
           "$ref": "#/$defs/Oscillator"
         },
         {
+          "$ref": "#/$defs/AdaptivePredictionEffect"
+        },
+        {
           "$ref": "#/$defs/HornResonator"
         },
         {
@@ -7359,6 +7362,95 @@
               "maximum": 100,
               "x-effetune-unit": "ms",
               "default": 5
+            }
+          }
+        }
+      }
+    },
+    "AdaptivePredictionEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "parameters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "const": "AdaptivePredictionEffect"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gap": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 500,
+              "x-effetune-unit": "ms",
+              "default": 1
+            },
+            "learn": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.1,
+              "default": 0.02
+            },
+            "weightDecay": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 60,
+              "x-effetune-unit": "s",
+              "default": 0
+            },
+            "autonomy": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0
+            },
+            "original": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 2,
+              "default": 0
+            },
+            "residual": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 2,
+              "default": 1
+            },
+            "prediction": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 2,
+              "default": 0
+            },
+            "freeze": {
+              "type": "boolean",
+              "default": false
+            },
+            "hold": {
+              "type": "boolean",
+              "default": false
+            },
+            "resetToken": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 16777215,
+              "default": 0
             }
           }
         }

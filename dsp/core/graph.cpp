@@ -862,8 +862,10 @@ et_status GraphPlan::process(Engine &engine, std::uint32_t channel_count, std::u
     if (slot == nullptr) {
       return ET_ERR_STATE;
     }
+    // The kernel input is aligned to its output latency minus its own latency.
+    const std::uint32_t input_latency = node.outputLatency[node.firstChannel] - node.kernelLatency;
     engine.processSlot(*slot, output + node.firstChannel * frame_count, node.channelCount,
-                       frame_count, time_seconds);
+                       frame_count, engine.nodeProcessInfo(time_seconds, input_latency));
   }
 
   float *output = buffer(buffer_slot_count_ - 1u);

@@ -141,6 +141,20 @@ export function verifyStage(stageRoot) {
   const overlay = readJson(docsOverlayPath);
   const version = readJson(npmPackagePath).version;
   const routesById = routeMap(routes);
+  const demoRoot = path.dirname(routeFile(
+    resolvedStage, routesById.get('demo').path, routes.publicRoot
+  ));
+  const demoManifest = readJson(path.join(demoRoot, 'build-manifest.json'));
+  const demoMetadata = readJson(path.join(
+    demoRoot, 'vendor', '@effetune', 'dsp', 'assets', 'effetune-dsp.meta.json'
+  ));
+  const demoHtml = fs.readFileSync(path.join(demoRoot, 'index.html'), 'utf8');
+  if (demoManifest.package?.name !== '@effetune/dsp' ||
+      demoManifest.package.version !== version ||
+      demoManifest.package.sourceDigest !== demoMetadata.sourceDigest ||
+      !demoHtml.includes(`data-dsp-version>EffeTune DSP v${version}</p>`)) {
+    throw new Error('The staged DSP demo version or artifact identity is stale.');
+  }
   const expectedRoutes = routes.routes.filter(route => route.status === 'launch');
   const dynamic = expectedRoutes.find(route => route.dynamic === 'catalog-effects');
   const expanded = expectedRoutes.filter(route => !route.dynamic);

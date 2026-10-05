@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const LOCALES = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
 const PAGED_KEYS = [
+  'library.column.trackNo', 'library.sort.added',
   'library.paged.loading', 'library.paged.loadFailed', 'library.paged.retry',
   'library.paged.selectAll', 'library.paged.deselectAll', 'library.paged.selectionStale',
   'library.paged.reselect', 'library.paged.selectionTooLarge',

@@ -35,13 +35,17 @@ struct TcEvent {
 };
 
 // The v0 fields of tick k (frames 4k .. 4k+3): binary16 values in float, env float32, plus float64
-// values before rounding (diagnostics) and the tick's frame fluxes (binary16 values), tcn_g's flux
-// input.
+// values before rounding (diagnostics) and the tick's frame fluxes (binary16 values), the TCN's
+// flux input. fire: this tick ends kC2Ticks consecutive ticks with rms_db < kC2Db (the decoder's
+// cold reset); restart: the upstream starts fresh at this tick (the first chroma-frame boundary
+// after a fire).
 struct TcTickV0 {
   std::int64_t k = 0;
+  bool fire = false, restart = false;
   float env = 0.0f, bandDb[3] = {}, rmsDb = 0.0f, lvl[3] = {}, flat = 0.0f;
   float flux[4][3] = {};
   double env64 = 0.0, bandDb64[3] = {}, rmsDb64 = 0.0, lvl64[3] = {}, flat64 = 0.0;
+  double ms64 = 0.0; // the tick mean square behind rmsDb64 (NaN when rmsDb64 is)
 };
 
 namespace tc_detail {
@@ -96,6 +100,10 @@ class TcV0 {
 public:
   static constexpr std::uint32_t kBins = tc::kBinHi - tc::kBinLo; // 341
   static constexpr std::uint32_t kBlock = 128u;                   // numpy's pairwise block
+  // Cold reset: rms_db < -120 dBFS for round(1.0 s * 93.75) ticks; the upstream restarts at the
+  // next multiple of 8 ticks (one chroma frame).
+  static constexpr float kC2Db = -120.0f;
+  static constexpr std::int64_t kC2Ticks = 94, kC2Align = 8;
 
   // rate: 48000, 96000 or 192000. Returns false otherwise.
   bool prepare(double rate) noexcept {
@@ -139,6 +147,10 @@ public:
     blocksInTick_ = 0u;
     rmsMs_ = 0.0;
     rmsTick_ = -1;
+    c2Run_ = 0;
+    restartTick_ = -1;
+    pickFrame0_ = 0;
+    pickT0_ = 0.0;
   }
 
   // H0: the newest hop of the analysis stream, ring[(first + i) & mask] for i in [0, hop). Tick
@@ -194,6 +206,8 @@ public:
 
     const std::uint32_t slot = static_cast<std::uint32_t>(j % 4);
     std::uint32_t count = 0u;
+    if (j == 4 * restartTick_)
+      restartPick(j);
     double novelty = 0.0;
     frame.j = j;
     for (std::uint32_t c = 0u; c < 3u; ++c) {
@@ -267,11 +281,27 @@ private:
     double h0, h1, h2, ring[tc::kRingLength], mean, var, peak, last;
   };
 
+  // The picker starts fresh at frame j: its times count from j (onset >= 0 and the refractory
+  // test as in a fresh stream); events are shifted back by the tick time of j.
+  void restartPick(std::int64_t j) noexcept {
+    for (Pick &p : pick_) {
+      p.h0 = p.h1 = p.h2 = 0.0;
+      for (double &r : p.ring)
+        r = 0.0;
+      p.mean = p.var = 0.0;
+      p.peak = tc::kFePeakStart;
+      p.last = -1.0;
+    }
+    pickFrame0_ = j;
+    pickT0_ = static_cast<double>(j / 4) / (rc_->rate / (4.0 * rc_->hop));
+  }
+
   // The picker, one frame of band c (float64, the reference order of operations).
   bool pickStep(std::uint32_t c, std::int64_t j, double f, TcEvent &event) noexcept {
     Pick &p = pick_[c];
     const double hop = static_cast<double>(rc_->hop), rate = rc_->rate;
-    const double end = static_cast<double>((j + 1) * static_cast<std::int64_t>(rc_->hop)) / rate;
+    const double end =
+        static_cast<double>((j - pickFrame0_ + 1) * static_cast<std::int64_t>(rc_->hop)) / rate;
     p.h0 = p.h1;
     p.h1 = p.h2;
     p.h2 = f;
@@ -294,11 +324,12 @@ private:
       if (p.last < 0.0 || onset - p.last > tc::kFeRefractory) {
         p.last = onset;
         if (onset >= 0.0) {
-          event.t = onset;
+          event.t = onset + pickT0_;
           event.strength = static_cast<float>(candidate / p.peak);
           event.frame = static_cast<std::int32_t>(j - 1);
           event.band = static_cast<std::uint8_t>(c);
-          event.avail = (static_cast<double>(event.frame) + 2.0) * hop / rate;
+          event.avail =
+              (static_cast<double>(event.frame - pickFrame0_) + 2.0) * hop / rate + pickT0_;
           emitted = true;
         }
       }
@@ -327,9 +358,15 @@ private:
     tick.flat = static_cast<float>(rhythm_d::roundHalf(tick.flat64));
     // H0 of hop 4k + 3 precedes H1 of frame 4k + 3 in the kernel; NaN marks a caller that broke
     // that order.
+    tick.ms64 = rmsTick_ == k ? rmsMs_ : std::numeric_limits<double>::quiet_NaN();
     tick.rmsDb64 = rmsTick_ == k ? log10x10(rmsMs_ + tc::kFeDbFloor)
                                  : std::numeric_limits<double>::quiet_NaN();
     tick.rmsDb = static_cast<float>(rhythm_d::roundHalf(tick.rmsDb64));
+    c2Run_ = tick.rmsDb < kC2Db ? c2Run_ + 1 : 0;
+    tick.fire = c2Run_ == kC2Ticks;
+    if (tick.fire)
+      restartTick_ = (k + kC2Align) / kC2Align * kC2Align;
+    tick.restart = k == restartTick_;
     for (std::uint32_t s = 0u; s < 4u; ++s)
       for (std::uint32_t c = 0u; c < 3u; ++c)
         tick.flux[s][c] = fluxPool_[s][c];
@@ -348,6 +385,9 @@ private:
   std::uint32_t stackLevel_[8] = {}, blockFill_ = 0u, depth_ = 0u, blocksInTick_ = 0u;
   double rmsMs_ = 0.0;
   std::int64_t rmsTick_ = -1, frame_ = 0, hop_ = 0;
+  // Cold reset: silent-run length, the reserved restart tick and the picker's time origin.
+  std::int64_t c2Run_ = 0, restartTick_ = -1, pickFrame0_ = 0;
+  double pickT0_ = 0.0;
 };
 
 } // namespace effetune::plugins::analyzer::rhythm_a3

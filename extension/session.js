@@ -168,7 +168,7 @@ async function handle(command, args) {
         visualizerSources = Array.isArray(args.sources) ? args.sources : [];
         applyVisualizerSources();
         return snapshot();
-    } else if (command === 'frequencyPreview') audio.setFrequencyPreview(args.frequency);
+    } else if (command === 'frequencyPreview') audio.setFrequencyPreview(args.frequency, args.sound);
     else if (command === 'setPipeline') await applyPipeline({ plugins: args.plugins });
     else if (command === 'setBypass') {
         audio.masterBypass = args.enabled;

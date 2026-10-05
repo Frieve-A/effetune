@@ -13,7 +13,7 @@ tree without distribution metadata reports `0+source`.
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
 host-neutral C++20 DSP core used by the EffeTune application. Version 0.12.0
-provides 110 semantic effect classes, ordered serial chains, stateful block
+provides 111 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
 <!-- END DSP-LIBRARY-PYTHON-SUMMARY -->
@@ -125,6 +125,11 @@ Each event is merged with the effect's current parameters. Frame zero applies
 before the first sample. Multiple events at one frame keep their supplied
 order, so later updates see earlier updates. The final frame is not an event
 position. `reset()` restores the initial parameters, state, and seed.
+Events update targets at the requested frame; an effect's own smoothing still
+determines its gain transition. After processing starts, `Volume` transitions
+linearly in gain over 5 ms (rounded up to whole samples), restarting from the
+current gain if another target arrives. See the executable
+[Volume automation examples](https://effetune.frieve.com/dsp/concepts/streaming-and-events/#volume-automation).
 Events cannot change parameters that require convolution assets to be staged
 again. Open a new stream after changing `IRReverb.channelMode`, `latency`, or
 `convolutionRate`; `FIRCrossover.bandCount`, `latencyMode`, or
@@ -161,8 +166,10 @@ again, or reproduce the branching in the host around separate Chains.
 Unsupported channels, effects, partial short-key arrays, and unknown fields
 are reported rather than silently dropped.
 
-`LevelMeter`, `Oscilloscope`, `SpectrumAnalyzer`, `Spectrogram`, and
-`StereoMeter` provide opt-in decoded telemetry. Pass `on_telemetry` to
+Effects with public observation support provide opt-in decoded telemetry.
+See [Compatibility](https://effetune.frieve.com/dsp/reference/compatibility/#analyzers-and-telemetry)
+for the supported types and their frame fields, including Analog Meter,
+Rhythm Analyzer, and Tonal Balance EQ. Pass `on_telemetry` to
 `Chain.process()` or `Chain.stream()`, or manage a streaming subscription:
 
 ```python
@@ -177,10 +184,13 @@ The first subscriber enables observations and the last unsubscribe disables
 them. Delivered tuples are caller-owned semantic values. Raw DSP telemetry is
 not a public API.
 
-`FIRCrossover`, `FiveBandFIRPEQ`, `GroupDelayEQ`, `GroupDelayPEQ`, `IRReverb`,
-and `RoomEQ` require an `impulseResponse` reference and an asset resolver. The
-five FIR filter effects use prepared coefficient impulses at the processing
-sample rate.
+Effects whose catalog marks `impulseResponse` as required need an asset
+reference and an asset resolver. FIR filter effects use prepared coefficient
+impulses at the processing sample rate. See
+[Assets and bundles](https://effetune.frieve.com/dsp/concepts/assets-and-bundles/#asset-required-effects)
+for the required-asset effects and executable examples, and
+[Bass Management](https://effetune.frieve.com/dsp/effects/bass-management/)
+for its conditional Linear-mode asset requirement.
 Resolvers return `AssetData` containing finite, C-contiguous planar float32
 samples, an integer sample rate, and an explicit or unambiguous topology. The
 runtime rejects missing, malformed, hash-mismatched, ambiguous, and
@@ -219,8 +229,9 @@ passing `--subtype` explicitly silences, and when the rendered peak exceeds
 full scale and is clipped by an integer PCM output. Both warnings leave the
 exit code at 0.
 
-`EFFECT_METADATA` is the public machine-readable semantic catalog for all 101
-root effect classes. It contains channel choices, parameters, required assets,
+`EFFECT_METADATA` is the public machine-readable semantic catalog for every
+root effect class. Use `len(et.EFFECT_METADATA["effects"])` for the installed package's
+effect count. It contains channel choices, parameters, required assets,
 telemetry, and latency declarations without private native implementation
 details. `Stream.latency_samples` reports aggregate runtime latency and matches
 JavaScript `ChainStream.latencySamples` for the same chain and sample rate.

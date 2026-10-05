@@ -123,19 +123,19 @@ test('Shift+click toggles, Ctrl+A selects all, and a selection moves as a group'
     editor.drag(pointer(.6, .3));
     assert.deepEqual(rects(layout.items.slice(0, 2)), [[.15, .05], [.55, .25]]);
     editor.drag(pointer(.95, .35));
-    assert.ok(Math.abs(layout.items[1].rect.x - .8) < 1e-9, 'the group stops at the right edge');
-    assert.ok(Math.abs(layout.items[0].rect.x - .4) < 1e-9, 'relative placement is kept');
+    assert.ok(Math.abs(layout.items[1].rect.x - .9) < 1e-9, 'the group can cross the right edge');
+    assert.ok(Math.abs(layout.items[0].rect.x - .5) < 1e-9, 'relative placement is kept');
     editor.endDrag();
     assert.deepEqual(ids(editor), ['a', 'b']);
-    editor.startDrag(pointer(.45, .15));
+    editor.startDrag(pointer(.55, .15));
     editor.endDrag();
     assert.deepEqual(ids(editor), ['a'], 'clicking a selected item without moving selects only it');
     const stage = view.stage;
     editor.selection = new Set(['a', 'b']);
     editor.onStageKeyDown({ key: 'ArrowRight', target: stage, preventDefault() {} });
-    assert.ok(Math.abs(layout.items[1].rect.x - .8) < 1e-9 && Math.abs(layout.items[0].rect.x - .4) < 1e-9);
+    assert.ok(Math.abs(layout.items[1].rect.x - .925) < 1e-9 && Math.abs(layout.items[0].rect.x - .525) < 1e-9);
     editor.onStageKeyDown({ key: 'ArrowLeft', target: stage, preventDefault() {} });
-    assert.ok(Math.abs(layout.items[0].rect.x - .375) < 1e-9 && Math.abs(layout.items[1].rect.x - .775) < 1e-9);
+    assert.ok(Math.abs(layout.items[0].rect.x - .5) < 1e-9 && Math.abs(layout.items[1].rect.x - .9) < 1e-9);
 });
 
 test('Ctrl+D duplicates the selection as one entry after the frontmost item and respects the item limit', () => {

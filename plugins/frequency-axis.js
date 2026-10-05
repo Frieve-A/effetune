@@ -242,6 +242,7 @@
     targets.get('DSD64IMDSimulatorPlugin').axisCheck = ['freq / fMax', 'const fMax = 20000;'];
 
     targets.get('ChromaSpiralPlugin').axisCheck = ['getSpiralGeometry(width, height, dpr)', 'static spiralPoint('];
+    targets.get('ChromaSpiralPlugin').pitchPreview = true;
     targets.get('ChromaSpiralPlugin').axis = (plugin, box) => {
         const { inner, pitch, midiLow, midiEnd } = plugin.getSpiralGeometry(box.width, box.height);
         return {
@@ -284,6 +285,7 @@
     }
     for (const name of ['NoteSpectrogramPlugin', 'PitchMeterPlugin']) {
         const target = targets.get(name);
+        target.pitchPreview = true;
         target.axisCheck = ['12 * rowHeight / 7', "this.ly === 'Horizontal'"];
         target.axis = (plugin, box) => {
             const orientation = plugin.ly === 'Horizontal' ? 'x' : 'y';

@@ -524,18 +524,27 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   frame maximum level in dB as float32. Each record contains float32 frequency
   in Hz, signed L/R phase difference in degrees (-180 to +180), and level in dB
   relative to the frame maximum.
-- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 3 is exactly 3,548 bytes:
-  a 28-byte header followed by 440 float32 pitch-confidence levels in [0, 1]
-  and 440 float32 volume levels in dB. The volume values include a 3 dB/octave
+- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 4 is exactly 5,312 bytes:
+  a 32-byte header followed by 440 float32 pitch-confidence levels in [0, 1],
+  440 float32 volume levels in dB, and 440 float32 revised pitch-confidence
+  levels in [0, 1]. The volume values include a 3 dB/octave
   correction above 100 Hz and use -240 dB for pitches without a measured level.
   The header contains float32 sample rate, observation time, and hop duration;
   `u16` pitch count 440 and first MIDI note 21; and `u32` frame index,
-  divisions per semitone 5, and non-zero analysis generation. Public JavaScript
+  divisions per semitone 5, non-zero analysis generation, and revision age.
+  The revision age at offset 28 is 0 when there is no revision (the revised
+  confidence array is then zero-filled), or 8 when the revised confidences
+  refer to the frame eight observations earlier in the same generation.
+  The three arrays start at offsets 32, 1792, and 3552. Public JavaScript
   and Python decoders expose this as `NoteSpectrogramTelemetryFrame` with
   `kind` `noteSpectrogram`; `levels` and `volumeDb` / `volume_db` are owned
   `Float32Array` or tuple values. Index `i` maps to MIDI
   `firstMidi + (i - 2) / divisionsPerSemitone`, placing five bins at -40, -20,
   0, +20, and +40 cents around each piano-key center.
+  `revisionAge` / `revision_age` exposes the revision age; `revisedLevels` /
+  `revised_levels` is an owned confidence array or tuple when the age is 8,
+  otherwise null / `None`. Its pitch indexing matches `levels`; the revised
+  frame index is `(frameIndex - revisionAge)` modulo 2^32.
 
 - **Type 25 — `TAP_TV_AUDIO_SIMULATOR`.** Format version 1 is exactly 216 bytes:
   five float32 values, one cumulative little-endian `u32` error counter, and
@@ -660,6 +669,72 @@ The shared native parity runner needs no per-plugin CMake entry. A dedicated com
 Production kernels are registered in `dsp/registry.inc`; the committed WASM metadata
 records that registry and each generated parameter-layout hash. Native unit tests also add
 a test-only gain kernel to exercise lifecycle, parameter, routing, and telemetry contracts.
+
+### Native Spectrum Taps (C++ host API)
+
+`effetune/spectrum_tap.h` provides per-effect **Normal / HQ** analysis in **After /
+Compare** modes. `SpectrumTap` averages the actual routed channels, aligns Before
+to After by the effect's latency, and returns spectra with peaks and timing. Normal
+matches the browser overlay's 4096-point Hann FFT and 1/12-octave power smoothing.
+HQ reuses the shared two-window analyzer and its logarithmic frequency cells.
+After omits input analysis; Off stops capture.
+
+Allocate one tap per observed effect and call `prepare(sampleRate, maxFrames)`
+while its audio producer is idle. A serialized control/polling thread calls
+`configure(mode, quality)` and `read(droppedBlocks)`. The audio callback calls
+`capture` for the matching Before/After pair from `Engine::PipelineObserver`,
+using the same exclusive block timeline, channel count and frame count. Capture
+only copies into a bounded SPSC queue; FFTs, delay storage and result allocation
+belong to `read`. Poll frequently enough to drain the queue. A gap, queue overflow,
+configuration change, latency change or explicit `invalidate()` starts fresh
+analysis with a new generation. Call `invalidate()` for bypass, topology changes
+and audio resets, even when the next block's frame number remains continuous.
+
+`Engine::pipelineTapLatency(instance, result)` supplies the remaining delay from
+the observed input/output to final pipeline output, including routing compensation.
+Read it on the engine owner or inside its observer. Pass `result.output` as
+`capture`'s `tapDelayFrames`, and the observer's effect latency as
+`effectLatencyFrames`. The host supplies `firstFrame` on its processing timeline;
+it need not use the DAW's seekable musical timeline.
+
+The shared Spectrum Tap timing contract is **version 1**, represented by
+`SpectrumTapTiming` in C++ and `SpectrumTapContract` in `plugins/multires-spectrum.js`.
+Browser worklet messages carry the same object as `timing`; older PCM messages
+remain accepted. All fields use sample frames at the reported `sampleRate`:
+
+| Field | Meaning |
+| --- | --- |
+| `generation`, `frameIndex` | Monotonic capture lifetime and sequence within it; discard older generations and duplicate frames. |
+| `captureEndFrame` | Exclusive analysis capture end on the producer timeline. HQ already removes its 48-frame FIR group delay. |
+| `windowAgeFrames` | Distance from capture end to the low-frequency window center: Normal 2048, HQ 8192. HQ's short window ends at the same capture end. |
+| `completionFrames` | Analysis work after capture end: Normal 0; HQ 48 plus its hop rounded down to 16 frames. The hop is `max(2048, ceil(sampleRate / 30))`. |
+| `tapDelayFrames` | Remaining audio delay from the After tap to final pipeline output, excluding any additional host output delay. |
+
+The matching audible position is
+`captureEndFrame - windowAgeFrames + tapDelayFrames + outputDelayFrames`.
+Convert that position through the host's audio-output clock for display; polling
+time and wall-clock arrival time are not capture timestamps. Normal spectra use
+linear FFT bins, HQ spectra use 2048 log-spaced cells from 20 Hz to 40 kHz, and
+`validCellCount` excludes cells above Nyquist. Publish `inputSpectrum` in Compare
+and `outputSpectrum` in both modes; each contains `current`, `peaks` and
+`validCellCount`, accepted by the shared overlay.
+
+**Display synchronization also requires audio delay.** Use
+`timing.requiredOutputDelay(existingDelayFrames, deviceDelayFrames, maxFrames,
+deliveryBudgetFrames)` (C++) or `SpectrumTapContract.requiredOutputDelay`
+(JavaScript) to reserve the deficit between analysis completion and audible output.
+The delivery budget covers the host's bounded polling/transport/render interval.
+Take the maximum requirement across active taps and apply it through the host's
+output delay, preserving normal effect and resampler latency. In a VST host, include
+this additional delay in `getLatencySamples()` and notify the host when it changes;
+the library does not call host interfaces. Schedule displays against the **applied**
+delay, and invalidate pending display frames when the output timeline changes.
+
+Build the native tests, then run
+`node tools/verify-spectrum-tap.mjs <path-to-effetune_dsp_spectrum_tap_tests>` to
+compare Normal/HQ spectra, capture positions and timing against the browser at
+48 and 96 kHz. This API does not add hidden pipeline nodes, alter processed audio
+or change the public C ABI.
 
 ### Vendored Code
 

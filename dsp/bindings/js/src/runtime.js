@@ -397,7 +397,7 @@ export class Chain {
     const normalizedSeed = validateSeed(seed);
     for (const effect of activeEffects(this._document)) {
       validateEffectSampleRate(effect, rate);
-      channelRange(effect.channel, channels);
+      channelRange(effect.channel, channels, effect.type);
     }
     const artifact = await this._artifactForCurrentDocument();
     if (!artifact) return this;
@@ -444,7 +444,7 @@ export class Chain {
     }
     for (const effect of activeEffects(this._document)) {
       validateEffectSampleRate(effect, rate);
-      channelRange(effect.channel, channels);
+      channelRange(effect.channel, channels, effect.type);
     }
     const artifact = await this._artifactForCurrentDocument();
     const document = cloneDocument(this._document);
@@ -488,7 +488,7 @@ export class Chain {
     if (layout.frames === 0 || effects.length === 0) return output;
     for (const effect of effects) {
       validateEffectSampleRate(effect, rate);
-      channelRange(effect.channel, layout.channels);
+      channelRange(effect.channel, layout.channels, effect.type);
     }
     const artifact = await this._artifactForCurrentDocument();
     const session = await createEngineSession(

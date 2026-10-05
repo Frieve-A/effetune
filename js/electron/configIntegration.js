@@ -54,6 +54,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
   config.startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
+  config.frequencyPreviewSound = config.frequencyPreviewSound === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
   config.spectrumOverlayQuality = config.spectrumOverlayQuality === 'hq' ? 'hq' : 'normal';
   config.spectrumOverlayPeakHold = config.spectrumOverlayPeakHold === true;
   let powerSavingSettings = normalizePowerSettings(config.powerSaving);
@@ -209,6 +210,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
           <div class="device-section">
             <label class="section-label" for="theme-select" id="config-theme-label"></label>
             <select id="theme-select" class="config-select"></select>
+          </div>
+          <div class="device-section">
+            <label class="section-label" for="frequency-preview-sound" id="frequency-preview-sound-label"></label>
+            <select id="frequency-preview-sound" class="config-select"></select>
           </div>
           ${electronGeneralSections}`,
     startup: `
@@ -671,6 +676,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
       value => t(`dialog.config.spectrumOverlay.display.${value}`));
   }
 
+  function renderFrequencyPreviewOptions() {
+    replaceOptions(document.getElementById('frequency-preview-sound'),
+      ['sine', 'bandpassNoise'], config.frequencyPreviewSound,
+      value => t(`dialog.config.frequencyPreview.${value}`));
+  }
+
   function renderPresetOptions() {
     replaceOptions(document.getElementById('preset-select'), presetNames, config.startupPreset || '');
   }
@@ -987,6 +998,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
     document.getElementById('config-theme-label').textContent = t('dialog.config.theme');
+    document.getElementById('frequency-preview-sound-label').textContent = t('dialog.config.frequencyPreview.sound');
+    renderFrequencyPreviewOptions();
     document.getElementById('visual-sync-label').textContent = t('dialog.config.visualSync.label');
     document.getElementById('visual-sync-help').textContent = t('dialog.config.visualSync.help');
     renderThemeOptions();
@@ -1101,6 +1114,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderThemeOptions();
     renderOfflineOutputControls();
     renderSpectrumOverlayOptions();
+    renderFrequencyPreviewOptions();
   }
 
   let configSaveSequence = 0;
@@ -1248,6 +1262,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (!await save({ visualSync: enabled })) return;
     if (updateSequence !== visualSyncUpdateSequence) return;
     await window.audioManager?.setVisualSyncEnabled?.(enabled);
+  });
+  document.getElementById('frequency-preview-sound').addEventListener('change', async e => {
+    const frequencyPreviewSound = e.target.value === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
+    await save({ frequencyPreviewSound });
   });
   document.getElementById('spectrum-overlay-quality')?.addEventListener('change', async e => {
     const quality = e.target.value === 'hq' ? 'hq' : 'normal';

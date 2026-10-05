@@ -684,6 +684,7 @@ export class AudioContextManager {
     }
 
     await this.seekAudioElement(0);
+    this.notifyStreamBoundary();
     return true;
   }
 
@@ -928,6 +929,7 @@ export class AudioContextManager {
         }) === true) {
       const nextSourceGeneration = ++this.sourceGenerationSequence;
       this.activeSourceGeneration = nextSourceGeneration;
+      this.notifyStreamBoundary();
       this.activeRegion = {
         region: nextRegion,
         track: nextTrack,
@@ -4268,6 +4270,7 @@ export class AudioContextManager {
       }
       source.start(startAtEnded ? 0 : boundaryTime);
       this.scheduledBufferTransition = scheduled;
+      this.notifyStreamBoundary(boundaryTime);
       return startAtEnded ? this.commitScheduledBufferTransition(scheduled) : true;
     } catch (error) {
       scheduled.cancelled = true;
@@ -4318,6 +4321,7 @@ export class AudioContextManager {
       boundaryTime,
       ownership
     };
+    this.notifyStreamBoundary(boundaryTime);
     return true;
   }
 
@@ -4342,7 +4346,9 @@ export class AudioContextManager {
     }
     const managedSource = this.getPipelineSourceNode(transport.sourceNode);
     this.commitPlayerSourceOwnership(managedSource, ownership);
-    scheduled.ownership = null;
+    // Released before the alias cleanup, which would otherwise roll back the committed ownership and cancel
+    // the reached boundary as an undone reservation.
+    this.scheduledRollingTransition = null;
     this.clearRollingNextAliases(transport);
     this.rollingTransport = transport;
     this.currentPlaybackDecision = prepared.decisionRecord;
@@ -4433,6 +4439,7 @@ export class AudioContextManager {
     const scheduled = this.scheduledBufferTransition;
     if (!scheduled) return false;
     this.scheduledBufferTransition = null;
+    this.notifyStreamBoundary(null);
     scheduled.cancelled = true;
     scheduled.source.onended = null;
     this.releasePipelineSource(scheduled.source, true);
@@ -4445,6 +4452,17 @@ export class AudioContextManager {
     this.clearRollingNextAliases(scheduled.transport);
     void this.disposeRollingTransport(scheduled.transport);
     return true;
+  }
+
+  // Tells the pipeline when the next track starts, in context seconds (now when omitted, null to cancel a
+  // reserved start), so its analyses restart with the track.
+  notifyStreamBoundary(time = this.audioPlayer.audioContext?.currentTime) {
+    const sampleRate = this.audioPlayer.audioContext?.sampleRate;
+    if (!sampleRate) return;
+    this.audioManager.workletNode?.port?.postMessage({
+      type: 'streamBoundary',
+      frame: time === null ? null : Math.round(time * sampleRate)
+    });
   }
   
   /**
@@ -4628,7 +4646,9 @@ export class AudioContextManager {
           ? this.prepareRollingTransitionCandidate(prepared, loadRequest.sourceGeneration)
           : await this.prepareMediaTransitionCandidate(prepared, loadRequest.sourceGeneration, isStale);
       if (!candidate || isStale()) return false;
-      return this.commitPreparedTrackCandidate(candidate, prepared, null, isStale, false);
+      if (!this.commitPreparedTrackCandidate(candidate, prepared, null, isStale, false)) return false;
+      this.notifyStreamBoundary();
+      return true;
     } finally {
       candidate?.mediaObservation?.dispose();
       if (candidate && !candidate.committed) this.cleanupPreparedTransitionCandidate(candidate);
@@ -4691,6 +4711,7 @@ export class AudioContextManager {
         if (!this.commitPreparedTrackCandidate(candidate, prepared, plan, isStale, true)) {
           throw new Error('Prepared track candidate commit was rejected');
         }
+        this.notifyStreamBoundary();
         return true;
       };
       if (stage) {
@@ -5543,6 +5564,7 @@ export class AudioContextManager {
         this.rollbackPlayerSourceOwnership(this.scheduledRollingTransition.ownership);
       }
       this.scheduledRollingTransition = null;
+      this.notifyStreamBoundary(null);
     }
     return true;
   }

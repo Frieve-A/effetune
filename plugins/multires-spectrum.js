@@ -2,6 +2,38 @@
 (function () {
     'use strict';
 
+    // Spectrum Tap timing contract v1. Capture positions are exclusive sample
+    // ends on the producer timeline, with the HQ FIR delay already removed.
+    const SpectrumTapContract = Object.freeze({
+        version: 1,
+        profile(quality, sampleRate) {
+            return quality === 'hq'
+                ? { windowAgeFrames: 8192,
+                    completionFrames: 48 + Math.floor(Math.max(2048, Math.ceil(sampleRate / 30)) / 16) * 16 }
+                : { windowAgeFrames: 2048, completionFrames: 0 };
+        },
+        timing(quality, sampleRate, generation, frameIndex, captureEndFrame, tapDelayFrames = 0) {
+            return { version: 1, generation, frameIndex, captureEndFrame,
+                ...this.profile(quality, sampleRate), tapDelayFrames };
+        },
+        valid(timing) {
+            return timing?.version === 1 &&
+                ['generation', 'frameIndex', 'captureEndFrame', 'windowAgeFrames',
+                    'completionFrames', 'tapDelayFrames'].every(key =>
+                    Number.isSafeInteger(timing[key]) && timing[key] >= 0);
+        },
+        audibleFrame(timing, outputDelayFrames = 0) {
+            return timing.captureEndFrame - timing.windowAgeFrames + timing.tapDelayFrames + outputDelayFrames;
+        },
+        requiredOutputDelay(timing, existingDelayFrames = 0, deviceDelayFrames = 0, maxFrames = Infinity,
+            deliveryBudgetFrames = 0) {
+            return Math.ceil(Math.min(maxFrames, Math.max(0,
+                timing.windowAgeFrames + timing.completionFrames + deliveryBudgetFrames - timing.tapDelayFrames -
+                existingDelayFrames - deviceDelayFrames)));
+        }
+    });
+    globalThis.SpectrumTapContract = SpectrumTapContract;
+
     const HEADER_BYTES = 48;
     const FIR_LENGTH = 97;
     const FIR_DELAY = 48;

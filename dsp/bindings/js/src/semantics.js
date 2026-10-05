@@ -359,12 +359,19 @@ export function validateStreamParameterUpdate(effect, parameterName) {
   }
 }
 
-export function channelRange(channel, channelCount) {
+export function channelRange(channel, channelCount, effectType) {
   validateChannel(channel);
   if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
     throw new ValidationError('Audio must contain between 1 and 16 channels.');
   }
-  if (channel === 'all') return { start: 0, count: channelCount };
+  if (channel === 'all') {
+    if (effectType === 'AdaptivePredictionEffect' && channelCount > 2) {
+      throw new ValidationError(
+        'AdaptivePredictionEffect processes one or two channels; select stereo or a single channel.'
+      );
+    }
+    return { start: 0, count: channelCount };
+  }
   if (channel === 'stereo') return { start: 0, count: channelCount >= 2 ? 2 : 1 };
   if (channel === 'left') return { start: 0, count: 1 };
   if (channel === 'right') {

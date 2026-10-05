@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AdaptivePredictionEffectPlugin",
+  "id": "maximum-gap-ring-wrap",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 1,
+  "frameCount": 65537,
+  "blockSize": 127,
+  "channelMode": "mono",
+  "channel": "L",
+  "caseIndex": 2,
+  "seed": "0xeffe7a5c",
+  "params": {
+    "gap": 500,
+    "learn": 0.02,
+    "weightDecay": 0,
+    "autonomy": 0,
+    "original": 0,
+    "residual": 0,
+    "prediction": 1,
+    "freeze": false,
+    "hold": false,
+    "resetToken": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0005,
+    "policy": "per-sample"
+  },
+  "performanceBudgetMs": 5000,
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:57bf79d2ebd9358c9728f9f3489c3462af933d01593842a126f565dda6c3f91d",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type AdaptivePredictionEffectPlugin --promote-production-native",
+  "outputFloats": 65537,
+  "byteLength": 262148,
+  "binary": "case-003.f32"
+}

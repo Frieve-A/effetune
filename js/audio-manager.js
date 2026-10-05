@@ -15,8 +15,9 @@ import {
     getPluginExecutionCapabilities
 } from './audio/plugin-execution-capabilities.js';
 import { TelemetryHub } from './audio/telemetry-hub.js';
+import { updateWasmExecutionNotice } from './ui/pipeline/wasm-execution-notice.js';
 import { DSP_PARAM_PACKERS } from './audio/dsp-params.generated.js';
-import { VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, dropVisualSyncOverflow,
+import { SpectrumTapContract, VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, dropVisualSyncOverflow,
     isVisualSyncEnabled, requiredOutputDelayFrames, audibleFrameTime, audibleContextTime, telemetryCaptureTiming } from './audio/visual-sync.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
 import { PowerDiagnostics } from './audio/power-diagnostics.js';
@@ -171,7 +172,7 @@ export class AudioManager {
         this._dspExecutionStateRevision = 0;
         this._dspExecutionStateOwner = null;
         this._dspExecutionStates = new Map();
-        this._tubeRuntimeEventsByNode = new WeakMap();
+        this._dspRuntimeEventsByNode = new WeakMap();
         this._audioGraphGeneration = 0;
         this._topologyRevision = 0;
         this._workletGraphGeneration = 0;
@@ -1007,7 +1008,7 @@ export class AudioManager {
         }
     }
 
-    setFrequencyPreview(frequency) {
+    setFrequencyPreview(frequency, sound = 'sine') {
         const active = Number.isFinite(frequency) && frequency > 0;
         if (this._frequencyPreviewReleaseTimer != null) {
             clearTimeout(this._frequencyPreviewReleaseTimer);
@@ -1017,7 +1018,8 @@ export class AudioManager {
             this._releaseFrequencyPreviewLease = this.powerPolicyController.acquireLease(
                 'frequency-preview', { mode: 'force-active' });
         }
-        this.broadcastToActiveWorklets({ type: 'frequencyPreview', frequency: active ? frequency : null });
+        this.broadcastToActiveWorklets({ type: 'frequencyPreview', frequency: active ? frequency : null,
+            sound: sound === 'bandpassNoise' ? 'bandpassNoise' : 'sine' });
         if (!active && this._releaseFrequencyPreviewLease) {
             // Keep processing through the worklet's 5 ms release ramp.
             this._frequencyPreviewReleaseTimer = setTimeout(() => {
@@ -2080,7 +2082,7 @@ export class AudioManager {
     }
 
     _resolveVisualSyncDue(tapId, endFrame, ruleKey, frame, contextFrameOffset) {
-        if (!this.visualSyncEnabled || !Number.isFinite(endFrame)) return null;
+        if (!this.visualSyncEnabled || (!Number.isFinite(endFrame) && !frame?.timing)) return null;
         const context = this.contextManager?.audioContext;
         const source = this._visualSyncSource(tapId);
         if (!context || !source) return null;
@@ -2093,6 +2095,9 @@ export class AudioManager {
         const requestedFrames = (this._dbtOutputDelayFrames?.get(primaryWorklet) || 0) +
             (this.visualSyncDelayFrames || 0);
         if (this._pendingOutputDelayRequests?.has(primaryWorklet) || appliedFrames !== requestedFrames) return null;
+        if (key === 'spectrumOverlay' && SpectrumTapContract.valid(frame?.timing)) {
+            return SpectrumTapContract.audibleFrame(frame.timing, appliedFrames) / context.sampleRate * 1000;
+        }
         const capture = telemetryCaptureTiming(frame, contextFrameOffset);
         return audibleFrameTime({ endFrame: capture?.endFrame ?? endFrame,
             generationFrames: capture?.generationFrames ?? (key === 'spectrumOverlay'
@@ -2486,6 +2491,7 @@ export class AudioManager {
                 generation: data.generation
             }));
             this._dspExecutionStateRevision = (this._dspExecutionStateRevision || 0) + 1;
+            updateWasmExecutionNotice(plugin, validated);
             plugin.onMessage?.(validated);
             this.dispatchEvent('dspExecutionState', validated);
             if (this._parallelActive && data.state === 'bypassed' &&
@@ -2493,17 +2499,22 @@ export class AudioManager {
                 getPluginExecutionCapabilities(plugin)?.jsFallbackCapacity) {
                 this._invalidateParallelFallbackBudget(branch || 'A');
             }
-        } else if (data.type === 'tubeSimulatorCircuitFault') {
+        } else if (data.type === 'tubeSimulatorCircuitFault' ||
+            data.type === 'adaptivePredictionFault') {
+            const adaptive = data.type === 'adaptivePredictionFault';
+            const pluginType = adaptive ? 'AdaptivePredictionEffectPlugin' : 'TubeSimulatorPlugin';
+            const causes = adaptive
+                ? ['none', 'numericalFailure']
+                : ['none', 'feedbackOscillation', 'processingSafetyFailure'];
             if (workletNode !== this._getPrimaryWorkletNode() ||
                 !Number.isInteger(data.pluginId) ||
-                data.pluginType !== 'TubeSimulatorPlugin' ||
+                data.pluginType !== pluginType ||
                 !Number.isInteger(data.instanceEpoch) ||
                 data.instanceEpoch < 0 || data.instanceEpoch > 0xffffffff ||
                 !Number.isInteger(data.generation) ||
                 data.generation < 0 || data.generation > 0xffffffff ||
                 typeof data.latched !== 'boolean' ||
-                !['none', 'feedbackOscillation', 'processingSafetyFailure']
-                    .includes(data.cause) ||
+                !causes.includes(data.cause) ||
                 (data.latched ? data.cause === 'none' : data.cause !== 'none')) return;
             const plugin = [this.pipelineA, this.pipelineB, this.pipeline]
                 .filter(Array.isArray)
@@ -2511,10 +2522,10 @@ export class AudioManager {
                 .find(candidate => candidate?.id === data.pluginId &&
                     candidate?.constructor?.name === data.pluginType);
             if (!plugin) return;
-            let states = this._tubeRuntimeEventsByNode.get(workletNode);
+            let states = this._dspRuntimeEventsByNode.get(workletNode);
             if (!states) {
                 states = new Map();
-                this._tubeRuntimeEventsByNode.set(workletNode, states);
+                this._dspRuntimeEventsByNode.set(workletNode, states);
             }
             const previous = states.get(data.pluginId);
             if (previous && (data.instanceEpoch < previous.instanceEpoch ||
@@ -2526,7 +2537,7 @@ export class AudioManager {
             });
             const validated = { ...data, validated: true };
             plugin.onMessage?.(validated);
-            this.dispatchEvent('tubeSimulatorCircuitFault', validated);
+            this.dispatchEvent(data.type, validated);
         } else if (data.type === 'dspInitializing') {
             const state = this._dspReadyFallbacks?.get(workletNode);
             const token = this._dspReadyTokens?.get(workletNode) || 0;

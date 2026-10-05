@@ -39,6 +39,14 @@ public:
     pipeline_observer_context_ = context;
   }
 
+  // Host transport at the first engine-input frame of subsequent process calls;
+  // nullptr clears it, and prepare() starts without one. The engine copies but
+  // never advances it, so the caller updates it before each process call on the
+  // engine owner thread. Each kernel receives it shifted back by the latency
+  // ahead of that kernel. Non-finite values, a non-positive tempo and zero
+  // time-signature fields clear the corresponding flags.
+  void setHostTransport(const HostTransport *transport) noexcept;
+
   et_status prepare(float sample_rate, std::uint32_t max_channels, std::uint32_t max_frames,
                     std::uint32_t telemetry_ring_bytes) noexcept;
   et_status reset() noexcept;
@@ -89,6 +97,13 @@ public:
   [[nodiscard]] std::uint32_t pipelineLatency() const noexcept {
     return pipeline_configured_ ? pipeline_latency_samples_ : 0u;
   }
+  // Remaining delay from the observed routed input/output to final output.
+  // Read on the engine owner between calls or inside its PipelineObserver.
+  struct PipelineTapLatency {
+    std::uint32_t input = 0, output = 0;
+  };
+  [[nodiscard]] bool pipelineTapLatency(et_instance instance,
+                                        PipelineTapLatency &latency) const noexcept;
 
   et_status configureGraph(const std::uint8_t *descriptor, std::uint32_t descriptor_bytes) noexcept;
   et_status resetGraph() noexcept;
@@ -169,8 +184,11 @@ private:
   void destroyAllInstances() noexcept;
   et_status validateProcessArgs(const float *audio, std::uint32_t channel_count,
                                 std::uint32_t frame_count, double time_seconds) const noexcept;
+  // Process info for a kernel whose input lags the engine input by input_latency frames.
+  [[nodiscard]] ProcessInfo nodeProcessInfo(double time_seconds,
+                                            std::uint32_t input_latency) noexcept;
   void processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel_count,
-                   std::uint32_t frame_count, double time_seconds,
+                   std::uint32_t frame_count, const ProcessInfo &info,
                    et_instance pipeline_instance = 0) noexcept;
   void maybeWriteTelemetry(InstanceSlot &slot, std::uint32_t frame_count) noexcept;
   void invalidatePipeline() noexcept;
@@ -188,10 +206,15 @@ private:
   Arena arena_;
   PipelineObserver pipeline_observer_ = nullptr;
   void *pipeline_observer_context_ = nullptr;
+  HostTransport host_transport_{};
+  HostTransport node_transport_{};
+  bool host_transport_set_ = false;
   TelemetryRing telemetry_;
   std::array<InstanceSlot, kMaxInstances> instances_{};
   std::array<PipelineNode, kMaxPipelineNodes> pipeline_{};
   std::array<PipelineCompensation, kMaxPipelineNodes> pipeline_compensation_{};
+  std::array<PipelineTapLatency, kMaxPipelineNodes> pipeline_tap_latency_{};
+  std::array<std::uint32_t, kMaxPipelineNodes> pipeline_input_latency_{};
   std::array<std::uint32_t, 16> pipeline_output_delays_{};
   dsp::DelayLine pipeline_output_delay_line_;
   std::uint32_t pipeline_count_ = 0;
@@ -233,6 +256,8 @@ private:
   friend class Engine;
   PipelineLatencySnapshot snapshot_;
   std::array<PipelineCompensation, kMaxPipelineNodes> compensation_{};
+  std::array<PipelineTapLatency, kMaxPipelineNodes> tap_latency_{};
+  std::array<std::uint32_t, kMaxPipelineNodes> input_latency_{};
   std::array<std::uint32_t, 16> output_delays_{};
   dsp::DelayLine output_delay_line_;
   std::uint32_t latency_ = 0;

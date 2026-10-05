@@ -898,8 +898,13 @@ export async function verifyDocsAcceptance({
 }) {
   if (!npmRoot) throw new Error('--npm-root is required.');
   runPython(python, 'python-start.py');
+  runPython(python, 'volume-automation.py');
   runPython(python, 'ml-data-augmentation.py');
   runPython(python, 'asset-required-examples.py');
+  runPython(python, 'bass-management-stereo-sub.py');
+  runPython(python, 'bass-management-linear.py');
+  runPython(python, 'spatial-mapper-center.py');
+  runPythonCli(python, ['chain', 'validate', path.join(snippetsRoot, 'bass-management-stereo-sub.json')]);
   verifyReadmeBlocks(python, npmRoot);
   verifyVisualFixture(python);
   verifyBundleInterop(python, npmRoot);
@@ -970,6 +975,7 @@ export async function verifyDocsAcceptance({
 
 export async function verifyJavascriptAcceptance(npmRoot) {
   runNpmSnippet(npmRoot, 'javascript-start.mjs');
+  runNpmSnippet(npmRoot, 'volume-automation.mjs');
   verifyJavascriptReadme(npmRoot);
   runNpmSnippet(npmRoot, 'asset-required-examples.mjs');
   runNpmSnippet(

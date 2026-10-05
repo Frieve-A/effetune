@@ -38,6 +38,8 @@ struct DecLevel {
   double kappa; // .5 / W as a Python float
   int64_t ops;
   int64_t switchCapped;
+  int32_t lastRi;      // the last reseed's relation (-1: a restart)
+  double lastPn[kLvG]; // the last carrying reseed's level mass
 
   // a3 Level.__init__.
   void init(double kappaIn) noexcept {
@@ -47,6 +49,7 @@ struct DecLevel {
     last = -std::numeric_limits<double>::infinity();
     ops = 0;
     switchCapped = 0;
+    lastRi = -1;
     restart();
   }
 
@@ -208,15 +211,16 @@ struct DecLevel {
   }
 
   // Hysteresis and confirmation of an output switch from hypothesis from at decoder time t, over
-  // the levels that allowed admits (null: all); returns the new hypothesis or -1.
-  [[nodiscard]] int32_t decideFrom(int32_t from, DecPending &pd, const bool *allowed, double t,
+  // the level mass Pg and the levels that allowed admits (null: all), with the level-switch
+  // thresholds hi (target) and lo (current); the phase rule keeps pi. Returns the new hypothesis
+  // or -1.
+  [[nodiscard]] int32_t decideMass(int32_t from, DecPending &pd, const double *Pg,
+                                   const bool *allowed, double hi, double lo, double t,
                                    double T) const noexcept {
-    double Pg[kLvG];
-    groupMass(Pg);
     const int32_t g = kLvGrp[from];
     const int32_t gb = heaviest(Pg, allowed);
     int32_t tgt = -1;
-    if (gb != g && Pg[g] <= kOneMinusPi && Pg[gb] >= kPi) {
+    if (gb != g && Pg[g] <= lo && Pg[gb] >= hi) {
       tgt = best(gb);
     } else {
       const int32_t hb = best(g);
@@ -243,7 +247,9 @@ struct DecLevel {
   }
 
   [[nodiscard]] int32_t decide(double t, double T) noexcept {
-    return decideFrom(cur, pend, nullptr, t, T);
+    double Pg[kLvG];
+    groupMass(Pg);
+    return decideMass(cur, pend, Pg, nullptr, kPi, kOneMinusPi, t, T);
   }
 
   // Output position of hypothesis h switched in at time t: its first position after t, at least
@@ -277,10 +283,27 @@ struct DecLevel {
     u = switchPos(h, a, T, t, last);
   }
 
-  // The clock was (re)seeded; restartKind: 'lock' or 'bank'. Returns whether the output grid moved.
-  bool reseed(bool restartKind, double Told, double a, double T, double t, double tOb,
+  // First hypothesis of level go whose phase is nearest the time tOb.
+  [[nodiscard]] static int32_t nearest(int32_t go, double a, double T, double tOb) noexcept {
+    int32_t bh = -1;
+    double bd = 0.0;
+    for (int32_t h = 0; h < kLvH; ++h) {
+      if (kLvGrp[h] != go)
+        continue;
+      double e = (tOb - (a + (static_cast<double>(kLvPh12[h]) / kLvU) * T)) /
+                 ((T * static_cast<double>(kLvQ12[h])) / kLvU);
+      const double d = std::fabs(e - rintEven(e));
+      if (bh < 0 || d < bd) {
+        bh = h;
+        bd = d;
+      }
+    }
+    return bh;
+  }
+
+  // The clock was (re)seeded; restartKind: 'lock' or 'bank'.
+  void reseed(bool restartKind, double Told, double a, double T, double t, double tOb,
               double w) noexcept {
-    const double qOld = q();
     n = 0;
     int32_t ri = -1;
     if (!restartKind) {
@@ -297,11 +320,13 @@ struct DecLevel {
       if (std::fabs(lr - kLvLogNd[ri]) > kLvTol)
         ri = -1;
     }
+    lastRi = ri;
     if (ri < 0) {
       restart();
       cur = 0;
     } else {
-      double Pg[kLvG], Pn[kLvG];
+      double Pg[kLvG];
+      double *Pn = lastPn;
       groupMass(Pg);
       for (int32_t g = 0; g < kLvG; ++g)
         Pn[g] = 0.0;
@@ -326,26 +351,9 @@ struct DecLevel {
       }
       m = 0;
       pend.on = false;
-      const int32_t go = argmaxFirst(Pn, kLvG);
-      int32_t bh = -1;
-      double bd = 0.0;
-      for (int32_t h = 0; h < kLvH; ++h) {
-        if (kLvGrp[h] != go)
-          continue;
-        double e = (tOb - (a + (static_cast<double>(kLvPh12[h]) / kLvU) * T)) /
-                   ((T * static_cast<double>(kLvQ12[h])) / kLvU);
-        const double d = std::fabs(e - rintEven(e));
-        if (bh < 0 || d < bd) {
-          bh = h;
-          bd = d;
-        }
-      }
-      cur = bh;
+      cur = nearest(argmaxFirst(Pn, kLvG), a, T, tOb);
     }
     anchor(a, T, t);
-    const double e = (time(u, a, T) - tOb) / (T * q());
-    return std::fabs(portableLog((T * q()) / (Told * qOld))) > kLevelTolG2 ||
-           std::fabs(e - rintEven(e)) >= .25;
   }
 };
 

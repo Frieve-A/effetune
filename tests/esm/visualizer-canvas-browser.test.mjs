@@ -17,7 +17,7 @@ test('Spectrum gradient directions follow frequency and level after rotating the
         await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
         await page.addScriptTag({ content: frequencyAxisScript });
         await page.addScriptTag({ content: read('../../plugins/analyzer/spectrum_analyzer.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const results = await page.evaluate(() => {
@@ -38,31 +38,194 @@ test('Spectrum gradient directions follow frequency and level after rotating the
                 const pixel = (fraction, level) => {
                     const x = frequencyX(fraction), y = height * level;
                     const point = orientation === 'vertical' ? [800 - y, 400 - x] : [x, y];
-                    return [...canvas.getContext('2d').getImageData(Math.floor(point[0]), Math.floor(point[1]), 1, 1).data];
+                    return [...(display.signalCanvas || canvas).getContext('2d').getImageData(Math.floor(point[0]), Math.floor(point[1]), 1, 1).data];
                 };
-                for (const direction of ['frequency', 'intensity']) {
-                    item.palette.direction = direction;
+                for (const direction of ['frequency', 'intensity', 'radial']) for (const angle of [0, 90, -90, 180]) {
+                    Object.assign(item.palette, { direction, angle });
                     display.draw(item, 0, 800);
                     const level = dm === 'bar' ? .5 : .25;
-                    results.push({ orientation, dm, direction,
-                        first: pixel(.25, level), second: pixel(.75, level),
+                    results.push({ orientation, dm, direction, angle,
+                        first: pixel(.25, level), second: pixel(.75, level), center: pixel(.5, level),
                         weaker: dm === 'bar' ? pixel(.25, .8) : null });
                 }
                 display.dispose();
             }
             return results;
         });
-        for (const { orientation, dm, direction, first, second, weaker } of results) {
-            const description = `${orientation} ${dm} ${direction}`;
+        for (const { orientation, dm, direction, angle, first, second, center, weaker } of results) {
+            const description = `${orientation} ${dm} ${direction} ${angle}°`;
             assert.ok(first[3] > 0 && second[3] > 0, description);
-            if (direction === 'frequency') {
-                assert.ok(second[0] - first[0] > 100, description);
-                if (weaker) assert.deepEqual(weaker, first, description);
+            if (direction === 'radial') {
+                assert.ok(Math.abs(first[0] - second[0]) <= 12, description);
+                assert.ok(first[0] - center[0] > 8 && center[2] - first[2] > 8, description);
             } else {
-                assert.deepEqual(first, second, description);
-                if (weaker) assert.ok(first[0] - weaker[0] > 50 && weaker[2] - first[2] > 50, description);
+                const basis = orientation === 'horizontal' ? (direction === 'frequency' ? 0 : -90)
+                    : (direction === 'frequency' ? -90 : 0);
+                const radians = (basis + angle) * Math.PI / 180;
+                const frequency = orientation === 'horizontal' ? Math.cos(radians) : -Math.sin(radians);
+                if (Math.abs(frequency) > .99) assert.ok((second[0] - first[0]) * frequency > 100, description);
+                else assert.ok(Math.abs(first[0] - second[0]) <= 2, description);
+                if (weaker) {
+                    const level = orientation === 'horizontal' ? -Math.sin(radians) : Math.cos(radians);
+                    if (Math.abs(level) > .99) assert.ok((first[0] - weaker[0]) * level > 50, description);
+                    else assert.ok(Math.abs(first[0] - weaker[0]) <= 2, description);
+                }
             }
         }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Scroll moves linear and radial gradient peaks continuously in either direction', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body></body>');
+        await page.addScriptTag({ content: moduleScript('../../js/visualizer/visualizer-effects.js') });
+        const frames = await page.evaluate(() => {
+            const canvas = document.createElement('canvas'); canvas.width = 960; canvas.height = 120;
+            const ctx = canvas.getContext('2d'), frames = [];
+            const palette = { stops: [{ pos: 0, color: '#000000' }, { pos: .5, color: '#ffffff' },
+                { pos: 1, color: '#000000' }], motion: { mode: 'scroll', speed: 1 } };
+            for (const reverse of [false, true]) for (const direction of ['frequency', 'radial'])
+                for (const start of [.1, 9.9]) for (let frame = 0; frame < 12; frame++) {
+                    const time = start + frame / 60; palette.direction = direction;
+                    palette.motion.reverse = reverse;
+                    ctx.fillStyle = paletteGradient(ctx, palette, canvas.width, time, false, canvas.height);
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    const row = ctx.getImageData(0, canvas.height / 2, canvas.width, 1).data;
+                    let peak = -1, positions = [];
+                    for (let x = direction === 'radial' ? canvas.width / 2 : 0; x < canvas.width; x++) {
+                        if (row[x * 4] > peak) { peak = row[x * 4]; positions = [x + .5]; }
+                        else if (row[x * 4] === peak) positions.push(x + .5);
+                    }
+                    const actual = positions.reduce((sum, x) => sum + x, 0) / positions.length;
+                    const radius = Math.hypot(canvas.width, canvas.height) / 2;
+                    const position = ((.5 - time * .1 * (reverse ? -1 : 1)) % 1 + 1) % 1;
+                    const expected = direction === 'radial' ? canvas.width / 2 + radius * position : canvas.width * position;
+                    frames.push({ reverse, direction, frame, actual, expected, peak });
+                }
+            return frames;
+        });
+        for (const frame of frames) {
+            assert.ok(Math.abs(frame.actual - frame.expected) <= 1.5, JSON.stringify(frame));
+            assert.ok(frame.peak >= 254, JSON.stringify(frame));
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Text and Shape use their full rectangular bounds for gradient angles and radial centers', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body></body>');
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-text', 'visualizer-renderer'])
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        const results = await page.evaluate(() => {
+            const stage = document.createElement('canvas'); stage.width = 1280;
+            const renderer = new VisualizerRenderer(stage), results = [];
+            for (const type of ['shape', 'text']) {
+                const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 200;
+                const context = canvas.getContext('2d'), item = createItem(type, type), coordinates = [];
+                const linear = context.createLinearGradient.bind(context), radial = context.createRadialGradient.bind(context);
+                context.createLinearGradient = (...args) => { coordinates.push(args); return linear(...args); };
+                context.createRadialGradient = (...args) => { coordinates.push(args); return radial(...args); };
+                item.palette.mode = 'gradient';
+                item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+                if (type === 'shape') item.style.borderWidth = 0;
+                for (const direction of ['linear', 'radial']) for (const angle of [0, 90]) {
+                    Object.assign(item.palette, { direction, angle });
+                    renderer.drawItem({ canvas }, item, {}, null, 0, true);
+                    const pixel = (x, y) => [...context.getImageData(x, y, 1, 1).data];
+                    results.push({ type, direction, angle, coordinates: coordinates.at(-1),
+                        top: pixel(400, 10), bottom: pixel(400, 190), center: pixel(400, 100), edge: pixel(10, 100) });
+                }
+            }
+            return results;
+        });
+        for (const result of results) {
+            const { type, direction, angle, coordinates, top, bottom, center, edge } = result;
+            if (direction === 'radial') {
+                assert.deepEqual(coordinates, [400, 100, 0, 400, 100, Math.hypot(800, 200) / 2]);
+                if (type === 'shape') assert.ok(center[2] > 250 && edge[0] > 230, JSON.stringify(result));
+            } else if (angle === 90) {
+                assert.ok(Math.abs(coordinates[1]) < 1e-9 && Math.abs(coordinates[3] - 200) < 1e-9, JSON.stringify(result));
+                if (type === 'shape') assert.ok(bottom[0] - top[0] > 220, JSON.stringify(result));
+            } else assert.deepEqual(coordinates, [0, 0, 800, 0]);
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Radial Spectrogram gradients preserve history opacity and annotations while their colors move', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body></body>');
+        await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
+        await page.addScriptTag({ content: frequencyAxisScript });
+        await page.addScriptTag({ content: read('../../plugins/analyzer/spectrogram.js') });
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display'])
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        const result = await page.evaluate(() => {
+            const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;
+            const item = createItem('spectrogram', 'radial-history');
+            item.params.showAxes = item.params.showAxisNumbers = true;
+            item.effects = [normalizeEffect({ type: 'opacity' })];
+            item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+            const display = createAnalyzerDisplay(item, canvas, { subscribeItem: () => () => {} }), plugin = display.plugin;
+            plugin.dspSpectrogramActive = true;
+            plugin.spectrogramIntensityBuffer.fill(128);
+            plugin.spectrogramColumnPeriod = .01; plugin.spectrogramColumnCount = 1024;
+            for (let column = 0; column < 1024; column++) plugin.spectrogramColumnTimes[column] = 1 - (1023 - column) * .01;
+            plugin.prevTime = 1; plugin.getSpectrogramDisplayTime = () => 1;
+            plugin.repaintSpectrogramHistory();
+            const history = plugin.spectrogramIntensityBuffer;
+            const pixels = target => target.getContext('2d').getImageData(0, 0, 800, 400).data;
+            display.draw(item, 0, 800);
+            const before = pixels(display.signalCanvas), labels = pixels(canvas);
+            item.palette.mode = 'gradient'; item.palette.direction = 'radial'; item.effects = [];
+            display.draw(item, 0, 800);
+            const radial = pixels(display.signalCanvas);
+            const center = [...display.signalCanvas.getContext('2d').getImageData(400, 200, 1, 1).data];
+            const outer = [...display.signalCanvas.getContext('2d').getImageData(10, 10, 1, 1).data];
+            const sameAnnotations = pixels(canvas).every((value, index) => value === labels[index]);
+            item.palette.motion.mode = 'hue'; item.palette.motion.speed = 1;
+            display.draw(item, 2, 800);
+            const moved = pixels(display.signalCanvas);
+            item.palette.motion.mode = 'none'; item.palette.angle = 90; item.palette.direction = 'frequency';
+            display.draw(item, 2, 800);
+            const rotatedFirst = [...display.signalCanvas.getContext('2d').getImageData(100, 200, 1, 1).data];
+            const rotatedLast = [...display.signalCanvas.getContext('2d').getImageData(700, 200, 1, 1).data];
+            const rotatedOpacity = pixels(display.signalCanvas).every((value, index) => index % 4 !== 3 || value === before[index]);
+            const rotatedAnnotations = pixels(canvas).every((value, index) => value === labels[index]);
+            item.palette.angle = 0; display.draw(item, 2, 800);
+            const nativeLayerRestored = display.signalCanvas === null;
+            const historyRetained = plugin.spectrogramIntensityBuffer === history && history.every(value => value === 128);
+            display.dispose();
+            return { center, outer, sameAnnotations, nativeLayerRestored, historyRetained, rotatedFirst, rotatedLast, rotatedOpacity, rotatedAnnotations,
+                hasSignal: radial.some((value, index) => index % 4 === 3 && value > 0),
+                opacityPreserved: radial.every((value, index) => index % 4 !== 3 || value === before[index]),
+                motionPreservesOpacity: moved.every((value, index) => index % 4 !== 3 || value === radial[index]),
+                motionChangesColor: moved.some((value, index) => index % 4 !== 3 && value !== radial[index]) };
+        });
+        assert.equal(result.hasSignal, true);
+        assert.equal(result.opacityPreserved, true, JSON.stringify(result));
+        assert.equal(result.motionPreservesOpacity, true);
+        assert.equal(result.motionChangesColor, true);
+        assert.equal(result.sameAnnotations, true);
+        assert.equal(result.nativeLayerRestored, true);
+        assert.equal(result.historyRetained, true);
+        assert.equal(result.rotatedOpacity, true);
+        assert.equal(result.rotatedAnnotations, true);
+        assert.ok(result.rotatedLast[0] - result.rotatedFirst[0] > 180, JSON.stringify(result));
+        assert.ok(result.center[2] > 240 && result.outer[0] > 180);
+        assert.equal(result.center[3], 128);
+        assert.equal(result.outer[3], 128);
     } finally {
         await browser.close();
     }
@@ -86,7 +249,7 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
         for (const file of ['spectrum_analyzer', 'spectrogram', 'stereo_meter', 'note_spectrogram']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
         }
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-text', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer', 'visualizer-editor']) {
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-text', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display', 'visualizer-renderer', 'visualizer-editor']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         const results = await page.evaluate(() => {
@@ -516,7 +679,7 @@ test('Notes move the keyboard to the opposite side without reversing its keys', 
         ` });
         await page.addScriptTag({ content: frequencyAxisScript });
         await page.addScriptTag({ content: read('../../plugins/analyzer/note_spectrogram.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
             const sources = { subscribeItem: () => () => {} };
@@ -630,7 +793,7 @@ test('Level Meter draws oversized values beyond its item and gives axis numbers 
             window.ThemePalette = { get: role => role === 'graph-bg-deep' ? '#070809' : '#444444' };
         ` });
         await page.addScriptTag({ content: read('../../plugins/analyzer/level_meter.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display', 'visualizer-renderer'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display', 'visualizer-renderer'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
             const stage = document.createElement('canvas'); stage.width = 800; stage.height = 400;
@@ -783,7 +946,7 @@ test('Spectrum Note Colors bars and peaks use one center-frequency color through
         ` });
         for (const file of ['spectrum_analyzer', 'note_spectrogram'])
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const results = await page.evaluate(() => {
             const sources = { subscribeItem: () => () => {}, getFrame: () => null, getModulators: () => ({}) };
@@ -849,7 +1012,7 @@ test('Heatmap keeps native colors on black while its dark values reveal the scen
             window.ThemePalette = { get: () => 'rgb(0,0,0)' };
         ` });
         await page.addScriptTag({ content: read('../../plugins/analyzer/spectrogram.js') });
-        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-analyzer-display'])
+        for (const file of ['visualizer-effects', 'visualizer-model', 'visualizer-ballistics', 'visualizer-guitar', 'visualizer-analyzer-display'])
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         const samples = await page.evaluate(() => {
             const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 400;

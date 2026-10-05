@@ -405,10 +405,20 @@ class ValidationAndEffectsTests(unittest.TestCase):
 
     def test_static_link_dependency_licenses_are_packaged(self) -> None:
         package = Path(effetune.__file__).resolve().parent
-        pffft = package / "licenses" / "PFFFT-LICENSE.txt"
-        nanobind = package / "licenses" / "NANOBIND-LICENSE.txt"
-        self.assertIn("University Corporation for Atmospheric", pffft.read_text("utf-8"))
-        self.assertIn("Wenzel Jakob", nanobind.read_text("utf-8"))
+        for filename, attribution in [
+            ("PFFFT-LICENSE.txt", "University Corporation for Atmospheric"),
+            ("NANOBIND-LICENSE.txt", "Wenzel Jakob"),
+            ("ROBIN-MAP-LICENSE.txt", "Thibaut Goetghebuer-Planchon"),
+        ]:
+            self.assertIn(
+                attribution, (package / "licenses" / filename).read_text("utf-8")
+            )
+        dsp_notice = package / "licenses" / "DSP-NOTICE.txt"
+        repository_root = Path(__file__).resolve().parents[4]
+        self.assertEqual(
+            dsp_notice.read_text("utf-8"),
+            (repository_root / "plugins" / "dsp" / "NOTICE.txt").read_text("utf-8"),
+        )
 
 
 if __name__ == "__main__":

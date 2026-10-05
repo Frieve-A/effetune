@@ -286,6 +286,11 @@ test('Bandwidth Extender benchmark uses its active WASM workload contract', asyn
     blockSize: 128
   });
   assert.equal(runtime.supportsPlugin(new WasmOnlyPlugin()), false);
+  assert.throws(
+    () => runtime.createPluginSession(new WasmOnlyPlugin(), { channelCount: 2 }),
+    error => error instanceof DspBenchmarkPluginUnavailableError &&
+      /requires WebAssembly DSP/.test(error.message)
+  );
   assert.equal(BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ, 16000);
   assert.match(BANDWIDTH_EXTENDER_BENCHMARK_NOTE, /Manual 16 kHz cutoff/);
   assert.equal(getBandwidthExtenderBenchmarkWarmupFrames(48000), 4096);
@@ -704,6 +709,38 @@ test('WebAssembly mode rejects noneligible plugins without measuring JavaScript'
   assert.equal(pluginCalls.some(call => call[0] === 'executeProcessor'), false);
 
   runtime.close();
+});
+
+test('WebAssembly eligibility rejects unsupported formats before preparing a registered plugin', async () => {
+  for (const { sampleRate, channelCount, reason } of [
+    { sampleRate: 96000, channelCount: 2, reason: /44\.1 kHz \/ 48 kHz/ },
+    { sampleRate: 48000, channelCount: 16, reason: /channel configuration/ }
+  ]) {
+    const harness = createWasmHarness();
+    const pluginCalls = [];
+    const plugin = new VolumePlugin(pluginCalls);
+    plugin.executionCapabilities = Object.freeze({
+      requiresWasm: true,
+      supportedSampleRates: Object.freeze([44100, 48000]),
+      supportedChannelModes: Object.freeze(['mono', 'single', 'stereo-pair'])
+    });
+    const runtime = await createWasmRuntime(harness, { sampleRate });
+    try {
+      assert.equal(runtime.supportsPlugin('VolumePlugin'), true);
+      assert.equal(runtime.supportsPlugin(plugin, { channelCount }), false);
+      assert.match(runtime.getPluginUnsupportedReason(plugin, { channelCount }), reason);
+      assert.throws(
+        () => runtime.createPluginSession(plugin, { channelCount }),
+        error => error instanceof DspBenchmarkPluginUnavailableError &&
+          error.typeName === 'VolumePlugin' && reason.test(error.message)
+      );
+      assert.deepEqual(pluginCalls, []);
+      assert.equal(harness.calls.some(call =>
+        ['createInstance', 'pack', 'pipelineConfigure', 'pipelineProcess'].includes(call[0])), false);
+    } finally {
+      runtime.close();
+    }
+  }
 });
 
 test('WebAssembly sessions route all sixteen channels through one 2048-sample pipeline call', async () => {

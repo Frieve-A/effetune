@@ -63,7 +63,7 @@ function runtime() {
 }
 
 function noteFrame(index = 1) {
-    const payload = new DataView(new ArrayBuffer(28 + 440 * 8));
+    const payload = new DataView(new ArrayBuffer(32 + 440 * 12));
     payload.setFloat32(0, 48000, true);
     payload.setFloat32(4, index * .01, true);
     payload.setUint16(8, 440, true);
@@ -73,10 +73,10 @@ function noteFrame(index = 1) {
     payload.setUint32(20, 5, true);
     payload.setUint32(24, 1, true);
     for (let pitch = 0; pitch < 440; pitch++) {
-        payload.setFloat32(28 + pitch * 4, pitch === 197 ? .8 : 0, true);
-        payload.setFloat32(28 + 440 * 4 + pitch * 4, pitch === 197 ? -42 : -240, true);
+        payload.setFloat32(32 + pitch * 4, pitch === 197 ? .8 : 0, true);
+        payload.setFloat32(32 + 440 * 4 + pitch * 4, pitch === 197 ? -42 : -240, true);
     }
-    return { frameType: 24, formatVersion: 3, payload };
+    return { frameType: 24, formatVersion: 4, payload };
 }
 
 test('Notes and HQ Spectrum accept the first frame after returning to Visualizer', async () => {
@@ -182,6 +182,157 @@ test('Analog Meter folds a single selected channel and names it after the input 
         assert.equal(display.plugin.cellTitle(0), 'Ch 2 (reference)');
         display.draw(item, 1, 400);
         assert.ok(target.context.calls.some(([key]) => key === 'stroke'));
+        display.dispose();
+    });
+});
+
+test('VU appearance draws percentages, signs, cropped needles and separate meter faces with effects', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('analog-meter', 'meter');
+        Object.assign(item.params, { showPercent: true, readoutUnit: 'percent', showSigns: true,
+            showChannel: false, showMode: false, hubSize: 0, needleStart: 40, needleTip: 'taper',
+            dialCurvature: 0, faceShape: 'circle', faceOpacity: 1, vignette: 0.5, faceBorderWidth: 3 });
+        item.effects = [{ type: 'glow', enabled: true }];
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        display.plugin.reading = { channels: [{ needleDb: -14, maxDb: -14 }, { needleDb: -20, maxDb: -20 }] };
+        display.draw(item, 1, 800);
+        const labels = target.context.calls.filter(([key]) => key === 'fillText').map(([, label]) => label);
+        assert.ok(labels.includes('100.0%'));
+        assert.ok(labels.includes('50.1%'));
+        assert.equal(labels.filter(label => label === '100%').length, 2);
+        assert.equal(labels.filter(label => label === '+').length, 2);
+        assert.equal(labels.filter(label => label === '−').length, 2);
+        assert.equal(labels.some(label => label.startsWith('Ch ')), false);
+        assert.equal(labels.includes('VU'), false);
+        const signal = display.signalCanvas.context.calls;
+        assert.equal(signal.filter(([key]) => key === 'clip').length, 2, 'Each separated needle keeps its window clip');
+        assert.equal(signal.filter(([key]) => key === 'closePath').length, 2, 'Tapered needle is a filled triangle');
+        assert.equal(signal.some(([key]) => key === 'arc'), false, 'Hidden hubs do not draw');
+        const faces = display.underlayCanvas.context.calls;
+        assert.equal(faces.filter(([key]) => key === 'fill').length, 2, 'Both face fills remain below the signal layer');
+        item.params.md = 'RMS';
+        target.context.calls.length = 0;
+        display.draw(item, 2, 800);
+        assert.equal(target.context.calls.some(([key, label]) => key === 'fillText' && label.includes('%')), false);
+        display.dispose();
+    });
+});
+
+test('Thick arrow needles keep a pointed tip without a shaft stroke beneath it', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = { ...createItem('analog-meter', 'meter'), channel: 'L' };
+        Object.assign(item.params, { showAxes: false, showAxisNumbers: false, hubSize: 0 });
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        for (const width of [0.5, 2, 8]) {
+            for (const hidden of [0, 90]) {
+                for (const db of [-24, -14]) {
+                    Object.assign(item.params, { needleWidth: width, needleStart: hidden, needleTip: 'line' });
+                    display.plugin.reading = { channels: [{ needleDb: db, maxDb: db }] };
+                    target.context.calls.length = 0;
+                    display.draw(item, 1, 800);
+                    const [, baseX, baseY] = target.context.calls.find(([key]) => key === 'moveTo');
+                    const [, tipX, tipY] = target.context.calls.find(([key]) => key === 'lineTo');
+                    const length = Math.hypot(tipX - baseX, tipY - baseY);
+                    const ux = (tipX - baseX) / length, uy = (tipY - baseY) / length;
+
+                    item.params.needleTip = 'arrow';
+                    target.context.calls.length = 0;
+                    display.draw(item, 1, 800);
+                    const calls = target.context.calls;
+                    assert.equal(calls.some(([key]) => key === 'stroke'), false, 'No thick centerline can blunt the tip');
+                    assert.equal(calls.filter(([key]) => key === 'fill').length, 1, 'Shaft and head form one silhouette');
+                    const vertices = calls.filter(([key]) => key === 'moveTo' || key === 'lineTo');
+                    const tips = vertices.filter(([, x, y]) => Math.hypot(x - tipX, y - tipY) < 1e-9);
+                    assert.equal(tips.length, 1, 'Arrow retains the fixed needle endpoint');
+                    for (const [, x, y] of vertices) {
+                        const along = (x - baseX) * ux + (y - baseY) * uy;
+                        assert.ok(along >= -1e-9 && along <= length + 1e-9, 'Arrow stays within the visible needle length');
+                        if (Math.hypot(x - tipX, y - tipY) >= 1e-9) assert.ok(along < length - 1e-9,
+                            'Only the pointed vertex reaches the tip');
+                    }
+                }
+            }
+        }
+        display.dispose();
+    });
+});
+
+test('Arrow aspect changes its proportions while the tip stays fixed, and hub size reaches zero', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = { ...createItem('analog-meter', 'meter'), channel: 'L' };
+        Object.assign(item.params, { showAxes: false, showAxisNumbers: false, hubSize: 0, needleTip: 'arrow', needleWidth: 8 });
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        display.plugin.reading = { channels: [{ needleDb: -14, maxDb: -14 }] };
+        let fixedTip;
+        for (const ratio of [0.25, 1, 4]) {
+            for (const hidden of [0, 90]) {
+                Object.assign(item.params, { arrowAspect: ratio, needleStart: hidden });
+                target.context.calls.length = 0;
+                display.draw(item, 1, 800);
+                const points = target.context.calls.filter(([key]) => key === 'moveTo' || key === 'lineTo');
+                const [, x1, y1] = points[2], [, tx, ty] = points[3], [, x2, y2] = points[4];
+                const width = Math.hypot(x2 - x1, y2 - y1);
+                const length = Math.hypot(tx - (x1 + x2) / 2, ty - (y1 + y2) / 2);
+                assert.ok(Math.abs(length / width - ratio) < 1e-9);
+                fixedTip ??= [tx, ty];
+                assert.deepEqual([tx, ty], fixedTip, 'Changing arrow proportions never moves the needle endpoint');
+            }
+        }
+        for (const size of [0, 1, 3, 20]) {
+            item.params.hubSize = size;
+            target.context.calls.length = 0;
+            display.draw(item, 1, 800);
+            const hubs = target.context.calls.filter(([key]) => key === 'arc');
+            assert.equal(hubs.length, size === 0 ? 0 : 1);
+            if (size > 0) assert.equal(hubs[0][3], size * display.plugin.graphDpr);
+        }
+        display.dispose();
+    });
+});
+
+test('VU needles rotate with voltage at a fixed length through every dial shape and sweep', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = { ...createItem('analog-meter', 'meter'), channel: 'L' };
+        Object.assign(item.params, { showAxes: false, showAxisNumbers: false });
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        const fullVoltage = 10 ** (3 / 20);
+        let needleLength;
+        for (const sweep of [30, 100, 160]) {
+            for (const curvature of [0, 0.25, 0.5, 1]) {
+                for (const pivotOffset of [0, 50]) {
+                    Object.assign(item.params, { dialSweep: sweep, dialCurvature: curvature, pivotOffset });
+                    let previousAngle;
+                    for (const voltage of [0.2, 0.4, 0.6, 0.8, 1]) {
+                        const db = item.params.rl + 20 * Math.log10(voltage * fullVoltage);
+                        display.plugin.reading = { channels: [{ needleDb: db, maxDb: db }] };
+                        target.context.calls.length = 0;
+                        display.draw(item, 1, 800);
+                        const [, baseX, baseY] = target.context.calls.find(([key]) => key === 'moveTo');
+                        const [, tipX, tipY] = target.context.calls.find(([key]) => key === 'lineTo');
+                        const length = Math.hypot(tipX - baseX, tipY - baseY);
+                        needleLength ??= length;
+                        assert.ok(Math.abs(length - needleLength) < 1e-9,
+                            'Neither level, curvature, sweep nor pivot translation stretches the needle');
+                        const angle = Math.atan2(tipX - baseX, baseY - tipY);
+                        const expected = (voltage - 0.5) * sweep * Math.PI / 180;
+                        assert.ok(Math.abs(angle - expected) < 1e-12, 'Deflection stays affine in voltage');
+                        if (previousAngle !== undefined) assert.ok(Math.abs(angle - previousAngle - 0.2 * sweep * Math.PI / 180) < 1e-12);
+                        previousAngle = angle;
+                    }
+                }
+            }
+        }
+        // Only an explicit needle-length edit changes the physical radius.
+        item.params.needleLength = 80;
+        target.context.calls.length = 0;
+        display.draw(item, 1, 800);
+        const [, baseX, baseY] = target.context.calls.find(([key]) => key === 'moveTo');
+        const [, tipX, tipY] = target.context.calls.find(([key]) => key === 'lineTo');
+        assert.ok(Math.abs(Math.hypot(tipX - baseX, tipY - baseY) - needleLength * 80 / 102) < 1e-9);
         display.dispose();
     });
 });
@@ -499,6 +650,35 @@ test('A one-second stereo window batches all 48000 samples by age instead of cha
     });
 });
 
+test('Scroll moves Chroma and Stereo circular patterns continuously while preserving sample opacity', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        for (const type of ['chroma', 'stereo']) {
+            const item = createItem(type, type), target = canvas();
+            item.palette.mode = 'gradient'; item.palette.mapping = 'octave';
+            item.palette.motion = { mode: 'scroll', speed: 1 };
+            item.palette.stops = [{ pos: 0, color: '#000000' }, { pos: .5, color: '#ffffff' },
+                { pos: 1, color: '#000000' }];
+            const display = createAnalyzerDisplay(item, target, env.sources);
+            for (const time of [.1, .1 + 1 / 60, 9.99, 10.01]) {
+                display.draw(item, time, 800);
+                const options = display.plugin.displayOptions;
+                const gradient = type === 'chroma' ? options.spiralFillStyle(target.context)
+                    : options.sampleStyle(target.context, 400, 200, 128);
+                const peakColor = type === 'chroma' ? 'rgb(255,255,255)' : `rgba(255,255,255,${128 / 255})`;
+                const peak = gradient.stops.find(([, color]) => color === peakColor);
+                const expected = ((.5 - time * .1) % 1 + 1) % 1;
+                assert.ok(Math.abs(peak[0] - expected) < 1e-9, `${type} at ${time}`);
+                assert.equal(gradient.stops[0][0], 0);
+                assert.equal(gradient.stops.at(-1)[0], 1);
+                assert.equal(gradient.stops[0][1], gradient.stops.at(-1)[1], 'The moving pattern stays continuous at the repeat boundary');
+                if (type === 'stereo') assert.ok(gradient.stops.every(([, color]) => color.endsWith(`,${128 / 255})`)));
+            }
+            display.dispose();
+        }
+    });
+});
+
 test('Stereo correlation and balance controls hide each meter without hiding the waveform or other meter', async () => {
     const env = runtime();
     await withGlobals(env, () => {
@@ -586,6 +766,204 @@ test('Notes retain received history across canvas size and palette changes witho
         layout.items = [];
         renderer.draw(layout, env.sources, {}, 1);
         assert.equal(env.subscribers.size, 0);
+    });
+});
+
+test('Guitar marks every fret of a detected note in range, or one playable shape', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        const stage = canvas();
+        const display = createAnalyzerDisplay(item, stage, env.sources);
+        // C4 sounds on the B string at fret 1, the G string at fret 5, and the D string at fret 10.
+        const labels = pm => {
+            item.params.pm = pm;
+            stage.context.calls.length = 0;
+            display.draw(item, 1, 800);
+            return stage.context.calls.filter(call => call[0] === 'fillText' && call[1] === 'C').length;
+        };
+        display.draw(item, 0, 800);
+        env.subscribers.get('guitar')(noteFrame(), {});
+        assert.equal(labels('all'), 3);
+        assert.equal(labels('shape'), 1);
+        assert.equal(labels('shape-dim'), 3);
+        // Narrowing the fret range removes the positions outside it.
+        item.params.fx = 7;
+        assert.equal(labels('all'), 2);
+        item.params.fm = 3;
+        assert.equal(labels('all'), 1);
+        display.dispose();
+    });
+});
+
+test('Guitar scale guide rings every scale position, fills the roots, and draws the capo and fretboard fill', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        Object.assign(item.params, { fx: 12, ro: 0 });
+        const stage = canvas();
+        const display = createAnalyzerDisplay(item, stage, env.sources);
+        const count = (name, params) => {
+            Object.assign(item.params, params);
+            stage.context.calls.length = 0;
+            display.draw(item, 0, 800);
+            return stage.context.calls.filter(call => call[0] === name).length;
+        };
+        // C major pentatonic in standard tuning over frets 0-12: five positions per string,
+        // plus fret 12 on every string whose open note is in the scale (all but B).
+        assert.equal(count('arc', { sk: 'major-pentatonic' }) - count('arc', { sk: 'none' }), 35);
+        // One C per string between frets 1 and 11.
+        assert.equal(count('fill', { sk: 'major-pentatonic' }) - count('fill', { sk: 'none' }), 6);
+        assert.equal(count('fillRect', { cp: 3 }) - count('fillRect', { cp: 0 }), 1);
+        assert.equal(count('fillRect', { fb: true }) - count('fillRect', { fb: false }), 1);
+        display.dispose();
+    });
+});
+
+test('Fretless Guitar places a note on its fret line and slides it with the detected pitch', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        Object.assign(item.params, { fl: true, fx: 7 });
+        const stage = canvas();
+        const display = createAnalyzerDisplay(item, stage, env.sources);
+        const draw = time => {
+            stage.context.calls.length = 0;
+            display.draw(item, time, 800);
+            const calls = stage.context.calls;
+            return {
+                wires: calls.filter(call => call[0] === 'moveTo').map(call => call[1]),
+                labels: calls.filter(call => call[0] === 'fillText' && call[1] === 'C').map(call => call[2]).sort((a, b) => a - b)
+            };
+        };
+        draw(0);
+        env.subscribers.get('guitar')(noteFrame(1), {});
+        // C4 at fret 1 on the B string and fret 5 on the G string, each exactly on its fret line.
+        const centered = draw(1);
+        assert.equal(centered.labels.length, 2);
+        for (const x of centered.labels) assert.ok(centered.wires.some(wire => Math.abs(wire - x) < 1e-6));
+        // Equal confidence in the next fine bin puts the pitch 0.1 semitone sharp, between the lines.
+        const sharp = noteFrame(2);
+        sharp.payload.setFloat32(32 + 198 * 4, .8, true);
+        env.subscribers.get('guitar')(sharp, {});
+        const moved = draw(2);
+        moved.labels.forEach((x, index) => {
+            const next = moved.wires.filter(wire => wire > centered.labels[index] + 1e-6).sort((a, b) => a - b)[0];
+            assert.ok(x > centered.labels[index] && x < next);
+        });
+        display.dispose();
+    });
+});
+
+test('A vibrato across a semitone keeps one Guitar mark and changes only its note name', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        Object.assign(item.params, { fl: true, fx: 3 });
+        const stage = canvas();
+        const display = createAnalyzerDisplay(item, stage, env.sources);
+        // A frame whose only detection is one fine bin; bin 199 is C4 + 0.4 and bin 200 is C#4 - 0.4.
+        const frame = (index, bin) => {
+            const result = noteFrame(index);
+            result.payload.setFloat32(32 + 197 * 4, 0, true);
+            result.payload.setFloat32(32 + bin * 4, .8, true);
+            return result;
+        };
+        const names = time => {
+            stage.context.calls.length = 0;
+            display.draw(item, time, 800);
+            return stage.context.calls.filter(call => call[0] === 'fillText' && /^C#?$/.test(call[1])).map(call => call[1]);
+        };
+        display.draw(item, 0, 800);
+        env.subscribers.get('guitar')(frame(1, 199), {});
+        assert.deepEqual(names(1), ['C']);
+        // Well within the fall time, a separate C mark would still be fading out.
+        env.subscribers.get('guitar')(frame(2, 200), {});
+        assert.deepEqual(names(1.05), ['C#']);
+        display.dispose();
+    });
+});
+
+test('Guitar Size by Volume scales each dot by its note volume on the Note Spectrogram scale', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        const stage = canvas();
+        const display = createAnalyzerDisplay(item, stage, env.sources);
+        const largest = vs => {
+            item.params.vs = vs;
+            stage.context.calls.length = 0;
+            display.draw(item, 1, 800);
+            return Math.max(...stage.context.calls.filter(call => call[0] === 'arc').map(call => call[3]));
+        };
+        display.draw(item, 0, 800);
+        env.subscribers.get('guitar')(noteFrame(1), {});
+        // C4 at -42 dB sits 18 dB into the 24 dB scale that ends at -36 dB.
+        assert.ok(Math.abs(largest(true) / largest(false) - (1 / 3 + 2 / 3 * .75)) < 1e-9);
+        display.dispose();
+    });
+});
+
+test('A flat open-string note on a Fretless Guitar moves to a lower string', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        Object.assign(item.params, { fl: true, fx: 5, pm: 'all' });
+        const stage = canvas();
+        const display = createAnalyzerDisplay(item, stage, env.sources);
+        // Bin 217 is E4, the open high E string and fret 5 of the B string; bin 216 is 20 cents flat.
+        const frame = (index, bin) => {
+            const result = noteFrame(index);
+            result.payload.setFloat32(32 + 197 * 4, 0, true);
+            result.payload.setFloat32(32 + bin * 4, .8, true);
+            return result;
+        };
+        const marks = time => {
+            stage.context.calls.length = 0;
+            display.draw(item, time, 800);
+            return stage.context.calls.filter(call => call[0] === 'fillText' && call[1] === 'E').length;
+        };
+        display.draw(item, 0, 800);
+        env.subscribers.get('guitar')(frame(1, 217), {});
+        assert.equal(marks(1), 2);
+        env.subscribers.get('guitar')(frame(2, 216), {});
+        assert.equal(marks(2), 1);
+        display.dispose();
+    });
+});
+
+test('Guitar shows a note the revision finds and removes one it rules out', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        item.params.cf = 2;
+        const stage = canvas();
+        // Frame 9 carries the revised detection of frame 1.
+        const frame = (index, detected, revised) => {
+            const result = noteFrame(index);
+            result.payload.setFloat32(32 + 197 * 4, detected ? .8 : 0, true);
+            if (index === 9) {
+                result.payload.setUint32(28, 8, true);
+                result.payload.setFloat32(32 + 880 * 4 + 197 * 4, revised ? .8 : 0, true);
+            }
+            return result;
+        };
+        const marks = (first, revised) => {
+            const display = createAnalyzerDisplay(item, stage, env.sources);
+            display.draw(item, 0, 800);
+            let count = 0;
+            for (let index = 1; index <= 9; index++) {
+                env.subscribers.get('guitar')(frame(index, index === 1 && first, revised), {});
+                stage.context.calls.length = 0;
+                display.draw(item, index * .01, 800);
+                count = stage.context.calls.filter(call => call[0] === 'fillText' && call[1] === 'C').length;
+            }
+            display.dispose();
+            return count;
+        };
+        assert.ok(marks(false, true) > 0);
+        // With a 2 s fall time, only the revision removes the frame-1 detection by frame 9.
+        assert.equal(marks(true, false), 0);
     });
 });
 
@@ -852,18 +1230,94 @@ test('Spectrum gradients follow frequency or level in either orientation and dis
     });
 });
 
+test('Radial gradients color the signal layer of each frequency graph and follow its size and motion', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        for (const type of ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase']) {
+            const item = createItem(type, type), target = canvas();
+            item.palette.mode = 'gradient'; item.palette.direction = 'radial';
+            item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
+            const display = createAnalyzerDisplay(item, target, env.sources);
+            display.draw(item, 0, 800);
+            const signal = display.signalCanvas, gradients = [];
+            assert.ok(signal, type);
+            assert.equal(display.plugin.displayOptions.separateAnnotations, true);
+            display.paletteLayer.context.createRadialGradient = (...coordinates) => {
+                const gradient = { coordinates, stops: [], addColorStop(position, color) { this.stops.push([position, color]); } };
+                gradients.push(gradient); return gradient;
+            };
+            display.draw(item, 0, 800);
+            assert.deepEqual(gradients.at(-1).coordinates, [400, 200, 0, 400, 200, Math.hypot(800, 400) / 2]);
+            assert.deepEqual(gradients.at(-1).stops[0], [0, 'rgb(0,0,255)']);
+            assert.deepEqual(gradients.at(-1).stops.at(-1), [1, 'rgb(255,0,0)']);
+            target.width = 1000; target.height = 200;
+            item.palette.motion.mode = 'hue'; item.palette.motion.speed = 1;
+            display.draw(item, 2, 1000);
+            assert.deepEqual(gradients.at(-1).coordinates, [500, 100, 0, 500, 100, Math.hypot(1000, 200) / 2]);
+            assert.notDeepEqual(gradients.at(-1).stops, gradients[0].stops);
+            item.palette.direction = 'frequency'; display.draw(item, 2, 1000);
+            assert.equal(display.signalCanvas, null);
+            assert.equal(display.plugin.displayOptions.separateAnnotations, false);
+            display.dispose();
+        }
+    });
+});
+
+test('Linear and radial palettes color each meter signal while retaining custom beat colors and BPM decorations', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        for (const type of ['stereo', 'analog-meter', 'rhythm-analyzer']) {
+            const item = createItem(type, type), target = canvas();
+            Object.assign(item.palette, { mode: 'gradient', direction: 'linear', angle: 90,
+                stops: [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }] });
+            const display = createAnalyzerDisplay(item, target, env.sources);
+            if (type === 'stereo') {
+                display.plugin.sampleRate = 1280;
+                display.plugin.currentMeasurements = { xBuffer: new Float32Array(128).fill(.5), yBuffer: new Float32Array(128).fill(.3),
+                    currentPosition: 0, peakBuffer: new Float32Array(360) };
+                display.plugin.dspStereoFieldSnapshot = { correlation: 0, balance: 0 };
+            }
+            display.draw(item, 0, 800);
+            assert.ok(display.signalCanvas, type);
+            const gradients = [];
+            display.paletteLayer.context.createLinearGradient = (...coordinates) => {
+                gradients.push(coordinates); return { addColorStop() {} };
+            };
+            display.draw(item, 0, 800);
+            const [x0, y0, x1, y1] = gradients.at(-1);
+            assert.ok(Math.abs(x0 - 400) < 1e-9 && Math.abs(x1 - 400) < 1e-9, type);
+            assert.ok(Math.abs(y0) < 1e-9 && Math.abs(y1 - 400) < 1e-9, type);
+            display.signalCanvas.context.calls.length = 0;
+            display.drawSignal(target.context, context => { context.fillStyle = '#123456'; context.fill(); }, { palette: false });
+            assert.ok(display.signalCanvas.context.calls.some(call => call[0] === 'fillStyle' && call[1] === '#123456'));
+            item.palette.direction = 'radial'; display.draw(item, 0, 800);
+            assert.ok(display.signalCanvas, type);
+            if (type === 'rhythm-analyzer') {
+                display.signalCanvas.context.calls.length = 0;
+                item.style.outlineWidth = 2; item.style.outlineColor = '#654321';
+                display.plugin.displayOptions.drawBpm(target.context, '120 BPM', '#ff0000');
+                assert.ok(display.signalCanvas.context.calls.some(call => call[0] === 'strokeStyle' && call[1] === '#654321'));
+                assert.ok(display.signalCanvas.context.calls.some(call => call[0] === 'fillText' && call[1] === '120 BPM'));
+            }
+            display.dispose();
+        }
+    });
+});
+
 test('Spectrogram switches gradient lookup between frequency and intensity and repaints existing history', async () => {
     const env = runtime();
     await withGlobals(env, () => {
         const item = createItem('spectrogram', 'spectrogram');
         item.palette.mode = 'gradient';
         item.palette.stops = [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }];
-        const display = createAnalyzerDisplay(item, canvas(), env.sources), plugin = display.plugin;
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources), plugin = display.plugin;
         plugin.dspSpectrogramActive = true;
         plugin.spectrogramIntensityBuffer.fill(128);
         const pixel = row => Array.from(plugin.imageDataCache.data.slice(row * 1024 * 4, row * 1024 * 4 + 4));
         for (const direction of ['intensity', 'frequency', 'intensity']) {
+            target.context.calls.length = 0;
             item.palette.direction = direction; display.draw(item, 0, 800);
+            assert.equal(target.context.calls.filter(([name]) => name === 'clearRect').length, 1, 'History updates draw the graph once');
             const options = plugin.displayOptions;
             if (direction === 'intensity') {
                 assert.equal(options.frequencyColorLut, null);
@@ -879,6 +1333,54 @@ test('Spectrogram switches gradient lookup between frequency and intensity and r
                 assert.deepEqual(pixel(255), [0, 0, 255, 128]);
             }
         }
+        display.dispose();
+    });
+});
+
+test('Pitch gradient angles follow Notes layout and rotate Chroma colors around the octave', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('notes', 'notes'), target = canvas();
+        Object.assign(item.palette, { mode: 'gradient', direction: 'frequency', angle: 90 });
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        display.draw(item, 0, 800);
+        const gradients = [];
+        display.paletteLayer.context.createLinearGradient = (...coordinates) => {
+            gradients.push(coordinates); return { addColorStop() {} };
+        };
+        for (const ly of ['Vertical', 'Horizontal']) {
+            item.params.ly = ly; display.draw(item, 0, 800);
+            const [x0, y0, x1, y1] = gradients.at(-1);
+            assert.ok(Math.abs(ly === 'Vertical' ? y1 - y0 : x1 - x0) < 1e-9, ly);
+            assert.ok(Math.abs(ly === 'Vertical' ? x1 - x0 - 800 : y1 - y0 - 400) < 1e-9, ly);
+        }
+        display.dispose();
+        const chroma = createItem('chroma', 'chroma'), chromaCanvas = canvas();
+        Object.assign(chroma.palette, { mode: 'gradient', direction: 'frequency', mapping: 'octave',
+            stops: [{ pos: 0, color: '#0000ff' }, { pos: 1, color: '#ff0000' }] });
+        const spiral = createAnalyzerDisplay(chroma, chromaCanvas, env.sources);
+        spiral.draw(chroma, 0, 800);
+        const original = spiral.plugin.displayOptions.noteColor(60);
+        chroma.palette.angle = 90; spiral.draw(chroma, 0, 800);
+        assert.deepEqual(spiral.plugin.displayOptions.noteColor(63), original);
+        assert.deepEqual(spiral.plugin.displayOptions.spiralFillStyle(chromaCanvas.context).coordinates, [0, 0, 0]);
+        spiral.dispose();
+    });
+});
+
+test('Level Meter rotated gradients resize when the bar thickness changes', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('level-meter', 'levels'), target = canvas();
+        item.params.orientation = 'vertical';
+        Object.assign(item.palette, { mode: 'gradient', direction: 'linear', angle: 45 });
+        target.context.createLinearGradient = (...coordinates) => ({ coordinates, addColorStop() {} });
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        display.draw(item, 0, 800);
+        const first = display.plugin.displayOptions.traceStyle(target.context, 0, 400);
+        target.width = 1000; display.draw(item, 0, 1000);
+        const resized = display.plugin.displayOptions.traceStyle(target.context, 0, 400);
+        assert.notDeepEqual(resized.coordinates, first.coordinates);
         display.dispose();
     });
 });

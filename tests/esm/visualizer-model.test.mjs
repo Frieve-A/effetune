@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, createDefaultLayout, createItem,
+import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, METER_APPEARANCE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, createDefaultLayout, createItem,
     layoutsEqual, normalizeEffect, normalizeLayout, normalizeParams, paletteModesForType, snapshotLayout, validateLayout,
-    encodeLayoutShare, decodeLayoutShare, layoutShareParam } from '../../js/visualizer/visualizer-model.js';
+    encodeLayoutShare, decodeLayoutShare, layoutShareParam, guitarAnalysis } from '../../js/visualizer/visualizer-model.js';
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -138,21 +138,67 @@ test('Gradient direction survives presets and sharing while existing layouts kee
         const layout = { ...createDefaultLayout(), items: [item] };
         assert.ok(validateLayout(layout));
         assert.equal(Object.hasOwn(decodeLayoutShare(encodeLayoutShare(layout)).items[0].palette, 'direction'), false);
-        for (const direction of ['intensity', 'frequency']) {
+        for (const direction of ['intensity', 'frequency', 'radial']) {
             item.palette.direction = direction;
+            item.palette.angle = -45;
             assert.ok(validateLayout(layout));
             assert.equal(normalizeLayout(layout).items[0].palette.direction, direction);
             assert.equal(decodeLayoutShare(encodeLayoutShare(layout)).items[0].palette.direction, direction);
+            assert.equal(decodeLayoutShare(encodeLayoutShare(layout)).items[0].palette.angle, -45);
         }
         item.palette.direction = 'diagonal';
         assert.equal(normalizeLayout(layout).items[0].palette.direction, 'frequency');
         assert.equal(validateLayout(layout), false);
     }
-    for (const type of ['oscilloscope', 'stereo', 'level-meter', 'analog-meter', 'rhythm-analyzer', 'title']) {
+    for (const type of ['oscilloscope', 'stereo', 'level-meter', 'analog-meter', 'rhythm-analyzer', 'title', 'album', 'artist', 'text', 'shape']) {
         const item = createItem(type, type);
+        const layout = { ...createDefaultLayout(), items: [item] };
+        assert.ok(validateLayout(layout));
+        assert.equal(Object.hasOwn(normalizeLayout(layout).items[0].palette, 'direction'), false);
+        for (const direction of ['linear', 'radial']) {
+            Object.assign(item.palette, { direction, angle: 90 });
+            assert.ok(validateLayout(layout));
+            const palette = decodeLayoutShare(encodeLayoutShare(layout)).items[0].palette;
+            assert.equal(palette.direction, direction);
+            assert.equal(palette.angle, 90);
+        }
         item.palette.direction = 'intensity';
-        assert.equal(Object.hasOwn(normalizeLayout({ ...createDefaultLayout(), items: [item] }).items[0].palette, 'direction'), false);
+        assert.equal(normalizeLayout(layout).items[0].palette.direction, 'linear');
+        assert.equal(validateLayout(layout), false);
+        item.palette.direction = 'linear';
+        item.palette.angle = 999;
+        assert.equal(normalizeLayout(layout).items[0].palette.angle, 180);
+        assert.equal(validateLayout(layout), false);
+        item.palette.angle = NaN;
+        assert.equal(normalizeLayout(layout).items[0].palette.angle, 0);
+        assert.equal(validateLayout(layout), false);
     }
+    const artwork = createItem('artwork');
+    Object.assign(artwork.palette, { direction: 'linear', angle: 90 });
+    const palette = normalizeLayout({ ...createDefaultLayout(), items: [artwork] }).items[0].palette;
+    assert.equal(Object.hasOwn(palette, 'direction'), false);
+    assert.equal(Object.hasOwn(palette, 'angle'), false);
+});
+
+test('Color motion reversal survives saving and sharing for item and effect palettes', () => {
+    const layout = createDefaultLayout(), item = layout.items[0];
+    item.effects = [normalizeEffect({ type: 'glow' })];
+    layout.background.effects = [normalizeEffect({ type: 'flash' }, 'background')];
+    const palettes = [item.palette, item.effects[0].palette, layout.background.effects[0].palette];
+    assert.ok(validateLayout(layout));
+    assert.ok(palettes.every(palette => !Object.hasOwn(palette.motion, 'reverse')));
+    for (const mode of ['hue', 'scroll', 'none']) for (const reverse of [true, false]) {
+        for (const palette of palettes) Object.assign(palette.motion, { mode, speed: .75, reverse });
+        assert.ok(validateLayout(layout));
+        for (const restored of [normalizeLayout(layout), decodeLayoutShare(encodeLayoutShare(layout))]) {
+            const restoredItem = restored.items[0];
+            for (const palette of [restoredItem.palette, restoredItem.effects[0].palette, restored.background.effects[0].palette])
+                assert.deepEqual(palette.motion, { mode, speed: .75, reverse });
+        }
+    }
+    item.palette.motion.reverse = 'yes';
+    assert.equal(validateLayout(layout), false);
+    assert.equal(normalizeLayout(layout).items[0].palette.motion.reverse, false);
 });
 
 test('Chroma defaults and octave bounds follow its native controls', () => {
@@ -164,6 +210,18 @@ test('Chroma defaults and octave bounds follow its native controls', () => {
     assert.deepEqual(normalizeParams('chroma', { dm: 2, lo: 8, hi: 2, ft: 2.74, lr: 100, df: -200 }),
         { dm: 0, lo: 8, hi: 8, ft: 2.5, lr: 96, df: -120, cf: 0,
             showAxes: false, showAxisNumbers: false });
+});
+
+test('Guitar defaults, bounds, and detection range follow the tuning, frets, and capo', () => {
+    const guitar = createItem('guitar', 'guitar');
+    assert.deepEqual(guitar.params, { tn: [40, 45, 50, 55, 59, 64], fm: 0, fx: 12, cp: 0, pm: 'all', lb: 'sharp',
+        ro: -1, sk: 'none', th: 0.5, cf: 0.2, ly: 'Horizontal', fl: false, vs: false, rs: true, fb: true, mk: true, fn: true, sn: true });
+    assert.deepEqual(guitarAnalysis(guitar.params), { mn: 40, mx: 76, nc: 6 });
+    const params = normalizeParams('guitar', { tn: [28, 33, 200], fm: 9, fx: 3, cp: 20, pm: 'x', ro: 12, th: 1 });
+    assert.deepEqual([params.tn, params.fm, params.fx, params.cp, params.pm, params.ro, params.th],
+        [[28, 33, 108], 9, 9, 12, 'all', -1, 0.9]);
+    // The capo raises the lowest note above the open strings.
+    assert.deepEqual(guitarAnalysis({ tn: [28, 33, 38, 43], fm: 0, fx: 20, cp: 5 }), { mn: 33, mx: 63, nc: 4 });
 });
 
 test('Phase Map defaults, steps, and palettes follow Phase Select EQ', () => {
@@ -191,14 +249,14 @@ test('Phase Map defaults, steps, and palettes follow Phase Select EQ', () => {
 test('Analog Meter defaults, steps, and axes follow the Analog Meter effect', () => {
     const meter = createItem('analog-meter', 'meter');
     assert.deepEqual(meter.params, { md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1,
-        ln: 0, tg: -23, ls: 0, showAxes: true, showAxisNumbers: true });
+        ln: 0, tg: -23, ls: 0, ...METER_APPEARANCE_DEFAULTS, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('analog-meter', { md: 'Bar', it: 9, at: 0, rt: 2.345, rl: -14.6, rg: 90,
         sc: 3, ph: 0.26, ln: '1', tg: -50, ls: 2, showAxes: false }),
     { md: 'VU', it: 3, at: 1, rt: 2.35, rl: -15, rg: 60, sc: 0, ph: 0.3, ln: 0, tg: -36, ls: 0,
-        showAxes: false, showAxisNumbers: true });
+        ...METER_APPEARANCE_DEFAULTS, showAxes: false, showAxisNumbers: true });
     assert.deepEqual(paletteModesForType('analog-meter'), ['solid', 'gradient']);
     meter.params = { md: 'Loudness', it: 1.25, at: 7.5, rt: 2.33, rl: -18, rg: 50, sc: 1, ph: 2.5,
-        ln: 1, tg: -16, ls: 1, showAxes: true, showAxisNumbers: false };
+        ln: 1, tg: -16, ls: 1, ...METER_APPEARANCE_DEFAULTS, showAxes: true, showAxisNumbers: false };
     meter.palette.mode = 'gradient';
     const layout = { ...createDefaultLayout(), items: [meter] };
     assert.equal(validateLayout(layout), true);
@@ -207,13 +265,53 @@ test('Analog Meter defaults, steps, and axes follow the Analog Meter effect', ()
     assert.equal(validateLayout(layout), false);
 });
 
+test('Meter appearance persists in shares, accepts older layouts, and rejects invalid supplied values', () => {
+    const meter = createItem('analog-meter', 'meter');
+    Object.assign(meter.params, { dialCurvature: 0.35, dialSweep: 120, pivotOffset: 40, needleStart: 25,
+        needleLength: 110, needleWidth: 1.5, needleTip: 'taper', arrowAspect: 2.5, hubSize: 6, showPercent: true,
+        readoutUnit: 'percent', showSigns: true, faceShape: 'circle', faceOpacity: 1, vignette: 0.6 });
+    const layout = { ...createDefaultLayout(), items: [meter] };
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0], meter);
+    const old = structuredClone(layout);
+    for (const key of Object.keys(METER_APPEARANCE_DEFAULTS)) delete old.items[0].params[key];
+    assert.equal(validateLayout(old), true);
+    assert.equal(normalizeLayout(old).items[0].params.dialCurvature, 1);
+    for (const [key, value, expected] of [['dialCurvature', -1, 0], ['dialSweep', 999, 160],
+        ['needleWidth', 0, 0.5], ['arrowAspect', 0, 0.25], ['hubSize', -1, 0],
+        ['faceShape', 'triangle', 'rectangle'], ['vignette', 2, 1]]) {
+        const invalid = structuredClone(layout);
+        invalid.items[0].params[key] = value;
+        assert.equal(validateLayout(invalid), false, key);
+        assert.equal(normalizeLayout(invalid).items[0].params[key], expected);
+    }
+});
+
+test('Saved meter hub switches migrate to an editable size', () => {
+    const layout = { ...createDefaultLayout(), items: [createItem('analog-meter', 'meter')] };
+    const params = layout.items[0].params;
+    delete params.hubSize;
+    delete params.arrowAspect;
+    for (const visible of [false, true]) {
+        params.showHub = visible;
+        assert.equal(validateLayout(layout), true);
+        const migrated = decodeLayoutShare(encodeLayoutShare(layout)).items[0].params;
+        assert.equal(migrated.hubSize, visible ? 3 : 0);
+        assert.equal(Object.hasOwn(migrated, 'showHub'), false);
+        assert.equal(migrated.arrowAspect, 1);
+        migrated.hubSize = 8;
+        assert.equal(normalizeParams('analog-meter', migrated).hubSize, 8);
+    }
+    params.showHub = 'false';
+    assert.equal(validateLayout(layout), false);
+});
+
 test('Rhythm Analyzer defaults and bounds follow the Rhythm Analyzer effect', () => {
     const rhythm = createItem('rhythm-analyzer', 'rhythm');
-    assert.deepEqual(rhythm.params, { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: true, vm: true, ve: true, vl: true, showAxes: true, showAxisNumbers: true });
+    assert.deepEqual(rhythm.params, { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 250, mx: 60.4, sp: 5 }),
-        { mn: 192, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: true, vm: true, ve: true, vl: true, showAxes: true, showAxisNumbers: true });
+        { mn: 192, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 10, mx: 900, sp: 12, showAxes: false }),
-        { mn: 40, mx: 240, sp: 12, showBeat: true, showBpm: true, vt: true, vm: true, ve: true, vl: true, showAxes: false, showAxisNumbers: true });
+        { mn: 40, mx: 240, sp: 12, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: false, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 40, mx: 240, sp: 8, vt: false, vm: false, ve: false, vl: false }),
         { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: false, ve: false, vl: false, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(paletteModesForType('rhythm-analyzer'), ['solid', 'gradient']);
@@ -338,8 +436,8 @@ test('visualizer layouts normalize unknown and out-of-range settings', () => {
     const layout = normalizeLayout(input);
     assert.equal(layout.aspect, '16:9');
     assert.equal(layout.items[0].channel, null);
-    assert.equal(layout.items[0].rect.x, 0);
-    assert.ok(Math.abs(layout.items[0].rect.y - 0.2) < 1e-10);
+    assert.equal(layout.items[0].rect.x, -2);
+    assert.equal(layout.items[0].rect.y, 0.9);
     assert.equal(layout.items[0].rect.w, 0.5);
     assert.equal(layout.items[0].rect.h, 0.8);
     assert.deepEqual(layout.items[0].palette.stops, [{ pos: 1, color: '#40dfff' }]);

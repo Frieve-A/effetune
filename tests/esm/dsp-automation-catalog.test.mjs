@@ -52,9 +52,9 @@ test('production schemas expose the audited automation population', async () => 
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 110);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 92);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1011);
+  assert.equal(entries.length, 111);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 93);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1020);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,7 +86,7 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    'e322c597ee2b2c99ae4a0305b50430938c4a8dfb1820f949e2b6badbb4410102'
+    '94fede174522c7494ba6a36554304e2b861d6ba49b1570f995b151741777eaf5'
   );
   assert.deepEqual(privateEffects, [
     'AnalogMeterPlugin', 'BassManagementPlugin', 'ChromaSpiralPlugin', 'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
@@ -139,6 +139,9 @@ test('production schemas expose the audited automation population', async () => 
     },
     reconfiguresTemporalState: {
       PitchShifterPlugin: ['windowSize', 'crossfadeTime']
+    },
+    resetsLearningState: {
+      AdaptivePredictionEffectPlugin: ['resetToken']
     },
     reconfiguresSpatialAnalysisOrRouting: {
       BassManagementPlugin: [

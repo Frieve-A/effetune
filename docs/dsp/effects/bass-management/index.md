@@ -37,6 +37,93 @@ Some configurations use an external asset. See [Assets and bundles](/dsp/concept
 | `headroom` | `headroom` | number / 1 | `0` | dB | -24 … 0 |
 | `routeInversions` | `route_inversions` | integer / 16 | `[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]` | Not declared in catalog | 0 … 65535 |
 
+### Bass Management channel roles and routing
+
+`roles`, `frequencies`, `slopes`, `routes`, and `routeInversions` each
+contain exactly 16 entries. Entry `n` describes input channel `n` (zero-based).
+The channel role codes are:
+
+| Value | Role | Output when Sub routing is configured |
+|---|---|---|
+| `0` | Full Range | The full signal stays on the matching main output. |
+| `1` | Managed | The high-pass signal stays on the matching main output; low frequencies go to the selected Sub outputs. |
+| `2` | LFE | The signal goes only to selected Sub outputs, with optional low-pass filtering controlled by `lfeLowpass`. |
+| `3` | Unused | This input contributes no signal. The same channel can still serve as a Sub output receiving other inputs. |
+
+`subs` is an output bit mask: bit `m` reserves output channel `m` for Sub
+signals. For example, `subs=4` (`1 << 2`) selects the third output. Every
+Managed or LFE input needs a nonzero route, and every route must target selected
+Sub outputs. Main outputs (roles 0/1) cannot also be Sub outputs. A contribution
+routed to multiple Sub outputs is divided equally among those destinations;
+contributions from different inputs are summed. `headroom` scales all outputs.
+Use `channel="all"` and provide a bus wide enough for every configured input
+and Sub output. The effect preserves the bus width: for stereo plus one Sub,
+pass three channels with a silent third input slot.
+
+The library defaults are all roles `0` and `subs=0`. With `subs=0`, routing
+is unconfigured and every channel passes through, including inputs marked
+Managed, LFE, or Unused (with `headroom` and the selected phase delay).
+The app initializes available input roles to Managed, but that UI initialization
+does not change the library constructor defaults.
+
+This IIR example splits 40 Hz and 1 kHz stereo input at 80 Hz and sends the bass
+to output 2. The -6 dB headroom accommodates the summed left/right bass:
+
+```python
+import numpy as np
+import effetune as et
+
+rate = 48_000
+t = np.arange(rate, dtype=np.float64) / rate
+mono = (0.1 * np.sin(2 * np.pi * 40 * t)
+        + 0.1 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
+audio = np.zeros((3, rate), dtype=np.float32)
+audio[0] = audio[1] = mono  # Channels 0/1: left/right; channel 2: silent Sub slot.
+chain = et.Chain([et.BassManagement(
+    phase="IIR",
+    roles=[1, 1, 3] + [0] * 13,
+    routes=[4, 4] + [0] * 14,
+    subs=4,  # 1 << 2: third output.
+    frequencies=[80] * 16,
+    slopes=[24] * 16,
+    headroom=-6,
+)])
+output = chain.process(audio, sample_rate=rate)
+assert output.shape == audio.shape
+assert np.isfinite(output).all()
+assert np.max(np.abs(output[2])) > 0.01
+steady = np.abs(np.fft.rfft(output[:, rate // 2:]))
+assert steady[0, 20] < 0.1 * steady[0, 500]  # Main: 40 Hz below 1 kHz.
+assert steady[2, 500] < 0.1 * steady[2, 20]  # Sub: 1 kHz below 40 Hz.
+print("Left, right, Sub:", output.shape)
+```
+
+The equivalent Chain v1 JSON can be loaded with `Chain.from_preset(document)`
+in Python or `createChain(document)` in JavaScript, using the same three-channel
+audio bus:
+
+```json
+{
+  "version": 1,
+  "chain": [
+    {
+      "id": "bass",
+      "type": "BassManagement",
+      "channel": "all",
+      "parameters": {
+        "phase": "IIR",
+        "roles": [1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "routes": [4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "subs": 4,
+        "frequencies": [80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80],
+        "slopes": [24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24],
+        "headroom": -6
+      }
+    }
+  ]
+}
+```
+
 ### Bass Management route polarity
 
 `routes` and `routeInversions` are 16-entry integer bit-mask arrays. Entry `n`
@@ -48,6 +135,88 @@ the matching main output.
 When `subs` is nonzero, `routeInversions[n]` must be a subset of `routes[n]`,
 and both route masks must target only output channels selected by `subs`. A
 configuration that violates either condition raises `ValidationError`.
+
+### Linear low-pass coefficient asset
+
+An `assets.impulseResponse` reference is required when `phase="Linear"`,
+`subs` is nonzero, and at least one input has either role Managed or role LFE
+with `lfeLowpass=true`. IIR mode, unconfigured routing, and Linear routing containing
+only Full Range, Unused, or unfiltered LFE inputs do not use a filter asset;
+supplying one for those configurations raises `AssetError`.
+
+Supply finite planar float32 coefficients at exactly the processing sample rate.
+There is one IR channel per Managed or low-pass-filtered LFE input, ordered by
+ascending input channel index. Each IR channel has exactly `Number(taps)`
+frames: 8192, 16384, or 32768. An automatic topology is accepted and expanded
+to diagonal matrix paths. With explicit `topology="matrix"`, the paths must be
+`(inputSlot=n, outputSlot=n, irChannel=k)` in that same order; `k` counts only
+the filtered inputs. Set Python `AssetData.input_count` to the processing bus
+width; JavaScript derives it from the processing bus when preparing ETA1 assets.
+These diagonal paths compute each input's low-pass signal;
+`routes` then distribute it to Sub outputs.
+
+Design the low-pass FIR around sample `Number(taps)/2`. The main signal is the
+delayed input minus the low-pass signal. The reported delay is
+`Number(taps)/2 + 128` samples, including the convolution block delay.
+The library consumes your coefficients; it does not synthesize them from
+`frequencies`/`slopes` or `lfeFrequency`/`lfeSlope`. Changing those values
+requires preparing corresponding coefficients and a new stream. Use the desired
+cutoff/slope for each Managed input and the LFE settings for each filtered LFE
+input; duplicate a filter channel when two inputs use identical coefficients.
+
+This complete NumPy example prepares an 80 Hz, 24 dB/oct low-pass magnitude curve
+with a -6 dB crossover point, centers and tapers its FIR, and uses two identical
+IR channels for left/right. The Sub output carries their summed low frequencies.
+It pads the input to retain delayed output; offline processing otherwise returns
+the same number of frames as its input.
+
+```python
+import numpy as np
+import effetune as et
+
+rate, taps, cutoff, slope = 48_000, 8192, 80, 24
+# Sample a low-pass magnitude curve and center its FIR at taps / 2.
+fft_size = 2 * taps
+frequencies = np.fft.rfftfreq(fft_size, 1 / rate)
+magnitude = 1 / (1 + (frequencies / cutoff) ** (slope / (20 * np.log10(2))))
+bins = np.arange(magnitude.size)
+spectrum = magnitude * np.exp(-2j * np.pi * bins * (taps / 2) / fft_size)
+impulse = np.fft.irfft(spectrum, n=fft_size)[:taps]
+indices = np.arange(taps)
+edge = taps * 0.05
+window = np.ones(taps)
+window[indices < edge] = 0.5 - 0.5 * np.cos(np.pi * indices[indices < edge] / edge)
+window[indices > taps - edge] = (
+    0.5 - 0.5 * np.cos(np.pi * (taps - indices[indices > taps - edge]) / edge)
+)
+coefficients = np.ascontiguousarray(np.stack([impulse * window] * 2), dtype=np.float32)
+asset = et.AssetData(
+    coefficients, rate, topology="matrix",
+    paths=(et.ConvolutionPath(0, 0, 0), et.ConvolutionPath(1, 1, 1)),
+    input_count=3,
+)
+chain = et.Chain([et.BassManagement(
+    phase="Linear", taps=str(taps),
+    roles=[1, 1, 3] + [0] * 13,
+    routes=[4, 4] + [0] * 14, subs=4,
+    frequencies=[cutoff] * 16, slopes=[slope] * 16, headroom=-6,
+    assets={"impulseResponse": "memory:lowpass"},
+)], asset_resolver=lambda reference: asset if reference == "memory:lowpass" else None)
+t = np.arange(rate, dtype=np.float64) / rate
+audio = np.zeros((3, rate), dtype=np.float32)
+audio[0] = audio[1] = 0.1 * np.sin(2 * np.pi * 40 * t) + 0.1 * np.sin(2 * np.pi * 1000 * t)
+delay = chain.latency_samples(rate, channels=3)
+# Include zeros after the signal so delayed output is retained.
+output = chain.process(np.pad(audio, ((0, 0), (0, delay))), sample_rate=rate)
+aligned = output[:, delay:delay + rate]
+assert delay == taps // 2 + 128
+assert np.isfinite(aligned).all()
+assert np.max(np.abs(aligned[2])) > 0.01
+steady = np.abs(np.fft.rfft(aligned[:, rate // 2:]))
+assert steady[0, 20] < 0.1 * steady[0, 500]
+assert steady[2, 500] < 0.1 * steady[2, 20]
+print("Latency and left/right/Sub shape:", delay, aligned.shape)
+```
 
 ## EffeTune app documentation
 

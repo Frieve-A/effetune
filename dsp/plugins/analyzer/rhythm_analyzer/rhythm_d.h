@@ -7,7 +7,8 @@
 #include <cstring>
 #include <vector>
 
-#include "heap_tree_model.h"
+#include "decaying_max.h"
+#include "oblivious_tree_model.h"
 #include "portable_math.h"
 #include "rhythm_d_high.generated.h"
 #include "rhythm_d_low.generated.h"
@@ -302,6 +303,7 @@ public:
     tickFill_ = 0u;
     ticks_ = 0u;
     quietRun_ = 0u;
+    quiet_.reset();
     silent_ = false;
     for (Band &b : bands_) {
       b.winS.reset();
@@ -365,7 +367,7 @@ private:
     tickSum_ += static_cast<double>(x) * static_cast<double>(x);
     if (++tickFill_ == kPool * hop_) {
       const bool quiet =
-          log10x10(tickSum_ / static_cast<double>(kPool * hop_) + kDbFloor) < kGateDb;
+          quiet_.push(log10x10(tickSum_ / static_cast<double>(kPool * hop_) + kDbFloor));
       quietRun_ = quiet ? quietRun_ + 1u : 0u;
       silent_ = quietRun_ >= kZStop;
       if (sink.tick != nullptr)
@@ -518,7 +520,7 @@ private:
   void evaluate(std::uint32_t c, std::int64_t p) noexcept {
     Band &b = bands_[c];
     const double s = at(b.s, p), f = at(b.f, p), db = at(b.db, p);
-    const bool gate = db >= kGateDb;
+    const bool gate = db >= quiet_.thresholdDb();
     const bool fromS = gate && s > at(b.s, p - 1) && s >= at(b.s, p + 1) &&
                        s / (at(b.scale, p) * kCC[c]) > kCandidateMin;
     const bool fromF = gate && kFChannel[c] != 0u && f > at(b.f, p - 1) && f >= at(b.f, p + 1) &&
@@ -606,9 +608,9 @@ private:
       for (std::uint32_t i = 0u; i < n; ++i)
         x[i] = static_cast<float>(v[i]);
     }
-    const double margin = c == 0u   ? HeapTreeEvaluator::margin(rhythm_d_low::model(), x)
-                          : c == 1u ? HeapTreeEvaluator::margin(rhythm_d_mid::model(), x)
-                                    : HeapTreeEvaluator::margin(rhythm_d_high::model(), x);
+    const double margin = c == 0u   ? ObliviousTreeEvaluator::margin(rhythm_d_low::model(), x)
+                          : c == 1u ? ObliviousTreeEvaluator::margin(rhythm_d_mid::model(), x)
+                                    : ObliviousTreeEvaluator::margin(rhythm_d_high::model(), x);
     const double probability = 1.0 / (1.0 + portableExp(-margin));
     const bool event = margin > kLogitTheta[c] && p - b.last > kRefractory[c];
     const double time = event ? riseStamp(b, c, p) : 0.0;
@@ -642,6 +644,7 @@ private:
                 ticks_ = 0u, quietRun_ = 0u;
   std::int64_t frames_ = 0;
   bool active_ = false, silent_ = false;
+  rhythm_a3::RelativeQuiet quiet_; // tick-run and band-event gate threshold
 };
 
 } // namespace effetune::plugins::analyzer::rhythm_d

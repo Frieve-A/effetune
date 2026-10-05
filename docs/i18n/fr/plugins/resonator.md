@@ -1,18 +1,59 @@
 ---
 title: "Plugins Resonator - EffeTune"
-description: "Plugins d'effet de résonateur incluant Horn Resonator et Modal Resonator."
+description: "Plugins de résonance : Adaptive Prediction, Horn Resonator et Modal Resonator."
 lang: fr
 ---
 
 # Plugins Resonator
 
-Une collection de plugins qui mettent en valeur les caractéristiques résonantes pour ajouter des textures tonales uniques et de la couleur à votre musique. Ces effets simulent les résonances présentes dans des objets physiques ou des systèmes de haut-parleurs, améliorant votre expérience d'écoute avec chaleur, scintillement ou caractère vintage.
+Des plugins qui ajoutent du caractère résonant à la musique, des simulations d’objets et de haut-parleurs aux résonances évolutives apprises à partir du son.
 
 ## Liste des plugins
 
+- [Adaptive Prediction](#adaptive-prediction) - Apprend à prédire le son pour extraire le résidu ou créer une résonance évolutive
 - [Horn Resonator](#horn-resonator) - Simule la résonance des systèmes d'enceintes à pavillon
 - [Horn Resonator Plus](#horn-resonator-plus) - Résonance de haut-parleur à pavillon plus douce pour une couleur d'écoute naturelle
 - [Modal Resonator](#modal-resonator) - Effet de résonance de fréquence avec jusqu'à 5 résonateurs
+
+## Adaptive Prediction
+
+Adaptive Prediction apprend à prédire la forme d’onde entrante à partir du son précédent. Utilisez-le pour atténuer les composantes prévisibles, écouter la prédiction seule ou la réinjecter pour créer une résonance qui développe son propre son. Les canaux gauche et droit apprennent indépendamment.
+
+**Residual** correspond au son original moins la prédiction. Les sons répétés peuvent s’atténuer dans le résidu à mesure que l’effet apprend, laissant ressortir les changements et les détails imprévisibles. Au-dessus de 0, **Autonomy** fait aussi suivre à la prédiction le son qu’elle génère. À 1, la voie de génération est coupée de l’entrée externe ; l’apprentissage continue d’utiliser cette entrée sauf s’il est gelé.
+
+### Guide d’écoute et presets système
+
+Ouvrez **Préréglages d’effet** dans l’en-tête de l’effet. Changer de preset conserve l’apprentissage déjà acquis par l’effet en cours.
+
+| Preset | Gap | Autonomy | Original / Residual / Prediction | Point de départ |
+| --- | --- | --- | --- | --- |
+| **Surprise** (par défaut) | 1 ms | 0 | 0 / 1 / 0 | Faites ressortir les détails changeants en atténuant les sons prévisibles. |
+| **Prediction** | 5 ms | 0 | 0 / 0 / 1 | Remplacez l’original par la prédiction. Laissez jouer une entrée audible quelques secondes. |
+| **Resonator** | 10 ms | 0.98 | 0.6 / 0 / 0.6 | Mélangez l’original et une résonance évolutive influencée par la musique. |
+| **Hold** | 10 ms | 1 | 0 / 0 / 1 | Gelez l’apprentissage et écoutez la génération autonome du modèle appris. |
+
+Comparez **Surprise** et **Prediction** sur un son tenu ou un passage répétitif. Pour une génération autonome, laissez Prediction apprendre, puis choisissez **Hold** ou cochez sa case. Hold fixe les règles apprises : hauteur, timbre et niveau peuvent continuer à évoluer ou s’éteindre. Il ne maintient pas une note et ne boucle pas un enregistrement. Sans apprentissage, ou juste après Reset, l’effet ne peut pas produire de son autonome à partir du silence.
+
+### Paramètres
+
+- **Gap (ms)** — Exclut les 0–500 ms les plus récentes des informations de forme d’onde utilisées pour prédire (valeur initiale : 1 ms). Une valeur plus élevée utilise un passé plus lointain et peut modifier le timbre ou réduire la précision. Même à 0, seuls des échantillons antérieurs sont utilisés. Ce n’est ni une latence de sortie ni la durée d’une fenêtre d’enregistrement. Le modèle est conservé lors du changement, puis se réadapte à la nouvelle distance.
+- **Learn** — Vitesse de suivi de l’entrée par l’apprentissage, de 0 à 0.1 (valeur initiale : 0.02). Augmentez pour adapter plus vite, diminuez pour changer plus lentement. À 0, les corrections fondées sur l’erreur s’arrêtent, mais un Weight Decay fini peut encore réduire les coefficients.
+- **Weight Decay (s)** — Temps de décroissance des coefficients pendant l’apprentissage actif, de 0.5 à 60 secondes. Un temps court affaiblit plus vite l’apprentissage passé ; un temps long le conserve davantage. Ce n’est pas la longueur de l’historique audio.
+- **Infinity** — Désactive Weight Decay (coché par défaut). Décochez pour utiliser le temps de Weight Decay.
+- **Autonomy** — Mélange la prédiction de l’entrée et la génération réinjectée, de 0 à 1 (valeur initiale : 0). Augmentez pour renforcer l’influence du son généré sur lui-même. À 1, la voie de génération ne reçoit que sa propre réinjection. Les niveaux du mélange de sortie ne modifient pas cette réinjection.
+- **Original / Residual / Prediction** — Gains indépendants de −2 à +2, initialement 0 / 1 / 0. Zéro coupe la composante, les valeurs positives l’ajoutent, les négatives inversent sa polarité. Une valeur absolue supérieure à 1 augmente son niveau. Le mélange n’est pas normalisé automatiquement. Comme Residual = Original − Prediction, 0 / 1 / 1 reconstitue l’original avant la limitation des crêtes de sortie.
+- **Freeze** — Arrête l’apprentissage et Weight Decay tout en poursuivant le traitement et la génération. Décochez pour reprendre l’apprentissage.
+- **Hold** — Active ensemble Freeze et Autonomy 1. Leurs commandes sont désactivées pendant Hold ; le désactiver restaure leurs réglages individuels.
+- **Reset** — Efface les coefficients appris, les états et l’historique audio. Les réglages restent inchangés. La prédiction repart du silence et doit réapprendre.
+
+L’apprentissage et Weight Decay se mettent en pause lorsque l’entrée externe est inférieure à −60 dBFS, pour que le silence n’efface pas le modèle. Le son généré n’entre pas dans cette décision. Les coefficients et le son en cours sont temporaires et ne sont pas enregistrés dans les presets ; un effet recréé doit réapprendre. Tant qu’il est activé, Adaptive Prediction poursuit le traitement pendant le silence pour conserver le son appris. Contournez l’effet lorsque vous n’en avez plus besoin.
+
+### Si le résultat vous surprend
+
+- Si Prediction ou Hold reste silencieux, désactivez Hold et Freeze, réglez Learn au-dessus de 0 et faites jouer une entrée audible. Commencez avec Autonomy 0.
+- Si la résonance est trop forte, baissez Prediction ou Autonomy. La limitation contrôle les crêtes d’échantillon, mais un mélange élevé peut modifier le timbre.
+- Si un problème de traitement est signalé, appuyez sur Reset puis faites jouer du son pour réapprendre.
+- Adaptive Prediction accepte le mono et la stéréo. Activez **Utiliser le traitement audio WebAssembly** dans **Configuration audio**. Choisissez un canal ou une paire stéréo dans le routage de l’effet. Avec un format incompatible, l’effet est contourné.
 
 ## Horn Resonator
 

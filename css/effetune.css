@@ -970,6 +970,16 @@ body.layout-mobile #pipelineStats {
     cursor: default;
 }
 
+.standard-select-gradient-preview {
+    display: inline-block;
+    width: 44px;
+    height: 16px;
+    margin-inline-end: 8px;
+    vertical-align: middle;
+    border: 1px solid var(--et-border-strong);
+    border-radius: 3px;
+}
+
 .pipeline-header-right {
     display: flex;
     align-items: center;
@@ -1642,6 +1652,21 @@ body.layout-mobile .plugin-parameter-ui .graph-axis-titled::before,
 body.layout-mobile .plugin-parameter-ui .graph-axis-titled::after,
 body.layout-mobile .plugin-parameter-ui .spectrum-overlay-axis-title {
     font-size: 13px;
+}
+
+.plugin-wasm-notice {
+    color: var(--et-surface-90);
+    background: color-mix(in srgb, var(--et-warning) 12%, transparent);
+    border-left: 3px solid var(--et-warning);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.plugin-wasm-notice[hidden] {
+    display: none;
 }
 
 /* Error Display */
@@ -4412,7 +4437,15 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-stage-host { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; min-width: 0; min-height: 200px; flex: 1; background: #000; } /* theme-allow: Black letterboxing surrounds the user-colored scene. */
 .visualizer-stage { position: relative; flex: none; overflow: hidden; }
 .visualizer-stage canvas { display: block; width: 100%; height: 100%; }
-.visualizer-stage.editing { touch-action: none; }
+.visualizer-stage-host.editing { overflow: clip; touch-action: none; background: var(--et-surface-12); overscroll-behavior: contain; }
+.visualizer-stage.editing { position: absolute; overflow: visible; background: #000; outline: 1px solid #ffffff80; } /* theme-allow: The artboard stays black behind transparent scene pixels, with a contrasting frame. */
+.visualizer-stage-host.hand-tool, .visualizer-stage-host.hand-tool * { cursor: grab; }
+.visualizer-stage-host.panning, .visualizer-stage-host.panning * { cursor: grabbing; }
+.visualizer-viewport-controls { position: absolute; bottom: 12px; left: 12px; z-index: 3; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--et-border-strong); border-radius: 6px; background: var(--et-surface-12); color: var(--et-text-primary); }
+.visualizer-viewport-controls[hidden] { display: none; }
+.visualizer-viewport-controls button { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 28px; height: 28px; margin: 0; padding: 4px 8px; font: inherit; }
+.visualizer-viewport-controls output { min-width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+body.layout-mobile #visualizerView.is-editing .visualizer-stage-host { min-height: clamp(260px, 50dvh, 600px); }
 .visualizer-stage.show-grid::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
     background-image:
@@ -4466,6 +4499,10 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-style-toggles button svg { display: block; }
 .visualizer-editor-inspector .visualizer-field > input:not([type="checkbox"], [type="color"]),
 .visualizer-editor-inspector .visualizer-field > select { flex: 1 1 120px; min-width: 0; max-width: 100%; }
+.visualizer-editor-inspector .visualizer-field:has(> textarea) { flex-direction: column; align-items: stretch; }
+.visualizer-editor-inspector .visualizer-field:has(> textarea) > label { flex: none; }
+.visualizer-editor-inspector .visualizer-field > textarea { box-sizing: border-box; width: 100%; min-height: 90px; padding: 6px; resize: vertical; border: 1px solid var(--et-surface-28); border-radius: 4px; background: var(--et-surface-8); color: var(--et-text-primary); font: inherit; }
+.visualizer-editor-inspector .visualizer-field > textarea:focus { outline: 1px solid var(--et-accent); }
 .visualizer-editor-inspector .visualizer-field > input[type="range"] { width: auto; }
 .visualizer-editor-inspector .visualizer-field > input[type="number"] { width: 80px; flex: 0 1 80px; }
 .visualizer-editor-inspector .visualizer-field > select { flex-basis: 0; padding: 4px; }

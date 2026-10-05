@@ -18,8 +18,35 @@ struct PrepareInfo {
   std::uint32_t maxFrames;
 };
 
+// Musical transport reported by the application embedding the engine, such as a
+// plug-in host. EffeTune itself never supplies one. A field is meaningful only
+// when its flag is set.
+struct HostTransport {
+  enum : std::uint32_t {
+    kPlaying = 1u << 0u,
+    kTempoValid = 1u << 1u,
+    kPositionValid = 1u << 2u,
+    kBarStartValid = 1u << 3u,
+    kTimeSignatureValid = 1u << 4u,
+  };
+  std::uint32_t flags = 0u;
+  double tempoBpm = 0.0;    // Quarter notes per minute.
+  double ppqPosition = 0.0; // Quarter notes from the song start.
+  // Quarter-note position of a bar start, usually the last one at or before
+  // ppqPosition. Bars repeat every timeSignatureNumerator * 4 /
+  // timeSignatureDenominator quarter notes in both directions.
+  double barStartPpq = 0.0;
+  std::uint32_t timeSignatureNumerator = 0u;
+  std::uint32_t timeSignatureDenominator = 0u;
+};
+
 struct ProcessInfo {
   double timeSeconds;
+  // Host transport at the first frame of the processed block, already shifted
+  // back by the latency ahead of this kernel, or nullptr when none is reported.
+  // While playing, the position advances tempoBpm / 60 / sampleRate quarter
+  // notes per frame within the block. The pointer is valid only during the call.
+  const HostTransport *transport = nullptr;
 };
 
 struct RuntimeEventState {

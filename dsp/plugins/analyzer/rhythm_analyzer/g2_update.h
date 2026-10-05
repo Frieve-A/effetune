@@ -1,8 +1,9 @@
 // The 2 Hz G2 update as a staged, allocation-free job: the window features (W = 8 s, character
-// features left NaN; the model never uses them) + CatBoost margins on the embedded heap-tree model
-// + softmax + per-class np.interp calibration. Update u has t = .5(u+1) and needs tick k1 = floor(t
-// * 93.75 + 1e-9) pushed (the max filter of the flux looks one tick ahead), so it starts in the
-// process() call after which the stream holds k1 + 1 ticks and publishes kSlots - 1 calls later.
+// features left NaN; the model never uses them) + CatBoost margins on the embedded oblivious-tree
+// model + softmax + per-class np.interp calibration. Update u has t = .5(u+1) and needs tick k1 =
+// floor(t * 93.75 + 1e-9) pushed (the max filter of the flux looks one tick ahead), so it starts in
+// the process() call after which the stream holds k1 + 1 ticks and publishes kSlots - 1 calls
+// later.
 #pragma once
 #include <cmath>
 #include <cstdint>
@@ -14,7 +15,7 @@
 #include "g2_numpy.h"
 #include "g2_stream.h"
 #include "g2_tables.generated.h"
-#include "heap_tree_model.h"
+#include "oblivious_tree_model.h"
 #include "portable_math.h"
 #include "rhythm_d.h"
 
@@ -113,6 +114,8 @@ public:
     published_ = 0;
     active_ = false;
     slot_ = 0;
+    origin_ = uBase_ = 0;
+    off_ = 0.0;
     stats_ = {};
     for (G2Update &r : results_)
       r = G2Update{};
@@ -132,14 +135,30 @@ public:
     advance(absoluteSamples);
   }
 
+  // Cold reset at tick r, called before tick r is pushed: starts the updates of the old grid whose
+  // look-ahead tick is <= r, then lays the grid out from r (update nextU_ has t = r / FPS + .5).
+  // A running job keeps its own origin and finishes on its staged schedule.
+  void restart(const G2Stream &s, std::int64_t r, std::uint64_t absoluteSamples) noexcept {
+    stream_ = &s;
+    while (dueTick(nextU_) <= r) {
+      if (active_)
+        complete();
+      start(nextU_++, false, absoluteSamples);
+    }
+    origin_ = r;
+    uBase_ = nextU_;
+    off_ = static_cast<double>(r) / g2_tables::kFps;
+  }
+
   // End of the track (dur = samples / rate): completes the running job, then runs the remaining
   // updates t_u < dur + 1e-9 (np.arange(.5, dur + 1e-9, .5)) synchronously with the end edge.
   void finish(const G2Stream &s, double dur) noexcept {
     stream_ = &s;
     if (active_)
       complete();
-    const double span = ((dur + 1e-9) - .5) / .5;
-    const std::int64_t count = span > 0.0 ? static_cast<std::int64_t>(std::ceil(span)) : 0;
+    const double span = (((dur - off_) + 1e-9) - .5) / .5;
+    const std::int64_t count =
+        uBase_ + (span > 0.0 ? static_cast<std::int64_t>(std::ceil(span)) : 0);
     while (nextU_ < count) {
       start(nextU_++, true, 0);
       complete();
@@ -188,13 +207,17 @@ private:
     cHc = 78
   };
 
-  [[nodiscard]] static std::int64_t dueTick(std::int64_t u) noexcept {
-    return static_cast<std::int64_t>(
-        std::floor(.5 * static_cast<double>(u + 1) * g2_tables::kFps + 1e-9));
+  // Look-ahead tick of update u on the current grid.
+  [[nodiscard]] std::int64_t dueTick(std::int64_t u) const noexcept {
+    return origin_ + static_cast<std::int64_t>(std::floor(
+                         .5 * static_cast<double>(u - uBase_ + 1) * g2_tables::kFps + 1e-9));
   }
 
   void start(std::int64_t u, bool atEnd, std::uint64_t absoluteSamples) noexcept {
     u_ = u;
+    jobOrigin_ = origin_;
+    jobUBase_ = uBase_;
+    jobOff_ = off_;
     atEnd_ = atEnd;
     active_ = true;
     slot_ = 0;
@@ -250,27 +273,29 @@ private:
       probe_.stage(probe_.ctx, st, true);
   }
 
-  // ---- A: copy everything the job needs out of the stream.
+  // ---- A: copy everything the job needs out of the stream. Times are relative to the job's grid
+  // origin (tick jobOrigin_, time jobOff_); stream event times are absolute.
   void gather() noexcept {
     const G2Stream &s = *stream_;
     none_ = true;
     count_ = 0;
-    t_ = .5 * static_cast<double>(u_ + 1);
+    t_ = .5 * static_cast<double>(u_ - jobUBase_ + 1);
     const std::int64_t ticks = s.ticks();
-    std::int64_t k1 = static_cast<std::int64_t>(std::floor(t_ * g2_tables::kFps + 1e-9));
+    std::int64_t k1 =
+        jobOrigin_ + static_cast<std::int64_t>(std::floor(t_ * g2_tables::kFps + 1e-9));
     if (atEnd_ && k1 > ticks)
       k1 = ticks;
-    const std::int64_t k0 = k1 - kMaxN > 0 ? k1 - kMaxN : 0;
+    const std::int64_t k0 = k1 - kMaxN > jobOrigin_ ? k1 - kMaxN : jobOrigin_;
     n_ = static_cast<int>(k1 - k0);
     if (static_cast<double>(n_) < g2_tables::kMinValid * g2_tables::kFps)
       return;
     none_ = false;
-    tLo_ = static_cast<double>(k0) / g2_tables::kFps;
+    tLo_ = static_cast<double>(k0 - jobOrigin_) / g2_tables::kFps;
     loud_ = 0;
     for (int i = 0; i < n_; ++i) {
       const std::int64_t k = k0 + i;
       const G2Tick &tk = s.tick(k);
-      const G2Tick *prev = k > 0 ? &s.tick(k - 1) : nullptr;
+      const G2Tick *prev = k > jobOrigin_ ? &s.tick(k - 1) : nullptr;
       const G2Tick *next = k + 1 < ticks ? &s.tick(k + 1) : nullptr;
       for (int b = 0; b < 3; ++b) {
         float m = tk.flux[b];
@@ -282,10 +307,11 @@ private:
         fm_[b][i] = m;
       }
       loud_ += tk.loud ? 1 : 0;
-      tau_[i] = (static_cast<double>(k) + 1.0) / g2_tables::kFps - g2_tables::kLatency;
+      tau_[i] = (static_cast<double>(k - jobOrigin_) + 1.0) / g2_tables::kFps - g2_tables::kLatency;
     }
     // Events tLo < t <= t - EV_LAT, split by band in time order.
-    const std::int64_t i0 = s.upperBound(tLo_), i1 = s.upperBound(t_ - g2_tables::kEvLat);
+    const std::int64_t i0 = s.upperBound(tLo_ + jobOff_),
+                       i1 = s.upperBound((t_ - g2_tables::kEvLat) + jobOff_);
     if (i0 == s.eventBegin() && s.eventBegin() > 0)
       ++stats_.eventRingReach;
     evN_[0] = evN_[1] = evN_[2] = 0;
@@ -296,7 +322,7 @@ private:
         ++stats_.eventOverflow;
         continue;
       }
-      evT_[b][evN_[b]] = e.t;
+      evT_[b][evN_[b]] = e.t - jobOff_;
       evS_[b][evN_[b]] = static_cast<double>(e.strength);
       ++evN_[b];
     }
@@ -304,7 +330,7 @@ private:
       stats_.maxBandEvents = evN_[b] > stats_.maxBandEvents ? evN_[b] : stats_.maxBandEvents;
     // Chroma frames j_lo .. j_end - 1 with ct > tLo and a finite unit vector.
     kept_ = 0;
-    const std::int64_t frames = s.chromaFrames();
+    const std::int64_t j0 = jobOrigin_ / 8, frames = s.chromaFrames() - j0;
     std::int64_t jEnd = static_cast<std::int64_t>(std::floor(t_ * g2_tables::kChFps + 1e-9));
     if (!atEnd_ && jEnd > frames)
       ++stats_.lateChroma;
@@ -316,7 +342,7 @@ private:
     if (jEnd - jLo >= 4) {
       for (std::int64_t j = jLo; j < jEnd; ++j) {
         const double ct = (static_cast<double>(j) + 1.0) / g2_tables::kChFps - g2_tables::kChCentre;
-        const G2ChromaFrame &f = s.chroma(j);
+        const G2ChromaFrame &f = s.chroma(j0 + j);
         if (!(ct > tLo_) || !f.ok)
           continue;
         if (kept_ == kMaxFrames) {
@@ -456,7 +482,7 @@ private:
       return;
     }
     count_ = C;
-    const double margin0 = HeapTreeEvaluator::initialMargin(g2_level::model());
+    const double margin0 = ObliviousTreeEvaluator::initialMargin(g2_level::model());
     for (int c = 0; c < kC * kClasses; ++c)
       margins_[c] = margin0;
     double bs[10];
@@ -719,15 +745,15 @@ private:
       return;
     const int rows = count_ - 4 * g < 4 ? count_ - 4 * g : 4;
     const float *const r[4] = {x_[4 * g], x_[4 * g + 1], x_[4 * g + 2], x_[4 * g + 3]};
-    HeapTreeEvaluator::accumulateTrees4<kClasses>(g2_level::model(), r, first, end,
-                                                  margins_ + 4 * kClasses * g,
-                                                  static_cast<std::uint32_t>(rows));
+    ObliviousTreeEvaluator::accumulateTrees4<kClasses>(g2_level::model(), r, first, end,
+                                                       margins_ + 4 * kClasses * g,
+                                                       static_cast<std::uint32_t>(rows));
   }
 
   // ---- G: softmax, calibration, publish.
   void publish() noexcept {
     G2Update &out = results_[u_ % kResultRing];
-    out.t = t_;
+    out.t = t_ + jobOff_;
     out.count = none_ ? 0 : count_;
     for (int c = 0; c < out.count; ++c) {
       const double *m = margins_ + kClasses * c;
@@ -746,7 +772,7 @@ private:
       for (int k = 0; k < 3; ++k)
         out.p[c][k] = static_cast<float>(s > 1e-12 ? q[k] / s : 1.0 / 3.0);
       out.period[c] = static_cast<float>(per_[c]);
-      out.ref[c] = ref_[c];
+      out.ref[c] = ref_[c] + jobOff_;
     }
     published_ = u_ + 1;
     if (probe_.published)
@@ -764,6 +790,10 @@ private:
   bool active_ = false, atEnd_ = false;
   std::uint32_t slot_ = 0;
   std::uint64_t jobStart_ = 0;
+  // Update grid: update uBase_ has t = off_ + .5 and look-ahead from tick origin_ (a cold reset
+  // moves it); the running job's copy.
+  std::int64_t origin_ = 0, uBase_ = 0, jobOrigin_ = 0, jobUBase_ = 0;
+  double off_ = 0.0, jobOff_ = 0.0;
 
   // job
   bool none_ = true;

@@ -16,3 +16,12 @@ The registries hold the authoritative published versions. `pip install effetune`
 v0.12.0. Signed tarballs, wheels, checksums, and the SBOM for every tagged release
 are attached to the matching
 [`dsp-v` GitHub Release](https://github.com/Frieve-A/effetune/releases?q=dsp-v).
+
+The [live demo build manifest](/dsp/demo/build-manifest.json) records the package
+name, version, DSP `sourceDigest`, and SHA-256 hashes of its served files. The
+site copies the checkout's built package artifacts. To check whether the demo
+uses the same processing files as an npm release, compare every manifest hash
+under `vendor/@effetune/dsp/` with the corresponding file in that installed
+package's `dist/` directory, including JavaScript, the worklet processor, WASM,
+and metadata. A matching displayed version or WASM hash alone does not establish
+that all these files are identical.

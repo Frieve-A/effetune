@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "AdaptivePredictionEffectPlugin",
+  "id": "complementary-mixer-unity",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 8193,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 7,
+  "seed": "0xeffe7a59",
+  "params": {
+    "gap": 1,
+    "learn": 0.02,
+    "weightDecay": 0,
+    "autonomy": 0.98,
+    "original": 0,
+    "residual": 1,
+    "prediction": 1,
+    "freeze": false,
+    "hold": false,
+    "resetToken": 0
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.0005,
+    "policy": "per-sample"
+  },
+  "performanceBudgetMs": 5000,
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:57bf79d2ebd9358c9728f9f3489c3462af933d01593842a126f565dda6c3f91d",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type AdaptivePredictionEffectPlugin --promote-production-native",
+  "outputFloats": 16386,
+  "byteLength": 65544,
+  "binary": "case-008.f32"
+}

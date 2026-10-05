@@ -14,6 +14,7 @@ const excludedParameterKeys = new Set(['type', 'enabled', 'fr', 'en']);
 const forbiddenPresetKeys = new Set(['id', 'enabled', 'fr', 'en', 'ib', 'ob', 'ch']);
 
 const expectedTargetPresetIds = new Map([
+    ['AdaptivePredictionEffectPlugin', ['surprise', 'prediction', 'resonator', 'hold']],
     ['VinylSimulatorPlugin', [
         'audiophile-pressing', 'well-worn-favorite', 'flea-market-45',
         'shellac-78', 'end-of-side'
@@ -106,6 +107,7 @@ const expectedTargetPresetIds = new Map([
 ]);
 
 const defaultMatchingPresetIds = new Map([
+    ['AdaptivePredictionEffectPlugin', new Set(['surprise'])],
     ['ChorusPlugin', new Set(['classic-chorus'])],
     ['PhaserPlugin', new Set(['classic-phaser'])],
     ['AutoFilterPlugin', new Set(['auto-filter-sweep'])],
@@ -184,10 +186,10 @@ const publicParameterKeys = plugin => Object.keys(plugin.getSerializableParamete
     .sort();
 
 test('plugin system presets have complete, valid, round-trippable parameter records', () => {
-    assert.equal(presetProviders.length, 29, 'system preset provider count');
+    assert.equal(presetProviders.length, 30, 'system preset provider count');
     const targetPresetCount = [...expectedTargetPresetIds.values()]
         .reduce((count, ids) => count + ids.length, 0);
-    assert.equal(targetPresetCount, 128);
+    assert.equal(targetPresetCount, 132);
 
     const providersByClass = new Map(presetProviders.map(provider => [provider.className, provider]));
     for (const [className, expectedIds] of expectedTargetPresetIds) {

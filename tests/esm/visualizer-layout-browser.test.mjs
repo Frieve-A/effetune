@@ -19,6 +19,156 @@ const editorSource = read('../../js/visualizer/visualizer-editor.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerEditor', 'window.VisualizerEditor = class VisualizerEditor');
 
+test('Visualizer language updates translate the toolbar and open editor while preserving the layout and editing state', async () => {
+    const locales = Object.fromEntries(['en', 'ja'].map(locale => [locale,
+        JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer"><div class="main-container"></div></body>');
+        await page.addStyleTag({ content: css });
+        await page.addScriptTag({ content: `
+            window.VisualizerPresetStore = class { saveCurrent() {} };
+            window.VisualizerSources = class { setLayout() {} };
+            window.VisualizerRenderer = class {};
+        ` });
+        for (const source of [modelSource, palettePresetsSource, editorSource, viewSource]) await page.addScriptTag({ content: source });
+        const result = await page.evaluate(locales => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            VisualizerView.prototype.initialize = async () => {};
+            const manager = { locale: 'en', t(key) { return locales[this.locale][key] || key; }, audioManager: {} };
+            const view = new VisualizerView(manager), editor = view.editor;
+            view.setLayout({ ...createDefaultLayout(), items: [createItem('spectrum', 'spectrum')] });
+            view.layout.items[0].params.sc = 'linear'; view.changed();
+            editor.selection.add('spectrum'); view.setEditing(true);
+            editor.zoom = 1.5; editor.panX = 40; editor.panY = -20;
+            const quality = view.qualityLabel.querySelector('select');
+            quality.value = 'high'; quality.dispatchEvent(new Event('change'));
+            view.notice('visualizer.importFailed', 'Could not read the link.');
+            const state = () => JSON.stringify({ layout: view.layout, history: view.history.entries,
+                historyIndex: view.history.index, selection: [...editor.selection], open: editor.open,
+                zoom: editor.zoom, pan: [editor.panX, editor.panY], quality: view.quality,
+                qualityValue: quality.value, undoDisabled: view.undoButton.disabled });
+            const before = state(), updates = [];
+            for (const locale of ['ja', 'en']) {
+                manager.locale = locale;
+                view.updateUITexts();
+                updates.push({ locale, state: state(),
+                    preset: [view.presetButton.querySelector('span').textContent, view.presetButton.title, view.presetButton.getAttribute('aria-label')],
+                    undo: view.undoButton.title, copy: view.copyButton.getAttribute('aria-label'),
+                    quality: view.qualityLabel.querySelector('span').textContent,
+                    options: [...quality.options].map(option => option.textContent),
+                    navigation: editor.navigationContent.querySelector('h3').textContent,
+                    inspector: editor.root.querySelector('h3').textContent,
+                    scaleLabel: [...editor.root.querySelectorAll('label')].some(label => label.textContent === locales[locale]['visualizer.param.sc']),
+                    scaleValue: [...editor.root.querySelectorAll('select')].find(select => [...select.options].some(option => option.value === 'log-hq')).value,
+                    zoomOut: [editor.zoomOutButton.title, editor.zoomOutButton.getAttribute('aria-label')],
+                    fit: [editor.fitButton.textContent, editor.fitButton.title, editor.fitButton.getAttribute('aria-label')],
+                    hint: view.stage.getAttribute('aria-description'), expand: view.expandButton.title,
+                    notice: view.status.textContent, sameQualityControl: quality === view.qualityLabel.querySelector('select') });
+            }
+            view.setExpanded(true); manager.locale = 'ja'; view.updateUITexts();
+            const restore = [view.expandButton.title, view.expandButton.getAttribute('aria-label')];
+            view.setExpanded(false); view.setEditing(true);
+            return { before, updates, restore, reopened: editor.root.querySelector('h3').textContent };
+        }, locales);
+        for (const update of result.updates) {
+            const t = key => locales[update.locale][key];
+            assert.equal(update.state, result.before);
+            assert.deepEqual(update.preset, Array(3).fill(t('ui.title.visualizerPresets')));
+            assert.equal(update.undo, t('ui.title.undo'));
+            assert.equal(update.copy, t('visualizer.copy'));
+            assert.equal(update.quality, t('visualizer.quality'));
+            assert.deepEqual(update.options, ['auto', 'high', 'low'].map(value => t(`visualizer.quality.${value}`)));
+            assert.equal(update.navigation, t('visualizer.layout'));
+            assert.equal(update.inspector, t('visualizer.properties'));
+            assert.equal(update.scaleLabel, true);
+            assert.equal(update.scaleValue, 'linear');
+            assert.deepEqual(update.zoomOut, Array(2).fill(t('visualizer.zoomOut')));
+            assert.deepEqual(update.fit, Array(3).fill(t('visualizer.fitView')));
+            assert.equal(update.hint, t('visualizer.navigationHint'));
+            assert.equal(update.expand, t('visualizer.expand'));
+            assert.equal(update.notice, t('visualizer.importFailed'));
+            assert.equal(update.sameQualityControl, true);
+        }
+        assert.deepEqual(result.restore, Array(2).fill(locales.ja['visualizer.restore']));
+        assert.equal(result.reopened, locales.ja['visualizer.properties']);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Ctrl+wheel over the editing canvas zooms its artboard without changing page zoom', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body><button id="outside">Outside</button><div id="visualizerView"><div class="visualizer-stage-host" style="position:relative;width:800px;height:500px;overflow:clip"><div class="visualizer-stage" style="position:absolute"><canvas style="display:block;width:100%;height:100%"></canvas></div></div></div></body>');
+        for (const source of [modelSource, palettePresetsSource, editorSource]) await page.addScriptTag({ content: source });
+        await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView'), stage = root.querySelector('.visualizer-stage');
+            window.layoutChanges = 0;
+            const view = { root, stage, stageHost: root.querySelector('.visualizer-stage-host'),
+                canvas: stage.querySelector('canvas'), layout: createDefaultLayout(), updateEditButtons() {},
+                t: (_, fallback) => fallback, changed() { window.layoutChanges++; }, commitPending() {}, warn() {} };
+            window.editor = new VisualizerEditor(view);
+            root.append(editor.navigation, editor.root);
+            editor.setOpen(true);
+            document.body.style.zoom = '1';
+            window.pageZoomCalls = 0;
+            // Model Electron's document-level page zoom, which is independent of the browser default action.
+            document.addEventListener('wheel', event => {
+                if (!event.ctrlKey) return;
+                event.preventDefault();
+                window.pageZoomCalls++;
+                document.body.style.zoom = String(parseFloat(document.body.style.zoom) + .1);
+            }, { passive: false });
+        });
+        const canvas = page.locator('.visualizer-stage canvas'), box = await canvas.boundingBox();
+        const cursor = { clientX: Math.round(box.x + box.width * .35), clientY: Math.round(box.y + box.height * .65) };
+        const before = await page.evaluate(cursor => ({ zoom: editor.zoom, point: editor.point(cursor),
+            layout: JSON.stringify(editor.view.layout) }), cursor);
+        await page.mouse.move(cursor.clientX, cursor.clientY);
+        const wheel = async () => {
+            await page.keyboard.down('Control');
+            await page.mouse.wheel(0, -120);
+            await page.keyboard.up('Control');
+        };
+        await wheel();
+        await page.waitForFunction(zoom => editor.zoom > zoom, before.zoom);
+        const editing = await page.evaluate(cursor => ({ pageZoom: parseFloat(document.body.style.zoom),
+            calls: pageZoomCalls, point: editor.point(cursor), zoom: editor.zoom,
+            layout: JSON.stringify(editor.view.layout), changes: layoutChanges }), cursor);
+        const zoomedBox = await canvas.boundingBox();
+        assert.equal(editing.pageZoom, 1);
+        assert.equal(editing.calls, 0);
+        // Allow the browser's subpixel layout rounding when measuring the cursor anchor.
+        assert.ok(Math.abs(editing.point.x - before.point.x) * zoomedBox.width < .5);
+        assert.ok(Math.abs(editing.point.y - before.point.y) * zoomedBox.height < .5);
+        assert.equal(editing.layout, before.layout);
+        assert.equal(editing.changes, 0);
+
+        await page.locator('#outside').hover();
+        await wheel();
+        await page.waitForFunction(() => pageZoomCalls === 1);
+        assert.equal(await page.evaluate(() => parseFloat(document.body.style.zoom)), 1.1);
+        await page.evaluate(() => editor.setOpen(false));
+        await canvas.hover();
+        await wheel();
+        await page.waitForFunction(() => pageZoomCalls === 2);
+        assert.ok(Math.abs(await page.evaluate(() => parseFloat(document.body.style.zoom)) - 1.2) < 1e-9);
+        assert.equal(await page.evaluate(() => editor.zoom), editing.zoom);
+    } finally {
+        await browser.close();
+    }
+});
+
 test('Visualizer Edit channel dropdown automatically uses the shared themed list', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -59,6 +209,87 @@ test('Visualizer Edit channel dropdown automatically uses the shared themed list
         await page.keyboard.press('Enter');
         assert.equal(await page.evaluate(() => editor.view.layout.items[0].channel), null);
         assert.equal(await channel.inputValue(), '');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Visualizer gradients preview every preset before applying, reversing, and saving radial direction', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer"><div id="visualizerView"><div class="visualizer-stage"></div></div></body>');
+        await page.addStyleTag({ content: css });
+        await page.addScriptTag({ content: read('../../js/ui/standard-select.js').replace(/^export /gm, '') +
+            '\nenableStandardSelects(document);' });
+        for (const source of [modelSource, palettePresetsSource, editorSource]) await page.addScriptTag({ content: source });
+        await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true, value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView'), layout = createDefaultLayout();
+            layout.items[0].palette.mode = 'gradient';
+            window.savedPalettes = [];
+            const view = { root, stage: root.querySelector('.visualizer-stage'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, commitPending() {},
+                changed() { savedPalettes.push(structuredClone(layout.items[0].palette)); } };
+            window.editor = new VisualizerEditor(view);
+            root.append(editor.navigation, editor.root);
+            editor.selection = new Set([layout.items[0].id]); editor.setOpen(true);
+        });
+        const gradient = page.getByLabel('Gradient', { exact: true });
+        const list = page.locator('.standard-select-list:not([hidden])');
+        const initial = await page.evaluate(() => structuredClone(editor.view.layout.items[0].palette));
+        await gradient.click();
+        const previews = await list.locator('.standard-select-option').evaluateAll(rows => rows.map(row => {
+            const preview = row.querySelector('.standard-select-gradient-preview');
+            const rect = preview.getBoundingClientRect();
+            return { name: row.textContent, image: getComputedStyle(preview).backgroundImage,
+                width: rect.width, height: rect.height, hiddenFromReader: preview.getAttribute('aria-hidden') };
+        }));
+        assert.equal(previews.length, 24);
+        assert.ok(previews.every(preview => preview.width > 0 && preview.height > 0 &&
+            preview.image.startsWith('linear-gradient(') && preview.hiddenFromReader === 'true'));
+        assert.equal(await list.locator('.standard-select-option').evaluateAll(rows =>
+            rows.every(row => row.scrollWidth <= row.clientWidth)), true, 'Preset names fit beside their previews');
+        assert.ok(previews.some(preview => preview.name === 'Gold' && preview.image.includes('rgb(212, 175, 55)')));
+        await list.getByRole('option', { name: 'Gold', exact: true }).click();
+        assert.deepEqual(await page.evaluate(() => editor.view.layout.items[0].palette), initial);
+        assert.equal(await page.evaluate(() => savedPalettes.length), 0);
+        await page.getByRole('button', { name: 'Apply', exact: true }).click();
+        assert.equal(await gradient.inputValue(), 'gold', 'Applying keeps the chosen preset in the dropdown');
+        const gold = await page.evaluate(() => editor.view.layout.items[0].palette.stops);
+        assert.deepEqual(gold, [{ pos: 0, color: '#8c5a14' }, { pos: .5, color: '#d4af37' }, { pos: 1, color: '#fff1a8' }]);
+        await page.getByRole('button', { name: 'Reverse gradient', exact: true }).click();
+        assert.deepEqual(await page.evaluate(() => editor.view.layout.items[0].palette.stops), gold.map(stop =>
+            ({ pos: 1 - stop.pos, color: stop.color })).reverse());
+        assert.equal(await page.evaluate(() => savedPalettes.length), 2);
+        await page.getByRole('radio', { name: 'Radial', exact: true }).check();
+        assert.equal(await page.evaluate(() => savedPalettes.at(-1).direction), 'radial');
+        assert.equal(await gradient.inputValue(), 'gold', 'Reversing and changing direction preserve the preset choice');
+        await gradient.focus();
+        await page.keyboard.press('r');
+        await page.keyboard.press('Enter');
+        assert.equal(await gradient.inputValue(), 'rainbow');
+        assert.equal(await page.evaluate(() => savedPalettes.length), 3, 'Choosing a preset does not apply it');
+        await page.getByRole('button', { name: 'Apply', exact: true }).click();
+        assert.equal(await gradient.inputValue(), 'rainbow', 'Applying a keyboard choice also keeps the preset selected');
+        const applied = await page.evaluate(() => structuredClone(editor.view.layout.items[0].palette));
+        const reverseMotion = page.getByLabel('Reverse color motion', { exact: true });
+        assert.equal(await reverseMotion.count(), 0);
+        await page.getByRole('radio', { name: 'hue', exact: true }).check();
+        await reverseMotion.check();
+        assert.equal(await page.evaluate(() => savedPalettes.at(-1).motion.reverse), true);
+        await page.getByRole('radio', { name: 'scroll', exact: true }).check();
+        assert.equal(await reverseMotion.isChecked(), true);
+        await page.getByRole('radio', { name: 'none', exact: true }).check();
+        assert.equal(await reverseMotion.count(), 0);
+        await page.getByRole('radio', { name: 'hue', exact: true }).check();
+        assert.equal(await reverseMotion.isChecked(), true);
+        await reverseMotion.uncheck();
+        const saved = await page.evaluate(() => savedPalettes.at(-1));
+        assert.deepEqual(saved.motion, { mode: 'hue', speed: applied.motion.speed, reverse: false });
+        assert.deepEqual(saved.stops, applied.stops);
     } finally {
         await browser.close();
     }
@@ -250,7 +481,7 @@ test('Rainbow stop sliders retain fractional positions and update the saved and 
         assert.deepEqual(result.stops, [0, .3, .4, .6, .8, 1]);
         assert.equal(result.edited, '0.3');
         assert.equal(result.saved, .3);
-        assert.equal(result.presetCount, 23);
+        assert.equal(result.presetCount, 24);
         assert.equal(result.expandedPreset, true);
         assert.notDeepEqual(result.after, result.before);
         assert.equal(result.dbRange, '-96');
@@ -458,6 +689,7 @@ test('Visualizer expand icon is centered and names both view-area actions', asyn
                     this.open = false; this.selection = new Set();
                 }
                 setOpen(open) { this.open = open; }
+                updateUITexts() {}
             };
         ` });
         await page.addScriptTag({ content: viewSource });
@@ -673,30 +905,38 @@ test('Mobile Visualizer expansion hides the bottom tabs and leaves its restore b
     }
 });
 
-test('Mobile Visualizer Edit keeps a touch scroll lane beside a tall canvas', async () => {
+test('Mobile Visualizer Edit fits the artboard and keeps a page scroll lane outside its touch viewport', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true });
         await page.setContent(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
             <body class="layout-mobile view-visualizer"><div class="title-container">EffeTune</div>
-            <div class="main-container"></div><section id="visualizerView" class="is-editing">
+            <div class="main-container"></div><section id="visualizerView">
                 <div class="visualizer-toolbar">Edit</div><div class="visualizer-workspace">
-                    <aside class="visualizer-editor visualizer-editor-navigation"><div style="height:130px"></div></aside>
-                    <div class="visualizer-stage-host"><div class="visualizer-stage editing"><canvas></canvas></div></div>
-                    <aside class="visualizer-editor visualizer-editor-inspector"><div style="height:600px"></div></aside>
+                    <div class="visualizer-stage-host"><div class="visualizer-stage"><canvas></canvas></div></div>
                 </div></section><nav class="mobile-bottom-nav">Player Library Effects</nav></body>`);
         await page.addStyleTag({ content: css });
-        await page.addScriptTag({ content: viewSource });
+        for (const source of [modelSource, palettePresetsSource, editorSource, viewSource]) await page.addScriptTag({ content: source });
         const result = await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
             const root = document.querySelector('#visualizerView');
             const host = root.querySelector('.visualizer-stage-host');
             const stage = root.querySelector('.visualizer-stage');
             const canvas = stage.querySelector('canvas');
             const view = Object.assign(Object.create(window.VisualizerView.prototype), {
-                visible: true, layout: { aspect: '9:16' }, root, stageHost: host, stage, canvas,
+                visible: true, layout: { ...createDefaultLayout(), aspect: '9:16' }, root, stageHost: host, stage, canvas,
                 status: {}, renderer: { quality: 0, draw() {} }, sources: { getStatus: () => 'ready' },
-                uiManager: { mobileNav: { nav: document.querySelector('.mobile-bottom-nav') } }, editor: { open: true }
+                uiManager: { mobileNav: { nav: document.querySelector('.mobile-bottom-nav') } },
+                updateEditButtons() {}, t: (_, fallback) => fallback, metadata: () => null, commitPending() {}
             });
+            view.editor = new VisualizerEditor(view);
+            const workspace = root.querySelector('.visualizer-workspace');
+            workspace.insertBefore(view.editor.navigation, host);
+            workspace.appendChild(view.editor.root);
+            view.editor.setOpen(true);
             window.testVisualizerView = view;
             window.requestAnimationFrame = () => 1;
             const measure = aspect => {
@@ -707,7 +947,7 @@ test('Mobile Visualizer Edit keeps a touch scroll lane beside a tall canvas', as
                 const stageRect = stage.getBoundingClientRect();
                 return { gutter: host.classList.contains('scroll-gutters'),
                     left: stageRect.left, right: stageRect.right, hostLeft: hostRect.left, hostRight: hostRect.right,
-                    top: stageRect.top, bottom: stageRect.bottom };
+                    top: stageRect.top, bottom: stageRect.bottom, hostTop: hostRect.top, hostBottom: hostRect.bottom };
             };
             const tall = measure('9:16');
             const navTop = document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top;
@@ -719,7 +959,8 @@ test('Mobile Visualizer Edit keeps a touch scroll lane beside a tall canvas', as
                 scrollHeight: document.documentElement.scrollHeight };
         });
         assert.equal(result.tall.gutter, true, JSON.stringify(result));
-        assert.ok(result.tall.bottom >= result.navTop, JSON.stringify(result));
+        assert.ok(result.tall.left >= result.tall.hostLeft && result.tall.right <= result.tall.hostRight, JSON.stringify(result));
+        assert.ok(result.tall.top >= result.tall.hostTop && result.tall.bottom <= result.tall.hostBottom, JSON.stringify(result));
         assert.ok(result.tall.hostLeft >= 24 && result.tall.hostRight <= 320 - 24, JSON.stringify(result));
         assert.equal(result.laneIsCanvas, false);
         assert.equal(result.bodyOverflow, 'visible');
@@ -748,10 +989,12 @@ test('Mobile Visualizer Edit keeps a touch scroll lane beside a tall canvas', as
             const host = document.querySelector('.visualizer-stage-host');
             const stage = host.querySelector('.visualizer-stage');
             return { gutter: host.classList.contains('scroll-gutters'),
-                naturalMargin: stage.getBoundingClientRect().left - host.getBoundingClientRect().left };
+                hostLeft: host.getBoundingClientRect().left, hostRight: host.getBoundingClientRect().right,
+                stageLeft: stage.getBoundingClientRect().left, stageRight: stage.getBoundingClientRect().right };
         });
-        assert.equal(widened.gutter, false, JSON.stringify(widened));
-        assert.ok(widened.naturalMargin >= 24, JSON.stringify(widened));
+        assert.equal(widened.gutter, true, JSON.stringify(widened));
+        assert.ok(widened.hostLeft >= 24 && widened.hostRight <= 390 - 24, JSON.stringify(widened));
+        assert.ok(widened.stageLeft >= widened.hostLeft && widened.stageRight <= widened.hostRight, JSON.stringify(widened));
     } finally {
         await browser.close();
     }
@@ -1566,6 +1809,7 @@ test('Visualizer Edit history and clipboard buttons keep Pipeline sizing and sho
                         this.navigation.appendChild(this.navigationContent);
                     }
                     setOpen(open) { this.open = open; this.view.root.classList.toggle('is-editing', open); }
+                    updateUITexts() {}
                 };
             ` });
             await page.addScriptTag({ content: viewSource });

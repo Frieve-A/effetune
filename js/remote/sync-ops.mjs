@@ -4,7 +4,7 @@
 // `ids` is parallel to `pipeline`. Ops address stages by id, never by index, so
 // concurrent edits from several participants rebase deterministically:
 //
-//   { t: 'set',    id, p: { <shortKey>: value, ... }, d?: [ 'ib' | 'ob' | 'ch' ] }
+//   { t: 'set',    id, p: { <shortKey>: value, ... }, d?: [ <optional shortKey>, ... ] }
 //   { t: 'ins',    id, after: id | null, at: int, item: { nm, ... } }
 //   { t: 'del',    id }
 //   { t: 'mov',    id, after: id | null, at: int }
@@ -20,9 +20,6 @@
 export const ID_PATTERN = /^[A-Za-z0-9_.-]{1,40}$/;
 export const MAX_STAGES = 256;
 export const MAX_OPS = 512;
-// Short-state keys that are absent (not null) when unset.
-export const OPTIONAL_KEYS = Object.freeze(['ib', 'ob', 'ch']);
-
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_SET_KEYS = 512;
 
@@ -79,7 +76,8 @@ export function validateOps(ops, { isAvailable = () => true, currentLength = 0 }
                     return { ok: false, error: 'invalid-op' };
                 }
                 if (op.d !== undefined && (!Array.isArray(op.d) ||
-                    op.d.some(key => !OPTIONAL_KEYS.includes(key)))) {
+                    op.d.length > MAX_SET_KEYS || op.d.some(key => typeof key !== 'string' ||
+                        FORBIDDEN_KEYS.has(key) || key === 'nm' || key === 'en'))) {
                     return { ok: false, error: 'invalid-op' };
                 }
                 break;
@@ -202,8 +200,7 @@ function setOp(id, prevItem, nextItem) {
             changed = true;
         }
     }
-    const d = OPTIONAL_KEYS.filter(key =>
-        Object.prototype.hasOwnProperty.call(prevItem, key) &&
+    const d = Object.keys(prevItem).filter(key => key !== 'nm' && key !== 'en' &&
         !Object.prototype.hasOwnProperty.call(nextItem, key));
     if (!changed && d.length === 0) return null;
     return d.length ? { t: 'set', id, p, d } : { t: 'set', id, p };

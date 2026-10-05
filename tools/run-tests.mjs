@@ -182,6 +182,10 @@ const presetCalibrationTests = [
   'tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs'
 ];
 const presetCalibrationTestSet = new Set(presetCalibrationTests);
+// These tests mutate generated DSP package output. Keep them separate from
+// parallel tests that copy the package into the demo.
+const dspBuildCommandTests = ['tests/esm/dsp-build-command.test.mjs'];
+const dspBuildCommandTestSet = new Set(dspBuildCommandTests);
 const automationContractTests = [
   'tools/dsp-parity/automation-mixed.test.mjs',
   'dsp/plugins/reverb/ir_reverb/automation_test.mjs'
@@ -191,7 +195,8 @@ const esmTests = allEsmTests
     !browserTestSet.has(file) &&
     !performanceTestSet.has(file) &&
     !isolatedTestSet.has(file) &&
-    !presetCalibrationTestSet.has(file));
+    !presetCalibrationTestSet.has(file) &&
+    !dspBuildCommandTestSet.has(file));
 const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'electron'), {
   exclude: ['electron/main.js']
 });
@@ -227,6 +232,7 @@ const allTests = [
   ...browserTests,
   ...presetCalibrationTests,
   ...automationContractTests,
+  ...dspBuildCommandTests,
   ...performanceTests
 ];
 checkTestTitles(allTests);
@@ -284,6 +290,11 @@ if (esmTests.length > 0) {
     ...esmTests
   ]);
 }
+
+runNodeTestPhase('DSP build command tests', [
+  '--test',
+  ...dspBuildCommandTests
+]);
 
 runNodeTestPhase('DSP automation contract tests', [
   '--test',

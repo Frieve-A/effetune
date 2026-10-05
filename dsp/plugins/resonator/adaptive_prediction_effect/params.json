@@ -1,0 +1,17 @@
+{
+  "type": "AdaptivePredictionEffectPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": { "abs": 0.0005, "policy": "per-sample" },
+  "fields": [
+    { "name": "gap", "key": "gap", "kind": "float", "min": 0, "max": 500, "step": 0.01, "default": 1, "unit": "ms", "automation": true },
+    { "name": "learn", "key": "learn", "kind": "float", "min": 0, "max": 0.1, "step": 0.001, "default": 0.02, "automation": true },
+    { "name": "weightDecay", "key": "weightDecay", "kind": "float", "min": 0, "max": 60, "step": 0.1, "default": 0, "unit": "s", "automation": true },
+    { "name": "autonomy", "key": "autonomy", "kind": "float", "min": 0, "max": 1, "step": 0.001, "default": 0, "automation": true },
+    { "name": "original", "key": "original", "kind": "float", "min": -2, "max": 2, "step": 0.01, "default": 0, "automation": true },
+    { "name": "residual", "key": "residual", "kind": "float", "min": -2, "max": 2, "step": 0.01, "default": 1, "automation": true },
+    { "name": "prediction", "key": "prediction", "kind": "float", "min": -2, "max": 2, "step": 0.01, "default": 0, "automation": true },
+    { "name": "freeze", "key": "freeze", "kind": "bool", "step": 1, "default": false, "automation": true },
+    { "name": "hold", "key": "hold", "kind": "bool", "step": 1, "default": false, "automation": true },
+    { "name": "resetToken", "key": "resetToken", "kind": "float", "min": 0, "max": 16777215, "step": 1, "default": 0 }
+  ]
+}

@@ -1330,6 +1330,26 @@ class Oscillator(Effect):
         channel: EffectChannel = ...,
     ) -> None: ...
 
+class AdaptivePredictionEffect(Effect):
+    effect_type: Literal["AdaptivePredictionEffect"]
+    def __init__(
+        self,
+        *,
+        gap: float = ...,
+        learn: float = ...,
+        weight_decay: float = ...,
+        autonomy: float = ...,
+        original: float = ...,
+        residual: float = ...,
+        prediction: float = ...,
+        freeze: bool = ...,
+        hold: bool = ...,
+        reset_token: float = ...,
+        id: str | None = ...,
+        enabled: bool = ...,
+        channel: EffectChannel = ...,
+    ) -> None: ...
+
 class HornResonator(Effect):
     effect_type: Literal["HornResonator"]
     def __init__(

@@ -1,9 +1,21 @@
 #ifndef EFFETUNE_TEST_SUPPORT_H
 #define EFFETUNE_TEST_SUPPORT_H
 
+#include "effetune/kernel.h"
+
 #include <cstdio>
 
+namespace effetune {
+class Engine;
+}
+
+extern "C" effetune::PluginKernel *
+et_engine_instance_kernel_for_testing(effetune::Engine *engine, et_instance instance) noexcept;
+
 namespace effetune::test {
+
+// Host transport received by the last process call of a TestGainPlugin kernel.
+const HostTransport *testGainTransport(PluginKernel *kernel) noexcept;
 
 inline int failures = 0;
 

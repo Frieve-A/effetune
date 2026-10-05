@@ -112,8 +112,28 @@ function buildDemo(outputRoot) {
     fs.copyFileSync(path.join(sourceRoot, file), path.join(resolvedOutput, file));
   }
   copyTree(packageDist, path.join(resolvedOutput, 'vendor', '@effetune', 'dsp'));
+  const packageInfo = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+  if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(packageInfo.version)) {
+    throw new Error('The DSP package version is invalid.');
+  }
+  const htmlPath = path.join(resolvedOutput, 'index.html');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  const versionLabel = '<p class="eyebrow" data-dsp-version>EffeTune DSP</p>';
+  if (!html.includes(versionLabel)) {
+    throw new Error('The DSP demo version label is missing.');
+  }
+  fs.writeFileSync(htmlPath, html.replace(versionLabel,
+    `<p class="eyebrow" data-dsp-version>EffeTune DSP v${packageInfo.version}</p>`), 'utf8');
+  const metadata = JSON.parse(fs.readFileSync(path.join(
+    resolvedOutput, 'vendor', '@effetune', 'dsp', 'assets', 'effetune-dsp.meta.json'
+  ), 'utf8'));
   const manifest = {
     format: demoManifestFormat,
+    package: {
+      name: packageInfo.name,
+      version: packageInfo.version,
+      sourceDigest: metadata.sourceDigest
+    },
     files: fileManifest(resolvedOutput, resolvedOutput, new Set(['build-manifest.json']))
   };
   fs.writeFileSync(

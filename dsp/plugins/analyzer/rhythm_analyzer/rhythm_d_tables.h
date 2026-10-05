@@ -54,8 +54,8 @@ inline constexpr double kTheta[3] = {0x1.ae147ae147ae1p-2, 0x1.eb851eb851eb8p-3,
                                      0x1.c28f5c28f5c29p-2};
 
 inline constexpr std::int32_t kWf = 375, kCap = 375, kRelease = 3;
-inline constexpr double kCandidateMin = 0x1.0000000000000p-2, kGateDb = -0x1.1800000000000p+6,
-                        kLevelFloor = -0x1.2c00000000000p+8, kLMin = -0x1.2c00000000000p+7;
+inline constexpr double kCandidateMin = 0x1.0000000000000p-2, kLevelFloor = -0x1.2c00000000000p+8,
+                        kLMin = -0x1.2c00000000000p+7;
 inline constexpr double kLn10Over20 = 0x1.d791c5f888823p-4, kLogMilli = -0x1.ba18a998fffa0p+2;
 inline constexpr double kFrameS = 0x1.5d867c3ece2a5p-9, kRiseC = 0x1.0bba4865ca5f3p-8,
                         kRiseAlpha = 0x1.999999999999ap-4, kRiseAlphaQuarter = 0x1.1feb33c1c381ep-1;

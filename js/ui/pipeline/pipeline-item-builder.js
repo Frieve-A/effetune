@@ -2,6 +2,9 @@
  * PipelineItemBuilder - Responsible for creating pipeline item UI elements
  * Handles the visual representation of plugins in the pipeline
  */
+import { getPluginExecutionCapabilities } from '../../audio/plugin-execution-capabilities.js';
+import { createWasmExecutionNotice, updateWasmExecutionNotice } from './wasm-execution-notice.js';
+
 export class PipelineItemBuilder {
     /**
      * Create a new PipelineItemBuilder instance
@@ -637,6 +640,13 @@ export class PipelineItemBuilder {
             plugin._disposeResponsiveGraphs();
         }
         ui.appendChild(plugin.createUI());
+        if (getPluginExecutionCapabilities(plugin)?.requiresWasm === true) {
+            const state = this.audioManager.getDspExecutionStateSnapshot?.().states.find(
+                state => state.pluginId === plugin.id && state.pluginType === plugin.constructor.name
+            );
+            if (state) updateWasmExecutionNotice(plugin, { ...state, validated: true });
+            ui.insertBefore(createWasmExecutionNotice(plugin), ui.firstChild);
+        }
         window.SpectrumOverlay?.attach(plugin, ui);
         window.FrequencyPreview?.attach(plugin, ui);
         return ui;

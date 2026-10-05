@@ -1,7 +1,7 @@
 {
   "artifact": "rhythm_d_low.bin",
   "manifest": "rhythm_d_low.json",
-  "model_sha256": "d8aa3f0d87836269654717d82a6f06b8176a215ff60022a5ea9025849829431f",
+  "model_sha256": "07222ae978db00f3c202ee7b63fb60a1cd38402424bdcd0f3075120b0bcb5295",
   "model_kind": "CatBoost symmetric-tree classifier giving the probability that an onset candidate of the Low band is a clear onset",
   "band": "Low",
   "runtime_decision": "Embedded read-only in the DSP module and evaluated at each onset candidate of the Low band. A candidate is accepted when its probability reaches the operating threshold 0.42 (stored in rhythm_d_tables.h). The weights are fixed at build time; nothing is loaded, trained or adapted at run time.",
@@ -82,13 +82,15 @@
     }
   },
   "storage": {
+    "layout": "oblivious",
     "threshold_type": "index8",
     "leaf_type": "int16",
     "leaf_scale_type": "binary32",
     "accumulator_type": "binary64",
     "maximum_leaf_error": 0.0000460655,
-    "bytes": 70660,
-    "policy": "Split thresholds are 8-bit indices into per-feature sorted binary32 border tables, which is exact. Leaves are rounded to int16 with one binary32 scale (absolute maximum / 32767) per tree and output. Splits, tree addition order, scale and bias are unchanged."
+    "bytes": 41476,
+    "policy": "Split thresholds are 8-bit indices into per-feature sorted binary32 border tables, which is exact. The symmetric trees use the oblivious layout (one split per level, split k sets bit k of the leaf index), which is exact. Leaves are rounded half to even to int16 with one binary32 scale (absolute maximum / 32767, rounded to binary32 first) per tree and output. Splits, tree addition order, scale and bias are unchanged.",
+    "reproduce": "Export the source model to a float-threshold, float-leaf heap tree (format in BUILD.md), then run python dsp/plugins/analyzer/tree_models/compact_model.py rhythm_d_low.json --oblivious --leaves int16"
   },
   "dataset_attribution": [
     {
@@ -96,7 +98,6 @@
       "creators": "Ethan Manilow, Gordon Wichern, Prem Seetharaman, Jonathan Le Roux",
       "citation": "Manilow, Wichern, Seetharaman and Le Roux, \"Cutting Music Source Separation Some Slakh: A Dataset to Study the Impact of Training Data Quality and Quantity\", IEEE WASPAA 2019",
       "material_uri": "https://www.slakh.com/",
-      "split_source": "https://github.com/ethman/slakh-utils/blob/master/splits/redux.json",
       "audio": {
         "description": "mix audio",
         "license": "CC BY 4.0",
@@ -120,14 +121,13 @@
       ],
       "used": "audio and beat labels of 806 train-split tracks (training); the validation split (selection only)",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "Groove MIDI Dataset v1.0.0",
       "creators": "Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman",
       "citation": "Gillick, Roberts, Engel, Eck and Bamman, \"Learning to Groove with Inverse Sequence Transformations\", ICML 2019",
       "material_uri": "https://magenta.tensorflow.org/datasets/groove",
-      "split_source": "the dataset's own train, validation and test split (info.csv in the archive)",
       "audio": {
         "description": "audio",
         "license": "CC BY 4.0",
@@ -140,9 +140,9 @@
       },
       "used": "audio and beat labels of 303 train-fold clips (training); the validation fold (selection only)",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     }
   ],
   "synthetic_data": "synthetic data generated for this project (no third-party material)",
-  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the Winterreise SC06 performance, and the Slakh and Groove test splits."
+  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the non-public-domain Winterreise performance, and the Slakh and Groove test splits."
 }

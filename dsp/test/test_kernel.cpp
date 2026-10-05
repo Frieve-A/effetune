@@ -1,3 +1,5 @@
+#include "test_support.h"
+
 #include "effetune/kernel.h"
 
 #include <array>
@@ -28,7 +30,9 @@ public:
   void reset() noexcept override {}
 
   void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
-               const ProcessInfo &) noexcept override {
+               const ProcessInfo &info) noexcept override {
+    has_transport_ = info.transport != nullptr;
+    transport_ = has_transport_ ? *info.transport : HostTransport{};
     if (asset_state_ == ET_ASSET_STATE_PREPARING) {
       asset_state_ = ET_ASSET_STATE_ACTIVE;
     }
@@ -100,7 +104,13 @@ public:
     return slot == 0u ? asset_state_ : static_cast<std::uint32_t>(ET_ASSET_STATE_NONE);
   }
 
+  [[nodiscard]] const HostTransport *transport() const noexcept {
+    return has_transport_ ? &transport_ : nullptr;
+  }
+
 private:
+  HostTransport transport_{};
+  bool has_transport_ = false;
   std::uint8_t *asset_ = nullptr;
   AssetBeginInfo asset_info_{};
   float sample_rate_ = 0.0F;
@@ -153,6 +163,10 @@ private:
   std::array<float, 8u * kDelayLength> samples_{};
   std::array<std::uint32_t, 8> write_indices_{};
 };
+
+const HostTransport *testGainTransport(PluginKernel *kernel) noexcept {
+  return static_cast<const TestGainKernel *>(kernel)->transport();
+}
 
 } // namespace effetune::test
 

@@ -6,18 +6,43 @@ export const ASPECT_FILES = Object.freeze({
     '1:1': '1x1.json', '9:16': '9x16.json'
 });
 
-export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
+export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'guitar', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
 // Analyzer graphics (ticks, lines, labels, peak marks) are drawn in these 1280-wide units,
 // so the same geometry looks identical regardless of the output canvas size or window scale.
 export const REFERENCE_WIDTH = 1280;
-export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'chroma', 'phase'];
+export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'guitar', 'chroma', 'phase'];
 export const META_TYPES = ['artwork', 'title', 'album', 'artist'];
-export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'rhythm-analyzer'];
-export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES];
+export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'rhythm-analyzer'];
+export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'shape'];
+export const SHAPES = ['rectangle', 'ellipse', 'triangle', 'line'];
+export const MAX_TEXT_LENGTH = 4096;
 export const MAX_ITEMS = 64;
 export const MAX_EFFECTS = 16;
+export const MIN_ITEM_SIZE = 0.02;
+export const MAX_ITEM_SIZE = 1;
 // Rhythm Analyzer Span (beats) choices, same as the effect.
 export const RHYTHM_SPANS = Object.freeze([4, 6, 8, 12, 16]);
+// Guitar open-string MIDI notes in physical string order, from the thickest string's side.
+export const GUITAR_TUNINGS = Object.freeze({
+    standard: [40, 45, 50, 55, 59, 64], 'drop-d': [38, 45, 50, 55, 59, 64],
+    'half-step-down': [39, 44, 49, 54, 58, 63], 'd-standard': [38, 43, 48, 53, 57, 62],
+    'drop-c': [36, 43, 48, 53, 57, 62], dadgad: [38, 45, 50, 55, 57, 62],
+    'open-g': [38, 43, 50, 55, 59, 62], 'open-d': [38, 45, 50, 54, 57, 62], 'open-e': [40, 47, 52, 56, 59, 64],
+    '7-string': [35, 40, 45, 50, 55, 59, 64], '8-string': [30, 35, 40, 45, 50, 55, 59, 64],
+    bass: [28, 33, 38, 43], 'bass-drop-d': [26, 33, 38, 43],
+    'bass-5': [23, 28, 33, 38, 43], 'bass-6': [23, 28, 33, 38, 43, 48],
+    ukulele: [67, 60, 64, 69]
+});
+// Scale guide intervals in semitones above the root.
+export const GUITAR_SCALES = Object.freeze({
+    major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], 'harmonic-minor': [0, 2, 3, 5, 7, 8, 11],
+    'major-pentatonic': [0, 2, 4, 7, 9], 'minor-pentatonic': [0, 3, 5, 7, 10], blues: [0, 3, 5, 6, 7, 10]
+});
+// Detection range and note limit for a fretboard: the notes it can sound, and no more notes than strings.
+export const guitarAnalysis = params => {
+    const mn = Math.min(108, Math.min(...params.tn) + Math.max(params.fm, params.cp));
+    return { mn, mx: Math.max(mn, Math.min(108, Math.max(...params.tn) + params.fx)), nc: params.tn.length };
+};
 export const FONT_FAMILIES = Object.freeze([
     ['sans-serif', 'Sans-serif'], ['serif', 'Serif'], ['monospace', 'Monospace'],
     ['system-ui', 'System UI'], ['Arial, Helvetica, sans-serif', 'Arial'],
@@ -42,6 +67,7 @@ export const EFFECT_CATALOG = Object.freeze({
     outline: { label: 'Outline', defaultAmount: 0.5, allowedOn: ['item'] },
     blur: { label: 'Blur', defaultAmount: 0.3, allowedOn: ['item', 'background'] },
     trail: { label: 'Trail', defaultAmount: 0.5, allowedOn: ['item'] },
+    transform: { label: 'Transform', defaultAmount: 1, allowedOn: ['item', 'background'] },
     'scale-pulse': { label: 'Scale Pulse', defaultAmount: 0.4, allowedOn: ['item'] },
     symmetry: { label: 'Symmetry', defaultAmount: 0.5, allowedOn: ['item'] },
     shake: { label: 'Shake', defaultAmount: 0.4, allowedOn: ['item'] },
@@ -52,6 +78,17 @@ export const EFFECT_CATALOG = Object.freeze({
     backplate: { label: 'Backplate', defaultAmount: 1, allowedOn: ['item'] }
 });
 
+// Shared slider bounds and defaults keep imported layouts consistent with the editor.
+export const TRANSFORM_PARAMETERS = Object.freeze([
+    { key: 'scaleX', label: 'Horizontal scale', initial: 100, min: 0, max: 300, unit: '%' },
+    { key: 'scaleY', label: 'Vertical scale', initial: 100, min: 0, max: 300, unit: '%' },
+    { key: 'angle', label: 'Rotation angle (°)', initial: 0, min: -180, max: 180, unit: '°' },
+    { key: 'offsetX', label: 'Horizontal offset', initial: 0, min: -100, max: 100, unit: '%' },
+    { key: 'offsetY', label: 'Vertical offset', initial: 0, min: -100, max: 100, unit: '%' },
+    { key: 'skewX', label: 'Horizontal skew (°)', initial: 0, min: -60, max: 60, unit: '°' },
+    { key: 'skewY', label: 'Vertical skew (°)', initial: 0, min: -60, max: 60, unit: '°' }
+]);
+
 const CHANNELS = new Set([null, 'L', 'R', ...Array.from({ length: 7 }, (_, i) => `${2 * i + 3}${2 * i + 4}`),
     ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)]);
 const MOD_SOURCES = ['none', 'time', 'level', 'bass'];
@@ -60,6 +97,34 @@ export const isRecord = value => value !== null && typeof value === 'object' && 
 const choice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
 const number = (value, fallback, min, max) => Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 const color = (value, fallback) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+
+const METER_APPEARANCE_RULES = {
+    dialCurvature: value => Math.round(number(value, 1, 0, 1) * 100) / 100,
+    dialSweep: value => Math.round(number(value, 100, 30, 160)),
+    pivotOffset: value => Math.round(number(value, 0, 0, 100)),
+    needleStart: value => Math.round(number(value, 0, 0, 90)),
+    needleLength: value => Math.round(number(value, 102, 50, 120)),
+    needleWidth: value => Math.round(number(value, 2, 0.5, 8) * 2) / 2,
+    needleTip: value => choice(value, ['line', 'taper', 'arrow'], 'line'),
+    arrowAspect: value => Math.round(number(value, 1, 0.25, 4) * 20) / 20,
+    hubSize: value => Math.round(number(value, 3, 0, 20) * 2) / 2,
+    showReadout: value => value !== false,
+    showChannel: value => value !== false,
+    showMode: value => value !== false,
+    showSigns: value => value === true,
+    positiveLabels: value => value === true,
+    showPercent: value => value === true,
+    readoutUnit: value => choice(value, ['scale', 'percent'], 'scale'),
+    showRedZone: value => value !== false,
+    faceShape: value => choice(value, ['rectangle', 'ellipse', 'circle'], 'rectangle'),
+    faceColor: value => color(value, '#f4dfa5'), // theme-allow: Editable meter face color.
+    faceOpacity: value => Math.round(number(value, 0, 0, 1) * 100) / 100,
+    faceBorderColor: value => color(value, '#332b20'), // theme-allow: Editable meter face border.
+    faceBorderWidth: value => Math.round(number(value, 0, 0, 20) * 2) / 2,
+    vignette: value => Math.round(number(value, 0, 0, 1) * 100) / 100
+};
+export const METER_APPEARANCE_DEFAULTS = Object.freeze(Object.fromEntries(
+    Object.entries(METER_APPEARANCE_RULES).map(([key, rule]) => [key, rule(undefined)])));
 
 export function normalizePalette(value, maxStops = 8) {
     const input = isRecord(value) ? value : {};
@@ -70,7 +135,8 @@ export function normalizePalette(value, maxStops = 8) {
         stops: stops.length ? stops : structuredClone(DEFAULT_PALETTE.stops),
         motion: {
             mode: choice(input.motion?.mode, ['none', 'hue', 'scroll'], 'none'),
-            speed: number(input.motion?.speed, 0.25, 0, 4)
+            speed: number(input.motion?.speed, 0.25, 0, 4),
+            ...(Object.hasOwn(input.motion ?? {}, 'reverse') ? { reverse: input.motion.reverse === true } : {})
         }
     };
 }
@@ -81,6 +147,8 @@ export function normalizeEffect(value, target = 'item') {
         type: value.type,
         enabled: value.enabled !== false,
         amount: number(value.amount, EFFECT_CATALOG[value.type].defaultAmount, 0, 1),
+        ...(value.type === 'transform' ? Object.fromEntries(TRANSFORM_PARAMETERS.map(({ key, initial, min, max }) =>
+            [key, number(value[key], initial, min, max)])) : {}),
         ...(value.type === 'trail-feedback' && Object.hasOwn(value, 'angle')
             ? { angle: number(value.angle, 1.15, -3, 3) } : {}),
         ...(value.type === 'trail-feedback' && Object.hasOwn(value, 'flowX')
@@ -159,11 +227,20 @@ function normalizeStyle(type, input) {
             .filter(([key]) => Object.hasOwn(style, key)).map(([key, rule]) => [key, rule(style[key])]))
     };
     if (type === 'artwork') return { rounded: style.rounded === true };
+    if (type === 'shape') return {
+        shape: choice(style.shape, SHAPES, 'rectangle'),
+        fillOpacity: Math.round(number(style.fillOpacity, 1, 0, 1) * 100) / 100,
+        borderColor: color(style.borderColor, '#ffffff'), // theme-allow: Editable shape border default.
+        borderWidth: Math.round(number(style.borderWidth, 2, 0, 20) * 2) / 2,
+        borderOpacity: Math.round(number(style.borderOpacity, 1, 0, 1) * 100) / 100,
+        radius: Math.round(number(style.radius, 0, 0, 200))
+    };
     return {};
 }
 
 export function normalizeParams(type, input) {
     const params = isRecord(input) ? input : {};
+    if (type === 'text') return { text: typeof params.text === 'string' ? params.text.slice(0, MAX_TEXT_LENGTH) : 'Text' };
     const axes = {
         showAxes: params.showAxes === true,
         showAxisNumbers: params.showAxisNumbers === true
@@ -233,6 +310,29 @@ export function normalizeParams(type, input) {
             nc: Math.round(number(params.nc, 8, 1, 16)), ...axes
         };
     }
+    if (type === 'guitar') {
+        const fm = Math.round(number(params.fm, 0, 0, 24));
+        const tuning = Array.isArray(params.tn) && params.tn.length >= 1 && params.tn.length <= 10 ? params.tn : GUITAR_TUNINGS.standard;
+        return {
+            tn: tuning.map(open => Math.round(number(open, 40, 21, 108))),
+            fm, fx: Math.max(fm, Math.round(number(params.fx, 12, 0, 24))),
+            cp: Math.round(number(params.cp, 0, 0, 12)),
+            // Positions: every matching fret, one playable shape, or the shape with the alternatives dimmed.
+            pm: choice(params.pm, ['all', 'shape', 'shape-dim'], 'all'),
+            lb: choice(params.lb, ['none', 'sharp', 'flat', 'interval'], 'sharp'),
+            // Root pitch class; -1 follows the lowest sounding note.
+            ro: choice(params.ro, [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], -1),
+            sk: choice(params.sk, ['none', ...Object.keys(GUITAR_SCALES)], 'none'),
+            th: Math.round(number(params.th, 0.5, 0.1, 0.9) * 100) / 100,
+            cf: Math.round(number(params.cf, 0.2, 0, 2) * 20) / 20,
+            ly: choice(params.ly, ['Horizontal', 'Vertical'], 'Horizontal'),
+            // Fretless places each note at its continuous pitch on the fret line.
+            fl: params.fl === true,
+            // Size by Volume scales each dot by its note's volume.
+            vs: params.vs === true,
+            rs: params.rs !== false, fb: params.fb !== false, mk: params.mk !== false, fn: params.fn !== false, sn: params.sn !== false
+        };
+    }
     if (type === 'chroma') {
         const lo = Math.round(number(params.lo, 1, 1, 8));
         return {
@@ -264,6 +364,8 @@ export function normalizeParams(type, input) {
         ln: choice(params.ln, [0, 1], 0),
         tg: Math.round(number(params.tg, -23, -36, -10)),
         ls: choice(params.ls, [0, 1], 0),
+        ...Object.fromEntries(Object.entries(METER_APPEARANCE_RULES).map(([key, rule]) =>
+            [key, rule(key === 'hubSize' && params[key] === undefined && params.showHub === false ? 0 : params[key])])),
         showAxes: params.showAxes !== false,
         showAxisNumbers: params.showAxisNumbers !== false
     };
@@ -277,10 +379,10 @@ export function normalizeParams(type, input) {
             sp: choice(params.sp, RHYTHM_SPANS, 8),
             showBeat: params.showBeat !== false,
             showBpm: params.showBpm !== false,
-            // Panel toggles: tempogram strip, main lanes, echo rows, beat lens. All shown by default.
-            vt: params.vt !== false,
+            // Panel toggles: tempogram strip, main lanes, echo rows, beat lens. Lanes and lens shown by default (same as the effect).
+            vt: params.vt === true,
             vm: params.vm !== false,
-            ve: params.ve !== false,
+            ve: params.ve === true,
             vl: params.vl !== false,
             showAxes: params.showAxes !== false,
             showAxisNumbers: params.showAxisNumbers !== false
@@ -292,22 +394,27 @@ export function normalizeParams(type, input) {
 export function paletteModesForType(type) {
     if (type === 'artwork') return [];
     const modes = ['solid', 'gradient'];
-    if (['spectrum', 'notes', 'chroma'].includes(type)) modes.push('note-colors');
+    if (['spectrum', 'notes', 'guitar', 'chroma'].includes(type)) modes.push('note-colors');
     if (['spectrum', 'spectrogram', 'chroma', 'level-meter', 'phase'].includes(type)) modes.push('heatmap');
     return modes;
 }
 
 function itemPalette(type, value) {
-    const octave = type === 'notes' || type === 'chroma';
+    const octave = type === 'notes' || type === 'guitar' || type === 'chroma';
     const palette = normalizePalette(value, octave ? 13 : 8);
     if (type !== 'artwork') {
         palette.mode = choice(value?.mode, paletteModesForType(type), 'solid');
         palette.color = color(value?.color, '#40dfff'); // theme-allow: Editable scene palette fallback.
     }
     if (octave) palette.mapping = choice(value?.mapping, ['range', 'octave'], 'range');
-    // Omitted direction preserves existing presets and share links as frequency gradients.
-    if (GRADIENT_DIRECTION_TYPES.includes(type) && value?.direction !== undefined)
-        palette.direction = choice(value.direction, ['frequency', 'intensity'], 'frequency');
+    // Optional keys preserve the native coloring of layouts saved without a direction or angle.
+    if (type !== 'artwork') {
+        const frequency = GRADIENT_DIRECTION_TYPES.includes(type);
+        if (value?.direction !== undefined)
+            palette.direction = choice(value.direction, frequency ? ['frequency', 'intensity', 'radial'] : ['linear', 'radial'],
+                frequency ? 'frequency' : 'linear');
+        if (value?.angle !== undefined) palette.angle = number(value.angle, 0, -180, 180);
+    }
     return palette;
 }
 
@@ -340,11 +447,11 @@ export function normalizeLayout(value) {
         if (seen.has(id)) return [];
         seen.add(id);
         const rect = isRecord(raw.rect) ? raw.rect : {};
-        const w = number(rect.w, base.rect.w, 0.02, 1);
-        const h = number(rect.h, base.rect.h, 0.02, 1);
+        const w = number(rect.w, base.rect.w, MIN_ITEM_SIZE, MAX_ITEM_SIZE);
+        const h = number(rect.h, base.rect.h, MIN_ITEM_SIZE, MAX_ITEM_SIZE);
         return [{
             id, type: raw.type,
-            rect: { x: number(rect.x, base.rect.x, 0, 1 - w), y: number(rect.y, base.rect.y, 0, 1 - h), w, h },
+            rect: { x: number(rect.x, base.rect.x, -Infinity, Infinity), y: number(rect.y, base.rect.y, -Infinity, Infinity), w, h },
             channel: VISUAL_TYPES.includes(raw.type) && CHANNELS.has(raw.channel) ? raw.channel : null,
             flipX: raw.flipX === true, flipY: raw.flipY === true,
             palette: itemPalette(raw.type, raw.palette), params: normalizeParams(raw.type, raw.params), style: normalizeStyle(raw.type, raw.style),
@@ -383,6 +490,7 @@ export function validateLayout(value) {
     const addedParams = {
         spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
         stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf'],
+        'analog-meter': Object.keys(METER_APPEARANCE_DEFAULTS),
         'rhythm-analyzer': ['showBeat', 'showBpm']
     };
     const comparable = {
@@ -391,6 +499,10 @@ export function validateLayout(value) {
         items: value.items.map(item => {
             if (!isRecord(item) || !isRecord(item.params) || !Object.hasOwn(addedParams, item.type)) return item;
             const params = { ...item.params }, defaults = normalizeParams(item.type);
+            if (item.type === 'analog-meter' && typeof params.showHub === 'boolean') {
+                if (!Object.hasOwn(params, 'hubSize')) params.hubSize = params.showHub ? 3 : 0;
+                delete params.showHub;
+            }
             for (const key of addedParams[item.type]) if (!Object.hasOwn(params, key)) params[key] = defaults[key];
             // Rhythm layouts saved before BPM text styling have an empty style.
             const style = item.type === 'rhythm-analyzer' && isRecord(item.style)

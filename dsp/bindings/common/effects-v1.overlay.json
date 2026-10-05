@@ -920,6 +920,10 @@
       "seeded": true
     },
     {
+      "type": "AdaptivePredictionEffect",
+      "internalType": "AdaptivePredictionEffectPlugin"
+    },
+    {
       "type": "HornResonator",
       "internalType": "HornResonatorPlugin"
     },
@@ -1308,7 +1312,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "07ccb25325b848ed7ccbd2887d3b25694a8961aa636089801c58a7af6ae5d3ca",
-    "privateLayoutSha256": "2210eb06b9ab0c4a503445dbc6f98abec45197ff603d18a1c4f4c8eca732fb6a"
+    "publicCatalogSha256": "72b9a93756790c53dc7fcfb360596f8c44591da74f4726da6cb6e99b5b274fbc",
+    "privateLayoutSha256": "a5c8858fdb96deb9b685eca0ba856486d415e0c18da35bc07ecf34e48436cacf"
   }
 }

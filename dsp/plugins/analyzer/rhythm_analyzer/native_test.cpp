@@ -10,6 +10,13 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#if !defined(__EMSCRIPTEN__) &&                                                                    \
+    (defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__))
+#include "tc_tcn.h"
+#include "tdp_prior.h"
+#include <xmmintrin.h>
+#define RHYTHM_TEST_HAS_X86_MXCSR 1
+#endif
 
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_RhythmAnalyzerPlugin() noexcept;
 namespace {
@@ -500,8 +507,14 @@ const Hit *match(const std::vector<Hit> &hits, const Event &event, double tolera
 }
 // Deviation statistics use locked events attributed to on-beat hits only. The tracker unlocks
 // within about half a second of silence, so bpm is the last locked tempo and unlocks count only up
-// to the last hit.
-Summary summarize(const Log &log, const std::vector<Hit> &hits = {}, double settle = 2.0) {
+// to the last hit. The statistics start 2 s after the lock, or after `from` when that is later.
+// With `beat` (seconds), deviations are taken to the nearest groove beat, so a grid shown at a
+// sub-multiple of the groove tempo is measured on every groove beat.
+double deviation(const Event &event, double beat) {
+  return beat > 0.0 ? std::remainder(event.deviation(), beat) : event.deviation();
+}
+Summary summarize(const Log &log, const std::vector<Hit> &hits = {}, double from = 0.0,
+                  double beat = 0.0) {
   Summary s;
   double end = hits.empty() ? 1e300 : 0.0;
   for (const auto &hit : hits)
@@ -520,14 +533,15 @@ Summary summarize(const Log &log, const std::vector<Hit> &hits = {}, double sett
   double sum = 0, square = 0;
   for (const auto &event : log.events) {
     ++s.events;
-    if (event.unlocked || s.lock < 0 || event.time < s.lock + settle)
+    if (event.unlocked || s.lock < 0 || event.time < std::max(s.lock, from) + 2.0)
       continue;
     const auto *hit = match(hits, event);
     if (!hit || !hit->onBeat)
       continue;
     ++s.locked;
-    sum += event.deviation();
-    square += event.deviation() * event.deviation();
+    const double d = deviation(event, beat);
+    sum += d;
+    square += d * d;
   }
   if (s.locked) {
     s.mean = sum / s.locked;
@@ -598,11 +612,18 @@ Log scenario(const std::vector<double> &signal, double rate, Harness *existing =
   return run(h, signal, rate);
 }
 
-void steady(double bpm, double expected, double maxLock, double rate = 96000) {
+void steady(double bpm, double expected, double maxLock, double rate = 96000,
+            std::uint32_t epochs = 1u) {
   const auto beats = tempoMap(30.0, [bpm](double) { return bpm; });
   const auto hits = groove(beats, kBasic);
   const auto log = scenario(render(hits, 30.0, rate), rate);
-  const auto s = summarize(log, hits);
+  // Grid accuracy is measured on the final grid only: from 2 s after the later of the lock and the
+  // final grid change (lock + 2 s when the grid never changes after the lock).
+  double change = 0.0;
+  for (const auto &state : log.states)
+    if (state.epoch != log.states.back().epoch)
+      change = state.time;
+  const auto s = summarize(log, hits, change, 60.0 / bpm);
   char name[32];
   std::snprintf(name, sizeof name, "groove%.0f", bpm);
   print(name, rate, s);
@@ -610,26 +631,159 @@ void steady(double bpm, double expected, double maxLock, double rate = 96000) {
   CHECK(std::abs(s.bpm - expected) < .01 * expected);
   // At 60 BPM the kit leaves digital silence between hats longer than the tracker's silence
   // stand-in, so the display gate drops between them; the grid (epoch) is kept.
-  CHECK(s.epoch == 1u && (bpm < 90 || s.unlocks == 0));
-  // The grid runs about 3-4 ms ahead of the lane onsets of this kit.
+  CHECK(s.epoch == epochs && (bpm < 90 || s.unlocks == 0));
+  // The grid runs about 3-4 ms ahead of the lane onsets of this kit; the final-grid window must
+  // hold enough events for the check to be meaningful.
+  CHECK(s.locked >= 5);
   CHECK(std::abs(s.mean) < .005 && s.sd < .004);
   // The comb-best candidate sits on the true tempo or an octave of it.
   const double comb = log.states.back().comb;
   const double octave = std::log2(comb / bpm);
   CHECK(std::abs(octave - std::nearbyint(octave)) < .02);
+  // At an A3 rate it is the tempo map's peak, within 3 bins (1/16 octave) of the shown tempo.
+  const auto &last = log.states.back();
+  if (rate == 96000 && last.locked)
+    CHECK(std::abs(48.0 * std::log2(comb * last.period / 60.0)) <= 3.0);
   // Per-slot deviation means: no slot-specific offset after accents.
   std::array<std::vector<double>, 12> slots;
   for (const auto &event : log.events)
-    if (!event.unlocked && event.time > s.lock + 2.0)
+    if (!event.unlocked && event.time > std::max(s.lock, change) + 2.0)
       if (const auto *hit = match(hits, event); hit && hit->onBeat)
-        slots[static_cast<std::size_t>(hit->slot)].push_back(event.deviation());
+        slots[static_cast<std::size_t>(hit->slot)].push_back(deviation(event, 60.0 / bpm));
   for (const auto &slot : slots)
     if (slot.size() >= 10u)
       CHECK(std::abs(stats(slot).mean - s.mean) < .003);
 }
+#if defined(RHYTHM_TEST_HAS_X86_MXCSR)
+// binary16 <-> float32 round trip over every finite code and a TCN run, with DAZ|FTZ off or on.
+std::uint32_t tcnPass(bool flush, std::vector<std::uint32_t> &act) {
+  using effetune::plugins::analyzer::rhythm_a3::tcFloatToHalf;
+  using effetune::plugins::analyzer::rhythm_a3::tcHalfToFloat;
+  using effetune::plugins::analyzer::rhythm_a3::TcTcn;
+  constexpr unsigned int kFlush = (1u << 15u) | (1u << 6u); // FTZ | DAZ
+  const unsigned int original = _mm_getcsr();
+  _mm_setcsr(flush ? original | kFlush : original & ~kFlush);
+  std::uint32_t roundTripBad = 0u;
+  for (std::uint32_t c = 0u; c < 65536u; ++c)
+    if ((c & 0x7c00u) != 0x7c00u) // inf / NaN codes are not used
+      roundTripBad += tcFloatToHalf(tcHalfToFloat(static_cast<std::uint16_t>(c))) != c;
+  static TcTcn tcn;
+  tcn.reset();
+  effetune::dsp::XorShiftRng random(7u);
+  float in[TcTcn::kIn], out[TcTcn::kOut];
+  for (int tick = 0; tick < 400; ++tick) {
+    for (float &x : in)
+      x = tcHalfToFloat(tcFloatToHalf(static_cast<float>(random.nextFloatSigned())));
+    tcn.push(in, out);
+    for (const float p : out)
+      act.push_back(std::bit_cast<std::uint32_t>(p));
+  }
+  _mm_setcsr(original);
+  return roundTripBad;
+}
+void flushInvariance() {
+  std::vector<std::uint32_t> plain, flushed;
+  const std::uint32_t plainBad = tcnPass(false, plain), flushedBad = tcnPass(true, flushed);
+  std::printf("tcn DAZ|FTZ: round trip %u/%u codes differ, %zu act values %s\n", plainBad,
+              flushedBad, plain.size(), plain == flushed ? "identical" : "differ");
+  CHECK(plainBad == 0u && flushedBad == 0u);
+  CHECK(plain == flushed);
+}
+
+// Real spectra and delayed chroma: silence is ready before the first active tick seeds statistics.
+std::vector<double> priorSilencePass(bool flush) {
+  using namespace effetune::plugins::analyzer::rhythm_a3;
+  constexpr unsigned int kFlush = (1u << 15u) | (1u << 6u); // FTZ | DAZ
+  const unsigned int original = _mm_getcsr();
+  _mm_setcsr(flush ? original | kFlush : original & ~kFlush);
+  auto detector = std::make_unique<effetune::plugins::analyzer::rhythm_d::Detector>();
+  auto chroma = std::make_unique<G2Chroma>();
+  auto prior = std::make_unique<TdpPrior>();
+  auto v0 = std::make_unique<TcV0>();
+  CHECK(detector->prepare(48000.0));
+  CHECK(chroma->prepare(48000));
+  CHECK(v0->prepare(48000.0));
+  prior->prepare(1024u);
+  prior->reset();
+  prior->setChroma(chroma.get());
+  std::array<float, 128> ring{};
+  TcTickV0 tick;
+  bool pending = false;
+  const float act[3] = {0.0F, 0.0F, 1.0F};
+  std::vector<double> values;
+  std::int64_t firstActive = -1;
+  for (std::uint32_t n = 0u; n < 49152u; ++n) {
+    const float x =
+        n < 21504u ? 0.0F
+                   : static_cast<float>(.25 * std::sin(2.0 * pi * 440.0 * (n - 21504u) / 48000.0));
+    detector->push(x);
+    chroma->sample(x);
+    ring[n & 127u] = x;
+    if ((n + 1u) % 128u != 0u)
+      continue;
+    // Complete the previous hop's tick after G2's decimator look-ahead, as the kernel does.
+    if (pending) {
+      prior->tick(tick, act);
+      for (std::uint32_t i = 0u; i < TdpSpectral::kFeatures; ++i) {
+        const double value = prior->spectral().features()[i];
+        CHECK(std::isfinite(value));
+        values.push_back(value);
+      }
+      for (std::uint32_t i = 0u; i < TdpTemporal::kFeatures; ++i) {
+        const double value = prior->temporal().features()[i];
+        CHECK(std::isfinite(value));
+        values.push_back(value);
+      }
+      CHECK(prior->tonal().ready() == (tick.k >= 7));
+      if (prior->tonal().ready()) {
+        for (std::uint32_t i = 0u; i < TdpTonal::kFeatures; ++i) {
+          const double value = prior->tonal().features()[i];
+          CHECK(std::isfinite(value));
+          values.push_back(value);
+        }
+      }
+      if (prior->stats().activeTicks() > 0) {
+        if (firstActive < 0) {
+          firstActive = tick.k;
+          // The tone activates the tick before its first chroma frame is held.
+          for (std::uint32_t i = 0u; i < TdpTonal::kClasses; ++i)
+            CHECK(std::abs(prior->tonal().features()[i] - 1.0 / 12.0) < 1e-15);
+          CHECK(std::abs(prior->tonal().features()[TdpTonal::kEntropy] - 1.0) < 1e-15);
+        }
+        for (std::uint32_t i = 0u; i < TdpStats::kCols; ++i) {
+          const double value = prior->stats().features()[i];
+          CHECK(std::isfinite(value));
+          values.push_back(value);
+        }
+      }
+    }
+    v0->pushHop(ring.data(), 127u, 0u);
+    prior->pushFrame(detector->magnitude());
+    TcFrame frame;
+    TcEvent events[3];
+    v0->pushFrame(detector->magnitude(), frame, events, pending, tick);
+  }
+  CHECK(firstActive == 42 && prior->stats().activeTicks() == 53);
+  _mm_setcsr(original);
+  return values;
+}
+void priorSilenceFlushInvariance() {
+  const auto plain = priorSilencePass(false), flushed = priorSilencePass(true);
+  CHECK(!plain.empty() && plain == flushed);
+  std::printf("TD prior silence DAZ|FTZ: %zu ready feature/statistic values %s\n", plain.size(),
+              plain == flushed ? "identical" : "differ");
+}
+#else
+void flushInvariance() { std::printf("tcn DAZ|FTZ: skipped (no MXCSR)\n"); }
+void priorSilenceFlushInvariance() {
+  std::printf("TD prior silence DAZ|FTZ: skipped (no MXCSR)\n");
+}
+#endif
 } // namespace
 
 int main() {
+  flushInvariance();
+  priorSilenceFlushInvariance();
   // Bias calibration at every calibrated rate class.
   for (const double rate : {44100.0, 48000.0, 96000.0})
     calibrate(rate);
@@ -647,9 +801,14 @@ int main() {
     CHECK(std::abs(s.mean) < .003);
   }
   steady(120, 120, 3.2);
+  // ch64 network + TD prior: groove60 shows the double tempo; the master's reseed to 60 BPM
+  // (about 21 s in) does not move the shown grid, whose prior favours 120 BPM.
   steady(60, 120, 8.0);
   steady(90, 90, 4.0);
-  steady(180, 180, 3.5);
+  // ch64 network + TD prior: the master flips between 90 and 180 BPM (the known weakness at
+  // 140 BPM and above) while the shown grid holds the half tempo, whose prior is the stronger; its
+  // one change is a phase switch between the two 90 BPM grids.
+  steady(180, 90, 3.5, 96000, 2u);
   steady(120, 120, 3.2, 48000);
   steady(120, 120, 3.2, 44100);
   steady(120, 120, 3.2, 192000);
@@ -894,6 +1053,7 @@ int main() {
   }
   // 6/8 at 80 BPM (dotted quarter): the tracker first shows the 3:2 level (120 BPM) and moves to
   // the dotted quarter once its evidence builds up, without unlocking; no other level is shown.
+  // The settle bound is the ch64 network's 13.5 s plus about 15 % (R5-S-111).
   {
     const auto beats = tempoMap(30.0, [](double) { return 80.0; });
     std::vector<Step> six8;
@@ -922,7 +1082,7 @@ int main() {
     std::printf("  comb at the 3:2 level in %d telemetry frames, 80 BPM shown from %.2f s\n",
                 eighth, settled);
     CHECK(eighth > 0);
-    CHECK(s.lock > 0 && s.lock < 4.0 && s.unlocks == 0 && other == 0 && settled < 12.0 &&
+    CHECK(s.lock > 0 && s.lock < 4.0 && s.unlocks == 0 && other == 0 && settled < 15.5 &&
           std::abs(s.bpm - 80) < 1);
   }
   // Stop and restart: unlock within half a second of silence, unlocked-flag events, relock.
@@ -955,6 +1115,88 @@ int main() {
     for (const auto &state : log.states)
       if (state.time > lastHit + 4.0 && state.time < 20.0)
         CHECK(state.tempogramPeak == 0.0F);
+  }
+  // Cold restart: 94 ticks below -120 dB restart the analysis at the next tick r that is a multiple
+  // of 8; from r the tracker follows a fresh one started on the input from r's first sample.
+  {
+    // A is cut off mid-groove and B starts on its first sample, so the silence is exactly the
+    // 1.5 s gap and the fresh run, which starts less than 94 ticks before B, never restarts.
+    const auto partA =
+        render(groove(tempoMap(17.0, [](double) { return 120.0; }), kBasic), 15.0, rate);
+    const auto hitsB = groove(tempoMap(15.0, [](double) { return 93.0; }, 0.0), kBasic);
+    const auto partB = render(hitsB, 15.0, rate);
+    auto signal = partA;
+    signal.resize(signal.size() + static_cast<std::size_t>(1.5 * rate), 0.0);
+    const std::size_t startB = signal.size();
+    signal.insert(signal.end(), partB.begin(), partB.end());
+    // The restart rule on the analysis stream, which at a native rate is the mono input.
+    constexpr std::size_t kTick = 1024u;
+    std::size_t r = 0u;
+    for (std::size_t k = 0u, quiet = 0u; (k + 1u) * kTick <= signal.size() && r == 0u; ++k) {
+      double sum = 0.0;
+      for (std::size_t i = k * kTick; i < (k + 1u) * kTick; ++i) {
+        const double s = static_cast<float>(signal[i]);
+        sum += s * s;
+      }
+      quiet = 10.0 * std::log10(sum / kTick + 1e-20) < -120.0 ? quiet + 1u : 0u;
+      if (quiet == 94u)
+        r = (k + 8u) / 8u * 8u;
+    }
+    CHECK(r > 0u && r * kTick < startB);
+    const double t0 = static_cast<double>(r * kTick) / rate;
+    const auto stream = scenario(signal, rate);
+    const auto fresh =
+        scenario(std::vector<double>(signal.begin() + r * kTick, signal.end()), rate);
+    const auto lockAfter = [](const Log &log, double from) {
+      for (const auto &state : log.states)
+        if (state.time >= from && state.locked)
+          return state.time;
+      return -1.0;
+    };
+    std::uint32_t before = 0u;
+    for (const auto &state : stream.states)
+      before = state.time < t0 ? state.epoch : before;
+    const double lockS = lockAfter(stream, t0) - t0, lockF = lockAfter(fresh, 0.0);
+    const auto s = summarize(stream), f = summarize(fresh);
+    std::printf("cold restart   r=%zu (%.3f s) lock=%5.2f s (fresh %5.2f s) bpm=%7.2f (fresh "
+                "%7.2f) epoch +%u (fresh %u)\n",
+                r, t0, lockS, lockF, s.bpm, f.bpm, s.epoch - before, f.epoch);
+    CHECK(lockF > 0.0 && std::abs(lockS - lockF) < 1e-9);
+    CHECK(std::abs(s.bpm - f.bpm) < .5 && std::abs(f.bpm - 93.0) < 1.0);
+    CHECK(s.epoch - before == f.epoch);
+    // After r the onset events match the fresh run to rounding; beat indices continue across the
+    // restart. The shown grid differs only slightly: the decoder keeps its silence run (quiet_/z_)
+    // across the restart by design, so the stream enters B with a longer quiet run.
+    std::vector<Event> after;
+    for (const auto &event : stream.events)
+      if (event.time >= t0)
+        after.push_back(event);
+    CHECK(after.size() == fresh.events.size());
+    double eventDt = 0.0, nextDt = 0.0;
+    std::int32_t shift = 0;
+    bool same = true;
+    for (std::size_t i = 0; i < std::min(after.size(), fresh.events.size()); ++i) {
+      const auto &a = after[i], &b = fresh.events[i];
+      eventDt = std::max(eventDt, std::abs(a.time - t0 - b.time));
+      if (!a.unlocked && !b.unlocked && shift == 0)
+        shift = a.index - b.index;
+      same = same && a.band == b.band && a.unlocked == b.unlocked &&
+             (a.unlocked || (a.index - b.index == shift && a.epoch - before == b.epoch));
+    }
+    std::size_t first = 0u;
+    while (first < stream.states.size() && stream.states[first].time < t0 + 1e-9)
+      ++first;
+    CHECK(stream.states.size() - first == fresh.states.size());
+    for (std::size_t i = 0; first + i < stream.states.size() && i < fresh.states.size(); ++i) {
+      const auto &a = stream.states[first + i], &b = fresh.states[i];
+      same = same && a.locked == b.locked && std::abs(a.time - t0 - b.time) < 1e-9;
+      if (a.locked && b.locked)
+        nextDt = std::max(nextDt, std::abs(a.next - t0 - b.next));
+    }
+    std::printf("  after r: %zu events, max |dt| %.2g s, index shift %d; %zu states, max |dnext| "
+                "%.2g s\n",
+                after.size(), eventDt, shift, fresh.states.size(), nextDt);
+    CHECK(same && eventDt < 1e-12 && nextDt < 1e-3);
   }
   // Block-size and channel-count independence; context time relation.
   {
@@ -1032,14 +1274,20 @@ int main() {
           CHECK(60.0 / state.period >= 45.0 && 60.0 / state.period <= 75.0);
       oneChangePerEpoch(m);
     }
-    // The B pattern of groove120 at 48 kHz in 40..100 BPM reseeds while diverted (16.04 s) without
-    // moving the shown grid.
+    // The B pattern of groove120 at 48 kHz in 40..100 BPM reseeds at 10.04 s to a 40 BPM clock
+    // whose 120 BPM level is out of range; the shown grid is diverted to the in-range level with
+    // the most prior-weighted mass, 60 BPM.
     const auto hits120B = groove(beats120, kBasicB);
     Harness maskedB(48000.0F, 40.0F, 100.0F);
     const auto mB = run(maskedB, render(hits120B, 30.0, 48000.0), 48000.0);
     const auto msB = summarize(mB, hits120B);
     print("groove120B 40-100", 48000.0, msB);
     CHECK(msB.lock > 0 && std::abs(msB.bpm - 60) < 1);
+    // The range holds at lattice-bin resolution (R5-S-114); the strict bound is safe here because
+    // the case settles at 60 BPM, away from the end bins.
+    for (const auto &state : mB.states)
+      if (state.locked)
+        CHECK(60.0 / state.period >= 40.0 && 60.0 / state.period <= 100.0);
     oneChangePerEpoch(mB);
     // Re-prepare at another rate starts a new generation.
     h.kernel->prepare({48000.0F, 4u, 1024u});

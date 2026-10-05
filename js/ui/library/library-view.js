@@ -63,11 +63,16 @@ const LIBRARY_NAV_VIEWS = Object.freeze([
 ]);
 
 const TRACK_SORT_COLUMNS = [
+  { key: 'trackNo', labelKey: 'library.column.trackNo' },
   { key: 'title', labelKey: 'library.column.title' },
   { key: 'artist', labelKey: 'library.column.artist' },
   { key: 'album', labelKey: 'library.column.album' },
   { key: 'genre', labelKey: 'library.column.genre' },
   { key: 'duration', labelKey: 'library.column.duration' }
+];
+const RECENT_SORT_COLUMNS = [
+  ...TRACK_SORT_COLUMNS,
+  { key: 'added', labelKey: 'library.sort.added' }
 ];
 const FILE_SORT_COLUMNS = [
   { key: 'path', labelKey: 'library.column.path' },
@@ -632,6 +637,10 @@ export class LibraryView {
       if (state.fileSortDirection === 'asc' || state.fileSortDirection === 'desc') {
         this.fileSortDirection = state.fileSortDirection;
       }
+      if (RECENT_SORT_COLUMNS.some(column => column.key === state.recentSort)) this.recentSort = state.recentSort;
+      if (state.recentSortDirection === 'asc' || state.recentSortDirection === 'desc') {
+        this.recentSortDirection = state.recentSortDirection;
+      }
       for (const entityType of Object.keys(DEFAULT_ENTITY_SORTS)) {
         const preference = state.entitySorts?.[entityType];
         if (isSupportedEntitySort(entityType, preference)) {
@@ -656,6 +665,8 @@ export class LibraryView {
         sortDirection: this.sortDirection,
         fileSort: this.fileSort,
         fileSortDirection: this.fileSortDirection,
+        recentSort: this.recentSort,
+        recentSortDirection: this.recentSortDirection,
         entitySorts: this.entitySorts,
         folderBrowseMode: this.folderBrowseMode
       }));
@@ -1234,8 +1245,8 @@ export class LibraryView {
     return {
       endpoint: 'tracks',
       query: '',
-      sort: this.currentView === 'recent' ? 'added' : trackSort.sort,
-      direction: this.currentView === 'recent' ? 'desc' : trackSort.direction,
+      sort: trackSort.sort,
+      direction: trackSort.direction,
       scope: this.currentView === 'recent' ? { recent: true } : null
     };
   }
@@ -2325,7 +2336,8 @@ export class LibraryView {
     const query = this.getPagedQuery();
     const sortControl = !this.detail && query.endpoint === 'entities'
       ? this.createEntitySortControl(query.entityType)
-      : null;
+      : isTrackQuery && !query.scope?.playlistId && isMobileLayout()
+        ? this.createTrackSortControl(query) : null;
     if (sortControl) {
       header.className += ' library-section-head-sortable';
       header.appendChild(sortControl);
@@ -2341,7 +2353,24 @@ export class LibraryView {
   createEntitySortControl(entityType) {
     const fields = ENTITY_SORT_FIELDS[entityType];
     if (!fields) return null;
-    const preference = this.getEntitySort(entityType);
+    return this.createSortControl(fields, this.getEntitySort(entityType), value => {
+      this.applyEntitySort(entityType, value);
+    });
+  }
+
+  createTrackSortControl(query) {
+    const columns = this.currentView === 'recent' && !this.detail
+      ? RECENT_SORT_COLUMNS : this.getTrackSortColumns();
+    const fields = columns.map(column => ({
+      sort: column.key, labelKey: column.labelKey
+    }));
+    return this.createSortControl(fields, query, value => {
+      const [sort, direction] = value.split(':');
+      this.applyTrackSort(sort, direction);
+    });
+  }
+
+  createSortControl(fields, preference, applySort) {
     const label = document.createElement('label');
     label.className = 'library-entity-sort-control';
     const labelText = document.createElement('span');
@@ -2362,7 +2391,7 @@ export class LibraryView {
     }
     select.value = `${preference.sort}:${preference.direction}`;
     select.addEventListener('change', event => {
-      this.applyEntitySort(entityType, event.currentTarget?.value ?? select.value);
+      applySort(event.currentTarget?.value ?? select.value);
     });
     label.appendChild(labelText);
     label.appendChild(select);
@@ -2900,6 +2929,7 @@ export class LibraryView {
       row.innerHTML = `
         <span class="library-paged-select-cell" role="gridcell"><input class="library-paged-select" type="checkbox" aria-label="${escapeHtml(this.t('library.paged.selectTrack', { title: trackTitle }))}"${selected ? ' checked' : ''}></span>
         <span class="library-paged-favorite-cell" role="gridcell">${canFavorite ? `<button type="button" class="library-icon-button library-paged-favorite${favorite ? ' is-favorite' : ''}" data-favorite-track-id="${escapeHtml(trackUid)}" aria-pressed="${favorite ? 'true' : 'false'}" aria-label="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}" title="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}">${favorite ? ICONS.starFilled : ICONS.star}</button>` : ''}</span>
+        ${isFileRow ? '' : `<span class="library-track-number-cell" role="gridcell">${escapeHtml(item.trackNo ?? '')}</span>`}
         <span class="library-track-title" role="gridcell"${isFileRow ? ` title="${escapeHtml(trackTitle)}"` : ''}><span class="library-now-playing-indicator" aria-hidden="true" ${nowPlaying ? '' : 'hidden'}>♪</span><span class="library-track-title-text">${escapeHtml(trackTitle)}</span>${unresolvedPlaylistItem ? `<span id="${unresolvedStatusId}" class="library-badge missing library-paged-unresolved-status">${escapeHtml(this.t('library.state.missing'))}</span>` : ''}</span>
         ${isFileRow ? '' : `<span class="library-artist-cell" role="gridcell">${artistDetail ? `<button type="button" class="library-link library-artist-link">${escapeHtml(this.getTrackArtistLabel(item))}</button>` : escapeHtml(item.artist || item.albumArtist || '')}</span>
         <span class="library-album-cell" role="gridcell">${item.albumKey ? `<button type="button" class="library-link library-album-link">${escapeHtml(this.getTrackAlbumLabel(item))}</button>` : escapeHtml(item.album || '')}</span>
@@ -3618,6 +3648,12 @@ export class LibraryView {
   }
 
   getTrackSort() {
+    if (this.detail?.type === 'album' && !this.detailSortOverride && !this.searchQuery.trim()) {
+      return { sort: 'album', direction: 'asc' };
+    }
+    if (this.currentView === 'recent' && !this.detail) {
+      return { sort: this.recentSort ?? 'added', direction: this.recentSortDirection ?? 'desc' };
+    }
     return this.isFileTrackView()
       ? { sort: this.fileSort ?? 'path', direction: this.fileSortDirection ?? 'asc' }
       : { sort: this.sort, direction: this.sortDirection };
@@ -3643,13 +3679,19 @@ export class LibraryView {
     `;
   }
 
-  applyTrackSort(sort) {
-    if (!this.getTrackSortColumns().some(column => column.key === sort)) return;
+  applyTrackSort(sort, direction) {
+    const columns = this.currentView === 'recent' && !this.detail
+      ? RECENT_SORT_COLUMNS : this.getTrackSortColumns();
+    if (!columns.some(column => column.key === sort)) return;
     const preference = this.getTrackSort();
-    const direction = preference.sort === sort && preference.direction === 'asc' ? 'desc' : 'asc';
+    direction ??= preference.sort === sort && preference.direction === 'asc' ? 'desc' : 'asc';
+    if (direction !== 'asc' && direction !== 'desc') return;
     if (this.isFileTrackView()) {
       this.fileSort = sort;
       this.fileSortDirection = direction;
+    } else if (this.currentView === 'recent' && !this.detail) {
+      this.recentSort = sort;
+      this.recentSortDirection = direction;
     } else {
       this.sortDirection = direction;
       this.sort = sort;
@@ -4101,6 +4143,7 @@ function fallbackText(key, params = {}) {
     'library.state.needs-permission': 'Reconnect',
     'library.state.never-scanned': 'Not scanned',
     'library.column.title': 'Title',
+    'library.column.trackNo': 'Track No.',
     'library.column.path': 'Full path',
     'library.column.artist': 'Artist',
     'library.column.album': 'Album',
@@ -4114,6 +4157,7 @@ function fallbackText(key, params = {}) {
     'library.sort.duration': 'Total duration',
     'library.sort.updated': 'Updated',
     'library.sort.created': 'Created',
+    'library.sort.added': 'Added',
     'library.sort.ascending': 'Ascending',
     'library.sort.descending': 'Descending',
     'library.sort.sortBy': `Sort by ${params.column || ''}`,

@@ -4,7 +4,7 @@
 // same way the local UI does: plugin-list-manager's add, the selection
 // manager's delete, the master toggle, the preset loader's state restore.
 
-import { applySerializedState } from '../utils/serialization-utils.js';
+import { applySerializedState, getSerializablePluginStateShort } from '../utils/serialization-utils.js';
 import { MAX_STAGES, resolvePosition, validateOps } from './sync-ops.mjs';
 
 // Stage ids: an opaque id per plugin instance, a "<prefix>.<n>" string. The
@@ -38,14 +38,21 @@ export function randomClientPrefix(cryptoRef = globalThis.crypto) {
 }
 
 // Parameter edit of one plugin: same semantics as the "params" op (the keys
-// of the short state) plus `d`, the optional bus/channel keys that became unset.
+// of the short state) plus `d`, the optional keys that became unset.
 export function applyParamsToPlugin(plugin, params, unset = []) {
-    const { nm, en, ib, ob, ch, ...rest } = params;
-    if (Object.keys(rest).length > 0) plugin.setParameters(rest);
-    if (typeof en === 'boolean') plugin.setEnabled(en);
-    if (ib !== undefined) plugin.inputBus = ib;
-    if (ob !== undefined) plugin.outputBus = ob;
-    if (ch !== undefined) plugin.channel = ch === '' ? null : ch;
+    if (unset.some(key => key !== 'ib' && key !== 'ob' && key !== 'ch')) {
+        // Let the plugin restore omitted parameters using its preset semantics.
+        const state = { ...getSerializablePluginStateShort(plugin), ...params };
+        for (const key of unset) delete state[key];
+        applySerializedState(plugin, state);
+    } else {
+        const { nm, en, ib, ob, ch, ...rest } = params;
+        if (Object.keys(rest).length > 0) plugin.setParameters(rest);
+        if (typeof en === 'boolean') plugin.setEnabled(en);
+        if (ib !== undefined) plugin.inputBus = ib;
+        if (ob !== undefined) plugin.outputBus = ob;
+        if (ch !== undefined) plugin.channel = ch === '' ? null : ch;
+    }
     for (const key of unset) {
         if (key === 'ib') plugin.inputBus = null;
         else if (key === 'ob') plugin.outputBus = null;

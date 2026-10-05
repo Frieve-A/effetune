@@ -108,6 +108,22 @@ test('prefixed and compound values split into prefix, sign, last number and unit
       'the number edge stays put when the prefix shortens and a sign appears');
   });
 
+test('a plain cursor stays one text so a category name ending in a digit is not split off',
+  { timeout: 60_000 }, async () => {
+    const parts = await inPage(async () => {
+      const mount = document.getElementById('mount');
+      window.GraphReadout.attach({
+        mount,
+        surface: document.getElementById('surface'),
+        read: () => ({ cursor: 'Beat position 1', plainCursor: true, rows: [] })
+      });
+      mount.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', clientX: 50, clientY: 150 }));
+      await window.nextFrame();
+      return [...mount.querySelector('.graph-readout-box .graph-readout-cursor').children].map(part => part.textContent);
+    });
+    assert.deepEqual(parts, ['', '', 'Beat position 1', '']);
+  });
+
 test('row text keeps the label color while the swatch follows a changing series color in place',
   { timeout: 60_000 }, async () => {
     const [first, second] = await inPage(async () => {

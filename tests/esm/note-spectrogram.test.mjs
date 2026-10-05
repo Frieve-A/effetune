@@ -15,9 +15,10 @@ const noteCount = 88;
 const fineDivisions = 5;
 const fineCenter = Math.floor(fineDivisions / 2);
 const pitchCount = noteCount * fineDivisions;
-const confidenceOffset = 28;
+const confidenceOffset = 32;
 const volumeOffset = confidenceOffset + pitchCount * 4;
-const payloadBytes = volumeOffset + pitchCount * 4;
+const revisedOffset = volumeOffset + pitchCount * 4;
+const payloadBytes = revisedOffset + pitchCount * 4;
 const historyWidth = 1024;
 
 // Canvas calls used only by the shaded piano keys.
@@ -206,7 +207,9 @@ function createTelemetryFrame({
     mode = 'Fine Presence',
     generation = 1,
     levels = [],
-    volumeLevels = []
+    volumeLevels = [],
+    revisionAge = 0,
+    revisedLevels = []
 } = {}) {
     const modeCode = mode === 'Fine Presence' ? fineDivisions :
         (mode === 'F0 Presence' ? 0 : (mode === 'Classic' ? 1 : mode));
@@ -220,11 +223,13 @@ function createTelemetryFrame({
     payload.setUint32(16, frameIndex, true);
     payload.setUint32(20, modeCode, true);
     payload.setUint32(24, generation, true);
+    payload.setUint32(28, revisionAge, true);
     for (let pitch = 0; pitch < pitchCount; pitch++) {
         payload.setFloat32(confidenceOffset + pitch * 4, levels[pitch] ?? defaultLevel, true);
         payload.setFloat32(volumeOffset + pitch * 4, volumeLevels[pitch] ?? -240, true);
+        payload.setFloat32(revisedOffset + pitch * 4, revisedLevels[pitch] ?? 0, true);
     }
-    return { frameType: 24, formatVersion: 3, payload };
+    return { frameType: 24, formatVersion: 4, payload };
 }
 
 function firstPitchByColumn(plugin, start, count) {
@@ -447,7 +452,7 @@ test('Note Spectrogram note range controls use sliders with read-only note names
     assert.equal(noteName.value, 'C8');
 });
 
-test('Note Spectrogram validates its version 3 telemetry payload', async () => {
+test('Note Spectrogram validates its version 4 telemetry payload', async () => {
     const plugin = await loadPlugin();
     const levels = Array.from({ length: pitchCount }, (_, pitch) => pitch / (pitchCount - 1));
     const volumeLevels = Array.from({ length: pitchCount }, (_, pitch) => -120 + pitch / 10);
@@ -466,6 +471,13 @@ test('Note Spectrogram validates its version 3 telemetry payload', async () => {
         assert.ok(Math.abs(snapshot.levels[pitch] - levels[pitch]) < 1e-6);
         assert.ok(Math.abs(snapshot.volumeLevels[pitch] - volumeLevels[pitch]) < 1e-5);
     }
+    assert.equal(snapshot.revisionAge, 0);
+    assert.equal(snapshot.revisedLevels, null);
+    const revised = plugin.parseTelemetryFrame(createTelemetryFrame({
+        frameIndex: 42, revisionAge: 8, revisedLevels: [0.25, 1]
+    }));
+    assert.equal(revised.revisionAge, 8);
+    assert.deepEqual(Array.from(revised.revisedLevels.subarray(0, 3)), [0.25, 1, 0]);
 
     assert.equal(plugin.parseTelemetryFrame({ ...frame, frameType: 23 }), null);
     assert.equal(plugin.parseTelemetryFrame({ ...frame, formatVersion: 1 }), null);
@@ -478,6 +490,13 @@ test('Note Spectrogram validates its version 3 telemetry payload', async () => {
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ generation: 0 })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ levels: [1.01] })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ volumeLevels: [Infinity] })), null);
+    assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ revisionAge: 7 })), null);
+    assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({
+        revisionAge: 8, revisedLevels: [1.01]
+    })), null);
+    assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({
+        revisionAge: 8, revisedLevels: [NaN]
+    })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ mode: 'Classic' })), null);
 });
 
@@ -871,6 +890,95 @@ test('F0 Presence distinguishes normal frame width from missing hops', async () 
     assert.equal(dropped.lastFrameIndex, null);
     assert.equal(dropped.writeColumn, 0);
     assert.equal(dropped.history.some(value => value !== 0), false);
+});
+
+test('revisions rewrite the revised frame columns, including repeated gap columns', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ ts: 2 });
+    for (let frameIndex = 0; frameIndex <= 7; frameIndex++) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, timeSeconds: 1 + frameIndex * 0.01, levels: [frameIndex === 0 ? 0.8 : 0.5]
+        }));
+    }
+    assert.deepEqual(firstPitchPresenceBytesByColumn(plugin, 0, 6), [204, 204, 204, 204, 204, 128]);
+    let painted = 0;
+    plugin.paintColumns = (start, count) => { painted += count; };
+    let volumePaint = null;
+    plugin._paintVolumeColumns = (start, count) => { volumePaint = [start, count]; };
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 8, timeSeconds: 1.08, levels: [0.5], revisionAge: 8, revisedLevels: [0.25]
+    }));
+    assert.deepEqual(firstPitchPresenceBytesByColumn(plugin, 0, 6), [64, 64, 64, 64, 64, 128]);
+    // Five columns for the new frame plus the five revised columns.
+    assert.equal(painted, 10);
+    // Volume repaints through the next frame's end column (5), which links to the revised frame.
+    assert.deepEqual(volumePaint, [0, 6]);
+
+    for (let frameIndex = 9; frameIndex <= 30; frameIndex++) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, timeSeconds: 1 + frameIndex * 0.01, levels: [0.5],
+            revisionAge: 8, revisedLevels: [0.25]
+        }));
+    }
+    // Only the revisable frames and an older frame sharing their first column remain.
+    assert.ok(plugin.frameRecords.length <= 9);
+});
+
+test('a revision of a merged column keeps the max of its other frames', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ ts: 10 });
+    // Three 4 ms frames share the first 9.8 ms column.
+    const levels = [0.2, 0.9, 0.4, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
+    for (let frameIndex = 0; frameIndex <= 8; frameIndex++) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, hopSeconds: 0.004, timeSeconds: 1 + frameIndex * 0.004,
+            levels: [levels[frameIndex]]
+        }));
+    }
+    assert.ok(Math.abs(plugin.history[0] - 0.9) < 1e-6);
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 9, hopSeconds: 0.004, timeSeconds: 1.036, levels: [0.1],
+        revisionAge: 8, revisedLevels: [0.3]
+    }));
+    assert.ok(Math.abs(plugin.history[0] - 0.4) < 1e-6);
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 10, hopSeconds: 0.004, timeSeconds: 1.04, levels: [0.1],
+        revisionAge: 8, revisedLevels: [1]
+    }));
+    assert.equal(plugin.history[0], 1);
+});
+
+test('revisions of dropped or cleared frames are ignored', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ ts: 10 });
+    for (const frameIndex of [0, 2, 3, 4, 5, 6, 7]) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, timeSeconds: 2 + frameIndex * 0.01, levels: [0.8]
+        }));
+    }
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 8, timeSeconds: 2.08, levels: [0.8], revisionAge: 8, revisedLevels: [0.5]
+    }));
+    assert.deepEqual(firstPitchPresenceBytesByColumn(plugin, 0, 3), [128, 0, 204]);
+    const before = Float32Array.from(plugin.history);
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 9, timeSeconds: 2.09, levels: [0.8], revisionAge: 8,
+        revisedLevels: Array(pitchCount).fill(1)
+    }));
+    const latest = (plugin.writeColumn + historyWidth - 1) % historyWidth;
+    for (let index = 0; index < before.length; index++) {
+        if (Math.floor(index / pitchCount) === latest) continue;
+        assert.equal(plugin.history[index], before[index]);
+    }
+
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 18, timeSeconds: 2.18, generation: 2, levels: [0.8],
+        revisionAge: 8, revisedLevels: [0.1]
+    }));
+    assert.equal(plugin.writeColumn, 1);
+    assert.ok(Math.abs(plugin.history[0] - 0.8) < 1e-6);
+    plugin.clearHistory();
+    assert.equal(plugin.frameRecords.length, 0);
 });
 
 test('reset and generation fences reject queued telemetry while accepting fresh frames', async () => {

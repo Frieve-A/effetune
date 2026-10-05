@@ -1099,7 +1099,7 @@
                     }
 
                     let result;
-                    if (runtime.supportsPlugin(plugin) &&
+                    if (runtime.supportsPlugin(plugin, { channelCount }) &&
                         (!requiresWasmAssets || runtime.usesWasm)) {
                         result = await benchmarkPlugin(
                             runtime,
@@ -1120,11 +1120,9 @@
                             speedupFactor: null,
                             skipped: true
                         };
-                        const reason = plugin.constructor.executionCapabilities?.requiresWasm && !runtime.usesWasm
+                        const reason = requiresWasmAssets && !runtime.usesWasm
                             ? 'requires WebAssembly DSP'
-                            : requiresWasmAssets && !runtime.usesWasm
-                            ? 'requires WebAssembly DSP'
-                            : 'WebAssembly DSP is not enabled for this plugin';
+                            : runtime.getPluginUnsupportedReason(plugin, { channelCount });
                         note = note ? `${note}; ${reason}` : reason;
                     }
 

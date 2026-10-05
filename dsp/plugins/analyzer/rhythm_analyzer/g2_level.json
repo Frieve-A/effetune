@@ -1,10 +1,11 @@
 {
   "formatVersion": 1,
+  "layout": "oblivious",
   "sourceModelSha256": "fd9329e557475ac7cab87d741481c017c07b14494d1c46e9648b8ff89345fb8f",
-  "sha256": "9abaddb09d65e9487ae79759123da36a957f97da8c1d4a7dec5d5c5d3da56303",
+  "sha256": "854f554960567886f019ee65b88f4fb9bf34dad0f99805d044f6083a8e0c8156",
   "outputCount": 3,
   "thresholdType": "index8",
-  "leafType": "int16",
+  "leafType": "int8",
   "constants": {
     "FeatureCount": 95,
     "TreeCount": 758,

@@ -1,7 +1,7 @@
 {
   "artifact": "rhythm_d_tables.h",
   "header": "rhythm_d_tables.h",
-  "header_sha256": "eedc15d6a3dfaa0bb9b26289dc50d138cfdf59c43bc4dde8452aba641443269e",
+  "header_sha256": "f1041c424b7e16677aefdae149f2ff041062af01b118170eccaac87c6acf466d",
   "contents": "sub-band layout, rate-conversion filter parameters (up/down factors, tap counts, cutoffs and the Kaiser beta; the filters, FFT windows and twiddles are computed from them in prepare()), and the per-band detector constants (noise floors, excess coefficients, refractory frames, operating thresholds, candidate window, stationary-fluctuation table)",
   "runtime_decision": "Compiled into the DSP module as fixed values for the three band detectors.",
   "fitted_values": [
@@ -33,7 +33,6 @@
       "creators": "Ethan Manilow, Gordon Wichern, Prem Seetharaman, Jonathan Le Roux",
       "citation": "Manilow, Wichern, Seetharaman and Le Roux, \"Cutting Music Source Separation Some Slakh: A Dataset to Study the Impact of Training Data Quality and Quantity\", IEEE WASPAA 2019",
       "material_uri": "https://www.slakh.com/",
-      "split_source": "https://github.com/ethman/slakh-utils/blob/master/splits/redux.json",
       "audio": {
         "description": "mix audio",
         "license": "CC BY 4.0",
@@ -57,14 +56,13 @@
       ],
       "used": "validation split: choice of thresholds and window (no weights or tables fitted)",
       "trained_on": false,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "Groove MIDI Dataset v1.0.0",
       "creators": "Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman",
       "citation": "Gillick, Roberts, Engel, Eck and Bamman, \"Learning to Groove with Inverse Sequence Transformations\", ICML 2019",
       "material_uri": "https://magenta.tensorflow.org/datasets/groove",
-      "split_source": "the dataset's own train, validation and test split (info.csv in the archive)",
       "audio": {
         "description": "audio",
         "license": "CC BY 4.0",
@@ -77,9 +75,9 @@
       },
       "used": "validation fold: choice of thresholds and window (no weights or tables fitted)",
       "trained_on": false,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     }
   ],
   "synthetic_data": "synthetic data generated for this project (no third-party material)",
-  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the Winterreise SC06 performance, and the Slakh and Groove test splits."
+  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the non-public-domain Winterreise performance, and the Slakh and Groove test splits."
 }

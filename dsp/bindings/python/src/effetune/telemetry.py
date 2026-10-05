@@ -104,8 +104,10 @@ class NoteSpectrogramTelemetryFrame(TelemetryFrame):
     frame_index: int
     divisions_per_semitone: Literal[5]
     generation: int
+    revision_age: Literal[0, 8]
     levels: tuple[float, ...]
     volume_db: tuple[float, ...]
+    revised_levels: tuple[float, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,7 +241,7 @@ _ANALYZER_FRAMES = {
     "AnalogMeter": (27, (1,)),
     "ChromaSpiral": (4, (2,)),
     "LevelMeter": (1, (1,)),
-    "NoteSpectrogram": (24, (3,)),
+    "NoteSpectrogram": (24, (4,)),
     "Oscilloscope": (3, (2,)),
     "PitchMeter": (26, (1,)),
     "RhythmAnalyzer": (28, (1,)),
@@ -578,11 +580,19 @@ def _decode_note_spectrogram(
     sequence: int,
     dropped: int,
 ) -> TelemetryFrame | None:
-    if len(payload) != 3548:
+    if len(payload) != 5312:
         return None
-    sample_rate, time_seconds, pitch_count, first_midi, hop_seconds, frame_index, divisions, generation = (
-        struct.unpack_from("<ffHHfIII", payload)
-    )
+    (
+        sample_rate,
+        time_seconds,
+        pitch_count,
+        first_midi,
+        hop_seconds,
+        frame_index,
+        divisions,
+        generation,
+        revision_age,
+    ) = struct.unpack_from("<ffHHfIIII", payload)
     if (
         not math.isfinite(sample_rate)
         or sample_rate <= 0
@@ -594,14 +604,20 @@ def _decode_note_spectrogram(
         or hop_seconds <= 0
         or divisions != 5
         or generation == 0
+        or revision_age not in (0, 8)
     ):
         return None
-    levels = struct.unpack_from("<440f", payload, 28)
+    levels = struct.unpack_from("<440f", payload, 32)
     if any(not math.isfinite(value) or not 0 <= value <= 1 for value in levels):
         return None
-    volume_db = struct.unpack_from("<440f", payload, 28 + 440 * 4)
+    volume_db = struct.unpack_from("<440f", payload, 32 + 440 * 4)
     if any(not math.isfinite(value) for value in volume_db):
         return None
+    revised_levels = None
+    if revision_age != 0:
+        revised_levels = struct.unpack_from("<440f", payload, 32 + 2 * 440 * 4)
+        if any(not math.isfinite(value) or not 0 <= value <= 1 for value in revised_levels):
+            return None
     return NoteSpectrogramTelemetryFrame(
         **_common("noteSpectrogram", node, sequence, dropped),
         sample_rate=sample_rate,
@@ -611,8 +627,10 @@ def _decode_note_spectrogram(
         frame_index=frame_index,
         divisions_per_semitone=divisions,
         generation=generation,
+        revision_age=revision_age,
         levels=levels,
         volume_db=volume_db,
+        revised_levels=revised_levels,
     )
 
 

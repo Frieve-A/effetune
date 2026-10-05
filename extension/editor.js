@@ -183,7 +183,7 @@ export class ExtensionAudioManager {
   syncPrimaryWasmAssetMembership() {}
   notifyPipelineAnalysisInvalidated() {}
   rebuildPipeline() { window.FrequencyPreview?.stop?.(); }
-  setFrequencyPreview(frequency) { this.client.sendFrequencyPreview(frequency); }
+  setFrequencyPreview(frequency, sound) { this.client.sendFrequencyPreview(frequency, sound); }
 
   addEventListener(name, listener) {
     if (!this.listeners.has(name)) this.listeners.set(name, new Set());

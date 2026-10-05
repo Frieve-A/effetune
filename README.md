@@ -143,7 +143,7 @@ Large collections load in stages from storage; scanning and loading speed depend
 10. Click an effect's Effect Presets button to save or apply settings for that effect only
 11. For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
    - For sliders with both negative and positive values, the fill extends from 0 to the current value. Ratio sliders use 1.0 as their starting point.
-12. On supported frequency and note graphs, drag along the graph's axis to preview that frequency as a -12 dB sine tone through the effect chain. Piano-key displays snap to the nearest semitone; dragging over a key previews that key's pitch
+12. On supported frequency and note graphs, drag along the graph's axis to preview the selected frequency through the effect chain. In **Config > General > Frequency Preview Sound**, choose **Sine Wave** (default, -12 dB) or **Band-pass Noise**, which plays noise centered on that frequency. Note Spectrogram, Pitch Meter, Chroma Spiral, and piano-key displays always use a sine wave. Piano-key displays snap to the nearest semitone; dragging over a key previews that key's pitch
 
 ### Using Presets
 
@@ -418,6 +418,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Modulation | Rotary Speaker | Combines independent horn and drum motion for a rotary-speaker effect | [Details](docs/plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Volume-based modulation effect | [Details](docs/plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Adds subtle tape or record-style pitch wavering for vintage character | [Details](docs/plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | Learns audio predictions to extract residuals or create evolving resonance | [Details](docs/plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | Horn resonance simulation with customizable dimensions | [Details](docs/plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Smoother horn-speaker resonance for natural listening color | [Details](docs/plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Frequency resonance effect with up to 5 resonators | [Details](docs/plugins/resonator.md#modal-resonator) |

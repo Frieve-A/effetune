@@ -1,7 +1,8 @@
 {
   "formatVersion": 1,
+  "layout": "oblivious",
   "sourceModelSha256": "e151b5a1c023f53739aa519ee39a0358200ebde14a159edca0df9f1c74014f3c",
-  "sha256": "c3f64659312e5f032c577c678d3e33cb77515d1f365cd36967e491aff6f2ffa2",
+  "sha256": "6c31b650281ceaa4b23793caed8799287c2e400d39b087c6d10ffd42823e1f39",
   "outputCount": 1,
   "thresholdType": "index8",
   "leafType": "int16",

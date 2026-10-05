@@ -23,7 +23,10 @@ function textOf(element) {
   return [element.textContent, ...element.children.map(textOf)].join(' ');
 }
 
-function createHarness({ variant = 'simd', useWasmDsp = true, missing = null, fail = null } = {}) {
+function createHarness({
+  variant = 'simd', useWasmDsp = true, missing = null, fail = null,
+  unsupportedReason = 'WebAssembly DSP is not enabled for this plugin'
+} = {}) {
   const document = createFakeDocument();
   document.body.innerHTML = html;
   const enhance = element => {
@@ -96,8 +99,16 @@ function createHarness({ variant = 'simd', useWasmDsp = true, missing = null, fa
         usesWasm,
         sessions: [],
         closed: false,
-        supportsPlugin: type => type !== missing,
+        getPluginUnsupportedReason(plugin) {
+          const type = typeof plugin === 'string' ? plugin : plugin.constructor.name;
+          return type === missing ? unsupportedReason : null;
+        },
+        supportsPlugin(plugin, settings) {
+          return runtime.getPluginUnsupportedReason(plugin, settings) === null;
+        },
         createPluginSession(plugin, settings) {
+          const unsupportedReason = runtime.getPluginUnsupportedReason(plugin, settings);
+          if (unsupportedReason) throw new Error(unsupportedReason);
           const session = { settings, blocks: [], closed: false };
           runtime.sessions.push(session);
           calls.push(['session', plugin.name]);
@@ -311,6 +322,43 @@ test('JavaScript detail benchmarks skip FIR effects that require convolution ass
     assert.equal(row.children[3].textContent, 'N/A');
     assert.match(row.children[6].textContent, /requires WebAssembly DSP/);
   }
+});
+
+test('96 kHz detail benchmarks skip Adaptive Prediction with supported-rate guidance and measure the next effect', async () => {
+  const h = createHarness({
+    missing: 'AdaptivePredictionEffectPlugin',
+    unsupportedReason: 'supports only 44.1 kHz / 48 kHz; select a supported sampling frequency to measure this effect'
+  });
+  await h.events.load();
+  h.document.getElementById('sample-rate').value = '96000';
+  h.context.pluginClasses = {
+    'Adaptive Prediction': class AdaptivePredictionEffectPlugin {
+      constructor() { this.name = 'Adaptive Prediction'; }
+    },
+    Delay: h.context.pluginClasses.Delay
+  };
+
+  await h.run('runBenchmarks()');
+
+  const details = h.document.getElementById('benchmark-table-container');
+  const rows = descendants(details).filter(element => element.tagName === 'TR').slice(1);
+  assert.equal(rows.length, 2);
+  const [unsupported, supported] = rows;
+  assert.equal(unsupported.children[1].textContent, 'Adaptive Prediction');
+  assert.equal(unsupported.children[3].textContent, 'N/A');
+  assert.match(unsupported.children[6].textContent, /supports only 44\.1 kHz \/ 48 kHz/);
+  assert.match(unsupported.children[6].textContent, /select a supported sampling frequency/);
+  assert.equal(supported.children[1].textContent, 'Delay');
+  assert.ok(Number(supported.children[3].textContent.replaceAll(',', '')) > 0);
+  const detailRuntime = h.runtimes.at(-1);
+  assert.equal(detailRuntime.options.sampleRate, 96000);
+  assert.equal(detailRuntime.sessions.length, 1);
+  assert.ok(detailRuntime.sessions[0].blocks.length > 0);
+  assert.ok(detailRuntime.sessions[0].closed);
+  assert.ok(h.runtimes.every(runtime => runtime.closed));
+  assert.equal(h.calls.filter(([type]) => type === 'error').length, 0);
+  assert.match(h.document.getElementById('benchmark-status').textContent, /Benchmark completed/);
+  assert.equal(h.document.getElementById('run-benchmarks').disabled, false);
 });
 
 test('benchmark result headers sort every column and toggle ascending and descending order', async () => {

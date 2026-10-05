@@ -182,10 +182,12 @@ test('frequency preview uses the volatile extension channel without queuing stat
   });
   const adapter = new ExtensionAudioManager(client, assert.fail);
   adapter.setFrequencyPreview(440);
+  adapter.setFrequencyPreview(880, 'bandpassNoise');
   adapter.setFrequencyPreview(null);
   assert.deepEqual(messages, [
-    { kind: 'frequencyPreview', clientId: 'editor', sessionId: 'selected', frequency: 440 },
-    { kind: 'frequencyPreview', clientId: 'editor', sessionId: 'selected', frequency: null }
+    { kind: 'frequencyPreview', clientId: 'editor', sessionId: 'selected', frequency: 440, sound: 'sine' },
+    { kind: 'frequencyPreview', clientId: 'editor', sessionId: 'selected', frequency: 880, sound: 'bandpassNoise' },
+    { kind: 'frequencyPreview', clientId: 'editor', sessionId: 'selected', frequency: null, sound: 'sine' }
   ]);
   assert.equal(adapter.pendingMutations, 0);
 });

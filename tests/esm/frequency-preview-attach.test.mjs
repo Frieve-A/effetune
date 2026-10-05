@@ -29,11 +29,15 @@ function harness(name = 'BandPassFilterPlugin') {
   }
   const frames = new Map();
   const posts = [];
+  const sounds = [];
   let frameId = 0;
   const plugin = { id: 1, constructor: { name }, mn: 60, mx: 71, ly: 'Horizontal', rf: 442 };
   const window = new PreviewElement();
   window.devicePixelRatio = 2;
-  window.audioManager = { pipeline: [plugin], setFrequencyPreview: frequency => posts.push(frequency) };
+  window.audioManager = { pipeline: [plugin], setFrequencyPreview(frequency, sound) {
+    posts.push(frequency);
+    sounds.push(sound);
+  } };
   const document = new PreviewElement();
   document.createElement = tag => new PreviewElement(tag);
   const context = {
@@ -64,9 +68,47 @@ function harness(name = 'BandPassFilterPlugin') {
     instance.mount.listeners.get(type)?.(data);
     return data;
   }
-  return { window, document, plugin, mount, plot, posts, preview, instance, frames, event,
+  return { window, document, plugin, mount, plot, posts, sounds, preview, instance, frames, event,
     frame() { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback()); } };
 }
+
+test('frequency graphs use the saved sound while pitch graphs and keyboards keep sine previews', () => {
+  for (const name of ['BandPassFilterPlugin', 'FiveBandPEQPlugin', 'NoteSpectrogramPlugin',
+    'PitchMeterPlugin', 'ChromaSpiralPlugin', 'SpectrumAnalyzerPlugin', 'SpectrogramPlugin']) {
+    for (const kb of [false, true]) {
+      const h = harness(name);
+      h.plugin.kb = kb;
+      h.plugin.freqToX = frequency => Math.log10(frequency / 10) / Math.log10(4000) * 100;
+      h.plugin.getKeyboardGeometry = length => h.window.FrequencyAxis.noteAxisKeys(0, 127, length);
+      h.plugin.frequencyToX = (frequency, length) =>
+        h.window.FrequencyAxis.frequencyToPosition(frequency, length, 20, 40000);
+      h.plugin.freqToY = frequency =>
+        h.window.FrequencyAxis.frequencyToPosition(frequency, 255, 20, 40000, 'log', 'y');
+      h.window.appConfig = { frequencyPreviewSound: 'bandpassNoise' };
+      h.event('pointerdown');
+      const pitchGraph = ['NoteSpectrogramPlugin', 'PitchMeterPlugin', 'ChromaSpiralPlugin'].includes(name);
+      const keyboard = kb && ['SpectrumAnalyzerPlugin', 'SpectrogramPlugin'].includes(name);
+      assert.equal(h.sounds.at(-1), pitchGraph || keyboard ? 'sine' : 'bandpassNoise', `${name}, keyboard ${kb}`);
+      h.event('pointerup');
+      assert.equal(h.posts.at(-1), null);
+    }
+  }
+
+  const h = harness();
+  h.event('pointerdown');
+  assert.equal(h.sounds.at(-1), 'sine');
+  const frequency = h.posts.at(-1);
+  h.window.appConfig = { frequencyPreviewSound: 'bandpassNoise' };
+  h.event('pointermove');
+  h.frame();
+  assert.equal(h.posts.at(-1), frequency);
+  assert.equal(h.sounds.at(-1), 'bandpassNoise');
+  h.window.appConfig.frequencyPreviewSound = 'unknown';
+  h.event('pointermove');
+  h.frame();
+  assert.equal(h.sounds.at(-1), 'sine');
+  h.preview.stop();
+});
 
 test('preview excludes existing controls and consumed pointer gestures', () => {
   const h = harness();

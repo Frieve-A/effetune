@@ -225,6 +225,26 @@ test('validation rejects host-reserved ids from clients and unknown effects', ()
     assert.throws(() => validateEdit({}, []), /app-not-ready/);
 });
 
+test('unsetting effect parameters preserves other settings and the plugin instance', () => {
+    const { win, pipeline } = makeWin();
+    const registry = createIdRegistry('h');
+    const [id] = seed(win, registry, ['Volume']);
+    const plugin = pipeline[0];
+    plugin.parameters = { vl: -3, ms0: 'left', mn0: 'Left seat', ms1: 'right' };
+    plugin.enabled = false;
+    plugin.inputBus = 2;
+    plugin.outputBus = 3;
+    plugin.channel = 'R';
+    const result = applyOpsToPipeline(win, [
+        { t: 'set', id, p: { vl: -1 }, d: ['ms0', 'mn0', 'ib'] }
+    ], { registry });
+    assert.equal(pipeline[0], plugin);
+    assert.equal(registry.idOf(plugin), id);
+    assert.equal(result.structural, false);
+    assert.deepEqual(plugin.parameters, { vl: -1, ms1: 'right' });
+    assert.deepEqual([plugin.enabled, plugin.inputBus, plugin.outputBus, plugin.channel], [false, null, 3, 'R']);
+});
+
 test('finishing a structural batch redraws, republishes and records history once', () => {
     const { win, calls } = makeWin();
     const hooks = { saveHistory: () => calls.push('save'), scheduleHistorySave: () => calls.push('schedule') };

@@ -83,6 +83,7 @@ public:
     window_stride_ = max_repair_samples_ + 2u * kArOrder;
     scratch_stride_ = max_repair_samples_ * (kArOrder + 2u);
     mad_alpha_ = 1.0 - std::exp(-1.0 / (kMadTimeConstant * sample_rate_));
+    autocorrelation_lag_decay_ = std::exp(-0.5 / (kAutocorrelationTimeConstant * sample_rate_));
     telemetry_alpha_ = 1.0 - std::exp(-1.0 / (kTelemetryTimeConstant * sample_rate_));
 
     channels_.resize(max_channels_);
@@ -314,8 +315,15 @@ private:
     }
     if (++state.ar_counter >= kArUpdateSamples) {
       state.ar_counter = 0u;
-      state.ar_valid = dsp::solveArCoefficients(state.autocorrelation.lags(), kArOrder,
-                                                state.coefficients.data());
+      // Weight both samples of each lag pair with the same exponential window. Without
+      // this lag taper, the running estimates need not form a positive-definite matrix.
+      std::array<double, kArOrder + 1u> lags{};
+      double weight = 1.0;
+      for (std::uint32_t lag = 0u; lag <= kArOrder; ++lag) {
+        lags[lag] = state.autocorrelation.lags()[lag] * weight;
+        weight *= autocorrelation_lag_decay_;
+      }
+      state.ar_valid = dsp::solveArCoefficients(lags.data(), kArOrder, state.coefficients.data());
       if (!state.ar_valid) {
         state.coefficients.fill(0.0);
       }
@@ -353,6 +361,7 @@ private:
   std::vector<double> repair_scratch_;
   double sample_rate_ = 0.0;
   double mad_alpha_ = 0.0;
+  double autocorrelation_lag_decay_ = 0.0;
   double telemetry_alpha_ = 0.0;
   double repairs_per_second_ = 0.0;
   std::uint64_t absolute_sample_ = 0u;

@@ -1,3 +1,5 @@
+import { createArtworkSourceClaim } from '../../js/library/artwork/artwork-policy.js';
+
 const WORKER_URL = new URL('./library-sqlite-worker.mjs', import.meta.url);
 const MAX_MESSAGE_BYTES = 1024 * 1024;
 const SCALE_BATCH_ROWS = 1000;
@@ -95,7 +97,7 @@ export async function runLibrarySqliteContract() {
     });
     equal(folderOrdinalPage.rows[0].path, null, 'folder ordinal page hides synthetic paths');
     await client.request('releaseContext', folderEntities.contextToken);
-    await client.request('upsertTracks', [
+    const initialTracks = [
       createTrack(1, { trackUid: 'track-alpha', title: 'Alpha Signal', artist: 'Crimson Voyager' }),
       createTrack(2, {
         trackUid: 'track-ab', title: 'AB Intro', artist: 'Quartz',
@@ -105,7 +107,38 @@ export async function runLibrarySqliteContract() {
         trackUid: 'track-gamma', title: 'Gamma', genre: 'ロック',
         relativePath: 'Zulu/Alpha/Gamma.flac'
       })
-    ]);
+    ];
+    await client.request('upsertTracks', initialTracks);
+    const initialScan = await client.request('beginScanFolder', {
+      scanId: 'scan-web-initial', folderId: 'folder-web', normalizedRoot: 'fsa:folder-web',
+      expectedLifecycleVersion: 1, resume: false, rootEnumerationRequired: true,
+      continuityBroken: false, sweepEligibility: 'INELIGIBLE'
+    });
+    for (const track of initialTracks) {
+      const metadataClaim = await client.request('claimMetadataParse', {
+        folderId: track.folderId,
+        trackUid: track.trackUid,
+        lifecycleVersion: initialScan.lifecycleVersion,
+        generation: initialScan.generation,
+        relativePath: track.relativePath,
+        parserVersion: initialScan.parserVersion,
+        signature: { fileIdentity: track.fileIdentity, size: track.size, mtimeMs: track.mtimeMs },
+        explicitRescan: false
+      });
+      await client.request('completeMetadataParseSuccess', {
+        claim: metadataClaim.claim,
+        metadata: track,
+        metadataStatus: 'ok',
+        clearErrorAndRetryState: true,
+        updateLastKnownGood: true,
+        updateDerivedData: true
+      });
+    }
+    await client.request('completeScanFolderNoSweep', {
+      scanId: 'scan-web-initial', folderId: 'folder-web', generation: initialScan.generation,
+      expectedLifecycleVersion: initialScan.lifecycleVersion, status: 'completed-no-sweep',
+      sweepBlockReason: 'contract-no-sweep'
+    });
     equal((await client.request('getCounts')).tracks, 3, 'track write count');
     deepEqual(await client.request('getScanFolderTrackCount', { folderId: 'folder-web' }), {
       folderId: 'folder-web',
@@ -119,14 +152,15 @@ export async function runLibrarySqliteContract() {
     const end = await client.request('readContextPageAtOrdinal', {
       contextToken: all.contextToken, ordinal: 2, limit: 2
     });
-    deepEqual(end.rows.map(row => row.trackUid), ['track-alpha', 'track-gamma'], 'ordinal page');
+    deepEqual(end.rows.map(row => row.trackUid), ['track-gamma'], 'ordinal page');
+    equal(end.pageStartOrdinal, 2, 'ordinal page starts at its fixed chunk boundary');
 
     for (const [query, expected] of [
       ['a', ['track-ab', 'track-alpha', 'track-gamma']],
       ['ab', ['track-ab']],
       ['mm', []],
       ['mma', ['track-gamma']],
-      ['pha', ['track-alpha']],
+      ['pha', ['track-alpha', 'track-gamma']],
       ['imson yage', ['track-alpha']],
       ['ﾛｯ', ['track-gamma']]
     ]) {
@@ -326,7 +360,7 @@ export async function runLibrarySqliteContract() {
     equal(latePlaylist.playlist.version, 1, 'late resolution advances the playlist version');
 
     const source = await client.request('getArtworkSource', { trackUid: 'track-alpha' });
-    const claimed = await client.request('claimArtworkSource', { claim: source });
+    const claimed = await client.request('claimArtworkSource', { claim: createArtworkSourceClaim(source) });
     truthy(claimed.claim?.claimId, 'artwork claim');
     const artworkPolicy = { mode: 'persistent', maxBytes: 1024 * 1024 };
     equal((await client.request('preflightArtworkBatch', {
@@ -342,7 +376,7 @@ export async function runLibrarySqliteContract() {
     deepEqual(Array.from((await client.request('getCachedArtwork', { trackUid: 'track-alpha' })).bytes), [1, 2, 3, 4], 'artwork cache');
 
     const duplicateSource = await client.request('getArtworkSource', { trackUid: 'track-ab' });
-    const duplicateClaimed = await client.request('claimArtworkSource', { claim: duplicateSource });
+    const duplicateClaimed = await client.request('claimArtworkSource', { claim: createArtworkSourceClaim(duplicateSource) });
     equal((await client.request('preflightArtworkBatch', {
       claim: duplicateClaimed.claim, estimatedRawBytes: 4, estimatedThumbnailBytes: 4,
       cachePolicy: artworkPolicy
@@ -366,7 +400,7 @@ export async function runLibrarySqliteContract() {
       fileName: 'Test.flac', size: 128, mtimeMs: 200, title: 'Delete Test'
     })]);
     const deletionSource = await client.request('getArtworkSource', { trackUid: 'track-delete-web' });
-    const deletionClaimed = await client.request('claimArtworkSource', { claim: deletionSource });
+    const deletionClaimed = await client.request('claimArtworkSource', { claim: createArtworkSourceClaim(deletionSource) });
     equal((await client.request('preflightArtworkBatch', {
       claim: deletionClaimed.claim, estimatedRawBytes: 4, estimatedThumbnailBytes: 4,
       cachePolicy: artworkPolicy
@@ -375,12 +409,13 @@ export async function runLibrarySqliteContract() {
       claim: deletionClaimed.claim, expectedSourceClaim: deletionClaimed.claim, cachePolicy: artworkPolicy,
       thumbnail: { bytes: new Uint8Array([9, 8, 7, 6]), width: 1, height: 1, mimeType: 'image/png' }
     })).committed, true, 'folder deletion artwork publish');
-    let deletion = await client.request('removeScanFolder', {
+    const tombstoned = await client.request('tombstoneFolder', {
       folderId: 'folder-delete-web', expectedLifecycleVersion: 1
     });
+    let deletion = tombstoned.deletion;
     for (let chunk = 0; deletion.hasMore && chunk < 10; chunk += 1) {
-      deletion = await client.request('removeScanFolder', {
-        folderId: 'folder-delete-web', expectedLifecycleVersion: 1
+      deletion = await client.request('runFolderDeletion', {
+        folderId: 'folder-delete-web', lifecycleVersion: tombstoned.folder.lifecycleVersion
       });
     }
     equal(deletion.hasMore, false, 'folder deletion completion');

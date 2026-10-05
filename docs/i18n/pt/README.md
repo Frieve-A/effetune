@@ -139,7 +139,7 @@ Abra **Visualizer** pelo cabeçalho, pela aba móvel **Player** ou pelo menu des
 10. Clique no botão Predefinições de efeito de cada efeito para salvar ou aplicar configurações apenas desse efeito
 11. Para ajustar um controle deslizante com precisão, mantenha a tecla Shift pressionada enquanto o arrasta; o valor muda uma unidade mínima de cada vez
    - Nos controles deslizantes que aceitam valores negativos e positivos, o preenchimento vai de 0 até o valor atual. Os controles Ratio usam 1.0 como ponto de partida.
-12. Nos gráficos compatíveis com eixo de frequência ou de notas, arraste ao longo do eixo para ouvir essa frequência como um tom senoidal de -12 dB através da cadeia de efeitos. Quando o teclado está visível, a frequência se ajusta ao semitom mais próximo; ao arrastar sobre uma tecla, você ouve a nota dessa tecla
+12. Nos gráficos compatíveis com eixo de frequência ou de notas, arraste ao longo do eixo para ouvir a frequência selecionada através da cadeia de efeitos. Em **Configuração > Geral > Som de prévia da frequência**, escolha **Onda senoidal** (padrão, -12 dB) ou **Ruído de banda limitada**, centrado na frequência selecionada. Note Spectrogram, Pitch Meter, Chroma Spiral e os teclados de piano sempre usam uma onda senoidal. Quando o teclado está visível, a frequência se ajusta ao semitom mais próximo; ao arrastar sobre uma tecla, você ouve a nota dessa tecla
 
 ### Usando Presets
 
@@ -411,6 +411,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Modulation | Rotary Speaker | Combina movimentos independentes de corneta e tambor | [Detalhes](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | Efeito de modulação baseado em volume | [Detalhes](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | Adiciona uma oscilação sutil de pitch no estilo fita ou disco para caráter vintage | [Detalhes](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | Aprende a prever o áudio para extrair o resíduo ou criar ressonâncias que evoluem | [Detalhes](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | Simulação de ressonância de corno com dimensões personalizáveis | [Detalhes](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | Ressonância de alto-falante tipo corneta mais suave para coloração natural na escuta | [Detalhes](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | Efeito de ressonância de frequência com até 5 ressonadores | [Detalhes](plugins/resonator.md#modal-resonator) |

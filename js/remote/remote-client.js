@@ -50,6 +50,29 @@ function createMessageHelpers() {
     };
 }
 
+export function createRemotePresetHost(session, getPipeline) {
+    let presetCache = null;
+    session.addEventListener('presetsChanged', () => { presetCache = null; });
+    return {
+        async getPresets() {
+            if (!presetCache) presetCache = (await session.request({ op: 'presets' }, 'presets')).presets || {};
+            return { ...presetCache };
+        },
+        async savePreset(name) {
+            await session.sendCommand({ op: 'savePreset', name, pipeline: getPipeline() });
+            presetCache = null;
+        },
+        async loadPreset(nameOrPreset) {
+            if (typeof nameOrPreset !== 'string') throw new Error('Only stored presets can be loaded here');
+            await session.sendCommand({ op: 'loadPreset', name: nameOrPreset });
+        },
+        async deletePreset(name) {
+            await session.sendCommand({ op: 'deletePreset', name });
+            presetCache = null;
+        }
+    };
+}
+
 // What the engine sees of the editor, and how it changes it.
 function createModelAdapter({ win, registry, audioManager, setSlotLabel }) {
     return {
@@ -92,6 +115,10 @@ export async function startRemoteClient(win = window) {
     }
 
     const messages = createMessageHelpers();
+    const showCommandError = (message, error) => {
+        console.error('[remote] command failed', error);
+        messages.show(message, false, MESSAGE_DURATION_MS);
+    };
     const statusText = $('remoteStatus');
     const overlay = $('remoteOverlay');
     const overlayText = $('remoteOverlayText');
@@ -163,26 +190,7 @@ export async function startRemoteClient(win = window) {
         hello: { app: 'EffeTune', version, build: isDesktopClient ? 'desktop-client' : 'browser', sync: 1 }
     });
 
-    let presetCache = null;
-    session.addEventListener('presetsChanged', () => { presetCache = null; });
-    const presetHost = {
-        async getPresets() {
-            if (!presetCache) presetCache = (await session.request({ op: 'presets' }, 'presets')).presets || {};
-            return { ...presetCache };
-        },
-        async savePreset(name) {
-            await session.send({ op: 'savePreset', name, pipeline: adapter.snapshot().pipeline });
-            presetCache = null;
-        },
-        async loadPreset(nameOrPreset) {
-            if (typeof nameOrPreset !== 'string') throw new Error('Only stored presets can be loaded here');
-            await session.send({ op: 'loadPreset', name: nameOrPreset });
-        },
-        async deletePreset(name) {
-            await session.send({ op: 'deletePreset', name });
-            presetCache = null;
-        }
-    };
+    const presetHost = createRemotePresetHost(session, () => adapter.snapshot().pipeline);
 
     const pluginListManager = new PluginListManager(pluginManager);
     uiManager.pluginListManager = pluginListManager;
@@ -200,13 +208,14 @@ export async function startRemoteClient(win = window) {
     history.saveStateAtomicallyIfChanged = () => false;
     history.undo = () => {
         engine.noteGesture();
-        session.send({ op: 'history', dir: 'undo' }).then(
+        session.sendCommand({ op: 'history', dir: 'undo' }).then(
             () => messages.show('Undid last change', true, MESSAGE_DURATION_MS),
-            error => messages.show(error.message, false, MESSAGE_DURATION_MS));
+            error => showCommandError('EffeTune could not undo the last change. Try again.', error));
     };
     history.redo = () => {
         engine.noteGesture();
-        session.send({ op: 'history', dir: 'redo' }).catch(error => messages.show(error.message, false, MESSAGE_DURATION_MS));
+        session.sendCommand({ op: 'history', dir: 'redo' })
+            .catch(error => showCommandError('EffeTune could not redo the last change. Try again.', error));
     };
 
     const toggleButton = $('pipelineToggleButton');
@@ -218,7 +227,7 @@ export async function startRemoteClient(win = window) {
     const engine = new SyncEngine({
         adapter,
         send: message => session.send(message),
-        onError: error => messages.show(error.message, false, MESSAGE_DURATION_MS)
+        onError: error => showCommandError('EffeTune could not apply this change. Try again.', error)
     });
     audioManager.onLocalChange = plugin => engine.markDirty(plugin ? registry.idOf(plugin) : null);
 
@@ -245,8 +254,8 @@ export async function startRemoteClient(win = window) {
     $('redoButton')?.addEventListener('click', () => pipelineManager.redo());
     toggleButton?.addEventListener('click', () => {
         engine.noteGesture();
-        session.send({ op: 'slot', slot: adapter.slot === 'A' ? 'B' : 'A' })
-            .catch(error => messages.show(error.message, false, MESSAGE_DURATION_MS));
+        session.sendCommand({ op: 'slot', slot: adapter.slot === 'A' ? 'B' : 'A' })
+            .catch(error => showCommandError('EffeTune could not switch pipelines. Try again.', error));
     });
     const menu = $('pipelineMenu');
     $('pipelineMenuButton')?.addEventListener('click', event => {
@@ -259,8 +268,8 @@ export async function startRemoteClient(win = window) {
     const copySlot = (from, to) => () => {
         menu?.classList.remove('show');
         engine.noteGesture();
-        session.send({ op: 'copySlot', from, to })
-            .catch(error => messages.show(error.message, false, MESSAGE_DURATION_MS));
+        session.sendCommand({ op: 'copySlot', from, to })
+            .catch(error => showCommandError('EffeTune could not copy the pipeline. Try again.', error));
     };
     $('copyAToBButton')?.addEventListener('click', copySlot('A', 'B'));
     $('copyBToAButton')?.addEventListener('click', copySlot('B', 'A'));

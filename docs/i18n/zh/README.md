@@ -139,7 +139,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 10. 点击效果的效果预设按钮可仅保存或应用该效果的设置
 11. 如需精细调整滑块，请按住 Shift 键拖动；数值会按最小单位逐步变化
    - 可设置负值和正值的滑块会填充从 0 到当前值的区间。Ratio 滑块以 1.0 为填充起点。
-12. 在支持的频率轴或音符轴图表上，沿图表轴拖动即可通过效果链试听该频率的 -12 dB 正弦音。显示键盘时，频率会吸附到最近的半音；在琴键上拖动则会试听该键的音高
+12. 在支持的频率轴或音符轴图表上，沿图表轴拖动即可通过效果链试听所选频率。在**设置 > 常规 > 频率试听声音**中，可选择**正弦波**（默认，-12 dB）或以所选频率为中心的**带通噪声**。Note Spectrogram、Pitch Meter、Chroma Spiral和钢琴键盘始终使用正弦波。显示键盘时，频率会吸附到最近的半音；在琴键上拖动则会试听该键的音高
 
 ### 使用 Presets
 
@@ -410,6 +410,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Modulation | Rotary Speaker | 结合高音号角与低音鼓的独立旋转 | [详情](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | 基于音量的调制效果 | [详情](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | 加入轻微磁带或唱片式音高摇摆，营造复古特性 | [详情](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | 学习音频预测，用于提取残差或生成不断变化的共鸣声 | [详情](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | 具有可自定义尺寸的号角共鸣模拟 | [详情](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | 更平滑的号角扬声器共鸣，带来自然的聆听色彩 | [详情](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 支持最多5个谐振器的频率共鸣效果 | [详情](plugins/resonator.md#modal-resonator) |

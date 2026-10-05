@@ -1145,7 +1145,7 @@ function registerIpcHandlers({ onConfigSaved } = {}) {
       }
 
       await mainWin.loadFile('effetune.html', {
-        query: { restorePipeline: 'transient' }
+        query: { restorePipeline: 'reload' }
       });
       return { success: true };
     } catch (error) {

@@ -74,6 +74,22 @@ class FakeElement {
     return child;
   }
 
+  get firstChild() {
+    return this.children[0] || null;
+  }
+
+  insertBefore(child, reference) {
+    child.parentNode = this;
+    const index = this.children.indexOf(reference);
+    if (index < 0) this.children.push(child);
+    else this.children.splice(index, 0, child);
+    return child;
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = value;
+  }
+
   addEventListener(type, listener) {
     if (!this.eventListeners.has(type)) {
       this.eventListeners.set(type, []);
@@ -482,6 +498,32 @@ test('createPluginUI disposes responsive graphs before rebuilding plugin UI', as
     builder.createPipelineItem(plugin);
 
     assert.deepEqual(events, ['disposeGraphs', 'createUI']);
+  });
+});
+
+test('WASM-only effects share an in-panel notice, including legacy capability declarations', async () => {
+  await withBuilderGlobals({ uiManager: false }, async () => {
+    class DeclaredWasmPlugin extends TestPlugin {
+      static executionCapabilities = { requiresWasm: true };
+    }
+    class GroupDelayEqPlugin extends TestPlugin {}
+    for (const Plugin of [DeclaredWasmPlugin, GroupDelayEqPlugin, TestPlugin]) {
+      const plugin = new Plugin({ id: 13 });
+      const core = createCore({ pipeline: [plugin] });
+      const state = { pluginId: 13, pluginType: Plugin.name, state: 'bypassed', reason: 'wasmUnavailable' };
+      core.audioManager.getDspExecutionStateSnapshot = () => ({ states: [state] });
+      const ui = new PipelineItemBuilder(core).createPluginUI(plugin);
+      if (Plugin === TestPlugin) {
+        assert.equal(ui.querySelector('.plugin-wasm-notice'), null);
+      } else {
+        assert.equal(ui.firstChild.className, 'plugin-wasm-notice');
+        assert.equal(ui.children[1].className, 'created-ui');
+        assert.equal(ui.firstChild.hidden, false);
+        assert.match(ui.firstChild.textContent, /WebAssembly/);
+        const rebuilt = new PipelineItemBuilder(core).createPluginUI(plugin);
+        assert.equal(rebuilt.firstChild.textContent, ui.firstChild.textContent);
+      }
+    }
   });
 });
 

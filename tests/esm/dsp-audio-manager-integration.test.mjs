@@ -7,6 +7,7 @@ import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
 import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { createWasmExecutionNotice } from '../../js/ui/pipeline/wasm-execution-notice.js';
 
 function createPort() {
   return {
@@ -97,7 +98,7 @@ function createManager() {
   manager._dspReadyTransitionPromise = null;
   manager._dspTransitionGeneration = -1;
   manager._dspExecutionGenerationsByNode = new Map();
-  manager._tubeRuntimeEventsByNode = new WeakMap();
+  manager._dspRuntimeEventsByNode = new WeakMap();
   manager._audioGraphGeneration = 1;
   manager._topologyRevision = 1;
   manager._primaryWorkletEpoch = 1;
@@ -695,46 +696,80 @@ test('AudioManager validates Tube Simulator runtime event epochs and generations
   assert.equal(dispatched.length, 3);
 });
 
-test('AudioManager relays current primary AM Radio Simulator execution transitions', () => {
+test('AudioManager validates APE fault and Reset events before delivering them', () => {
   const manager = createManager();
   const main = createNode('main');
-  const auxiliary = createNode('auxiliary');
-  const amRadio = new AMRadioSimulatorPlugin(43);
+  const plugin = { id: 47, constructor: { name: 'AdaptivePredictionEffectPlugin' },
+    messages: [], onMessage(message) { this.messages.push(message); } };
   manager.workletNode = main;
   manager.contextManager = { workletNode: main };
-  manager.pipelineA = [amRadio];
-  manager.pipeline = manager.pipelineA;
-  manager._parallelActive = true;
-  manager._parallelWorkletB = auxiliary;
-  const dispatched = [];
-  manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
-  const state = (generation, overrides = {}) => ({
-    type: 'dspExecutionState', pluginId: 43, pluginType: 'AMRadioSimulatorPlugin',
-    state: 'pending', reason: null, generation, ...overrides
+  manager.pipeline = manager.pipelineA = [plugin];
+  manager.dispatchEvent = () => {};
+  const fault = { type: 'adaptivePredictionFault', pluginId: 47,
+    pluginType: 'AdaptivePredictionEffectPlugin', instanceEpoch: 1, generation: 1,
+    latched: true, cause: 'numericalFailure' };
+  manager.handleWorkletMessage({ data: { ...fault, cause: 'feedbackOscillation' } }, main);
+  manager.handleWorkletMessage({ data: fault }, createNode('auxiliary'));
+  assert.equal(plugin.messages.length, 0);
+  manager.handleWorkletMessage({ data: fault }, main);
+  manager.handleWorkletMessage({ data: fault }, main);
+  manager.handleWorkletMessage({ data: { ...fault, generation: 2,
+    latched: false, cause: 'none' } }, main);
+  assert.deepEqual(plugin.messages.map(message => [message.generation, message.latched,
+    message.cause, message.validated]), [[1, true, 'numericalFailure', true], [2, false, 'none', true]]);
+});
+
+test('AudioManager relays current primary AM Radio Simulator execution transitions', async () => {
+  await withGlobals({ window: {}, document: {
+    createElement: () => ({ setAttribute() {}, textContent: '', hidden: false })
+  } }, () => {
+    const manager = createManager();
+    const main = createNode('main');
+    const auxiliary = createNode('auxiliary');
+    const amRadio = new AMRadioSimulatorPlugin(43);
+    const notice = createWasmExecutionNotice(amRadio);
+    manager.workletNode = main;
+    manager.contextManager = { workletNode: main };
+    manager.pipelineA = [amRadio];
+    manager.pipeline = manager.pipelineA;
+    manager._parallelActive = true;
+    manager._parallelWorkletB = auxiliary;
+    const dispatched = [];
+    manager.dispatchEvent = (type, data) => dispatched.push({ type, data });
+    const state = (generation, overrides = {}) => ({
+      type: 'dspExecutionState', pluginId: 43, pluginType: 'AMRadioSimulatorPlugin',
+      state: 'pending', reason: null, generation, ...overrides
+    });
+
+    manager.handleWorkletMessage({ data: state(10) }, main);
+    assert.equal(notice.hidden, true);
+    manager.handleWorkletMessage({ data: state(11, { state: 'active' }) }, main);
+    manager.handleWorkletMessage({ data: state(10, {
+      state: 'bypassed', reason: 'runtimeFallback'
+    }) }, main);
+    manager.handleWorkletMessage({ data: state(12, {
+      state: 'bypassed', reason: 'wasmUnavailable'
+    }) }, auxiliary);
+    assert.equal(notice.hidden, true);
+    manager.handleWorkletMessage({ data: state(12, {
+      state: 'bypassed', reason: 'wasmUnavailable'
+    }) }, main);
+
+    assert.deepEqual(amRadio.messages.map(message => ({
+      state: message.state,
+      reason: message.reason,
+      validated: message.validated
+    })), [
+      { state: 'pending', reason: null, validated: true },
+      { state: 'active', reason: null, validated: true },
+      { state: 'bypassed', reason: 'wasmUnavailable', validated: true }
+    ]);
+    assert.deepEqual(dispatched.map(entry => entry.data.generation), [10, 11, 12]);
+    assert.equal(notice.hidden, false);
+    assert.match(notice.textContent, /WebAssembly/);
+    manager.handleWorkletMessage({ data: state(13, { state: 'active' }) }, main);
+    assert.equal(notice.hidden, true);
   });
-
-  manager.handleWorkletMessage({ data: state(10) }, main);
-  manager.handleWorkletMessage({ data: state(11, { state: 'active' }) }, main);
-  manager.handleWorkletMessage({ data: state(10, {
-    state: 'bypassed', reason: 'runtimeFallback'
-  }) }, main);
-  manager.handleWorkletMessage({ data: state(12, {
-    state: 'bypassed', reason: 'wasmUnavailable'
-  }) }, auxiliary);
-  manager.handleWorkletMessage({ data: state(12, {
-    state: 'bypassed', reason: 'wasmUnavailable'
-  }) }, main);
-
-  assert.deepEqual(amRadio.messages.map(message => ({
-    state: message.state,
-    reason: message.reason,
-    validated: message.validated
-  })), [
-    { state: 'pending', reason: null, validated: true },
-    { state: 'active', reason: null, validated: true },
-    { state: 'bypassed', reason: 'wasmUnavailable', validated: true }
-  ]);
-  assert.deepEqual(dispatched.map(entry => entry.data.generation), [10, 11, 12]);
 });
 
 test('AudioManager validates every generic WASM execution bypass reason', () => {
@@ -4899,10 +4934,10 @@ test('Visual Sync reserves the telemetry interval and forwards recorded capture 
     manager.dspLatencyTaps = { 7: { input: 0, output: 0, execution: 'wasm', instanceId: 100 } };
     await manager.setVisualSyncEnabled(true);
     assert.equal(manager.visualSyncDelayFrames, 9600);
-    const payload = new DataView(new ArrayBuffer(3548));
+    const payload = new DataView(new ArrayBuffer(5312));
     payload.setFloat32(0, 48000, true);
     payload.setFloat32(4, 1, true);
-    const frame = { frameType: 24, formatVersion: 3, payload };
+    const frame = { frameType: 24, formatVersion: 4, payload };
     const due = manager.telemetryHub.resolveDue(7, 60000, 7, frame, 48000);
     assert.ok(Math.abs(due - (2000 + (9600 - 8192) / 48)) < 1e-8);
     await manager.setVisualSyncEnabled(false);

@@ -134,7 +134,7 @@ test('Notes and Chroma range edits preserve the requested endpoint for every sel
     });
 });
 
-test('Gradient direction appears for frequency graphs and keeps octave settings when switching to intensity', async () => {
+test('Gradient controls rotate each linear basis and keep its angle while radial colors hide it', async () => {
     await withGlobals({ document: { createElement: () => ({ appendChild() {}, setAttribute() {} }) } }, () => {
         const fields = [], changes = [];
         const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
@@ -157,25 +157,109 @@ test('Gradient direction appears for frequency graphs and keeps octave settings 
             const direction = fields.find(field => field.label === 'Gradient direction');
             assert.equal(direction.type, 'radio');
             assert.equal(direction.value, 'frequency');
-            assert.deepEqual(direction.options.values, [['frequency', 'Frequency'], ['intensity', 'Intensity']]);
+            assert.deepEqual(direction.options.values, [['frequency', 'Frequency'], ['intensity', 'Intensity'], ['radial', 'Radial']]);
+            const angle = fields.find(field => field.label === 'Gradient angle (°)');
+            assert.equal(angle.value, 0);
+            assert.equal(angle.options.min, -180);
+            assert.equal(angle.options.max, 180);
+            angle.change(45);
+            assert.equal(item.palette.angle, 45);
             direction.change('intensity');
             render(item);
             assert.equal(fields.find(field => field.label === 'Gradient direction').value, 'intensity');
             assert.equal(fields.some(field => field.label === 'Color mapping'), false);
+            assert.equal(fields.find(field => field.label === 'Gradient angle (°)').value, 45);
+            assert.equal(item.palette.mapping, 'octave');
+            fields.find(field => field.label === 'Gradient direction').change('radial');
+            render(item);
+            assert.equal(fields.some(field => field.label === 'Color mapping'), false);
+            assert.equal(fields.some(field => field.label === 'Gradient angle (°)'), false);
+            assert.equal(item.palette.angle, 45);
             assert.equal(item.palette.mapping, 'octave');
             fields.find(field => field.label === 'Gradient direction').change('frequency');
             render(item);
             assert.equal(fields.some(field => field.label === 'Color mapping'), type === 'notes' || type === 'chroma');
             assert.equal(item.palette.mapping, 'octave');
         }
-        for (const type of ['oscilloscope', 'stereo', 'level-meter', 'title']) {
-            const item = createItem(type, type); item.palette.mode = 'gradient'; render(item);
-            assert.equal(fields.some(field => field.label === 'Gradient direction'), false);
+        for (const type of ['oscilloscope', 'stereo', 'level-meter', 'analog-meter', 'rhythm-analyzer', 'title', 'album', 'artist', 'text', 'shape']) {
+            const item = createItem(type, type); render(item);
+            fields.find(field => field.label === 'Color mode').change('gradient'); render(item);
+            const direction = fields.find(field => field.label === 'Gradient direction');
+            assert.equal(direction.value, 'linear');
+            assert.deepEqual(direction.options.values, [['linear', 'Linear'], ['radial', 'Radial']]);
+            fields.find(field => field.label === 'Gradient angle (°)').change(-90);
+            assert.equal(item.palette.angle, -90);
+            assert.equal(changes.at(-1), undefined, 'Angle updates keep the inspector controls in place');
+            direction.change('radial'); render(item);
+            assert.equal(fields.some(field => field.label === 'Gradient angle (°)'), false);
+            assert.equal(item.palette.angle, -90);
+            fields.find(field => field.label === 'Gradient direction').change('linear'); render(item);
+            assert.equal(fields.find(field => field.label === 'Gradient angle (°)').value, -90);
         }
         fields.length = 0;
         editor.palette({}, createItem('spectrum').palette);
         assert.equal(fields.some(field => field.label === 'Gradient direction'), false, 'Effects keep their own palettes');
-        assert.deepEqual(changes, Array(10).fill(true));
+        assert.equal(fields.some(field => field.label === 'Gradient angle (°)'), false);
+    });
+});
+
+test('Reverse gradient reflects custom stop positions and preserves motion for items and effects', async () => {
+    await withGlobals({ document: { createElement: () => ({ appendChild() {} }) } }, () => {
+        for (const itemType of ['spectrum', null]) {
+            const palette = { mode: 'gradient', direction: 'radial', stops: [
+                { pos: 0, color: '#000000' }, { pos: .2, color: '#ff0000' },
+                { pos: .6, color: '#00ff00' }, { pos: .6, color: '#0000ff' }, { pos: .9, color: '#ffffff' }
+            ], motion: { mode: 'scroll', speed: .75, reverse: true } };
+            const actions = new Map(), changes = [];
+            const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+                t: (_key, fallback) => fallback, group: () => ({ appendChild() {} }),
+                field: () => ({ value: 'gold' }),
+                button(_parent, label, action) { actions.set(label, action); return { setAttribute() {} }; },
+                changed: structural => changes.push(structural)
+            });
+            editor.palette({}, palette, itemType);
+            actions.get('Reverse gradient')();
+            assert.deepEqual(palette.stops, [
+                { pos: .1, color: '#ffffff' }, { pos: .4, color: '#0000ff' },
+                { pos: .4, color: '#00ff00' }, { pos: .8, color: '#ff0000' }, { pos: 1, color: '#000000' }
+            ]);
+            assert.deepEqual(palette.motion, { mode: 'scroll', speed: .75, reverse: true });
+            assert.equal(palette.direction, 'radial');
+            assert.deepEqual(changes, [true]);
+        }
+    });
+});
+
+test('Hue and Scroll share a reversal setting without changing speed or gradient stops', async () => {
+    await withGlobals({ document: { createElement: () => ({ appendChild() {} }) } }, () => {
+        for (const itemType of ['spectrum', null]) {
+            const palette = createItem('spectrum').palette;
+            palette.mode = 'gradient';
+            const stops = structuredClone(palette.stops), fields = new Map();
+            const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+                t: (_key, fallback) => fallback, group: () => ({ appendChild() {} }),
+                field(_parent, label, type, value, change) {
+                    fields.set(label, { type, value, change }); return { value };
+                },
+                button: () => ({ setAttribute() {} }), changed() {}
+            });
+            const render = () => { fields.clear(); editor.palette({}, palette, itemType); };
+            render();
+            assert.equal(fields.has('Reverse color motion'), false);
+            fields.get('Color motion').change('hue'); render();
+            assert.equal(fields.get('Reverse color motion').type, 'checkbox');
+            assert.equal(fields.get('Reverse color motion').value, false);
+            fields.get('Reverse color motion').change(true);
+            fields.get('Color motion').change('scroll'); render();
+            assert.equal(fields.get('Reverse color motion').value, true);
+            fields.get('Color motion').change('none'); render();
+            assert.equal(fields.has('Reverse color motion'), false);
+            fields.get('Color motion').change('hue'); render();
+            assert.equal(fields.get('Reverse color motion').value, true);
+            fields.get('Reverse color motion').change(false);
+            assert.deepEqual(palette.motion, { mode: 'hue', speed: .25, reverse: false });
+            assert.deepEqual(palette.stops, stops);
+        }
     });
 });
 
@@ -222,16 +306,16 @@ test('Rhythm Analyzer edits its tempo range and span', () => {
 
     assert.deepEqual([tempogram.type, timingLanes.type, echoRows.type, beatLens.type],
         ['checkbox', 'checkbox', 'checkbox', 'checkbox']);
-    assert.deepEqual([tempogram.value, timingLanes.value, echoRows.value, beatLens.value], [true, true, true, true]);
+    assert.deepEqual([tempogram.value, timingLanes.value, echoRows.value, beatLens.value], [false, true, false, true]);
     assert.deepEqual([beat.type, bpm.type, beat.value, bpm.value], ['checkbox', 'checkbox', true, true]);
     beat.change(false);
     bpm.change(false);
     assert.deepEqual([item.params.showBeat, item.params.showBpm], [false, false]);
-    tempogram.change(false);
+    tempogram.change(true);
     timingLanes.change(false);
-    echoRows.change(false);
+    echoRows.change(true);
     beatLens.change(false);
-    assert.deepEqual([item.params.vt, item.params.vm, item.params.ve, item.params.vl], [false, false, false, false]);
+    assert.deepEqual([item.params.vt, item.params.vm, item.params.ve, item.params.vl], [true, false, true, false]);
     assert.deepEqual(changes, [false, false, false, false, false, false, false], 'Panel toggles do not rebuild the panel');
 });
 
@@ -291,6 +375,7 @@ test('Fall time, smoothing, and the Peak toggle appear per type and hide Peak Ho
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
         t: (_key, fallback) => fallback,
         field(_parent, label, type, value, change, options) { fields.push({ label, type, value, change, options }); },
+        group: () => ({}),
         changed() {}
     });
     const render = item => { fields.length = 0; editor.parameters({}, item); };
@@ -332,9 +417,41 @@ test('Fall time, smoothing, and the Peak toggle appear per type and hide Peak Ho
     assert.ok(fields.some(field => field.label === 'Fall Time'));
     assert.equal(fields.some(field => field.label === 'Peak'), false);
 
-    const analogMeter = createItem('analog-meter', 'analog-meter');
-    render(analogMeter);
-    assert.equal(fields.some(field => field.label === 'Peak'), false, 'Analog Meter uses Peak Hold = 0 as its off switch instead');
+    for (const multiple of [false, true]) {
+        const analogMeter = createItem('analog-meter', 'analog-meter');
+        const otherMeter = createItem('analog-meter', 'other-meter');
+        Object.assign(editor, {
+            selection: new Set(multiple ? [analogMeter.id, otherMeter.id] : [analogMeter.id]),
+            view: { layout: { items: [analogMeter, otherMeter] }, changed() {} },
+            changed: VisualizerEditor.prototype.changed,
+            render: () => render(analogMeter),
+            updateSelection() {}
+        });
+        editor.takeBaseline();
+        render(analogMeter);
+        assert.equal(fields.some(field => field.label === 'Peak'), false, 'Analog Meter uses Peak Hold = 0 as its off switch instead');
+        assert.equal(fields.some(field => field.label === 'Arrow tip aspect ratio'), false);
+        const hub = fields.find(field => field.label === 'Pivot hub size');
+        assert.equal(hub.type, 'range');
+        assert.equal(hub.options.min, 0);
+        hub.change(0);
+        assert.equal(analogMeter.params.hubSize, 0);
+        fields.find(field => field.label === 'Needle tip').change('arrow');
+        assert.equal(analogMeter.params.needleTip, 'arrow');
+        assert.equal(otherMeter.params.needleTip, multiple ? 'arrow' : 'line');
+        assert.ok(fields.some(field => field.label === 'Arrow tip aspect ratio'), 'Selecting Arrow immediately shows its aspect ratio');
+        fields.find(field => field.label === 'Arrow tip aspect ratio').change(2.5);
+        assert.equal(analogMeter.params.arrowAspect, 2.5);
+        if (multiple) assert.equal(otherMeter.params.arrowAspect, 2.5);
+        for (const tip of ['taper', 'line']) {
+            fields.find(field => field.label === 'Needle tip').change(tip);
+            assert.equal(analogMeter.params.needleTip, tip);
+            assert.equal(otherMeter.params.needleTip, multiple ? tip : 'line');
+            assert.equal(fields.some(field => field.label === 'Arrow tip aspect ratio'), false, 'Leaving Arrow immediately hides its aspect ratio');
+            fields.find(field => field.label === 'Needle tip').change('arrow');
+            assert.ok(fields.some(field => field.label === 'Arrow tip aspect ratio'));
+        }
+    }
     });
 });
 
@@ -481,7 +598,7 @@ test('Glow margins extend beyond the item while final placement keeps its center
     });
 });
 
-test('Visualizer dragging and corner resizing stay normalized under body zoom', () => {
+test('Visualizer dragging and corner resizing use artboard coordinates under body zoom', () => {
     const item = { rect: { x: .1, y: .2, w: .4, h: .3 } };
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
         view: { canvas: { getBoundingClientRect: () => ({ left: 100, top: 50, width: 1000, height: 500 }) } },
@@ -492,8 +609,8 @@ test('Visualizer dragging and corner resizing stay normalized under body zoom', 
     assert.deepEqual(item.rect, { x: .3, y: .5, w: .4, h: .3 });
     editor.beginDrag(item, [item], { x: .7, y: .8 }, 'se');
     editor.drag({ clientX: 2100, clientY: 1050 });
-    assert.equal(item.rect.x + item.rect.w, 1);
-    assert.equal(item.rect.y + item.rect.h, 1);
+    assert.equal(item.rect.x + item.rect.w, 1.3);
+    assert.equal(item.rect.y + item.rect.h, 1.5);
 });
 
 test('Visualizer side handles snap the moved edge while keeping the opposite edge fixed', () => {
@@ -570,7 +687,7 @@ test('Text outline casts the shadow once and the fill sits on top inside the ite
     assert.deepEqual(calls, [['stroke', 'TEXT', 318, 78, 4, '#000000ff', 'bottom'], ['fill', 'TEXT', 318, 78, 'transparent']]);
 });
 
-test('Stage arrow keys move the selected item by one grid step within the canvas', () => {
+test('Stage arrow keys move the selected item by one grid step beyond the canvas edges', () => {
     const stage = {}, item = createItem('spectrum', 'move');
     item.rect = { x: .103, y: .2, w: .4, h: .3 };
     let changes = 0;
@@ -592,7 +709,7 @@ test('Stage arrow keys move the selected item by one grid step within the canvas
     assert.equal(changes, 2);
     item.rect.x = .59;
     press('ArrowRight'); press('ArrowRight');
-    assert.equal(item.rect.x, .6);
+    assert.equal(item.rect.x, .64);
     editor.open = false;
     assert.equal(press('ArrowLeft'), false);
     assert.equal(changes, 4);
@@ -627,7 +744,7 @@ test('Stage Ctrl+D duplicates a selected item above it with independent settings
     assert.notEqual(copy.effects[0].palette.stops[0].color, source.effects[0].palette.stops[0].color);
     editor.selection = new Set([source.id]); source.rect.x = .6;
     press(stage, { metaKey: true });
-    assert.equal(items[1].rect.x, .575);
+    assert.equal(items[1].rect.x, .625);
 });
 
 test('Alt body drag duplicates once on movement and resize handles keep the original', () => {

@@ -7,6 +7,7 @@ export const frequencyAxisSource = fs.readFileSync(new URL('../../plugins/freque
 export function loadOverlay(overrides = {}) {
   const context = { window: {}, console, ...overrides };
   vm.runInNewContext(frequencyAxisSource, context);
+  vm.runInNewContext(fs.readFileSync(new URL('../../plugins/multires-spectrum.js', import.meta.url), 'utf8'), context);
   vm.runInNewContext(overlaySource, context);
   return context.window.SpectrumOverlay;
 }

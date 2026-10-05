@@ -191,6 +191,8 @@
             this.peaks = null;
             this.lastPeakTime = null;
             this.validCellCount = 0;
+            this.captureGeneration = null;
+            this.captureFrameIndex = -1;
         }
 
         _ensureNode() {
@@ -331,12 +333,25 @@
                 data.spectrumPluginId !== this.plugin.id ||
                 (data.mode && data.mode !== this.mode) ||
                 (data.quality || 'normal') !== settings.quality) return;
+            if (data.timing) {
+                if (!globalThis.SpectrumTapContract.valid(data.timing)) return;
+                const { generation, frameIndex } = data.timing;
+                if (this.captureGeneration !== null && generation < this.captureGeneration) return;
+                if (generation === this.captureGeneration && frameIndex <= this.captureFrameIndex) return;
+                if (generation !== this.captureGeneration) {
+                    this.pending = null;
+                    this.pendingFrames = [];
+                    this.inputLevels = this.levels = this.inputPeaks = this.peaks = null;
+                }
+                this.captureGeneration = generation;
+                this.captureFrameIndex = frameIndex;
+            }
             const hub = window.dspTelemetryHub;
             if (this.visualSyncEpoch !== hub?.visualSyncEpoch) {
                 this.pendingFrames = [];
                 this.visualSyncEpoch = hub?.visualSyncEpoch;
             }
-            const due = hub?.resolveDue(this.plugin.id, data.endFrame, 'spectrumOverlay');
+            const due = hub?.resolveDue(this.plugin.id, data.endFrame, 'spectrumOverlay', data);
             if (Number.isFinite(due) && due > (hub.now?.() ?? performance.now())) {
                 if (this.pendingFrames.length >= 256) this.pendingFrames.shift();
                 this.pendingFrames.push({ data, due });
@@ -369,7 +384,7 @@
             if (this.pending) {
                 const { inputBuffer, outputBuffer, buffer, bufferPosition, sampleRate,
                     inputSpectrum, outputSpectrum } = this.pending;
-                if (settings.quality === 'hq') {
+                if (outputSpectrum) {
                     this.inputLevels = inputSpectrum?.current ?? null;
                     this.levels = outputSpectrum.current;
                     this.validCellCount = outputSpectrum.validCellCount;

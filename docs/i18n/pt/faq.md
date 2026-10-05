@@ -90,6 +90,8 @@ Seus dispositivos de entrada e saída podem estar em loop. Certifique-se de que 
 | Sem saída de áudio | Para o aplicativo web, verifique se as saídas do sistema operacional e do navegador apontam para seu DAC/AMP. Para o aplicativo desktop, verifique o dispositivo de saída em **Configurar áudio**. |
 | Outros players reportam "CABLE Input em uso" | Certifique-se de que nenhum outro aplicativo esteja usando **CABLE Input**. |
 
+Os efeitos que precisam de WebAssembly exibem um aviso na parte superior do painel quando não podem funcionar. Ative **Usar processamento de áudio WebAssembly** em **Configuração de Áudio**. Se já estiver ativado, redefina o áudio ou recarregue o EffeTune. O aviso desaparece quando o efeito volta a funcionar.
+
 ### 2.5. Incompatibilidade de saída multicanal
 
 O EffeTune envia os canais em ordem numérica, até 16 canais. Faça **Output Channels** corresponder à configuração do dispositivo. Em uma configuração 7.1ch, defina o dispositivo e o EffeTune para 8ch e use as etiquetas de canais do dispositivo ao rotear o áudio traseiro. Em uma configuração de 16 canais, selecione 16 canais nos dois locais e confirme o mapeamento do dispositivo.

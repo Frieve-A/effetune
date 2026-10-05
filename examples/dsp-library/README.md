@@ -33,6 +33,15 @@ The deterministic standalone output is written to
 dependency. Browser security rules generally prevent AudioWorklet/WASM module
 loading directly from `file:` URLs.
 
+The demo version label is generated from the JavaScript package version.
+`build-manifest.json` records that version, the copied WASM metadata's
+`sourceDigest`, and SHA-256 hashes of every demo file. The Pages build copies
+the checkout's package artifacts; it does not download a registry release.
+Compare every manifest hash under `vendor/@effetune/dsp/` with the corresponding
+file in an installed npm package's `dist/` directory, including the JavaScript,
+worklet processor, WASM, and metadata, to establish whether all processing files
+use the same bytes.
+
 Verify that two clean builds contain identical bytes:
 
 ```console

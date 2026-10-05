@@ -22,6 +22,7 @@ function randomItem(rand, nm = NAMES[Math.floor(rand() * NAMES.length)]) {
     if (rand() < 0.3) item.ib = Math.floor(rand() * 3);
     if (rand() < 0.2) item.ob = Math.floor(rand() * 3);
     if (rand() < 0.2) item.ch = 'L';
+    if (rand() < 0.3) item.ms0 = 'left-measurement';
     return item;
 }
 
@@ -65,6 +66,7 @@ function mutate(rand, snapshot, serial) {
             if (rand() < 0.3) item.en = !item.en;
             if (rand() < 0.3) { if (item.ib === undefined) item.ib = 1; else delete item.ib; }
             if (rand() < 0.2) { if (item.ch === undefined) item.ch = 'R'; else delete item.ch; }
+            if (rand() < 0.3) { if (item.ms0 === undefined) item.ms0 = 'right-measurement'; else delete item.ms0; }
         } else if (roll < 0.92 && n > 0) {
             const i = Math.floor(rand() * n);
             next.pipeline[i] = randomItem(rand, NAMES[(NAMES.indexOf(next.pipeline[i].nm) + 1) % NAMES.length]);
@@ -182,7 +184,10 @@ test('validation rejects malformed batches before anything is applied', () => {
     assert.equal(validateOps([{ t: 'set', id: 'bad id', p: {} }], ok).error, 'invalid-op');
     assert.equal(validateOps([{ t: 'set', id: 'a', p: { nm: 'X' } }], ok).error, 'invalid-op');
     assert.equal(validateOps([{ t: 'set', id: 'a', p: JSON.parse('{"__proto__":1}') }], ok).error, 'invalid-op');
-    assert.equal(validateOps([{ t: 'set', id: 'a', p: {}, d: ['vl'] }], ok).error, 'invalid-op');
+    for (const key of ['nm', 'en', '__proto__', 'constructor', 'prototype', 1]) {
+        assert.equal(validateOps([{ t: 'set', id: 'a', p: {}, d: [key] }], ok).error, 'invalid-op');
+    }
+    assert.equal(validateOps([{ t: 'set', id: 'a', p: {}, d: ['ms0', 'mn0'] }], ok).ok, true);
     assert.equal(validateOps([{ t: 'ins', id: 'a', after: null, at: -1, item: { nm: 'Volume' } }], ok).error, 'invalid-op');
     assert.equal(validateOps([{ t: 'ins', id: 'a', after: null, at: 0, item: { nm: 'Nope' } }], ok).error, 'unknown-effect');
     assert.equal(validateOps([{ t: 'bypass', on: 1 }], ok).error, 'invalid-op');

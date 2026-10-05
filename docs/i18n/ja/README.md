@@ -143,7 +143,7 @@ PCではヘッダー、モバイルでは **プレーヤー** タブ、デスク
 10. 各エフェクトのエフェクトプリセットボタンをクリックすると、そのエフェクトだけの設定を保存または適用できます
 11. スライダーを細かく調整するには、Shiftキーを押しながらドラッグします。値は最小単位ずつ変化します
    - 負と正の値を取るスライダーは、0から現在値まで塗りつぶされます。Ratioのスライダーは1.0を起点にします。
-12. 対応する周波数・ノートグラフでは、グラフの軸に沿ってドラッグすると、その周波数の -12 dB サイン波をエフェクトチェーン経由で試聴できます。鍵盤表示では最も近い半音にスナップし、鍵の上をドラッグするとその鍵の音程になります
+12. 対応する周波数・ノートグラフでは、グラフの軸に沿ってドラッグすると、選んだ周波数をエフェクトチェーン経由で試聴できます。**設定 > 一般 > 周波数の試聴音**で、**サイン波**（初期値、-12 dB）または選んだ周波数を中心に帯域を絞った**BPFノイズ**を選べます。Note Spectrogram、Pitch Meter、Chroma Spiralと鍵盤表示の試聴音は常にサイン波です。鍵盤表示では最も近い半音にスナップし、鍵の上をドラッグするとその鍵の音程になります
 
 ### プリセットの使用
 
@@ -420,6 +420,7 @@ Effect Pipelineヘッダーの **パイプラインプリセット** ボタン�
 | Modulation | Rotary Speaker | ホーンとドラムの異なる回転を組み合わせたロータリースピーカー効果 | [詳細](plugins/modulation.md#rotary-speaker) |
 | Modulation | Tremolo | 音量ベースのモジュレーション効果 | [詳細](plugins/modulation.md#tremolo) |
 | Modulation | Wow Flutter | テープやレコード風のさりげないピッチ揺れでビンテージ感を追加 | [詳細](plugins/modulation.md#wow-flutter) |
+| Resonator | Adaptive Prediction | 音声の予測を学習し、残差の抽出や変化する共鳴音の生成に使います | [詳細](plugins/resonator.md#adaptive-prediction) |
 | Resonator | Horn Resonator | カスタマイズ可能な寸法でのホーン共振シミュレーション | [詳細](plugins/resonator.md#horn-resonator) |
 | Resonator | Horn Resonator Plus | より滑らかなホーンスピーカー共振で自然なリスニング向けの色づきを追加 | [詳細](plugins/resonator.md#horn-resonator-plus) |
 | Resonator | Modal Resonator | 最大5つのレゾネーターを備えた周波数共振効果 | [詳細](plugins/resonator.md#modal-resonator) |

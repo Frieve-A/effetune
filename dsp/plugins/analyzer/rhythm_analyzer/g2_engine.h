@@ -44,9 +44,17 @@ public:
         stream_.addChromaFrame(chroma_.chroma());
   }
 
-  void pushTick(const float flux[3][4], const float bandDb[3], float rmsDb,
-                const float lvl[3]) noexcept {
-    stream_.pushTick(flux, bandDb, rmsDb, lvl);
+  // Cold reset at tick r (before pushTick of tick r; r is a multiple of 8): the stream's silence
+  // run, the update grid and the boundary tracker start fresh at r; chroma continues.
+  void restart(std::int64_t r, std::uint64_t absoluteSamples) noexcept {
+    stream_.restart();
+    updater_.restart(stream_, r, absoluteSamples);
+    boundary_.restart(r);
+  }
+
+  void pushTick(const float flux[3][4], const float bandDb[3], float rmsDb, const float lvl[3],
+                bool quiet) noexcept {
+    stream_.pushTick(flux, bandDb, rmsDb, lvl, quiet);
   }
   void pushEvent(double t, int band, float strength) noexcept {
     stream_.pushEvent(t, band, strength);
@@ -94,7 +102,7 @@ private:
   // outputs: leaf values per leaf node. Every border is some split's threshold, so the largest
   // index the splits address bounds the borders.
   template <typename Model> static void touchModel(const Model &m, std::size_t outputs) noexcept {
-    const std::size_t nodes = std::size_t{m.tree_count} * ((std::size_t{1} << m.depth) - 1u);
+    const std::size_t nodes = m.splitCount();
     const std::size_t leaves = std::size_t{m.tree_count} << m.depth;
     std::size_t borders = 0u;
     for (std::size_t n = 0u; n < nodes; ++n) {

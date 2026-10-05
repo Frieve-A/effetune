@@ -978,6 +978,9 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         assert.equal(frame.volumeDb.length, 440);
         assert.ok(frame.volumeDb.every(Number.isFinite));
         assert.ok(frame.volumeDb.some(value => value > -240));
+        assert.equal(frame.revisionAge, 8);
+        assert.equal(frame.revisedLevels.length, 440);
+        assert.ok(frame.revisedLevels.every(value => Number.isFinite(value) && value >= 0 && value <= 1));
       }
     },
     {

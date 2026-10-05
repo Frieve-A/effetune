@@ -1,4 +1,4 @@
-import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, RHYTHM_SPANS, EFFECT_CATALOG, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
+import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
@@ -35,8 +35,25 @@ const THEME_COLOR_LABELS = {
 };
 // Every choice is divisible by 4 so the quarter guide lines stay on the snap grid.
 const GRID_DIVISIONS = [4, 8, 20, 40, 80];
+const MIN_ZOOM = .1, MAX_ZOOM = 4, FIT_MARGIN = 32;
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const midiNoteName = midi => `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+// Note names such as E2, F#3, or Bb1; NaN for anything else.
+const parseNoteName = text => {
+    const match = /^([A-G])([#b]?)(-?\d)$/i.exec(text);
+    return match ? NOTE_NAMES.indexOf(match[1].toUpperCase()) + (match[2] === '#' ? 1 : match[2] ? -1 : 0) +
+        (Number(match[3]) + 1) * 12 : NaN;
+};
+const GUITAR_TUNING_LABELS = {
+    standard: 'Standard (E A D G B E)', 'drop-d': 'Drop D', 'half-step-down': 'Half Step Down',
+    'd-standard': 'D Standard', 'drop-c': 'Drop C', dadgad: 'DADGAD', 'open-g': 'Open G', 'open-d': 'Open D',
+    'open-e': 'Open E', '7-string': '7-String', '8-string': '8-String', bass: 'Bass (4-String)',
+    'bass-drop-d': 'Bass Drop D', 'bass-5': 'Bass (5-String)', 'bass-6': 'Bass (6-String)', ukulele: 'Ukulele (G C E A)'
+};
+const GUITAR_SCALE_LABELS = {
+    major: 'Major', minor: 'Natural Minor', 'harmonic-minor': 'Harmonic Minor',
+    'major-pentatonic': 'Major Pentatonic', 'minor-pentatonic': 'Minor Pentatonic', blues: 'Blues'
+};
 const round = value => Math.round(value * 1000000) / 1000000;
 // Catalog choices are listed alphabetically by their displayed name.
 const byLabel = values => values.sort((a, b) => a[1].localeCompare(b[1]));
@@ -49,7 +66,7 @@ const copyChanges = (source, base, target, skip = []) => {
         else if (JSON.stringify(value) !== JSON.stringify(base?.[key])) target[key] = structuredClone(value);
     }
 };
-const RANGE_ENDPOINTS = { notes: ['mn', 'mx'], chroma: ['lo', 'hi'], 'rhythm-analyzer': ['mn', 'mx'] };
+const RANGE_ENDPOINTS = { notes: ['mn', 'mx'], guitar: ['fm', 'fx'], chroma: ['lo', 'hi'], 'rhythm-analyzer': ['mn', 'mx'] };
 // The Rhythm Analyzer keeps Max BPM >= 1.25 x Min BPM so the tempo search range stays
 // non-degenerate (see normalizeParams).
 const RANGE_MIN_RATIO = { 'rhythm-analyzer': 1.25 };
@@ -104,18 +121,62 @@ export class VisualizerEditor {
         this.marquee.className = 'visualizer-marquee';
         this.marquee.hidden = true;
         view.stage.appendChild(this.marquee);
-        view.stage.addEventListener('pointerdown', event => this.startDrag(event));
-        view.stage.addEventListener('pointermove', event => this.drag(event));
-        view.stage.addEventListener('pointerup', () => this.endDrag());
-        view.stage.addEventListener('pointercancel', () => this.endDrag());
-        view.stage.addEventListener('contextmenu', event => this.openContextMenu(event));
+        // Navigation belongs to the editing viewport, never to the saved layout or Undo history.
+        this.zoom = 1;
+        this.panX = this.panY = 0;
+        this.fitted = true;
+        const host = view.stageHost || view.stage;
+        this.viewportControls = document.createElement('div');
+        this.viewportControls.className = 'visualizer-viewport-controls';
+        this.viewportControls.hidden = true;
+        this.viewportControls.setAttribute('role', 'group');
+        this.zoomOutButton = this.button(this.viewportControls, '−', () => this.zoomAt(this.zoom / 1.25));
+        this.zoomOutput = document.createElement('output');
+        this.viewportControls.appendChild(this.zoomOutput);
+        this.zoomInButton = this.button(this.viewportControls, '+', () => this.zoomAt(this.zoom * 1.25));
+        this.fitButton = this.button(this.viewportControls, '', () => this.fitViewport());
+        for (const button of [this.zoomOutButton, this.zoomInButton, this.fitButton]) button.className = 'header-button';
+        this.updateUITexts();
+        host.appendChild(this.viewportControls);
+        host.addEventListener('pointerdown', event => this.startDrag(event));
+        host.addEventListener('pointermove', event => this.drag(event));
+        host.addEventListener('pointerup', event => this.endDrag(event));
+        host.addEventListener('pointercancel', event => this.endDrag(event));
+        host.addEventListener('lostpointercapture', event => this.endDrag(event));
+        host.addEventListener('contextmenu', event => this.openContextMenu(event));
+        host.addEventListener('wheel', event => this.onViewportWheel(event), { passive: false });
         view.stage.tabIndex = -1;
         view.stage.addEventListener('keydown', event => this.onStageKeyDown(event));
-        view.stage.addEventListener('keyup', () => this.view.commitPending());
+        document.addEventListener?.('keyup', event => {
+            if (event.code === 'Space' || event.key === ' ') this.setHandTool(false);
+            if (this.open) this.view.commitPending();
+        });
+        globalThis.addEventListener?.('blur', () => { this.setHandTool(false); this.endDrag(); });
+        this.updateZoomControls();
     }
 
-    t(key, fallback) { return this.view.t(key, fallback); }
+    t(key, fallback) { return this.view.t?.(key, fallback) ?? fallback; }
+    updateUITexts() {
+        const zoom = this.t('visualizer.zoomLevel', 'Zoom');
+        this.viewportControls.setAttribute('aria-label', zoom);
+        this.zoomOutput.setAttribute('aria-label', zoom);
+        for (const [button, key, fallback] of [
+            [this.zoomOutButton, 'zoomOut', 'Zoom out'],
+            [this.zoomInButton, 'zoomIn', 'Zoom in'],
+            [this.fitButton, 'fitView', 'Fit']
+        ]) {
+            button.title = this.t(`visualizer.${key}`, fallback);
+            button.setAttribute('aria-label', button.title);
+        }
+        this.fitButton.textContent = this.fitButton.title;
+        const hint = this.t('visualizer.navigationHint', 'Scroll to pan · Ctrl/⌘+scroll to zoom · Space+drag to pan');
+        this.viewportControls.title = hint;
+        this.view.stage.setAttribute('aria-description', hint);
+        if (this.open) this.render();
+    }
     setOpen(open) {
+        if (!open) { this.setHandTool(false); this.endDrag(); }
+        else if (!this.open) this.fitted = true;
         this.open = open;
         if (!open) this.closeContextMenu();
         this.navigation.hidden = !open;
@@ -124,8 +185,86 @@ export class VisualizerEditor {
         this.updateGrid();
         this.view.stage.tabIndex = open ? 0 : -1;
         this.view.root.classList.toggle('is-editing', open);
+        this.view.stageHost?.classList.toggle('editing', open);
+        this.viewportControls.hidden = !open;
+        if (!open) Object.assign(this.view.stage.style, { left: '', top: '' });
+        else this.fitViewport();
         if (open) this.render();
         this.updateSelection();
+    }
+    bodyZoom() { return parseFloat(document.body?.style?.zoom) || 1; }
+    // Sizes are unzoomed CSS pixels; normalized item coordinates always refer to the artboard.
+    updateViewport(width, height) {
+        const [aw, ah] = this.view.layout.aspect.split(':').map(Number);
+        this.viewport = { width, height, aspect: aw / ah };
+        if (this.fitted) {
+            this.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM,
+                Math.min(Math.max(1, width - FIT_MARGIN * 2), Math.max(1, height - FIT_MARGIN * 2) * this.viewport.aspect) / REFERENCE_WIDTH));
+            this.panX = this.panY = 0;
+        }
+        return this.applyViewport();
+    }
+    applyViewport() {
+        if (!this.viewport) return null;
+        const width = REFERENCE_WIDTH * this.zoom, height = width / this.viewport.aspect;
+        Object.assign(this.view.stage.style, {
+            width: `${width}px`, height: `${height}px`,
+            left: `${(this.viewport.width - width) / 2 + this.panX}px`,
+            top: `${(this.viewport.height - height) / 2 + this.panY}px`
+        });
+        this.updateZoomControls();
+        return { width, height };
+    }
+    fitViewport() {
+        this.fitted = true;
+        const host = this.view.stageHost?.getBoundingClientRect();
+        if (host) this.updateViewport(host.width / this.bodyZoom(), host.height / this.bodyZoom());
+        else if (this.viewport) this.updateViewport(this.viewport.width, this.viewport.height);
+    }
+    zoomAt(zoom, clientX, clientY) {
+        if (!this.open || !this.viewport) return;
+        zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+        const host = this.view.stageHost.getBoundingClientRect(), bodyZoom = this.bodyZoom();
+        const x = clientX === undefined ? this.viewport.width / 2 : (clientX - host.left) / bodyZoom;
+        const y = clientY === undefined ? this.viewport.height / 2 : (clientY - host.top) / bodyZoom;
+        const ratio = zoom / this.zoom;
+        // Preserve the artboard point beneath the cursor; button and key zoom use the viewport center.
+        this.panX = x - this.viewport.width / 2 - (x - this.viewport.width / 2 - this.panX) * ratio;
+        this.panY = y - this.viewport.height / 2 - (y - this.viewport.height / 2 - this.panY) * ratio;
+        this.zoom = zoom;
+        this.fitted = false;
+        this.applyViewport();
+    }
+    panBy(dx, dy) {
+        if (!this.open || !this.viewport) return;
+        this.panX += dx;
+        this.panY += dy;
+        this.fitted = false;
+        this.applyViewport();
+    }
+    onViewportWheel(event) {
+        if (!this.open || event.target.closest('button')) return;
+        event.preventDefault();
+        // Keep Electron's page zoom handler from also consuming this gesture.
+        event.stopPropagation();
+        if (this.dragging || this.marqueeStart || this.panning) return;
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.viewport?.height || 1 : 1;
+        if (event.ctrlKey || event.metaKey) this.zoomAt(this.zoom * Math.exp(-event.deltaY * unit * .002), event.clientX, event.clientY);
+        else {
+            const dx = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
+            const dy = event.shiftKey && !event.deltaX ? 0 : event.deltaY;
+            this.panBy(-dx * unit / this.bodyZoom(), -dy * unit / this.bodyZoom());
+        }
+    }
+    updateZoomControls() {
+        const label = `${Math.round(this.zoom * 100)}%`;
+        if (this.zoomOutput.textContent !== label) this.zoomOutput.textContent = label;
+        this.zoomOutButton.disabled = this.zoom <= MIN_ZOOM;
+        this.zoomInButton.disabled = this.zoom >= MAX_ZOOM;
+    }
+    setHandTool(active) {
+        this.handTool = active;
+        this.view.stageHost?.classList.toggle('hand-tool', active);
     }
     // Off keeps free placement; arrow and Ctrl+D steps then use the default division.
     gridStep() { return 1 / (this.gridDivisions || 40); }
@@ -228,6 +367,9 @@ export class VisualizerEditor {
     resetForLayout() {
         this.dragging = null;
         this.marqueeStart = null;
+        this.panning = null;
+        this.releasePointer();
+        this.view.stageHost?.classList.remove('panning');
         this.marquee.hidden = true;
         const ids = new Set(this.view.layout.items.map(item => item.id));
         for (const id of this.selection) if (!ids.has(id)) this.selection.delete(id);
@@ -276,25 +418,26 @@ export class VisualizerEditor {
         const row = document.createElement('div');
         row.className = `visualizer-field${inInspector ? ' parameter-row' : ''}${kind === 'checkbox' ? ' checkbox-row' : ''}`;
         const name = document.createElement('label'); name.textContent = label;
-        const input = document.createElement(kind === 'select' ? 'select' : 'input');
+        const input = document.createElement(kind === 'select' || kind === 'textarea' ? kind : 'input');
         input.id = `visualizer-${crypto.randomUUID()}`; name.htmlFor = input.id;
         if (kind === 'select') {
             for (const entry of options.values) {
                 const option = document.createElement('option');
                 option.value = Array.isArray(entry) ? entry[0] : entry;
                 option.textContent = Array.isArray(entry) ? entry[1] : entry;
+                if (options.gradientPreview) option.style.backgroundImage = options.gradientPreview(option.value);
                 input.appendChild(option);
             }
-        } else input.type = kind;
-        for (const key of ['min', 'max', 'step', 'accept', 'disabled']) if (options[key] !== undefined) input[key] = options[key];
+        } else if (kind !== 'textarea') input.type = kind;
+        for (const key of ['min', 'max', 'step', 'accept', 'disabled', 'maxLength', 'rows']) if (options[key] !== undefined) input[key] = options[key];
         if (kind === 'checkbox') input.checked = value; else input.value = value;
         const output = kind === 'range' && options.format ? document.createElement('output') : null;
         if (output) output.textContent = options.format(value);
-        const continuous = kind === 'range' || kind === 'color';
+        const continuous = kind === 'range' || kind === 'color' || kind === 'textarea';
         input.addEventListener(continuous ? 'input' : 'change', () => {
             const next = kind === 'checkbox' ? input.checked : kind === 'range' || kind === 'number' ? Number(input.value) : kind === 'file' ? input.files[0] : input.value;
             if (output) output.textContent = options.format(next);
-            // Slider and color input streams become one history entry, recorded on change.
+            // Continuous input streams become one history entry, recorded on change.
             this.inputActive = continuous;
             try { action(next); } finally { this.inputActive = false; }
         });
@@ -448,13 +591,35 @@ export class VisualizerEditor {
             const channels = [['', '1–2'], ['L', 'L'], ['R', 'R'], ...Array.from({ length: 7 }, (_, i) => [`${i * 2 + 3}${i * 2 + 4}`, `${i * 2 + 3}–${i * 2 + 4}`]), ...Array.from({ length: 16 }, (_, i) => [`${i + 1}`, `${i + 1}`])];
             this.field(properties, this.t('visualizer.channel', 'Channel'), 'select', item.channel || '', value => { item.channel = value || null; this.changed(); }, { values: channels });
         }
+        if (item.type === 'text') this.field(properties, this.t('visualizer.textContent', 'Text'), 'textarea', item.params.text,
+            value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
         this.styleToggles(properties, item);
         if (VISUAL_TYPES.includes(item.type)) this.parameters(properties, item);
         if (item.type === 'artwork') this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
         else if (TEXT_STYLE_TYPES.includes(item.type)) this.textStyle(properties, item.style, item.type);
+        else if (item.type === 'shape') this.shapeStyle(properties, item.style);
         if (item.type !== 'artwork') this.palette(this.root, item.palette, item.type);
         this.effects(this.root, item.effects, 'item', item.type);
+    }
+
+    shapeStyle(parent, style) {
+        const set = key => value => { style[key] = value; this.changed(); };
+        const labels = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', line: 'Line' };
+        this.field(parent, this.t('visualizer.shape', 'Shape'), 'select', style.shape, value => {
+            style.shape = value; this.changed(true);
+        }, { values: SHAPES.map(shape => [shape, this.t(`visualizer.shape.${shape}`, labels[shape])]) });
+        if (style.shape !== 'line') {
+            this.field(parent, this.t('visualizer.backplateFillOpacity', 'Fill opacity'), 'range', style.fillOpacity,
+                set('fillOpacity'), { min: 0, max: 1, step: 0.01, format: value => `${Math.round(value * 100)}%` });
+            this.field(parent, this.t('visualizer.backplateBorder', 'Border color'), 'color', style.borderColor, set('borderColor'));
+        }
+        this.field(parent, this.t('visualizer.backplateBorderWidth', 'Border width'), 'range', style.borderWidth,
+            set('borderWidth'), { min: 0, max: 20, step: 0.5 });
+        this.field(parent, this.t('visualizer.borderOpacity', 'Border opacity'), 'range', style.borderOpacity,
+            set('borderOpacity'), { min: 0, max: 1, step: 0.01, format: value => `${Math.round(value * 100)}%` });
+        if (style.shape === 'rectangle') this.field(parent, this.t('visualizer.backplateRadius', 'Corner radius'), 'range', style.radius,
+            set('radius'), { min: 0, max: 200, step: 1 });
     }
 
     textStyle(parent, style, type = null) {
@@ -504,11 +669,13 @@ export class VisualizerEditor {
         const params = item.params;
         const analogMeter = item.type === 'analog-meter';
         const rhythm = item.type === 'rhythm-analyzer';
+        const guitar = item.type === 'guitar';
         const update = (key, value) => {
             params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
-                (analogMeter && ['sc', 'ln', 'ls'].includes(key)) || (rhythm && key === 'sp') ? Number(value) : value;
-            // Mode and PPM Scale decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time.
-            this.changed((analogMeter && (key === 'md' || key === 'sc')) || key === 'pk');
+                (analogMeter && ['sc', 'ln', 'ls'].includes(key)) || (rhythm && key === 'sp') || (guitar && key === 'ro') ? Number(value) : value;
+            // Mode and PPM Scale decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time;
+            // a fixed Root enables the Scale Guide.
+            this.changed((analogMeter && (key === 'md' || key === 'sc')) || key === 'pk' || (guitar && key === 'ro'));
         };
         const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values });
         const orientation = () => select('orientation', 'Orientation', [
@@ -624,6 +791,43 @@ export class VisualizerEditor {
             check('kb', 'Keyboard');
             // 100% is half the length of real piano keys; 200% is the real proportion.
             range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
+        } else if (guitar) {
+            const preset = Object.keys(GUITAR_TUNINGS).find(key => GUITAR_TUNINGS[key].join() === params.tn.join()) ?? 'custom';
+            this.field(parent, this.t('visualizer.param.tn', 'Tuning'), 'select', preset, value => {
+                if (value === 'custom') return;
+                params.tn = [...GUITAR_TUNINGS[value]];
+                this.changed(true);
+            }, { values: [...Object.entries(GUITAR_TUNING_LABELS).map(([key, label]) =>
+                [key, this.t(`visualizer.guitarTuning.${key}`, label)]), ['custom', this.t('visualizer.guitarTuning.custom', 'Custom')]] });
+            // Open strings from the string drawn at the bottom; invalid text restores the current tuning.
+            this.field(parent, this.t('visualizer.param.openStrings', 'Open Strings'), 'text', params.tn.map(midiNoteName).join(' '), value => {
+                const tuning = value.trim().split(/[\s,]+/).map(parseNoteName);
+                if (tuning.length <= 10 && tuning.every(midi => midi >= 21 && midi <= 108)) params.tn = tuning;
+                this.changed(true);
+            });
+            rangePair([['fm', 'Lowest Fret', 0, 24], ['fx', 'Highest Fret', 0, 24]], String);
+            range('cp', 'Capo', 0, 12, 1, value => value ? String(value) : this.t('visualizer.value.none', 'None'));
+            select('pm', 'Positions', [['all', this.t('visualizer.guitar.all', 'All Positions')],
+                ['shape', this.t('visualizer.guitar.shape', 'One Shape')],
+                ['shape-dim', this.t('visualizer.guitar.shape-dim', 'One Shape + Alternatives')]]);
+            select('lb', 'Note Labels', [['none', this.t('visualizer.value.none', 'None')],
+                ['sharp', this.t('visualizer.guitar.sharp', 'Note Names (♯)')],
+                ['flat', this.t('visualizer.guitar.flat', 'Note Names (♭)')],
+                ['interval', this.t('visualizer.guitar.interval', 'Intervals')]]);
+            select('ro', 'Root', [['-1', this.t('visualizer.guitar.auto', 'Auto (Lowest Note)')],
+                ...NOTE_NAMES.map((name, index) => [String(index), name])]);
+            if (params.ro >= 0) select('sk', 'Scale Guide', [['none', this.t('visualizer.value.none', 'None')],
+                ...Object.keys(GUITAR_SCALES).map(key => [key, this.t(`visualizer.guitar.${key}`, GUITAR_SCALE_LABELS[key])])]);
+            range('th', 'Threshold', 0.1, 0.9, 0.05, value => `${Math.round(value * 100)}%`);
+            range('cf', 'Fall Time', 0, 2, 0.05, value => `${value.toFixed(2)} s`);
+            select('ly', 'Layout', [['Horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')], ['Vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]]);
+            check('vs', 'Size by Volume');
+            check('fl', 'Fretless');
+            check('rs', 'Realistic Fret Spacing');
+            check('fb', 'Fretboard Fill');
+            check('mk', 'Fret Markers');
+            check('fn', 'Fret Numbers');
+            check('sn', 'String Names');
         } else if (item.type === 'chroma') {
             select('dm', 'Display', [['0', this.t('visualizer.value.dots', 'Dots')], ['1', this.t('visualizer.value.fill', 'Fill')]]);
             rangePair([['lo', 'Lowest Octave', 1, 8], ['hi', 'Highest Octave', 1, 9]], value => String(value));
@@ -655,6 +859,7 @@ export class VisualizerEditor {
             if (active('ln')) select('ln', 'Needle', choices(['Momentary', 'Short-term']));
             if (active('tg')) range('tg', 'Target', -36, -10, 1, value => `${value} LUFS`);
             if (active('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
+            this.meterAppearance(parent, item);
         } else if (rhythm) {
             rangePair([['mn', 'Min BPM', 40, 192, 'bpmMin'], ['mx', 'Max BPM', 50, 240, 'bpmMax']],
                 value => `${value} BPM`);
@@ -668,13 +873,57 @@ export class VisualizerEditor {
             this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value));
         }
         if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, value => `${value > 0 ? '+' : ''}${value} dB`);
+        if (guitar) return;
         check('showAxes', 'Axes and grid');
         check('showAxisNumbers', 'Axis labels and numbers');
     }
 
+    meterAppearance(parent, item) {
+        const params = item.params;
+        const group = (key, label) => this.group(parent, this.t(`visualizer.meter.${key}`, label));
+        const field = (parent, key, label, type, options = {}) => this.field(parent,
+            this.t(`visualizer.param.${key}`, label), type, params[key], value => {
+                params[key] = value; this.changed(key === 'needleTip');
+            }, options);
+        const range = (parent, key, label, min, max, step = 1, format = String) =>
+            field(parent, key, label, 'range', { min, max, step, format });
+        const check = (parent, key, label) => field(parent, key, label, 'checkbox');
+        const select = (parent, key, label, entries) => field(parent, key, label, 'select', {
+            values: entries.map(([value, label]) => [value, this.t(`visualizer.meter.${value}`, label)])
+        });
+        const percent = value => `${Math.round(value * 100)}%`;
+        const geometry = group('dial', 'Dial geometry');
+        range(geometry, 'dialCurvature', 'Dial curvature', 0, 1, 0.01, percent);
+        range(geometry, 'dialSweep', 'Dial sweep', 30, 160, 1, value => `${value}°`);
+        range(geometry, 'pivotOffset', 'Pivot below dial', 0, 100, 1, value => `${value}%`);
+        const needle = group('needle', 'Needle appearance');
+        range(needle, 'needleStart', 'Hidden needle base', 0, 90, 1, value => `${value}%`);
+        range(needle, 'needleLength', 'Needle length', 50, 120, 1, value => `${value}%`);
+        range(needle, 'needleWidth', 'Needle width', 0.5, 8, 0.5);
+        select(needle, 'needleTip', 'Needle tip', [['line', 'Line'], ['taper', 'Tapered'], ['arrow', 'Arrow']]);
+        if (params.needleTip === 'arrow') range(needle, 'arrowAspect', 'Arrow tip aspect ratio', 0.25, 4, 0.05,
+            value => `${value.toFixed(2)}:1`);
+        range(needle, 'hubSize', 'Pivot hub size', 0, 20, 0.5);
+        const labels = group('labels', 'Dial labels');
+        for (const [key, label] of [['showReadout', 'Numeric reading'], ['showChannel', 'Channel heading'],
+            ['showMode', 'Mode heading'], ['showSigns', '− / + marks'], ['positiveLabels', 'Positive value signs'],
+            ['showRedZone', 'Red zone']]) check(labels, key, label);
+        if (params.md === 'VU') {
+            check(labels, 'showPercent', 'Secondary % scale');
+            select(labels, 'readoutUnit', 'Reading unit', [['scale', 'Scale unit'], ['percent', 'Percent']]);
+        }
+        const face = group('face', 'Meter face');
+        select(face, 'faceShape', 'Window shape', [['rectangle', 'Rectangle'], ['ellipse', 'Ellipse'], ['circle', 'Circle']]);
+        field(face, 'faceColor', 'Face color', 'color');
+        range(face, 'faceOpacity', 'Face opacity', 0, 1, 0.01, percent);
+        field(face, 'faceBorderColor', 'Face border color', 'color');
+        range(face, 'faceBorderWidth', 'Face border width', 0, 20, 0.5);
+        range(face, 'vignette', 'Vignette', 0, 1, 0.01, percent);
+    }
+
     palette(parent, palette, itemType = null) {
         const group = this.group(parent, this.t('visualizer.palette', 'Palette'));
-        const octave = itemType === 'notes' || itemType === 'chroma';
+        const octave = itemType === 'notes' || itemType === 'guitar' || itemType === 'chroma';
         if (itemType) {
             const labels = {
                 solid: this.t('visualizer.solid', 'Solid'),
@@ -684,6 +933,8 @@ export class VisualizerEditor {
             };
             const modes = paletteModesForType(itemType).map(mode => [mode, labels[mode]]);
             this.field(group, this.t('visualizer.colorMode', 'Color mode'), 'select', palette.mode, value => {
+                if (value === 'gradient' && palette.direction === undefined && !GRADIENT_DIRECTION_TYPES.includes(itemType))
+                    palette.direction = 'linear';
                 palette.mode = value; this.changed(true);
             }, { values: modes });
             if (palette.mode === 'solid') {
@@ -693,25 +944,41 @@ export class VisualizerEditor {
             }
             if (palette.mode !== 'gradient') return;
         }
-        if (GRADIENT_DIRECTION_TYPES.includes(itemType)) {
-            this.field(group, this.t('visualizer.gradientDirection', 'Gradient direction'), 'radio', palette.direction ?? 'frequency', value => {
+        if (itemType) {
+            const frequency = GRADIENT_DIRECTION_TYPES.includes(itemType);
+            this.field(group, this.t('visualizer.gradientDirection', 'Gradient direction'), 'radio', palette.direction ?? (frequency ? 'frequency' : 'linear'), value => {
                 palette.direction = value; this.changed(true);
             }, { values: [
-                ['frequency', this.t('visualizer.gradientDirection.frequency', 'Frequency')],
-                ['intensity', this.t('visualizer.gradientDirection.intensity', 'Intensity')]
+                ...(frequency ? [
+                    ['frequency', this.t('visualizer.gradientDirection.frequency', 'Frequency')],
+                    ['intensity', this.t('visualizer.gradientDirection.intensity', 'Intensity')]
+                ] : [['linear', this.t('visualizer.gradientDirection.linear', 'Linear')]]),
+                ['radial', this.t('visualizer.gradientDirection.radial', 'Radial')]
             ] });
+            if (palette.direction !== 'radial') this.field(group, this.t('visualizer.gradientAngle', 'Gradient angle (°)'), 'range', palette.angle ?? 0, value => {
+                palette.angle = value;
+                if (!frequency) palette.direction = 'linear';
+                this.changed();
+            }, { min: -180, max: 180, step: 1, format: value => `${value}°` });
         }
         const presetRow = document.createElement('div');
         presetRow.className = 'visualizer-select-action-row'; group.appendChild(presetRow);
-        const choices = this.field(presetRow, this.t('visualizer.gradient', 'Gradient'), 'select', '', () => {},
-            { values: byLabel(GRADIENT_PRESETS.map(({ id, name }) => [id, name])) });
+        const presets = byLabel(GRADIENT_PRESETS.map(({ id, name }) => [id, name]));
+        this.gradientSelections ||= new WeakMap();
+        const selectedPreset = this.gradientSelections.get(palette) ?? presets[0][0];
+        const choices = this.field(presetRow, this.t('visualizer.gradient', 'Gradient'), 'select', selectedPreset, value => {
+            this.gradientSelections.set(palette, value);
+        }, {
+            values: presets,
+            gradientPreview: id => `linear-gradient(90deg, ${GRADIENT_PRESETS.find(entry => entry.id === id).colors.join(', ')})`
+        });
         this.button(presetRow, this.t('visualizer.apply', 'Apply'), () => {
             const colors = GRADIENT_PRESETS.find(entry => entry.id === choices.value).colors;
             palette.stops = colors.map((color, i) => ({ pos: colors.length === 1 ? 0 : i / (colors.length - 1), color }));
             if (octave) palette.mapping = 'range';
             this.changed(true);
         });
-        if (octave && palette.direction !== 'intensity') this.field(group, this.t('visualizer.paletteMapping', 'Color mapping'), 'radio', palette.mapping, value => { palette.mapping = value; this.changed(true); }, { values: ['range', 'octave'].map(value => [value, this.t(`visualizer.paletteMapping.${value}`, value === 'range' ? 'Full range' : 'One octave')]) });
+        if (octave && (palette.direction ?? 'frequency') === 'frequency') this.field(group, this.t('visualizer.paletteMapping', 'Color mapping'), 'radio', palette.mapping, value => { palette.mapping = value; this.changed(true); }, { values: ['range', 'octave'].map(value => [value, this.t(`visualizer.paletteMapping.${value}`, value === 'range' ? 'Full range' : 'One octave')]) });
         palette.stops.forEach((stop, index) => {
             const row = document.createElement('div'); row.className = 'visualizer-stop'; group.appendChild(row);
             const colorRow = document.createElement('div'); colorRow.className = 'visualizer-stop-color-row'; row.appendChild(colorRow);
@@ -725,7 +992,16 @@ export class VisualizerEditor {
         addRow.className = 'visualizer-add-stop-row'; group.appendChild(addRow);
         const add = this.button(addRow, this.t('visualizer.addStop', 'Add color stop'), () => { palette.stops.push({ pos: 1, color: '#ffffff' }); this.changed(true); }); // theme-allow: Editable scene palette stop default.
         add.disabled = palette.stops.length >= (octave ? 13 : 8);
+        const reverseRow = document.createElement('div');
+        reverseRow.className = 'visualizer-add-stop-row'; group.appendChild(reverseRow);
+        this.button(reverseRow, this.t('visualizer.reverseGradient', 'Reverse gradient'), () => {
+            palette.stops = palette.stops.map(stop => ({ ...stop, pos: round(1 - stop.pos) }))
+                .reverse().sort((a, b) => a.pos - b.pos);
+            this.changed(true);
+        });
         this.field(group, this.t('visualizer.motion', 'Color motion'), 'radio', palette.motion.mode, value => { palette.motion.mode = value; this.changed(true); }, { values: ['none', 'hue', 'scroll'].map(value => [value, this.t(`visualizer.value.${value}`, value)]) });
+        if (palette.motion.mode !== 'none') this.field(group, this.t('visualizer.reverseMotion', 'Reverse color motion'), 'checkbox', palette.motion.reverse === true,
+            value => { palette.motion.reverse = value; this.changed(); });
         this.field(group, this.t('visualizer.speed', 'Speed'), 'range', palette.motion.speed, value => { palette.motion.speed = value; this.changed(); }, { min: 0, max: 4, step: .05, disabled: palette.motion.mode === 'none' });
     }
 
@@ -761,6 +1037,13 @@ export class VisualizerEditor {
             down.disabled = index === effects.length - 1;
             this.iconButton(actions, 'delete', this.t('visualizer.delete', 'Delete'), () => { effects.splice(index, 1); this.changed(true); });
             this.field(block, this.t('visualizer.amount', 'Amount'), 'range', effect.amount, value => { effect.amount = value; this.changed(); }, { min: 0, max: 1, step: .01, disabled: !effect.enabled });
+            if (effect.type === 'transform') {
+                for (const { key, label, min, max, unit } of TRANSFORM_PARAMETERS) {
+                    this.field(block, this.t(`visualizer.transform.${key}`, label), 'range', effect[key],
+                        value => { effect[key] = value; this.changed(); },
+                        { min, max, step: 1, format: value => `${value}${unit}`, disabled: !effect.enabled });
+                }
+            }
             if (effect.type === 'trail-feedback') {
                 this.field(block, this.t('visualizer.feedbackZoom', 'Zoom'), 'range', effect.zoom ?? 2,
                     value => { effect.zoom = value; this.changed(); },
@@ -819,15 +1102,28 @@ export class VisualizerEditor {
         return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
     }
     startDrag(event) {
+        if (!this.open || event.target.closest('button') || this.dragging || this.marqueeStart || this.panning) return;
+        if (event.button === 1 || ((event.button === 0 || event.button === undefined) && this.handTool)) {
+            event.preventDefault();
+            this.closeContextMenu();
+            this.view.stage.focus({ preventScroll: true });
+            this.activePointerId = event.pointerId;
+            this.view.stage.setPointerCapture(event.pointerId);
+            this.panning = { x: event.clientX, y: event.clientY };
+            this.view.stageHost?.classList.add('panning');
+            return;
+        }
         // Secondary clicks, including Ctrl+click on Mac, are left to the context menu.
-        if (!this.open || event.button > 0 || (IS_MAC && event.ctrlKey) || event.target.closest('button')) return;
+        if (event.button > 0 || (IS_MAC && event.ctrlKey)) return;
         const point = this.point(event);
         const corner = event.target.dataset.corner;
         const hit = corner ? this.selectedItems()[0] : this.clickTarget(this.itemsAt(point), event);
         // Shift+click only toggles the selection; it never starts a drag.
         if (hit && !corner && !this.clickItem(hit.id, event)) { this.refresh(); return; }
         this.view.stage.focus({ preventScroll: true });
-        event.preventDefault(); this.view.stage.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        this.activePointerId = event.pointerId;
+        this.view.stage.setPointerCapture(event.pointerId);
         if (!hit) {
             if (!event.shiftKey) this.clearSelection();
             this.marqueeStart = { point, base: new Set(this.selection) };
@@ -839,12 +1135,18 @@ export class VisualizerEditor {
     }
     beginDrag(grabbed, items, point, corner = null, duplicateOnMove = false) {
         this.dragging = { items, grabbed, point, rect: { ...grabbed.rect }, corner, moved: false,
-            starts: items.map(item => ({ ...item.rect })), box: itemsBox(items), duplicateOnMove };
+            starts: items.map(item => ({ ...item.rect })), duplicateOnMove };
     }
     drag(event) {
+        if (this.activePointerId != null && event.pointerId != null && event.pointerId !== this.activePointerId) return;
+        if (this.panning) {
+            this.panBy((event.clientX - this.panning.x) / this.bodyZoom(), (event.clientY - this.panning.y) / this.bodyZoom());
+            this.panning = { x: event.clientX, y: event.clientY };
+            return;
+        }
         if (this.marqueeStart) { this.updateMarquee(event); return; }
         if (!this.dragging) return;
-        const { point, rect, corner, box, starts } = this.dragging;
+        const { point, rect, corner, starts } = this.dragging;
         const current = this.point(event), dx = current.x - point.x, dy = current.y - point.y;
         if (dx === 0 && dy === 0) return;
         this.dragging.moved = true;
@@ -860,25 +1162,28 @@ export class VisualizerEditor {
         const snap = value => divisions ? Math.round(value * divisions) / divisions : value;
         const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
         if (!corner) {
-            // The grabbed item snaps; the whole selection shares its offset and stays inside the stage.
-            const x = clamp(snap(rect.x + dx), rect.x - box.x0, 1 - box.x1 + rect.x);
-            const y = clamp(snap(rect.y + dy), rect.y - box.y0, 1 - box.y1 + rect.y);
+            // Snap the grabbed item and preserve the spacing of every item in the selection.
+            const x = snap(rect.x + dx), y = snap(rect.y + dy);
             this.dragging.items.forEach((item, index) => {
                 const start = starts[index];
-                item.rect.x = clamp(x + (start.x - rect.x), 0, 1 - start.w);
-                item.rect.y = clamp(y + (start.y - rect.y), 0, 1 - start.h);
+                item.rect.x = x + (start.x - rect.x);
+                item.rect.y = y + (start.y - rect.y);
             });
         } else {
             const item = this.dragging.grabbed;
-            const left = corner.includes('w') ? clamp(snap(rect.x + dx), 0, rect.x + rect.w - .02) : rect.x;
-            const top = corner.includes('n') ? clamp(snap(rect.y + dy), 0, rect.y + rect.h - .02) : rect.y;
-            const right = corner.includes('e') ? clamp(snap(rect.x + rect.w + dx), left + .02, 1) : rect.x + rect.w;
-            const bottom = corner.includes('s') ? clamp(snap(rect.y + rect.h + dy), top + .02, 1) : rect.y + rect.h;
+            const left = corner.includes('w') ? clamp(snap(rect.x + dx), rect.x + rect.w - MAX_ITEM_SIZE, rect.x + rect.w - MIN_ITEM_SIZE) : rect.x;
+            const top = corner.includes('n') ? clamp(snap(rect.y + dy), rect.y + rect.h - MAX_ITEM_SIZE, rect.y + rect.h - MIN_ITEM_SIZE) : rect.y;
+            const right = corner.includes('e') ? clamp(snap(rect.x + rect.w + dx), left + MIN_ITEM_SIZE, left + MAX_ITEM_SIZE) : rect.x + rect.w;
+            const bottom = corner.includes('s') ? clamp(snap(rect.y + rect.h + dy), top + MIN_ITEM_SIZE, top + MAX_ITEM_SIZE) : rect.y + rect.h;
             item.rect = { x: left, y: top, w: right - left, h: bottom - top };
         }
         this.changed();
     }
-    endDrag() {
+    endDrag(event) {
+        if (event && this.activePointerId != null && event.pointerId !== this.activePointerId) return;
+        this.panning = null;
+        this.view.stageHost?.classList.remove('panning');
+        this.releasePointer();
         if (this.marqueeStart) { this.marqueeStart = null; this.marquee.hidden = true; }
         const dragging = this.dragging;
         this.dragging = null;
@@ -889,12 +1194,16 @@ export class VisualizerEditor {
         }
         this.view.commitPending();
     }
+    releasePointer() {
+        const pointer = this.activePointerId;
+        this.activePointerId = null;
+        if (pointer != null && this.view.stage.hasPointerCapture?.(pointer)) this.view.stage.releasePointerCapture(pointer);
+    }
     // Marquee selection changes only the selection, so it records no history.
     updateMarquee(event) {
         const start = this.marqueeStart.point, current = this.point(event);
-        const clamp = value => Math.max(0, Math.min(1, value));
-        const x0 = clamp(Math.min(start.x, current.x)), x1 = clamp(Math.max(start.x, current.x));
-        const y0 = clamp(Math.min(start.y, current.y)), y1 = clamp(Math.max(start.y, current.y));
+        const x0 = Math.min(start.x, current.x), x1 = Math.max(start.x, current.x);
+        const y0 = Math.min(start.y, current.y), y1 = Math.max(start.y, current.y);
         this.marquee.hidden = false;
         Object.assign(this.marquee.style, rectStyle({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }));
         const next = new Set(this.marqueeStart.base);
@@ -912,13 +1221,11 @@ export class VisualizerEditor {
             this.view.warn('visualizer.itemLimit', 'A layout can have up to {max} items. Delete some items, then try again.', { max: MAX_ITEMS });
             return null;
         }
-        const step = this.gridStep(), box = itemsBox(sources);
-        const shift = (low, high) => high + step <= 1 ? step : -Math.min(step, low);
-        const dx = shift(box.x0, box.x1), dy = shift(box.y0, box.y1);
+        const step = this.gridStep();
         const copies = sources.map(item => {
             const copy = structuredClone(item);
             copy.id = createItem(item.type).id;
-            if (offset) { copy.rect.x = round(copy.rect.x + dx); copy.rect.y = round(copy.rect.y + dy); }
+            if (offset) { copy.rect.x = round(copy.rect.x + step); copy.rect.y = round(copy.rect.y + step); }
             return copy;
         });
         const last = items.findLastIndex(item => this.selection.has(item.id));
@@ -965,9 +1272,11 @@ export class VisualizerEditor {
     openContextMenu(event) {
         if (!this.open || event.target.closest('button')) return;
         event.preventDefault();
+        if (this.panning || this.handTool) return;
         // A touch long press that already moved belongs to the drag or marquee.
         if (this.dragging?.moved || (this.marqueeStart && !this.marquee.hidden)) return;
         this.dragging = null; this.marqueeStart = null;
+        this.releasePointer();
         const hit = this.itemsAt(this.point(event))[0];
         if (hit && !this.selection.has(hit.id)) this.selection = new Set([hit.id]);
         this.refresh();
@@ -1031,7 +1340,26 @@ export class VisualizerEditor {
         if (restoreFocus) this.view.stage.focus({ preventScroll: true });
     }
     onStageKeyDown(event) {
-        if (!this.open || event.target !== this.view.stage || !this.selection.size) return;
+        if (!this.open || event.target !== this.view.stage) return;
+        if (event.code === 'Space' || event.key === ' ') {
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+            event.preventDefault();
+            if (!this.dragging && !this.marqueeStart) this.setHandTool(true);
+            return;
+        }
+        if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+            if (event.key === '+' || event.key === '=' || event.key === '-') {
+                event.preventDefault();
+                if (!this.dragging && !this.marqueeStart && !this.panning) this.zoomAt(this.zoom * (event.key === '-' ? 1 / 1.25 : 1.25));
+                return;
+            }
+            if (event.key === '0') {
+                event.preventDefault();
+                if (!this.dragging && !this.marqueeStart && !this.panning) this.fitViewport();
+                return;
+            }
+        }
+        if (!this.selection.size || this.handTool || this.panning) return;
         if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd') {
             event.preventDefault(); event.stopPropagation();
             this.insertCopies(this.selectedItems(), true);
@@ -1042,13 +1370,9 @@ export class VisualizerEditor {
         if (!offset) return;
         event.preventDefault();
         const items = this.selectedItems(), step = this.gridStep();
-        const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
-        // Every item moves by the same amount, limited so the whole selection stays inside the stage.
-        const box = itemsBox(items);
-        const dx = clamp(offset[0] * step, -box.x0, 1 - box.x1), dy = clamp(offset[1] * step, -box.y0, 1 - box.y1);
         for (const { rect } of items) {
-            rect.x = clamp(round(rect.x + dx), 0, 1 - rect.w);
-            rect.y = clamp(round(rect.y + dy), 0, 1 - rect.h);
+            rect.x = round(rect.x + offset[0] * step);
+            rect.y = round(rect.y + offset[1] * step);
         }
         // Key repeat merges into one history entry, recorded on keyup.
         this.changed(false, true);

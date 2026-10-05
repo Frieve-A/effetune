@@ -83,6 +83,8 @@ Es posible que sus dispositivos de entrada y salida estén en bucle. Asegúrese 
 | No hay salida de audio | Para la aplicación web, compruebe que las salidas del sistema operativo y del navegador apuntan a su DAC/AMP. Para la aplicación de escritorio, compruebe el dispositivo de salida en **Configurar audio**. |
 | Otros reproductores informan "CABLE Input en uso" | Asegúrese de que ninguna otra aplicación está utilizando **CABLE Input**. |
 
+Los efectos que requieren WebAssembly muestran un aviso en la parte superior de su panel cuando no pueden funcionar. Activa **Usar el procesamiento de audio WebAssembly** en **Configuración de audio**. Si ya está activado, restablece el audio o vuelve a cargar EffeTune. El aviso desaparece cuando el efecto vuelve a funcionar.
+
 ### 2.5. Discrepancia de salida multicanal
 EffeTune envía los canales en orden numérico, hasta 16 canales. Haz coincidir **Canales de salida:** con la configuración del dispositivo. Para una instalación de 7.1ch, configura tanto el dispositivo como EffeTune en 8ch y usa las etiquetas de canal del dispositivo al enrutar los canales traseros. Para una instalación de 16 canales, selecciona 16 canales en ambos lugares y confirma el mapeo del dispositivo.
 

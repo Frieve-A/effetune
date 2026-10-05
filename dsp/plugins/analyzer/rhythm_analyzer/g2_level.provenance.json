@@ -1,7 +1,7 @@
 {
   "artifact": "g2_level.bin",
   "manifest": "g2_level.json",
-  "model_sha256": "9abaddb09d65e9487ae79759123da36a957f97da8c1d4a7dec5d5c5d3da56303",
+  "model_sha256": "854f554960567886f019ee65b88f4fb9bf34dad0f99805d044f6083a8e0c8156",
   "model_kind": "CatBoost multi-class classifier that scores each tempo-level candidate of a 8 s chroma window as on-beat, off-beat or not a beat level",
   "runtime_decision": "Embedded read-only in the DSP module and evaluated at each 2 Hz update; the class probabilities are mapped through the isotonic calibration and prior stored in g2_tables.generated.h. The weights are fixed at build time.",
   "feature_version": "f2",
@@ -212,13 +212,15 @@
     }
   },
   "storage": {
+    "layout": "oblivious",
     "threshold_type": "index8",
-    "leaf_type": "int16",
+    "leaf_type": "int8",
     "leaf_scale_type": "binary32",
     "accumulator_type": "binary64",
-    "maximum_leaf_error": 0.0000157312,
-    "bytes": 408604,
-    "policy": "Split thresholds are 8-bit indices into per-feature sorted binary32 border tables, which is exact. Leaves are rounded to int16 with one binary32 scale (absolute maximum / 32767) per tree and output. Splits, tree addition order, scale and bias are unchanged."
+    "maximum_leaf_error": 0.00415730,
+    "bytes": 176656,
+    "policy": "Split thresholds are 8-bit indices into per-feature sorted binary32 border tables, which is exact. The symmetric trees use the oblivious layout (one split per level, split k sets bit k of the leaf index), which is exact. Leaves are rounded half to even to int8 with one binary32 scale (absolute maximum / 127, rounded to binary32 first) per tree and output. Splits, tree addition order, scale and bias are unchanged.",
+    "reproduce": "Export the source model to a float-threshold, float-leaf heap tree (format in BUILD.md), then run python dsp/plugins/analyzer/tree_models/compact_model.py g2_level.json --oblivious --leaves int8"
   },
   "selection_only_sets": [
     {
@@ -230,20 +232,19 @@
     },
     {
       "set": "expressive-music development set",
-      "items": "105 tracks: 24 tracks of the Winterreise SC06 performance and 81 MusicNet recordings that are not public domain",
-      "licence_class": "evaluation only: the SC06 audio is CC BY-NC-ND 3.0 (no modified redistribution) and the MusicNet recordings are not verified public domain",
+      "items": "105 tracks: 24 tracks of the non-public-domain Winterreise performance and 81 MusicNet recordings that are not public domain",
+      "licence_class": "evaluation only: the non-public-domain audio is CC BY-NC-ND 3.0 (no modified redistribution) and the MusicNet recordings are not verified public domain",
       "used_for": "a decoding check that informed one choice: the reduced feature set (without the character family) was kept over the full set; no model was trained or fitted on it",
       "trained_on": false
     }
   ],
-  "training_exclusion": "The Winterreise HU33 recordings were not used for training or fitting this artifact.",
+  "training_exclusion": "The public-domain Winterreise recordings were not used for training or fitting this artifact.",
   "dataset_attribution": [
     {
       "name": "Slakh2100-redux",
       "creators": "Ethan Manilow, Gordon Wichern, Prem Seetharaman, Jonathan Le Roux",
       "citation": "Manilow, Wichern, Seetharaman and Le Roux, \"Cutting Music Source Separation Some Slakh: A Dataset to Study the Impact of Training Data Quality and Quantity\", IEEE WASPAA 2019",
       "material_uri": "https://www.slakh.com/",
-      "split_source": "https://github.com/ethman/slakh-utils/blob/master/splits/redux.json",
       "audio": {
         "description": "mix audio",
         "license": "CC BY 4.0",
@@ -267,14 +268,13 @@
       ],
       "used": "train split: 806 tracks",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "Groove MIDI Dataset v1.0.0",
       "creators": "Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck, David Bamman",
       "citation": "Gillick, Roberts, Engel, Eck and Bamman, \"Learning to Groove with Inverse Sequence Transformations\", ICML 2019",
       "material_uri": "https://magenta.tensorflow.org/datasets/groove",
-      "split_source": "the dataset's own train, validation and test split (info.csv in the archive)",
       "audio": {
         "description": "audio",
         "license": "CC BY 4.0",
@@ -287,16 +287,15 @@
       },
       "used": "train fold: 301 clips",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "MusicNet",
       "creators": "John Thickstun, Zaid Harchaoui, Sham M. Kakade",
       "citation": "Thickstun, Harchaoui and Kakade, \"Learning Features of Music from Scratch\", ICLR 2017",
       "material_uri": "https://zenodo.org/records/5120004",
-      "split_source": "a fold assignment (folds 0 to 4) made for this project; only public-domain recordings are trained on",
       "audio": {
-        "description": "only recordings whose source is public domain: Kimiko Ishizaka (Open Well-Tempered Clavier), Paul Pitman, and the Musopen collection",
+        "description": "only recordings verified as public domain",
         "license": "public domain (no attribution required)",
         "license_uri": "https://creativecommons.org/publicdomain/mark/1.0/"
       },
@@ -307,14 +306,13 @@
       },
       "used": "folds 1 to 4 of the public-domain recordings: 123 tracks",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "GuitarSet v1.1.0",
       "creators": "Qingyang Xi, Rachel M. Bittner, Johan Pauwels, Xuzhou Ye, Juan P. Bello",
       "citation": "Xi, Bittner, Pauwels, Ye and Bello, \"GuitarSet: A Dataset for Guitar Transcription\", ISMIR 2018",
       "material_uri": "https://zenodo.org/records/3371780",
-      "split_source": "a fold assignment (folds 0 to 4) made for this project",
       "audio": {
         "description": "mono microphone audio",
         "license": "CC BY 4.0",
@@ -327,14 +325,13 @@
       },
       "used": "folds 1 to 4: 288 tracks",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "Uruguayan candombe drumming - beat and downbeat tracking data set",
       "creators": "Luis Jure, Martin Rocamora",
       "citation": "Jure and Rocamora, \"Uruguayan candombe drumming - beat and downbeat tracking data set\", Zenodo",
       "material_uri": "https://zenodo.org/records/6533068",
-      "split_source": "a fold assignment (folds 0 to 4) made for this project",
       "audio": {
         "description": "audio",
         "license": "CC BY 4.0",
@@ -347,14 +344,13 @@
       },
       "used": "folds 1 to 4: 33 tracks",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     },
     {
       "name": "Brazilian Rhythmic Instruments Dataset (BRID)",
       "creators": "Lucas S. Maia, Pedro D. de Tomaz Junior, Magdalena Fuentes, Martin Rocamora, Luiz W. P. Biscainho, Mauricio V. M. da Costa, Sara Cohen",
       "citation": "Maia et al., \"Brazilian Rhythmic Instruments Dataset (BRID)\", Zenodo, doi:10.5281/zenodo.14051323",
       "material_uri": "https://doi.org/10.5281/zenodo.14051323",
-      "split_source": "a fold assignment (folds 0 to 4) made for this project",
       "audio": {
         "description": "audio",
         "license": "CC BY 4.0",
@@ -367,8 +363,8 @@
       },
       "used": "folds 1 to 4: 79 tracks",
       "trained_on": true,
-      "modification_statement": "The learned values of this artifact were computed from this material, so the artifact is a derived (modified) work. The material itself is not included."
+      "modification_statement": "This material was used for training, calibration or evaluation. The original material is not included."
     }
   ],
-  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the Winterreise SC06 performance, and the Slakh and Groove test splits."
+  "not_used": "Not trained on and not used to select any value: Ballroom, GTZAN, Salsa, SMC, ASAP, MAESTRO, the MusicNet recordings that are not public domain, the non-public-domain Winterreise performance, and the Slakh and Groove test splits."
 }

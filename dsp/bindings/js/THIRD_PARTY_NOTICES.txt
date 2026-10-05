@@ -1,4 +1,4 @@
-EffeTune DSP includes PFFFT v1.1.0.
+EffeTune DSP includes PFFFT v1.1.0 and fdlibm 5.3 routines.
 
 PFFFT source: https://github.com/marton78/pffft
 
@@ -8,4 +8,6 @@ Copyright (c) 2013 Julien Pommier
 Copyright (c) 2004 the University Corporation for Atmospheric Research
 
 PFFFT is distributed under a permissive BSD-style license. The complete
-upstream notice is included in dist/assets/NOTICE.txt.
+upstream notice and fdlibm notice are included in
+dist/assets/NOTICE.txt. Preserve these notices when redistributing the DSP
+assets.

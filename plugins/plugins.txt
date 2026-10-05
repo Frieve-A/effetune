@@ -101,6 +101,7 @@ modulation/pitch_shifter_hq: Pitch Shifter HQ | Modulation | PitchShifterHQPlugi
 modulation/rotary_speaker: Rotary Speaker | Modulation | RotarySpeakerPlugin
 modulation/tremolo: Tremolo | Modulation | TremoloPlugin
 modulation/wow_flutter: Wow Flutter | Modulation | WowFlutterPlugin
+resonator/adaptive_prediction_effect: Adaptive Prediction | Resonator | AdaptivePredictionEffectPlugin | css
 resonator/horn_resonator: Horn Resonator | Resonator | HornResonatorPlugin
 resonator/horn_resonator_plus: Horn Resonator Plus | Resonator | HornResonatorPlusPlugin
 resonator/modal_resonator: Modal Resonator | Resonator | ModalResonatorPlugin | css

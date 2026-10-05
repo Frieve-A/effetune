@@ -324,12 +324,39 @@ test('PluginBase syncUIControls pushes model changes into modelKey-wired control
   plugin.syncUIControls();
 
   assert.equal(Number(gainSlider.value), -12);
-  assert.equal(gainInput.value, '-12.0');
+  assert.equal(gainInput.value, '-12');
   // toDisplay converts the stored seconds into the millisecond widget unit.
   assert.equal(rateInput.value, '2000.0');
   assert.equal(Number(rateSlider.value).toFixed(3), (Math.log10(2000) / 4 * 100).toFixed(3));
   assert.equal(modeSelect.value, 'a');
   assert.deepEqual(setterCalls, []);
+});
+
+test('PluginBase shows the same numeric text for model sync, slider input, and committed typing', () => {
+  const { PluginBase } = loadPluginBase();
+  const plugin = new PluginBase('Number Test', 'Numeric display');
+  plugin.mix = 0.5;
+  const row = plugin.createParameterControl('Mix', -2, 2, 0.01, plugin.mix,
+    value => { plugin.mix = value; }, '', 'mix');
+  const slider = row.children[1];
+  const input = row.children[2];
+  for (const value of [-1, 0, 1, 0.98]) {
+    plugin.mix = value;
+    plugin.syncUIControls();
+    assert.equal(input.value, String(value));
+    const restored = input.value;
+    slider.value = String(value);
+    slider.dispatch('input');
+    assert.equal(input.value, restored);
+    input.value = value.toFixed(3);
+    input.dispatch('input');
+    input.dispatch('blur');
+    assert.equal(input.value, restored);
+    assert.equal(plugin.mix, value);
+  }
+  plugin.mix = 0.9755;
+  plugin.syncUIControls();
+  assert.equal(input.value, '0.9755');
 });
 
 test('PluginBase syncUIControls skips controls the user is holding', () => {
@@ -344,7 +371,7 @@ test('PluginBase syncUIControls skips controls the user is holding', () => {
 
   documentRef.activeElement = null;
   plugin.syncUIControls();
-  assert.equal(gainInput.value, '-20.0');
+  assert.equal(gainInput.value, '-20');
   assert.equal(Number(gainSlider.value), -20);
 });
 
@@ -366,7 +393,7 @@ test('PluginBase syncUIControls dispatches no input or change events', () => {
   plugin.syncUIControls();
 
   // The sync really happened...
-  assert.equal(gainInput.value, '-12.0');
+  assert.equal(gainInput.value, '-12');
   assert.equal(rateInput.value, '2000.0');
   assert.equal(modeSelect.value, 'a');
   // ...and it stayed one-way: no event was dispatched and no setter re-entered.
@@ -412,7 +439,7 @@ test('PluginBase createUI clears the UI-follow registries on every rebuild', () 
   // Only the current build's hook ran, and only the current build's control moved.
   assert.equal(plugin.refreshCount, 1);
   assert.equal(firstRow.children[2].value, -6);
-  assert.equal(secondRow.children[2].value, '-12.0');
+  assert.equal(secondRow.children[2].value, '-12');
 });
 
 test('PluginBase holds refresh hooks off while a graph pointer is down', () => {
@@ -437,7 +464,7 @@ test('PluginBase holds refresh hooks off while a graph pointer is down', () => {
   plugin.syncUIControls();
   assert.equal(hookRuns, 0);
   // Helper-built controls keep following: only hand-built DOM is held off.
-  assert.equal(gainInput.value, '-12.0');
+  assert.equal(gainInput.value, '-12');
 
   graph.dispatch('pointerup', { pointerId: 3, clientX: 5, clientY: 5 });
   assert.equal(plugin.isGraphPointerActive(), false);

@@ -241,7 +241,7 @@ with `h.` cannot be proposed. A loaded preset, `chain` or undo replaces every id
 `edit` carries a batch of ops that address stages by id:
 
 ```
-{"t":"set",    "id", "p":{<shortKey>:value,...}, "d":["ib"|"ob"|"ch",...]}  // d: optional keys to unset
+{"t":"set",    "id", "p":{<shortKey>:value,...}, "d":[<optional shortKey>,...]}  // d: optional keys to unset
 {"t":"ins",    "id", "after": id|null, "at": int, "item":{"nm":..., ...short state}}
 {"t":"del",    "id"}
 {"t":"mov",    "id", "after": id|null, "at": int}
@@ -252,6 +252,10 @@ Position rule, the same everywhere: `after:null` puts the stage at the head; oth
 `after` stage exists, right after it; otherwise at `min(at, length)`. `set`, `del` and `mov` on a
 missing id are skipped, `ins` of an existing id is skipped, `set` is last-writer-wins per key in the
 order the app receives them. A changed effect (`nm`) is a `del` plus an `ins`, never a `set`.
+`d` removes optional keys omitted from the new short state, including `ib`, `ob`, `ch` and
+effect parameters such as Room EQ's `ms0` and `mn0`. Effect parameters are restored using the
+effect's serialized-state rules after those keys are removed. The required `nm` and `en` keys
+cannot be removed.
 
 ```
 → {"op":"edit","seq":5,"epoch":"9f3a01cc","base":41,"slot":"A","ops":[...]}

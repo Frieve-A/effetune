@@ -2,6 +2,7 @@ export const GRADIENT_PRESETS = [
     { id: 'sunset', name: 'Sunset', colors: ['#ff3060', '#ffad40', '#743cff'] },
     { id: 'rainbow', name: 'Rainbow', colors: ['#ff4040', '#ffff40', '#40ff80', '#40cfff', '#8050ff', '#ff40d0'] },
     { id: 'amber', name: 'Amber', colors: ['#ffd166', '#ff9f1c'] },
+    { id: 'gold', name: 'Gold', colors: ['#8c5a14', '#d4af37', '#fff1a8'] },
     { id: 'ember', name: 'Ember', colors: ['#ff4d36', '#ff8a00', '#ffe066'] },
     { id: 'coral', name: 'Coral', colors: ['#ff6f61', '#ffb37a', '#ffe9ae'] },
     { id: 'rose', name: 'Rose Quartz', colors: ['#ff5c8a', '#ffa6c1', '#d789ff'] },

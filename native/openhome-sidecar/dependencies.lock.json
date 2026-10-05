@@ -20,9 +20,9 @@
     },
     {
       "name": "ohNetGenerated",
-      "commit": "f241aca511a2e881715baea1e79d4f320af4fac0",
-      "url": "https://codeload.github.com/openhome/ohNetGenerated/zip/f241aca511a2e881715baea1e79d4f320af4fac0",
-      "sha256": "629eda8524c0b91d71b97094a266762a9d054a24dc98b5b7777eb8420fed2756",
+      "commit": "22feef5262ed28432783c9bf16bdeb31d4c8bb18",
+      "url": "https://codeload.github.com/openhome/ohNetGenerated/zip/22feef5262ed28432783c9bf16bdeb31d4c8bb18",
+      "sha256": "e0458070950fd0d6cd938cb9b4aae7387ee97149f7140203118c8ac5661a62df",
       "license": "MIT",
       "licenseFiles": ["License.txt"]
     }

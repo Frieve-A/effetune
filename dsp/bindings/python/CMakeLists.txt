@@ -72,3 +72,7 @@ else()
 endif()
 
 install(TARGETS _native LIBRARY DESTINATION effetune RUNTIME DESTINATION effetune)
+install(
+  FILES "${ET_DSP_ROOT}/../plugins/dsp/NOTICE.txt"
+  DESTINATION effetune/licenses
+  RENAME DSP-NOTICE.txt)

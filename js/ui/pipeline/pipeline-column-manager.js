@@ -154,6 +154,8 @@ export class PipelineColumnManager {
      * or when the column count changes.
      */
     distributePluginsToColumns() {
+        this.pendingLayoutObserver?.disconnect();
+        this.pendingLayoutObserver = null;
         const columns = this.pipelineList.querySelectorAll('.pipeline-column');
         if (!columns.length) {
             // If no columns, ensure empty state is handled correctly by updatePipelineUI
@@ -180,19 +182,38 @@ export class PipelineColumnManager {
         const measured = items.map(item => item.getBoundingClientRect().height);
         // A hidden pipeline has no layout; split by item count instead
         const heights = measured.some(height => height > 0) ? measured : measured.map(() => 1);
-        const columnSizes = partitionColumns(heights, columnCount);
-
-        let index = 0;
-        columnSizes.forEach((size, columnIndex) => {
-            const targetColumn = columns[columnIndex];
-            for (const end = index + size; index < end; index++) {
-                if (targetColumn) {
-                    targetColumn.appendChild(items[index]);
-                } else {
-                    console.warn(`Could not find target column ${columnIndex} for plugin ${index}.`);
+        const placeItems = heights => {
+            const columnSizes = partitionColumns(heights, columnCount);
+            let index = 0;
+            columnSizes.forEach((size, columnIndex) => {
+                const targetColumn = columns[columnIndex];
+                for (const end = index + size; index < end; index++) {
+                    if (targetColumn) {
+                        targetColumn.appendChild(items[index]);
+                    } else {
+                        console.warn(`Could not find target column ${columnIndex} for plugin ${index}.`);
+                    }
                 }
-            }
-        });
+            });
+        };
+        placeItems(heights);
+
+        // Finish a hidden-view rebuild once the items have layout. Disconnect after
+        // that first measurement so later effect expansion does not move columns.
+        if (columnCount > 1 && items.length && !measured.some(height => height > 0) &&
+            typeof ResizeObserver === 'function') {
+            const observer = new ResizeObserver(() => {
+                if (this.pendingLayoutObserver !== observer) return;
+                const visibleHeights = items.map(item => item.getBoundingClientRect().height);
+                if (!visibleHeights.some(height => height > 0)) return;
+                observer.disconnect();
+                this.pendingLayoutObserver = null;
+                placeItems(visibleHeights);
+                this.updatePluginListPullTab();
+            });
+            this.pendingLayoutObserver = observer;
+            observer.observe(this.pipelineList);
+        }
 
         // Update selection classes after distributing
         this.pipelineCore.updateSelectionClasses();
@@ -267,6 +288,8 @@ export class PipelineColumnManager {
      * Handle empty pipeline state
      */
     handleEmptyPipelineState() {
+        this.pendingLayoutObserver?.disconnect();
+        this.pendingLayoutObserver = null;
         const pipelineEmptyElement = this.pipelineList.querySelector('#pipelineEmpty'); 
         
         // Remove any existing plugin columns first

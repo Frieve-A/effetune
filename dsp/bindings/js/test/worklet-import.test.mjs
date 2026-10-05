@@ -138,6 +138,10 @@ test('package processor registers and preserves analyzer time across blocks and 
           }
           assert.ok(frames.length > 2, artifact);
           assert.equal(frames[0].frameIndex, 0);
+          assert.equal(frames[0].revisionAge, 0);
+          assert.equal(frames[0].revisedLevels, null);
+          assert.equal(frames.at(-1).revisionAge, 8);
+          assert.equal(frames.at(-1).revisedLevels.length, 440);
           for (let index = 0; index < frames.length; index++) {
             const frame = frames[index];
             assert.ok(Math.abs(frame.timeSeconds - (frame.frameIndex + 1) * frame.hopSeconds) < 1e-6);
@@ -388,12 +392,12 @@ test('worklet telemetry callbacks run on the node side with opt-in lifetime', as
     assert.equal(node.droppedTelemetryFrames, 3);
     assert.equal(node.port.messages.at(-1).type, 'telemetryReturn');
 
-    const notePacket = new ArrayBuffer(3564);
+    const notePacket = new ArrayBuffer(5328);
     const noteView = new DataView(notePacket);
     noteView.setUint16(0, 24, true);
-    noteView.setUint16(2, 3, true);
+    noteView.setUint16(2, 4, true);
     noteView.setUint32(4, 2, true);
-    noteView.setUint16(12, 3548, true);
+    noteView.setUint16(12, 5312, true);
     noteView.setFloat32(16, 48000, true);
     noteView.setFloat32(20, 1, true);
     noteView.setUint16(24, 440, true);
@@ -402,22 +406,26 @@ test('worklet telemetry callbacks run on the node side with opt-in lifetime', as
     noteView.setUint32(32, 100, true);
     noteView.setUint32(36, 5, true);
     noteView.setUint32(40, 1, true);
-    noteView.setFloat32(44, 0.75, true);
-    noteView.setFloat32(1804, -12, true);
-    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 3564, dropped: 0 });
+    noteView.setUint32(44, 8, true);
+    noteView.setFloat32(48, 0.75, true);
+    noteView.setFloat32(1808, -12, true);
+    noteView.setFloat32(3568, 0.5, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 5328, dropped: 0 });
     assert.equal(received.length, 2);
     assert.equal(received[1].kind, 'noteSpectrogram');
     assert.equal(received[1].effectId, 'notes');
     assert.equal(received[1].frameIndex, 100);
     assert.equal(received[1].levels[0], 0.75);
     assert.equal(received[1].volumeDb[0], -12);
-    noteView.setFloat32(44, 2, true);
-    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 3564, dropped: 0 });
+    assert.equal(received[1].revisionAge, 8);
+    assert.equal(received[1].revisedLevels[0], 0.5);
+    noteView.setFloat32(48, 2, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 5328, dropped: 0 });
     assert.equal(received.length, 2);
     assert.equal(received[1].levels[0], 0.75);
-    noteView.setFloat32(44, 0.75, true);
-    noteView.setFloat32(1804, Number.NaN, true);
-    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 3564, dropped: 0 });
+    noteView.setFloat32(48, 0.75, true);
+    noteView.setFloat32(1808, Number.NaN, true);
+    node._handleMessage({ type: 'telemetry', packet: notePacket, bytes: 5328, dropped: 0 });
     assert.equal(received.length, 2);
 
     const pitchPacket = new ArrayBuffer(60);

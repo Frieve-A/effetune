@@ -219,6 +219,46 @@ test('Analog Meter thins crowded labels to every other one from the reference', 
     assert.deepEqual(kept(Plugin.scale('PPM', { rl: -18, rg: 40, sc: 0 })), [-30, -9, 0]);
 });
 
+test('Meter marks follow the electrical needle angle on circular, elliptical and straight dials', async () => {
+    const { Plugin } = await loadPlugin();
+    const radius = 200;
+    const scale = Plugin.scale('VU', { rl: -14 });
+    for (const sweep of [30, 100, 160]) {
+        const radians = sweep * Math.PI / 360;
+        for (const curvature of [0, 0.000001, 0.01, 0.25, 0.5, 0.99, 1]) {
+            for (const offset of [0, 100]) {
+                const geometry = Plugin.geometry(300, 400, radius, radians, curvature, offset);
+                for (const tick of scale.ticks) {
+                    const position = scale.valuePosition(tick.value);
+                    const [x, y] = geometry.pointAt(position, radius);
+                    const dx = x - geometry.pivotX, dy = geometry.pivotY - y;
+                    const angle = Math.atan2(dx, dy);
+                    assert.ok(Math.abs(angle - (-radians + 2 * radians * position)) < 1e-12);
+                    assert.ok(Math.hypot(dx, dy) <= radius + 1e-9, 'Dial stays within the fixed needle circle');
+                    if (curvature === 0) {
+                        assert.ok(Math.abs(dy - radius * Math.cos(radians)) < 1e-9, 'All straight marks share one height');
+                    } else {
+                        // Verify the implicit ellipse equation independently of the ray solver.
+                        const center = (1 - curvature) * radius * Math.cos(radians);
+                        const ellipse = (dx / radius) ** 2 + ((dy - center) / (curvature * radius)) ** 2;
+                        assert.ok(Math.abs(ellipse - 1) < 1e-8, 'Every mark lies on the actual ellipse');
+                    }
+                }
+                for (const position of [0, 1]) {
+                    const [x, y] = geometry.pointAt(position, radius);
+                    assert.ok(Math.abs(Math.hypot(x - 300, geometry.pivotY - y) - radius) < 1e-9);
+                }
+                // The limiting straight and circular cases must not jump at their boundaries.
+                const nearby = Plugin.geometry(300, 400, radius, radians,
+                    curvature === 0 ? 1e-6 : Math.max(0, curvature - 1e-6), offset);
+                const [x, y] = geometry.pointAt(0.6, radius);
+                const [nx, ny] = nearby.pointAt(0.6, radius);
+                assert.ok(Math.hypot(x - nx, y - ny) < 0.001);
+            }
+        }
+    }
+});
+
 test('Analog Meter grid uses at most four meters per row', async () => {
     const { Plugin } = await loadPlugin();
     const shape = cells => {

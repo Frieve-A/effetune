@@ -16,7 +16,7 @@ struct G2Tick {
   float lvl[3];
   float rms;   // rms_db
   bool loud;   // max(loge) > -7
-  bool silent; // fe_silent: this tick ends >= 24 consecutive ticks with rms < -70
+  bool silent; // fe_silent: this tick ends >= 24 consecutive quiet ticks (RelativeQuiet)
 };
 
 struct G2ChromaFrame {
@@ -41,11 +41,13 @@ public:
     evEnd_ = 0;
     zRun_ = 0;
   }
+  // Cold reset: fe_silent counts from the next tick as in a fresh stream.
+  void restart() noexcept { zRun_ = 0; }
 
   // One tick: the 4 fe frame fluxes of each band (band-major), band_db, rms_db and lvl, as the
-  // front end stores them (binary16 values).
-  void pushTick(const float flux[3][4], const float bandDb[3], float rmsDb,
-                const float lvl[3]) noexcept {
+  // front end stores them (binary16 values); quiet: the tick's RelativeQuiet bit.
+  void pushTick(const float flux[3][4], const float bandDb[3], float rmsDb, const float lvl[3],
+                bool quiet) noexcept {
     G2Tick &k = ticks_[tickCount_ & (kTickRing - 1)];
     for (int b = 0; b < 3; ++b) {
       k.flux[b] = (((flux[b][0] + flux[b][1]) + flux[b][2]) + flux[b][3]) / 4.0f;
@@ -55,7 +57,7 @@ public:
     }
     k.rms = rmsDb;
     k.loud = k.loge[0] > kSilentLoge || k.loge[1] > kSilentLoge || k.loge[2] > kSilentLoge;
-    zRun_ = rmsDb < -70.0f ? zRun_ + 1 : 0;
+    zRun_ = quiet ? zRun_ + 1 : 0;
     k.silent = zRun_ >= 24;
     ++tickCount_;
   }

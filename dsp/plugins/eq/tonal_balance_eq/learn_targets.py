@@ -412,26 +412,8 @@ def render_header(names, tables, track_count):
     )
 
 
-def compress_ids(ids):
-    """'2-5,9' style range list of sorted ids."""
-    parts, start = [], None
-    for index, value in enumerate(ids):
-        if start is None:
-            start = previous = value
-        elif value == previous + 1:
-            previous = value
-        else:
-            parts.append((start, previous))
-            start = previous = value
-        if index == len(ids) - 1:
-            parts.append((start, previous))
-    return ",".join(str(a) if a == b else f"{a}-{b}" for a, b in parts)
-
-
-def render_provenance(names, used_ids, selection, archive_sha1, checkpoint_rows, smoothing):
-    per_licence = collections.defaultdict(list)
-    for track_id in used_ids:
-        per_licence[selection[track_id][1]].append(track_id)
+def render_provenance(names, used_ids, selection, checkpoint_rows, smoothing):
+    per_licence = collections.Counter(selection[i][1] for i in used_ids)
     counts = collections.Counter(selection[i][0] for i in used_ids)
     provenance = {
         "status": "corpus-derived",
@@ -441,8 +423,6 @@ def render_provenance(names, used_ids, selection, archive_sha1, checkpoint_rows,
             "name": "Free Music Archive (FMA) fma_large, 30 s clips",
             "reference": "Defferrard et al., FMA: A Dataset for Music Analysis, ISMIR 2017",
             "metadata_link": FMA_METADATA_LINK,
-            "archive": "fma_large.zip",
-            "archive_sha1": archive_sha1,
         },
         "filter": filter_description(),
         "minimum_tracks_per_style": MIN_TRACKS_PER_STYLE,
@@ -458,7 +438,7 @@ def render_provenance(names, used_ids, selection, archive_sha1, checkpoint_rows,
         },
         "analysed_rows": len(checkpoint_rows),
         "failed_rows": sum(1 for r in checkpoint_rows if not r["ok"]),
-        "tracks_by_licence": {lic: compress_ids(ids) for lic, ids in sorted(per_licence.items())},
+        "tracks_per_licence": dict(sorted(per_licence.items())),
     }
     return json.dumps(provenance, indent=2) + "\n"
 
@@ -471,7 +451,7 @@ def command_aggregate(args):
     out.mkdir(parents=True, exist_ok=True)
     (out / "target_tables.h").write_text(render_header(names, tables, len(used_ids)), encoding="utf-8", newline="\n")
     (out / "target_tables.provenance.json").write_text(
-        render_provenance(names, used_ids, selection, args.archive_sha1, rows, smoothing), encoding="utf-8", newline="\n")
+        render_provenance(names, used_ids, selection, rows, smoothing), encoding="utf-8", newline="\n")
     print(f"{len(names) - 1} styles ({', '.join(names[1:])}); {len(used_ids)} tracks")
 
 
@@ -497,7 +477,6 @@ def build_parser():
     aggregate = commands.add_parser("aggregate", help="checkpoint rows -> target tables and provenance")
     aggregate.add_argument("--selection", required=True, help="folder written by `select`")
     aggregate.add_argument("--checkpoint", required=True, help="checkpoint file written by `analyse`")
-    aggregate.add_argument("--archive-sha1", required=True, help="published SHA-1 of fma_large.zip")
     aggregate.add_argument("--out", required=True, help="folder receiving target_tables.h and the provenance JSON")
     aggregate.set_defaults(run=command_aggregate)
     return parser

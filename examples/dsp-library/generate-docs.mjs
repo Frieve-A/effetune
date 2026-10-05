@@ -704,8 +704,64 @@ function parameterTable(effect) {
 }
 
 function effectContractDetails(effect) {
+  if (effect.type === 'Volume') {
+    return `### Gain changes and automation
+
+The initial \`volume\` setting applies immediately when processing starts. Later
+target changes, including scheduled events and JavaScript \`setParam\`, move from the current
+linear gain to \`10 ** (volume / 20)\` over \`ceil(sampleRate * 0.005)\` samples
+(5 ms, rounded up to whole samples). The interpolation is linear in gain, not dB.
+The event sample uses the first interpolation step; the target is reached on the
+last sample of that interval. A new target during a transition starts a fresh
+5 ms transition from the gain already reached.
+
+At 48 kHz, a target change at frame 128 finishes at frame 367. This smoothing
+reduces abrupt gain changes but means an event does not produce an instantaneous
+level switch or an arbitrary sample-by-sample gain curve. See the executable
+Python and JavaScript [Volume automation examples](/dsp/concepts/streaming-and-events/#volume-automation).`;
+  }
   if (effect.type === 'BassManagement') {
-    return `### Bass Management route polarity
+    return `### Bass Management channel roles and routing
+
+\`roles\`, \`frequencies\`, \`slopes\`, \`routes\`, and \`routeInversions\` each
+contain exactly 16 entries. Entry \`n\` describes input channel \`n\` (zero-based).
+The channel role codes are:
+
+| Value | Role | Output when Sub routing is configured |
+|---|---|---|
+| \`0\` | Full Range | The full signal stays on the matching main output. |
+| \`1\` | Managed | The high-pass signal stays on the matching main output; low frequencies go to the selected Sub outputs. |
+| \`2\` | LFE | The signal goes only to selected Sub outputs, with optional low-pass filtering controlled by \`lfeLowpass\`. |
+| \`3\` | Unused | This input contributes no signal. The same channel can still serve as a Sub output receiving other inputs. |
+
+\`subs\` is an output bit mask: bit \`m\` reserves output channel \`m\` for Sub
+signals. For example, \`subs=4\` (\`1 << 2\`) selects the third output. Every
+Managed or LFE input needs a nonzero route, and every route must target selected
+Sub outputs. Main outputs (roles 0/1) cannot also be Sub outputs. A contribution
+routed to multiple Sub outputs is divided equally among those destinations;
+contributions from different inputs are summed. \`headroom\` scales all outputs.
+Use \`channel="all"\` and provide a bus wide enough for every configured input
+and Sub output. The effect preserves the bus width: for stereo plus one Sub,
+pass three channels with a silent third input slot.
+
+The library defaults are all roles \`0\` and \`subs=0\`. With \`subs=0\`, routing
+is unconfigured and every channel passes through, including inputs marked
+Managed, LFE, or Unused (with \`headroom\` and the selected phase delay).
+The app initializes available input roles to Managed, but that UI initialization
+does not change the library constructor defaults.
+
+This IIR example splits 40 Hz and 1 kHz stereo input at 80 Hz and sends the bass
+to output 2. The -6 dB headroom accommodates the summed left/right bass:
+
+${codeBlock('python', read(path.join(docsDataRoot, 'snippets', 'bass-management-stereo-sub.py')))}
+
+The equivalent Chain v1 JSON can be loaded with \`Chain.from_preset(document)\`
+in Python or \`createChain(document)\` in JavaScript, using the same three-channel
+audio bus:
+
+${codeBlock('json', read(path.join(docsDataRoot, 'snippets', 'bass-management-stereo-sub.json')))}
+
+### Bass Management route polarity
 
 \`routes\` and \`routeInversions\` are 16-entry integer bit-mask arrays. Entry \`n\`
 applies to input channel \`n\`, and bit \`m\` selects output channel \`m\`, with both
@@ -715,7 +771,82 @@ the matching main output.
 
 When \`subs\` is nonzero, \`routeInversions[n]\` must be a subset of \`routes[n]\`,
 and both route masks must target only output channels selected by \`subs\`. A
-configuration that violates either condition raises \`ValidationError\`.`;
+configuration that violates either condition raises \`ValidationError\`.
+
+### Linear low-pass coefficient asset
+
+An \`assets.impulseResponse\` reference is required when \`phase="Linear"\`,
+\`subs\` is nonzero, and at least one input has either role Managed or role LFE
+with \`lfeLowpass=true\`. IIR mode, unconfigured routing, and Linear routing containing
+only Full Range, Unused, or unfiltered LFE inputs do not use a filter asset;
+supplying one for those configurations raises \`AssetError\`.
+
+Supply finite planar float32 coefficients at exactly the processing sample rate.
+There is one IR channel per Managed or low-pass-filtered LFE input, ordered by
+ascending input channel index. Each IR channel has exactly \`Number(taps)\`
+frames: 8192, 16384, or 32768. An automatic topology is accepted and expanded
+to diagonal matrix paths. With explicit \`topology="matrix"\`, the paths must be
+\`(inputSlot=n, outputSlot=n, irChannel=k)\` in that same order; \`k\` counts only
+the filtered inputs. Set Python \`AssetData.input_count\` to the processing bus
+width; JavaScript derives it from the processing bus when preparing ETA1 assets.
+These diagonal paths compute each input's low-pass signal;
+\`routes\` then distribute it to Sub outputs.
+
+Design the low-pass FIR around sample \`Number(taps)/2\`. The main signal is the
+delayed input minus the low-pass signal. The reported delay is
+\`Number(taps)/2 + 128\` samples, including the convolution block delay.
+The library consumes your coefficients; it does not synthesize them from
+\`frequencies\`/\`slopes\` or \`lfeFrequency\`/\`lfeSlope\`. Changing those values
+requires preparing corresponding coefficients and a new stream. Use the desired
+cutoff/slope for each Managed input and the LFE settings for each filtered LFE
+input; duplicate a filter channel when two inputs use identical coefficients.
+
+This complete NumPy example prepares an 80 Hz, 24 dB/oct low-pass magnitude curve
+with a -6 dB crossover point, centers and tapers its FIR, and uses two identical
+IR channels for left/right. The Sub output carries their summed low frequencies.
+It pads the input to retain delayed output; offline processing otherwise returns
+the same number of frames as its input.
+
+${codeBlock('python', read(path.join(docsDataRoot, 'snippets', 'bass-management-linear.py')))}`;
+  }
+  if (effect.type === 'SpatialMapper') {
+    return `### Spatial Mapper matrix layout and bus width
+
+\`directMatrix\`, \`diffuseMatrix\`, and \`residualMatrix\` each contain exactly
+256 gains: a 16-row by 16-column matrix flattened in row-major order. Rows are
+outputs, columns are analyzed inputs, and all indices are zero-based:
+
+\`index = outputChannel * 16 + inputChannel\`
+
+The stride is always 16, including a three-channel bus. For example, gain from
+input 0 to output 2 belongs at index 32, not index 2. Use zero for unused routes;
+negative gains invert polarity. Each matrix routes its own separated component,
+and the three routed components are summed. \`energyPreservation\` can normalize
+component levels, so matrix gains alone do not define the final output amplitude.
+
+\`inputChannels\` selects the first N channels to analyze (limited to the actual
+bus width); it does not allocate outputs. The processing bus determines output
+width, which is preserved. Add silent channels before processing when additional
+outputs are needed, or provide a Graph layout with that bus width. Only columns
+below the effective input count and rows within the bus participate in routing.
+A channel beyond the analyzed inputs passes through with the effect's delay if
+no component matrix routes any analyzed input to that output; once such a route
+exists, that channel is used as a mapped output instead.
+
+### Center Extract API example
+
+The app's Center Extract preset routes Direct left/right components to output 2
+with gains 0.7, retaining identity matrices for Diffuse and Residual components.
+It uses \`directness=90\`, \`separation=85\`, and the other values shown below.
+This example supplies a three-channel bus: stereo input plus a silent center slot.
+The correlated 440 Hz input produces an extracted center signal. The result also
+retains left/right Diffuse and Residual components; it is not a simple mono sum.
+
+${codeBlock('python', read(path.join(docsDataRoot, 'snippets', 'spatial-mapper-center.py')))}
+
+Use the corresponding camelCase semantic names and the same 256-entry arrays in
+JavaScript options or Chain JSON. Preset labels in the app are not library
+constructor parameters; the example explicitly supplies their values.`;
   }
   if (effect.type !== 'Matrix') return '';
   return `### Matrix route grammar
@@ -1045,6 +1176,12 @@ function staticPages(sources) {
   const javascriptSnippet = read(path.join(
     docsDataRoot, 'snippets', 'javascript-start.mjs'
   ));
+  const volumePythonSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'volume-automation.py'
+  ));
+  const volumeJavascriptSnippet = read(path.join(
+    docsDataRoot, 'snippets', 'volume-automation.mjs'
+  ));
   const pythonGraphSnippet = read(path.join(
     docsDataRoot, 'snippets', 'graph-start.py'
   ));
@@ -1302,15 +1439,20 @@ awaited \`setParam()\` or \`reset()\` calls update it before returning.
 
 The docs overlay explicitly marks types that can intentionally produce non-zero output
 from zero input at an active setting and sample rate. The candidate-package gate runs
-all ${catalog.effects.length} catalog types exactly once, using the same canonical assets as the public asset
+all ${catalog.effects.length} catalog types, using the same canonical assets as the public asset
 examples where required. It requires the overlay, public catalog, and frozen
 \`source-generation-v0.1.json\` member sets to match exactly, and treats a peak above
 \`1e-7\` as generated output. Those effect pages carry a warning; the absence of that
 mark is a fixture result for the selected settings, not proof that every possible future
 setting is non-generating.
 
-Render such an effect by processing a zero input whose frame count defines the rendered
-length:
+Adaptive Prediction needs audible input to learn before it can generate sound on its
+own. Its fixture keeps one stream open while training, switching to Hold, and
+processing zero input, then checks the final second for sustained output. A freshly
+created or reset model remains silent in Hold without prior training.
+
+Render a generator that needs no prior training by processing a zero input whose
+frame count defines the rendered length:
 
 ${codeBlock('python', `rendered = chain.process(np.zeros((2, frames), np.float32), sample_rate=sr)`)}
 `);
@@ -1400,10 +1542,10 @@ ${codeBlock('python', `output = stream.process(audio, events=[
     {"frame": 0, "effectId": "voice", "parameters": {"ratio": 6}},
 ])`)}
 
-A scheduled event replaces the semantic parameter value at its frame; the event
-mechanism itself generates no ramp between the old and new value. For value-only
-effects such as \`Volume\`, schedule a series of small events across successive
-frames when an audible-click-free ramp is required.
+A scheduled event updates the semantic target at its frame; the event mechanism
+itself generates no ramp. Each effect's own smoothing can still delay the audible
+transition to that target. Scheduling small events does not bypass that smoothing
+or guarantee an exact sample-by-sample automation curve.
 
 An open stream or AudioWorklet accepts only values the native parameter commit can
 apply immediately. Open a new stream after changing \`IRReverb.channelMode\`,
@@ -1428,6 +1570,27 @@ ${codeBlock('python', `with chain.stream(sample_rate, channels=audio.shape[0]) a
 output = np.concatenate(blocks, axis=1)`)}
 
 Passing a non-contiguous view directly raises \`ValidationError\` with the same guidance.
+
+## Volume automation
+
+\`Volume\` applies its initial gain immediately. After processing has started,
+each target update makes a linear-in-gain transition lasting
+\`ceil(sampleRate * 0.005)\` samples. At 48 kHz this is 240 samples (5 ms).
+The first interpolation step is applied at the event frame, and the target is
+reached at \`eventFrame + 239\`. A target received before the transition finishes
+starts another 240-sample transition from the current gain. This behavior also
+applies to JavaScript \`setParam\`; it is not an interpolation between dB values.
+
+These complete examples reduce a constant 0.25 input from 0 dB to -6 dB at
+frame 128, then to -12 dB at frame 608. The output remains 0.25 through frame 127,
+is about 0.2494804 at frame 128, reaches about 0.1252968 at frame 367, and reaches
+about 0.0627972 at frame 847. The targets are 10 ms apart, leaving 5 ms at each
+settled level before the next transition. Internal 128-frame blocks do not change
+those positions.
+
+${codeBlock('python', volumePythonSnippet)}
+
+${codeBlock('js', volumeJavascriptSnippet)}
 `);
 
   add('assets-and-bundles', `
@@ -1442,6 +1605,10 @@ bytes/\`{bytes, format}\` in JavaScript. It never relies on repository fixtures.
 Crosstalk Cancellation requires four prepared filter channels in trueStereo topology
 (LL, LR, RL, RR) at the processing sample rate and exactly two selected processing
 channels. Automatic topology is accepted for this four-channel asset.
+
+[Bass Management](/dsp/effects/bass-management/) requires a low-pass asset only
+for configured Linear routing with Managed inputs or low-pass-filtered LFE inputs;
+see its effect page for the coefficient layout and an executable example.
 
 The examples below run each effect with two distinct caller-owned IRs and require
 finite, non-zero, different output. FIR Crossover uses two coefficient channels,
@@ -1467,7 +1634,7 @@ effetune render input.wav convolved.wav --preset cli-bundle --subtype FLOAT`)}
 For WAV output, omitting \`--subtype\` keeps SoundFile's PCM_16 default; use
 \`--subtype FLOAT\` when the rendered samples must remain 32-bit floating point.
 
-Python \`AssetData\` examples for all six types:
+Python \`AssetData\` examples for the required-asset effects listed above:
 
 ${codeBlock('python', assetPythonSnippet)}
 
@@ -1475,7 +1642,7 @@ Use the public \`encodeEta1()\` helper to encode deterministic JavaScript IR dat
 
 ${codeBlock('js', assetFixtureSnippet)}
 
-Then run the JavaScript resolver examples for all six types:
+Then run the JavaScript resolver examples for the same effects:
 
 ${codeBlock('js', assetJavascriptSnippet)}
 `);
@@ -2453,7 +2620,9 @@ Analyzer fields:
 | Note Spectrogram | \`frameIndex\` / \`frame_index\` | Unsigned observation counter within the current analysis generation |
 | Note Spectrogram | \`divisionsPerSemitone\` / \`divisions_per_semitone\` | \`5\`; each semitone has bins at -40, -20, 0, +20, and +40 cents around its center |
 | Note Spectrogram | \`generation\` / \`generation\` | Non-zero analysis generation; a change indicates that analyzer state restarted |
+| Note Spectrogram | \`revisionAge\` / \`revision_age\` | 0 when there is no revision, or 8 when revised confidences refer to the frame eight observations earlier in the same generation; subtract this age from \`frameIndex\` modulo 2^32 to identify that frame |
 | Note Spectrogram | \`levels\` / \`levels\` | Pitch confidence in [0, 1] as JavaScript \`Float32Array[440]\` or Python \`tuple[440]\`; index \`i\` maps to MIDI \`firstMidi + (i - 2) / divisionsPerSemitone\` |
+| Note Spectrogram | \`revisedLevels\` / \`revised_levels\` | Revised pitch confidence in [0, 1], with the same shape and pitch indexing as \`levels\`; null / \`None\` when \`revisionAge\` is 0 |
 | Note Spectrogram | \`volumeDb\` / \`volume_db\` | Volume in dB as JavaScript \`Float32Array[440]\` or Python \`tuple[440]\`, with the same pitch indexing as \`levels\`; values include a 3 dB/octave correction above 100 Hz, and -240 dB means no level was measured |
 | Pitch | \`sampleRate\` / \`sample_rate\` | Hz |
 | Pitch | \`timeSeconds\` / \`time_seconds\` | Observation time in seconds on the processing timeline |
@@ -2538,6 +2707,15 @@ The registries hold the authoritative published versions. \`pip install effetune
 v${version}. Signed tarballs, wheels, checksums, and the SBOM for every tagged release
 are attached to the matching
 [\`dsp-v\` GitHub Release](https://github.com/Frieve-A/effetune/releases?q=dsp-v).
+
+The [live demo build manifest](/dsp/demo/build-manifest.json) records the package
+name, version, DSP \`sourceDigest\`, and SHA-256 hashes of its served files. The
+site copies the checkout's built package artifacts. To check whether the demo
+uses the same processing files as an npm release, compare every manifest hash
+under \`vendor/@effetune/dsp/\` with the corresponding file in that installed
+package's \`dist/\` directory, including JavaScript, the worklet processor, WASM,
+and metadata. A matching displayed version or WASM hash alone does not establish
+that all these files are identical.
 `);
 
   add('faq', `

@@ -79,8 +79,8 @@ export class ExtensionClient extends EventTarget {
         return result;
     }
 
-    sendFrequencyPreview(frequency) {
-        this.channel.postMessage({ kind: 'frequencyPreview', clientId: this.id, sessionId: this.sessionId, frequency });
+    sendFrequencyPreview(frequency, sound = 'sine') {
+        this.channel.postMessage({ kind: 'frequencyPreview', clientId: this.id, sessionId: this.sessionId, frequency, sound });
     }
 
     close() {

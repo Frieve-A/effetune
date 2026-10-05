@@ -170,6 +170,13 @@ class StandardSelectManager {
       row.id = `${this.list.id}-option-${index}`;
       row.className = 'standard-select-option';
       row.textContent = option.textContent;
+      if (option.style.backgroundImage) {
+        const preview = this.document.createElement('span');
+        preview.className = 'standard-select-gradient-preview';
+        preview.style.backgroundImage = option.style.backgroundImage;
+        preview.setAttribute('aria-hidden', 'true');
+        row.prepend(preview);
+      }
       row.disabled = option.disabled;
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(index === select.selectedIndex));
@@ -285,7 +292,8 @@ class StandardSelectManager {
     const openAbove = desiredHeight > availableBelow && availableAbove > availableBelow;
     const availableHeight = openAbove ? availableAbove : availableBelow;
     const height = Math.min(desiredHeight, availableHeight);
-    const width = Math.min(rect.width, Math.max(0, viewportWidth - margin * 2));
+    const previewWidth = this.list.querySelector('.standard-select-gradient-preview') ? 180 : 0;
+    const width = Math.min(Math.max(rect.width, previewWidth), Math.max(0, viewportWidth - margin * 2));
     const left = Math.min(Math.max(margin, rect.left), viewportWidth - margin - width);
     const top = openAbove ? rect.top - gap - height : rect.bottom + gap;
     Object.assign(this.list.style, {

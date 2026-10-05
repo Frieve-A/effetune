@@ -620,7 +620,7 @@ test('Electron file paths sort and page by their full absolute path', async t =>
   }
 });
 
-test('CUE file path pages use track numbers before random IDs in both catalogs', async t => {
+test('CUE file paths and track number sorts page numerically in both catalogs', async t => {
   const { initializeWebSqliteRuntime, dispatchWebSqliteCommand } = await import('../../js/library/repository/web-sqlite-runtime.js');
   for (const backend of ['Electron', 'Web']) await t.test(backend, async t => {
     const fixture = backend === 'Electron' ? await openCatalog(t) : createTempCatalog(t, { registerCleanup: false });
@@ -660,18 +660,20 @@ test('CUE file path pages use track numbers before random IDs in both catalogs',
       await host.completeMetadataParseSuccess({ claim, metadata: { title: trackUid, trackNo },
         metadataStatus: 'ok', clearErrorAndRetryState: true, updateLastKnownGood: true, updateDerivedData: true });
     }
-    for (const direction of ['asc', 'desc']) {
-      const request = { query: '', sort: 'path', direction, limit: 1 };
-      let page = await host.queryTracks(request);
-      const numbers = [page.rows[0].trackNo];
-      while (page.nextCursor) {
-        page = await host.queryTracks({ ...request, contextToken: page.contextToken, cursor: page.nextCursor });
-        numbers.push(page.rows[0].trackNo);
+    for (const sort of ['path', 'trackNo']) {
+      for (const direction of ['asc', 'desc']) {
+        const request = { query: '', sort, direction, limit: 1 };
+        let page = await host.queryTracks(request);
+        const numbers = [page.rows[0].trackNo];
+        while (page.nextCursor) {
+          page = await host.queryTracks({ ...request, contextToken: page.contextToken, cursor: page.nextCursor });
+          numbers.push(page.rows[0].trackNo);
+        }
+        assert.deepEqual(numbers, direction === 'asc' ? [1, 2, 10] : [10, 2, 1]);
+        const previous = await host.queryTracks({ ...request, contextToken: page.contextToken, cursor: page.previousCursor });
+        assert.equal(previous.rows[0].trackNo, 2);
+        await host.releaseContext(page.contextToken);
       }
-      assert.deepEqual(numbers, direction === 'asc' ? [1, 2, 10] : [10, 2, 1]);
-      const previous = await host.queryTracks({ ...request, contextToken: page.contextToken, cursor: page.previousCursor });
-      assert.equal(previous.rows[0].trackNo, 2);
-      await host.releaseContext(page.contextToken);
     }
   });
 });

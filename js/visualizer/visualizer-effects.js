@@ -1,5 +1,7 @@
 const clamp = value => Math.max(0, Math.min(1, value));
+const wrap = value => (value % 1 + 1) % 1;
 const glowRadius = amount => 2 + clamp(amount) * 12;
+const GRADIENT_STEPS = 24;
 
 export function createLayer(width, height) {
     const canvas = document.createElement('canvas');
@@ -10,8 +12,9 @@ export function createLayer(width, height) {
 
 export function paletteColor(palette, position, time = 0) {
     const motion = palette.motion;
+    if (motion.reverse) time = -time;
     let p = clamp(position);
-    if (motion.mode === 'scroll') p = (p + time * motion.speed * 0.1) % 1;
+    if (motion.mode === 'scroll') p = wrap(p + time * motion.speed * 0.1);
     const stops = [...palette.stops].sort((a, b) => a.pos - b.pos);
     let left = stops[0], right = stops[stops.length - 1];
     for (const stop of stops) {
@@ -34,9 +37,41 @@ export function paletteColor(palette, position, time = 0) {
     return `rgb(${rgb.map(value => Math.round(Math.max(0, Math.min(255, value)))).join(',')})`;
 }
 
-export function paletteGradient(ctx, palette, width, time, vertical = false) {
-    const gradient = ctx.createLinearGradient(0, vertical ? width : 0, vertical ? 0 : width, 0);
-    for (let i = 0; i <= 24; i++) gradient.addColorStop(i / 24, paletteColor(palette, i / 24, time));
+// Move a fixed, repeating color pattern instead of resampling it at fixed screen positions.
+export function scrollingPaletteStops(palette, time = 0) {
+    const colors = Array.from({ length: GRADIENT_STEPS + 1 }, (_, index) =>
+        paletteColor(palette, index / GRADIENT_STEPS, 0).match(/[\d.]+/g).map(Number));
+    const phase = wrap((palette.motion.reverse ? -time : time) * palette.motion.speed * .1);
+    const sample = phase * GRADIENT_STEPS, edgeIndex = Math.floor(sample), mix = sample - edgeIndex;
+    const edge = colors[edgeIndex].map((value, channel) => value + (colors[edgeIndex + 1][channel] - value) * mix);
+    const stops = [{ pos: 0, color: edge }];
+    for (const offset of [-phase, 1 - phase]) {
+        for (let index = 0; index <= GRADIENT_STEPS; index++) {
+            const position = index / GRADIENT_STEPS + offset;
+            if (position >= 0 && position <= 1) stops.push({ pos: position, color: colors[index] });
+        }
+    }
+    stops.push({ pos: 1, color: edge });
+    return stops;
+}
+
+export function paletteGradient(ctx, palette, width, time, vertical = false, height = width) {
+    let gradient;
+    if (palette.direction === 'radial') {
+        gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.hypot(width, height) / 2);
+    } else if (!palette.angle) {
+        gradient = ctx.createLinearGradient(0, vertical ? height : 0, vertical ? 0 : width, 0);
+    } else {
+        const angle = palette.angle * Math.PI / 180 + (vertical ? -Math.PI / 2 : 0);
+        const x = Math.cos(angle), y = Math.sin(angle);
+        // Project the rectangle onto the rotated axis so all color stops remain in view.
+        const length = Math.abs(x) * width + Math.abs(y) * height;
+        const dx = x * length / 2, dy = y * length / 2;
+        gradient = ctx.createLinearGradient(width / 2 - dx, height / 2 - dy, width / 2 + dx, height / 2 + dy);
+    }
+    if (palette.motion.mode === 'scroll') {
+        for (const { pos, color } of scrollingPaletteStops(palette, time)) gradient.addColorStop(pos, `rgb(${color.join(',')})`);
+    } else for (let i = 0; i <= GRADIENT_STEPS; i++) gradient.addColorStop(i / GRADIENT_STEPS, paletteColor(palette, i / GRADIENT_STEPS, time));
     return gradient;
 }
 
@@ -93,14 +128,22 @@ export class VisualizerEffects {
     prune(ids) { for (const id of this.states.keys()) if (!ids.has(id)) this.states.delete(id); }
     // `scale` is the output width over the 1280-wide reference, so pixel radii keep
     // the same proportion to the scene at any output resolution.
-    apply(id, input, effects, time, modulators, quality = 0, changed = true, flipX = false, flipY = false, scale = 1) {
+    apply(id, input, effects, time, modulators, quality = 0, changed = true, flipX = false, flipY = false, scale = 1, scene = null) {
         const factor = quality > 0 ? .35 : .65;
         const width = Math.max(1, Math.round(input.width * factor));
         const height = Math.max(1, Math.round(input.height * factor));
         const active = effects.filter(isLayerEffect);
+        const affine = active.some(effect => effect.type === 'transform');
         const padding = active.reduce((max, effect) => effect.type === 'glow'
             ? Math.max(max, Math.ceil(glowRadius(effect.amount + effect.mod.depth) * scale * 3)) : max, 0);
-        const workWidth = width + padding * 2, workHeight = height + padding * 2;
+        const ratioX = width / input.width, ratioY = height / input.height;
+        // A scene-sized buffer admits Transform overflow without allocating for arbitrarily large transforms.
+        const sceneWidth = affine && scene ? Math.max(1, Math.round(scene.width * ratioX)) : width;
+        const sceneHeight = affine && scene ? Math.max(1, Math.round(scene.height * ratioY)) : height;
+        const workWidth = sceneWidth + padding * 2, workHeight = sceneHeight + padding * 2;
+        const centerX = padding + (affine && scene ? (flipX ? sceneWidth - scene.centerX * ratioX : scene.centerX * ratioX) : width / 2);
+        const centerY = padding + (affine && scene ? (flipY ? sceneHeight - scene.centerY * ratioY : scene.centerY * ratioY) : height / 2);
+        const inputX = centerX - width / 2, inputY = centerY - height / 2;
         let state = this.states.get(id);
         if (!state || state.a.width !== workWidth || state.a.height !== workHeight || state.padding !== padding) {
             state = { a: createLayer(workWidth, workHeight), b: createLayer(workWidth, workHeight), small: createLayer(1, 1), history: new Map(), particles: [], lastTime: time, bass: 0, padding };
@@ -111,11 +154,19 @@ export class VisualizerEffects {
             state.flipX = flipX; state.flipY = flipY;
             changed = true;
         }
+        if (state.centerX !== centerX || state.centerY !== centerY) {
+            state.centerX = centerX; state.centerY = centerY;
+            changed = true;
+        }
         const transform = { opacity: 1, scale: 1, x: 0, y: 0 };
         if (!active.length) return { canvas: input, ...transform };
         if (!changed && !animatedEffects(active) && state.result) return state.result;
         for (const effect of active) {
-            if (effect.type === 'scale-pulse') transform.scale *= 1 + effectAmount(effect, time, modulators) * .25;
+            if (effect.type === 'transform') {
+                const amount = effectAmount(effect, time, modulators);
+                transform.x += effect.offsetX / 100 * amount;
+                transform.y += effect.offsetY / 100 * amount;
+            } else if (effect.type === 'scale-pulse') transform.scale *= 1 + effectAmount(effect, time, modulators) * .25;
             else if (effect.type === 'shake') {
                 const amount = effectAmount(effect, time, modulators);
                 transform.x += Math.sin(time * 53) * amount * .04;
@@ -130,20 +181,31 @@ export class VisualizerEffects {
         let current = state.a, next = state.b;
         let ctx = current.getContext('2d');
         ctx.clearRect(0, 0, workWidth, workHeight);
-        if (transform.scale !== 1 || transform.x || transform.y) {
+        if (affine || transform.scale !== 1 || transform.x || transform.y) {
             ctx.save();
-            ctx.beginPath(); ctx.rect(padding, padding, width, height); ctx.clip();
-            ctx.translate(padding + width / 2 + transform.x * width * (flipX ? -1 : 1),
-                padding + height / 2 + transform.y * height * (flipY ? -1 : 1));
+            if (!affine) { ctx.beginPath(); ctx.rect(inputX, inputY, width, height); ctx.clip(); }
+            ctx.translate(centerX + transform.x * width * (flipX ? -1 : 1),
+                centerY + transform.y * height * (flipY ? -1 : 1));
+            // Keep movement and angles in scene coordinates when the finished layer is flipped.
+            const direction = flipX !== flipY ? -1 : 1;
             ctx.scale(transform.scale, transform.scale);
+            for (const effect of active) {
+                if (effect.type !== 'transform') continue;
+                const amount = effectAmount(effect, time, modulators);
+                if (effect.angle) ctx.rotate(effect.angle * amount * Math.PI / 180 * direction);
+                // Sequential shears preserve area when both controls are used together.
+                if (effect.skewX) ctx.transform(1, 0, Math.tan(effect.skewX * amount * Math.PI / 180) * direction, 1, 0, 0);
+                if (effect.skewY) ctx.transform(1, Math.tan(effect.skewY * amount * Math.PI / 180) * direction, 0, 1, 0, 0);
+                ctx.scale(1 + (effect.scaleX / 100 - 1) * amount, 1 + (effect.scaleY / 100 - 1) * amount);
+            }
             ctx.drawImage(input, -width / 2, -height / 2, width, height);
             ctx.restore();
-        } else ctx.drawImage(input, padding, padding, width, height);
+        } else ctx.drawImage(input, inputX, inputY, width, height);
         const dt = Math.min(.1, Math.max(0, time - state.lastTime));
         state.lastTime = time;
         for (let index = 0; index < active.length; index++) {
             const effect = active[index];
-            if (effect.type === 'scale-pulse' || effect.type === 'shake' || effect.type === 'ken-burns') continue;
+            if (effect.type === 'transform' || effect.type === 'scale-pulse' || effect.type === 'shake' || effect.type === 'ken-burns') continue;
             const amount = effectAmount(effect, time, modulators);
             if (effect.type === 'opacity') { transform.opacity *= amount; continue; }
             ctx = next.getContext('2d');
@@ -193,12 +255,12 @@ export class VisualizerEffects {
                 if (!history) { history = createLayer(workWidth, workHeight); state.history.set(index, history); }
                 ctx.globalAlpha = Math.pow(.15 + amount * .84, dt * 60);
                 if (effect.type === 'trail-feedback') {
-                    ctx.translate(workWidth / 2 + amount * (effect.flowX ?? 0) * width / 100 * (flipX ? -1 : 1),
-                        workHeight / 2 + amount * (effect.flowY ?? 0) * height / 100 * (flipY ? -1 : 1));
+                    ctx.translate(centerX + amount * (effect.flowX ?? 0) * width / 100 * (flipX ? -1 : 1),
+                        centerY + amount * (effect.flowY ?? 0) * height / 100 * (flipY ? -1 : 1));
                     ctx.rotate(amount * (effect.angle ?? 1.15) * Math.PI / 180 * (flipX !== flipY ? -1 : 1));
                     const scale = 1 + amount * (effect.zoom ?? 2) / 100;
                     ctx.scale(scale, scale);
-                    ctx.drawImage(history, -workWidth / 2, -workHeight / 2); ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.drawImage(history, -centerX, -centerY); ctx.setTransform(1, 0, 0, 1, 0, 0);
                 } else ctx.drawImage(history, 0, 0);
                 ctx.globalAlpha = 1;
                 ctx.drawImage(current, 0, 0);
@@ -206,10 +268,10 @@ export class VisualizerEffects {
                 historyCtx.clearRect(0, 0, workWidth, workHeight); historyCtx.drawImage(next, 0, 0);
             } else if (effect.type === 'symmetry') {
                 const count = 2 + Math.round(amount * 6);
-                ctx.translate(workWidth / 2, workHeight / 2);
+                ctx.translate(centerX, centerY);
                 ctx.globalAlpha = 1 / Math.sqrt(count);
                 for (let i = 0; i < count; i++) {
-                    ctx.save(); ctx.rotate(i * Math.PI * 2 / count); ctx.scale(i % 2 ? -1 : 1, 1); ctx.drawImage(current, -workWidth / 2, -workHeight / 2); ctx.restore();
+                    ctx.save(); ctx.rotate(i * Math.PI * 2 / count); ctx.scale(i % 2 ? -1 : 1, 1); ctx.drawImage(current, -centerX, -centerY); ctx.restore();
                 }
             } else if (effect.type === 'particles') {
                 ctx.drawImage(current, 0, 0);
@@ -219,7 +281,7 @@ export class VisualizerEffects {
                         let particle = state.particles.find(value => value.life <= 0);
                         if (!particle && state.particles.length < limit) { particle = {}; state.particles.push(particle); }
                         if (!particle) break;
-                        Object.assign(particle, { x: padding + Math.random() * width, y: padding + Math.random() * height, vx: (Math.random() - .5) * width, vy: (Math.random() - .5) * height, life: 1 });
+                        Object.assign(particle, { x: inputX + Math.random() * width, y: inputY + Math.random() * height, vx: (Math.random() - .5) * width, vy: (Math.random() - .5) * height, life: 1 });
                     }
                 }
                 ctx.fillStyle = color;
@@ -231,14 +293,16 @@ export class VisualizerEffects {
                 }
             } else {
                 ctx.drawImage(current, 0, 0);
-                if (effect.type === 'flash') { ctx.globalAlpha = amount; ctx.fillStyle = color; ctx.fillRect(padding, padding, width, height); }
+                if (effect.type === 'flash') { ctx.globalAlpha = amount; ctx.fillStyle = color; ctx.fillRect(inputX, inputY, width, height); }
             }
             ctx.restore();
             [current, next] = [next, current];
         }
         state.bass = modulators.bass;
         state.result = { canvas: current, opacity: transform.opacity, scale: 1, x: 0, y: 0,
-            paddingX: padding * input.width / width, paddingY: padding * input.height / height };
+            paddingX: padding * input.width / width, paddingY: padding * input.height / height,
+            ...(affine && scene ? { bounds: { x: -centerX / ratioX, y: -centerY / ratioY,
+                w: workWidth / ratioX, h: workHeight / ratioY } } : {}) };
         return state.result;
     }
 }

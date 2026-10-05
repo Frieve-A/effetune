@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginPath = path.join(repoRoot, 'plugins', 'analyzer', 'rhythm_analyzer.js');
 const PERIOD = 0.5;
+// Every panel shown, for the layout tests that need them all.
+const ALL_PANELS = { vt: true, vm: true, ve: true, vl: true };
 // 48 kHz with a 480-sample hop: 10 ms per analysis frame, 50 frames per beat at 120 BPM.
 const FRAMES_PER_BEAT = 50;
 
@@ -373,7 +375,7 @@ test('while searching the clock runs at the held period and onsets are placed un
     assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].text, '(120 BPM held)  searching');
     const frame = drawOnce(plugin, 375, 500);
     assert.equal(frame.valid, true);
-    assert.ok(frame.lens.top > frame.echo.top, 'portrait canvases stack the lens below');
+    assert.ok(frame.lens.top > frame.main.top, 'portrait canvases stack the lens below');
 });
 
 test('span snaps to the nearest supported value', async () => {
@@ -414,16 +416,24 @@ test('Max BPM stays at least 1.25 x Min BPM and only a changed range restarts th
     assert.equal(restarts, 2, 'a span change keeps the analysis');
 });
 
-test('a newer generation clears the history and an older one is ignored', async () => {
+test('a newer generation keeps the history and continues its frames and epochs, and an older one is ignored', async () => {
     const { plugin } = await loadPlugin();
     feed(plugin, pattern(16, BACKBEAT), { generation: 5 });
     const stored = plugin.eventSerial;
-    plugin.handleTelemetry(buildFrame({ generation: 4, frameCount: (plugin.testFrame += 10) }));
+    plugin.handleTelemetry(buildFrame({ generation: 4, frameCount: plugin.testFrame + 10 }));
     assert.equal(plugin.eventSerial, stored);
-    plugin.handleTelemetry(buildFrame({ generation: 6, frameCount: 3 }));
+    const lastFrame = plugin.lastFrameCount;
+    const clock = plugin.beatClock;
+    // The kernel restarts its frames and lock epochs; epoch 1 of the new generation is a new segment.
+    plugin.handleTelemetry(buildFrame({ generation: 6, frameCount: 3, events: [{ band: 0, x: 0.5, frame: 1 }] }));
     assert.equal(plugin.activeGeneration, 6);
-    assert.equal(plugin.eventSerial, 0);
-    assert.equal(plugin.segments.size, 1);
+    assert.equal(plugin.eventSerial, stored + 1);
+    assert.equal(plugin.lastFrameCount, lastFrame + 3);
+    assert.ok(plugin.beatClock >= clock);
+    assert.equal(plugin.segments.size, 2);
+    const index = stored % plugin.eventU.length;
+    assert.equal(plugin.eventEpoch[index], 2 ** 32 + 1);
+    assert.equal(plugin.eventTimed[index], 1);
 });
 
 test('a new telemetry source restarts the generation fence', async () => {
@@ -440,11 +450,11 @@ test('a new telemetry source restarts the generation fence', async () => {
 test('the click and the panel toggles default as specified and keep the history', async () => {
     const { plugin } = await loadPlugin();
     same(plugin.getParameters(), {
-        type: 'RhythmAnalyzerPlugin', enabled: true, mn: 40, mx: 240, ck: false, sp: 8, vt: true, vm: true, ve: true, vl: true
+        type: 'RhythmAnalyzerPlugin', enabled: true, mn: 40, mx: 240, ck: false, sp: 8, vt: false, vm: true, ve: false, vl: true
     });
     const bare = Object.create(Object.getPrototypeOf(plugin));
     bare.initializeDisplayState();
-    same({ ck: bare.ck, vt: bare.vt, vm: bare.vm, ve: bare.ve, vl: bare.vl }, { ck: false, vt: true, vm: true, ve: true, vl: true });
+    same({ ck: bare.ck, vt: bare.vt, vm: bare.vm, ve: bare.ve, vl: bare.vl }, { ck: false, vt: false, vm: true, ve: false, vl: true });
     feed(plugin, pattern(8, BACKBEAT));
     const stored = plugin.eventSerial;
     plugin.setParameters({ ck: 1, vt: 0, vm: false, ve: '', vl: false });
@@ -486,6 +496,11 @@ test('only enabled panels are laid out and read out, reflowed below the header',
     plugin.setParameters({ vt: true, vm: true, ve: true, vl: true });
     const full = drawOnce(plugin, 900, 600);
     assert.equal(full.lens.top, full.main.top, 'the landscape lens sits beside the lanes');
+    plugin.setParameters({ vt: false, ve: false });
+    const aligned = drawOnce(plugin, 900, 600);
+    assert.ok(aligned.lens.top === aligned.main.top && aligned.lens.height === aligned.main.height,
+        'beside the lanes alone the lens rows line up with the lane rows');
+    plugin.setParameters({ vt: true, ve: true });
     // The lanes show the newest window, so the echo rows then start one window back.
     assert.equal(full.views.find(view => view.echo).uRight, plugin.beatClock - plugin.sp);
     plugin.setParameters({ vm: false });
@@ -494,6 +509,7 @@ test('only enabled panels are laid out and read out, reflowed below the header',
 
 test('on a narrow canvas the lens band labels and offset values stay clear of the marks', async () => {
     const { plugin } = await loadPlugin();
+    plugin.setParameters(ALL_PANELS);
     feed(plugin, pattern(8, BACKBEAT));
     plugin.lensSummary = () => ({ rows: LENS_ROWS, swing: 1, jitter: 5 });
     // A 359x479 item on a 359- and a 434-px canvas: at the second scale the lens floor is not an exact float sum.
@@ -606,6 +622,7 @@ test('the header layout does not move as its values change width', async () => {
 
 test('High is on top in lanes, echo rows, lens and readout', async () => {
     const { plugin } = await loadPlugin();
+    plugin.setParameters(ALL_PANELS);
     feed(plugin, pattern(16, BACKBEAT));
     const frame = drawOnce(plugin, 900, 600);
     const main = frame.views.find(view => !view.echo);
@@ -717,6 +734,7 @@ test('the tempogram scrolls smoothly between frames, stops after two columns and
         })
     };
     const { plugin, clock } = await loadPlugin({ document });
+    plugin.setParameters(ALL_PANELS);
     // A frame every 30 ms carrying 3 hops (0.24 column), each with its own tempo.
     const send = index => {
         clock.now = 1000 + 30 * index;
@@ -773,6 +791,7 @@ test('the tempogram scrolls smoothly between frames, stops after two columns and
 
 test('in a small portrait item the narrow panel minimums leave the timing lanes and echo rows a real share', async () => {
     const { plugin } = await loadPlugin();
+    plugin.setParameters(ALL_PANELS);
     feed(plugin, pattern(8, BACKBEAT));
     const { main, echo, views } = drawOnce(plugin, 240, 320);
     const echoRows = views.filter(view => view.echo);

@@ -251,6 +251,14 @@ function createBinding(options = {}) {
   return binding;
 }
 
+function createPreviewNoiseMath() {
+  let seed = 12345;
+  return Object.assign(Object.create(Math), { random() {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 2 ** 32;
+  } });
+}
+
 async function createWorkletHarness(options = {}) {
   const source = await fs.readFile(processorPath, 'utf8');
   const injected = source.replace(
@@ -282,6 +290,7 @@ async function instantiateDspBinding(payload, options) {
   }
   const sandbox = {
     ArrayBuffer,
+    Math: options.math ?? Math,
     DataView,
     Float32Array: options.Float32Array ?? Float32Array,
     Map,
@@ -668,6 +677,86 @@ test('frequency preview mixes only source channels before JS, WASM and bypass pr
     assert.deepEqual(output[2], output[3]);
     assert.ok(input.every(channel => channel.every(value => value === 0.125)));
     if (mode === 'wasm') assert.ok(h.binding.calls.some(call => call[0] === 'instanceProcess'));
+  }
+});
+
+test('band-pass noise preview follows its center frequency at a consistent RMS level', async () => {
+  function spectralPower(samples, frequency, sampleRate) {
+    let power = 0;
+    for (let bin = -4; bin <= 4; bin++) {
+      const step = 2 * Math.PI * (frequency / sampleRate + bin / samples.length);
+      let real = 0;
+      let imaginary = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const value = samples[i] * (1 - Math.cos(2 * Math.PI * i / samples.length));
+        real += value * Math.cos(step * i);
+        imaginary += value * Math.sin(step * i);
+      }
+      power += real * real + imaginary * imaginary;
+    }
+    return power;
+  }
+  for (const sampleRate of [48000, 96000]) {
+    const h = await createWorkletHarness({ sampleRate, math: createPreviewNoiseMath() });
+    const input = [new Float32Array(1024)];
+    for (const frequency of [500, 4000]) {
+      await h.send({ type: 'frequencyPreview', frequency, sound: 'bandpassNoise' });
+      for (let block = 0; block < 8; block++) h.processor._mixFrequencyPreview(input);
+      const samples = new Float32Array(32768);
+      for (let offset = 0; offset < samples.length; offset += 1024) {
+        samples.set(h.processor._mixFrequencyPreview(input)[0], offset);
+      }
+      const rms = Math.sqrt(samples.reduce((power, value) => power + value * value, 0) / samples.length);
+      assert.ok(Math.abs(rms - 10 ** (-12 / 20) / Math.sqrt(2)) < 0.02, `${frequency} Hz at ${sampleRate}: RMS ${rms}`);
+      const center = spectralPower(samples, frequency, sampleRate);
+      for (const outside of [frequency / 2, frequency * 2]) {
+        assert.ok(center > spectralPower(samples, outside, sampleRate) * 4,
+          `${frequency} Hz preview must attenuate ${outside} Hz at ${sampleRate}`);
+      }
+    }
+  }
+});
+
+test('band-pass noise preview passes through the pipeline and stops after its release ramp', async () => {
+  for (const mode of ['js', 'wasm', 'bypass']) {
+    const h = await createWorkletHarness({ outputChannels: 4, math: createPreviewNoiseMath() });
+    await h.send({ type: 'registerProcessor', pluginType: 'VolumePlugin',
+      processor: 'for (let i = 0; i < data.length; i++) data[i] *= 2; return data;' });
+    if (mode === 'wasm') {
+      await h.send({ type: 'dspEnableTypes', types: ['VolumePlugin'] });
+      await h.send({ type: 'dspModule', module: {} });
+    }
+    await h.send({ type: 'updatePlugins', plugins: [pluginConfig()], masterBypass: mode === 'bypass' });
+    await h.send({ type: 'frequencyPreview', frequency: 1000, sound: 'bandpassNoise' });
+    const output = processBlock(h.processor, 0.125, 4);
+    const gain = mode === 'bypass' ? 1 : 2;
+    assert.ok(output[0].every(Number.isFinite));
+    assert.ok(output[0].some(value => Math.abs(value - 0.125 * gain) > 0.01));
+    assert.deepEqual(output[0], output[1]);
+    assert.ok(output[2].every(value => Math.abs(value - 0.125 * gain) < 1e-6));
+    assert.deepEqual(output[2], output[3]);
+    for (const frequency of [20, 22000, 20, 1000]) {
+      await h.send({ type: 'frequencyPreview', frequency, sound: 'bandpassNoise' });
+      for (let block = 0; block < 8; block++) {
+        const samples = processBlock(h.processor, 0, 4)[0];
+        const peak = samples.reduce((maximum, value) => Math.max(maximum, Math.abs(value)), 0);
+        assert.ok(samples.every(Number.isFinite) && peak < 2, `${mode}, ${frequency} Hz: peak ${peak}`);
+      }
+      assert.equal(h.processor.frequencyPreview.noise.frequency, frequency);
+    }
+    for (const stop of [{ type: 'frequencyPreview', frequency: null }, { type: 'reset' },
+      { type: 'frequencyPreview', frequency: 24000, sound: 'bandpassNoise' }]) {
+      await h.send(stop);
+      assert.equal(h.processor.frequencyPreview.sound, 'bandpassNoise');
+      assert.ok(h.processor.frequencyPreview.gain > 0);
+      const input = [new Float32Array(128)];
+      for (let block = 0; block < 3; block++) h.processor._mixFrequencyPreview(input);
+      assert.equal(h.processor._mixFrequencyPreview(input), input);
+      await h.send({ type: 'frequencyPreview', frequency: 1000, sound: 'bandpassNoise' });
+      h.processor._mixFrequencyPreview(input);
+    }
+    await h.send({ type: 'frequencyPreview', frequency: 440, sound: 'unknown' });
+    assert.equal(h.processor.frequencyPreview.sound, 'sine');
   }
 });
 
@@ -4681,7 +4770,7 @@ test('background display DSP bypass keeps normal WASM active and leaves the nati
 
 test('background display DSP bypass pauses Spectrum Overlay acquisition and restores its route', async () => {
   const binding = createBinding({ pipelineConfigureStatus: 0 });
-  const harness = await createWorkletHarness({ binding });
+  const harness = await createWorkletHarness({ binding, multiresSpectrum: true });
   await harness.send({
     type: 'updatePlugins',
     plugins: [pluginConfig({ id: 7 })],
@@ -4728,6 +4817,7 @@ test('background display DSP bypass pauses Spectrum Overlay acquisition and rest
   assert.equal(messagesOf(harness.posts, 'spectrumOverlay').length, 1);
 
   harness.posts.length = 0;
+  harness.setContextFrame(128);
   tapState.position = 2040;
   await harness.send({
     type: 'configurePowerPolicy',
@@ -6580,6 +6670,58 @@ test('worklet delivers Tube Simulator runtime events per instance epoch without 
   );
 });
 
+test('worklet delivers APE numerical faults and confirmed Reset recovery without telemetry', async () => {
+  let runtimeEvent = { generation: 0, latched: false, cause: 0 };
+  const binding = createBinding({ capabilities: { abiVersion: 1, simd: false,
+    kernels: [{ name: 'AdaptivePredictionEffectPlugin', hash: 0xebd8a6f0,
+      byteCapacity: 0, kernelIndex: 0 }] },
+    runtimeEvent: () => runtimeEvent, pipelineConfigureStatus: 0, pipelineGain: 1 });
+  const harness = await createWorkletHarness({ binding });
+  const plugin = stereoPairWasmPluginConfig({ type: 'AdaptivePredictionEffectPlugin',
+    executionCapabilities: { requiresWasm: true,
+      supportedChannelModes: ['mono', 'single', 'stereo-pair'] },
+    wasmParams: Float32Array.of(1, 0.02, 0, 0, 0, 1, 0, 0, 0, 0),
+    wasmParamsHash: 0xebd8a6f0 });
+  await harness.send({ type: 'updateAudioConfig', sampleRate: 48000 });
+  await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+  await harness.send({ type: 'dspEnableTypes', types: ['AdaptivePredictionEffectPlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+  runtimeEvent = { generation: 1, latched: true, cause: 1 };
+  processBlock(harness.processor, 0.25);
+  processBlock(harness.processor, 0.25);
+  runtimeEvent = { generation: 2, latched: false, cause: 0 };
+  processBlock(harness.processor, 0.25);
+  const events = messagesOf(harness.posts, 'adaptivePredictionFault').map(entry => entry.message);
+  assert.deepEqual(events.map(event => [event.generation, event.latched, event.cause]),
+    [[0, false, 'none'], [1, true, 'numericalFailure'], [2, false, 'none']]);
+  assert.ok(events.every(event => event.instanceEpoch === events[0].instanceEpoch));
+});
+
+test('worklet keeps APE active at low, high, and nonstandard sample rates', async () => {
+  const context = { PluginBase: class {}, window: {} };
+  vm.runInNewContext(await fs.readFile(
+    path.join(repoRoot, 'plugins/resonator/adaptive_prediction_effect.js'), 'utf8'), context);
+  const binding = createBinding({ capabilities: { abiVersion: 1, simd: false,
+    kernels: [{ name: 'AdaptivePredictionEffectPlugin', hash: 0xebd8a6f0,
+      byteCapacity: 0, kernelIndex: 0 }] }, pipelineConfigureStatus: 0, pipelineGain: 2 });
+  const harness = await createWorkletHarness({ binding });
+  const plugin = stereoPairWasmPluginConfig({ type: 'AdaptivePredictionEffectPlugin',
+    executionCapabilities: context.window.AdaptivePredictionEffectPlugin.executionCapabilities,
+    wasmParams: Float32Array.of(1, 0.02, 0, 0, 0, 1, 0, 0, 0, 0),
+    wasmParamsHash: 0xebd8a6f0 });
+  await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+  await harness.send({ type: 'dspEnableTypes', types: ['AdaptivePredictionEffectPlugin'] });
+  await harness.send({ type: 'dspModule', module: {} });
+  for (const sampleRate of [8000, 32000, 44100, 48000, 50000, 96000, 192000, 352800, 384000]) {
+    await harness.send({ type: 'updateAudioConfig', sampleRate });
+    const state = messagesOf(harness.posts, 'dspExecutionState').at(-1).message;
+    assert.equal(state.state, 'active', String(sampleRate) + ' Hz');
+    assert.equal(state.reason, null);
+    assert.ok(processBlock(harness.processor, 0.25).every(
+      channel => channel.every(sample => sample === 0.5)), String(sampleRate) + ' Hz');
+  }
+});
+
 test('worklet shares mono and first-pair routing for high-rate compressed codecs', async () => {
   for (const codec of [
     {
@@ -7607,4 +7749,52 @@ test('gate: candidate plans mark new compensation lines without allocating them'
   const line = candidate.nodeActions.get(8).delayLine;
   assert.ok(Object.isFrozen(line) && Object.keys(line).length === 0);
   assert.equal(processor.latencyPlansDiffer(adopted, candidate, true), true);
+});
+
+test('a stream boundary restarts each Rhythm Analyzer at the quantum nearest its input latency', async () => {
+  const harness = await createWorkletHarness();
+  const processor = harness.processor;
+  const resets = [];
+  processor._resetTemporalPlugin = pluginId => resets.push(pluginId);
+  processor.dspBinding = { resetInstance: id => resets.push(`v${id}`) };
+  processor.plugins = [
+    { id: 1, type: 'RhythmAnalyzerPlugin' },
+    { id: 2, type: 'VolumePlugin' },
+    { id: 3, type: 'RhythmAnalyzerPlugin' }
+  ];
+  processor.dspLatencyPlan = { tapPositions: { 1: { input: 0 }, 3: { input: 300 } }, totalSamples: 500 };
+  processor.visualizerInstances = new Map([
+    [0xf0000001, { id: 9, type: 'RhythmAnalyzerPlugin' }],
+    [0xf0000002, { id: 10, type: 'PitchMeterPlugin' }]
+  ]);
+  const at = frame => {
+    harness.setContextFrame(frame);
+    processor.applyStreamBoundaries(128);
+  };
+
+  await harness.send({ type: 'streamBoundary', frame: 1000 });
+  at(896);
+  assert.deepEqual(resets, []);
+  at(1024);
+  assert.deepEqual(resets, [1]);
+  at(1280);
+  assert.deepEqual(resets, [1, 3], 'input latency 300 lands at 1300, nearest quantum start 1280');
+  at(1408);
+  assert.deepEqual(resets, [1, 3]);
+  at(1536);
+  assert.deepEqual(resets, [1, 3, 'v9'], 'the Visualizer taps the output, 500 samples after the boundary');
+  assert.equal(processor.streamBoundaries.length, 0);
+
+  await harness.send({ type: 'streamBoundary', frame: 5000 });
+  await harness.send({ type: 'streamBoundary', frame: null });
+  assert.equal(processor.streamBoundaries.length, 0, 'a cancelled boundary never fires');
+
+  resets.length = 0;
+  await harness.send({ type: 'streamBoundary', frame: 6000 });
+  at(6144);
+  assert.deepEqual(resets, [1]);
+  await harness.send({ type: 'streamBoundary', frame: 9000 });
+  at(6656);
+  assert.deepEqual(resets, [1, 3, 'v9'], 'the next reservation keeps the delayed resets of a reached boundary');
+  assert.deepEqual([...processor.streamBoundaries.map(boundary => boundary.frame)], [9000]);
 });
