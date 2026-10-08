@@ -1,12 +1,16 @@
 #include "effetune/dsp/delay_line.h"
 #include "effetune/dsp/denormal_noise.h"
+#include "effetune/dsp/fir.h"
 #include "effetune/dsp/math.h"
+#include "effetune/dsp/oversampled_shaper.h"
 #include "effetune/dsp/smoothing.h"
 #include "effetune/dsp/xorshift_rng.h"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <vector>
 
 namespace {
 
@@ -50,6 +54,17 @@ void testDelayLine() {
   PRIMITIVE_CHECK(delay.read(1U, 0U) == -4.0F);
   delay.reset();
   PRIMITIVE_CHECK(delay.read(1U, 0U) == 0.0F);
+
+  for (std::uint32_t frame = 1U; frame <= 12U; ++frame) {
+    delay.push(0U, static_cast<float>(frame));
+    delay.push(1U, -static_cast<float>(frame));
+    for (std::uint32_t age = 0U; age <= 4U; ++age) {
+      const float expected = frame > age ? static_cast<float>(frame - age) : 0.0F;
+      PRIMITIVE_CHECK(delay.read(0U, age) == expected);
+      PRIMITIVE_CHECK(delay.read(1U, age) == -expected);
+    }
+  }
+  PRIMITIVE_CHECK(delay.readLinear(0U, 1.5) == 10.5F);
 }
 
 void testSmoothing() {
@@ -130,6 +145,115 @@ void testDenormalNoise() {
   PRIMITIVE_CHECK(positive_sum + negative_sum == 0.0);
 }
 
+void testFir() {
+  std::array<double, 1026> coefficients{};
+  std::array<double, 1026> samples{};
+  std::array<float, 1026> float_samples{};
+  for (std::uint32_t index = 0u; index < samples.size(); ++index) {
+    samples[index] = std::sin(static_cast<double>(index) * 0.13);
+    float_samples[index] = static_cast<float>(samples[index]);
+    coefficients[index] = std::cos(static_cast<double>(index) * 0.31) * 0.03;
+  }
+  // Offset views exercise unaligned vector loads, all remainder sizes, and both sample formats.
+  for (const std::uint32_t length : {0u, 1u, 2u, 3u, 4u, 5u, 8u, 9u, 64u, 65u, 129u, 513u, 1025u}) {
+    double expected = 0.0, float_expected = 0.0;
+    for (std::uint32_t tap = 0u; tap < length; ++tap) {
+      expected += coefficients[tap + 1u] * samples[tap + 1u];
+      float_expected += coefficients[tap + 1u] * static_cast<double>(float_samples[tap + 1u]);
+    }
+    PRIMITIVE_CHECK(near(
+        effetune::dsp::firDot(coefficients.data() + 1u, samples.data() + 1u, length), expected));
+    PRIMITIVE_CHECK(
+        near(effetune::dsp::firDot(coefficients.data() + 1u, float_samples.data() + 1u, length),
+             float_expected));
+    auto symmetric = coefficients;
+    for (std::uint32_t tap = 0u; tap < length / 2u; ++tap)
+      symmetric[length - tap] = symmetric[tap + 1u];
+    expected = float_expected = 0.0;
+    for (std::uint32_t tap = 0u; tap < length; ++tap) {
+      expected += symmetric[tap + 1u] * samples[tap + 1u];
+      float_expected += symmetric[tap + 1u] * static_cast<double>(float_samples[tap + 1u]);
+    }
+    PRIMITIVE_CHECK(near(
+        effetune::dsp::firSymmetric(symmetric.data() + 1u, samples.data() + 1u, length), expected));
+    PRIMITIVE_CHECK(
+        near(effetune::dsp::firSymmetric(symmetric.data() + 1u, float_samples.data() + 1u, length),
+             float_expected));
+  }
+}
+
+void testOversampledShaper() {
+  constexpr std::uint32_t frames = 1200u;
+  constexpr double pi = 3.14159265358979323846;
+  std::array<std::array<double, frames>, 2> input{};
+  for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+    input[0][frame] = std::sin(frame * 0.37) + (frame == 0u ? 1.0 : 0.0);
+    input[1][frame] = 0.9 * std::cos(frame * 0.17);
+  }
+  const auto shape = [](double value) {
+    return value > 0.35 ? 0.35 : value < -0.35 ? -0.35 : value;
+  };
+  effetune::dsp::OversampledShaper shaper;
+  shaper.prepare(2u);
+  for (const std::uint32_t rate : {1u, 2u, 4u, 8u, 16u}) {
+    const std::uint32_t length = 64u * rate + 1u;
+    std::vector<double> filter(length);
+    double sum = 0.0;
+    for (std::uint32_t tap = 0u; tap < length; ++tap) {
+      const double offset = static_cast<double>(tap) - 32.0 * rate;
+      const double angle = 2.0 * pi * tap / (length - 1u);
+      const double window = 0.42 - 0.5 * std::cos(angle) + 0.08 * std::cos(2.0 * angle);
+      const double cutoff = 0.475 / rate;
+      filter[tap] =
+          (offset == 0.0 ? 2.0 * cutoff : std::sin(2.0 * pi * cutoff * offset) / (pi * offset)) *
+          window;
+      sum += filter[tap];
+    }
+    for (double &coefficient : filter)
+      coefficient /= sum;
+    for (int repetition = 0; repetition < 2; ++repetition) {
+      // Reconfiguration and explicit reset must both discard the mirrored histories.
+      if (repetition != 0)
+        shaper.reset();
+      shaper.configure(rate, 2u);
+      double maximum_error = 0.0;
+      for (std::uint32_t channel = 0u; channel < 2u; ++channel) {
+        std::vector<double> reference(frames * rate);
+        for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+          double expected = shape(input[channel][frame]);
+          if (rate > 1u) {
+            // Independent direct convolution, without circular indexing or folded coefficients.
+            for (std::uint32_t phase = 0u; phase < rate; ++phase) {
+              double interpolated = 0.0;
+              for (std::uint32_t tap = phase, delay = 0u; tap < length; tap += rate, ++delay) {
+                if (delay <= frame)
+                  interpolated += filter[tap] * input[channel][frame - delay];
+              }
+              reference[frame * rate + phase] = shape(interpolated * rate);
+            }
+            expected = 0.0;
+            for (std::uint32_t tap = 0u; tap < length && tap <= frame * rate; ++tap)
+              expected += filter[tap] * reference[frame * rate - tap];
+          }
+          const double actual = shaper.process(channel, input[channel][frame], shape);
+          const double difference = std::abs(actual - expected);
+          if (difference > maximum_error)
+            maximum_error = difference;
+          const double dry = shaper.delay(channel, input[channel][frame]);
+          const double expected_dry = rate == 1u ? input[channel][frame]
+                                      : frame < shaper.kLatency
+                                          ? 0.0
+                                          : input[channel][frame - shaper.kLatency];
+          PRIMITIVE_CHECK(dry == expected_dry);
+        }
+      }
+      PRIMITIVE_CHECK(maximum_error < 1.0e-12);
+    }
+  }
+  shaper.configure(8u, 1u);
+  PRIMITIVE_CHECK(shaper.process(0u, 0.0, shape) == 0.0);
+}
+
 } // namespace
 
 int main() {
@@ -138,6 +262,8 @@ int main() {
   testRng();
   testMath();
   testDenormalNoise();
+  testFir();
+  testOversampledShaper();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d primitive test check(s) failed\n", failures);

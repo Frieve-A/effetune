@@ -5,6 +5,7 @@ import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
 import { PLAYBACK_SPEED_STEPS, normalizePlaybackSpeed } from '../../js/ui/audio-player/playback-speed.js';
 import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
+import { installSpaceKeyGuard } from '../../js/utils/space-key-guard.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeFile {
@@ -17,16 +18,18 @@ function createDocument() {
   const listeners = new Map();
   return {
     listeners,
-    addEventListener(type, listener) {
+    addEventListener(type, listener, capture = false) {
       if (!listeners.has(type)) listeners.set(type, []);
-      listeners.get(type).push(listener);
+      listeners.get(type).push({ listener, capture });
     },
     removeEventListener(type, listener) {
-      listeners.set(type, (listeners.get(type) || []).filter(candidate => candidate !== listener));
+      listeners.set(type, (listeners.get(type) || []).filter(candidate => candidate.listener !== listener));
     },
     dispatchKey(event) {
-      for (const listener of listeners.get('keydown') || []) {
-        listener(event);
+      for (const capture of [true, false]) {
+        for (const entry of listeners.get('keydown') || []) {
+          if (entry.capture === capture) entry.listener(event);
+        }
       }
     }
   };
@@ -34,7 +37,8 @@ function createDocument() {
 
 function createTarget(kind = 'div') {
   return {
-    tagName: kind.toUpperCase(),
+    tagName: kind.startsWith('input-') ? 'INPUT' : kind.toUpperCase(),
+    type: kind === 'input-range' ? 'range' : 'text',
     matches(selector) {
       if (kind === 'input-text') {
         return selector.includes('input:not([type="range"])') || selector.includes('input, textarea');
@@ -65,8 +69,10 @@ function createKeyEvent(key, options = {}) {
     metaKey: options.metaKey ?? false,
     target: options.target ?? createTarget(),
     prevented: false,
+    defaultPrevented: false,
     preventDefault() {
       this.prevented = true;
+      this.defaultPrevented = true;
     }
   };
   return event;
@@ -1806,6 +1812,52 @@ test('keyboard shortcuts ignore inactive contexts and control active playback', 
       documentRef.dispatchKey(createKeyEvent(key, { ctrlKey: key.startsWith('Arrow') }));
     }
     await flushMicrotasks();
+  });
+});
+
+test('Space starts, pauses, and resumes playback with the page-scroll guard installed', async () => {
+  await withPlaybackGlobals({}, async ({ documentRef }) => {
+    const uninstallGuard = installSpaceKeyGuard(documentRef);
+    const audioPlayer = createAudioPlayer({ currentTrackPosition: 48 });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager, ['One']);
+    Object.assign(audioPlayer.audioElement, { src: 'blob:current-track', currentTime: 48 });
+    let command;
+    manager.runPlaybackCommand = operation => {
+      command = PlaybackManager.prototype.runPlaybackCommand.call(manager, operation);
+      return command;
+    };
+
+    for (const [state, expectedCommand] of [
+      [{ isPlaying: false, isPaused: false, isStopped: true }, 'contextLoadTrack'],
+      [{ isPlaying: true, isPaused: false, isStopped: false }, 'contextPause'],
+      [{ isPlaying: false, isPaused: true, isStopped: false }, 'contextPlay']
+    ]) {
+      Object.assign(audioPlayer.state, state, {
+        currentTrack: manager.playlist[0], playbackMode: 'audioElement'
+      });
+      audioPlayer.calls.length = 0;
+      command = null;
+      const event = createKeyEvent(' ');
+      documentRef.dispatchKey(event);
+      await command;
+      assert.equal(event.defaultPrevented, true);
+      assert.equal(audioPlayer.calls.filter(call => call[0] === expectedCommand).length, 1, expectedCommand);
+      if (!state.isPlaying) {
+        assert.equal(audioPlayer.calls.filter(call => call[0] === 'contextPlay').length, 1);
+      }
+    }
+    assert.equal(audioPlayer.audioElement.currentTime, 48);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+    assert.equal(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack'), false);
+
+    for (const kind of ['input-text', 'textarea', 'select', 'button']) {
+      command = null;
+      documentRef.dispatchKey(createKeyEvent(' ', { target: createTarget(kind) }));
+      assert.equal(command, null, kind);
+    }
+    manager.dispose();
+    uninstallGuard();
   });
 });
 

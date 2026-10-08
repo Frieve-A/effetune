@@ -40,6 +40,8 @@ struct HostTransport {
   std::uint32_t timeSignatureDenominator = 0u;
 };
 
+struct NoteAnalysisView;
+
 struct ProcessInfo {
   double timeSeconds;
   // Host transport at the first frame of the processed block, already shifted
@@ -47,6 +49,8 @@ struct ProcessInfo {
   // While playing, the position advances tempoBpm / 60 / sampleRate quarter
   // notes per frame within the block. The pointer is valid only during the call.
   const HostTransport *transport = nullptr;
+  // Borrowed upstream note analysis; valid only during this process call.
+  const NoteAnalysisView *noteAnalysis = nullptr;
 };
 
 struct RuntimeEventState {
@@ -86,6 +90,11 @@ struct AssetBeginInfo {
   std::uint32_t byteSize;
 };
 
+struct LatencyRange {
+  std::uint32_t minimum;
+  std::uint32_t maximum;
+};
+
 class PluginKernel {
 public:
   virtual ~PluginKernel() = default;
@@ -97,7 +106,15 @@ public:
   virtual void process(float *audio, std::uint32_t channel_count, std::uint32_t frame_count,
                        const ProcessInfo &info) noexcept = 0;
   [[nodiscard]] virtual std::uint32_t latencySamples() const noexcept { return 0; }
+  // Bounds for parameter-only changes after preparation; topology/assets stay fixed.
+  [[nodiscard]] virtual LatencyRange latencyRange() const noexcept {
+    const auto latency = latencySamples();
+    return {latency, latency};
+  }
   virtual void writeTelemetry(TelemetryWriter &) noexcept {}
+  [[nodiscard]] virtual const NoteAnalysisView *noteAnalysisView() const noexcept {
+    return nullptr;
+  }
   virtual void readRuntimeEvent(RuntimeEventState &state) const noexcept { state = {0u, 0u, 0u}; }
 #if defined(ET_DEBUG_STATE)
   [[nodiscard]] virtual bool readDebugState(DebugStateSnapshot &) const noexcept { return false; }

@@ -307,6 +307,7 @@ test('JavaScript detail benchmarks skip FIR effects that require convolution ass
     ].map(name => [name, class {
       constructor() { this.name = name; }
       getParameters() { return {}; }
+      cleanup() {}
     }]));
   `);
 
@@ -334,6 +335,7 @@ test('96 kHz detail benchmarks skip Adaptive Prediction with supported-rate guid
   h.context.pluginClasses = {
     'Adaptive Prediction': class AdaptivePredictionEffectPlugin {
       constructor() { this.name = 'Adaptive Prediction'; }
+      cleanup() {}
     },
     Delay: h.context.pluginClasses.Delay
   };
@@ -359,6 +361,57 @@ test('96 kHz detail benchmarks skip Adaptive Prediction with supported-rate guid
   assert.equal(h.calls.filter(([type]) => type === 'error').length, 0);
   assert.match(h.document.getElementById('benchmark-status').textContent, /Benchmark completed/);
   assert.equal(h.document.getElementById('run-benchmarks').disabled, false);
+});
+
+function installObservedVolumePlugin(h) {
+  const observers = new Set();
+  h.context.MutationObserver = class {
+    constructor(callback) { this.callback = callback; }
+    observe() { observers.add(this); }
+    disconnect() { observers.delete(this); }
+  };
+  vm.runInContext(readFileSync(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8') + '\n' +
+    readFileSync(new URL('../../plugins/basics/volume.js', import.meta.url), 'utf8') +
+    '\nglobalThis.BenchmarkVolume = VolumePlugin;', h.context);
+  h.context.pluginClasses = { Volume: h.context.BenchmarkVolume };
+  return observers;
+}
+
+test('repeated full benchmarks release real plugin observers after each run', async () => {
+  const h = createHarness({ useWasmDsp: false });
+  const observers = installObservedVolumePlugin(h);
+  await h.events.load();
+  const remaining = [];
+  for (let run = 0; run < 3; run++) {
+    await h.run('runBenchmarks()');
+    remaining.push(observers.size);
+  }
+  assert.deepEqual(remaining, [0, 0, 0]);
+  assert.ok(h.runtimes.every(runtime => runtime.closed));
+  assert.ok(h.runtimes.every(runtime => runtime.sessions.every(session => session.closed)));
+  assert.match(h.document.getElementById('benchmark-status').textContent, /Benchmark completed/);
+});
+
+test('skipped benchmarks and setup or processing failures release real plugin observers', async () => {
+  for (const outcome of ['skip', 'setup-failure', 'process-failure']) {
+    const h = createHarness({
+      useWasmDsp: false,
+      missing: outcome === 'skip' ? 'VolumePlugin' : null,
+      fail: outcome === 'process-failure' ? 'Volume' : null
+    });
+    const observers = installObservedVolumePlugin(h);
+    if (outcome === 'setup-failure') {
+      h.context.configureFirBenchmarkWorkload = () => { throw new Error('Workload setup failed'); };
+    }
+    await h.events.load();
+    await h.run('runBenchmarks()');
+    assert.equal(observers.size, 0, outcome);
+    assert.ok(h.runtimes.every(runtime => runtime.closed), outcome);
+    assert.ok(h.runtimes.every(runtime => runtime.sessions.every(session => session.closed)), outcome);
+    assert.equal(h.document.getElementById('run-benchmarks').disabled, false, outcome);
+    assert.match(h.document.getElementById('benchmark-status').textContent,
+      outcome === 'skip' ? /Benchmark completed/ : /could not be completed/);
+  }
 });
 
 test('benchmark result headers sort every column and toggle ascending and descending order', async () => {

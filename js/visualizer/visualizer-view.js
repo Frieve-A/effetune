@@ -396,7 +396,7 @@ export class VisualizerView {
             applySystemPreset: id => { const preset = all.find(value => value.id === id); if (!preset) return false; this.setLayout(preset.layout); this.currentPresetName = ''; return true; },
             applyUserPreset: async name => { const layout = await this.store.getUserPreset(name); if (!layout) return false; this.setLayout(layout); this.currentPresetName = name; return true; },
             saveUserPreset: async name => { await this.store.saveUserPreset(name, this.layout); this.currentPresetName = name; return true; },
-            renameUserPreset: async (oldName, newName) => { const result = await this.store.renameUserPreset(oldName, newName); if (this.currentPresetName === oldName) this.currentPresetName = newName; return result; },
+            renameUserPreset: async (oldName, newName) => { const result = await this.store.renameUserPreset(oldName, newName); if (result && this.currentPresetName === oldName) this.currentPresetName = newName; return result; },
             deleteUserPresets: async names => { const result = await this.store.deleteUserPresets(names); if (names.includes(this.currentPresetName)) this.currentPresetName = ''; return result; },
             errorKeys: { save: 'error.failedToSavePreset', delete: 'error.failedToDeletePreset' }
         };

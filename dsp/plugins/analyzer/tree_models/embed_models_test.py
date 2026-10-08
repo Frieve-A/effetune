@@ -14,9 +14,8 @@ from embed_models import embed_model, read_model, unpack_array
 class ModelEmbeddingTest(unittest.TestCase):
     def test_production_models(self):
         for folder, names in (
-                ("note_spectrogram", ("learned_model", "fine_model", "octave_model")),
-                ("rhythm_analyzer", ("g2_level", "g2_hazard", "rhythm_d_low", "rhythm_d_mid",
-                                     "rhythm_d_high"))):
+                ("rhythm_analyzer", ("rhythm_d_low", "rhythm_d_mid",
+                                     "rhythm_d_high")),):
             for name in names:
                 with self.subTest(model=name):
                     read_model(Path(__file__).parent.parent / folder / (name + ".json"))

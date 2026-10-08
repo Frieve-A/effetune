@@ -70,6 +70,11 @@ export class WebSessionFileSource {
       getFile(relativePath, signal) {
         return source.getFile(relativePath, signal);
       },
+      async listFileNames(relativeDirectory = '', signal) {
+        throwIfAborted(signal);
+        const node = source.directories.get(normalizeDirectory(relativeDirectory));
+        return node ? [...node.files] : [];
+      },
       async readSmallFile({ relativePath, maximumBytes, signal } = {}) {
         const file = await source.getFile(relativePath, signal);
         if (file.size > maximumBytes) return { tooLarge: true, size: file.size, bytes: null };

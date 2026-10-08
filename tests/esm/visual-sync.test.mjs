@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { VISUAL_SYNC_RULES as rules, isVisualSyncEnabled, requiredOutputDelayFrames,
-  audibleFrameTime, audibleContextTime } from '../../js/audio/visual-sync.js';
+  audibleFrameTime, audibleContextTime, telemetryCaptureTiming } from '../../js/audio/visual-sync.js';
 
 test('visual sync capture ages follow FFT, staged slot, HQ and pitch window formulas', () => {
   for (const pt of [8, 12, 14]) {
@@ -12,7 +12,7 @@ test('visual sync capture ages follow FFT, staged slot, HQ and pitch window form
     assert.equal(rules.SpectrogramPlugin.generationFrames({ pt }, 48000, 'wasm'), size);
     assert.equal(rules.SpectrogramPlugin.generationFrames({ pt, sc: 'log-hq' }, 48000, 'js'), size * 2 + 48 + size / 2);
   }
-  assert.equal(rules.NoteSpectrogramPlugin.generationFrames({}, 48000, 'wasm'), 8192 + 960);
+  assert.ok(Math.abs(rules.NoteSpectrogramPlugin.generationFrames({}, 48000, 'wasm') - 5244.474399459274) < 1e-8);
   assert.equal(rules.PitchMeterPlugin.generationFrames({ rf: 440, mn: 69 }, 48000, 'wasm'), 360 + 480);
   assert.equal(rules.RhythmAnalyzerPlugin.generationFrames({}, 48000, 'wasm'), 1024 / 2 + 2 * 128);
   assert.equal(rules.RhythmAnalyzerPlugin.generationFrames({}, 96000, 'wasm'), 2048 / 2 + 2 * 256);
@@ -23,6 +23,21 @@ test('visual sync capture ages follow FFT, staged slot, HQ and pitch window form
   assert.equal(rules.UnknownPlugin, undefined);
   assert.equal(isVisualSyncEnabled({ visualSync: true }), true);
   for (const config of [undefined, {}, { visualSync: 'true' }]) assert.equal(isVisualSyncEnabled(config), false);
+});
+
+test('Note Spectrogram sync follows the asymmetric long-window energy centroid at each rate', () => {
+  // Reference centroids use raw double windows and count the newest sample at age one.
+  for (const [rate, centroid] of [[16000, 1428.4148630939314], [44100, 3936.447441538596],
+    [48000, 4284.474399459274], [96000, 8568.448798918569], [384000, 34272.29519567371]]) {
+    const completion = Math.floor(Math.min(8192, Math.max(16, Math.round(rate * 0.02))) / 16) * 16;
+    assert.ok(Math.abs(rules.NoteSpectrogramPlugin.generationFrames({}, rate, 'wasm') - centroid - completion) < 1e-7);
+    const payload = new DataView(new ArrayBuffer(8840));
+    payload.setFloat32(0, rate, true);
+    payload.setFloat32(4, 1, true);
+    const timing = telemetryCaptureTiming({ frameType: 24, formatVersion: 5, payload }, rate);
+    assert.equal(timing.endFrame, rate * 2);
+    assert.ok(Math.abs(timing.generationFrames - centroid) < 1e-7);
+  }
 });
 
 test('visual sync output delay uses the greatest enabled capture deficit and clamps it', () => {

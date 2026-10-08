@@ -1,16 +1,16 @@
 ---
 layout: dsp
 title: "EffeTune DSP ライブラリ"
-description: "このページは短い案内です。v0.12.0 の完全な文書は英語版を正として保守しています。"
+description: "このページは短い案内です。v0.13.0 の完全な文書は英語版を正として保守しています。"
 lang: ja
 permalink: /dsp/ja/
 ---
 
 # EffeTune DSP ライブラリ
 
-このページは短い案内です。v0.12.0 の完全な文書は英語版を正として保守しています。
+このページは短い案内です。v0.13.0 の完全な文書は英語版を正として保守しています。
 
-Documentation version: **0.12.0**
+Documentation version: **0.13.0**
 
 - [完全な英語ドキュメント](/dsp/)
 - [ライブデモ](/dsp/demo/)

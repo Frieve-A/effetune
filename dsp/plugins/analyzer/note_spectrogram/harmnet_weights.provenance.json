@@ -1,0 +1,155 @@
+{
+  "artifact": "harmnet_weights.h",
+  "model": "HarmNet L",
+  "weights_bytes": 188048,
+  "weights_sha256": "0164ecb8b4eb9143a20255669612aed306c9db9b670d892de1aee7492051b6a3",
+  "architecture": {
+    "input_bins": 300,
+    "input_windows": 2,
+    "conv_channels": 16,
+    "conv_kernels": [
+      [
+        3,
+        7,
+        1
+      ],
+      [
+        3,
+        5,
+        1
+      ],
+      [
+        3,
+        5,
+        3
+      ]
+    ],
+    "harmonics": [
+      0.5,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "pitches": 88,
+    "lowest_midi": 21,
+    "hidden": 48,
+    "pitch_convolution_width": 5,
+    "heads": [
+      0,
+      2,
+      4,
+      8
+    ]
+  },
+  "training": {
+    "seed": 1,
+    "steps": 3000,
+    "batch": 16,
+    "sequence_frames": 192,
+    "burn_in_frames": 16,
+    "learning_rate": 0.0005,
+    "optimizer": "AdamW",
+    "weight_decay": 0.0001,
+    "schedule": "OneCycle",
+    "maximum_learning_rate": 0.0005,
+    "warmup_fraction": 0.05
+  },
+  "calibration": {
+    "logit_offsets": [
+      0.25,
+      0.2,
+      0.2,
+      0.2
+    ],
+    "selection": "Equal average F1 across the calibration datasets, averaged equally between clean and mixed audio.",
+    "band_logit_offsets": {
+      "21-47": [
+        0.55,
+        0.35,
+        0.35,
+        0.3
+      ],
+      "48-71": [
+        0.25,
+        0.35,
+        0.2,
+        0.25
+      ],
+      "72-91": [
+        0.25,
+        0.15,
+        0.05,
+        0.05
+      ]
+    },
+    "application": "MIDI21-47/48-71/72-91 use band biases; MIDI92-108 uses global bias",
+    "folding": "Float32 (band - global) added to per-pitch bias."
+  },
+  "runtime": "Fixed float32 weights; no runtime training or adaptation.",
+  "training_exclusion": "Development and held-out test data were excluded from training and calibration.",
+  "training_sources": [
+    {
+      "dataset": "Cantoria",
+      "sampling_percent": 4.799451
+    },
+    {
+      "dataset": "Dagstuhl ChoirSet",
+      "sampling_percent": 0.63712
+    },
+    {
+      "dataset": "Groove MIDI Dataset",
+      "sampling_percent": 8.085206
+    },
+    {
+      "dataset": "GuitarSet",
+      "sampling_percent": 10.889134
+    },
+    {
+      "dataset": "MusicNet",
+      "sampling_percent": 62.181161
+    },
+    {
+      "dataset": "Slakh2100-redux",
+      "sampling_percent": 6.214741
+    },
+    {
+      "dataset": "vocadito",
+      "sampling_percent": 1.411452
+    },
+    {
+      "dataset": "Schubert Winterreise",
+      "sampling_percent": 5.781735
+    }
+  ],
+  "training_additions": [
+    {
+      "dataset": "Synthetic low-register tones",
+      "eligible_crop_probability_percent": 46.0,
+      "scope": "Configured probability of adding synthetic notes to eligible audio segments; these segments also contain base-dataset audio"
+    },
+    {
+      "dataset": "Slakh2100-redux",
+      "donor_sampling_percent": 22.8,
+      "base_sampling_percent": 3.55,
+      "scope": "Drum replacement frequencies measured in 2000 sampled audio segments; not totals over all training steps"
+    }
+  ],
+  "fine_tune_chain": [
+    {
+      "model": "HarmNet L (base)",
+      "steps": 10400,
+      "additions": "Base datasets and vocal recordings"
+    },
+    {
+      "model": "HarmNet L (fine-tuned)",
+      "steps": 3000,
+      "additions": "Drum, vocal, mastering and level augmentation; synthetic low-register tones including pure sine waves and tones with harmonics, with sustained, decaying, slowly rising or brief notes (MIDI 21-60); Slakh2100-redux drum stems as unpitched negatives"
+    }
+  ],
+  "training_sources_scope": "Base audio sampling percentages; augmentation audio may occur in the same segment."
+}

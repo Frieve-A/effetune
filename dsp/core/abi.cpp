@@ -138,6 +138,12 @@ std::uint32_t et_instance_latency(et_engine engine, et_instance instance) {
   return target == nullptr ? 0u : target->instanceLatency(instance);
 }
 
+et_status et_instance_set_analysis_source(et_engine engine, et_instance consumer,
+                                          et_instance producer) {
+  auto *instance = findEngine(engine);
+  return instance ? instance->setInstanceAnalysisSource(consumer, producer) : ET_ERR_ARGS;
+}
+
 et_status et_instance_set_tap(et_engine engine, et_instance instance, std::uint32_t tap_id) {
   effetune::Engine *target = findEngine(engine);
   return target == nullptr ? ET_ERR_ARGS : target->setInstanceTap(instance, tap_id);
@@ -391,6 +397,21 @@ et_status et_pipeline_configure(et_engine engine, const std::uint8_t *descriptor
                                 std::uint32_t descriptor_bytes) {
   effetune::Engine *target = findEngine(engine);
   return target == nullptr ? ET_ERR_ARGS : target->configurePipeline(descriptor, descriptor_bytes);
+}
+
+et_status et_pipeline_refresh_latency(et_engine engine) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->refreshPipelineLatency();
+}
+
+et_status et_pipeline_reserve_latency(et_engine engine) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->reservePipelineLatency();
+}
+
+et_status et_pipeline_refresh_latency_realtime(et_engine engine) {
+  effetune::Engine *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->refreshPipelineLatencyRealtime();
 }
 
 std::uint32_t et_pipeline_latency(et_engine engine) {

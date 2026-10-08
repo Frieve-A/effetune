@@ -1,0 +1,30 @@
+{
+  "artifact": "tc_constants.h",
+  "generator": "tools/rhythm-analyzer/export.py",
+  "header_sha256": "4e4809aa736cb22907c41a227ec0d2117d7ec3417def1a3d2d9f73b9ef0d7daf",
+  "method": "Non-periodic Hann; nearest-bin unique triangular logarithmic filters normalized to sum one; beat FIR firwin(32*factor+1, .94/factor, Kaiser beta 8.6)",
+  "frames": [
+    512,
+    1024,
+    2048
+  ],
+  "bands_per_octave": [
+    6,
+    12,
+    24
+  ],
+  "group_offsets": [
+    0,
+    34,
+    106,
+    250
+  ],
+  "sample_rate": 24000,
+  "hop": 256,
+  "fmin": 30,
+  "fmax": 11000,
+  "window_generator": "torch 2.5.1+cu124 hann_window(periodic=False, device=cuda)",
+  "fir_generator": "scipy 1.15.2 firwin",
+  "derived_constants_bytes": 31316,
+  "classification": "Derived constants, not learned parameters"
+}

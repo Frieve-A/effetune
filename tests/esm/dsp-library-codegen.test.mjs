@@ -8,6 +8,7 @@ import { loadParamSpecs } from '../../scripts/gen-dsp-params.mjs';
 import { runDocsGenerator } from '../../examples/dsp-library/generate-docs.mjs';
 import {
   EFFECT_CHANNELS,
+  APP_ONLY_EFFECT_TYPES,
   FROZEN_PARAM_DIRECTORIES,
   PUBLIC_EFFECT_TYPES,
   buildCatalog,
@@ -120,7 +121,7 @@ test('frozen catalog selects every approved source-backed effect in canonical or
   assert.deepEqual(registeredTypes, webTypes, 'Every Web audio effect must have a native DSP kernel');
   assert.deepEqual(
     catalog.effects.map(effect => effect.implementation.internalType).sort(),
-    registeredTypes,
+    registeredTypes.filter(type => !APP_ONLY_EFFECT_TYPES.includes(type)),
     'Every registered production kernel must have a public binding contract'
   );
   for (const effect of catalog.effects) {

@@ -103,6 +103,7 @@ export class SearchManager {
     setupKeyboardShortcuts() {
         // Add keyboard shortcut for search
         window.addEventListener('keydown', (e) => {
+            if (document.body?.classList.contains('view-library')) return;
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault(); // Prevent browser's default search
                 e.stopPropagation(); // Stop event propagation

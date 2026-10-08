@@ -78,9 +78,9 @@ function harness() {
         }, now: () => now };
 }
 
-function noteFrame(index, time, generation = 1) {
-    const payload = new DataView(new ArrayBuffer(5312));
-    payload.setFloat32(0, 48000, true);
+function noteFrame(index, time, generation = 1, rate = 48000) {
+    const payload = new DataView(new ArrayBuffer(8840));
+    payload.setFloat32(0, rate, true);
     payload.setFloat32(4, time, true);
     payload.setUint16(8, 440, true);
     payload.setUint16(10, 21, true);
@@ -92,7 +92,7 @@ function noteFrame(index, time, generation = 1) {
         payload.setFloat32(32 + pitch * 4, 0.75, true);
         payload.setFloat32(1792 + pitch * 4, -12, true);
     }
-    return { tapId: 7, frameType: 24, formatVersion: 4, payload };
+    return { tapId: 7, frameType: 24, formatVersion: 5, payload };
 }
 
 function spectrogramFrame(time) {
@@ -133,15 +133,22 @@ test('Visual Sync preserves both histories with different analysis periods throu
 });
 
 test('Visual Sync preserves capture spacing inside a batched packet and after a worklet time reset', () => {
-    for (const offset of [0, 48000]) {
-        const h = harness();
-        const deliveries = [];
-        h.hub.subscribe(7, 24, () => deliveries.push(h.now()));
-        h.send([noteFrame(0, 1 - offset / 48000), noteFrame(1, 1.02 - offset / 48000)], 51000, offset);
-        h.flush();
-        assert.equal(deliveries.length, 2);
-        assert.ok(Math.abs(deliveries[0] - (1000 + (10000 - 8192) / 48)) < 0.001);
-        assert.ok(Math.abs(deliveries[1] - deliveries[0] - 20) < 0.001);
+    for (const [rate, centroid] of [[16000, 1428.4148630939314], [44100, 3936.447441538596],
+        [48000, 4284.474399459274], [96000, 8568.448798918569], [384000, 34272.29519567371]]) {
+        for (const offset of [0, rate]) {
+            const h = harness();
+            const delay = Math.round(rate * 0.25);
+            h.manager.contextManager.audioContext.sampleRate = rate;
+            h.manager.visualSyncDelayFrames = delay;
+            h.manager._appliedOutputDelayFrames.set(h.manager._getPrimaryWorkletNode(), delay);
+            const deliveries = [];
+            h.hub.subscribe(7, 24, () => deliveries.push(h.now()));
+            h.send([noteFrame(0, 1 - offset / rate, 1, rate), noteFrame(1, 1.02 - offset / rate, 1, rate)], rate + 3000, offset);
+            h.flush();
+            assert.equal(deliveries.length, 2);
+            assert.ok(Math.abs(deliveries[0] - (1000 + (delay - centroid) / rate * 1000)) < 0.001);
+            assert.ok(Math.abs(deliveries[1] - deliveries[0] - 20) < 0.001);
+        }
     }
 });
 
@@ -179,7 +186,7 @@ test('Visualizer analysis uses the shared output delay and its pre-delay tap', (
     const pipelineDue = h.manager._resolveVisualSyncDue(7, 51000, 7,
         noteFrame(0, 1), 0);
     const source = { tapId: 0xf0000000, type: 'NoteSpectrogramPlugin',
-        params: { mn: 28, mx: 91, nc: 8 } };
+        params: { mn: 28, mx: 91 } };
     h.manager.visualizerSources = [source];
     h.manager.visualizerSourcesByTap = new Map([[source.tapId, source]]);
     assert.equal(h.manager.getDspTelemetryRate({ hidden: true, displayDspBypassed: true }), 60);

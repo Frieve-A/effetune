@@ -113,6 +113,16 @@ public:
       fade_length_ = five_milliseconds;
     }
     retargetControls();
+    const bool controls_ramping = control_ramp_remaining_ != 0u;
+    std::array<double, 3u> stable_gains{};
+    std::array<double, 3u> stable_bias_offsets{};
+    if (!controls_ramping) {
+      for (std::size_t band = 0u; band < 3u; ++band) {
+        const std::size_t base = band * 4u;
+        stable_gains[band] = std::pow(10.0, controlAt(base + 3u, 0u) / 20.0);
+        stable_bias_offsets[band] = std::tanh(controlAt(base, 0u) * controlAt(base + 1u, 0u));
+      }
+    }
 
     const std::uint32_t fade_start = fade_counter_;
     const std::uint32_t fade_length = fade_length_;
@@ -143,8 +153,10 @@ public:
           const double drive = controlAt(base, frame);
           const double bias = controlAt(base + 1u, frame);
           const double mix = controlAt(base + 2u, frame) / 100.0;
-          const double gain = std::pow(10.0, controlAt(base + 3u, frame) / 20.0);
-          const double bias_offset = std::tanh(drive * bias);
+          const double gain = controls_ramping ? std::pow(10.0, controlAt(base + 3u, frame) / 20.0)
+                                               : stable_gains[band];
+          const double bias_offset =
+              controls_ramping ? std::tanh(drive * bias) : stable_bias_offsets[band];
           const double dry = static_cast<double>(signal[frame]);
           const double wet = shaper_.process(channel * 3u + band, dry, [&](double sample) {
             return std::tanh(drive * (sample + bias)) - bias_offset;
@@ -176,6 +188,10 @@ public:
     }
     advanceControls(frame_count);
     denormal_noise_.advance(frame_count);
+  }
+
+  [[nodiscard]] LatencyRange latencyRange() const noexcept override {
+    return {0u, dsp::OversampledShaper::kLatency};
   }
 
   [[nodiscard]] std::uint32_t latencySamples() const noexcept override {

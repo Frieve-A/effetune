@@ -109,8 +109,12 @@ export class PluginListManager {
             plugins.forEach(name => {
                 if (this.pluginManager.pluginClasses[name]) {
                     const plugin = new this.pluginManager.pluginClasses[name]();
-                    const item = this.createPluginItem(plugin);
-                    pluginItemsContainer.appendChild(item);
+                    try {
+                        const item = this.createPluginItem(plugin);
+                        pluginItemsContainer.appendChild(item);
+                    } finally {
+                        plugin.cleanup();
+                    }
                 }
             });
             

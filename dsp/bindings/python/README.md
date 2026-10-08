@@ -12,7 +12,7 @@ tree without distribution metadata reports `0+source`.
 
 <!-- BEGIN DSP-LIBRARY-PYTHON-SUMMARY -->
 EffeTune is a deterministic audio-effects library backed by the same
-host-neutral C++20 DSP core used by the EffeTune application. Version 0.12.0
+host-neutral C++20 DSP core used by the EffeTune application. Version 0.13.0
 provides 111 semantic effect classes, ordered serial chains, stateful block
 processing, semantic presets, bounded impulse-response bundles, and a small
 audio-file CLI.
@@ -184,6 +184,10 @@ The first subscriber enables observations and the last unsubscribe disables
 them. Delivered tuples are caller-owned semantic values. Raw DSP telemetry is
 not a public API.
 
+Note Spectrogram's `revisions` contains updates for observations 2, 4, and 8
+analysis hops earlier (40, 80, and 160 ms). Each entry has `age` and `levels`.
+`revision_age` and `revised_levels` describe the final 160 ms update.
+
 Effects whose catalog marks `impulseResponse` as required need an asset
 reference and an asset resolver. FIR filter effects use prepared coefficient
 impulses at the processing sample rate. See
@@ -237,6 +241,11 @@ details. `Stream.latency_samples` reports aggregate runtime latency and matches
 JavaScript `ChainStream.latencySamples` for the same chain and sample rate.
 `Chain.latency_samples(sample_rate, ...)` reports the same aggregate without
 opening a stream, which aligns offline `process()` output.
+
+Chain processing aligns channels using the effects' technical latency, including
+channels that bypass a selected-channel effect. The reported latency is the
+longest channel path, so effects on separate channels do not add their latencies
+together. Intentional delays from Delay and TimeAlignment are preserved.
 
 ### Modulation system-preset recipes
 

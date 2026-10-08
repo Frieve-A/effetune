@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
@@ -61,7 +62,10 @@ function createContextHarness(initialState = {}) {
     audioContext: audioPlayer.audioContext,
     sourceNode: null,
     ioManager: null,
-    workletNode: null
+    workletNode: null,
+    _getPrimaryWorkletNode: AudioManager.prototype._getPrimaryWorkletNode,
+    _getActivePowerWorklets: AudioManager.prototype._getActivePowerWorklets,
+    broadcastToActiveWorklets: AudioManager.prototype.broadcastToActiveWorklets
   };
   const manager = new AudioContextManager(audioPlayer, audioManager);
   return { audioPlayer, manager, state: stateManager.state, stateManager };

@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { EngineSession } from '../dist/engine.js';
+import { packEffect } from '../dist/semantics.js';
+import { Effect } from '../dist/effect.js';
 
 test('engine session reuses undersized arena channel views', () => {
   let subarrayCalls = 0;
@@ -15,6 +17,7 @@ test('engine session reuses undersized arena channel views', () => {
   const arena = new TrackedFloat32Array(2 * 512);
   const session = new EngineSession({
     getArenaViews: () => ({ combined: arena }),
+    pipelineProcess: () => 0,
     close() {}
   }, [], { channels: 2, maxFrames: 512, seed: 0 });
   assert.equal(subarrayCalls, 2);
@@ -118,6 +121,48 @@ test('package processor follows each output render-quantum length', async () => 
     assert.equal(processor.process([input], [output]), true);
     assert.equal(processor.processedFrames, 192);
     processor.handleMessage({ type: 'close' });
+
+    const dynamic = new Processor();
+    const limiter = new Effect('BrickwallLimiter', {
+      id: 'limiter', channel: 'left', lookahead: 3
+    }).toJSON();
+    const shaper = new Effect('Saturation', {
+      id: 'shaper', channel: 'right', oversampling: 1, mix: 0, gain: 0
+    }).toJSON();
+    await dynamic.initialize({ channels: 2, maxFrames: 128,
+      document: { version: 1, chain: [limiter, shaper] }, resolvedAssets: new Map(),
+      wasmBytes: await readFile(new URL('../dist/assets/effetune-dsp.wasm', import.meta.url)), seed: 0 });
+    assert.equal(dynamic.ready, true);
+    const binding = dynamic.session.binding;
+    const initializedMemory = binding.memory.buffer;
+    let realtimeRefreshes = 0;
+    const refresh = binding.pipelineRefreshLatencyRealtime.bind(binding);
+    binding.pipelineRefreshLatencyRealtime = () => { realtimeRefreshes++; return refresh(); };
+    binding.pipelineRefreshLatency = () => assert.fail('Audio callbacks must use reserved refresh');
+    const silence = Array.from({ length: 2 }, () => new Float32Array(128));
+    const rendered = Array.from({ length: 2 }, () => new Float32Array(128));
+    let commandId = 10;
+    for (const [effect, parameter, value, expected] of [
+      [limiter, 'lookahead', 6, 288], [limiter, 'lookahead', 0, 1],
+      [limiter, 'lookahead', 10, 480], [limiter, 'lookahead', 0, 1],
+      [shaper, 'oversampling', 8, 64], [shaper, 'oversampling', 1, 1]
+    ]) {
+      effect.parameters[parameter] = value;
+      const packed = packEffect(effect);
+      dynamic.handleMessage({ type: 'setParam', commandId: commandId++, effectId: effect.id,
+        values: packed.values, hash: packed.hash });
+      assert.equal(dynamic.process([silence], [rendered]), true);
+      assert.equal(dynamic.latencySamples, expected);
+      assert.equal(binding.memory.buffer, initializedMemory);
+      assert.equal(binding.memoryGrowthViolation, false);
+    }
+    dynamic.handleMessage({ type: 'reset', commandId: commandId++ });
+    dynamic.process([silence], [rendered]);
+    assert.equal(dynamic.latencySamples, 144);
+    assert.equal(binding.memory.buffer, initializedMemory);
+    assert.equal(realtimeRefreshes, 7);
+    assert.equal(dynamic.port.messages.some(message => message.type === 'commandResult' && !message.ok), false);
+    dynamic.handleMessage({ type: 'close' });
   } finally {
     if (priorProcessor === undefined) delete globalThis.AudioWorkletProcessor;
     else globalThis.AudioWorkletProcessor = priorProcessor;

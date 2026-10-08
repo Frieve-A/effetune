@@ -272,6 +272,32 @@ function extractArchive(entry, archivePath) {
   return destination;
 }
 
+export function patchOhNetSizeFormats(ohNetRoot) {
+  const corrections = [
+    [
+      'OpenHome/Net/Device/DviService.cpp',
+      'Log::Print(", refCount=%u, subscriptions=%u\\n", iRefCount, iSubscriptions.size());',
+      'Log::Print(", refCount=%u, subscriptions=%zu\\n", iRefCount, iSubscriptions.size());',
+    ],
+    [
+      'OpenHome/Net/Device/DviSubscription.cpp',
+      'summary.AppendPrintf("Subscriptions: %u current, %u since startup\\n", iMap.size(), iCount);',
+      'summary.AppendPrintf("Subscriptions: %zu current, %u since startup\\n", iMap.size(), iCount);',
+    ],
+  ];
+  const updates = [];
+  for (const [relativePath, before, after] of corrections) {
+    const filePath = join(ohNetRoot, relativePath);
+    const source = readFileSync(filePath, 'utf8');
+    if (!source.includes(before) && source.split(after).length === 2) continue;
+    if (source.split(before).length !== 2 || source.includes(after)) {
+      throw new Error('Unexpected pinned ohNet size-format source: ' + relativePath);
+    }
+    updates.push([filePath, source.replace(before, after)]);
+  }
+  for (const [filePath, source] of updates) writeFileSync(filePath, source, 'utf8');
+}
+
 function findVsDevCmd() {
   const candidates = [];
   if (process.env.VSINSTALLDIR) {
@@ -518,6 +544,7 @@ async function main() {
   if (!ohNetRoot || !generatedRoot) {
     throw new Error('The OpenHome dependency lock must include ohNet and ohNetGenerated.');
   }
+  patchOhNetSizeFormats(ohNetRoot);
 
   let ohNetLibrary;
   let vsDevCmd = null;

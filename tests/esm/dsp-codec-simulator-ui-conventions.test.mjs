@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 
 import { OfflineProcessor } from '../../js/audio/offline-processor.js';
 
@@ -145,6 +146,7 @@ class FakeMutationObserver {
 function loadCodecSimulator(globalName) {
   const window = {};
   const context = vm.createContext({
+    bindEffeTuneNumberInput: bindNumberInput,
     window,
     document: fakeDocument,
     console,

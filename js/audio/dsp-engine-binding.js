@@ -19,6 +19,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_reset',
     'et_instance_latency',
     'et_instance_set_tap',
+    'et_instance_set_analysis_source',
     'et_instance_set_seed',
     'et_instance_set_params',
     'et_instance_set_param_bytes',
@@ -36,6 +37,9 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_telemetry_capacity',
     'et_telemetry_read',
     'et_pipeline_configure',
+    'et_pipeline_refresh_latency',
+    'et_pipeline_reserve_latency',
+    'et_pipeline_refresh_latency_realtime',
     'et_pipeline_latency',
     'et_pipeline_process'
 ];
@@ -531,6 +535,11 @@ export class DspEngineBinding {
         return this.exports.et_instance_set_tap(this.engine, instanceId, tapId >>> 0);
     }
 
+    instanceSetAnalysisSource(consumer, producer = 0) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_set_analysis_source(this.engine, consumer, producer);
+    }
+
     instanceSetSeed(instanceId, seedLow, seedHigh = 0) {
         if (!this.engine) return ET_ERR_STATE;
         return this.exports.et_instance_set_seed(
@@ -832,9 +841,44 @@ export class DspEngineBinding {
         return status;
     }
 
+    pipelineRefreshLatency() {
+        if (!this.engine) return ET_ERR_STATE;
+        this._preparing = true;
+        let status = ET_ERR_STATE;
+        try {
+            status = this.exports.et_pipeline_refresh_latency(this.engine);
+        } finally {
+            this._refreshViews();
+            this._preparing = false;
+        }
+        this.getArenaViews();
+        return status;
+    }
+
     pipelineLatency() {
         if (!this.engine) return 0;
         return this.exports.et_pipeline_latency(this.engine) >>> 0;
+    }
+
+    pipelineReserveLatency() {
+        if (!this.engine) return ET_ERR_STATE;
+        this._preparing = true;
+        let status = ET_ERR_STATE;
+        try {
+            status = this.exports.et_pipeline_reserve_latency(this.engine);
+        } finally {
+            this._refreshViews();
+            this._preparing = false;
+        }
+        this.getArenaViews();
+        return status;
+    }
+
+    pipelineRefreshLatencyRealtime() {
+        if (!this.engine) return ET_ERR_STATE;
+        const status = this.exports.et_pipeline_refresh_latency_realtime(this.engine);
+        this._refreshViews();
+        return status;
     }
 
     pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {

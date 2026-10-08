@@ -7,6 +7,7 @@ import { DEFAULT_REPO_ROOT, pathExists } from './cases.mjs';
 import { readFloat32File, writeFloat32File } from './golden-io.mjs';
 import { DEFAULT_NOISE_SEED } from './stimuli.mjs';
 import { canonicalizeProcessingParameters } from '../../dsp/bindings/js/src/effect.js';
+import { packSfzAsset } from '../../js/sfz/asset.js';
 import {
   buildDspPipelineDescriptor,
   buildDspPipelineNodes
@@ -320,28 +321,48 @@ function syntheticIrBytes(asset, sampleRate) {
   return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
+function syntheticSfzAsset(asset) {
+  if (asset.sfz?.kind !== 'sfz-sine-v1') return null;
+  const sampleRate = 48000;
+  const sampleFrames = 4096;
+  const samples = new Float32Array(sampleFrames);
+  for (let frame = 0; frame < sampleFrames; frame++) {
+    samples[frame] = Math.round(Math.sin(2 * Math.PI * 1000 * frame / sampleRate) * 0.2 * 32768) / 32768;
+  }
+  const region = {
+    sample: 'synthetic-sine', seqGroup: 0, lokey: 0, hikey: 127, lovel: 1, hivel: 127,
+    lorand: 0, hirand: 1, seq_length: 1, seq_position: 1,
+    pitch_keycenter: 83, pitch_keytrack: 100, transpose: 0, tune: 0,
+    volume: 0, pan: 0, amp_veltrack: 0, offset: 0, end: sampleFrames - 1,
+    loop_mode: 2, loop_start: 0, loop_end: sampleFrames - 1,
+    ampeg_attack: 0, ampeg_hold: 0, ampeg_decay: 0, ampeg_sustain: 100, ampeg_release: 0.001
+  };
+  return packSfzAsset([region], new Map([['synthetic-sine', { sampleRate, channels: [samples] }]]));
+}
+
 function normalizeAsset(asset, sampleRate, processingChannels) {
   if (!asset) return null;
+  const sfz = asset.bytes ? null : syntheticSfzAsset(asset);
   const bytes = asset.bytes instanceof Uint8Array
     ? asset.bytes
     : Buffer.isBuffer(asset.bytes)
       ? new Uint8Array(asset.bytes.buffer, asset.bytes.byteOffset, asset.bytes.byteLength)
-      : syntheticIrBytes(asset, sampleRate);
+      : sfz ? new Uint8Array(sfz.payload) : syntheticIrBytes(asset, sampleRate);
   if (!bytes || bytes.byteLength === 0) {
     throw new Error('Native DSP parity asset bytes must be a non-empty Uint8Array');
   }
   const normalized = {
     slot: asset.slot ?? 0,
     format: asset.format ?? 1,
-    channels: asset.channels,
-    frames: asset.frames,
-    topology: asset.topology,
-    headBlock: asset.headBlock,
-    rateDivider: asset.rateDivider,
+    channels: sfz?.channels ?? asset.channels,
+    frames: sfz?.samples ?? asset.frames,
+    topology: sfz?.layout ?? asset.topology,
+    headBlock: sfz ? 0 : asset.headBlock,
+    rateDivider: sfz ? 1 : asset.rateDivider,
     pathCount: asset.pathCount ?? 0,
     inputCount: asset.inputCount ?? 0,
     processingChannels,
-    footprintBytes: 32 * 1024 * 1024,
+    footprintBytes: sfz?.footprintBytes ?? 32 * 1024 * 1024,
     bytes
   };
   for (const key of [

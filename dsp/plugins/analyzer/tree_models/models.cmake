@@ -26,11 +26,9 @@ endif()
 
 get_filename_component(ET_ANALYZER_SOURCE_DIR "${ET_TREE_MODEL_SOURCE_DIR}/.." ABSOLUTE)
 set(ET_TREE_MODEL_OUTPUTS)
-# Each entry is <plugin folder>/<model>: the Note Spectrogram's models and the Rhythm Analyzer's onset-lane and
-# G2 models. The model name sets the embedded symbol namespace, so names stay unique across folders.
-foreach(entry IN ITEMS note_spectrogram/learned_model note_spectrogram/fine_model note_spectrogram/octave_model
-                       rhythm_analyzer/rhythm_d_low rhythm_analyzer/rhythm_d_mid rhythm_analyzer/rhythm_d_high
-                       rhythm_analyzer/g2_level rhythm_analyzer/g2_hazard)
+# Each entry is <plugin folder>/<model>: the Rhythm Analyzer's onset-lane models.
+# The model name sets the embedded symbol namespace, so names stay unique across folders.
+foreach(entry IN ITEMS rhythm_analyzer/rhythm_d_low rhythm_analyzer/rhythm_d_mid rhythm_analyzer/rhythm_d_high)
   get_filename_component(name "${entry}" NAME)
   set(manifest "${ET_ANALYZER_SOURCE_DIR}/${entry}.json")
   set(data "${ET_ANALYZER_SOURCE_DIR}/${entry}.bin")

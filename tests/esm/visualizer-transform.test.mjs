@@ -46,8 +46,8 @@ test('Transform sliders edit both selected items, display units, and disable wit
         const scale = fields.find(field => field.label === 'Horizontal scale');
         const rotation = fields.find(field => field.label === 'Rotation angle (°)');
         assert.equal(scale.type, 'range');
-        assert.equal(scale.options.format(100), '100%');
-        assert.equal(rotation.options.format(-30), '-30°');
+        assert.equal(scale.options.unit, '%');
+        assert.equal(rotation.options.unit, '°');
         assert.ok(fields[0].options.values.some(([type]) => type === 'transform'));
         scale.change(145); rotation.change(-30);
         assert.ok(layout.items.every(item => item.effects[0].scaleX === 145 && item.effects[0].angle === -30));

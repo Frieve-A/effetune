@@ -56,6 +56,7 @@ public:
   void destroyInstance(et_instance instance) noexcept;
   et_status resetInstance(et_instance instance) noexcept;
   [[nodiscard]] std::uint32_t instanceLatency(et_instance instance) const noexcept;
+  et_status setInstanceAnalysisSource(et_instance consumer, et_instance producer) noexcept;
   et_status setInstanceTap(et_instance instance, std::uint32_t tap_id) noexcept;
   et_status setInstanceSeed(et_instance instance, std::uint32_t seed_low,
                             std::uint32_t seed_high) noexcept;
@@ -92,6 +93,13 @@ public:
   static et_status preparePipelineLatencyUpdate(const PipelineLatencySnapshot &snapshot,
                                                 PipelineLatencyUpdate &update) noexcept;
   et_status applyPipelineLatencyUpdate(PipelineLatencyUpdate &update) noexcept;
+  // Synchronous control-side update; call between processing blocks. Preparation
+  // allocates only when a kernel's reported latency changed.
+  et_status refreshPipelineLatency() noexcept;
+  // Control-side reservation for subsequent parameter-only real-time refreshes.
+  et_status reservePipelineLatency() noexcept;
+  // Never allocates or frees. Requires reservation after every configuration.
+  et_status refreshPipelineLatencyRealtime() noexcept;
   et_status processPipeline(std::uint32_t channel_count, std::uint32_t frame_count,
                             double time_seconds, std::uint32_t master_bypass) noexcept;
   [[nodiscard]] std::uint32_t pipelineLatency() const noexcept {
@@ -147,6 +155,7 @@ private:
     PluginKernel *kernel = nullptr;
     std::uint16_t generation = 1;
     std::uint32_t tapId = 0;
+    et_instance analysisSource = 0;
     std::uint32_t telemetrySequence = 0;
     double telemetryFrames = 0.0;
     std::array<float, 7> graphParameters{};
@@ -199,6 +208,8 @@ private:
   [[nodiscard]] bool graphRequiresActiveAsset(const InstanceSlot &slot) const noexcept;
   void resetGraphOwnedInstances() noexcept;
   void resetPipelineDelayHistory() noexcept;
+  static et_status planPipelineLatency(const PipelineLatencySnapshot &snapshot,
+                                       PipelineLatencyUpdate &update) noexcept;
   static void applyDelay(dsp::DelayLine &delay_line, std::uint32_t channel,
                          std::uint32_t delay_samples, float *audio,
                          std::uint32_t frame_count) noexcept;
@@ -215,6 +226,8 @@ private:
   std::array<PipelineCompensation, kMaxPipelineNodes> pipeline_compensation_{};
   std::array<PipelineTapLatency, kMaxPipelineNodes> pipeline_tap_latency_{};
   std::array<std::uint32_t, kMaxPipelineNodes> pipeline_input_latency_{};
+  std::array<std::uint32_t, kMaxPipelineNodes> pipeline_kernel_latencies_{};
+  std::array<LatencyRange, kMaxPipelineNodes> pipeline_latency_ranges_{};
   std::array<std::uint32_t, 16> pipeline_output_delays_{};
   dsp::DelayLine pipeline_output_delay_line_;
   std::uint32_t pipeline_count_ = 0;
@@ -229,6 +242,7 @@ private:
       ET_OK, ET_GRAPH_DIAGNOSTIC_GRAPH, 0u, ET_GRAPH_PATH_NONE, 0u, 0u};
   bool prepared_ = false;
   bool pipeline_configured_ = false;
+  bool pipeline_latency_reserved_ = false;
   bool pipeline_delay_history_dirty_ = false;
 };
 

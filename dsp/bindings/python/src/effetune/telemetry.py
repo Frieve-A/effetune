@@ -96,6 +96,12 @@ class SpectrumTelemetryFrame(TelemetryFrame):
 
 
 @dataclass(frozen=True, slots=True)
+class NoteSpectrogramRevision:
+    age: Literal[2, 4, 8]
+    levels: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class NoteSpectrogramTelemetryFrame(TelemetryFrame):
     sample_rate: float
     time_seconds: float
@@ -108,6 +114,7 @@ class NoteSpectrogramTelemetryFrame(TelemetryFrame):
     levels: tuple[float, ...]
     volume_db: tuple[float, ...]
     revised_levels: tuple[float, ...] | None
+    revisions: tuple[NoteSpectrogramRevision, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +134,7 @@ class PitchMeterTelemetryFrame(TelemetryFrame):
 
 @dataclass(frozen=True, slots=True)
 class RhythmAnalyzerTelemetryEvent:
-    """One onset; its time is ``(frame + fraction)`` envelope frames, bias-corrected."""
+    """One rhythm event; its time is ``(frame + fraction)`` envelope frames, bias-corrected."""
 
     frame: int
     fraction: float
@@ -138,6 +145,16 @@ class RhythmAnalyzerTelemetryEvent:
     strength: float
     band: int
     unlocked: bool
+    flags: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class RhythmAnalyzerTelemetryBeat:
+    """A revisable beat in the current best display path."""
+
+    frame: int
+    fraction: float
+    beat_index: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +176,8 @@ class RhythmAnalyzerTelemetryFrame(TelemetryFrame):
     comb_best_bpm: float
     tempogram: tuple[float, ...]
     events: tuple[RhythmAnalyzerTelemetryEvent, ...]
+    preview_period_seconds: float = 0.0
+    preview_beats: tuple[RhythmAnalyzerTelemetryBeat, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,10 +260,10 @@ _ANALYZER_FRAMES = {
     "AnalogMeter": (27, (1,)),
     "ChromaSpiral": (4, (2,)),
     "LevelMeter": (1, (1,)),
-    "NoteSpectrogram": (24, (4,)),
+    "NoteSpectrogram": (24, (5,)),
     "Oscilloscope": (3, (2,)),
     "PitchMeter": (26, (1,)),
-    "RhythmAnalyzer": (28, (1,)),
+    "RhythmAnalyzer": (28, (1, 3, 4)),
     "SpectrumAnalyzer": (4, (1, 2)),
     "Spectrogram": (5, (1, 2)),
     "StereoMeter": (6, (2,)),
@@ -580,7 +599,7 @@ def _decode_note_spectrogram(
     sequence: int,
     dropped: int,
 ) -> TelemetryFrame | None:
-    if len(payload) != 5312:
+    if len(payload) != 8840:
         return None
     (
         sample_rate,
@@ -613,11 +632,18 @@ def _decode_note_spectrogram(
     volume_db = struct.unpack_from("<440f", payload, 32 + 440 * 4)
     if any(not math.isfinite(value) for value in volume_db):
         return None
-    revised_levels = None
-    if revision_age != 0:
-        revised_levels = struct.unpack_from("<440f", payload, 32 + 2 * 440 * 4)
-        if any(not math.isfinite(value) or not 0 <= value <= 1 for value in revised_levels):
+    revisions = []
+    for expected_age, age_offset, levels_offset in ((2, 5312, 5316), (4, 7076, 7080), (8, 28, 3552)):
+        age = struct.unpack_from("<I", payload, age_offset)[0]
+        if age not in (0, expected_age):
             return None
+        if age == 0:
+            continue
+        revised = struct.unpack_from("<440f", payload, levels_offset)
+        if any(not math.isfinite(value) or not 0 <= value <= 1 for value in revised):
+            return None
+        revisions.append(NoteSpectrogramRevision(age=age, levels=revised))
+    revised_levels = next((revision.levels for revision in revisions if revision.age == 8), None)
     return NoteSpectrogramTelemetryFrame(
         **_common("noteSpectrogram", node, sequence, dropped),
         sample_rate=sample_rate,
@@ -631,6 +657,7 @@ def _decode_note_spectrogram(
         levels=levels,
         volume_db=volume_db,
         revised_levels=revised_levels,
+        revisions=tuple(revisions),
     )
 
 
@@ -776,8 +803,9 @@ def _decode_rhythm_analyzer(
     node: tuple[str, str | None, int],
     sequence: int,
     dropped: int,
+    version: int = 1,
 ) -> TelemetryFrame | None:
-    if len(payload) != _RHYTHM_ANALYZER_PAYLOAD_BYTES:
+    if len(payload) != (1496 if version == 4 else _RHYTHM_ANALYZER_PAYLOAD_BYTES):
         return None
     (
         sample_rate,
@@ -813,14 +841,14 @@ def _decode_rhythm_analyzer(
         or not math.isfinite(comb_best_bpm)
         or comb_best_bpm < 0
         or (
-            locked
+            version == 1 and locked
             and (
                 not (math.isfinite(period_seconds) and period_seconds > 0)
                 or not 0 <= next_beat_fraction < 1
             )
         )
         or (
-            not locked
+            version == 1 and not locked
             and (
                 period_seconds != 0
                 or next_beat_frame != 0
@@ -828,6 +856,11 @@ def _decode_rhythm_analyzer(
                 or next_beat_index != 0
             )
         )
+    ):
+        return None
+    if version >= 3 and not (
+        confidence <= 1 and math.isfinite(period_seconds) and period_seconds >= 0
+        and 0 <= next_beat_fraction < 1
     ):
         return None
     tempogram = struct.unpack_from(f"<{_RHYTHM_ANALYZER_TEMPOGRAM_BINS}f", payload, 64)
@@ -847,19 +880,25 @@ def _decode_rhythm_analyzer(
             flags,
             reserved,
         ) = struct.unpack_from("<IfIifffBBH", payload, 832 + index * 32)
+        beat = flags in (2, 4, 5)
         if (
             not 0 <= fraction < 1
             or not 0 <= beat_fraction < 1
             or not (math.isfinite(event_period) and event_period >= 0)
-            or not (math.isfinite(strength) and strength > 0)
-            or band > 2
-            or flags & ~1
+            or not math.isfinite(strength)
+            or (strength < 0 if version >= 3 and beat else strength <= 0)
+            or (version == 1 and (band > 2 or flags & ~1))
+            or (version >= 3 and (
+                flags > 5 or strength > 1
+                or (band != 0 or beat_fraction != 0 if beat else band > 2)
+                or (flags in (0, 2, 3, 4) and event_period == 0)
+            ))
             or reserved != 0
         ):
             return None
         events.append(
             RhythmAnalyzerTelemetryEvent(
-                frame=frame,
+                frame=frame - (1 << 32) if flags == 5 and frame >= (1 << 31) else frame,
                 fraction=fraction,
                 lock_epoch=event_epoch,
                 beat_index=beat_index,
@@ -867,9 +906,26 @@ def _decode_rhythm_analyzer(
                 period_seconds=event_period,
                 strength=strength,
                 band=band,
-                unlocked=bool(flags & 1),
+                unlocked=flags == 1,
+                flags=flags,
             )
         )
+    preview_beats = []
+    preview_period_seconds = 0.0
+    if version == 4:
+        count, preview_period_seconds = struct.unpack_from("<If", payload, 1344)
+        if (count > 12 or not math.isfinite(preview_period_seconds) or preview_period_seconds < 0
+                or (count > 0 and preview_period_seconds == 0)):
+            return None
+        for index in range(count):
+            frame, fraction, beat_index = struct.unpack_from("<ifi", payload, 1352 + 12 * index)
+            previous = preview_beats[-1] if preview_beats else None
+            if not 0 <= fraction < 1 or (previous and (
+                frame + fraction <= previous.frame + previous.fraction
+                or beat_index != previous.beat_index + 1
+            )):
+                return None
+            preview_beats.append(RhythmAnalyzerTelemetryBeat(frame, fraction, beat_index))
     return RhythmAnalyzerTelemetryFrame(
         **_common("rhythmAnalyzer", node, sequence, dropped),
         sample_rate=sample_rate,
@@ -889,6 +945,8 @@ def _decode_rhythm_analyzer(
         comb_best_bpm=comb_best_bpm,
         tempogram=tempogram,
         events=tuple(events),
+        preview_period_seconds=preview_period_seconds,
+        preview_beats=tuple(preview_beats),
     )
 
 
@@ -1060,6 +1118,8 @@ def _decode_telemetry_packet(
                     payload, node, sequence, pending_dropped, frame_type
                 )
                 if version == 2 and frame_type in (4, 5)
+                else _decode_rhythm_analyzer(payload, node, sequence, pending_dropped, version)
+                if frame_type == 28
                 else _DECODERS[frame_type](
                     payload, node, sequence, pending_dropped
                 )
@@ -1078,9 +1138,11 @@ __all__ = [
     "LevelTelemetryChannel",
     "LevelTelemetryFrame",
     "NoteSpectrogramTelemetryFrame",
+    "NoteSpectrogramRevision",
     "OscilloscopeTelemetryFrame",
     "PitchMeterTelemetryFrame",
     "RhythmAnalyzerTelemetryEvent",
+    "RhythmAnalyzerTelemetryBeat",
     "RhythmAnalyzerTelemetryFrame",
     "SpectrogramTelemetryFrame",
     "SpectrogramHqTelemetryFrame",

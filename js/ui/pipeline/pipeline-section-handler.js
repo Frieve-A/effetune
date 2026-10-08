@@ -60,6 +60,7 @@ export class PipelineSectionHandler {
                 
                 pipeline.splice(index, 1);
                 this.pipelineCore.selectedPlugins.delete(plugin);
+                this.pipelineCore.expandedPlugins.delete(plugin);
             }
         }
         

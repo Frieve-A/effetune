@@ -163,6 +163,8 @@ AM Radio Simulator 让音乐经过一条完整建模的 AM 广播链路：发射
 
 Cassette Artifacts 结合了盒式磁带的频率响应、磁带压缩、底噪、抖晃、信号丢失和磁头对位变化。需要完整的卡座音色，而不是只在原音乐上叠加一层噪声时，请使用它。
 
+Mode 还可以让你单独使用 Dolby 编码或解码，或选择要组合的处理阶段。
+
 ### 与其他 Lo-Fi 效果的区别
 
 - **Tape Artifacts** 提供更干净、频带更宽且速度可选的开盘带声音。Cassette Artifacts 更暗，并提供盒式磁带特有的 Deck Grade、Tape Type、降噪、信号丢失和磁头对位。
@@ -178,6 +180,8 @@ Cassette Artifacts 结合了盒式磁带的频率响应、磁带压缩、底噪�
 - **Noise Reduction** 可降低底噪。Dolby C 的效果强于 Dolby B，Off 则保留最原始的盒式磁带底噪。
 - 提高 **Wow/Flutter**、**Hiss** 或 **Dropouts** 可获得更旧损的声音。**Azimuth** 会柔化高频，并改变左右声道高频的时间关系。
 
+只想听 Dolby 解码效果时，请选择 **Mode: Decode Only**。若要模拟用 Dolby C 播放 Dolby B 录音，请依次添加两个 Cassette Artifacts：前一个设为 **Encode + Artifacts / Noise Reduction: Dolby B**，后一个设为 **Decode Only / Noise Reduction: Dolby C**。两个实例的 **Record Level** 应设为相同值，并使用 **Output: 0 dB**、**Mix: 100%**，以保持阶段之间的电平基准一致。
+
 ### 系统预设
 
 点击效果标题中的 **效果预设**，即可直接试用以下完整设置。
@@ -192,22 +196,25 @@ Cassette Artifacts 结合了盒式磁带的频率响应、磁带压缩、底噪�
 
 盒式磁带的速度固定，因此没有 Speed 控件。
 
+- **Mode**（默认：All）- 按 Dolby 编码 → 盒式磁带录音和播放 → Dolby 解码的顺序选择处理阶段。**Encode Only** 和 **Decode Only** 只执行相应的 Dolby 阶段。**Encode + Artifacts** 跳过解码；**Artifacts + Decode** 跳过编码；**All** 执行所有阶段。被跳过阶段的控件会禁用。
 - **Deck Grade**（Reference、Hi-Fi、Consumer 或 Portable）- 选择卡座特性。Reference 的频带最宽、最稳定；Portable 最暗、最不稳定。可从 Consumer 开始，获得常见家用卡座的声音。
 - **Tape Type**（Type I、Type II 或 Type IV）- 改变噪声和余量。Type I 噪声最大，Type II 较均衡，Type IV 能让明亮的峰值更干净。
-- **Noise Reduction**（Off、Dolby B 或 Dolby C）- 降低底噪。Dolby B 效果适中，Dolby C 更强，Off 保留原始的盒式磁带底噪。如果想模拟录音和播放卡座不匹配时偏亮或偏暗的声音，可调节 Dolby Level Error。
+- **Noise Reduction**（Off、Dolby B 或 Dolby C）- 选择当前编码和解码阶段使用的 Dolby 制式。编码会提升较小的声音，尤其是高频；解码则会衰减这些声音。Dolby C 的作用强于 Dolby B。Off 跳过两个 Dolby 阶段，但保留选中的磁带失真效果。
 - **Bias**（-6.0 至 +6.0 dB）- 改变高频和失真。建议从 0 dB 开始。较小的正值更干净、更暗，较小的负值更明亮、更粗糙。极端负值会继续增加失真，但不会继续提亮声音。
-- **Record Level**（-12.0 至 +18.0 dB）- 控制磁带的驱动强度。建议从 +9 dB 开始。提高可获得更密集的压缩和饱和，降低则能保留更自然的动态。之后用 Output 匹配音量。
+- **Record Level**（-12.0 至 +18.0 dB）- 设置磁带驱动强度以及信号相对于 Dolby 基准的电平。建议从 +9 dB 开始。启用磁带失真效果时，提高可增强压缩和饱和，降低则可保留更自然的动态。在仅使用 Dolby 的模式下，它会改变随电平变化的处理强度。用不同实例分别编码和解码时，应设为相同值。
 - **Wow/Flutter**（0 至 1%）- 控制音高稳定性。0% 完全稳定；默认的 0.200% 会在持续音上带来明显的盒式磁带晃动；更高的值会产生旧卡座般的颤动。
 - **Hiss**（-92.0 至 -42.0 dB re 250 nWb/m）- 控制磁带底噪以及随信号变化的调制噪声。提高可获得噪声更明显的磁带，调到最低则关闭噪声层。状态行会显示当前设置下的最终背景噪声。
 - **Dropouts**（0 至 20 次/分钟）- 设置短暂信号衰减的频率。0 表示关闭；2 次/分钟带来偶尔的磨损感；更高的值会显得损坏更严重。
 - **Azimuth**（-6.0 至 +6.0 arcmin）- 模拟磁头对位偏差。偏离 0 会柔化高频并改变声道间的时间差；正负号决定哪个声道领先。
-- **Dolby Level Error**（-3.0 至 +3.0 dB）- 在 Noise Reduction 开启时，模拟录音和播放卡座的校准不匹配。正值更亮且底噪更多，负值更暗。建议从 0 dB 开始。
+- **Dolby Level Error**（-3.0 至 +3.0 dB）- 在解码阶段有效且 Noise Reduction 开启时，模拟录音和播放卡座的电平校准不匹配。正值更亮且底噪更多，负值更暗。建议从 0 dB 开始。
 - **Output**（-24.0 至 +24.0 dB）- 调节整个处理链之后的电平。可用它在与旁路比较时匹配音量，或补回较高 Record Level 损失的音量。
-- **Mix**（0 至 100%）- 混合盒式磁带声音和原始声音。建议从 100% 开始判断完整效果，再降低以获得更细微的结果。中间值可能因两条路径在最高频段部分抵消而使高频更柔和。
+- **Mix**（0 至 100%）- 混合处理后的声音与原声。建议从 100% 开始判断完整效果，再降低以获得更细微的结果。启用磁带失真效果时，中间值可能因两条路径在最高频段部分抵消而使高频更柔和。
 
 ### 状态行的读取方法
 
 控件下方的状态行会显示当前设置下的实际抖晃和背景噪声。可用它比较 Tape Type、Noise Reduction、Record Level 和 Hiss 的变化。`off` 表示磁带噪声层已关闭。
+
+这些读数适用于启用磁带失真效果的模式。Encode + Artifacts 的噪声读数不包含 Dolby 解码。仅使用 Dolby 的模式会改为显示 Mode、Noise Reduction 和 Record Level。
 
 ### 推荐设置
 

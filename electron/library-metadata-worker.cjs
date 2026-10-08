@@ -146,11 +146,13 @@ function boundedTextList(value, maximumItems, maximumCharacters) {
 }
 
 function integerOrNull(value) {
+  if (value == null) return null;
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
 
 function finiteOrNull(value) {
+  if (value == null) return null;
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : null;
 }

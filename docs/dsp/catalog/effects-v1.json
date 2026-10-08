@@ -138,14 +138,6 @@
           "default": 91,
           "minimum": 21,
           "maximum": 108
-        },
-        {
-          "name": "regularCandidates",
-          "type": "integer",
-          "count": 1,
-          "default": 8,
-          "minimum": 1,
-          "maximum": 16
         }
       ],
       "seeded": false,
@@ -3969,6 +3961,19 @@
           "unit": "%",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "count": 1,
+          "default": "All",
+          "values": [
+            "Encode Only",
+            "Encode + Artifacts",
+            "All",
+            "Artifacts + Decode",
+            "Decode Only"
+          ]
         }
       ],
       "seeded": true,
@@ -9785,7 +9790,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "72b9a93756790c53dc7fcfb360596f8c44591da74f4726da6cb6e99b5b274fbc",
-    "privateLayoutSha256": "a5c8858fdb96deb9b685eca0ba856486d415e0c18da35bc07ecf34e48436cacf"
+    "publicCatalogSha256": "21b528e0233d1ebe360fef8bb4c16f2a39452ef790d5b82993a9cac5c3a79095",
+    "privateLayoutSha256": "1670a41fce89dc7b4d1bbc79fa0f07fda23c81b184d48248b847401a4d5685ec"
   }
 }

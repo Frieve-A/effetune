@@ -10,6 +10,7 @@ import {
 } from '../../js/library/artwork/artwork-policy.js';
 import { LazyArtworkService } from '../../js/library/artwork/lazy-artwork-service.js';
 import { WebArtworkExtractor } from '../../js/library/artwork/web-artwork-extractor.js';
+import { WebSessionFileSource } from '../../js/library/scan/web-session-file-source.js';
 
 function sourceFor(trackUid, overrides = {}) {
   return {
@@ -86,25 +87,17 @@ test('Web artwork rejects oversized binary input before createImageBitmap', asyn
   assert.equal(bitmapCalls, 0);
 });
 
-test('Web CUE artwork resolves a sibling image when the source has no embedded image', async () => {
-  const audio = new Blob([new Uint8Array([1])]);
-  const cover = new Blob([new Uint8Array([2, 3, 4])], { type: 'image/png' });
-  Object.defineProperties(cover, {
-    size: { value: 3 },
-    lastModified: { value: 1234 }
-  });
+test('Web CUE artwork resolves a sibling image in a session folder without embedded artwork', async () => {
+  const audio = new File([new Uint8Array([1])], 'disc.flac', { lastModified: 2000 });
+  const cover = new File([new Uint8Array([2, 3, 4])], 'COVER.PNG', { type: 'image/png', lastModified: 1234 });
+  const session = new WebSessionFileSource({ entries: [
+    { relativePath: 'Album/disc.flac', file: audio },
+    { relativePath: 'Album/disc.cue', file: new File(['FILE "disc.flac" WAVE'], 'disc.cue') },
+    { relativePath: 'Album/COVER.PNG', file: cover }
+  ] });
   const calls = [];
   const extractor = new WebArtworkExtractor({
-    filesystem: {
-      async getFile(relativePath) {
-        calls.push(['file', relativePath]);
-        return relativePath === 'Album/COVER.PNG' ? cover : audio;
-      },
-      async listFileNames(relativeDirectory) {
-        calls.push(['list', relativeDirectory]);
-        return ['disc.cue', 'disc.flac', 'COVER.PNG'];
-      }
-    },
+    filesystem: session.createAdapter(),
     parse: async () => ({ common: { picture: [] } }),
     createBitmap: async blob => {
       calls.push(['bitmap', blob.type]);
@@ -134,9 +127,6 @@ test('Web CUE artwork resolves a sibling image when the source has no embedded i
     maxRawBytes: ARTWORK_LIMITS.maxRawBytes
   }), { rawByteLength: 3, width: 10, height: 20 });
   assert.deepEqual(calls, [
-    ['file', 'Album/disc.flac'],
-    ['list', 'Album'],
-    ['file', 'Album/COVER.PNG'],
     ['bitmap', 'image/png']
   ]);
   extractor.discard({ claim: resolved });

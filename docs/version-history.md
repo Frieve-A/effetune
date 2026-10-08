@@ -6,8 +6,8 @@ lang: en
 
 # Version History
 
-### Version 2.13.0 (TBD, 2026)
-- Added Adaptive Prediction effect
+### Version 2.13.0 (Oct 9, 2026)
+- Added Adaptive Prediction and SFZ Note Player effects
 - Added Guitar to the Visualizer
 - Improved Note Spectrogram and Rhythm Analyzer accuracy
 - Various minor improvements

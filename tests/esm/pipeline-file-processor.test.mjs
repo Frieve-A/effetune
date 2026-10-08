@@ -790,6 +790,38 @@ test('saved-folder messages keep Electron paths as text instead of markup', asyn
   });
 });
 
+test('replacing offline results releases old blobs and preserves the current download', async () => {
+  const objectUrlApi = URL;
+  await withFileProcessorGlobals({}, async ({ runTimeouts, timeouts }) => {
+    await withGlobals({ URL: objectUrlApi }, async () => {
+      const { processor } = createProcessorHarness();
+      const urls = [];
+      try {
+        for (let index = 0; index < 5; index++) {
+          processor.showDownloadLink(createBlob(1024), `song-${index}.wav`);
+          const currentUrl = processor.downloadContainer.querySelector('a').href;
+          urls.push(currentUrl);
+          assert.equal((await fetch(currentUrl)).ok, true);
+          if (index > 0) await assert.rejects(fetch(urls[index - 1]));
+        }
+        await processor.downloadContainer.querySelector('a').dispatch('click');
+        assert.equal(timeouts.at(-1).delay, 100);
+        processor.showDownloadLink(createBlob(2048), 'new-song.wav');
+        const currentUrl = processor.downloadContainer.querySelector('a').href;
+        urls.push(currentUrl);
+        runTimeouts();
+        assert.equal((await fetch(currentUrl)).ok, true);
+        assert.equal(processor._downloadUrl, currentUrl);
+        processor._showSavedMessage(1, 'selected-folder');
+        await assert.rejects(fetch(currentUrl));
+        assert.equal(processor._downloadUrl, null);
+      } finally {
+        for (const url of urls) objectUrlApi.revokeObjectURL(url);
+      }
+    });
+  });
+});
+
 test('download links support web and Electron save flows', async () => {
   await withFileProcessorGlobals({}, async ({ createdUrls, revokedUrls, runTimeouts }) => {
     const { processor } = createProcessorHarness();

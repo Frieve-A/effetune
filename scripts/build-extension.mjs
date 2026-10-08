@@ -7,14 +7,14 @@ import * as esbuild from 'esbuild';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const zipModule = { exports: {} };
-vm.runInNewContext(await fs.readFile(path.join(root, 'js/vendor/jszip-3.10.1.min.js'), 'utf8'),
+vm.runInNewContext(await fs.readFile(path.join(root, 'js/vendor/jszip-3.10.2.min.js'), 'utf8'),
     { module: zipModule, exports: zipModule.exports, setImmediate, Buffer, Uint8Array, ArrayBuffer });
 const JSZip = zipModule.exports;
 const output = path.join(root, 'out', 'extension');
 const define = { __EFFECTUNE_WASM_ONLY__: 'true' };
 
 function staticSource(source, filename) {
-    if (filename === 'js/vendor/jszip-3.10.1.min.js') {
+    if (filename === 'js/vendor/jszip-3.10.2.min.js') {
         const dynamicCallback = '"function"!=typeof e&&(e=new Function(""+e))';
         if (!source.includes(dynamicCallback)) throw new Error('JSZip setImmediate compatibility code changed');
         source = source.replace(dynamicCallback,
@@ -89,8 +89,8 @@ export async function buildExtension() {
         files.set(filename, Buffer.from(transformed.code));
     }
     const vendorNotices = [
-        ['js/vendor/jszip-3.10.1.min.js', 'js/vendor/jszip-3.10.1.NOTICE.txt'],
-        ['js/vendor/jsmediatags-3.9.5.min.js', 'js/vendor/jsmediatags-3.9.5.NOTICE.txt'],
+        ['js/vendor/jszip-3.10.2.min.js', 'js/vendor/jszip-3.10.2.NOTICE.txt'],
+        ['js/vendor/jsmediatags-3.9.7.min.js', 'js/vendor/jsmediatags-3.9.7.NOTICE.txt'],
         ['js/vendor/music-metadata-browser.mjs', 'js/vendor/music-metadata-browser.NOTICE.txt'],
         ['js/vendor/offline-audio-encoders.mjs', 'js/vendor/offline-audio-encoders.NOTICE.txt'],
         ['js/vendor/rolling-pcm-decoder-worker.mjs', 'js/vendor/rolling-pcm-decoder-worker.NOTICE.txt'],

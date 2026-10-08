@@ -46,7 +46,7 @@ function runtime() {
         }
     }
     const window = { ThemePalette: { get: name => name === 'graph-trace' ? 'rgba(0,255,0,1)' : 'rgba(16,16,16,1)' } };
-    const document = { createElement: () => canvas() };
+    const document = { createElement: () => canvas(), addEventListener() {}, removeEventListener() {} };
     for (const file of ['frequency-axis', 'analyzer/spectrum_analyzer', 'analyzer/spectrogram', 'analyzer/oscilloscope', 'analyzer/stereo_meter',
         'analyzer/note_spectrogram', 'analyzer/chroma_spiral', 'analyzer/level_meter', 'analyzer/analog_meter',
         'analyzer/rhythm_analyzer', 'spatial/phase_select_eq']) {
@@ -63,7 +63,7 @@ function runtime() {
 }
 
 function noteFrame(index = 1) {
-    const payload = new DataView(new ArrayBuffer(32 + 440 * 12));
+    const payload = new DataView(new ArrayBuffer(8840));
     payload.setFloat32(0, 48000, true);
     payload.setFloat32(4, index * .01, true);
     payload.setUint16(8, 440, true);
@@ -76,7 +76,7 @@ function noteFrame(index = 1) {
         payload.setFloat32(32 + pitch * 4, pitch === 197 ? .8 : 0, true);
         payload.setFloat32(32 + 440 * 4 + pitch * 4, pitch === 197 ? -42 : -240, true);
     }
-    return { frameType: 24, formatVersion: 4, payload };
+    return { frameType: 24, formatVersion: 5, payload };
 }
 
 test('Notes and HQ Spectrum accept the first frame after returning to Visualizer', async () => {
@@ -343,16 +343,16 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
         const item = createItem('rhythm-analyzer', 'rhythm');
         const target = canvas();
         const display = createAnalyzerDisplay(item, target, env.sources);
-        const payload = new DataView(new ArrayBuffer(1344));
+        const payload = new DataView(new ArrayBuffer(1496));
         const source = {};
         [[0, 48000, 'Float32'], [4, 1, 'Uint32'], [8, 480, 'Uint32'], [12, 100, 'Uint32'], [16, 1, 'Float32'],
             [28, 2, 'Uint32'], [32, 1, 'Uint32'], [36, 1, 'Uint32'], [40, .8, 'Float32'], [44, .5, 'Float32'],
-            [48, 150, 'Uint32'], [56, 3, 'Uint32'], [60, 120, 'Float32']]
+            [48, 100, 'Uint32'], [56, 2, 'Uint32'], [60, 120, 'Float32']]
             .forEach(([offset, value, kind]) => payload[`set${kind}`](offset, value, true));
         for (let bin = 0; bin < 192; bin++) payload.setFloat32(64 + bin * 4, bin === 96 ? 1 : .1, true);
-        [[1, 2, .02, 0], [1, 3, .97, 1]].forEach(([epoch, beat, beatFraction, band], index) => {
+        [[1, 1, .8, 0], [1, 1, .96, 1]].forEach(([epoch, beat, beatFraction, band], index) => {
             const base = 832 + index * 32;
-            payload.setUint32(base, 90 + index * 50, true);
+            payload.setUint32(base, 90 + index * 8, true);
             payload.setUint32(base + 8, epoch, true);
             payload.setInt32(base + 12, beat, true);
             payload.setFloat32(base + 16, beatFraction, true);
@@ -360,7 +360,27 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
             payload.setFloat32(base + 24, .7, true);
             payload.setUint8(base + 28, band);
         });
-        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        let shownIndex = 2;
+        const send = (shown = false) => {
+            payload.setUint32(28, shown ? 3 : 2, true);
+            const base = 832 + 2 * 32;
+            if (shown) {
+                payload.setUint32(base, payload.getUint32(12, true), true);
+                payload.setUint32(base + 8, 1, true);
+                payload.setInt32(base + 12, shownIndex++, true);
+                payload.setFloat32(base + 20, .5, true);
+                payload.setFloat32(base + 24, 1, true);
+                payload.setUint8(base + 29, 2);
+            }
+            payload.setUint32(1344, 2, true);
+            payload.setFloat32(1348, .5, true);
+            for (let i = 0; i < 2; i++) {
+                payload.setInt32(1352 + 12 * i, payload.getUint32(48, true) + 50 * i, true);
+                payload.setInt32(1360 + 12 * i, payload.getInt32(56, true) + i, true);
+            }
+            env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 4, payload, source }, source);
+        };
+        send();
         assert.equal(display.plugin.activeGeneration, 1);
         display.draw(item, 1, 400);
         assert.ok(target.context.calls.some(([key]) => key === 'stroke' || key === 'fill' || key === 'fillRect'));
@@ -386,48 +406,55 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
         assert.equal(draws[0].font, '192px sans-serif', 'Automatic fitting can be disabled');
         item.style.beatFitBpm = true;
 
+        payload.setUint32(32, 0, true);
+        send();
+        redraw();
+        assert.equal(target.context.calls.some(call => call[0] === 'fill'), false, 'Searching is hollow before a detected beat');
+        assert.equal(draws[0].text, '120.0 BPM', 'A stored tempo remains visible while searching');
+        payload.setUint32(32, 1, true);
         payload.setUint32(48, 100, true);
         payload.setUint32(12, 101, true);
-        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        send(true);
         redraw();
         assert.ok(target.context.calls.some(call => call[0] === 'globalAlpha' && call[1] > .25 && call[1] <= .3), 'Circle lights on the detected beat');
         payload.setUint32(12, 110, true);
-        payload.setUint32(48, 150, true);
-        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        send();
         redraw();
         const pulse = () => target.context.calls.find(call => call[0] === 'globalAlpha' && call[1] !== 1)?.[1];
         const expectedPulse = (age, hold, decay) => .3 * Math.exp(-Math.max(0, age - hold) / decay);
-        assert.ok(Math.abs(pulse() - expectedPulse(100, 0, 90)) < 1e-6, 'Circle fades exponentially between beats');
+        assert.ok(Math.abs(pulse() - expectedPulse(90, 0, 90)) < 1e-6, 'Circle fades exponentially between beats');
         item.style.beatHoldTime = 50;
         redraw();
-        assert.ok(Math.abs(pulse() - expectedPulse(100, 50, 90)) < 1e-6);
+        assert.ok(Math.abs(pulse() - expectedPulse(90, 50, 90)) < 1e-6);
         item.style.beatDecayTime = 200;
         redraw();
-        assert.ok(Math.abs(pulse() - expectedPulse(100, 50, 200)) < 1e-6, 'A longer decay time fades more slowly');
+        assert.ok(Math.abs(pulse() - expectedPulse(90, 50, 200)) < 1e-6, 'A longer decay time fades more slowly');
         item.style.beatHoldTime = 200;
         redraw();
         assert.equal(pulse(), .3, 'The hold time maintains full opacity');
         Object.assign(item.style, { beatHoldTime: 0, beatDecayTime: 90 });
         env.clock.now += 45;
         redraw();
-        assert.ok(Math.abs(pulse() - expectedPulse(145, 0, 90)) < 1e-6, 'The pulse fades between telemetry frames');
+        assert.ok(Math.abs(pulse() - expectedPulse(135, 0, 90)) < 1e-6, 'The pulse fades between telemetry frames');
         payload.setUint32(12, 150, true);
-        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        payload.setUint32(48, 150, true);
+        payload.setUint32(56, 3, true);
+        send(true);
         redraw();
         assert.equal(pulse(), .3, 'The next detected beat restarts the pulse');
         payload.setUint32(32, 0, true);
-        payload.setUint32(12, 151, true);
-        env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 1, payload, source }, source);
+        payload.setUint32(12, 160, true);
+        send();
         redraw();
-        assert.equal(target.context.calls.some(call => call[0] === 'fill'), false, 'Searching leaves a hollow circle');
-        assert.equal(draws[0].text, '(120.0) BPM', 'Held tempo is distinguished from a locked tempo');
+        assert.ok(Math.abs(pulse() - expectedPulse(100, 0, 90)) < 1e-6, 'A shown beat finishes fading when the gate closes');
+        assert.equal(draws[0].text, '120.0 BPM', 'The stored grid tempo does not depend on the tick gate');
 
         Object.assign(item.style, { fontSize: 120, fontFamily: 'serif', bold: true, italic: true, align: 'right',
             verticalAlign: 'bottom', letterSpacing: 4, textCase: 'lower', outlineWidth: 2, shadowBlur: 3 });
         item.params.showBeat = false;
         redraw();
         assert.equal(arcs().length, 0);
-        assert.deepEqual(draws[0], { text: '(120.0) bpm', x: 804, y: 396, maxWidth: 792,
+        assert.deepEqual(draws[0], { text: '120.0 bpm', x: 804, y: 396, maxWidth: 792,
             font: 'italic bold 240px serif', align: 'right', baseline: 'bottom', spacing: '8px', shadowBlur: 6 });
         item.params.showBeat = true;
         item.params.showBpm = false;
@@ -447,6 +474,45 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
         item.params.showBeat = false;
         redraw();
         assert.equal(arcs().length, 0, 'Both indicators can be hidden');
+        display.dispose();
+    });
+});
+
+test('Visualizer revises pending Rhythm Analyzer dots on each fresh display path', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('rhythm-analyzer', 'rhythm'), target = canvas();
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        const payload = new DataView(new ArrayBuffer(1496));
+        for (const [offset, value, kind] of [[0, 48000, 'Float32'], [4, 1, 'Uint32'], [8, 480, 'Uint32'],
+            [12, 150, 'Uint32'], [16, 1.5, 'Float32'], [28, 1, 'Uint32'], [32, 1, 'Uint32'],
+            [36, 1, 'Uint32'], [40, .8, 'Float32'], [44, .5, 'Float32'], [48, 50, 'Uint32'],
+            [60, 120, 'Float32'], [832, 100, 'Uint32'], [840, 1, 'Uint32'], [844, 1, 'Int32'],
+            [852, .5, 'Float32'], [856, .7, 'Float32'], [1344, 3, 'Uint32'], [1348, .5, 'Float32']]) {
+            payload[`set${kind}`](offset, value, true);
+        }
+        payload.setUint8(861, 3);
+        for (let i = 0; i < 3; i++) {
+            payload.setInt32(1352 + 12 * i, 50 + 50 * i, true);
+            payload.setInt32(1360 + 12 * i, i, true);
+        }
+        const source = {};
+        const send = () => env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 4, payload, source }, source);
+        send();
+        display.draw(item, 1, 400);
+        const before = display.plugin.displayedEvent(0, env.clock.now).u;
+        env.clock.now += 17;
+        payload.setUint32(28, 0, true);
+        payload.setInt32(1364, 120, true);
+        payload.setInt32(1376, 170, true);
+        send();
+        assert.ok(display.plugin.eventU[0] < before);
+        assert.ok(Math.abs(display.plugin.displayedEvent(0, env.clock.now).u - before) < 1e-9);
+        env.clock.now += 100;
+        display.draw(item, 1, 400);
+        assert.ok(display.plugin.displayedEvent(0, env.clock.now).u < before);
+        assert.equal(display.plugin.eventSerial, 1);
+        assert.equal(display.plugin.eventTimed[0], 0);
         display.dispose();
     });
 });

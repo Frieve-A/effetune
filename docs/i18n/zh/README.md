@@ -55,6 +55,7 @@ EffeTune 专为希望提升音乐聆听体验的音频爱好者而设计。无�
    - 或从“文件”菜单选择“打开音乐文件…”（仅桌面应用）
    - 或将音乐文件拖入窗口
 - 如果只使用音乐文件播放器，请在“音频设置”的输入设备中选择“无（仅音乐文件播放器）”，这样无需使用实时音频输入
+- 暂停时会进行短暂的淡出，恢复播放时会进行短暂的淡入，以减少咔嗒噪声。
 - 点击 Shuffle 旁边的速度按钮打开弹出面板。可选择九种预设之一，也可使用横向滑块或数字输入框，将速度设为 0.25x 至 4x，步进为 0.01x。旁边的**保持音高**按钮默认开启，速度变化时音高保持不变；关闭后，音高会随速度一起升高或降低，就像改变磁带或黑胶唱片的转速一样。
 
 ### 流媒体服务设置
@@ -440,6 +441,7 @@ PC 上的 Chromium 浏览器可以在不同会话间保留对所选音乐文件�
 | Spatial   | Spatial Mapper | 将声音分为 Direct、Diffuse 和 Residual，以便灵活进行多通道路由 | [详情](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | 从单声道到增强立体声控制声场宽度 | [详情](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | 用于检查扬声器/耳机的测试音和噪声发生器 | [详情](plugins/others.md#oscillator) |
+| Others    | SFZ Note Player | 用导入的 SFZ 乐器播放检测到的音符 | [详情](plugins/others.md#sfz-note-player) |
 | Control   | Section | 将效果分组，让整个区段可被旁路或恢复 | [详情](plugins/control.md) |
 
 ## 技术信息

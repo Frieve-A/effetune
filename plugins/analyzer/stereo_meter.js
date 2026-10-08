@@ -22,6 +22,8 @@ class StereoMeterPlugin extends PluginBase {
     // -20 dB/s decay corresponds to amplitude multiplication by 10^(-t)
     // Math.pow(10, -t) = Math.exp(-t * Math.LN10)
     const LOG10 = Math.LN10; // Cache Math.LN10
+    // Exclude the pipeline's denormal-protection noise from measurements only.
+    const DENORMAL_NOISE_OUTPUT_LIMIT = Math.fround(10 ** (-288 / 20));
 
     // Compute a dynamic buffer size based on the sample rate.
     const maxWindowSec = 1.0; // Maximum window time (1 second)
@@ -82,8 +84,12 @@ class StereoMeterPlugin extends PluginBase {
       // This assumes data layout: [L0, L1, ..., L(blockSize-1), R0, R1, ..., R(blockSize-1)]
       // Assuming channelCount is 2 and data is planar (separate blocks per channel).
       // Let's stick PRECISELY to the original access pattern.
-      const left = data[i];
-      const right = data[i + blockSize]; // Assumes planar layout [LLL...RRR...]
+      const inputLeft = data[i];
+      const inputRight = data[i + blockSize]; // Assumes planar layout [LLL...RRR...]
+      const left = inputLeft >= -DENORMAL_NOISE_OUTPUT_LIMIT &&
+        inputLeft <= DENORMAL_NOISE_OUTPUT_LIMIT ? 0 : inputLeft;
+      const right = inputRight >= -DENORMAL_NOISE_OUTPUT_LIMIT &&
+        inputRight <= DENORMAL_NOISE_OUTPUT_LIMIT ? 0 : inputRight;
 
       // Calculate x and y values.
       const x = right - left; // x = R - L

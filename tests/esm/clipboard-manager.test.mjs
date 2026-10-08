@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ClipboardManager } from '../../js/ui/pipeline/clipboard-manager.js';
+import { PipelineSelectionManager } from '../../js/ui/pipeline/pipeline-selection-manager.js';
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -32,10 +33,12 @@ function createPlugin(name, calls, overrides = {}) {
 function createRuntime(options = {}) {
   const calls = [];
   const selectedPlugins = new Set(options.selectedPlugins ?? []);
+  const expandedPlugins = new Set();
   const pipeline = options.pipeline ?? [];
   const pipelineManager = {
     core: {
       selectedPlugins,
+      expandedPlugins,
       updatePipelineUI() {
         calls.push(['updatePipelineUI']);
       },
@@ -54,7 +57,7 @@ function createRuntime(options = {}) {
         return createPlugin(name, calls);
       }
     },
-    expandedPlugins: new Set(),
+    expandedPlugins,
     historyManager: {
       saveState() {
         calls.push(['saveState']);
@@ -148,7 +151,7 @@ test('copySelectedPluginsToClipboard handles empty, successful, and failed copie
     channel: 'L',
     getSerializableParameters: () => ({ gain: -3 })
   });
-  const runtime = createRuntime({ selectedPlugins: [selected] });
+  const runtime = createRuntime({ pipeline: [selected], selectedPlugins: [selected] });
 
   await withClipboardGlobals(runtime.calls, {
     electronAPI: {
@@ -169,7 +172,7 @@ test('copySelectedPluginsToClipboard handles empty, successful, and failed copie
     call[1] === 'success.settingsCopied' && call[4] === 3000));
   assert.equal(runtime.calls.some(call => call[0] === 'clearError'), false);
 
-  const failingRuntime = createRuntime({ selectedPlugins: [selected] });
+  const failingRuntime = createRuntime({ pipeline: [selected], selectedPlugins: [selected] });
   await withClipboardGlobals(failingRuntime.calls, {
     document: undefined,
     electronAPI: {
@@ -183,6 +186,50 @@ test('copySelectedPluginsToClipboard handles empty, successful, and failed copie
   });
   assert.ok(failingRuntime.calls.some(call => call[0] === 'setError' && call[1] === 'error.failedToCopySettings'));
 });
+
+for (const cut of [false, true]) {
+  test(`${cut ? 'cut' : 'copy'} and paste retain pipeline order after reverse multi-selection`, async () => {
+    const first = createPlugin('Volume', []);
+    const second = createPlugin('Hard Clipping', []);
+    const tail = createPlugin('Tail', []);
+    const runtime = createRuntime({ pipeline: [first, second, tail] });
+    const core = runtime.pipelineManager.core;
+    core.audioManager = runtime.pipelineManager.audioManager;
+    core.pipelineManager = runtime.pipelineManager;
+    const selection = new PipelineSelectionManager(core);
+    selection.selectedPlugins = runtime.selectedPlugins;
+    selection.updateSelectionClasses = () => {};
+    core.deleteSelectedPlugins = () => selection.deleteSelectedPlugins();
+    for (const plugin of runtime.pipeline) runtime.pipelineManager.expandedPlugins.add(plugin);
+    let clipboard;
+
+    await withClipboardGlobals(runtime.calls, {
+      electronAPI: {
+        async writeClipboardText(text) {
+          clipboard = text;
+          return true;
+        }
+      }
+    }, async () => {
+      selection.handlePluginSelection(second, {});
+      selection.handlePluginSelection(first, { ctrlKey: true });
+      assert.deepEqual([...runtime.selectedPlugins], [second, first]);
+      const copied = await (cut ? runtime.manager.cutSelectedPlugins() : runtime.manager.copySelectedPluginsToClipboard());
+      assert.equal(copied, true);
+      assert.deepEqual(JSON.parse(clipboard).map(state => state.nm), ['Volume', 'Hard Clipping']);
+      if (cut) {
+        assert.deepEqual(runtime.pipeline, [tail]);
+        assert.deepEqual([...runtime.pipelineManager.expandedPlugins], [tail]);
+      }
+
+      await runtime.manager.handlePaste(clipboard);
+      assert.deepEqual([...runtime.selectedPlugins].map(plugin => plugin.name), ['Volume', 'Hard Clipping']);
+      assert.deepEqual(runtime.pipeline.map(plugin => plugin.name), cut
+        ? ['Tail', 'Volume', 'Hard Clipping']
+        : ['Volume', 'Hard Clipping', 'Volume', 'Hard Clipping', 'Tail']);
+    });
+  });
+}
 
 test('cutSelectedPlugins copies before deleting and handles failures', async () => {
   const selected = createPlugin('Cut', [], {});

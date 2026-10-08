@@ -113,6 +113,11 @@ struct BandState final {
   ScalarRamp sidechain_frequency;
   ScalarRamp sidechain_q;
   bool geometry_initialized = false;
+  double last_gain = std::numeric_limits<double>::quiet_NaN();
+  double last_frequency = std::numeric_limits<double>::quiet_NaN();
+  double last_q = std::numeric_limits<double>::quiet_NaN();
+  FilterType last_filter_type = FilterType::Peak;
+  BiquadCoefficients last_coefficients{};
 
   void reset() noexcept {
     level_detector.reset();
@@ -121,26 +126,21 @@ struct BandState final {
     mono_sidechain_w2 = 0.0;
     smoothed_gain = 0.0;
     geometry_initialized = false;
+    last_gain = std::numeric_limits<double>::quiet_NaN();
+    last_frequency = std::numeric_limits<double>::quiet_NaN();
+    last_q = std::numeric_limits<double>::quiet_NaN();
+    last_filter_type = FilterType::Peak;
+    last_coefficients = {};
   }
 };
 
 struct ChannelBandState final {
   double w1 = 0.0;
   double w2 = 0.0;
-  double last_gain = std::numeric_limits<double>::quiet_NaN();
-  double last_frequency = std::numeric_limits<double>::quiet_NaN();
-  double last_q = std::numeric_limits<double>::quiet_NaN();
-  FilterType last_filter_type = FilterType::Peak;
-  BiquadCoefficients last_coefficients{};
 
   void reset() noexcept {
     w1 = 0.0;
     w2 = 0.0;
-    last_gain = std::numeric_limits<double>::quiet_NaN();
-    last_frequency = std::numeric_limits<double>::quiet_NaN();
-    last_q = std::numeric_limits<double>::quiet_NaN();
-    last_filter_type = FilterType::Peak;
-    last_coefficients = {};
   }
 };
 
@@ -153,6 +153,8 @@ struct BlockBand final {
   double knee = 0.0;
   FilterType filter_type = FilterType::Peak;
   bool enabled = false;
+  bool sidechain_ramping = false;
+  BiquadCoefficients sidechain_coefficients{};
 };
 
 using binary_io::writeF32;
@@ -316,6 +318,13 @@ public:
       band.level_detector.setRelease(release, sample_rate_);
       band.gain_envelope.setAttack(attack, sample_rate_);
       band.gain_envelope.setRelease(release, sample_rate_);
+      block_band.sidechain_ramping =
+          band.sidechain_frequency.remaining != 0u || band.sidechain_q.remaining != 0u;
+      if (!block_band.sidechain_ramping) {
+        block_band.sidechain_coefficients =
+            calculateCoefficients(FilterType::BandPass, band.sidechain_frequency.value(0u),
+                                  band.sidechain_q.value(0u), 0.0, sample_rate_);
+      }
     }
 
     latest_gains_.fill(0.0F);
@@ -342,8 +351,10 @@ public:
         const double frequency = band.frequency.value(frame);
         const double q = band.q.value(frame);
         const BiquadCoefficients sidechain =
-            calculateCoefficients(FilterType::BandPass, band.sidechain_frequency.value(frame),
-                                  band.sidechain_q.value(frame), 0.0, sample_rate_);
+            block_band.sidechain_ramping
+                ? calculateCoefficients(FilterType::BandPass, band.sidechain_frequency.value(frame),
+                                        band.sidechain_q.value(frame), 0.0, sample_rate_)
+                : block_band.sidechain_coefficients;
         const double sidechain_input = mono_sample;
         const double sidechain_output =
             sidechain.b0 * sidechain_input + band.mono_sidechain_w1 + noise;
@@ -373,22 +384,23 @@ public:
           band.smoothed_gain = smoothed_gain;
         }
 
+        // Mono-linked dynamics and geometry produce the same coefficients for every channel.
+        const double gain_difference = smoothed_gain - band.last_gain;
+        const bool geometry_changed = frequency != band.last_frequency || q != band.last_q ||
+                                      block_band.filter_type != band.last_filter_type;
+        const bool keep_coefficients = !geometry_changed && gain_difference > -kGainThreshold &&
+                                       gain_difference < kGainThreshold;
+        if (!keep_coefficients) {
+          band.last_coefficients = calculateCoefficients(block_band.filter_type, frequency, q,
+                                                         smoothed_gain, sample_rate_);
+          band.last_gain = smoothed_gain;
+          band.last_frequency = frequency;
+          band.last_q = q;
+          band.last_filter_type = block_band.filter_type;
+        }
+        const BiquadCoefficients &coefficients = band.last_coefficients;
         for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
           ChannelBandState &state = channelState(band_index, channel);
-          const double gain_difference = smoothed_gain - state.last_gain;
-          const bool geometry_changed = frequency != state.last_frequency || q != state.last_q ||
-                                        block_band.filter_type != state.last_filter_type;
-          const bool keep_coefficients = !geometry_changed && gain_difference > -kGainThreshold &&
-                                         gain_difference < kGainThreshold;
-          if (!keep_coefficients) {
-            state.last_coefficients = calculateCoefficients(block_band.filter_type, frequency, q,
-                                                            smoothed_gain, sample_rate_);
-            state.last_gain = smoothed_gain;
-            state.last_frequency = frequency;
-            state.last_q = q;
-            state.last_filter_type = block_band.filter_type;
-          }
-          const BiquadCoefficients &coefficients = state.last_coefficients;
           const double input = static_cast<double>(current[channel]);
           const double output = coefficients.b0 * input + state.w1 + noise;
           state.w1 = coefficients.b1 * input - coefficients.a1 * output + state.w2;

@@ -1348,7 +1348,9 @@ export class PlaybackManager {
       currentOrdinal: state.currentTrackIndex ?? 0,
       currentTrack: state.currentTrack ?? null,
       currentTrackPosition: state.currentTrackPosition ?? 0,
-      wasPlaying: state.isPlaying === true
+      wasPlaying: state.isPlaying === true,
+      wasPaused: state.isPaused === true,
+      wasStopped: state.isStopped === true
     };
     if (this.catalogSequence) {
       return { ...common, kind: 'catalog', sequence: this.catalogSequence };
@@ -1398,15 +1400,15 @@ export class PlaybackManager {
       await this.audioPlayer.contextManager?.stop?.();
       return true;
     }
-    if (snapshot.wasPlaying && this.audioPlayer.contextManager?.seamlessTransition) {
-      await this.audioPlayer.contextManager.seamlessTransition(
-        snapshot.currentTrack,
-        snapshot.currentOrdinal,
-        true
-      );
-    } else {
-      await this.audioPlayer.contextManager?.loadTrack?.(snapshot.currentTrack, snapshot.currentOrdinal);
-    }
+    await this.audioPlayer.contextManager?.rebindCurrentPlayback?.({
+      stopCurrentFirst: false,
+      restoreState: {
+        currentTrackPosition: snapshot.currentTrackPosition,
+        isPlaying: snapshot.wasPlaying,
+        isPaused: snapshot.wasPaused,
+        isStopped: snapshot.wasStopped
+      }
+    });
     return true;
   }
 
@@ -2440,6 +2442,7 @@ export class PlaybackManager {
     if (this.keydownHandler) return;
 
     this.keydownHandler = (e) => {
+      // The Space key guard cancels scrolling; shortcut consumers stop propagation.
       // Check if audio player is initialized
       if (!this.audioPlayer) return;
       

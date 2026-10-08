@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
+import { PluginManager } from '../../js/plugin-manager.js';
 import { PluginListManager } from '../../js/ui/plugin-list-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -188,6 +191,8 @@ class AlphaPlugin {
     this.name = 'Alpha';
     this.description = 'Alpha description';
   }
+
+  cleanup() {}
 }
 
 class BetaPlugin {
@@ -195,6 +200,8 @@ class BetaPlugin {
     this.name = 'Beta';
     this.description = 'Beta description';
   }
+
+  cleanup() {}
 }
 
 function createDocument() {
@@ -651,6 +658,152 @@ test('plugin item events add plugins at selected and appended positions', async 
       ['closePluginList'],
       ['setView', 'effects']
     ]);
+  });
+});
+
+test('list templates release observers while tab changes and item actions create live plugins', async () => {
+  await withPluginListGlobals(async ({ dom, windowRef, runFrames }) => {
+    const observers = new Set();
+    const portListeners = new Set();
+    windowRef.workletNode = { port: {
+      addEventListener(type, listener) { portListeners.add(listener); },
+      removeEventListener(type, listener) { portListeners.delete(listener); },
+      postMessage() {}
+    } };
+    const context = vm.createContext({
+      window: windowRef,
+      document: dom.documentRef,
+      console,
+      setTimeout,
+      clearTimeout,
+      MutationObserver: class {
+        observe() { observers.add(this); }
+        disconnect() { observers.delete(this); }
+      }
+    });
+    vm.runInContext(
+      fs.readFileSync(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8') + '\n' +
+      fs.readFileSync(new URL('../../plugins/basics/volume.js', import.meta.url), 'utf8') +
+      '\nglobalThis.Volume = VolumePlugin;', context
+    );
+    context.Volume.searchAliases = ['Gain'];
+    const pluginManager = new PluginManager();
+    pluginManager.pluginClasses = { Volume: context.Volume };
+    pluginManager.effectCategories = { Basics: { description: 'Basic effects', plugins: ['Volume'] } };
+    const manager = new PluginListManager(pluginManager);
+    manager.initSystemPresetList = async () => {};
+    const pipelineManager = createPipelineManager({ pipeline: [] });
+    windowRef.uiManager = { pipelineManager, layoutMode: { isMobile: false } };
+
+    manager.initPluginList();
+    for (let run = 0; run < 3; run += 1) {
+      assert.deepEqual([observers.size, portListeners.size], [0, 0]);
+      manager.switchToTab('systemPresets');
+      manager.switchToTab('effects');
+    }
+    assert.deepEqual([observers.size, portListeners.size], [0, 0]);
+    const item = dom.pluginList.querySelector('.plugin-item');
+    assert.equal(item.textContent, 'Volume');
+    assert.equal(item.dataset.searchAliases, 'Gain');
+    assert.equal(dom.pluginList.querySelectorAll('.plugin-item').length, 1);
+    await item.dispatchEvent('dragstart', { dataTransfer: {
+      setData(type, value) { assert.deepEqual([type, value], ['text/plain', 'Volume']); }
+    } });
+    await item.dispatchEvent('dblclick', { preventDefault() {}, stopPropagation() {} });
+    windowRef.uiManager.layoutMode.isMobile = true;
+    await item.dispatchEvent('pointerdown', { pointerId: 1, clientX: 10, clientY: 20 });
+    await item.dispatchEvent('pointerup', {
+      pointerId: 1, clientX: 10, clientY: 20, preventDefault() {}, stopPropagation() {}
+    });
+    runFrames();
+
+    const added = pipelineManager.audioManager.pipeline;
+    assert.deepEqual(added.map(plugin => plugin.name), ['Volume', 'Volume']);
+    assert.notEqual(added[0], added[1]);
+    assert.equal(item.querySelector('.plugin-description').textContent, added[0].description);
+    assert.equal(added[0].vl, 0);
+    assert.equal(added[1].vl, 0);
+    assert.deepEqual([observers.size, portListeners.size], [2, 2]);
+    for (const plugin of added) plugin.cleanup();
+    assert.deepEqual([observers.size, portListeners.size], [0, 0]);
+  });
+});
+
+test('pending preset tab loads do not append their content after returning to Effects', async () => {
+  for (const tab of ['systemPresets', 'userPresets']) {
+    await withPluginListGlobals(async ({ dom }) => {
+      let resolve;
+      const waiting = new Promise(done => { resolve = done; });
+      const manager = new PluginListManager(createPluginManager());
+      let rendering;
+      if (tab === 'systemPresets') {
+        manager.presetManager.initPresetManager = async () => {
+          await waiting;
+          manager.presetManager.presetManager = {
+            presetCategories: { Tone: { description: 'Tone presets', presets: ['Preset'] } },
+            presetDefinitions: new Map([['Preset', { description: 'Preset description' }]])
+          };
+        };
+        manager.initSystemPresetList = () => {
+          rendering = manager.presetManager.initSystemPresetList();
+          return rendering;
+        };
+      } else {
+        manager.presetManager.getUserPresetsData = async () => {
+          await waiting;
+          return [{ name: 'Saved', description: 'User preset' }];
+        };
+        manager.initUserPresetList = () => {
+          rendering = manager.presetManager.initUserPresetList();
+          return rendering;
+        };
+      }
+      manager.initPluginList();
+      manager.switchToTab(tab);
+      manager.switchToTab('effects');
+      resolve();
+      await rendering;
+      assert.equal(manager.searchManager.currentTab, 'effects');
+      assert.equal(dom.pluginList.querySelectorAll('.plugin-list-content').length, 1);
+      assert.equal(dom.pluginList.querySelectorAll('#effectCount').length, 1);
+      assert.deepEqual(dom.pluginList.querySelectorAll('.plugin-item').map(item => item.textContent), ['Alpha', 'Beta']);
+    });
+  }
+});
+
+test('returning to System Presets during its first load publishes one complete list', async () => {
+  await withPluginListGlobals(async ({ dom }) => {
+    let resolve;
+    let started;
+    const waiting = new Promise(done => { resolve = done; });
+    const fetching = new Promise(done => { started = done; });
+    let fetchCount = 0;
+    await withGlobals({ fetch: async () => {
+      fetchCount += 1;
+      started();
+      await waiting;
+      return { text: async () => '[categories]\nTone: Tone presets\n[presets]\ntone: Preset | Tone | Preset description' };
+    } }, async () => {
+      const manager = new PluginListManager(createPluginManager());
+      const renderings = [];
+      const initialize = manager.initSystemPresetList.bind(manager);
+      manager.initSystemPresetList = () => {
+        const rendering = initialize();
+        renderings.push(rendering);
+        return rendering;
+      };
+      manager.switchToTab('systemPresets');
+      await fetching;
+      manager.switchToTab('effects');
+      manager.switchToTab('systemPresets');
+      resolve();
+      await Promise.all(renderings);
+      assert.equal(fetchCount, 1);
+      assert.equal(manager.searchManager.currentTab, 'systemPresets');
+      assert.equal(dom.pluginList.querySelectorAll('.plugin-list-content').length, 1);
+      assert.equal(dom.pluginList.querySelectorAll('#effectCount').length, 1);
+      assert.deepEqual(dom.pluginList.querySelectorAll('.plugin-item').map(item => item.textContent), ['Preset']);
+    });
   });
 });
 

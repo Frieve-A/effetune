@@ -3,11 +3,13 @@ import { getDspRolloutConfig } from './dsp-rollout.js';
 import { buildDspPipelineDescriptor } from './dsp-pipeline-descriptor.js';
 import { getPluginExecutionUnsupportedReason } from './plugin-execution-capabilities.js';
 import { preflightOfflineOutput } from './audio-encoder.js';
+import { sfzAssetWarmupSamples } from '../sfz/asset.js';
 
 const OFFLINE_BLOCK_SIZE = 128;
 const OFFLINE_MAX_WASM_CHANNELS = 16;
-// Match the live host's half-module asset budget for the 256 MiB WASM ceiling.
+// Match the live host's separate SFZ and other-asset allowances.
 const OFFLINE_DSP_ASSET_BUDGET_BYTES = 128 * 1024 * 1024;
+const OFFLINE_DSP_SFZ_ASSET_BUDGET_BYTES = 1024 * 1024 * 1024;
 
 /**
  * OfflineProcessor - Handles offline audio processing
@@ -195,12 +197,7 @@ export class OfflineProcessor {
                 const currentTime = performance.now();
                 if (progressCallback && currentTime - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL) {
                     const progress = Math.round(((offset + blockSize) / totalSamples) * 90);
-                    await new Promise(resolve =>
-                        requestAnimationFrame(() => {
-                            progressCallback(progress);
-                            resolve();
-                        })
-                    );
+                    progressCallback(progress);
                     lastProgressUpdate = currentTime;
                 }
 
@@ -229,12 +226,7 @@ export class OfflineProcessor {
                     throw new Error('Rendering produced empty buffer');
                 }
                 if (progressCallback) {
-                    await new Promise(resolve =>
-                        requestAnimationFrame(() => {
-                            progressCallback(90);
-                            resolve();
-                        })
-                    );
+                    progressCallback(90);
                 }
             } catch (error) {
                 throw new Error(`Processing failed: ${error.message}`);
@@ -375,6 +367,7 @@ export class OfflineProcessor {
             descriptorConfigured: false,
             descriptorBytes: null,
             residentAssetBytes: 0,
+            residentSfzAssetBytes: 0,
             closed: false,
             warnings: new Set()
         };
@@ -531,13 +524,15 @@ export class OfflineProcessor {
     stageOfflineDspAssets(session, entry) {
         const assets = entry.offlineState?.assets ?? entry.plugin.getWasmAssets?.();
         if (!(assets instanceof Map) || assets.size === 0) return true;
+        const sfz = entry.typeName === 'SFZNotePlayerPlugin';
+        const budget = sfz ? OFFLINE_DSP_SFZ_ASSET_BUDGET_BYTES : OFFLINE_DSP_ASSET_BUDGET_BYTES;
         let entryFootprintBytes = 0;
         for (const asset of assets.values()) {
             const payloadBytes = asset?.payload?.byteLength;
             const footprintBytes = asset?.footprintBytes;
             if (!Number.isSafeInteger(payloadBytes) || payloadBytes < 0 ||
                 !Number.isSafeInteger(footprintBytes) || footprintBytes < payloadBytes ||
-                entryFootprintBytes > OFFLINE_DSP_ASSET_BUDGET_BYTES - footprintBytes) {
+                entryFootprintBytes > budget - footprintBytes) {
                 this.warnOfflineDspOnce(
                     session,
                     `asset-admission:${entry.plugin.id}`,
@@ -548,7 +543,9 @@ export class OfflineProcessor {
             }
             entryFootprintBytes += footprintBytes;
         }
-        if (session.residentAssetBytes > OFFLINE_DSP_ASSET_BUDGET_BYTES - entryFootprintBytes) {
+        const residentSfzBytes = session.residentSfzAssetBytes ?? 0;
+        const residentBytes = sfz ? residentSfzBytes : session.residentAssetBytes - residentSfzBytes;
+        if (residentBytes > budget - entryFootprintBytes) {
             this.warnOfflineDspOnce(
                 session,
                 `asset-budget:${entry.plugin.id}`,
@@ -594,8 +591,11 @@ export class OfflineProcessor {
             );
             const pointer = session.binding.pointerForArenaView(silence);
             let state = session.binding.instanceAssetState(entry.instanceId, slot);
-            const requestedWarmupSamples = Number.isSafeInteger(asset.warmupSamples) &&
+            const descriptorWarmupSamples = Number.isSafeInteger(asset.warmupSamples) &&
                 asset.warmupSamples > 0 ? asset.warmupSamples : 0;
+            // PluginBase normalizes descriptors; the SFZ table retains its preparation counts.
+            const requestedWarmupSamples = Math.max(descriptorWarmupSamples,
+                sfz ? sfzAssetWarmupSamples(asset.payload) : 0);
             const maximumWarmupBlocks = Math.ceil(
                 (2 * session.sampleRate + requestedWarmupSamples) / OFFLINE_BLOCK_SIZE
             );
@@ -623,6 +623,7 @@ export class OfflineProcessor {
         }
         entry.residentAssetBytes = entryFootprintBytes;
         session.residentAssetBytes += entryFootprintBytes;
+        if (sfz) session.residentSfzAssetBytes = residentSfzBytes + entryFootprintBytes;
         entry.offlineAssetsReady = true;
         return true;
     }
@@ -1040,6 +1041,9 @@ export class OfflineProcessor {
         entry.disabled = true;
         session.descriptorEligible = false;
         session.residentAssetBytes -= entry.residentAssetBytes;
+        if (entry.typeName === 'SFZNotePlayerPlugin') {
+            session.residentSfzAssetBytes = (session.residentSfzAssetBytes ?? 0) - entry.residentAssetBytes;
+        }
         entry.residentAssetBytes = 0;
         try {
             session.binding?.destroyInstance(entry.instanceId);

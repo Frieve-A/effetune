@@ -96,6 +96,8 @@ if(NOT EMSCRIPTEN)
   set_property(
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/analog_meter/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/rhythm_analyzer/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/note_spectrogram/kernel.cpp"
+           "${CMAKE_CURRENT_SOURCE_DIR}/plugins/others/sfz_note_player/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/attack_tonal_balance/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/dynamics/auto_leveler/kernel.cpp"
            "${CMAKE_CURRENT_SOURCE_DIR}/plugins/eq/tonal_balance_eq/calibrate_tables.cpp"
@@ -113,6 +115,10 @@ if(NOT EMSCRIPTEN)
     PROPERTY COMPILE_OPTIONS
              "$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffp-contract=off>")
 endif()
+
+set_property(
+  SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/rhythm_analyzer/kernel.cpp"
+  APPEND PROPERTY COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/fp:strict>")
 
 if(BUILD_TESTING)
   list(APPEND EFFETUNE_DSP_SOURCES test/test_kernel.cpp)
@@ -181,7 +187,7 @@ if(EMSCRIPTEN)
       -sSTANDALONE_WASM=1
       -sALLOW_MEMORY_GROWTH=1
       -sINITIAL_MEMORY=8388608
-      -sMAXIMUM_MEMORY=268435456
+      -sMAXIMUM_MEMORY=2147483648
       -sEXPORTED_FUNCTIONS=@${ET_EXPORTED_FUNCTIONS_FILE}
       -fwasm-exceptions
       $<$<CONFIG:Release>:-O3>
@@ -303,13 +309,28 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     INCLUDE_DIRS core
     WRAP_MALLOC)
   et_add_dsp_test(
+    effetune_dsp_rhythm_analyzer_eval
+    SOURCES plugins/analyzer/rhythm_analyzer/eval.cpp plugins/analyzer/rhythm_analyzer/kernel.cpp
+    INCLUDE_DIRS core generated/cpp
+    TEST_ARGS --help)
+  target_compile_definitions(effetune_dsp_rhythm_analyzer_eval PRIVATE ET_RHYTHM_EVALUATION)
+  if(MSVC)
+    target_compile_options(effetune_dsp_rhythm_analyzer_tests PRIVATE /fp:strict)
+    target_compile_options(effetune_dsp_rhythm_analyzer_eval PRIVATE /fp:strict)
+  else()
+    target_compile_options(effetune_dsp_rhythm_analyzer_tests PRIVATE -ffp-contract=off)
+    target_compile_options(effetune_dsp_rhythm_analyzer_eval PRIVATE -ffp-contract=off)
+  endif()
+  et_add_dsp_test(
     effetune_dsp_note_spectrogram_tests
     SOURCES plugins/analyzer/note_spectrogram/native_test.cpp
     INCLUDE_DIRS core
     WRAP_MALLOC)
   et_add_dsp_test(
-    effetune_dsp_note_spectrogram_model_tests
-    SOURCES plugins/analyzer/note_spectrogram/model_test.cpp)
+    effetune_dsp_sfz_note_player_tests
+    SOURCES plugins/others/sfz_note_player/native_test.cpp
+    INCLUDE_DIRS core generated/cpp
+    WRAP_MALLOC)
   et_add_dsp_test(
     effetune_dsp_heap_tree_model_tests
     SOURCES plugins/analyzer/tree_models/heap_tree_model_test.cpp)

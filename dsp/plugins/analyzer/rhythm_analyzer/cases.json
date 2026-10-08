@@ -6,6 +6,6 @@
     { "id": "high-rate-sweep", "stimulus": "sweep", "sampleRate": 192000, "blockSize": 113, "frames": 911 },
     { "id": "four-channel-passthrough", "stimulus": "fs", "channels": 4, "channelMode": "all4", "blockSize": 127, "frames": 635 },
     { "id": "step-96k", "stimulus": "step", "sampleRate": 96000, "blockSize": 89, "frames": 801 },
-    { "id": "click-on", "stimulus": "noise", "params": { "ck": true } }
+    { "id": "click-on", "stimulus": "noise", "frames": 192000, "params": { "ck": true } }
   ]
 }

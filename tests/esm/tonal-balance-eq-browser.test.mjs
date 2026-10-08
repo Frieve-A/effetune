@@ -62,6 +62,7 @@ async function openPage(browser, width, theme) {
     const host = width < 768 ? '100%' : '1024px';
     await page.setContent(`<!doctype html><html${mobile}${dataTheme}><body${mobile}><div id="host" style="width:${host}"></div></body></html>`);
     for (const content of STYLES) await page.addStyleTag({ content });
+    await page.addScriptTag({ content: read('../../js/ui/range-fill.js').replace(/^export /gm, '') });
     for (const path of SCRIPTS) await page.addScriptTag({ content: read(`../../${path}`) });
     await page.addScriptTag({ content: PAGE_HELPERS });
     return page;
@@ -330,6 +331,7 @@ test('Tonal Balance EQ copies its EQ curve as a pasteable 5Band PEQ', { timeout:
             return route.fulfill({ contentType: 'text/javascript', body: read(`../..${path}`) });
         });
         await page.goto('http://effetune.test/');
+        await page.addScriptTag({ content: read('../../js/ui/range-fill.js').replace(/^export /gm, '') });
         for (const path of SCRIPTS) {
             await page.addScriptTag({ url: `http://effetune.test/${path}` });
         }

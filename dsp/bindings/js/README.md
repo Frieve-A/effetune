@@ -3,7 +3,7 @@
 <!-- BEGIN DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 EffeTune DSP provides the same MIT-licensed C++ audio kernels used by EffeTune
 as a self-contained WebAssembly package for Node.js and evergreen browsers.
-Version 0.12.0 exposes all 111 catalog types through the generic Chain and
+Version 0.13.0 exposes all 111 catalog types through the generic Chain and
 `createEffect` APIs and 111 generated named convenience classes,
 decoded analyzer telemetry, versioned semantic presets, deterministic seeds, and an AudioWorklet wrapper.
 <!-- END DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
@@ -255,6 +255,11 @@ aggregate for real-time processing; initialization and awaited `setParam()` or
 trimming or padding offline output, so the host decides how to place rendered
 audio.
 
+Chain processing aligns channels using the effects' technical latency, including
+channels that bypass a selected-channel effect. The reported latency is the
+longest channel path, so effects on separate channels do not add their latencies
+together. Intentional delays from Delay and TimeAlignment are preserved.
+
 For real-time processing:
 
 ```js
@@ -290,6 +295,10 @@ option and also provides `subscribe()`, `unsubscribe()`, and
 `droppedTelemetryFrames`. The first subscriber enables observations and the
 last unsubscribe disables them. Arrays in delivered frames belong to the
 caller. Raw DSP telemetry and AudioWorklet messages are not public APIs.
+
+Note Spectrogram's `revisions` contains updates for observations 2, 4, and 8
+analysis hops earlier (40, 80, and 160 ms). Each entry has `age` and `levels`.
+`revisionAge` and `revisedLevels` describe the final 160 ms update.
 
 `EffeTuneNode.create()` waits until the package-owned worklet processor has
 instantiated the selected baseline or SIMD artifact and committed every

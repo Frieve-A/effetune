@@ -103,6 +103,8 @@ class PowerAmpSagPlugin extends PluginBase {
 
             // Pre-calculate sample rate inverse for performance, avoiding division in the loop.
             const invSampleRate = 1.0 / SAMPLE_RATE;
+            const dischargeScale = invSampleRate / capacitance;
+            const rechargeScale = chargeRate * invSampleRate;
 
             let result = context.resultBuffer;
             if (!result || result.length !== data.length) {
@@ -149,8 +151,8 @@ class PowerAmpSagPlugin extends PluginBase {
                         // --- END MODIFIED LOGIC ---
 
                         // Update PSU voltage based on this current draw.
-                        const discharge = (I_draw / capacitance) * invSampleRate;
-                        const recharge = chargeRate * (1.0 - vPsu) * invSampleRate;
+                        const discharge = I_draw * dischargeScale;
+                        const recharge = (1.0 - vPsu) * rechargeScale;
                         vPsu = vPsu - discharge + recharge;
 
                         // Apply the *newly calculated* sag gain to the original sample.
@@ -210,8 +212,8 @@ class PowerAmpSagPlugin extends PluginBase {
                     // --- END MODIFIED LOGIC ---
                     
                     // Update PSU voltage.
-                    const discharge = (I_draw / capacitance) * invSampleRate;
-                    const recharge = chargeRate * (1.0 - vPsu) * invSampleRate;
+                    const discharge = I_draw * dischargeScale;
+                    const recharge = (1.0 - vPsu) * rechargeScale;
                     vPsu = vPsu - discharge + recharge;
                     
                     // Apply the same, newly calculated sag gain to all channels.

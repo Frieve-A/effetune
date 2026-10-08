@@ -1,21 +1,21 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:f26e5185dee78f53b707740612f977478e809b3596b9edf8c6c29de8b26aee4a",
-  "emsdkVersion": "6.0.2",
+  "sourceDigest": "sha256:e340c7885db6ed8d1f0449b8e995a076d850e6735c4196e69af077a77f0cd84b",
+  "emsdkVersion": "6.0.11",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:79ab63bdb55e69ab2ba710f4d3bce86b494624e125424f687c81739cc7a9c185",
+    "digest": "sha256:90dcb3448904662d06fbed0c2e89acc609ae59a8b115ec4b22658fe90850ce3b",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
         "kind": "file",
-        "sha256": "sha256:ae52245f49287e6bf3345ba0860e65c7eb9d49fe61fabb0a3fb3459bb9eb6676"
+        "sha256": "sha256:a34dcdcd6fe213ca337c451b9398055de32e645c42b39b126e65dc1c026c332e"
       },
       {
         "id": "dsp/core/allocation_guard.cpp",
         "kind": "file",
-        "sha256": "sha256:69dd284b57f2704580778028a33d05f683fa8d5674de22b4aa094c2254475049"
+        "sha256": "sha256:e317195777e2281c8f968a817984c92a3a488e599246e1af1c7d3b637556fe6d"
       },
       {
         "id": "dsp/core/allocation_guard.h",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:aaedc6696adf38ee312a155ae28e02e2e481c111605efa8c65c18b452cfefdae"
+        "sha256": "sha256:c1954b7f421e73c28bfbc944809df4573294ea8357e582a47faa27c56573e3e9"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:79500b6294e74cd987b704ca287083d04666e3bef5433f722c6d7313002358bf"
+        "sha256": "sha256:98de25f2e03d85ef61b2354d26ad52a69f2d24486dd1b8cb47dfbaa76e3929c2"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -60,12 +60,12 @@
       {
         "id": "dsp/EMSDK_VERSION",
         "kind": "file",
-        "sha256": "sha256:8adcc17e039842d2f4d92ca25f72a8963ede072c885ef5f762c0682b87c6d872"
+        "sha256": "sha256:4ec0b3efdba01e2fb956fa4e2d1499f798cbb5b32930f8c486a3e052891b516c"
       },
       {
         "id": "dsp/exports.txt",
         "kind": "file",
-        "sha256": "sha256:ec90d865e7e16db94b8eddac17dae85bb1c020c14a1e12ccad2eea63b3faf4a5"
+        "sha256": "sha256:10d19301b2193e844da94c322756fa908fd2864bbb425e8e150309969825ca25"
       },
       {
         "id": "dsp/generated/cpp/G726ADPCMSimulatorPluginParams.h",
@@ -75,7 +75,7 @@
       {
         "id": "dsp/include/effetune/abi.h",
         "kind": "file",
-        "sha256": "sha256:18dcdc3fdd2af9de4b7acb27dacb3441b01a441e9447af1908efb69437b3909a"
+        "sha256": "sha256:82fbaac1c39110967ae2619967888c12fdcff08af5ee46b61497eaf915f4b76c"
       },
       {
         "id": "dsp/include/effetune/dsp/halfband.h",
@@ -95,7 +95,7 @@
       {
         "id": "dsp/include/effetune/kernel.h",
         "kind": "file",
-        "sha256": "sha256:3f239f230c9d7fb1a0dfd72d19c77b9db5ff6555b899bc01b3f2e1238e2695ef"
+        "sha256": "sha256:99098209ab458d53bb6e79b3aa86a2c94a96aaef434891c9ec7830f01e6c41e6"
       },
       {
         "id": "dsp/include/effetune/telemetry.h",
@@ -130,17 +130,17 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:9170a7449b2ef298d0f4cfc7ce1c04b8ddffcf4c42b2ed2923df459b5c5f4cca"
+        "sha256": "sha256:693347c27e0a9e7eb8d7e235426d75992d3ea0c7f21ad45355e1e43c7deab10f"
       },
       {
         "id": "production-build#g726-resolved-authority",
         "kind": "derived",
-        "sha256": "sha256:d5b9538277ab232fd7d2cf411090029072d4371fe6b4b1a6b107ad90f8736401"
+        "sha256": "sha256:98a45e3ddccc90e82db20a1862aee74cc143eb6dd338415e1240aaed7f94c1b9"
       },
       {
         "id": "production-build#g726-source-authority",
         "kind": "derived",
-        "sha256": "sha256:8370f0a886a4563ac61142b184e9f9aaf0222fddba9db09af00a865bbe59bbec"
+        "sha256": "sha256:6c5b51dbc61f13448e2a6fe5f30b71c52c64cb7bf5d78cc8240dd857db58bd92"
       },
       {
         "id": "tools/dsp-parity/cases.mjs",
@@ -160,7 +160,7 @@
       {
         "id": "tools/dsp-parity/runners.mjs",
         "kind": "file",
-        "sha256": "sha256:616c0542427197899f741ed98255eb8a7412baf5a403a4ea2f7bc7c024358d56"
+        "sha256": "sha256:25c1be135710466d9ad0fec76945866d6f8c90626fe26c1a1cb79fd052e6b18a"
       },
       {
         "id": "tools/dsp-parity/stimuli.mjs",
@@ -191,7 +191,7 @@
           "target_link_libraries(effetune-dsp PRIVATE effetune_dsp_core)",
           "set_target_properties(effetune-dsp PROPERTIES OUTPUT_NAME \"effetune-dsp\" SUFFIX \".wasm\")",
           "target_compile_options( effetune_dsp_core PRIVATE $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)",
-          "target_link_options( effetune-dsp PRIVATE --no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@${ET_EXPORTED_FUNCTIONS_FILE} -fwasm-exceptions $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)"
+          "target_link_options( effetune-dsp PRIVATE --no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=2147483648 -sEXPORTED_FUNCTIONS=@${ET_EXPORTED_FUNCTIONS_FILE} -fwasm-exceptions $<$<CONFIG:Release>:-O3> $<$<CONFIG:Release>:-flto> $<$<BOOL:${ET_SIMD}>:-msimd128>)"
         ],
         "builderInvocation": "function configureAndBuildWasm({ emcmake, name, simd, debugState = false }) { const buildDirectory = path.join(buildRoot, name); resetBuildDirectory(buildDirectory); const configureArguments = productionWasmConfigureArguments({ dspRoot, buildDirectory, simd, debugState }); run(emcmake, configureArguments); run('cmake', ['--build', buildDirectory, '--parallel']); const artifact = path.join(buildDirectory, 'effetune-dsp.wasm'); if (!fs.existsSync(artifact)) { fail(`WASM build did not produce ${artifact}`); } return { artifact, buildDirectory, configureArguments }; }",
         "productionConfigureArguments": {
@@ -222,7 +222,7 @@
             "-DBUILD_TESTING=OFF"
           ]
         },
-        "digest": "sha256:c2f4c7956678123c1426bd2b867b103ef574ce823e2e79e463242eb242b01b17"
+        "digest": "sha256:460447c4cdabeecadd3b29d983ae33184ca15bfb32b54d4d542f5bc358cb5c47"
       },
       "resolved": {
         "source": "configured CMake Ninja compile/link edges",
@@ -242,10 +242,10 @@
               "-DET_DEBUG_STATE=OFF",
               "-DBUILD_TESTING=OFF"
             ],
-            "emsdkVersion": "6.0.2",
+            "emsdkVersion": "6.0.11",
             "compiler": {
               "id": "Clang",
-              "version": "23.0.0",
+              "version": "24.0.0",
               "platform": "emscripten",
               "frontendVariant": "GNU",
               "executable": "em++"
@@ -302,7 +302,7 @@
             ],
             "linkCommand": {
               "flags": "-O3 -DNDEBUG",
-              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto",
+              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=2147483648 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto",
               "libraries": "libeffetune_dsp_core.a libpffft.a -lm libeffetune_tree_models.a"
             }
           },
@@ -321,10 +321,10 @@
               "-DET_DEBUG_STATE=OFF",
               "-DBUILD_TESTING=OFF"
             ],
-            "emsdkVersion": "6.0.2",
+            "emsdkVersion": "6.0.11",
             "compiler": {
               "id": "Clang",
-              "version": "23.0.0",
+              "version": "24.0.0",
               "platform": "emscripten",
               "frontendVariant": "GNU",
               "executable": "em++"
@@ -381,12 +381,12 @@
             ],
             "linkCommand": {
               "flags": "-O3 -DNDEBUG",
-              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=268435456 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto -msimd128",
+              "options": "--no-entry -sSTANDALONE_WASM=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8388608 -sMAXIMUM_MEMORY=2147483648 -sEXPORTED_FUNCTIONS=@<repo>/dsp/exports.txt -fwasm-exceptions -O3 -flto -msimd128",
               "libraries": "libeffetune_dsp_core.a libpffft.a -lm libeffetune_tree_models.a"
             }
           }
         },
-        "digest": "sha256:209ce85571960a94d17548f0f981f7fab72d04e184c5ff798345eeede6d9d2c2"
+        "digest": "sha256:1002037d638c1bef9c5943c1cb2e004475b18506886874c4f89cbbfcc51367f4"
       }
     }
   },
@@ -411,7 +411,7 @@
     },
     {
       "name": "NoteSpectrogramPlugin",
-      "hash": 211541838,
+      "hash": 2641392907,
       "byteCapacity": 0,
       "assets": []
     },
@@ -759,7 +759,7 @@
     },
     {
       "name": "CassetteArtifactsPlugin",
-      "hash": 4133384581,
+      "hash": 847548846,
       "byteCapacity": 0,
       "assets": []
     },
@@ -924,6 +924,19 @@
       "hash": 2237210280,
       "byteCapacity": 0,
       "assets": []
+    },
+    {
+      "name": "SFZNotePlayerPlugin",
+      "hash": 253190780,
+      "byteCapacity": 0,
+      "assets": [
+        {
+          "slot": 0,
+          "format": "ET_ASSET_F32_MULTICH",
+          "capacity": "1 GiB bank and index cap",
+          "byteCapacity": 1073741824
+        }
+      ]
     },
     {
       "name": "AdaptivePredictionEffectPlugin",
@@ -1115,7 +1128,7 @@
     }
   ],
   "sizes": {
-    "baseline": 4174462,
-    "simd": 4354411
+    "baseline": 2208174,
+    "simd": 2374310
   }
 }

@@ -55,6 +55,7 @@ EffeTune का उपयोग करने से पहले ऑडियो
    - या फ़ाइल मेनू से संगीत फ़ाइल खोलें... चुनें (केवल डेस्कटॉप ऐप)
    - या संगीत फ़ाइल को विंडो में ड्रैग करें
 - केवल संगीत फ़ाइल प्लेयर के लिए, ऑडियो विन्यास में इनपुट डिवाइस के रूप में कोई नहीं (केवल संगीत फ़ाइल प्लेयर) चुनें ताकि लाइव ऑडियो इनपुट का उपयोग न हो
+- प्लेबैक को विराम देने पर ध्वनि थोड़े समय में धीरे-धीरे कम होती है और फिर से शुरू करने पर थोड़े समय में धीरे-धीरे बढ़ती है, जिससे क्लिक जैसी आवाज़ें कम होती हैं।
 - पॉपअप खोलने के लिए Shuffle के पास गति बटन दबाएं। नौ प्रीसेट में से चुनें, या क्षैतिज स्लाइडर अथवा संख्या फ़ील्ड से 0.25x से 4x तक 0.01x के अंतर पर गति सेट करें। उसके बगल का **पिच बनाए रखें** बटन डिफ़ॉल्ट रूप से चालू रहता है, जिससे गति बदलने पर भी पिच वही बनी रहती है; इसे बंद करने पर पिच भी गति के साथ ऊपर-नीचे होती है, जैसे टेप या रेकॉर्ड की गति बदलने पर होता है।
 
 ### स्ट्रीमिंग सेवा सेटअप
@@ -441,6 +442,7 @@ PC पर Chromium ब्राउज़र चुने हुए संगी�
 | Spatial   | Spatial Mapper | Direct, Diffuse और Residual ध्वनि को अलग करके flexible multichannel routing करता है | [विवरण](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | mono से enhanced stereo तक stereo width control करता है | [विवरण](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | speakers/headphones जांचने के लिए test tone और noise generator | [विवरण](plugins/others.md#oscillator) |
+| Others    | SFZ Note Player | पहचाने गए नोटों को आयात किए गए SFZ वाद्य से बजाता है | [विवरण](plugins/others.md#sfz-note-player) |
 | Control   | Section | effects को group करता है ताकि पूरा section bypass या restore किया जा सके | [विवरण](plugins/control.md) |
 
 ## तकनीकी जानकारी

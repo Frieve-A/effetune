@@ -23,14 +23,15 @@
     "az": 6,
     "dl": 0,
     "og": 0,
-    "mx": 100
+    "mx": 100,
+    "md": "All"
   },
   "events": [],
   "tolerance": {
     "abs": 0.00001,
     "policy": "per-sample"
   },
-  "jsEngineHash": "bdda8e70faec2cba9ca3a402d4e81d11d856fe3771632bfbfdee8cadedec820f",
+  "jsEngineHash": "c21246b2cfb936c268a20902c4826fd75b87833927fb62a042c5a710129871e9",
   "outputFloats": 24000,
   "byteLength": 96000,
   "binary": "case-007.f32"

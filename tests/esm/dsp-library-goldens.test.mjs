@@ -18,10 +18,10 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 1046;
+const GOLDEN_CASE_COUNT = 1051;
 const EFFECT_COUNT = 111;
 const WORKLET_GOLDEN_CASE_COUNT = 113;
-const NON_IDENTITY_EFFECT_COUNT = 101;
+const NON_IDENTITY_EFFECT_COUNT = 102;
 
 test('MCP acceptance preserves eight-channel aggregates and defaults only their extended slots', async () => {
   const { cases } = await discoverFrozenGoldenCases(repoRoot);
@@ -463,8 +463,9 @@ test('frozen DSP library acceptance inventory stays complete', async () => {
   // Multiband crossover normalization regression cases add sixteen parameter events.
   // Spatial Mapper adds one event case with four routing and analysis changes.
   // Adaptive Prediction's expanded sample-rate cases add two event cases and two events.
-  assert.equal(inventory.eventCases, 167);
-  assert.equal(inventory.eventCount, 571);
+  // Cassette Artifacts adds five Mode cases, including three event cases and nine events.
+  assert.equal(inventory.eventCases, 170);
+  assert.equal(inventory.eventCount, 580);
   assert.deepEqual(inventory.sampleRates, [
     8000,
     32000,

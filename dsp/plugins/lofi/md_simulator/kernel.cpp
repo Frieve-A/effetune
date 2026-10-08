@@ -37,7 +37,7 @@ static_assert(kWindowSamples % kUnitSamples == 0u,
 // schedule so that the declared latency stays mode independent.
 constexpr std::uint32_t kWorkOffset = 128u;
 constexpr std::uint32_t kLpWorkStep = 32u;
-static_assert(3u * kLpWorkStep < kWorkOffset,
+static_assert(4u * kLpWorkStep <= kWorkOffset,
               "the four LP work steps have to finish before the drain starts");
 static_assert(kWorkOffset < kUnitSamples,
               "the deferred LP work must not reach into the SP unit boundary");
@@ -117,6 +117,11 @@ class MDSimulatorKernel final : public PluginKernel {
   EFFETUNE_PARAMS(generated::MDSimulatorPluginParams)
 
 public:
+  void setInstanceSalt(std::uint32_t salt) noexcept override {
+    // An odd half-window stride separates adjacent instances within the existing deadline.
+    lpWorkPhase_ = (salt * (kLpWorkStep / 2u + 1u)) % kLpWorkStep;
+  }
+
   void prepare(const PrepareInfo &info) override {
     hostRate_ = static_cast<std::uint32_t>(info.sampleRate + 0.5F);
     maxChannels_ = info.maxChannels;
@@ -453,7 +458,8 @@ private:
     // The previous window: its coding samples and its decoded output share the
     // other bank, which nothing else touches until the drain reaches it.
     const std::uint32_t bank = fillBank_ ^ 1u;
-    switch (windowFill_) {
+    // The phase only delays work within its existing deadline; draining is unchanged.
+    switch (windowFill_ - lpWorkPhase_) {
     case 0u:
       codec.beginFrame(codingWindow(bank), kWindowSamples);
       codec.analyzeChannel(0u);
@@ -621,6 +627,7 @@ private:
   std::uint32_t fillBank_ = 0u;
   std::uint32_t fillMode_ = 0u;
   std::uint32_t workMode_ = 0u;
+  std::uint32_t lpWorkPhase_ = 0u;
   std::uint32_t lpFrameBits_ = 0u;
   std::array<std::uint32_t, 2u> frameMode_{};
   std::array<std::uint32_t, kChannels> ringRead_{};

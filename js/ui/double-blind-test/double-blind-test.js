@@ -158,8 +158,7 @@ export class DoubleBlindTest {
             return false;
         }
 
-        this.audioManager.pipelineA = pluginsA;
-        this.audioManager.pipelineB = pluginsB;
+        this._replacePipelines(pluginsA, pluginsB);
         // Default the live pipeline to A; switching during the test re-routes it.
         this.audioManager.setCurrentPipeline('A', true);
 
@@ -701,8 +700,7 @@ export class DoubleBlindTest {
 
         const pluginsA = buildPipeline(t.pA);
         const pluginsB = buildPipeline(t.pB);
-        this.audioManager.pipelineA = pluginsA;
-        this.audioManager.pipelineB = pluginsB.length ? pluginsB : null;
+        this._replacePipelines(pluginsA, pluginsB.length ? pluginsB : null);
         this.audioManager.setCurrentPipeline('A', true);
 
         this.testName = name;
@@ -711,6 +709,19 @@ export class DoubleBlindTest {
         this._updateStartAvailability();
 
         this.uiManager.showTransientMessage(this.t('dbt.testLoaded', { name }), false, {}, 3000);
+    }
+
+    _replacePipelines(pipelineA, pipelineB) {
+        const oldPlugins = new Set([
+            ...(this.audioManager.pipelineA || []),
+            ...(this.audioManager.pipelineB || [])
+        ]);
+        for (const plugin of oldPlugins) {
+            plugin.cleanup?.();
+            this.uiManager.expandedPlugins.delete(plugin);
+        }
+        this.audioManager.pipelineA = pipelineA;
+        this.audioManager.pipelineB = pipelineB;
     }
 
     // ===================================================================== //

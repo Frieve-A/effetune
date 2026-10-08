@@ -96,6 +96,8 @@ test('deleteSectionRange removes section contents and tolerates missing sections
   const sectionB = new SectionPlugin(4);
   const pluginC = createPlugin(5);
   const runtime = createRuntime([sectionA, pluginA, pluginB, sectionB, pluginC]);
+  runtime.pipelineCore.expandedPlugins = new Set([sectionA, pluginA, pluginB, sectionB, pluginC]);
+  runtime.pipelineManager.expandedPlugins = runtime.pipelineCore.expandedPlugins;
   pluginB.cleanup = () => runtime.calls.push(['cleanup', pluginB.id]);
   const handler = new PipelineSectionHandler(runtime.pipelineCore);
 
@@ -104,6 +106,7 @@ test('deleteSectionRange removes section contents and tolerates missing sections
 
   handler.deleteSectionRange(sectionA);
   assert.deepEqual(runtime.pipelineCore.audioManager.pipeline, [sectionB, pluginC]);
+  assert.deepEqual([...runtime.pipelineCore.expandedPlugins], [sectionB, pluginC]);
   assert.equal(runtime.pipelineCore.selectedPlugins.has(sectionA), false);
   assert.equal(runtime.pipelineCore.selectedPlugins.has(pluginB), false);
   assert.deepEqual(runtime.calls, [

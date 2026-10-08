@@ -9,6 +9,7 @@ const windowState = require('./window-state');
 const visualizerFeed = require('./visualizer-feed');
 const { registerClipboardIpcHandlers } = require('./clipboard-ipc');
 const { registerIrLibraryIpc } = require('./ir-library-ipc');
+const { registerSfzLibraryIpc } = require('./sfz-library-ipc');
 const { registerMeasurementBackupIpc } = require('./measurement-backup-ipc.cjs');
 const { readFileBytes } = require('./bounded-file-reader');
 const { queueAutoRestart } = require('./relaunch');
@@ -625,6 +626,8 @@ function refreshMenu() {
 // Register all IPC handlers
 function registerIpcHandlers({ onConfigSaved } = {}) {
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
+  registerSfzLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath,
+    showOpenDialog: fileHandlers.showOpenDialog });
   registerMeasurementBackupIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   ipcMain.handle('set-mini-player-mode', async (event, options = {}) => {
     if (options?.enabled === true) {

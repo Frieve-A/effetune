@@ -1,0 +1,165 @@
+{
+  "type": "SFZNotePlayerPlugin",
+  "parityReference": "production-native-promoted-v1",
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "assets": [
+    {
+      "slot": 0,
+      "format": "ET_ASSET_F32_MULTICH",
+      "capacity": "1 GiB bank and index cap"
+    }
+  ],
+  "fields": [
+    {
+      "name": "threshold",
+      "key": "th",
+      "kind": "float",
+      "min": 0.01,
+      "max": 1,
+      "default": 0.75,
+      "automation": true,
+      "step": 0.01
+    },
+    {
+      "name": "velocityFloor",
+      "key": "vf",
+      "kind": "float",
+      "min": -96,
+      "max": 0,
+      "default": -60,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "velocityCeiling",
+      "key": "vc",
+      "kind": "float",
+      "min": -60,
+      "max": 24,
+      "default": -10,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "minimumMidi",
+      "key": "mn",
+      "kind": "int",
+      "min": 21,
+      "max": 108,
+      "default": 28
+    },
+    {
+      "name": "maximumMidi",
+      "key": "mx",
+      "kind": "int",
+      "min": 21,
+      "max": 108,
+      "default": 91
+    },
+    {
+      "name": "maxVoices",
+      "key": "pl",
+      "kind": "int",
+      "min": 1,
+      "max": 128,
+      "default": 32
+    },
+    {
+      "name": "dryMix",
+      "key": "dm",
+      "kind": "float",
+      "min": 0,
+      "max": 100,
+      "default": 20,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "wetMix",
+      "key": "wm",
+      "kind": "float",
+      "min": 0,
+      "max": 100,
+      "default": 100,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "octaveShift",
+      "key": "os",
+      "kind": "int",
+      "min": -2,
+      "max": 2,
+      "default": 0,
+      "automation": true,
+      "step": 1
+    },
+    {
+      "name": "outputGain",
+      "key": "og",
+      "kind": "float",
+      "min": -60,
+      "max": 12,
+      "default": 0,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "playLowest",
+      "key": "lo",
+      "kind": "bool",
+      "default": true,
+      "automation": true,
+      "step": 1
+    },
+    {
+      "name": "playMiddle",
+      "key": "md",
+      "kind": "bool",
+      "default": true,
+      "automation": true,
+      "step": 1
+    },
+    {
+      "name": "playHighest",
+      "key": "hi",
+      "kind": "bool",
+      "default": true,
+      "automation": true,
+      "step": 1
+    },
+    {
+      "name": "timingOffsetMs",
+      "key": "tm",
+      "kind": "float",
+      "min": -100,
+      "max": 100,
+      "default": 0,
+      "automation": true,
+      "step": 0.1
+    },
+    {
+      "name": "retriggerDropDb",
+      "key": "rd",
+      "kind": "float",
+      "min": 1,
+      "max": 96,
+      "default": 40,
+      "automation": true,
+      "step": 1
+    },
+    {
+      "name": "noteHoldMs",
+      "key": "nh",
+      "kind": "float",
+      "min": 0,
+      "max": 100,
+      "default": 50,
+      "automation": true,
+      "step": 1
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -87,6 +88,7 @@ class FakeMutationObserver {
 }
 
 const sandbox = {
+    bindEffeTuneNumberInput: bindNumberInput,
     window: {},
     console,
     setTimeout,

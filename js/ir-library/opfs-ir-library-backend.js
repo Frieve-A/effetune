@@ -5,7 +5,7 @@ import {
   requireBoundedIrBytes
 } from './ir-library-limits.js';
 
-const ROOT_NAME = 'ir-library';
+import { requireLibraryNamespace } from './library-namespace.js';
 const ALLOWED_NAME = /^(?:index\.json|[a-f0-9]{24}(?:\.(?:L|R))?\.[a-z0-9]{1,10})$/;
 const CACHE_NAME = /^(?:index\.json|[a-f0-9]{24}@[1-9][0-9]{3,5}(?:-[a-f0-9]{64})?\.f32)$/;
 
@@ -34,8 +34,9 @@ function asBytes(value) {
 }
 
 export class OpfsIrLibraryBackend {
-  constructor(directory) {
+  constructor(directory, namespace = 'ir-library') {
     this.directory = directory;
+    this.namespace = requireLibraryNamespace(namespace);
     this.cacheDirectoryPromise = null;
   }
 
@@ -44,13 +45,13 @@ export class OpfsIrLibraryBackend {
     try {
       const handle = await this.directory.getFileHandle(name);
       const file = await handle.getFile();
-      if (Number.isSafeInteger(file.size) && file.size > maxIrLibraryBytesForName(name)) {
+      if (Number.isSafeInteger(file.size) && file.size > maxIrLibraryBytesForName(name, this.namespace)) {
         if (name === 'index.json') throw indexTooLargeError();
         throw new RangeError('IR library item is too large.');
       }
       const buffer = await file.arrayBuffer();
       try {
-        requireBoundedIrBytes(buffer, maxIrLibraryBytesForName(name), 'IR library item');
+        requireBoundedIrBytes(buffer, maxIrLibraryBytesForName(name, this.namespace), 'IR library item');
       } catch (error) {
         if (name === 'index.json' && error instanceof RangeError) throw indexTooLargeError();
         throw error;
@@ -75,7 +76,7 @@ export class OpfsIrLibraryBackend {
 
   async writeAtomic(name, bytes) {
     requireName(name);
-    requireBoundedIrBytes(bytes, maxIrLibraryBytesForName(name), 'IR library item');
+    requireBoundedIrBytes(bytes, maxIrLibraryBytesForName(name, this.namespace), 'IR library item');
     const handle = await this.directory.getFileHandle(name, { create: true });
     const writable = await handle.createWritable({ keepExistingData: false });
     try {
@@ -166,9 +167,10 @@ export class OpfsIrLibraryBackend {
   }
 }
 
-export async function openOpfsIrLibraryBackend(storage = globalThis.navigator?.storage) {
+export async function openOpfsIrLibraryBackend(storage = globalThis.navigator?.storage, namespace = 'ir-library') {
+  const rootName = requireLibraryNamespace(namespace);
   if (typeof storage?.getDirectory !== 'function') throw new Error('OPFS is unavailable.');
   const originRoot = await storage.getDirectory();
-  const directory = await originRoot.getDirectoryHandle(ROOT_NAME, { create: true });
-  return new OpfsIrLibraryBackend(directory);
+  const directory = await originRoot.getDirectoryHandle(rootName, { create: true });
+  return new OpfsIrLibraryBackend(directory, rootName);
 }

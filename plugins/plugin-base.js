@@ -959,9 +959,10 @@ class PluginBase {
                     sum += coefficients[tap];
                 }
                 for (let tap = 0; tap < length; tap++) coefficients[tap] /= sum;
+                // Mirror ring storage to keep FIR reads contiguous without changing sum order.
                 context.shaperOS = { factor: osFactor, channels: osChannels, coefficients,
                     states: Array.from({ length: osFactor === 1 ? 0 : osChannels }, () => ({
-                        input: new Float64Array(65), output: new Float64Array(length),
+                        input: new Float64Array(130), output: new Float64Array(2 * length),
                         dry: new Float64Array(64), ip: 0, op: 0, dp: 0
                     })) };
             }
@@ -971,21 +972,23 @@ class PluginBase {
                 const coefficients = context.shaperOS.coefficients;
                 const length = coefficients.length;
                 state.input[state.ip] = input;
+                state.input[state.ip + 65] = input;
                 let output = 0;
                 for (let phase = 0; phase < osFactor; phase++) {
                     let interpolated = 0;
                     for (let tap = phase, delay = 0; tap < length; tap += osFactor, delay++) {
-                        interpolated += coefficients[tap] * state.input[(state.ip + 65 - delay) % 65];
+                        interpolated += coefficients[tap] * state.input[state.ip + 65 - delay];
                     }
                     state.output[state.op] = shape(interpolated * osFactor);
+                    state.output[state.op + length] = state.output[state.op];
                     if (phase === 0) {
                         for (let tap = 0; tap < length; tap++) {
-                            output += coefficients[tap] * state.output[(state.op + length - tap) % length];
+                            output += coefficients[tap] * state.output[state.op + length - tap];
                         }
                     }
-                    state.op = (state.op + 1) % length;
+                    if (++state.op === length) state.op = 0;
                 }
-                state.ip = (state.ip + 1) % 65;
+                if (++state.ip === 65) state.ip = 0;
                 return output;
             };
             const delaySample = (channel, input) => {
@@ -1354,36 +1357,8 @@ class PluginBase {
     // the formatted value back and calls the setter only when it changed.
     // Returns the { value } tracker the caller's slider and sync paths update.
     _bindNumberInput(valueInput, slider, min, max, initialValue, setter, toSlider, format) {
-        const initial = parseFloat(initialValue);
-        const applied = { value: Number.isFinite(initial) ? initial : min };
-
-        valueInput.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            if (!(val >= min && val <= max)) return;
-            slider.value = toSlider(val);
-            setter(val);
-            applied.value = val;
-        });
-
-        const commit = (e) => {
-            const val = parseFloat(e.target.value);
-            const finiteVal = Number.isFinite(val) ? val : applied.value;
-            const clampedVal = finiteVal < min ? min : (finiteVal > max ? max : finiteVal);
-            e.target.value = format(clampedVal);
-            slider.value = toSlider(clampedVal);
-            if (clampedVal !== applied.value) {
-                setter(clampedVal);
-                applied.value = clampedVal;
-            }
-        };
-        valueInput.addEventListener('blur', commit);
-        valueInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                commit(e);
-                e.preventDefault(); // Prevent form submission if inside a form
-            }
-        });
-        return applied;
+        return globalThis.bindEffeTuneNumberInput(valueInput, slider, min, max,
+            initialValue, setter, toSlider, format);
     }
 
     // Helper function to create slider/number input parameter controls

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { UIManager } from '../../js/ui-manager.js';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 
 const pluginFiles = [
   ['auto_pan.js', 'AutoPanPlugin', { rt: 4 }],
@@ -126,6 +127,7 @@ function createFakeDocument() {
 function loadRuntime() {
   const documentRef = createFakeDocument();
   const context = vm.createContext({
+    bindEffeTuneNumberInput: bindNumberInput,
     window: {},
     document: documentRef,
     console,

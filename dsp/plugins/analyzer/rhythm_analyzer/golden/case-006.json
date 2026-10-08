@@ -5,7 +5,7 @@
   "stimulus": "noise",
   "sampleRate": 48000,
   "channels": 2,
-  "frameCount": 12000,
+  "frameCount": 192000,
   "blockSize": 128,
   "channelMode": "stereo",
   "channel": null,
@@ -22,9 +22,9 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:ebf7114caa519caeed20af5717b827fcda517296bb05f69b41fabbd3c13b3f48",
+  "referenceHash": "sha256:baed8cb7219f0e9d9542ec729afa374501f983b60424f60790155c36ad54e27b",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type RhythmAnalyzerPlugin --promote-production-native",
-  "outputFloats": 24000,
-  "byteLength": 96000,
+  "outputFloats": 384000,
+  "byteLength": 1536000,
   "binary": "case-006.f32"
 }

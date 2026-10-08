@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "encode-with-artifacts",
+  "stimulus": "sweep",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 4096,
+  "blockSize": 63,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 14,
+  "seed": "0xeffe7a50",
+  "params": {
+    "dg": "Portable",
+    "tp": "Type I",
+    "nr": "Dolby C",
+    "bs": 0,
+    "rl": 9,
+    "wf": 1,
+    "hs": -42,
+    "dp": 2,
+    "az": 2,
+    "dl": 0,
+    "og": 0,
+    "mx": 100,
+    "md": "Encode + Artifacts"
+  },
+  "events": [],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c21246b2cfb936c268a20902c4826fd75b87833927fb62a042c5a710129871e9",
+  "outputFloats": 8192,
+  "byteLength": 32768,
+  "binary": "case-015.f32"
+}

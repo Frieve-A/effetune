@@ -154,8 +154,8 @@ def _pitch_packet(midi: float) -> bytes:
 
 
 def _note_packet(revision_age: int = 8) -> bytearray:
-    packet = bytearray(16 + 5312)
-    struct.pack_into("<HHIIH", packet, 0, 24, 4, 2, 17, 5312)
+    packet = bytearray(16 + 8840)
+    struct.pack_into("<HHIIH", packet, 0, 24, 5, 2, 17, 8840)
     struct.pack_into(
         "<ffHHfIIII", packet, 16, 48_000.0, 1.0, 440, 21, 0.02, 50, 5, 3, revision_age
     )
@@ -164,6 +164,8 @@ def _note_packet(revision_age: int = 8) -> bytearray:
     if revision_age != 0:
         struct.pack_into("<f", packet, 16 + 3552, 0.5)
         struct.pack_into("<f", packet, 16 + 5308, 1.0)
+        struct.pack_into("<If", packet, 16 + 5312, 2, 0.25)
+        struct.pack_into("<If", packet, 16 + 7076, 4, 0.75)
     return packet
 
 
@@ -183,7 +185,7 @@ def _analog_meter_packet(
 
 
 class TelemetryDecoderTests(unittest.TestCase):
-    def test_note_spectrogram_v4_decodes_owned_revised_confidences(self) -> None:
+    def test_note_spectrogram_v5_decodes_owned_revised_confidences(self) -> None:
         packet = _note_packet()
         frames, pending = _decode_telemetry_packet(
             packet, {2: ("NoteSpectrogram", "notes", 0)}, 2
@@ -199,16 +201,19 @@ class TelemetryDecoderTests(unittest.TestCase):
         self.assertEqual((len(frame.levels), frame.levels[0], frame.levels[-1]), (440, 0.75, 0.25))
         self.assertEqual((len(frame.volume_db), frame.volume_db[0], frame.volume_db[-1]), (440, -12, -240))
         self.assertEqual((len(frame.revised_levels), frame.revised_levels[0], frame.revised_levels[-1]), (440, 0.5, 1))
+        self.assertEqual([(revision.age, revision.levels[0]) for revision in frame.revisions], [(2, 0.25), (4, 0.75), (8, 0.5)])
         packet[:] = bytes(len(packet))
         self.assertEqual((frame.levels[0], frame.volume_db[0], frame.revised_levels[0]), (0.75, -12, 0.5))
+        self.assertEqual((frame.revisions[0].levels[0], frame.revisions[1].levels[0]), (0.25, 0.75))
 
-    def test_note_spectrogram_v4_has_no_revision_during_warmup(self) -> None:
+    def test_note_spectrogram_v5_has_no_revision_during_warmup(self) -> None:
         frames, _ = _decode_telemetry_packet(
             _note_packet(0), {2: ("NoteSpectrogram", "notes", 0)}, 0
         )
         self.assertEqual(len(frames), 1)
         self.assertEqual(frames[0].revision_age, 0)
         self.assertIsNone(frames[0].revised_levels)
+        self.assertEqual(frames[0].revisions, ())
 
     def test_note_spectrogram_rejects_invalid_revisions_and_obsolete_frames(self) -> None:
         for format_string, offset, value in (
@@ -216,6 +221,10 @@ class TelemetryDecoderTests(unittest.TestCase):
             ("<f", 3568, math.nan),
             ("<f", 3568, -0.1),
             ("<f", 5324, 1.1),
+            ("<I", 5328, 4),
+            ("<f", 5332, math.nan),
+            ("<I", 7092, 2),
+            ("<f", 7096, 1.1),
             ("<H", 2, 3),
             ("<H", 12, 3548),
         ):
@@ -366,6 +375,31 @@ class TelemetryDecoderTests(unittest.TestCase):
         unlocked_with_period = _rhythm_packet(locked=False)
         struct.pack_into("<f", unlocked_with_period, 16 + 44, 0.5)
         self.assertEqual(decode(bytes(unlocked_with_period)), [])
+
+    def test_rhythm_v4_decodes_revisable_path_with_closed_tick_gate(self) -> None:
+        packet = _rhythm_packet()
+        packet.extend(bytes(152))
+        struct.pack_into("<H", packet, 2, 4)
+        struct.pack_into("<H", packet, 12, 1496)
+        struct.pack_into("<I", packet, 16 + 32, 0)
+        struct.pack_into("<f", packet, 16 + 40, 0.5)
+        struct.pack_into("<B", packet, 16 + 861, 3)
+        struct.pack_into("<If", packet, 16 + 1344, 2, 0.5)
+        struct.pack_into("<ifi", packet, 16 + 1352, 480, 0.25, 6)
+        struct.pack_into("<ifi", packet, 16 + 1364, 574, 0.25, 7)
+        nodes = {13: ("RhythmAnalyzer", "rhythm", 0)}
+        frames, _ = _decode_telemetry_packet(bytes(packet), nodes, 0)
+        (frame,) = frames
+        self.assertFalse(frame.locked)
+        self.assertFalse(frame.events[0].unlocked)
+        self.assertEqual(frame.events[0].flags, 3)
+        self.assertEqual(frame.preview_period_seconds, 0.5)
+        self.assertEqual([(beat.frame, beat.fraction, beat.beat_index) for beat in frame.preview_beats],
+                         [(480, 0.25, 6), (574, 0.25, 7)])
+        for offset, fmt, value in ((1344, "<I", 13), (1348, "<f", 0.0), (1364, "<i", 479)):
+            invalid = bytearray(packet)
+            struct.pack_into(fmt, invalid, 16 + offset, value)
+            self.assertEqual(_decode_telemetry_packet(bytes(invalid), nodes, 0)[0], [])
 
     def test_tonal_balance_decodes_band_statistics_target_and_response(
         self,

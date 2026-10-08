@@ -155,6 +155,8 @@ class GatePlugin extends PluginBase {
                     ? context.curveTargets[index]
                     : context.curveCurrent[index] + context.curveSteps[index] * elapsed;
             };
+            const gainRamping = context.curveRemaining[3] !== 0;
+            const stableOutputGain = gainRamping ? 1 : Math.exp(context.curveTargets[3] * gainFactor);
     
             // Initialize envelope state per channel if not already set or channel count changed
             // Check channelCount directly as it's the dependency
@@ -299,7 +301,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction1 < 0) gainReduction1 = 0;
                     }
                     if (gainReduction1 > blockMaxGainReduction) blockMaxGainReduction = gainReduction1;
-                    let totalGainLin1 = Math.exp(curveValue(3, i) * gainFactor);
+                    let totalGainLin1 = gainRamping ? Math.exp(curveValue(3, i) * gainFactor) : stableOutputGain;
                     if (gainReduction1 > 1e-9) { // Apply reduction only if it is significant
                         // --- Inlined fastExp(gainReduction1) ---
                         let reductionGainLin1;
@@ -338,7 +340,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction2 < 0) gainReduction2 = 0;
                     }
                     if (gainReduction2 > blockMaxGainReduction) blockMaxGainReduction = gainReduction2;
-                    let totalGainLin2 = Math.exp(curveValue(3, i + 1) * gainFactor);
+                    let totalGainLin2 = gainRamping ? Math.exp(curveValue(3, i + 1) * gainFactor) : stableOutputGain;
                     if (gainReduction2 > 1e-9) {
                         let reductionGainLin2;
                         if (gainReduction2 >= 60) { reductionGainLin2 = expLookup[lutExpMaxIndex]; }
@@ -375,7 +377,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction3 < 0) gainReduction3 = 0;
                     }
                     if (gainReduction3 > blockMaxGainReduction) blockMaxGainReduction = gainReduction3;
-                    let totalGainLin3 = Math.exp(curveValue(3, i + 2) * gainFactor);
+                    let totalGainLin3 = gainRamping ? Math.exp(curveValue(3, i + 2) * gainFactor) : stableOutputGain;
                     if (gainReduction3 > 1e-9) {
                         let reductionGainLin3;
                         if (gainReduction3 >= 60) { reductionGainLin3 = expLookup[lutExpMaxIndex]; }
@@ -412,7 +414,7 @@ class GatePlugin extends PluginBase {
                         if (gainReduction4 < 0) gainReduction4 = 0;
                     }
                     if (gainReduction4 > blockMaxGainReduction) blockMaxGainReduction = gainReduction4;
-                    let totalGainLin4 = Math.exp(curveValue(3, i + 3) * gainFactor);
+                    let totalGainLin4 = gainRamping ? Math.exp(curveValue(3, i + 3) * gainFactor) : stableOutputGain;
                     if (gainReduction4 > 1e-9) {
                         let reductionGainLin4;
                         if (gainReduction4 >= 60) { reductionGainLin4 = expLookup[lutExpMaxIndex]; }
@@ -467,7 +469,7 @@ class GatePlugin extends PluginBase {
     
                     if (gainReduction > blockMaxGainReduction) blockMaxGainReduction = gainReduction;
     
-                    let totalGainLin = Math.exp(curveValue(3, i) * gainFactor);
+                    let totalGainLin = gainRamping ? Math.exp(curveValue(3, i) * gainFactor) : stableOutputGain;
                     if (gainReduction > 1e-9) { // Apply reduction only if it is significant
                         // --- Inlined fastExp(gainReduction) ---
                          let reductionGainLin;

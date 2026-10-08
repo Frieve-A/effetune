@@ -106,13 +106,14 @@ test('pitch telemetry preserves fractional estimates within the endpoint half-ro
   }
 });
 
-function rhythmPacket({ locked = true, events = 1, patch = null } = {}) {
-  const packet = new Uint8Array(16 + 1344);
+function rhythmPacket({ locked = true, events = 1, patch = null, version = 1 } = {}) {
+  const payloadBytes = version === 4 ? 1496 : 1344;
+  const packet = new Uint8Array(16 + payloadBytes);
   const view = new DataView(packet.buffer);
   view.setUint16(0, 28, true);
-  view.setUint16(2, 1, true);
+  view.setUint16(2, version, true);
   view.setUint32(4, 13, true);
-  view.setUint16(12, 1344, true);
+  view.setUint16(12, payloadBytes, true);
   const payload = new DataView(packet.buffer, 16);
   payload.setFloat32(0, 48_000, true);
   payload.setUint32(4, 2, true);
@@ -125,7 +126,7 @@ function rhythmPacket({ locked = true, events = 1, patch = null } = {}) {
   if (locked) {
     payload.setUint32(32, 1, true);
     payload.setUint32(36, 3, true);
-    payload.setFloat32(40, 2.5, true);
+    payload.setFloat32(40, version >= 3 ? .5 : 2.5, true);
     payload.setFloat32(44, 0.5, true);
     payload.setUint32(48, 510, true);
     payload.setFloat32(52, 0.25, true);
@@ -149,6 +150,36 @@ function rhythmPacket({ locked = true, events = 1, patch = null } = {}) {
   patch?.(payload);
   return packet;
 }
+
+test('rhythm analyzer v4 transports provisional onsets and a replaceable best path with a closed tick gate', () => {
+  const nodes = new Map([[13, { effectType: 'RhythmAnalyzer' }]]);
+  const packet = rhythmPacket({ version: 4, patch: payload => {
+    payload.setUint32(32, 0, true);
+    payload.setUint8(861, 3);
+    payload.setUint32(1344, 2, true);
+    payload.setFloat32(1348, .5, true);
+    payload.setInt32(1352, 480, true);
+    payload.setFloat32(1356, .25, true);
+    payload.setInt32(1360, 6, true);
+    payload.setInt32(1364, 574, true);
+    payload.setFloat32(1368, .25, true);
+    payload.setInt32(1372, 7, true);
+  } });
+  const decode = bytes => decodeTelemetryPacket(bytes, bytes.byteLength, nodes, 0).frames;
+  const [frame] = decode(packet);
+  assert.equal(frame.locked, false);
+  assert.equal(frame.events[0].flags, 3);
+  assert.equal(frame.events[0].unlocked, false);
+  assert.equal(frame.previewPeriodSeconds, .5);
+  assert.deepEqual(frame.previewBeats, [{ frame: 480, fraction: .25, beatIndex: 6 },
+    { frame: 574, fraction: .25, beatIndex: 7 }]);
+  for (const patch of [payload => payload.setUint32(1344, 13, true),
+    payload => payload.setFloat32(1348, 0, true), payload => payload.setInt32(1364, 479, true)]) {
+    const invalid = packet.slice();
+    patch(new DataView(invalid.buffer, 16));
+    assert.deepEqual(decode(invalid), []);
+  }
+});
 
 test('rhythm analyzer telemetry decodes tracker state, tempogram and onset events', () => {
   const nodes = new Map([[13, {

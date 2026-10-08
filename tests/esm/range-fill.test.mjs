@@ -1,6 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { updateRangeFill } from '../../js/ui/range-fill.js';
+import { bindNumberInput, updateRangeFill } from '../../js/ui/range-fill.js';
+import { commitMobileNumberInput } from '../../js/ui/mobile-number-keypad.js';
+
+test('classic plugins and mobile commits use the shared number binding', () => {
+  assert.equal(globalThis.bindEffeTuneNumberInput, bindNumberInput);
+  const input = Object.assign(new EventTarget(), { value: '-10' });
+  const slider = { value: '20' };
+  const values = [];
+  const applied = bindNumberInput(input, slider, -30, 0, -10,
+    value => values.push(value), value => value + 30, value => value.toFixed(1));
+  const documentRef = { defaultView: { Event } };
+
+  assert.equal(commitMobileNumberInput(input, '-50', documentRef), true);
+  assert.equal(input.value, '-30.0');
+  assert.equal(slider.value, 0);
+  assert.equal(applied.value, -30);
+  assert.deepEqual(values, [-30]);
+
+  assert.equal(commitMobileNumberInput(input, '-20', documentRef), true);
+  assert.equal(input.value, '-20.0');
+  assert.equal(slider.value, 10);
+  assert.equal(applied.value, -20);
+  assert.deepEqual(values, [-30, -20]);
+});
 
 function fill(min, max, value, origin) {
   const properties = new Map();

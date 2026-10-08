@@ -18,7 +18,9 @@ const pitchCount = noteCount * fineDivisions;
 const confidenceOffset = 32;
 const volumeOffset = confidenceOffset + pitchCount * 4;
 const revisedOffset = volumeOffset + pitchCount * 4;
-const payloadBytes = revisedOffset + pitchCount * 4;
+const intermediateOffset = revisedOffset + pitchCount * 4;
+const revisionBytes = 4 + pitchCount * 4;
+const payloadBytes = intermediateOffset + 2 * revisionBytes;
 const historyWidth = 1024;
 
 // Canvas calls used only by the shaded piano keys.
@@ -171,9 +173,9 @@ const FrequencyAxis = (() => {
 })();
 
 async function loadPlugin({ telemetryHub = null, audioContext = null, nullCanvasContext = false,
-    now = 0, background = [0, 0, 0], soft = [34, 34, 34], trace = [0, 255, 0] } = {}) {
+    now = 0, background = [0, 0, 0], soft = [34, 34, 34], trace = [0, 255, 0], graphReadout = null } = {}) {
     const source = await fs.readFile(path.join(repoRoot, pluginPath), 'utf8');
-    const window = { dspTelemetryHub: telemetryHub, audioContext };
+    const window = { dspTelemetryHub: telemetryHub, audioContext, GraphReadout: graphReadout };
     const document = {
         createElement: tagName => new FakeElement(tagName, nullCanvasContext)
     };
@@ -209,7 +211,8 @@ function createTelemetryFrame({
     levels = [],
     volumeLevels = [],
     revisionAge = 0,
-    revisedLevels = []
+    revisedLevels = [],
+    revisions = []
 } = {}) {
     const modeCode = mode === 'Fine Presence' ? fineDivisions :
         (mode === 'F0 Presence' ? 0 : (mode === 'Classic' ? 1 : mode));
@@ -229,7 +232,14 @@ function createTelemetryFrame({
         payload.setFloat32(volumeOffset + pitch * 4, volumeLevels[pitch] ?? -240, true);
         payload.setFloat32(revisedOffset + pitch * 4, revisedLevels[pitch] ?? 0, true);
     }
-    return { frameType: 24, formatVersion: 4, payload };
+    for (const revision of revisions) {
+        const offset = intermediateOffset + (revision.age === 2 ? 0 : 1) * revisionBytes;
+        payload.setUint32(offset, revision.age, true);
+        for (let pitch = 0; pitch < pitchCount; pitch++) {
+            payload.setFloat32(offset + 4 + pitch * 4, revision.levels[pitch] ?? 0, true);
+        }
+    }
+    return { frameType: 24, formatVersion: 5, payload };
 }
 
 function firstPitchByColumn(plugin, start, count) {
@@ -251,7 +261,7 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.constructor.executionCapabilities.requiresWasm, true);
     assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
         type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', pr: 'Semitone', ly: 'Horizontal', vl: true, ts: 2,
-        mn: 28, mx: 91, nc: 8
+        mn: 28, mx: 91
     });
     plugin.setParameters({
         cl: 'Rainbow', pr: 'High', ly: 'Horizontal', vl: false, ts: 100,
@@ -287,7 +297,6 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.ts, 2);
     assert.equal(plugin.mn, 28);
     assert.equal(plugin.mx, 91);
-    assert.equal(plugin.nc, 8);
 });
 
 test('Note Spectrogram exposes display and note range controls', async () => {
@@ -320,10 +329,10 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     plugin.drawGraph = () => {};
     plugin.createUI();
     assert.deepEqual(rows.map(row => row.label), [
-        'Color', 'Pitch Resolution', 'Layout', 'Volume', 'Time Span', 'Regular Note Limit',
+        'Color', 'Pitch Resolution', 'Layout', 'Volume', 'Time Span',
         'Lowest Note', 'Highest Note'
     ]);
-    const [color, resolution, layout, volume, timeSpan, regularCandidates, lowestNote, highestNote] = rows;
+    const [color, resolution, layout, volume, timeSpan, lowestNote, highestNote] = rows;
     assert.deepEqual(JSON.parse(JSON.stringify(color.options)), [
         { value: 'Normal', label: 'Normal' },
         { value: 'Rainbow', label: 'Note Colors' }
@@ -360,15 +369,6 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     assert.equal(plugin.cl, 'Rainbow');
     timeSpan.setter(12);
     assert.equal(plugin.ts, 10);
-    assert.deepEqual(
-        [regularCandidates.minimum, regularCandidates.maximum, regularCandidates.step,
-            regularCandidates.value, regularCandidates.unit, regularCandidates.modelKey],
-        [1, 16, 1, 8, 'notes', 'nc']
-    );
-    regularCandidates.setter(20);
-    assert.equal(plugin.nc, 16);
-    plugin.setParameters({ nc: 0 });
-    assert.equal(plugin.nc, 1);
     assert.deepEqual(
         [lowestNote.value, lowestNote.modelKey, highestNote.value, highestNote.modelKey],
         [28, 'mn', 91, 'mx']
@@ -534,12 +534,65 @@ test('Volume history freezes normalized thickness when each column is written', 
         frameIndex: 0, levels: [1], volumeLevels: [-48]
     }));
     assert.equal(plugin.levelHistory[0], 0.5);
+    assert.equal(plugin.volumeLevelHistory[0], -48);
 
     plugin.handleTelemetry(createTelemetryFrame({
         frameIndex: 1, timeSeconds: 1.01, levels: [1], volumeLevels: [-12]
     }));
     assert.equal(plugin.levelReference, -12);
     assert.equal(plugin.levelHistory[0], 0.5);
+    assert.equal(plugin.volumeLevelHistory[0], -48);
+    assert.equal(plugin.volumeLevelHistory[(plugin.writeColumn - 1) * pitchCount], -12);
+});
+
+test('history readout includes measured dB for the displayed pitch in both layouts', async () => {
+    const window = {};
+    const readoutSource = await fs.readFile(path.join(repoRoot, 'plugins', 'graph-readout.js'), 'utf8');
+    vm.runInNewContext(readoutSource, { window });
+    const plugin = await loadPlugin({ graphReadout: window.GraphReadout });
+    plugin.setParameters({ mn: 21, mx: 21 });
+    plugin.handleTelemetry(createTelemetryFrame({
+        levels: [0.7, 0, 0.2, 0, 0.8], volumeLevels: [-12, -240, -42.5, -240, -9]
+    }));
+    for (const ly of ['Horizontal', 'Vertical']) {
+        for (const pr of ['Semitone', 'High']) {
+            for (const vl of [true, false]) {
+                plugin.setParameters({ ly, pr, vl });
+                const horizontal = ly === 'Horizontal';
+                plugin._readoutFrame = {
+                    valid: true, horizontal, canvasWidth: horizontal ? 100 : historyWidth,
+                    rollWidth: historyWidth, rowHeight: 100, columnWidth: 1,
+                    scrollPhase: 0, phaseOffset: 0, split: plugin.writeColumn,
+                    palette: { trace: [0, 255, 0] }
+                };
+                const readout = plugin._readNote(horizontal ? 50 : historyWidth - 0.5,
+                    horizontal ? historyWidth - 0.5 : 50);
+                const fineCell = pr === 'High' && !vl;
+                assert.ok(readout.cursor.startsWith('A0 +0¢ · '));
+                assert.deepEqual(Array.from(readout.rows, row => [row.label, row.value]), [
+                    ['Salience', fineCell ? '20%' : '80%'],
+                    ['Level', fineCell ? '−42.5 dB' : '−9.0 dB']
+                ]);
+                assert.equal(readout.rows[1].color, readout.rows[0].color);
+            }
+        }
+    }
+    assert.equal(plugin._readNote(0.5, 50).rows[1].value, '—', 'unwritten history has no level');
+    plugin.clearHistory();
+    assert.equal(plugin._readNote(historyWidth - 0.5, 50).rows[1].value, '—');
+});
+
+test('frames merged into one history column retain their peak measured dB', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ ts: 10 });
+    for (const [frameIndex, level] of [-48, -70, -24].entries()) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, hopSeconds: 0.004, timeSeconds: 1 + frameIndex * 0.004,
+            levels: [1], volumeLevels: [level]
+        }));
+        assert.equal(plugin.writeColumn, 1);
+        assert.equal(plugin.volumeLevelHistory[0], frameIndex < 2 ? -48 : -24);
+    }
 });
 
 test('Volume bars map level to thickness and pitch resolution to center position', async () => {
@@ -811,6 +864,7 @@ test('Note Spectrogram subscribes once and releases its telemetry callback', asy
     assert.ok(Math.abs(plugin.history[0] - 0.8) < 1e-6);
 
     plugin.cleanup();
+    assert.equal(plugin.volumeLevelHistory, null);
     assert.equal(unsubscribeCount, 1);
     assert.equal(plugin.cleanedUp, true);
 });
@@ -864,32 +918,80 @@ test('F0 Presence distinguishes normal frame width from missing hops', async () 
     const normal = await loadPlugin();
     normal.setParameters({ ts: 2 });
     normal.handleTelemetry(createTelemetryFrame({
-        frameIndex: 0, timeSeconds: 1, levels: [0.8]
+        frameIndex: 0, timeSeconds: 1, levels: [0.8], volumeLevels: [-48]
     }));
     normal.handleTelemetry(createTelemetryFrame({
-        frameIndex: 1, timeSeconds: 1.01, levels: [0.5]
+        frameIndex: 1, timeSeconds: 1.01, levels: [0.5], volumeLevels: [-12]
     }));
     assert.equal(normal.writeColumn, 6);
     assert.deepEqual(
         firstPitchPresenceBytesByColumn(normal, 0, 6),
         [204, 204, 204, 204, 204, 128]
     );
+    assert.deepEqual(Array.from({ length: 6 }, (_, column) => normal.volumeLevelHistory[column * pitchCount]),
+        [-48, -48, -48, -48, -48, -12]);
 
     const dropped = await loadPlugin();
     dropped.setParameters({ ts: 10 });
     dropped.handleTelemetry(createTelemetryFrame({
-        frameIndex: 0, timeSeconds: 2, levels: [0.8]
+        frameIndex: 0, timeSeconds: 2, levels: [0.8], volumeLevels: [-48]
     }));
     dropped.handleTelemetry(createTelemetryFrame({
-        frameIndex: 5, timeSeconds: 2.05, levels: [0.5]
+        frameIndex: 5, timeSeconds: 2.05, levels: [0.5], volumeLevels: [-12]
     }));
     assert.equal(dropped.writeColumn, 6);
     assert.deepEqual(firstPitchPresenceBytesByColumn(dropped, 0, 6), [204, 0, 0, 0, 0, 128]);
+    assert.deepEqual(Array.from({ length: 6 }, (_, column) => dropped.volumeLevelHistory[column * pitchCount]),
+        [-48, NaN, NaN, NaN, NaN, -12]);
 
     dropped.setParameters({ ts: 1 });
     assert.equal(dropped.lastFrameIndex, null);
     assert.equal(dropped.writeColumn, 0);
     assert.equal(dropped.history.some(value => value !== 0), false);
+    assert.equal(dropped.volumeLevelHistory.some(Number.isFinite), false);
+});
+
+test('40, 80 and 160 ms revisions progressively update the same historical frame', async () => {
+    const plugin = await loadPlugin();
+    plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+    for (let frameIndex = 0; frameIndex <= 8; frameIndex++) {
+        const levels = frameIndex === 0 ? [0.1] : [0.7];
+        const revisions = frameIndex === 2 ? [{ age: 2, levels: [0.3] }]
+            : frameIndex === 4 ? [{ age: 4, levels: [0.6] }] : [];
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, hopSeconds: 0.02, timeSeconds: 1 + frameIndex * 0.02,
+            levels, revisions, revisionAge: frameIndex === 8 ? 8 : 0, revisedLevels: [0.9]
+        }));
+        const expected = frameIndex >= 8 ? 0.9 : frameIndex >= 4 ? 0.6 : frameIndex >= 2 ? 0.3 : 0.1;
+        assert.ok(Math.abs(plugin.history[0] - expected) < 1e-6, `frame ${frameIndex}`);
+        if (frameIndex > 0) {
+            const latest = (plugin.writeColumn + historyWidth - 1) % historyWidth;
+            assert.ok(Math.abs(plugin.history[latest * pitchCount] - 0.7) < 1e-6);
+        }
+    }
+});
+
+test('one telemetry frame owns and applies all three revision planes', async () => {
+    const plugin = await loadPlugin();
+    plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+    for (let frameIndex = 0; frameIndex < 8; frameIndex++) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, hopSeconds: 0.02, timeSeconds: 1 + frameIndex * 0.02, levels: [0.1]
+        }));
+    }
+    const frame = createTelemetryFrame({ frameIndex: 8, hopSeconds: 0.02, timeSeconds: 1.16,
+        revisions: [{ age: 2, levels: [0.3] }, { age: 4, levels: [0.6] }],
+        revisionAge: 8, revisedLevels: [0.9] });
+    const snapshot = plugin.parseTelemetryFrame(frame);
+    assert.deepEqual(Array.from(snapshot.revisions, revision => revision.age), [2, 4, 8]);
+    plugin.handleTelemetry(frame);
+    for (const [frameIndex, expected] of [[6, 0.3], [4, 0.6], [0, 0.9]]) {
+        const column = frameIndex === 0 ? 0 : Math.floor(frameIndex * 0.02 * historyWidth / 2);
+        assert.ok(Math.abs(plugin.history[column * pitchCount] - expected) < 1e-6);
+    }
+    frame.payload.setFloat32(intermediateOffset + 4, NaN, true);
+    assert.equal(plugin.parseTelemetryFrame(frame), null);
+    assert.ok(Math.abs(snapshot.revisions[0].levels[0] - 0.3) < 1e-6);
 });
 
 test('revisions rewrite the revised frame columns, including repeated gap columns', async () => {
@@ -946,6 +1048,32 @@ test('a revision of a merged column keeps the max of its other frames', async ()
         revisionAge: 8, revisedLevels: [1]
     }));
     assert.equal(plugin.history[0], 1);
+});
+
+test('low-confidence Volume bars retain their level and thickness after a 160 ms revision', async () => {
+    const plugin = await loadPlugin();
+    plugin.mn = plugin.mx = 21;
+    plugin.handleTelemetry(createTelemetryFrame({
+        frameIndex: 0, hopSeconds: 0.02, levels: [0.1], volumeLevels: [-48]
+    }));
+    const palette = plugin._displayPalette();
+    const originalBar = plugin._volumeBarsForColumn(0)[0];
+    const originalShape = plugin._volumeBarShape(0, originalBar, 100, palette);
+    assert.ok(Math.abs(originalBar.confidence - 0.1) < 1e-6);
+    assert.equal(plugin.levelHistory[0], 0.5);
+    assert.equal(originalShape.half, 29.75);
+
+    for (let frameIndex = 1; frameIndex <= 8; frameIndex++) {
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex, timeSeconds: 1 + frameIndex * 0.02, hopSeconds: 0.02,
+            volumeLevels: [-12], revisionAge: frameIndex === 8 ? 8 : 0,
+            revisedLevels: [0.9]
+        }));
+    }
+    const revisedBar = plugin._volumeBarsForColumn(0)[0];
+    assert.ok(Math.abs(revisedBar.confidence - 0.9) < 1e-6);
+    assert.equal(plugin.levelHistory[0], 0.5);
+    assert.equal(plugin._volumeBarShape(0, revisedBar, 100, palette).half, originalShape.half);
 });
 
 test('revisions of dropped or cleared frames are ignored', async () => {

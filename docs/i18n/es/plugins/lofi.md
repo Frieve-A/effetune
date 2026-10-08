@@ -163,6 +163,8 @@ Un efecto que recrea el sonido de dispositivos digitales vintage como consolas d
 
 Cassette Artifacts combina la respuesta en frecuencia, la compresión, el siseo, el wow y flutter, las caídas breves y los cambios de alineación propios de un casete. Úsalo para obtener el carácter completo de una pletina, no solo ruido añadido.
 
+Mode también permite usar solo la codificación o decodificación Dolby, o combinar las etapas que elijas.
+
 ### Diferencias frente a otros efectos lo-fi
 
 - **Tape Artifacts** ofrece un sonido de bobina abierta más limpio y amplio. Cassette Artifacts es más oscuro e incluye Tape Type, reducción de ruido, dropouts y alineación de cabezal.
@@ -176,6 +178,8 @@ Cassette Artifacts combina la respuesta en frecuencia, la compresión, el siseo,
 - **Tape Type** cambia ruido y margen: Type I es el más ruidoso, Type II es equilibrado y Type IV conserva mejor los picos brillantes.
 - **Noise Reduction** reduce el siseo. Dolby C actúa más que Dolby B; Off deja el fondo más crudo.
 - Sube **Wow/Flutter**, **Hiss** o **Dropouts** para un sonido más gastado. **Azimuth** suaviza los agudos y cambia su relación entre canales.
+
+Para escuchar solo la decodificación Dolby, elige **Mode: Decode Only**. Para reproducir una grabación Dolby B con Dolby C, coloca dos instancias de Cassette Artifacts en este orden: **Encode + Artifacts / Noise Reduction: Dolby B**, seguida de **Decode Only / Noise Reduction: Dolby C**. Usa el mismo **Record Level** en ambas, con **Output: 0 dB** y **Mix: 100%**, para mantener la referencia de nivel entre etapas.
 
 ### Presets del sistema
 
@@ -191,22 +195,25 @@ Haz clic en **Preajustes de efecto** en el encabezado del efecto para cambiar en
 
 La velocidad del casete es fija, por lo que no hay control Speed.
 
+- **Mode** (predeterminado: All) - Selecciona las etapas en este orden: codificación Dolby → grabación y reproducción de casete → decodificación Dolby. **Encode Only** y **Decode Only** ejecutan solo la etapa Dolby correspondiente. **Encode + Artifacts** omite la decodificación; **Artifacts + Decode** omite la codificación; **All** ejecuta todas. Los controles de las etapas omitidas quedan desactivados.
 - **Deck Grade** (Reference, Hi-Fi, Consumer o Portable) - Elige el carácter de la pletina. Empieza con Consumer.
 - **Tape Type** (Type I, Type II o Type IV) - Cambia el ruido y el margen.
-- **Noise Reduction** (Off, Dolby B o Dolby C) - Reduce el siseo.
+- **Noise Reduction** (Off, Dolby B o Dolby C) - Elige el sistema Dolby para las etapas de codificación y decodificación activas. La codificación realza las partes suaves, sobre todo los agudos; la decodificación las atenúa. Dolby C actúa más que Dolby B. Off omite ambas etapas Dolby y conserva los efectos de casete seleccionados.
 - **Bias** (-6.0 a +6.0 dB) - Empieza en 0 dB. Los valores positivos pequeños suenan más limpios y oscuros; los negativos, más brillantes y ásperos.
-- **Record Level** (-12.0 a +18.0 dB) - Empieza en +9 dB. Súbelo para más densidad o bájalo para un sonido más limpio.
+- **Record Level** (-12.0 a +18.0 dB) - Ajusta la intensidad de grabación y el nivel de señal respecto a la referencia Dolby. Empieza en +9 dB. Con los efectos de casete activos, súbelo para más compresión y saturación o bájalo para conservar dinámica. En los modos solo Dolby cambia la intensidad del procesamiento según el nivel. Usa el mismo valor al repartir la codificación y decodificación entre instancias.
 - **Wow/Flutter** (0 a 1%) - 0% es estable; 0.200% añade movimiento audible y los valores altos crean un temblor gastado.
 - **Hiss** (-92.0 a -42.0 dB re 250 nWb/m) - Controla el ruido de cinta. El mínimo lo desactiva.
 - **Dropouts** (0 a 20 events/min) - 0 los desactiva; 2 events/min añade desgaste ocasional.
 - **Azimuth** (-6.0 a +6.0 arcmin) - Alejarlo de 0 suaviza los agudos y cambia el desfase izquierda/derecha.
-- **Dolby Level Error** (-3.0 a +3.0 dB) - Con Noise Reduction activo, los valores positivos aclaran y los negativos oscurecen.
+- **Dolby Level Error** (-3.0 a +3.0 dB) - Simula una diferencia de calibración entre grabación y reproducción cuando la decodificación está activa y Noise Reduction está encendido. Los valores positivos dan un sonido más brillante y con más siseo; los negativos lo oscurecen. Empieza en 0 dB.
 - **Output** (-24.0 a +24.0 dB) - Iguala el volumen con bypass.
-- **Mix** (0 a 100%) - Empieza al 100%; bájalo para un resultado más sutil.
+- **Mix** (0 a 100%) - Mezcla el sonido procesado con el original. Empieza al 100% para valorar el efecto completo; bájalo para un resultado más sutil. Con los efectos de casete activos, los valores intermedios pueden suavizar los agudos más altos por cancelación parcial entre ambas rutas.
 
 ### Lectura de la línea de estado
 
 Muestra el wow/flutter y el ruido de fondo resultantes. `off` indica que el ruido está desactivado y `measuring…` que el valor se está actualizando.
+
+Estas lecturas corresponden a los modos con efectos de casete. En Encode + Artifacts, el ruido indicado no pasa por decodificación Dolby. Los modos solo Dolby muestran Mode, Noise Reduction y Record Level.
 
 ### Ajustes recomendados
 

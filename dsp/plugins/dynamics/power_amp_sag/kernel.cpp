@@ -74,6 +74,8 @@ public:
         0.001 + (static_cast<double>(params_.powerStability) / 100.0) * 0.099;
     const double charge_rate = 2.0 + (static_cast<double>(params_.recoverySpeed) / 100.0) * 18.0;
     const double inverse_sample_rate = 1.0 / sample_rate_;
+    const double discharge_scale = inverse_sample_rate / capacitance;
+    const double recharge_scale = charge_rate * inverse_sample_rate;
 
     double maximum_envelope = 0.0;
     double gain_reduction = 0.0;
@@ -98,8 +100,8 @@ public:
 
           const double output_envelope = envelope * voltage;
           const double current_draw = output_envelope * output_envelope;
-          const double discharge = (current_draw / capacitance) * inverse_sample_rate;
-          const double recharge = charge_rate * (1.0 - voltage) * inverse_sample_rate;
+          const double discharge = current_draw * discharge_scale;
+          const double recharge = (1.0 - voltage) * recharge_scale;
           voltage = voltage - discharge + recharge;
           audio[index] = static_cast<float>(sample * voltage);
         }
@@ -134,8 +136,8 @@ public:
 
         const double output_envelope = envelope * voltage;
         const double current_draw = output_envelope * output_envelope;
-        const double discharge = (current_draw / capacitance) * inverse_sample_rate;
-        const double recharge = charge_rate * (1.0 - voltage) * inverse_sample_rate;
+        const double discharge = current_draw * discharge_scale;
+        const double recharge = (1.0 - voltage) * recharge_scale;
         voltage = voltage - discharge + recharge;
         for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
           const std::size_t index = static_cast<std::size_t>(channel) * frame_count + frame;

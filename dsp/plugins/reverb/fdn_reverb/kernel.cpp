@@ -321,8 +321,8 @@ private:
     const auto sample = [&](std::uint32_t tap) noexcept {
       if (tap == 0u)
         return input;
-      const std::uint32_t wrapped = tap % pre_delay_length_;
-      const std::uint32_t index = (position + pre_delay_length_ - wrapped) % pre_delay_length_;
+      const std::uint32_t index =
+          position >= tap ? position - tap : position + pre_delay_length_ - tap;
       return static_cast<double>(buffer[index]);
     };
     const double newer = sample(newer_delay);

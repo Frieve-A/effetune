@@ -443,8 +443,8 @@ export function sourceDigest() {
       : normalized(fs.readFileSync(filePath, 'utf8')));
     hash.update('\0');
   }
-  hash.update('baseline:-O3,-flto,standalone,growth,8MiB,256MiB\0');
-  hash.update('simd:-O3,-flto,-msimd128,standalone,growth,8MiB,256MiB\0');
+  hash.update('baseline:-O3,-flto,standalone,growth,8MiB,2048MiB\0');
+  hash.update('simd:-O3,-flto,-msimd128,standalone,growth,8MiB,2048MiB\0');
   return `sha256:${hash.digest('hex')}`;
 }
 

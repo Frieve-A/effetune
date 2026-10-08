@@ -61,6 +61,7 @@ Before using EffeTune, you'll need to set up your audio routing. Here's how to c
    - Or select Open music file... from the File menu (desktop app only)
    - Or drag the music file into the window
 - For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input
+- A short fade-out when pausing and a short fade-in when resuming reduce clicks.
 - Open the playback speed button next to Shuffle to show its popup. Choose one of the nine presets, or use the horizontal slider or number field to set a speed from 0.25x to 4x in 0.01x steps. The **Preserve Pitch** button next to it is on by default, so pitch stays the same as speed changes; turn it off to let pitch rise and fall with speed, like changing the speed of a tape or record.
 - In the desktop app, choose **View > Mini Player** (Ctrl/Cmd+Shift+M) or use the player’s mini-player button to keep playback controls in a compact window. The pin button keeps it above other windows.
 
@@ -448,6 +449,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Spatial   | Spatial Mapper | Separates direct, diffuse, and residual sound for flexible multichannel routing | [Details](docs/plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Controls stereo width from mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
+| Others    | SFZ Note Player | Plays an imported SFZ instrument from detected notes | [Details](docs/plugins/others.md#sfz-note-player) |
 | Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |
 
 ## Technical Information

@@ -187,13 +187,15 @@ async function runRealAppScenario(options) {
           { ElectronLibraryServiceClient },
           { CatalogPlaybackBridge },
           policy,
-          { normalizeActivationIntentDescriptor }
+          { normalizeActivationIntentDescriptor },
+          { AudioManager }
         ] = await Promise.all([
           import('/js/ui/audio-player.js'),
           import('/js/library/operations/electron-library-service-client.js'),
           import('/js/ui/audio-player/catalog-playback-bridge.js'),
           import('/js/ui/audio-player/rolling-pcm-policy.js'),
-          import('/js/audio/audio-activation-coordinator.js')
+          import('/js/audio/audio-activation-coordinator.js'),
+          import('/js/audio-manager.js')
         ]);
         const waitFor = async (predicate, timeoutMs = 20_000) => {
           const deadline = performance.now() + timeoutMs;
@@ -225,6 +227,9 @@ async function runRealAppScenario(options) {
           audioContext: context,
           sourceNode: silentSource,
           workletNode: capture,
+          _getPrimaryWorkletNode: AudioManager.prototype._getPrimaryWorkletNode,
+          _getActivePowerWorklets: AudioManager.prototype._getActivePowerWorklets,
+          broadcastToActiveWorklets: AudioManager.prototype.broadcastToActiveWorklets,
           ioManager: {
             sourceNode: silentSource,
             ensureSilentSourceFallback: () => silentSource

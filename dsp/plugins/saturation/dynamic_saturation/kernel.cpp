@@ -128,6 +128,10 @@ public:
     output_gain_.advance(frame_count);
   }
 
+  [[nodiscard]] LatencyRange latencyRange() const noexcept override {
+    return {0u, dsp::OversampledShaper::kLatency};
+  }
+
   [[nodiscard]] std::uint32_t latencySamples() const noexcept override {
     const auto &parameters = params_pending_ ? staged_params_ : params_;
     return dsp::OversampledShaper::factor(parameters.oversampling, 8u) == 1u

@@ -115,6 +115,20 @@ export async function createEngineSession(artifact, effects, resolvedAssets, {
         hash: packed.hash
       });
     }
+    const descriptor = new Uint8Array(8 + nodes.length * 12);
+    const view = new DataView(descriptor.buffer);
+    view.setUint32(0, 1, true);
+    view.setUint32(4, nodes.length, true);
+    for (const [index, node] of nodes.entries()) {
+      const offset = 8 + index * 12;
+      view.setUint32(offset, node.instanceId, true);
+      view.setUint8(offset + 4, 1);
+      view.setInt8(offset + 7, node.range.count === channels ? -2
+        : node.range.count === 2 ? 16 + node.range.start / 2 : node.range.start);
+      view.setUint8(offset + 8, 1);
+    }
+    requireOk(binding.pipelineConfigure(descriptor), 'pipeline configuration');
+    requireOk(binding.pipelineReserveLatency(), 'latency reservation');
     return new EngineSession(binding, nodes, { channels, maxFrames, seed });
   } catch (error) {
     binding?.close();
@@ -131,12 +145,7 @@ export class EngineSession {
     this.maxFrames = maxFrames;
     this.seed = seed;
     this.closed = false;
-    this.arena = binding.getArenaViews().combined;
-    this.arenaByteOffset = this.arena.byteOffset;
-    this.fullChannelViews = Array.from({ length: channels }, (_, channel) =>
-      this.arena.subarray(channel * maxFrames, (channel + 1) * maxFrames)
-    );
-    this.channelViewsByFrameCount = new Map([[maxFrames, this.fullChannelViews]]);
+    this.refreshArenaViews();
     this.nodesByTap = new Map(nodes.map(node => [node.tapId, node]));
     this.telemetryBuffer = new Uint8Array(TELEMETRY_RING_BYTES);
     this.telemetryCallbacks = new Set();
@@ -147,11 +156,22 @@ export class EngineSession {
 
   get latencySamples() {
     if (this.closed) throw new EffeTuneRuntimeError('DSP processing state is closed.');
-    let latency = 0;
-    for (const node of this.nodes) {
-      latency += this.binding.instanceLatency(node.instanceId);
-    }
-    return latency;
+    return this.binding.pipelineLatency();
+  }
+
+  refreshArenaViews() {
+    const arena = this.binding.getArenaViews().combined;
+    if (this.arena?.buffer === arena.buffer) return;
+    this.arena = arena;
+    this.fullChannelViews = Array.from({ length: this.channels }, (_, channel) =>
+      arena.subarray(channel * this.maxFrames, (channel + 1) * this.maxFrames)
+    );
+    this.channelViewsByFrameCount = new Map([[this.maxFrames, this.fullChannelViews]]);
+  }
+
+  refreshLatency() {
+    requireOk(this.binding.pipelineRefreshLatencyRealtime(), 'latency configuration');
+    this.refreshArenaViews();
   }
 
   process(input, output, offset, frameCount, sampleRate, timeFrame = offset) {
@@ -169,20 +189,10 @@ export class EngineSession {
         ? input[channel]
         : input[channel].subarray(offset, offset + frameCount));
     }
-    for (const node of this.nodes) {
-      const audioPtr = this.arenaByteOffset +
-        node.range.start * frameCount * Float32Array.BYTES_PER_ELEMENT;
-      requireOk(
-        this.binding.instanceProcess(
-          node.instanceId,
-          audioPtr,
-          node.range.count,
-          frameCount,
-          timeFrame / sampleRate
-        ),
-        `${node.effectType} processing`
-      );
-    }
+    requireOk(
+      this.binding.pipelineProcess(this.channels, frameCount, timeFrame / sampleRate),
+      'pipeline processing'
+    );
     for (let channel = 0; channel < this.channels; channel++) {
       const source = channelViews[channel];
       output[channel].set(source, offset);
@@ -268,11 +278,12 @@ export class EngineSession {
         `${node.effectType} structured parameter update`
       );
     }
+    this.refreshLatency();
   }
 
   reset() {
+    requireOk(this.binding.reset(), 'reset');
     for (const node of this.nodes) {
-      requireOk(this.binding.resetInstance(node.instanceId), `${node.effectType} reset`);
       requireOk(this.binding.instanceSetSeed(node.instanceId, this.seed), `${node.effectType} seed reset`);
       requireOk(
         this.binding.instanceSetParams(node.instanceId, node.initialValues, node.hash),
@@ -285,6 +296,7 @@ export class EngineSession {
         );
       }
     }
+    this.refreshLatency();
   }
 
   close() {

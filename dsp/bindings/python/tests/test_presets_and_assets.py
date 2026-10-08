@@ -472,7 +472,7 @@ class PresetAndAssetTests(unittest.TestCase):
     def test_legacy_note_spectrogram_discards_display_settings(self) -> None:
         parameters = {
             "cl": "Rainbow", "pr": "High", "ly": "Vertical", "vl": False, "ts": 5,
-            "mn": 36, "mx": 84, "nc": 4,
+            "mn": 36, "mx": 84,
         }
         for preset in (
             {"pipeline": [{"name": "Note Spectrogram", "parameters": parameters}]},
@@ -482,7 +482,7 @@ class PresetAndAssetTests(unittest.TestCase):
                 document, _ = presets.import_legacy_preset(preset)
                 self.assertEqual(document["chain"][0]["type"], "NoteSpectrogram")
                 self.assertEqual(document["chain"][0]["parameters"], {
-                    "minimumMidi": 36, "maximumMidi": 84, "regularCandidates": 4,
+                    "minimumMidi": 36, "maximumMidi": 84,
                 })
         self.assertEqual(parameters["cl"], "Rainbow")
         with self.assertRaises(effetune.ValidationError):

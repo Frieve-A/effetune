@@ -876,12 +876,16 @@ private:
   bool quantizeCandidateValues(const float *input, GranuleChannel &logical,
                                std::uint8_t global_gain) const noexcept {
     bool rangeExceeded = false;
+    std::array<double, kMaximumScaleFactorBands> steps{};
+    for (std::uint32_t factor = 0u; factor < steps.size(); ++factor) {
+      steps[factor] = std::exp2((static_cast<double>(global_gain) - 210.0) * 0.25 -
+                                static_cast<double>(logical.scalefactors[factor]) * 0.5);
+    }
     for (std::uint32_t line = 0u; line < kGranuleSamples; ++line) {
       std::int32_t code = 0;
       if (codedLine(logical.blockType, line)) {
         const std::uint32_t factor = scaleFactorIndex(logical.blockType, line);
-        const double step = std::exp2((static_cast<double>(global_gain) - 210.0) * 0.25 -
-                                      static_cast<double>(logical.scalefactors[factor]) * 0.5);
+        const double step = steps[factor];
         const double value = input[line];
         const double magnitude = value < 0.0 ? -value : value;
         double mapped = std::pow(magnitude / step, 0.75);

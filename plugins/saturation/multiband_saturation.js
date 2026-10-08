@@ -319,14 +319,17 @@ class MultibandSaturationPlugin extends PluginBase {
                 for (let band = 0; band < 3; band++) {
                     const bandSignalBuffer = channelBandSignals[band]; // Get the Float32Array for the current band
                     const base = band * 4;
+                    const controlsRamping = context.bandControlRampRemaining !== 0;
+                    const stableGain = controlsRamping ? 1 : 10.0**(context.currentBandControls[base + 3] / 20.0);
+                    const stableBiasOffset = controlsRamping ? 0 : Math.tanh(context.currentBandControls[base] * context.currentBandControls[base + 1]);
                     for (let i = 0; i < pBlockSize; i++) {
                         const progressed = Math.min(i + 1, context.bandControlRampRemaining);
                         const dr = context.currentBandControls[base] + context.bandControlSteps[base] * progressed;
                         const bs = context.currentBandControls[base + 1] + context.bandControlSteps[base + 1] * progressed;
                         const mixRatio = (context.currentBandControls[base + 2] + context.bandControlSteps[base + 2] * progressed) / 100;
                         const gainDb = context.currentBandControls[base + 3] + context.bandControlSteps[base + 3] * progressed;
-                        const gainLinear = 10.0**(gainDb / 20.0);
-                        const biasOffset = Math.tanh(dr * bs);
+                        const gainLinear = controlsRamping ? 10.0**(gainDb / 20.0) : stableGain;
+                        const biasOffset = controlsRamping ? Math.tanh(dr * bs) : stableBiasOffset;
                         const dry = bandSignalBuffer[i];
                         const wet = shapeSample(ch * 3 + band, dry, sample => Math.tanh(dr * (sample + bs)) - biasOffset);
                         const delayedDry = delaySample(ch * 3 + band, dry);

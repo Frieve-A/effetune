@@ -5,6 +5,7 @@ import { PowerPolicyController } from '../../js/audio/power-policy-controller.js
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { PCM16_STEREO_44100_TO_96000_PROFILE } from '../../js/ui/audio-player/rolling-pcm-core.js';
 import {
   DEFAULT_ROLLING_PCM_PROFILE_ID,
@@ -213,11 +214,21 @@ async function waitForPendingMediaStartCandidate() {
 }
 
 function createNode(calls, name, options = {}) {
+  const gain = { value: 1 };
+  if (options.gainAutomation) {
+    gain.cancelScheduledValues = time => calls.push(['gain.cancel', name, time]);
+    gain.cancelAndHoldAtTime = time => calls.push(['gain.hold', name, time]);
+    gain.setValueAtTime = (value, time) => {
+      gain.value = value;
+      calls.push(['gain.set', name, value, time]);
+    };
+    gain.linearRampToValueAtTime = (value, time) => calls.push(['gain.ramp', name, value, time]);
+  }
   return {
     name,
     buffer: null,
     onended: null,
-    gain: { value: 1 },
+    gain,
     connect(target) {
       calls.push(['node.connect', name, target?.name]);
       if (options.connectThrows) throw new Error(`${name} connect failed`);
@@ -405,6 +416,9 @@ function createHarness(options = {}) {
     sourceNode: originalSource,
     ioManager,
     workletNode,
+    _getPrimaryWorkletNode: AudioManager.prototype._getPrimaryWorkletNode,
+    _getActivePowerWorklets: AudioManager.prototype._getActivePowerWorklets,
+    broadcastToActiveWorklets: AudioManager.prototype.broadcastToActiveWorklets,
     connectSourceToPipeline(source) {
       calls.push(['connectSourceToPipeline', source?.name]);
       if (options.connectSourceThrows) throw new Error('connect pipeline failed');
@@ -491,6 +505,34 @@ function captureStreamBoundaries(harness) {
   return frames;
 }
 
+test('track starts and cancelled reservations reach both active A/B pipelines', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const { audioContext, audioManager, manager } = createHarness();
+    const primary = [];
+    const parallel = [];
+    audioManager.workletNode.port = { postMessage: message => primary.push(message) };
+    audioManager._parallelWorkletB = { port: { postMessage: message => parallel.push(message) } };
+    audioManager._parallelActive = true;
+
+    manager.notifyStreamBoundary();
+    manager.notifyStreamBoundary(12.5);
+    manager.notifyStreamBoundary(null);
+    const expected = [
+      { type: 'streamBoundary', frame: Math.round(audioContext.currentTime * audioContext.sampleRate) },
+      { type: 'streamBoundary', frame: Math.round(12.5 * audioContext.sampleRate) },
+      { type: 'streamBoundary', frame: null }
+    ];
+    assert.deepEqual(primary, expected);
+    assert.deepEqual(parallel, expected, 'the parallel pipeline must reset on the same track boundary');
+
+    audioManager._parallelActive = false;
+    manager.notifyStreamBoundary(13);
+    assert.deepEqual(primary.at(-1), { type: 'streamBoundary', frame: Math.round(13 * audioContext.sampleRate) });
+    assert.equal(primary.length, 4);
+    assert.equal(parallel.length, 3, 'an inactive parallel pipeline must receive no further boundaries');
+  });
+});
+
 function installMaterializedPlaybackManager(harness, tracks = harness.playlist) {
   const playbackManager = new PlaybackManager(harness.audioPlayer);
   const entries = tracks.map(track => playbackManager.createTrackEntry(track));
@@ -502,6 +544,162 @@ function installMaterializedPlaybackManager(harness, tracks = harness.playlist) 
   harness.state.currentTrack = entries[harness.state.currentTrackIndex] ?? null;
   return { playbackManager, entries };
 }
+
+for (const backend of ['buffer', 'media']) {
+  for (const action of ['cancel', 'undo']) {
+    for (const paused of [false, true]) {
+      test(`Library Play ${action} restores ${paused ? 'paused' : 'playing'} ${backend} playback at its saved position`, async () => {
+        await withAudioContextGlobals({}, async ({ calls, intervals }) => {
+          const before = { name: 'Before', file: new FakeFile('before.wav') };
+          const next = { name: 'New', file: new FakeFile('new.wav') };
+          const harness = createHarness({ calls, playlist: [before], isStopped: true });
+          harness.audioPlayer.gaplessPlayback = backend === 'buffer';
+          const { playbackManager, entries } = installMaterializedPlaybackManager(harness, [before]);
+          try {
+            await harness.manager.loadTrack(entries[0], 0);
+            await harness.manager.play();
+            if (backend === 'buffer') harness.audioContext.currentTime += 7;
+            else harness.audioPlayer.audioElement.currentTime = 7;
+            for (const callback of intervals.values()) callback();
+            if (backend === 'media') harness.audioPlayer.audioElement.dispatch('timeupdate');
+            if (paused) await harness.manager.pause();
+            assert.equal(harness.state.currentTrackPosition, 7);
+
+            const service = {
+              async start() {
+                return { operationId: 'new-queue', provisionalEntry: {
+                  entryInstanceId: 'new-entry', libraryTrackId: 'new-track', ...next
+                } };
+              }
+            };
+            const receipt = await playbackManager.startBulkPlay({
+              selectionDescriptor: { mode: 'all', contextToken: 'test', exclusions: [] },
+              service
+            });
+            assert.equal(receipt.accepted, true);
+            assert.equal(harness.state.currentTrack.name, 'New');
+
+            if (action === 'cancel') {
+              assert.deepEqual(await playbackManager.cancelBulkPlay('new-queue'), {
+                accepted: true, phase: 'cancelled'
+              });
+            } else {
+              const firstEntry = {
+                entryInstanceId: playbackManager.activeBulkPlay.provisionalEntryInstanceId,
+                trackUid: 'new-track', title: 'New'
+              };
+              const sequence = new CatalogSequence({
+                sequenceId: 'published', itemCount: 1,
+                async readPage() { return { rows: [firstEntry] }; },
+                async resolveSource() { return { file: next.file }; }
+              });
+              await playbackManager.commitCatalogDestination({
+                operationId: 'new-queue', operationKind: 'play', sequence,
+                currentOrdinal: 0, firstEntry
+              });
+              assert.equal(playbackManager.canUndoSessionTransport(), true);
+              assert.deepEqual(await playbackManager.undoSessionTransport(), { kind: 'published' });
+            }
+
+            assert.equal(harness.state.currentTrack.entryInstanceId, entries[0].entryInstanceId);
+            assert.equal(harness.state.currentTrackPosition, 7);
+            assert.equal(harness.state.isPlaying, !paused);
+            assert.equal(harness.state.isPaused, paused);
+            assert.equal(harness.state.isStopped, false);
+            if (paused) assert.equal(await harness.manager.play(), true);
+            if (backend === 'buffer') {
+              const start = calls.filter(call => call[0] === 'node.start' &&
+                call[1].startsWith('bufferSource')).at(-1);
+              assert.equal(start[3], 7);
+            } else {
+              assert.equal(harness.audioPlayer.audioElement.currentTime, 7);
+              assert.equal(harness.audioPlayer.audioElement.paused, false);
+            }
+          } finally {
+            harness.manager.disconnect();
+            playbackManager.dispose();
+          }
+        });
+      });
+    }
+  }
+}
+
+test('Library Play cancel prepares paused rolling playback at the saved frame before resuming', async () => {
+  await withAudioContextGlobals({ Worker: class {}, AudioDecoder: class {} }, async ({ calls }) => {
+    const before = {
+      name: 'Before.wav', file: new Blob([new Uint8Array([1])], { type: 'audio/wav' }),
+      durationSec: 200, sampleRate: 48000, channelCount: 2
+    };
+    const harness = createHarness({ calls, playlist: [before], isStopped: true });
+    const { playbackManager, entries } = installMaterializedPlaybackManager(harness, [before]);
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    harness.manager.rollingEnabledMatrix = [{
+      host: 'unknown', format: 'wav', sampleRate: 48000, channelCount: 2,
+      lifecycle: 'foreground', containerMimeType: 'audio/wav', codec: 'pcm-s16',
+      decoderConfigCodec: 'pcm-s16', profileId: DEFAULT_ROLLING_PCM_PROFILE_ID, enabled: true
+    }];
+    const preparations = [];
+    const activations = [];
+    harness.manager.createRollingPcmTransport = () => ({
+      sourceNode: createNode(calls, 'restored-rolling-bus'),
+      prepared: true, failed: false, disposed: false, positionFrame: 0, metadata: null,
+      get currentTime() { return this.positionFrame / 48000; },
+      async prepare(_source, { startTimeSec }) {
+        preparations.push(startTimeSec);
+        this.positionFrame = Math.round((startTimeSec ?? 0) * 48000);
+        this.metadata = {
+          durationSec: 200, sourceSampleRate: 48000, outputSampleRate: 48000,
+          sampleRate: 48000, channelCount: 2, totalFrames: 9_600_000,
+          containerMimeType: 'audio/wav', codec: 'pcm-s16', decoderConfigCodec: 'pcm-s16',
+          decoderConfigVerified: true
+        };
+        return this.metadata;
+      },
+      canPromoteReservation() { return true; },
+      promoteReservation() { return true; },
+      activate({ frame }) { activations.push(frame); return true; },
+      async pause() {},
+      async dispose() { this.disposed = true; }
+    });
+    try {
+      assert.equal(await harness.manager.loadTrack(entries[0], 0), true);
+      assert.equal(harness.state.playbackMode, 'rollingPcm');
+      assert.equal(await harness.manager.play(), true);
+      harness.manager.rollingTransport.positionFrame = 7 * 48000;
+      await harness.manager.pause();
+      assert.equal(harness.state.currentTrackPosition, 7);
+
+      const receipt = await playbackManager.startBulkPlay({
+        selectionDescriptor: { mode: 'all', contextToken: 'test', exclusions: [] },
+        service: { async start() { return {
+          operationId: 'rolling-replacement', provisionalEntry: {
+            entryInstanceId: 'new-entry', libraryTrackId: 'new-track',
+            name: 'New', file: new FakeFile('new.wav')
+          }
+        }; } }
+      });
+      assert.equal(receipt.accepted, true);
+      const activationCount = activations.length;
+      await playbackManager.cancelBulkPlay('rolling-replacement');
+
+      assert.equal(preparations.at(-1), 7);
+      assert.equal(harness.state.currentTrack.entryInstanceId, entries[0].entryInstanceId);
+      assert.equal(harness.state.playbackMode, 'rollingPcm');
+      assert.equal(harness.state.currentTrackPosition, 7);
+      assert.equal(harness.state.isPaused, true);
+      assert.equal(harness.state.isPlaying, false);
+      assert.equal(harness.state.isStopped, false);
+      assert.equal(activations.length, activationCount);
+      assert.equal(harness.manager.rollingTransport.positionFrame, 7 * 48000);
+      assert.equal(await harness.manager.play(), true);
+      assert.equal(activations.at(-1), 7 * 48000);
+    } finally {
+      harness.manager.disconnect();
+      playbackManager.dispose();
+    }
+  });
+});
 
 test('playback speed selects media and applies rates and pitch preference before play and adoption', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
@@ -4085,6 +4283,247 @@ test('audio element setup, metadata, media session, and fallback naming stay syn
     mediaSession.handlers.get('stop')();
     mediaSession.handlers.get('seekto')({ seekTime: 4 });
     mediaSession.handlers.get('seekto')({});
+  });
+});
+
+for (const backend of ['bufferSource', 'rollingPcm', 'audioElement']) {
+  test(`${backend} pauses after fading out and resumes from the faded position with a fade-in`, async () => {
+    await withAudioContextGlobals({}, async ({ calls, timers }) => {
+      window.audioPreferences = { useInputWithPlayer: true };
+      const harness = createHarness({
+        calls, playbackMode: backend, isPlaying: true,
+        audioElement: backend === 'audioElement' ? new Audio() : null,
+        audioContextOptions: { gainOptions: { gainAutomation: true } }
+      });
+      const { manager, audioContext, audioPlayer, audioManager, state } = harness;
+      let source;
+      if (backend === 'bufferSource') {
+        manager.currentBuffer = { duration: 20 };
+        manager.bufferDuration = 20;
+        manager.bufferStartTime = 3;
+        source = manager.createBufferSource(manager.currentBuffer, manager.currentInstanceId);
+        manager.currentBufferSource = source;
+      } else if (backend === 'rollingPcm') {
+        source = createNode(calls, 'rolling-bus');
+        manager.rollingTransport = {
+          sourceNode: source, prepared: true, metadata: { sampleRate: 48000 },
+          positionFrame: 7 * 48000,
+          get currentTime() { return audioContext.currentTime - 3; },
+          pause() {
+            calls.push(['rolling.pause']);
+            this.positionFrame = Math.round(this.currentTime * 48000);
+          },
+          activate({ frame }) { calls.push(['rolling.activate', frame]); return true; }
+        };
+      } else {
+        audioPlayer.audioElement.paused = false;
+        audioPlayer.audioElement.currentTime = 7;
+        source = setConnectedMediaSource(harness, 'media-source');
+      }
+      // The current route may be a direct source adopted at a gapless boundary.
+      const pause = manager.pause();
+      await flushMicrotasks();
+      assert.equal(state.isPaused, true);
+      assert.equal(state.isPlaying, false);
+      assert.deepEqual(calls.filter(call => call[0] === 'gain.ramp').at(-1),
+        ['gain.ramp', 'gain', 0, 10.02]);
+      assert.equal(calls.some(call => call[0] === 'node.stop' || call[0] === 'rolling.pause' ||
+        call[0] === 'audio.pause'), false);
+      assert.equal(audioManager.sourceNode.name, 'originalSource');
+      assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
+        call[1] === 'originalSource'), false);
+      assert.equal(manager.getPipelineSourceNode(source).name, 'gain');
+
+      manager.handleTrackEnded();
+      assert.equal(calls.some(call => call[0] === 'playback.onTrackEnded'), false);
+      if (backend === 'rollingPcm') {
+        const transport = manager.rollingTransport;
+        manager.nextBuffer = { decisionRecord: { deferRollingFallbackUntilBoundary: true } };
+        manager.handleRollingTrackEnded(transport);
+        assert.equal(manager.rollingTransport, transport);
+        manager.nextBuffer = null;
+      }
+      // A quick Play must wait until the old source has stopped and saved its position.
+      const play = manager.play();
+      await flushMicrotasks();
+      assert.equal(calls.some(call => call[0] === 'rolling.activate' || call[0] === 'audio.play'), false);
+      audioContext.currentTime = 10.02;
+      if (audioPlayer.audioElement) audioPlayer.audioElement.currentTime = 7.02;
+      const fadeTimer = timers.find(timer => timer.delay === 20);
+      assert.ok(fadeTimer);
+      fadeTimer.fn();
+      await pause;
+      assert.equal(await play, true);
+      assert.equal(state.isPlaying, true);
+      assert.ok(Math.abs(state.currentTrackPosition - 7.02) < 1e-9);
+      assert.deepEqual(calls.filter(call => call[0] === 'gain.set').at(-1),
+        ['gain.set', 'gain', 0, 10.02]);
+      assert.deepEqual(calls.filter(call => call[0] === 'gain.ramp').at(-1),
+        ['gain.ramp', 'gain', 1, 10.04]);
+      if (backend === 'bufferSource') {
+        const start = calls.filter(call => call[0] === 'node.start').at(-1);
+        assert.ok(Math.abs(start[3] - 7.02) < 1e-9);
+      } else if (backend === 'rollingPcm') {
+        assert.deepEqual(calls.find(call => call[0] === 'rolling.activate'),
+          ['rolling.activate', 336960]);
+      } else {
+        assert.equal(audioPlayer.audioElement.paused, false);
+      }
+      manager.clearBufferMonitoring();
+    });
+  });
+}
+
+test('Stop during a pause fade cancels a waiting Play and preserves the stopped position', async () => {
+  await withAudioContextGlobals({}, async ({ calls, timers }) => {
+    const harness = createHarness({
+      calls, isPlaying: true,
+      audioContextOptions: { gainOptions: { gainAutomation: true } }
+    });
+    const { manager, state } = harness;
+    manager.currentBuffer = { duration: 20 };
+    manager.currentBufferSource = manager.createBufferSource(manager.currentBuffer, 0);
+    manager.bufferStartTime = 3;
+    manager.bufferDuration = 20;
+    const pause = manager.pause();
+    const play = manager.play();
+    await manager.stop();
+    timers.find(timer => timer.delay === 20).fn();
+    await pause;
+    assert.equal(await play, false);
+    assert.equal(state.isStopped, true);
+    assert.equal(state.isPaused, false);
+    assert.equal(state.currentTrackPosition, 0);
+    assert.equal(calls.some(call => call[0] === 'node.start'), false);
+  });
+});
+
+test('another Pause during a fade cancels a waiting Play without cancelling the source stop', async () => {
+  await withAudioContextGlobals({}, async ({ calls, timers }) => {
+    const harness = createHarness({
+      calls, isPlaying: true,
+      audioContextOptions: { gainOptions: { gainAutomation: true } }
+    });
+    const { manager, audioContext, state } = harness;
+    manager.currentBuffer = { duration: 20 };
+    manager.currentBufferSource = manager.createBufferSource(manager.currentBuffer, 0);
+    manager.bufferStartTime = 3;
+    manager.bufferDuration = 20;
+    const firstPause = manager.pause();
+    const play = manager.play();
+    const lastPause = manager.pause();
+    audioContext.currentTime = 10.02;
+    timers.find(timer => timer.delay === 20).fn();
+    await Promise.all([firstPause, lastPause]);
+    assert.equal(await play, false);
+    assert.equal(state.isPaused, true);
+    assert.equal(state.isPlaying, false);
+    assert.equal(manager.currentBufferSource, null);
+    assert.ok(Math.abs(state.currentTrackPosition - 7.02) < 1e-9);
+    assert.equal(calls.some(call => call[0] === 'node.start'), false);
+  });
+});
+
+for (const supportsHold of [true, false]) {
+  test(`pausing an unfinished resume ramp holds its gain with ${supportsHold ? 'cancelAndHoldAtTime' : 'cancelScheduledValues'}`, async () => {
+    await withAudioContextGlobals({}, async ({ calls, timers }) => {
+      const harness = createHarness({
+        calls, isPaused: true, currentTrackPosition: 7,
+        audioContextOptions: { gainOptions: { gainAutomation: true } }
+      });
+      const { manager, audioContext } = harness;
+      manager.currentBuffer = { duration: 20 };
+      await manager.play();
+      audioContext.currentTime = 10.005;
+      const gain = manager.privatePipelineSourceGates.get(manager.currentBufferSource).gain;
+      if (!supportsHold) {
+        delete gain.cancelAndHoldAtTime;
+        gain.value = 0.25;
+      }
+      const pause = manager.pause();
+      if (supportsHold) {
+        assert.deepEqual(calls.filter(call => call[0] === 'gain.hold').at(-1),
+          ['gain.hold', 'gain', 10.005]);
+      } else {
+        assert.deepEqual(calls.filter(call => call[0] === 'gain.set').at(-1),
+          ['gain.set', 'gain', 0.25, 10.005]);
+      }
+      assert.equal(calls.filter(call => call[0] === 'gain.set' && call[2] === 1).length, 0);
+      timers.find(timer => timer.delay === 20).fn();
+      await pause;
+    });
+  });
+}
+
+for (const command of ['loadTrack', 'transitionToNextTrack']) {
+  test(`a failed ${command} during a pause fade preserves the completed pause position`, async () => {
+    await withAudioContextGlobals({}, async ({ calls, timers }) => {
+      const harness = createHarness({
+        calls, isPlaying: true,
+        audioContextOptions: { gainOptions: { gainAutomation: true } }
+      });
+      const { manager, audioContext, state } = harness;
+      manager.currentBuffer = { duration: 20 };
+      manager.bufferDuration = 20;
+      manager.bufferStartTime = 3;
+      manager.currentBufferSource = manager.createBufferSource(manager.currentBuffer, 0);
+      let failPreparation;
+      manager.prepareTrackTransitionRequest = () => new Promise((_, reject) => {
+        failPreparation = () => reject(new Error('track preparation failed'));
+      });
+      const pause = manager.pause();
+      const selection = manager[command](harness.playlist[1], 1);
+      await flushMicrotasks();
+      assert.ok(failPreparation);
+      audioContext.currentTime = 10.02;
+      timers.find(timer => timer.delay === 20).fn();
+      await pause;
+      assert.equal(manager.currentBufferSource, null);
+      failPreparation();
+      if (command === 'loadTrack') assert.equal(await selection, false);
+      else await assert.rejects(selection, /track preparation failed/);
+      assert.equal(state.isPaused, true);
+      assert.equal(state.isPlaying, false);
+      assert.ok(Math.abs(state.currentTrackPosition - 7.02) < 1e-9);
+    });
+  });
+}
+
+test('resumed buffer playback stays silent until staged activation commits its fade-in', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    let releaseProof;
+    const proof = new Promise(resolve => { releaseProof = resolve; });
+    const harness = createHarness({
+      calls, isPaused: true, currentTrackPosition: 7,
+      audioContextOptions: { gainOptions: { gainAutomation: true } },
+      audioManager: {
+        isStagedAudioActivationEnabled: () => true,
+        stageAudioActivation: async () => ({ generation: 1 }),
+        isSourceConnectedToPipeline: () => true,
+        async activateStagedAudioCandidate(stage, callbacks) {
+          const candidate = await callbacks.acquire(stage);
+          await proof;
+          assert.equal(callbacks.isCandidateCurrent(candidate, stage), true);
+          callbacks.commit(candidate, stage);
+          return { activated: true };
+        }
+      }
+    });
+    const { manager, audioContext } = harness;
+    manager.currentBuffer = { duration: 20 };
+    const play = manager.play();
+    for (let i = 0; i < 10 && !manager.pendingBufferSource; i++) await flushMicrotasks();
+    const gate = manager.privatePipelineSourceGates.get(manager.pendingBufferSource);
+    assert.ok(gate);
+    assert.equal(gate.gain.value, 0);
+    assert.equal(calls.some(call => call[0] === 'gain.ramp'), false);
+    audioContext.currentTime = 10.01;
+    releaseProof();
+    assert.equal(await play, true);
+    const ramp = calls.filter(call => call[0] === 'gain.ramp').at(-1);
+    assert.equal(ramp[2], 1);
+    assert.ok(Math.abs(ramp[3] - 10.03) < 1e-9);
+    manager.clearBufferMonitoring();
   });
 });
 

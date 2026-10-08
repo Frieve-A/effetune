@@ -59,6 +59,7 @@ EffeTune을 사용하기 전에 오디오 라우팅을 설정해야 합니다.
    - 또는 파일 메뉴에서 "음악 파일 열기..."를 선택합니다 (데스크톱 앱 전용)
    - 또는 음악 파일을 창으로 드래그합니다
 - 음악 파일 플레이어만 사용할 때는 오디오 설정의 입력 장치에서 없음(음악 파일 플레이어 전용)을 선택하면 실시간 오디오 입력을 사용하지 않습니다
+- 일시 정지할 때는 짧은 페이드아웃을, 재생을 다시 시작할 때는 짧은 페이드인을 적용해 클릭 노이즈를 줄입니다.
 - Shuffle 옆의 속도 버튼을 눌러 팝업을 엽니다. 9가지 프리셋 중 하나를 선택하거나 가로 슬라이더 또는 숫자 입력란으로 0.25x부터 4x까지 0.01x 간격으로 속도를 설정할 수 있습니다. 그 옆에 있는 **피치 유지** 버튼은 기본적으로 켜져 있어 속도를 바꿔도 피치가 그대로 유지되며, 끄면 테이프나 레코드의 회전 속도를 바꿀 때처럼 속도에 따라 피치도 함께 오르내립니다.
 
 ### 스트리밍 서비스 설정
@@ -448,6 +449,7 @@ Effect Pipeline 헤더의 **효과 체인 프리셋** 버튼을 클릭하면 프
 | Spatial | Spatial Mapper | Direct, Diffuse, Residual 소리를 분리해 유연하게 멀티채널로 라우팅 | [세부 정보](plugins/spatial.md#spatial-mapper) |
 | Spatial | Stereo Blend | 모노부터 확장 스테레오까지 스테레오 폭 제어 | [세부 정보](plugins/spatial.md#stereo-blend) |
 | Others | Oscillator | 스피커나 헤드폰 확인용 테스트 톤/노이즈 제너레이터 | [세부 정보](plugins/others.md#oscillator) |
+| Others | SFZ Note Player | 감지한 음을 가져온 SFZ 악기로 재생 | [세부 정보](plugins/others.md#sfz-note-player) |
 | Control | Section | 여러 이펙트를 그룹화해 섹션 전체를 바이패스하거나 복원 | [세부 정보](plugins/control.md) |
 
 ## 기술 정보

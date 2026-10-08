@@ -20,7 +20,7 @@ const GLIDE_SECONDS = 0.04;
 const MERGE_SEMITONES = 0.5;
 // A sound keeps its mark while its pitch moves less than this between frames, as in vibrato.
 const FOLLOW_SEMITONES = 0.75;
-// Note Spectrogram revises each frame's detection this many frames later.
+// Keep detections until Note Spectrogram's final revision arrives.
 const REVISION_AGE = 8;
 
 const isNewer = (candidate, current) => {
@@ -82,7 +82,9 @@ export class GuitarFretboardDisplay {
         this.peaks = this.detectPeaks(snapshot.levels, snapshot.volumeLevels);
         this.recent = this.recent.filter(record => ((snapshot.frameIndex - record.frameIndex) >>> 0) <= REVISION_AGE);
         this.recent.push({ frameIndex: snapshot.frameIndex, peaks: this.peaks, volumes: snapshot.volumeLevels });
-        if (snapshot.revisionAge > 0) this.applyRevision((snapshot.frameIndex - snapshot.revisionAge) >>> 0, snapshot.revisedLevels);
+        for (const revision of snapshot.revisions) {
+            this.applyRevision((snapshot.frameIndex - revision.age) >>> 0, revision.levels);
+        }
         let framePeak = -Infinity;
         for (const peak of this.peaks) if (peak.volume > framePeak) framePeak = peak.volume;
         Note.updateLevelReference(this, framePeak, elapsed);
@@ -112,11 +114,11 @@ export class GuitarFretboardDisplay {
         candidates.sort((a, b) => b.confidence - a.confidence);
         const peaks = [];
         for (const candidate of candidates) if (!near(peaks, candidate.pitch, MERGE_SEMITONES)) peaks.push(candidate);
-        return peaks;
+        return peaks.slice(0, this.params.tn.length);
     }
 
-    // The revised detection of an earlier frame shows the sounds the first pass missed,
-    // and rules out first-pass sounds that no later frame has detected either.
+    // Each revision adds sounds the previous estimate missed and rules out sounds
+    // that neither this revision nor a later frame has detected.
     applyRevision(frameIndex, levels) {
         const record = this.recent.find(entry => entry.frameIndex === frameIndex);
         if (!record) return;
@@ -126,6 +128,7 @@ export class GuitarFretboardDisplay {
         this.revisedPeaks.push(...revised.filter(peak => !near(record.peaks, peak.pitch, MERGE_SEMITONES)));
         this.dropped.push(...record.peaks.filter(peak => !near(revised, peak.pitch, MERGE_SEMITONES) &&
             !later.some(entry => near(entry.peaks, peak.pitch, FOLLOW_SEMITONES))).map(peak => peak.pitch));
+        record.peaks = revised;
     }
 
     // Each detected sound continues the nearest tracked sound, so a vibrato across a

@@ -121,7 +121,7 @@
             margin: 20px 0;
             padding: 15px;
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0) 42px), linear-gradient(145deg, var(--et-surface-11), var(--et-surface-8));
-            border-radius: 4px;
+            border-radius: 0;
             border-left: 4px solid var(--benchmark-accent);
             width: 100%;
             box-sizing: border-box;
@@ -150,7 +150,7 @@
             padding: 8px;
             background: rgba(244, 67, 54, 0.1); /* theme-allow: Benchmark identification palette. */
             border-left: 3px solid #f44336; /* theme-allow: Benchmark identification palette. */
-            border-radius: 2px;
+            border-radius: 0;
         }
         .benchmark-button {
             padding: 8px 16px;
@@ -984,157 +984,161 @@
                     benchmarkStatus.textContent = `Benchmarking ${name} with ${runtime.label} (${completedCount + 1}/${pluginCount})...`;
                     const plugin = manager.createPlugin(name);
 
-                    let note = '';
-                    let channelCount = CHANNEL_COUNT;
-                    let assets = new Map();
-                    let pluginAudioBuffer = audioBuffer;
-                    let warmupFrames = BUFFER_SIZE;
-                    let requiresWasmAssets = false;
-                    const firWorkload = configureFirBenchmarkWorkload({
-                        plugin,
-                        sampleRate: SAMPLE_RATE,
-                        blockSize: BUFFER_SIZE,
-                        usesWasm: runtime.usesWasm
-                    });
-                    if (firWorkload) {
-                        channelCount = firWorkload.channelCount;
-                        assets = firWorkload.assets;
-                        warmupFrames = firWorkload.warmupFrames;
-                        note = firWorkload.note;
-                        requiresWasmAssets = firWorkload.requiresWasmAssets;
-                        if (runtime.usesWasm && channelCount !== CHANNEL_COUNT) {
-                            pluginAudioBuffer = createRandomAudioBuffer(
-                                SAMPLE_RATE,
-                                BUFFER_DURATION,
-                                channelCount
-                            );
-                        }
-                    } else if (name === 'Channel Divider') {
-                        plugin.setParameters({ bc: 4 });
-                        channelCount = 8;
-                        note = '8ch mode';
-                    } else if (name === 'Pitch Shifter') {
-                        plugin.setParameters({ ps: 1 });
-                        note = 'Pitch Shift + 1 semitone';
-                    } else if (name === 'Time Alignment') {
-                        plugin.setParameters({ dl: 10 });
-                        note = 'Delay + 10ms';
-                    } else if (name === '15Band GEQ') {
-                        const params = {};
-                        for (let i = 0; i < 15; i++) {
-                            params['b' + i] = i % 2 === 0 ? 1 : -1;
-                        }
-                        plugin.setParameters(params);
-                        note = 'Enable all 15 bands';
-                    } else if (name === '15Band PEQ') {
-                        const params = {};
-                        for (let i = 0; i < 15; i++) {
-                            params['g' + i] = i % 2 === 0 ? 1 : -1;
-                        }
-                        plugin.setParameters(params);
-                        note = 'Enable all 15 bands';
-                    } else if (name === '5Band Dynamic EQ') {
-                        const params = {};
-                        params['bs'] = Array.from({ length: 5 }, () => ({}));
-                        for (let i = 0; i < 5; i++) {
-                            params['bs'][i]['en'] = true;
-                        }
-                        plugin.setParameters(params);
-                        note = 'Enable all 5 bands';
-                    } else if (name === '5Band PEQ') {
-                        const params = {};
-                        for (let i = 0; i < 5; i++) {
-                            params['g' + i] = i % 2 === 0 ? 1 : -1;
-                        }
-                        plugin.setParameters(params);
-                        note = 'Enable all 5 bands';
-                    } else if (name === 'Tilt EQ') {
-                        plugin.setParameters({ sl: 1 });
-                        note = 'Slope + 1db/oct';
-                    } else if (name === 'IR Reverb') {
-                        requiresWasmAssets = true;
-                        plugin.setParameters({ cm: 'true' });
-                        note = BENCHMARK_IR_REVERB_NOTE;
-                        if (runtime.usesWasm) {
+                    try {
+                        let note = '';
+                        let channelCount = CHANNEL_COUNT;
+                        let assets = new Map();
+                        let pluginAudioBuffer = audioBuffer;
+                        let warmupFrames = BUFFER_SIZE;
+                        let requiresWasmAssets = false;
+                        const firWorkload = configureFirBenchmarkWorkload({
+                            plugin,
+                            sampleRate: SAMPLE_RATE,
+                            blockSize: BUFFER_SIZE,
+                            usesWasm: runtime.usesWasm
+                        });
+                        if (firWorkload) {
+                            channelCount = firWorkload.channelCount;
+                            assets = firWorkload.assets;
+                            warmupFrames = firWorkload.warmupFrames;
+                            note = firWorkload.note;
+                            requiresWasmAssets = firWorkload.requiresWasmAssets;
+                            if (runtime.usesWasm && channelCount !== CHANNEL_COUNT) {
+                                pluginAudioBuffer = createRandomAudioBuffer(
+                                    SAMPLE_RATE,
+                                    BUFFER_DURATION,
+                                    channelCount
+                                );
+                            }
+                        } else if (name === 'Channel Divider') {
+                            plugin.setParameters({ bc: 4 });
+                            channelCount = 8;
+                            note = '8ch mode';
+                        } else if (name === 'Pitch Shifter') {
+                            plugin.setParameters({ ps: 1 });
+                            note = 'Pitch Shift + 1 semitone';
+                        } else if (name === 'Time Alignment') {
+                            plugin.setParameters({ dl: 10 });
+                            note = 'Delay + 10ms';
+                        } else if (name === '15Band GEQ') {
+                            const params = {};
+                            for (let i = 0; i < 15; i++) {
+                                params['b' + i] = i % 2 === 0 ? 1 : -1;
+                            }
+                            plugin.setParameters(params);
+                            note = 'Enable all 15 bands';
+                        } else if (name === '15Band PEQ') {
+                            const params = {};
+                            for (let i = 0; i < 15; i++) {
+                                params['g' + i] = i % 2 === 0 ? 1 : -1;
+                            }
+                            plugin.setParameters(params);
+                            note = 'Enable all 15 bands';
+                        } else if (name === '5Band Dynamic EQ') {
+                            const params = {};
+                            params['bs'] = Array.from({ length: 5 }, () => ({}));
+                            for (let i = 0; i < 5; i++) {
+                                params['bs'][i]['en'] = true;
+                            }
+                            plugin.setParameters(params);
+                            note = 'Enable all 5 bands';
+                        } else if (name === '5Band PEQ') {
+                            const params = {};
+                            for (let i = 0; i < 5; i++) {
+                                params['g' + i] = i % 2 === 0 ? 1 : -1;
+                            }
+                            plugin.setParameters(params);
+                            note = 'Enable all 5 bands';
+                        } else if (name === 'Tilt EQ') {
+                            plugin.setParameters({ sl: 1 });
+                            note = 'Slope + 1db/oct';
+                        } else if (name === 'IR Reverb') {
+                            requiresWasmAssets = true;
+                            plugin.setParameters({ cm: 'true' });
+                            note = BENCHMARK_IR_REVERB_NOTE;
+                            if (runtime.usesWasm) {
+                                const parameters = plugin.getParameters({
+                                    sampleRate: SAMPLE_RATE,
+                                    outputChannelCount: channelCount
+                                });
+                                assets = createIrReverbBenchmarkAssets({
+                                    sampleRate: SAMPLE_RATE,
+                                    channelCount,
+                                    latency: parameters.lt,
+                                    convolutionRate: parameters.cr
+                                });
+                            }
+                        } else if (name === 'Room EQ') {
+                            requiresWasmAssets = true;
                             const parameters = plugin.getParameters({
                                 sampleRate: SAMPLE_RATE,
                                 outputChannelCount: channelCount
                             });
-                            assets = createIrReverbBenchmarkAssets({
-                                sampleRate: SAMPLE_RATE,
-                                channelCount,
-                                latency: parameters.lt,
-                                convolutionRate: parameters.cr
+                            note = `Deterministic mono IR, ${parameters.tp.toLocaleString()} samples ` +
+                                '(IR load/preparation excluded from timing)';
+                            if (runtime.usesWasm) {
+                                assets = createRoomEqBenchmarkAssets({
+                                    sampleRate: SAMPLE_RATE,
+                                    channelCount,
+                                    taps: parameters.tp,
+                                    latency: parameters.lt
+                                });
+                            }
+                        } else if (name === 'Bandwidth Extender') {
+                            plugin.setParameters({
+                                cm: 'Manual',
+                                cf: BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ
                             });
-                        }
-                    } else if (name === 'Room EQ') {
-                        requiresWasmAssets = true;
-                        const parameters = plugin.getParameters({
-                            sampleRate: SAMPLE_RATE,
-                            outputChannelCount: channelCount
-                        });
-                        note = `Deterministic mono IR, ${parameters.tp.toLocaleString()} samples ` +
-                            '(IR load/preparation excluded from timing)';
-                        if (runtime.usesWasm) {
-                            assets = createRoomEqBenchmarkAssets({
+                            pluginAudioBuffer = createBandwidthExtenderBenchmarkInput({
                                 sampleRate: SAMPLE_RATE,
+                                duration: BUFFER_DURATION,
                                 channelCount,
-                                taps: parameters.tp,
-                                latency: parameters.lt
+                                blockSize: BUFFER_SIZE
                             });
+                            warmupFrames = getBandwidthExtenderBenchmarkWarmupFrames(SAMPLE_RATE);
+                            note = BANDWIDTH_EXTENDER_BENCHMARK_NOTE;
                         }
-                    } else if (name === 'Bandwidth Extender') {
-                        plugin.setParameters({
-                            cm: 'Manual',
-                            cf: BANDWIDTH_EXTENDER_BENCHMARK_CUTOFF_HZ
-                        });
-                        pluginAudioBuffer = createBandwidthExtenderBenchmarkInput({
-                            sampleRate: SAMPLE_RATE,
-                            duration: BUFFER_DURATION,
-                            channelCount,
-                            blockSize: BUFFER_SIZE
-                        });
-                        warmupFrames = getBandwidthExtenderBenchmarkWarmupFrames(SAMPLE_RATE);
-                        note = BANDWIDTH_EXTENDER_BENCHMARK_NOTE;
+
+                        let result;
+                        if (runtime.supportsPlugin(plugin, { channelCount }) &&
+                            (!requiresWasmAssets || runtime.usesWasm)) {
+                            result = await benchmarkPlugin(
+                                runtime,
+                                plugin,
+                                pluginAudioBuffer,
+                                SAMPLE_RATE,
+                                BUFFER_SIZE,
+                                channelCount,
+                                assets,
+                                warmupFrames
+                            );
+                        } else {
+                            result = {
+                                category: '',
+                                name: plugin.name,
+                                implementation: runtime.label,
+                                samplesPerSecond: null,
+                                speedupFactor: null,
+                                skipped: true
+                            };
+                            const reason = requiresWasmAssets && !runtime.usesWasm
+                                ? 'requires WebAssembly DSP'
+                                : runtime.getPluginUnsupportedReason(plugin, { channelCount });
+                            note = note ? `${note}; ${reason}` : reason;
+                        }
+
+                        // Retrieve category from pluginDefinitions
+                        const def = pluginDefinitions.get(name);
+                        result.category = def.category;
+                        result.note = note;
+
+                        results.push(result);
+                        completedCount++;
+                        progressBar.style.width = `${(completedCount / pluginCount) * 100}%`;
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    } finally {
+                        plugin.cleanup();
                     }
-
-                    let result;
-                    if (runtime.supportsPlugin(plugin, { channelCount }) &&
-                        (!requiresWasmAssets || runtime.usesWasm)) {
-                        result = await benchmarkPlugin(
-                            runtime,
-                            plugin,
-                            pluginAudioBuffer,
-                            SAMPLE_RATE,
-                            BUFFER_SIZE,
-                            channelCount,
-                            assets,
-                            warmupFrames
-                        );
-                    } else {
-                        result = {
-                            category: '',
-                            name: plugin.name,
-                            implementation: runtime.label,
-                            samplesPerSecond: null,
-                            speedupFactor: null,
-                            skipped: true
-                        };
-                        const reason = requiresWasmAssets && !runtime.usesWasm
-                            ? 'requires WebAssembly DSP'
-                            : runtime.getPluginUnsupportedReason(plugin, { channelCount });
-                        note = note ? `${note}; ${reason}` : reason;
-                    }
-
-                    // Retrieve category from pluginDefinitions
-                    const def = pluginDefinitions.get(name);
-                    result.category = def.category;
-                    result.note = note;
-
-                    results.push(result);
-                    completedCount++;
-                    progressBar.style.width = `${(completedCount / pluginCount) * 100}%`;
-                    await new Promise(resolve => setTimeout(resolve, 10));
                 }
 
                 benchmarkStatus.textContent = `Benchmark completed with ${runtime.label}!`;

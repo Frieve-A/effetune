@@ -1684,6 +1684,51 @@ test('frequency preview sound rolls back when saving fails', async () => {
   });
 });
 
+test('SFZ size limit uses the standard Config control and persists for the next load', async () => {
+  const harness = createConfigHarness();
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const select = harness.document.getElementById('sfz-size-limit');
+    assert.equal(select.value, '256');
+    assert.deepEqual(select.children.map(option => option.value), ['64', '128', '256', '512', '1024']);
+    assert.equal(harness.document.getElementById('sfz-size-limit-label').textContent,
+      'label:dialog.config.sfzSizeLimit');
+    select.value = '64';
+    await select.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.sfzMaxSizeMiB, 64);
+    const saved = harness.window.appConfig;
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+    harness.window.electronAPI.loadConfig = async () => ({ success: true, config: saved });
+    await showConfigDialog(true, saved);
+    assert.equal(harness.document.getElementById('sfz-size-limit').value, '64');
+  });
+});
+
+test('SFZ size limit restores the saved value after a failed save', async () => {
+  const harness = createConfigHarness({ config: { sfzMaxSizeMiB: 128 }, saveConfigResult: { success: false } });
+  await withGlobals({ window: harness.window, document: harness.document,
+    console: createConsoleHarness({ error() {} }) }, async () => {
+    await showConfigDialog(true, {});
+    const select = harness.document.getElementById('sfz-size-limit');
+    select.value = '1024';
+    await select.dispatchEvent('change');
+    assert.equal(select.value, '128');
+  });
+});
+
+test('Web Config preserves the SFZ size limit in the shared app settings', async () => {
+  const harness = createConfigHarness();
+  await withWebConfigRuntime({ windowObject: harness.window, document: harness.document,
+    localStorage: createLocalStorage() }, async () => {
+    await showConfigDialog(false, {});
+    const select = harness.document.getElementById('sfz-size-limit');
+    select.value = '512';
+    await select.dispatchEvent('change');
+    assert.equal((await loadConfig(false)).sfzMaxSizeMiB, 512);
+    assert.equal(harness.window.appConfig.sfzMaxSizeMiB, 512);
+  });
+});
+
 test('overlay spectrum settings persist and apply to the running display', async () => {
   const applied = [];
   const harness = createConfigHarness({

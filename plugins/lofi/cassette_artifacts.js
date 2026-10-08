@@ -1,36 +1,40 @@
+const CASSETTE_ARTIFACTS_MODES = Object.freeze([
+    'Encode Only', 'Encode + Artifacts', 'All', 'Artifacts + Decode', 'Decode Only'
+]);
+
 const CASSETTE_ARTIFACTS_SYSTEM_PRESETS = Object.freeze([
     Object.freeze({
         id: 'flagship-deck-metal', label: 'Flagship Deck Metal',
         params: Object.freeze({
-            dg: 'Reference', tp: 'Type IV', nr: 'Dolby C', bs: 0, rl: 6,
+            md: 'All', dg: 'Reference', tp: 'Type IV', nr: 'Dolby C', bs: 0, rl: 6,
             wf: 0.04, hs: -70, dp: 0, az: 0, dl: 0, og: 0, mx: 100
         })
     }),
     Object.freeze({
         id: 'hifi-chrome', label: 'Hi-Fi Chrome',
         params: Object.freeze({
-            dg: 'Hi-Fi', tp: 'Type II', nr: 'Dolby B', bs: 0, rl: 8,
+            md: 'All', dg: 'Hi-Fi', tp: 'Type II', nr: 'Dolby B', bs: 0, rl: 8,
             wf: 0.1, hs: -64, dp: 0.5, az: 1, dl: 0, og: 0, mx: 100
         })
     }),
     Object.freeze({
         id: 'pocket-cassette-player', label: 'Pocket Cassette Player',
         params: Object.freeze({
-            dg: 'Portable', tp: 'Type I', nr: 'Off', bs: 0, rl: 12,
+            md: 'All', dg: 'Portable', tp: 'Type I', nr: 'Off', bs: 0, rl: 12,
             wf: 0.4, hs: -54, dp: 4, az: 4, dl: 0, og: 0, mx: 100
         })
     }),
     Object.freeze({
         id: 'worn-mixtape', label: 'Worn Mixtape',
         params: Object.freeze({
-            dg: 'Consumer', tp: 'Type I', nr: 'Off', bs: -3, rl: 15,
+            md: 'All', dg: 'Consumer', tp: 'Type I', nr: 'Off', bs: -3, rl: 15,
             wf: 0.65, hs: -50, dp: 12, az: -5, dl: 0, og: 0, mx: 100
         })
     }),
     Object.freeze({
         id: 'hot-deck-saturation', label: 'Hot Deck Saturation',
         params: Object.freeze({
-            dg: 'Consumer', tp: 'Type II', nr: 'Off', bs: 1, rl: 18,
+            md: 'All', dg: 'Consumer', tp: 'Type II', nr: 'Off', bs: 1, rl: 18,
             wf: 0.2, hs: -58, dp: 1, az: 1, dl: 0, og: 0, mx: 100
         })
     })
@@ -709,6 +713,12 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // mx = 0 must be a bit-for-bit dry path.
     if (!(mixRatio > 0)) return data;
 
+    const modes = ${JSON.stringify(CASSETTE_ARTIFACTS_MODES)};
+    const mode = modes.includes(parameters.md) ? parameters.md : 'All';
+    const encodeActive = mode === 'Encode Only' || mode === 'Encode + Artifacts' || mode === 'All';
+    const artifactsActive = mode !== 'Encode Only' && mode !== 'Decode Only';
+    const decodeActive = mode === 'All' || mode === 'Artifacts + Decode' || mode === 'Decode Only';
+
     const CAL = ${JSON.stringify(CASSETTE_ARTIFACTS_CALIBRATION)};
     const TYPE_HISS_KEY = ${JSON.stringify(CASSETTE_ARTIFACTS_TYPE_HISS_KEY)};
     const TYPES = CAL.TYPES;
@@ -1296,7 +1306,8 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
 
     // --- state ---
     let state = context.cassetteArtifacts;
-    if (!state || state.sampleRate !== sampleRate || state.channelCount !== channelCount) {
+    if (!state || state.sampleRate !== sampleRate || state.channelCount !== channelCount
+        || state.mode !== mode) {
         const delays = new Array(channelCount);
         const dry = new Array(channelCount);
         for (let ch = 0; ch < channelCount; ch++) {
@@ -1309,6 +1320,7 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
         const dropoutLocalPhase = new Float64Array(channelCount);
         dropoutLocalPhase.fill(1);
         state = {
+            mode: mode,
             sampleRate: sampleRate,
             channelCount: channelCount,
             coefficients: {
@@ -1840,14 +1852,14 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // DROPOUT constants) — so a dp change retargets the very next sample
     // with no state disturbance and no redraw.
     const dropoutsPerMinute = parameters.dp > 0 ? parameters.dp : 0;
-    const dropoutsActive = dropoutsPerMinute > 0;
+    const dropoutsActive = artifactsActive && dropoutsPerMinute > 0;
     const dropoutHazardPerSample = dropoutsActive
         ? dropoutsPerMinute * (1 + channelCount) * 0.5 / (60 * sampleRate)
         : 0;
     // wf = 0 is a hard off too: the transport branch below is skipped
     // entirely, the deviation is exactly zero and the transport RNG stream is
     // never drawn, so the wet path reads the ring at the integer base delay.
-    const transportActive = parameters.wf > 0;
+    const transportActive = artifactsActive && parameters.wf > 0;
 
     const coefficients = state.coefficients;
     const sectionB0 = coefficients.b0;
@@ -1917,7 +1929,7 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // the recorded signal, and (makeup*s)(1+n) = makeup*(s(1+n)) already.
     const hissGain = state.hissGain * makeupGain;
     const modulationGain = state.modulationGain;
-    const noiseActive = hissGain > 0 || modulationGain > 0;
+    const noiseActive = artifactsActive && (hissGain > 0 || modulationGain > 0);
     // wf is DIN percent, and the per-percent amplitudes are pre-computed at
     // configuration time, so the per-block cost of the control is three
     // multiplications and its zero is the transportActive hard off above.
@@ -1976,7 +1988,7 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
     // reach, and the one the seeded-determinism gate stands on.
     const azimuthPhaseActive = channelCount > 1;
     const azStaticRadians = parameters.az * ARCMIN_TO_RADIANS;
-    const azWobbleActive = state.azWobbleSdRadians > 0;
+    const azWobbleActive = artifactsActive && state.azWobbleSdRadians > 0;
     const azCoefficient = state.azCoefficient;
     const azWobbleScale = state.azWobbleScale;
     const azWobbleClamp = state.azWobbleClampRadians;
@@ -2347,17 +2359,17 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
             const input = raw > -Infinity && raw < Infinity ? raw : 0;
             const dryLine = dryBuffers[ch];
             dryLine[delayPosition] = input;
-            const dry = dryLine[(delayPosition - dryDelaySamples) & DELAY_MASK];
+            const dry = artifactsActive ? dryLine[(delayPosition - dryDelaySamples) & DELAY_MASK] : input;
             let x = input * inputTrimGain;
 
             // Dolby encoder (W-5), ahead of the record EQ and the
             // saturation, per plan §3. Off is an exact pass-through; during
             // a mode crossfade both companders run and their outputs blend.
-            if (dolbyFadeActive) {
+            if (encodeActive && dolbyFadeActive) {
                 const encodeCurrent = dolbyMode === 0 ? x : dolbyEncodeSample(dolbyMode, ch, x);
                 const encodePrevious = dolbyPrevMode === 0 ? x : dolbyEncodeSample(dolbyPrevMode, ch, x);
                 x = encodePrevious + dolbyFadeWeight * (encodeCurrent - encodePrevious);
-            } else if (dolbyCurStages !== 0) {
+            } else if (encodeActive && dolbyCurStages !== 0) {
                 // Inlined dolbyEncodeSample — identical recursion, stages
                 // unrolled over the per-block coefficient hoists (W-8).
                 const encBase = dolbyCurBase + ch * DOLBY_SLOTS_PER_MODE;
@@ -2418,273 +2430,278 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
                 }
             }
 
-            // Record chain. The IEC 3180 us flux boost (W-C) comes first,
-            // ahead of the record EQ, the band limit and — crucially — the
-            // saturator: the standard asks for up to +14 dB of extra flux
-            // below 50 Hz, and this is the deck's bounded attempt at it, so
-            // the low end is what runs out of tape first.
-            let index = SECTION_RECORD_LF * channelCount + ch;
-            let y = sectionB0[SECTION_RECORD_LF] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_RECORD_LF] * x
-                - sectionA1[SECTION_RECORD_LF] * y;
-            x = y;
+            if (artifactsActive) {
+                // Record chain. The IEC 3180 us flux boost (W-C) comes first,
+                // ahead of the record EQ, the band limit and — crucially — the
+                // saturator: the standard asks for up to +14 dB of extra flux
+                // below 50 Hz, and this is the deck's bounded attempt at it, so
+                // the low end is what runs out of tape first.
+                let index = SECTION_RECORD_LF * channelCount + ch;
+                let y = sectionB0[SECTION_RECORD_LF] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_RECORD_LF] * x
+                    - sectionA1[SECTION_RECORD_LF] * y;
+                x = y;
 
-            index = SECTION_RECORD_EQ * channelCount + ch;
-            y = sectionB0[SECTION_RECORD_EQ] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_RECORD_EQ] * x - sectionA1[SECTION_RECORD_EQ] * y;
-            x = y;
+                index = SECTION_RECORD_EQ * channelCount + ch;
+                y = sectionB0[SECTION_RECORD_EQ] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_RECORD_EQ] * x - sectionA1[SECTION_RECORD_EQ] * y;
+                x = y;
 
-            index = SECTION_RECORD_EQ_B * channelCount + ch;
-            y = sectionB0[SECTION_RECORD_EQ_B] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_RECORD_EQ_B] * x - sectionA1[SECTION_RECORD_EQ_B] * y;
-            x = y;
+                index = SECTION_RECORD_EQ_B * channelCount + ch;
+                y = sectionB0[SECTION_RECORD_EQ_B] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_RECORD_EQ_B] * x - sectionA1[SECTION_RECORD_EQ_B] * y;
+                x = y;
 
-            let base = BIQUAD_RECORD_AMP * 5;
-            let stateBase = (BIQUAD_RECORD_AMP * channelCount + ch) * 2;
-            y = biquadCoefficients[base] * x + biquadState[stateBase];
-            biquadState[stateBase] = biquadCoefficients[base + 1] * x
-                - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
-            biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
-                - biquadCoefficients[base + 4] * y;
-            x = y;
+                let base = BIQUAD_RECORD_AMP * 5;
+                let stateBase = (BIQUAD_RECORD_AMP * channelCount + ch) * 2;
+                y = biquadCoefficients[base] * x + biquadState[stateBase];
+                biquadState[stateBase] = biquadCoefficients[base + 1] * x
+                    - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
+                biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
+                    - biquadCoefficients[base + 4] * y;
+                x = y;
 
-            // --- 2x oversampled tape saturation ---------------------------
-            // Interpolate: the odd half-band branch is a pure delay, the even
-            // branch is the 12-tap symmetric sum.
-            const osBase = ch * OS_HISTORY;
-            oversampleInput[osBase + oversamplePosition] = x;
-            const g0 = x;
-            const g1 = oversampleInput[osBase + ((oversamplePosition - 1) & OS_MASK)];
-            const g2 = oversampleInput[osBase + ((oversamplePosition - 2) & OS_MASK)];
-            const g3 = oversampleInput[osBase + ((oversamplePosition - 3) & OS_MASK)];
-            const g4 = oversampleInput[osBase + ((oversamplePosition - 4) & OS_MASK)];
-            const g5 = oversampleInput[osBase + ((oversamplePosition - 5) & OS_MASK)];
-            const g6 = oversampleInput[osBase + ((oversamplePosition - 6) & OS_MASK)];
-            const g7 = oversampleInput[osBase + ((oversamplePosition - 7) & OS_MASK)];
-            const g8 = oversampleInput[osBase + ((oversamplePosition - 8) & OS_MASK)];
-            const g9 = oversampleInput[osBase + ((oversamplePosition - 9) & OS_MASK)];
-            const g10 = oversampleInput[osBase + ((oversamplePosition - 10) & OS_MASK)];
-            const g11 = oversampleInput[osBase + ((oversamplePosition - 11) & OS_MASK)];
-            const upperEven = 2 * (OS_H11 * (g0 + g11) + OS_H9 * (g1 + g10) + OS_H7 * (g2 + g9)
-                + OS_H5 * (g3 + g8) + OS_H3 * (g4 + g7) + OS_H1 * (g5 + g6));
-            const upperOdd = g5;
+                // --- 2x oversampled tape saturation ---------------------------
+                // Interpolate: the odd half-band branch is a pure delay, the even
+                // branch is the 12-tap symmetric sum.
+                const osBase = ch * OS_HISTORY;
+                oversampleInput[osBase + oversamplePosition] = x;
+                const g0 = x;
+                const g1 = oversampleInput[osBase + ((oversamplePosition - 1) & OS_MASK)];
+                const g2 = oversampleInput[osBase + ((oversamplePosition - 2) & OS_MASK)];
+                const g3 = oversampleInput[osBase + ((oversamplePosition - 3) & OS_MASK)];
+                const g4 = oversampleInput[osBase + ((oversamplePosition - 4) & OS_MASK)];
+                const g5 = oversampleInput[osBase + ((oversamplePosition - 5) & OS_MASK)];
+                const g6 = oversampleInput[osBase + ((oversamplePosition - 6) & OS_MASK)];
+                const g7 = oversampleInput[osBase + ((oversamplePosition - 7) & OS_MASK)];
+                const g8 = oversampleInput[osBase + ((oversamplePosition - 8) & OS_MASK)];
+                const g9 = oversampleInput[osBase + ((oversamplePosition - 9) & OS_MASK)];
+                const g10 = oversampleInput[osBase + ((oversamplePosition - 10) & OS_MASK)];
+                const g11 = oversampleInput[osBase + ((oversamplePosition - 11) & OS_MASK)];
+                const upperEven = 2 * (OS_H11 * (g0 + g11) + OS_H9 * (g1 + g10) + OS_H7 * (g2 + g9)
+                    + OS_H5 * (g3 + g8) + OS_H3 * (g4 + g7) + OS_H1 * (g5 + g6));
+                const upperOdd = g5;
 
-            // The ceiling is pulled down by a short-time envelope; that is
-            // the whole of the model's memory and it settles in a few tens of
-            // ms.
-            let level = envelope[ch];
-            let magnitude = upperEven < 0 ? -upperEven : upperEven;
-            level += (magnitude > level ? attackCoefficient : releaseCoefficient) * (magnitude - level);
-            let memory = level * memoryScale;
-            if (memory > 1) memory = 1;
-            let ceiling = saturationBase / (1 + memory);
-            if (upperEven < 0) ceiling *= negativeCeilingScale;
-            let t = upperEven / ceiling;
-            const satEven = upperEven / Math.sqrt(1 + t * t);
+                // The ceiling is pulled down by a short-time envelope; that is
+                // the whole of the model's memory and it settles in a few tens of
+                // ms.
+                let level = envelope[ch];
+                let magnitude = upperEven < 0 ? -upperEven : upperEven;
+                level += (magnitude > level ? attackCoefficient : releaseCoefficient) * (magnitude - level);
+                let memory = level * memoryScale;
+                if (memory > 1) memory = 1;
+                let ceiling = saturationBase / (1 + memory);
+                if (upperEven < 0) ceiling *= negativeCeilingScale;
+                let t = upperEven / ceiling;
+                const satEven = upperEven / Math.sqrt(1 + t * t);
 
-            magnitude = upperOdd < 0 ? -upperOdd : upperOdd;
-            level += (magnitude > level ? attackCoefficient : releaseCoefficient) * (magnitude - level);
-            envelope[ch] = level;
-            memory = level * memoryScale;
-            if (memory > 1) memory = 1;
-            ceiling = saturationBase / (1 + memory);
-            if (upperOdd < 0) ceiling *= negativeCeilingScale;
-            t = upperOdd / ceiling;
-            const satOdd = upperOdd / Math.sqrt(1 + t * t);
+                magnitude = upperOdd < 0 ? -upperOdd : upperOdd;
+                level += (magnitude > level ? attackCoefficient : releaseCoefficient) * (magnitude - level);
+                envelope[ch] = level;
+                memory = level * memoryScale;
+                if (memory > 1) memory = 1;
+                ceiling = saturationBase / (1 + memory);
+                if (upperOdd < 0) ceiling *= negativeCeilingScale;
+                t = upperOdd / ceiling;
+                const satOdd = upperOdd / Math.sqrt(1 + t * t);
 
-            // Decimate.
-            oversampleEven[osBase + oversamplePosition] = satEven;
-            oversampleOdd[osBase + oversamplePosition] = satOdd;
-            const e1 = oversampleEven[osBase + ((oversamplePosition - 1) & OS_MASK)];
-            const e2 = oversampleEven[osBase + ((oversamplePosition - 2) & OS_MASK)];
-            const e3 = oversampleEven[osBase + ((oversamplePosition - 3) & OS_MASK)];
-            const e4 = oversampleEven[osBase + ((oversamplePosition - 4) & OS_MASK)];
-            const e5 = oversampleEven[osBase + ((oversamplePosition - 5) & OS_MASK)];
-            const e6 = oversampleEven[osBase + ((oversamplePosition - 6) & OS_MASK)];
-            const e7 = oversampleEven[osBase + ((oversamplePosition - 7) & OS_MASK)];
-            const e8 = oversampleEven[osBase + ((oversamplePosition - 8) & OS_MASK)];
-            const e9 = oversampleEven[osBase + ((oversamplePosition - 9) & OS_MASK)];
-            const e10 = oversampleEven[osBase + ((oversamplePosition - 10) & OS_MASK)];
-            const e11 = oversampleEven[osBase + ((oversamplePosition - 11) & OS_MASK)];
-            x = 0.5 * oversampleOdd[osBase + ((oversamplePosition - 6) & OS_MASK)]
-                + OS_H11 * (satEven + e11) + OS_H9 * (e1 + e10) + OS_H7 * (e2 + e9)
-                + OS_H5 * (e3 + e8) + OS_H3 * (e4 + e7) + OS_H1 * (e5 + e6);
+                // Decimate.
+                oversampleEven[osBase + oversamplePosition] = satEven;
+                oversampleOdd[osBase + oversamplePosition] = satOdd;
+                const e1 = oversampleEven[osBase + ((oversamplePosition - 1) & OS_MASK)];
+                const e2 = oversampleEven[osBase + ((oversamplePosition - 2) & OS_MASK)];
+                const e3 = oversampleEven[osBase + ((oversamplePosition - 3) & OS_MASK)];
+                const e4 = oversampleEven[osBase + ((oversamplePosition - 4) & OS_MASK)];
+                const e5 = oversampleEven[osBase + ((oversamplePosition - 5) & OS_MASK)];
+                const e6 = oversampleEven[osBase + ((oversamplePosition - 6) & OS_MASK)];
+                const e7 = oversampleEven[osBase + ((oversamplePosition - 7) & OS_MASK)];
+                const e8 = oversampleEven[osBase + ((oversamplePosition - 8) & OS_MASK)];
+                const e9 = oversampleEven[osBase + ((oversamplePosition - 9) & OS_MASK)];
+                const e10 = oversampleEven[osBase + ((oversamplePosition - 10) & OS_MASK)];
+                const e11 = oversampleEven[osBase + ((oversamplePosition - 11) & OS_MASK)];
+                x = 0.5 * oversampleOdd[osBase + ((oversamplePosition - 6) & OS_MASK)]
+                    + OS_H11 * (satEven + e11) + OS_H9 * (e1 + e10) + OS_H7 * (e2 + e9)
+                    + OS_H5 * (e3 + e8) + OS_H3 * (e4 + e7) + OS_H1 * (e5 + e6);
 
-            // Makeup, here and not at the output: everything between this
-            // point and the hiss injection is linear, so the placement cannot
-            // change the signal level, but putting it after the hiss would
-            // lift the noise floor with the trim and destroy the hiss
-            // calibration. A real machine records at 0 VU and the reproduce
-            // chain returns line level; its noise floor is fixed against line
-            // level, not against whatever was fed in.
-            x *= makeupGain;
+                // Makeup, here and not at the output: everything between this
+                // point and the hiss injection is linear, so the placement cannot
+                // change the signal level, but putting it after the hiss would
+                // lift the noise floor with the trim and destroy the hiss
+                // calibration. A real machine records at 0 VU and the reproduce
+                // chain returns line level; its noise floor is fixed against line
+                // level, not against whatever was fed in.
+                x *= makeupGain;
 
-            index = SECTION_BIAS * channelCount + ch;
-            y = sectionB0[SECTION_BIAS] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_BIAS] * x - sectionA1[SECTION_BIAS] * y;
-            x = y;
+                index = SECTION_BIAS * channelCount + ch;
+                y = sectionB0[SECTION_BIAS] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_BIAS] * x - sectionA1[SECTION_BIAS] * y;
+                x = y;
 
-            index = SECTION_BIAS_SHELF * channelCount + ch;
-            y = sectionB0[SECTION_BIAS_SHELF] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_BIAS_SHELF] * x
-                - sectionA1[SECTION_BIAS_SHELF] * y;
-            x = y;
+                index = SECTION_BIAS_SHELF * channelCount + ch;
+                y = sectionB0[SECTION_BIAS_SHELF] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_BIAS_SHELF] * x
+                    - sectionA1[SECTION_BIAS_SHELF] * y;
+                x = y;
 
-            index = SECTION_LOSS_A * channelCount + ch;
-            y = sectionB0[SECTION_LOSS_A] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_LOSS_A] * x - sectionA1[SECTION_LOSS_A] * y;
-            x = y;
+                index = SECTION_LOSS_A * channelCount + ch;
+                y = sectionB0[SECTION_LOSS_A] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_LOSS_A] * x - sectionA1[SECTION_LOSS_A] * y;
+                x = y;
 
-            index = SECTION_LOSS_B * channelCount + ch;
-            y = sectionB0[SECTION_LOSS_B] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_LOSS_B] * x - sectionA1[SECTION_LOSS_B] * y;
-            x = y;
+                index = SECTION_LOSS_B * channelCount + ch;
+                y = sectionB0[SECTION_LOSS_B] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_LOSS_B] * x - sectionA1[SECTION_LOSS_B] * y;
+                x = y;
 
-            // Dropout envelope (W-6): the recorded signal is dropped here,
-            // ahead of the transport, so the hiss injected further down
-            // stays untouched and the floor is exposed relatively — the
-            // plan's first-shipment model. The tape-wide factor was
-            // computed once per sample above; the track-local slot
-            // multiplies on top. The multiply is skipped at unity so the
-            // idle path stays bit-identical to the hard off.
-            if (dropoutsActive) {
-                let dropoutGain = sharedDropoutGain;
-                const localPhase = dropoutLocalPhase[ch];
-                if (localPhase < 1) {
-                    dropoutGain *= 1 - dropoutLocalDepth[ch]
-                        * (0.5 - 0.5 * Math.cos(TWO_PI * localPhase));
-                    const advanced = localPhase + dropoutLocalIncrement[ch];
-                    dropoutLocalPhase[ch] = advanced < 1 ? advanced : 1;
+                // Dropout envelope (W-6): the recorded signal is dropped here,
+                // ahead of the transport, so the hiss injected further down
+                // stays untouched and the floor is exposed relatively — the
+                // plan's first-shipment model. The tape-wide factor was
+                // computed once per sample above; the track-local slot
+                // multiplies on top. The multiply is skipped at unity so the
+                // idle path stays bit-identical to the hard off.
+                if (dropoutsActive) {
+                    let dropoutGain = sharedDropoutGain;
+                    const localPhase = dropoutLocalPhase[ch];
+                    if (localPhase < 1) {
+                        dropoutGain *= 1 - dropoutLocalDepth[ch]
+                            * (0.5 - 0.5 * Math.cos(TWO_PI * localPhase));
+                        const advanced = localPhase + dropoutLocalIncrement[ch];
+                        dropoutLocalPhase[ch] = advanced < 1 ? advanced : 1;
+                    }
+                    if (dropoutGain < 1) x *= dropoutGain;
                 }
-                if (dropoutGain < 1) x *= dropoutGain;
-            }
 
-            // Transport modulation. The azimuth L/R lag (W-6) rides the
-            // same cubic interpolator: channel 0 reads dt/2 early, channel
-            // 1 dt/2 late, every other channel at the common position.
-            const line = delayBuffers[ch];
-            line[delayPosition] = x;
-            let channelRead = readPosition;
-            if (azimuthPhaseActive) {
-                if (ch === 0) channelRead = readPosition + azimuthHalfDelaySamples;
-                else if (ch === 1) channelRead = readPosition - azimuthHalfDelaySamples;
-            }
-            const readFloor = Math.floor(channelRead);
-            const fraction = channelRead - readFloor;
-            const y0 = line[(readFloor - 1) & DELAY_MASK];
-            const y1 = line[readFloor & DELAY_MASK];
-            const y2 = line[(readFloor + 1) & DELAY_MASK];
-            const y3 = line[(readFloor + 2) & DELAY_MASK];
-            const c1 = 0.5 * (y2 - y0);
-            const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
-            const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-            x = ((c3 * fraction + c2) * fraction + c1) * fraction + y1;
+                // Transport modulation. The azimuth L/R lag (W-6) rides the
+                // same cubic interpolator: channel 0 reads dt/2 early, channel
+                // 1 dt/2 late, every other channel at the common position.
+                const line = delayBuffers[ch];
+                line[delayPosition] = x;
+                let channelRead = readPosition;
+                if (azimuthPhaseActive) {
+                    if (ch === 0) channelRead = readPosition + azimuthHalfDelaySamples;
+                    else if (ch === 1) channelRead = readPosition - azimuthHalfDelaySamples;
+                }
+                const readFloor = Math.floor(channelRead);
+                const fraction = channelRead - readFloor;
+                const y0 = line[(readFloor - 1) & DELAY_MASK];
+                const y1 = line[readFloor & DELAY_MASK];
+                const y2 = line[(readFloor + 1) & DELAY_MASK];
+                const y3 = line[(readFloor + 2) & DELAY_MASK];
+                const c1 = 0.5 * (y2 - y0);
+                const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+                const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+                x = ((c3 * fraction + c2) * fraction + c1) * fraction + y1;
 
-            // Azimuth in-track loss (W-6/W-D/R1-01): every channel, mono
-            // included. An ordinary first-order section, with the coefficients
-            // looked up for this sample's angle above; the pole magnitude is
-            // strictly inside the unit circle at every table entry, so the
-            // time-varying coefficients cannot destabilise it.
-            index = SECTION_AZIMUTH * channelCount + ch;
-            y = azimuthB0 * x + sectionState[index];
-            sectionState[index] = azimuthB1 * x - azimuthA1 * y;
-            x = y;
+                // Azimuth in-track loss (W-6/W-D/R1-01): every channel, mono
+                // included. An ordinary first-order section, with the coefficients
+                // looked up for this sample's angle above; the pole magnitude is
+                // strictly inside the unit circle at every table entry, so the
+                // time-varying coefficients cannot destabilise it.
+                index = SECTION_AZIMUTH * channelCount + ch;
+                y = azimuthB0 * x + sectionState[index];
+                sectionState[index] = azimuthB1 * x - azimuthA1 * y;
+                x = y;
 
-            // Head contour (W-C): up to three alternating lobes. Unused ones
-            // are exact pass-throughs written in the configuration block.
-            base = BIQUAD_HEAD_BUMP * 5;
-            stateBase = (BIQUAD_HEAD_BUMP * channelCount + ch) * 2;
-            y = biquadCoefficients[base] * x + biquadState[stateBase];
-            biquadState[stateBase] = biquadCoefficients[base + 1] * x
-                - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
-            biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
-                - biquadCoefficients[base + 4] * y;
-            x = y;
+                // Head contour (W-C): up to three alternating lobes. Unused ones
+                // are exact pass-throughs written in the configuration block.
+                base = BIQUAD_HEAD_BUMP * 5;
+                stateBase = (BIQUAD_HEAD_BUMP * channelCount + ch) * 2;
+                y = biquadCoefficients[base] * x + biquadState[stateBase];
+                biquadState[stateBase] = biquadCoefficients[base + 1] * x
+                    - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
+                biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
+                    - biquadCoefficients[base + 4] * y;
+                x = y;
 
-            base = BIQUAD_HEAD_BUMP_2 * 5;
-            stateBase = (BIQUAD_HEAD_BUMP_2 * channelCount + ch) * 2;
-            y = biquadCoefficients[base] * x + biquadState[stateBase];
-            biquadState[stateBase] = biquadCoefficients[base + 1] * x
-                - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
-            biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
-                - biquadCoefficients[base + 4] * y;
-            x = y;
+                base = BIQUAD_HEAD_BUMP_2 * 5;
+                stateBase = (BIQUAD_HEAD_BUMP_2 * channelCount + ch) * 2;
+                y = biquadCoefficients[base] * x + biquadState[stateBase];
+                biquadState[stateBase] = biquadCoefficients[base + 1] * x
+                    - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
+                biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
+                    - biquadCoefficients[base + 4] * y;
+                x = y;
 
-            base = BIQUAD_HEAD_BUMP_3 * 5;
-            stateBase = (BIQUAD_HEAD_BUMP_3 * channelCount + ch) * 2;
-            y = biquadCoefficients[base] * x + biquadState[stateBase];
-            biquadState[stateBase] = biquadCoefficients[base + 1] * x
-                - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
-            biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
-                - biquadCoefficients[base + 4] * y;
-            x = y;
+                base = BIQUAD_HEAD_BUMP_3 * 5;
+                stateBase = (BIQUAD_HEAD_BUMP_3 * channelCount + ch) * 2;
+                y = biquadCoefficients[base] * x + biquadState[stateBase];
+                biquadState[stateBase] = biquadCoefficients[base + 1] * x
+                    - biquadCoefficients[base + 3] * y + biquadState[stateBase + 1];
+                biquadState[stateBase + 1] = biquadCoefficients[base + 2] * x
+                    - biquadCoefficients[base + 4] * y;
+                x = y;
 
-            index = SECTION_REPRODUCE_EQ * channelCount + ch;
-            y = sectionB0[SECTION_REPRODUCE_EQ] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_REPRODUCE_EQ] * x
-                - sectionA1[SECTION_REPRODUCE_EQ] * y;
-            x = y;
+                index = SECTION_REPRODUCE_EQ * channelCount + ch;
+                y = sectionB0[SECTION_REPRODUCE_EQ] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_REPRODUCE_EQ] * x
+                    - sectionA1[SECTION_REPRODUCE_EQ] * y;
+                x = y;
 
-            index = SECTION_REPRODUCE_EQ_B * channelCount + ch;
-            y = sectionB0[SECTION_REPRODUCE_EQ_B] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_REPRODUCE_EQ_B] * x
-                - sectionA1[SECTION_REPRODUCE_EQ_B] * y;
-            x = y;
+                index = SECTION_REPRODUCE_EQ_B * channelCount + ch;
+                y = sectionB0[SECTION_REPRODUCE_EQ_B] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_REPRODUCE_EQ_B] * x
+                    - sectionA1[SECTION_REPRODUCE_EQ_B] * y;
+                x = y;
 
-            // IEC 3180 us reproduce side (W-C): the head differentiation
-            // against the reproduce integrator, an exact 50.049 Hz
-            // first-order high-pass. Against the bounded record boost it
-            // leaves one high-pass at 50.049 / G Hz — the deck's LF end.
-            //
-            // It must sit AHEAD of the hiss injection: the ledger's H_*
-            // columns are A-weighted floors measured at the deck's output, so
-            // the hiss must not be shaped by a reproduce stage on its way
-            // there.
-            index = SECTION_PLAY_LF * channelCount + ch;
-            y = sectionB0[SECTION_PLAY_LF] * x + sectionState[index];
-            sectionState[index] = sectionB1[SECTION_PLAY_LF] * x
-                - sectionA1[SECTION_PLAY_LF] * y;
-            x = y;
+                // IEC 3180 us reproduce side (W-C): the head differentiation
+                // against the reproduce integrator, an exact 50.049 Hz
+                // first-order high-pass. Against the bounded record boost it
+                // leaves one high-pass at 50.049 / G Hz — the deck's LF end.
+                //
+                // It must sit AHEAD of the hiss injection: the ledger's H_*
+                // columns are A-weighted floors measured at the deck's output, so
+                // the hiss must not be shaped by a reproduce stage on its way
+                // there.
+                index = SECTION_PLAY_LF * channelCount + ch;
+                y = sectionB0[SECTION_PLAY_LF] * x + sectionState[index];
+                sectionState[index] = sectionB1[SECTION_PLAY_LF] * x
+                    - sectionA1[SECTION_PLAY_LF] * y;
+                x = y;
 
-            // DC block. It sits after the reproduce post-emphasis so that it
-            // does not cancel the head bump; the stages ahead of it are
-            // linear, so the same offset is removed either way. The 50 / G Hz
-            // high-pass above subsumes it in the response, but it stays as
-            // the insurance against a DC offset out of the saturator: two
-            // multiplies.
-            const blocked = x - dcInput[ch] + dcCoefficient * dcOutput[ch];
-            dcInput[ch] = x;
-            dcOutput[ch] = blocked;
-            x = blocked;
+                // DC block. It sits after the reproduce post-emphasis so that it
+                // does not cancel the head bump; the stages ahead of it are
+                // linear, so the same offset is removed either way. The 50 / G Hz
+                // high-pass above subsumes it in the response, but it stays as
+                // the insurance against a DC offset out of the saturator: two
+                // multiplies.
+                const blocked = x - dcInput[ch] + dcCoefficient * dcOutput[ch];
+                dcInput[ch] = x;
+                dcOutput[ch] = blocked;
+                x = blocked;
 
-            if (noiseActive) {
-                rngNoise ^= rngNoise << 13; rngNoise |= 0;
-                rngNoise ^= rngNoise >>> 17;
-                rngNoise ^= rngNoise << 5; rngNoise |= 0;
-                const hissDraw = (rngNoise >>> 0) * RNG_SCALE - 1;
-                index = SECTION_HISS_HP * channelCount + ch;
-                y = sectionB0[SECTION_HISS_HP] * hissDraw + sectionState[index];
-                sectionState[index] = sectionB1[SECTION_HISS_HP] * hissDraw
-                    - sectionA1[SECTION_HISS_HP] * y;
-                let hiss = y;
-                index = SECTION_HISS_LP * channelCount + ch;
-                y = sectionB0[SECTION_HISS_LP] * hiss + sectionState[index];
-                sectionState[index] = sectionB1[SECTION_HISS_LP] * hiss
-                    - sectionA1[SECTION_HISS_LP] * y;
-                hiss = y * hissGain;
+                if (noiseActive) {
+                    rngNoise ^= rngNoise << 13; rngNoise |= 0;
+                    rngNoise ^= rngNoise >>> 17;
+                    rngNoise ^= rngNoise << 5; rngNoise |= 0;
+                    const hissDraw = (rngNoise >>> 0) * RNG_SCALE - 1;
+                    index = SECTION_HISS_HP * channelCount + ch;
+                    y = sectionB0[SECTION_HISS_HP] * hissDraw + sectionState[index];
+                    sectionState[index] = sectionB1[SECTION_HISS_HP] * hissDraw
+                        - sectionA1[SECTION_HISS_HP] * y;
+                    let hiss = y;
+                    index = SECTION_HISS_LP * channelCount + ch;
+                    y = sectionB0[SECTION_HISS_LP] * hiss + sectionState[index];
+                    sectionState[index] = sectionB1[SECTION_HISS_LP] * hiss
+                        - sectionA1[SECTION_HISS_LP] * y;
+                    hiss = y * hissGain;
 
-                rngNoise ^= rngNoise << 13; rngNoise |= 0;
-                rngNoise ^= rngNoise >>> 17;
-                rngNoise ^= rngNoise << 5; rngNoise |= 0;
-                const modulationDraw = (rngNoise >>> 0) * RNG_SCALE - 1;
-                index = SECTION_MODULATION * channelCount + ch;
-                y = sectionB0[SECTION_MODULATION] * modulationDraw + sectionState[index];
-                sectionState[index] = sectionB1[SECTION_MODULATION] * modulationDraw
-                    - sectionA1[SECTION_MODULATION] * y;
-                let modulation = y * modulationGain;
-                if (modulation > 0.5) modulation = 0.5;
-                else if (modulation < -0.5) modulation = -0.5;
-                x = (x + hiss) * (1 + modulation);
+                    rngNoise ^= rngNoise << 13; rngNoise |= 0;
+                    rngNoise ^= rngNoise >>> 17;
+                    rngNoise ^= rngNoise << 5; rngNoise |= 0;
+                    const modulationDraw = (rngNoise >>> 0) * RNG_SCALE - 1;
+                    index = SECTION_MODULATION * channelCount + ch;
+                    y = sectionB0[SECTION_MODULATION] * modulationDraw + sectionState[index];
+                    sectionState[index] = sectionB1[SECTION_MODULATION] * modulationDraw
+                        - sectionA1[SECTION_MODULATION] * y;
+                    let modulation = y * modulationGain;
+                    if (modulation > 0.5) modulation = 0.5;
+                    else if (modulation < -0.5) modulation = -0.5;
+                    x = (x + hiss) * (1 + modulation);
+                }
+            } else {
+                // Return the encoded signal to line level without the tape chain.
+                x *= makeupGain;
             }
 
             // Dolby decoder (W-5), after the noise injection and before the
@@ -2694,11 +2711,11 @@ const CASSETTE_ARTIFACTS_REFERENCE_PROCESSOR = `
             // attenuation is what the status line's effective floor reports
             // (Record Level invariant after W-A, and moved on purpose by the
             // Dolby Level Error control.)
-            if (dolbyFadeActive) {
+            if (decodeActive && dolbyFadeActive) {
                 const decodeCurrent = dolbyMode === 0 ? x : dolbyDecodeSample(dolbyMode, ch, x);
                 const decodePrevious = dolbyPrevMode === 0 ? x : dolbyDecodeSample(dolbyPrevMode, ch, x);
                 x = decodePrevious + dolbyFadeWeight * (decodeCurrent - decodePrevious);
-            } else if (dolbyCurStages !== 0) {
+            } else if (decodeActive && dolbyCurStages !== 0) {
                 // Inlined dolbyDecodeSample — identical recursion, stages
                 // unrolled (reverse encode order) over the per-block
                 // coefficient hoists (W-8).
@@ -3037,6 +3054,7 @@ class CassetteArtifactsPlugin extends PluginBase {
         this.dg = calibration.GRADE_DEFAULT; // dg: Deck Grade - Reference | Hi-Fi | Consumer | Portable
         this.tp = 'Type I';  // tp: Tape Type - Type I | Type II | Type IV
         this.nr = 'Dolby B'; // nr: Noise Reduction - Off | Dolby B | Dolby C
+        this.md = 'All';     // md: Mode - selected encode, cassette and decode stages
         this.bs = 0;         // bs: Bias - Range: -6 to +6 dB (relative to the Type's recommended point)
         this.rl = 9;         // rl: Record Level - Range: -12 to +18 dB above 250 nWb/m at a 0 dBFS peak
         this.wf = calibration.W_REF; // wf: Wow/Flutter - DIN 45507 weighted deviation at 4.76 cm/s - Range: 0 to 1 % (0 = off)
@@ -3059,7 +3077,9 @@ class CassetteArtifactsPlugin extends PluginBase {
     }
 
     getTemporalCapability() {
-        return this.enabled !== false && this.mx > 0 ? 'must-process' : 'reset-on-resume';
+        return this.enabled !== false && this.mx > 0
+            && this.md !== 'Encode Only' && this.md !== 'Decode Only'
+            ? 'must-process' : 'reset-on-resume';
     }
 
     getParameters() {
@@ -3068,6 +3088,7 @@ class CassetteArtifactsPlugin extends PluginBase {
             dg: this.dg,
             tp: this.tp,
             nr: this.nr,
+            md: this.md,
             bs: this.bs,
             rl: this.rl,
             wf: this.wf,
@@ -3082,6 +3103,9 @@ class CassetteArtifactsPlugin extends PluginBase {
     }
 
     setParameters(params) {
+        if (params.md !== undefined) {
+            this.md = this.isAllowedEnum(String(params.md), CASSETTE_ARTIFACTS_MODES, this.md);
+        }
         if (params.dg !== undefined) {
             this.dg = this.isAllowedEnum(String(params.dg),
                 Object.keys(CASSETTE_ARTIFACTS_CALIBRATION.GRADES), this.dg);
@@ -3133,6 +3157,7 @@ class CassetteArtifactsPlugin extends PluginBase {
         // audible change never waits behind the status line's measured NR
         // term (which is deferred anyway, see _scheduleNrQuietingUpdate).
         this.updateParameters();
+        this._syncModeDependentControls();
         this._refreshEffectiveValues();
     }
 
@@ -3170,12 +3195,14 @@ class CassetteArtifactsPlugin extends PluginBase {
     // cache-backed value, and leaves the render to the scheduled task
     // (R1 F-11).
     _effectiveHissDbFs(nrQuietingDb) {
+        if (this.md === 'Encode Only' || this.md === 'Decode Only') return -Infinity;
         const calibration = CASSETTE_ARTIFACTS_CALIBRATION;
         const typeKey = calibration.TYPES[this.tp] ? this.tp : 'Type II';
         const typeFloor = calibration[CASSETTE_ARTIFACTS_TYPE_HISS_KEY[typeKey]];
         const quieting = nrQuietingDb !== undefined
             ? nrQuietingDb
-            : cassetteArtifactsNrQuietingDb(typeKey, this.nr, this.hs, this.dl);
+            : (this.md === 'Encode + Artifacts'
+                ? 0 : cassetteArtifactsNrQuietingDb(typeKey, this.nr, this.hs, this.dl));
         return this.hs + (typeFloor - calibration.H_II) - this.rl - quieting;
     }
 
@@ -3204,6 +3231,7 @@ class CassetteArtifactsPlugin extends PluginBase {
     // therefore never misses the cache, and the effective floor still moves
     // with it — through the exact "- rl" term in _effectiveHissDbFs().
     _displayedNrQuietingDb() {
+        if (this.md !== 'All' && this.md !== 'Artifacts + Decode') return 0;
         const calibration = CASSETTE_ARTIFACTS_CALIBRATION;
         const typeKey = calibration.TYPES[this.tp] ? this.tp : 'Type II';
         return cassetteArtifactsNrQuietingDbCached(typeKey, this.nr, this.hs, this.dl);
@@ -3222,7 +3250,11 @@ class CassetteArtifactsPlugin extends PluginBase {
     _statusText() {
         const calibration = CASSETTE_ARTIFACTS_CALIBRATION;
         const typeKey = calibration.TYPES[this.tp] ? this.tp : 'Type II';
-        const nrLabel = this.nr === 'Off' ? 'NR Off' : this.nr;
+        const nrLabel = this.nr === 'Off' ? 'NR Off'
+            : this.nr + (this.md === 'Encode + Artifacts' ? ' encode' : '');
+        if (this.md === 'Encode Only' || this.md === 'Decode Only') {
+            return `Mode ${this.md} · ${nrLabel} · Record Level ${this.rl >= 0 ? '+' : ''}${this.rl.toFixed(1)} dB`;
+        }
         // Record Level states its convention and nothing else: it is a static
         // line, not a meter (plan D-6). What the user needs from it is the
         // one thing the control's number does not say by itself — that the
@@ -3247,7 +3279,8 @@ class CassetteArtifactsPlugin extends PluginBase {
                     ? 'measuring…'
                     : `${this._effectiveHissDbFs(quieting).toFixed(1)} dBFS`)
                 + `, ${typeKey}, ${nrLabel}`;
-        return `${recordLevel} · ${wowFlutter} · ${hiss}`;
+        const modeLabel = this.md === 'All' ? '' : `Mode ${this.md} · `;
+        return `${modeLabel}${recordLevel} · ${wowFlutter} · ${hiss}`;
     }
 
     _refreshEffectiveValues() {
@@ -3270,12 +3303,16 @@ class CassetteArtifactsPlugin extends PluginBase {
     // line from the now cache-backed value. With no status element there is
     // nothing to display, so nothing is scheduled and nothing is rendered.
     _scheduleNrQuietingUpdate() {
+        if (this._nrQuietingTimer !== null) {
+            clearTimeout(this._nrQuietingTimer);
+            this._nrQuietingTimer = null;
+        }
+        if (this.md !== 'All' && this.md !== 'Artifacts + Decode') return;
         const calibration = CASSETTE_ARTIFACTS_CALIBRATION;
         const typeKey = calibration.TYPES[this.tp] ? this.tp : 'Type II';
         if (cassetteArtifactsNrQuietingDbCached(typeKey, this.nr, this.hs, this.dl) !== null) {
             return;
         }
-        if (this._nrQuietingTimer !== null) clearTimeout(this._nrQuietingTimer);
         this._nrQuietingTimer = setTimeout(() => {
             this._nrQuietingTimer = null;
             if (!this.statusElement) return;
@@ -3305,6 +3342,7 @@ class CassetteArtifactsPlugin extends PluginBase {
     setDg(value) { this.setParameters({ dg: value }); }
     setTp(value) { this.setParameters({ tp: value }); }
     setNr(value) { this.setParameters({ nr: value }); }
+    setMd(value) { this.setParameters({ md: value }); }
     setBs(value) { this.setParameters({ bs: value }); }
     setRl(value) { this.setParameters({ rl: value }); }
     setWf(value) { this.setParameters({ wf: value }); }
@@ -3315,9 +3353,30 @@ class CassetteArtifactsPlugin extends PluginBase {
     setOg(value) { this.setParameters({ og: value }); }
     setMx(value) { this.setParameters({ mx: value }); }
 
+    _syncModeDependentControls() {
+        const artifactsActive = this.md !== 'Encode Only' && this.md !== 'Decode Only';
+        const decodeActive = this.md === 'All' || this.md === 'Artifacts + Decode' || this.md === 'Decode Only';
+        for (const control of this._syncedUIControls) {
+            const disabled = ['dg', 'tp', 'bs', 'wf', 'hs', 'dp', 'az'].includes(control.modelKey)
+                ? !artifactsActive
+                : control.modelKey === 'dl' ? !decodeActive || this.nr === 'Off'
+                    : control.modelKey === 'rl' && !artifactsActive && this.nr === 'Off';
+            for (const element of control.elements) element.disabled = disabled;
+            let row = control.elements[0]?.parentElement;
+            while (row && !row.classList.contains('parameter-row')) row = row.parentElement;
+            if (row) {
+                row.setAttribute('aria-disabled', String(disabled));
+                row.style.opacity = disabled ? '0.5' : '';
+            }
+        }
+    }
+
     createUI() {
         const container = document.createElement('div');
         container.className = 'cassette-artifacts-plugin-ui plugin-parameter-ui';
+
+        container.appendChild(this.createSelectControl('Mode', CASSETTE_ARTIFACTS_MODES,
+            this.md, this.setMd.bind(this), 'md'));
 
         // The transport speed is not a control — compact cassette runs at
         // 1 7/8 ips by definition — and it is not a row of its own either.
@@ -3371,6 +3430,7 @@ class CassetteArtifactsPlugin extends PluginBase {
             this.dl, this.setDl.bind(this), 'dB', 'dl'));
         container.appendChild(this.createParameterControl('Output', -24, 24, 0.1, this.og, this.setOg.bind(this), 'dB', 'og'));
         container.appendChild(this.createParameterControl('Mix', 0, 100, 1, this.mx, this.setMx.bind(this), '%', 'mx'));
+        this._syncModeDependentControls();
 
         // Base Wow/Flutter and Base Hiss are stated at the reference
         // configuration (fixed speed, Type II, NR Off), so the last line

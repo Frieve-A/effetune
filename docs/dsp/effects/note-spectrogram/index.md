@@ -25,7 +25,6 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 |---|---|---:|---|---|---|
 | `minimumMidi` | `minimum_midi` | integer / 1 | `28` | Not declared in catalog | 21 … 108 |
 | `maximumMidi` | `maximum_midi` | integer / 1 | `91` | Not declared in catalog | 21 … 108 |
-| `regularCandidates` | `regular_candidates` | integer / 1 | `8` | Not declared in catalog | 1 … 16 |
 
 
 
@@ -35,13 +34,13 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 ## Note Spectrogram
 
-Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves. Between E1 and G6 (the default range), each note's estimate is also refined using that note's recent detections and those of notes at related intervals, such as a semitone, a fifth, or an octave away, which helps distinguish overlapping notes.
+Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves. The analyzer estimates the fundamental pitches of notes it detects in the selected range.
 
 ### Visualization Guide
 
 - **Vertical** shows time from left to right, with the keyboard and current sound at the right edge. Higher notes appear toward the top.
 - **Horizontal** places the keyboard at the bottom, with low notes on the left and high notes on the right. New sound appears just above the keyboard, and history scrolls upward.
-- New sound is shown with an immediate pitch estimate. About 160 ms later, that part of the history is updated using the sounds that follow, so recent marks just behind the newest sound may change. This adds no display delay and leaves **Sync Visuals to Audio** alignment unchanged.
+- New sound is shown with an immediate pitch estimate. About 40, 80, and 160 ms later, that part of the history is updated using the sounds that follow, so recent marks just behind the newest sound may change. This adds no display delay and leaves **Sync Visuals to Audio** alignment unchanged.
 - Lines at each C mark octave boundaries.
 - Pitch rows corresponding to black piano keys use a nearly black gray background so they remain distinguishable when no note is detected.
 - **Normal** uses the theme’s graph trace color; **Note Colors** uses a different color for each note, repeated across octaves. The guide lines between E and F remain visible in both modes.
@@ -74,7 +73,6 @@ Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in
   - Shorter values make timing changes easier to see
   - Longer values show a longer musical passage at once
   - Default: 2 s
-- **Regular Note Limit** (1 to 16 notes) - Sets how many simultaneous notes outside the dedicated low-note range can reach the final detection stage. The default is 8. Increase it for unusually dense chords; lower values reduce analysis work and competition between candidates.
 - **Lowest Note** - Sets the bottom of both the displayed and analyzed pitch range. Default: E1.
 - **Highest Note** - Sets the top of both the displayed and analyzed pitch range. Default: G6.
 - When input is too low for analysis, the piano roll remains dark rather than showing extremely small input as pitches. This suppression does not determine whether a sound would be audible or perceptually masked.

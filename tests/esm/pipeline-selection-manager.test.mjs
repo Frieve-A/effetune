@@ -35,6 +35,7 @@ function createRuntime(pipeline, options = {}) {
 
   const pipelineCore = {
     audioManager: { pipeline },
+    expandedPlugins: new Set(),
     pipelineList: {
       querySelectorAll(selector) {
         calls.push(['querySelectorAll', selector]);
@@ -148,6 +149,7 @@ test('deleteSelectedPlugins removes valid selections in reverse order and saves 
   const pluginC = { id: 'c' };
   const missing = { id: 'missing' };
   const runtime = createRuntime([pluginA, pluginB, pluginC]);
+  runtime.pipelineCore.expandedPlugins = new Set([pluginA, pluginB, pluginC]);
   pluginB.cleanup = () => runtime.calls.push(['cleanup', 'b']);
   const manager = new PipelineSelectionManager(runtime.pipelineCore);
   manager.selectedPlugins.add(pluginA);
@@ -156,6 +158,7 @@ test('deleteSelectedPlugins removes valid selections in reverse order and saves 
 
   assert.equal(manager.deleteSelectedPlugins(), true);
   assert.deepEqual(runtime.pipelineCore.audioManager.pipeline, [pluginC]);
+  assert.deepEqual([...runtime.pipelineCore.expandedPlugins], [pluginC]);
   assert.equal(manager.selectedPlugins.has(pluginA), false);
   assert.equal(manager.selectedPlugins.has(pluginB), false);
   assert.equal(manager.selectedPlugins.has(missing), true);

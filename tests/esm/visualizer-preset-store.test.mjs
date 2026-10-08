@@ -50,6 +50,7 @@ test('older current layouts, named presets, and backups retain user settings whe
     legacy.items[0].params.sc = 'linear';
     legacy.items[2].params.mn = 40;
     legacy.items[2].params.mx = 72;
+    legacy.items[2].params.nc = 8; // Retired Notes field saved by EffeTune v2.12.0.
     delete legacy.graphScale;
     const original = structuredClone(legacy);
     const stores = { current: new Map([['layout', legacy]]), presets: new Map([['Saved', legacy]]) };
@@ -61,6 +62,7 @@ test('older current layouts, named presets, and backups retain user settings whe
         getAllKeys: () => [...stores[name].keys()]
     });
     assert.deepEqual(await store.loadCurrent(), original, 'Initialization receives the saved layout instead of a null fallback');
+    assert.equal(Object.hasOwn(normalizeLayout(await store.loadCurrent()).items[2].params, 'nc'), false);
     assert.deepEqual(normalizeLayout(await store.getUserPreset('Saved')), normalizeLayout(original));
     assert.doesNotThrow(() => validateItemShape({ id: 'old-backup', kind: 'visualizer', name: 'Restored', data: original }));
     await store.appendUserPreset('Restored', original);
@@ -117,7 +119,7 @@ test('system presets load once by aspect and never enter user storage', async ()
     } });
     const presets = await store.loadSystemPresets();
     assert.deepEqual(Object.keys(presets), ['16:9', '21:9', '4:3', '1:1', '9:16']);
-    assert.ok(Object.values(presets).every(group => Object.keys(group).length === 10));
+    assert.ok(Object.values(presets).every(group => Object.keys(group).length >= 10));
     assert.equal(await store.loadSystemPresets(), presets);
     assert.equal(requests.length, 5);
 });

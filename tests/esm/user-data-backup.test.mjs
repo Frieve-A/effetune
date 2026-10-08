@@ -18,7 +18,7 @@ import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 const require = createRequire(import.meta.url);
 const zipModule = { exports: {} };
-runInThisContext(`(function(module, exports, require) {${readFileSync(new URL('../../js/vendor/jszip-3.10.1.min.js', import.meta.url), 'utf8')}\n})`)(zipModule, zipModule.exports, require);
+runInThisContext(`(function(module, exports, require) {${readFileSync(new URL('../../js/vendor/jszip-3.10.2.min.js', import.meta.url), 'utf8')}\n})`)(zipModule, zipModule.exports, require);
 const JSZip = zipModule.exports;
 const loadZip = async () => JSZip;
 const encoder = new TextEncoder();

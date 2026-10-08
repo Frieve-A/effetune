@@ -52,9 +52,9 @@ test('production schemas expose the audited automation population', async () => 
     .filter(([, parameters]) => parameters.length === 0)
     .map(([type]) => type);
 
-  assert.equal(entries.length, 111);
-  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 93);
-  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1020);
+  assert.equal(entries.length, 112);
+  assert.equal(entries.filter(([, parameters]) => parameters.length !== 0).length, 94);
+  assert.equal(entries.reduce((count, [, parameters]) => count + parameters.length, 0), 1034);
   for (const effect of specs) {
     const expectedLeaves = [];
     let packedOffset = 0;
@@ -86,7 +86,7 @@ test('production schemas expose the audited automation population', async () => 
   }
   assert.equal(
     createHash('sha256').update(JSON.stringify(catalog.effects)).digest('hex'),
-    '94fede174522c7494ba6a36554304e2b861d6ba49b1570f995b151741777eaf5'
+    '62af5747d23267224319501122736806030dc29a60ba78ca38fce645258c2f6b'
   );
   assert.deepEqual(privateEffects, [
     'AnalogMeterPlugin', 'BassManagementPlugin', 'ChromaSpiralPlugin', 'FIRCrossoverPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayEqPlugin',
@@ -100,7 +100,7 @@ test('production schemas expose the audited automation population', async () => 
     },
     analyzerOnly: {
       AnalogMeterPlugin: ['mode', 'integration', 'attack', 'release'],
-      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi', 'regularCandidates'],
+      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi'],
       OscilloscopePlugin: [
         'displayTime', 'triggerMode', 'triggerLevel', 'triggerEdge', 'holdoff',
         'displayLevel', 'verticalOffset'
@@ -138,7 +138,8 @@ test('production schemas expose the audited automation population', async () => 
       OscillatorPlugin: ['waveform']
     },
     reconfiguresTemporalState: {
-      PitchShifterPlugin: ['windowSize', 'crossfadeTime']
+      PitchShifterPlugin: ['windowSize', 'crossfadeTime'],
+      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices']
     },
     resetsLearningState: {
       AdaptivePredictionEffectPlugin: ['resetToken']

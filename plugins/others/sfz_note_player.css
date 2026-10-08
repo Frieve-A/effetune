@@ -1,0 +1,56 @@
+.sfz-note-player-plugin-ui .sfz-bank-row {
+    column-span: all;
+    row-gap: 4px;
+}
+.sfz-note-player-plugin-ui .sfz-bank-row[hidden] { display: none; }
+.sfz-note-player-plugin-ui .sfz-bank-row select { flex: 1; min-width: 100px; }
+.sfz-note-player-plugin-ui .sfz-bank-status { column-span: all; margin: 8px 0 12px; color: var(--et-danger); overflow-wrap: anywhere; }
+.sfz-note-player-plugin-ui .sfz-controls > .parameter-row:not(.sfz-bank-row),
+body.layout-mobile .sfz-note-player-plugin-ui .sfz-controls > .parameter-row:not(.sfz-bank-row) { flex-wrap: nowrap; }
+.sfz-note-player-plugin-ui .sfz-controls .parameter-row input[type="range"],
+body.layout-mobile .sfz-note-player-plugin-ui .sfz-controls .parameter-row input[type="range"] { flex: 1 1 0; min-width: 40px; }
+.sfz-note-player-plugin-ui.plugin-parameter-ui .parameter-row input[type="text"].sfz-note-value {
+    flex: 0 1 80px;
+    width: 80px;
+    min-width: 0;
+}
+.sfz-note-player-plugin-ui button {
+    box-sizing: border-box;
+    min-height: 26px;
+    padding: 4px 10px;
+    border: 1px solid var(--et-surface-32);
+    border-radius: 4px;
+    background: var(--et-control-gradient);
+    color: var(--et-text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+.sfz-note-player-plugin-ui button:hover:not(:disabled) { background: var(--et-control-hover-gradient); }
+.sfz-note-player-plugin-ui button:focus-visible { outline: 2px solid var(--et-accent); }
+.sfz-note-player-plugin-ui button:disabled { opacity: 0.5; cursor: default; }
+.sfz-load-notice-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    background: var(--et-scrim);
+}
+.sfz-load-notice {
+    box-sizing: border-box;
+    width: 480px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 40px);
+    overflow: auto;
+    padding: 20px;
+    border: 1px solid var(--et-border-strong);
+    border-radius: 8px;
+    background: var(--et-panel-gradient);
+    color: var(--et-text-primary);
+}
+.sfz-load-notice h2 { margin: 0 0 16px; font-size: 18px; }
+.sfz-load-notice p { white-space: pre-line; line-height: 1.5; }
+.sfz-load-notice .dialog-buttons { display: flex; justify-content: flex-end; }
+.sfz-load-notice button { padding: 8px 20px; border-radius: 4px; font: inherit; cursor: pointer; }
+body.layout-mobile .sfz-note-player-plugin-ui button { min-height: var(--et-mobile-control-height); }

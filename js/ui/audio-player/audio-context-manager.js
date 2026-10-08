@@ -40,6 +40,7 @@ import {
 
 const MEDIA_CANDIDATE_READY_TIMEOUT_MS = 15000;
 const MEDIA_START_TIMEOUT_MS = 15000;
+const PLAYBACK_FADE_SECONDS = 0.02;
 const FULL_DECODE_RESERVATION_PROFILE = Object.freeze({
   compressedSourceByteCap: ROLLING_COMPRESSED_SOURCE_BYTE_CAP,
   currentPcmByteCap: FULL_BUFFER_PCM_BYTE_CAP,
@@ -118,6 +119,8 @@ export class AudioContextManager {
     this.pendingMediaCandidateReadiness = new Set();
     this.openHomeCorsElements = new WeakSet();
     this.privatePipelineSourceGates = new WeakMap();
+    this.pendingPause = null;
+    this.pauseRequestToken = 0;
     this.playbackChannelAdapters = new WeakMap();
     
     // Instance tracking for cleanup
@@ -242,22 +245,30 @@ export class AudioContextManager {
       this.audioManager.isSourceConnectedToPipeline?.(pipelineSourceNode) === true;
   }
 
-  setPrivatePipelineSourceMuted(sourceNode, muted) {
+  setPrivatePipelineSourceMuted(sourceNode, muted, fadeIn = false) {
     const gate = this.privatePipelineSourceGates.get(sourceNode);
     if (!gate) return muted === false;
 
     try {
-      gate.gain.value = muted ? 0 : 1;
+      const gain = gate.gain;
+      gain.cancelScheduledValues?.(0);
+      if (!muted && fadeIn && typeof gain.linearRampToValueAtTime === 'function') {
+        const now = this.audioPlayer.audioContext.currentTime;
+        gain.setValueAtTime(0, now);
+        gain.linearRampToValueAtTime(1, now + PLAYBACK_FADE_SECONDS);
+      } else {
+        gain.value = muted ? 0 : 1;
+      }
       return true;
     } catch (error) {
       return false;
     }
   }
 
-  connectPrivatePipelineSource(sourceNode, { replaceDirectRoute = false } = {}) {
+  connectPrivatePipelineSource(sourceNode, { replaceDirectRoute = false, muted = true } = {}) {
     const existingGate = this.privatePipelineSourceGates.get(sourceNode);
     if (existingGate) {
-      return this.setPrivatePipelineSourceMuted(sourceNode, true) &&
+      return this.setPrivatePipelineSourceMuted(sourceNode, muted) &&
         this.ensurePipelineSourceConnected(sourceNode);
     }
 
@@ -269,7 +280,7 @@ export class AudioContextManager {
       // Keep an unverified candidate private without muting unrelated sources
       // or changing the master output gain.
       gate = this.audioPlayer.audioContext.createGain();
-      gate.gain.value = 0;
+      gate.gain.value = muted ? 0 : 1;
       if (replaceDirectRoute) {
         this.audioManager.disconnectSourceFromPipeline?.(sourceOutputNode);
         directRouteRemoved = true;
@@ -291,6 +302,31 @@ export class AudioContextManager {
       }
       return false;
     }
+  }
+
+  fadeOutPlaybackSource(sourceNode) {
+    const audioContext = this.audioPlayer.audioContext;
+    if (!sourceNode || audioContext?.state !== 'running') return null;
+    if (!this.privatePipelineSourceGates.has(sourceNode) &&
+        !this.connectPrivatePipelineSource(sourceNode, { replaceDirectRoute: true, muted: false })) {
+      return null;
+    }
+    const gate = this.privatePipelineSourceGates.get(sourceNode);
+    const gain = gate.gain;
+    if (typeof gain.linearRampToValueAtTime !== 'function') return null;
+    if (!this.getUseInputWithPlayer()) this.setManagedSourceNode(gate);
+
+    const now = audioContext.currentTime;
+    // Hold an unfinished resume ramp so a quick pause does not jump to full volume.
+    if (typeof gain.cancelAndHoldAtTime === 'function') {
+      gain.cancelAndHoldAtTime(now);
+    } else {
+      const value = gain.value;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(value, now);
+    }
+    gain.linearRampToValueAtTime(0, now + PLAYBACK_FADE_SECONDS);
+    return new Promise(resolve => setTimeout(resolve, PLAYBACK_FADE_SECONDS * 1000));
   }
 
   /**
@@ -1172,15 +1208,18 @@ export class AudioContextManager {
     return this.rebindCurrentPlayback({ stopCurrentFirst: false, newAudioContext });
   }
 
-  async rebindCurrentPlayback({ stopCurrentFirst, newAudioContext = null }) {
+  async rebindCurrentPlayback({ stopCurrentFirst, newAudioContext = null, restoreState = null }) {
     this.supersedeRollingSeekCandidate();
 
     const state = this.getCurrentState();
     const currentTrack = this.getTrackForGraphRebind(state);
-    const wasPlaying = !!state?.isPlaying;
-    const wasPaused = !!state?.isPaused;
-    const wasStopped = !!state?.isStopped;
-    const restorePosition = this.getPlaybackPositionForGraphRebind(state);
+    const playbackState = restoreState ?? state;
+    const wasPlaying = !!playbackState?.isPlaying;
+    const wasPaused = !!playbackState?.isPaused;
+    const wasStopped = !!playbackState?.isStopped;
+    const restorePosition = restoreState
+      ? restoreState.currentTrackPosition
+      : this.getPlaybackPositionForGraphRebind(state);
     const currentTrackIndex = state?.currentTrackIndex;
     void this.disposeRollingPreparationsForOwner(this.activeGraphRebuildRequest);
     const graphRebuildGeneration = ++this.graphRebuildGeneration;
@@ -2316,6 +2355,12 @@ export class AudioContextManager {
    * Play current track
    */
   async play(forcePlay = false, userInitiated = true) {
+    if (this.pendingPause) {
+      const stopToken = this.stopRequestToken;
+      const pauseToken = this.pauseRequestToken;
+      await this.pendingPause;
+      if (this.stopRequestToken !== stopToken || this.pauseRequestToken !== pauseToken) return false;
+    }
     const graphRebuildRequest = this.setGraphRebuildTransportIntent('play');
     if (graphRebuildRequest) {
       this.updateState({
@@ -2353,6 +2398,7 @@ export class AudioContextManager {
   async playRollingPcm(stopToken = this.stopRequestToken) {
     const transport = this.rollingTransport;
     if (!transport?.prepared || transport.failed || transport.disposed) return false;
+    const fadeIn = this.getCurrentState()?.isPaused === true;
     const sourceGeneration = this.activeSourceGeneration || ++this.sourceGenerationSequence;
     if (this.activeSourceGeneration === 0) this.activeSourceGeneration = sourceGeneration;
     let stage = null;
@@ -2365,12 +2411,15 @@ export class AudioContextManager {
       if (this.stopRequestToken !== stopToken || this.rollingTransport !== transport ||
           this.activeSourceGeneration !== sourceGeneration ||
           !this.ensurePipelineSourceConnected(transport.sourceNode)) return false;
+      if (fadeIn && !this.connectPrivatePipelineSource(transport.sourceNode, {
+        replaceDirectRoute: true
+      })) return false;
       const commit = () => {
         // The anchor frame is read only here, after staging: a seek adopted
         // meanwhile has already moved the transport position, and a seek still
         // in flight re-anchors playback itself once it is adopted.
         const frame = transport.positionFrame;
-        if (!this.setPrivatePipelineSourceMuted(transport.sourceNode, false) ||
+        if (!this.setPrivatePipelineSourceMuted(transport.sourceNode, false, fadeIn) ||
             !transport.activate({ when: this.audioPlayer.audioContext.currentTime, frame })) {
           throw new Error('rolling-playback-activation-failed');
         }
@@ -2426,6 +2475,7 @@ export class AudioContextManager {
     const sourceGeneration = this.activeSourceGeneration || ++this.sourceGenerationSequence;
     if (this.activeSourceGeneration === 0) this.activeSourceGeneration = sourceGeneration;
     const initialState = this.getCurrentState();
+    const fadeIn = initialState?.isPaused === true;
     const resumePosition = initialState?.isPaused ? initialState.currentTrackPosition : 0;
     let stage = null;
     let candidateSource = null;
@@ -2445,7 +2495,7 @@ export class AudioContextManager {
 
       const instanceId = this.currentInstanceId;
       candidateSource = this.createBufferSource(buffer, instanceId, {
-        privateUntilCommit: !!stage,
+        privateUntilCommit: !!stage || fadeIn,
         isCommitted: () => committed,
         onPendingEnded: () => { candidateEnded = true; }
       });
@@ -2464,7 +2514,7 @@ export class AudioContextManager {
             this.stopRequestToken === stopToken &&
             this.isPipelineSourceConnected(candidateSource),
           commit: () => {
-            if (!this.setPrivatePipelineSourceMuted(candidateSource, false)) {
+            if (!this.setPrivatePipelineSourceMuted(candidateSource, false, fadeIn)) {
               throw new Error('private-pipeline-source-publish-failed');
             }
             committed = true;
@@ -2490,6 +2540,9 @@ export class AudioContextManager {
         });
         if (!result.activated) return false;
       } else {
+        if (!this.setPrivatePipelineSourceMuted(candidateSource, false, fadeIn)) {
+          throw new Error('private-pipeline-source-publish-failed');
+        }
         committed = true;
         this.pendingBufferSource = null;
         this.currentBufferSource = candidateSource;
@@ -2538,6 +2591,7 @@ export class AudioContextManager {
     if (!audioElement) {
       return false;
     }
+    const fadeIn = this.getCurrentState()?.isPaused === true;
 
     const sourceGeneration = this.activeSourceGeneration || ++this.sourceGenerationSequence;
     const mediaSource = this.mediaSource;
@@ -2554,12 +2608,12 @@ export class AudioContextManager {
         this.mediaSource !== mediaSource || this.mediaSourceGeneration !== mediaSourceGeneration) {
         return false;
       }
-      if (stage && !this.connectPrivatePipelineSource(mediaSource, { replaceDirectRoute: true })) {
+      if ((stage || fadeIn) && !this.connectPrivatePipelineSource(mediaSource, { replaceDirectRoute: true })) {
         return false;
       }
-      if (stage && !this.getUseInputWithPlayer()) {
+      if ((stage || fadeIn) && !this.getUseInputWithPlayer()) {
         this.setManagedSourceNode(this.getPipelineSourceNode(mediaSource));
-      } else if (!stage && !this.setPrivatePipelineSourceMuted(mediaSource, false)) {
+      } else if (!stage && !fadeIn && !this.setPrivatePipelineSourceMuted(mediaSource, false)) {
         return false;
       }
       pendingActivation = {
@@ -2604,7 +2658,7 @@ export class AudioContextManager {
             mediaStart?.failed !== true &&
             this.isPipelineSourceConnected(mediaSource),
           commit: () => {
-            if (!this.setPrivatePipelineSourceMuted(mediaSource, false)) {
+            if (!this.setPrivatePipelineSourceMuted(mediaSource, false, fadeIn)) {
               throw new Error('private-pipeline-source-publish-failed');
             }
             this.pendingMediaActivation = null;
@@ -2630,6 +2684,7 @@ export class AudioContextManager {
           try { audioElement.pause(); } catch (_) { /* ignore */ }
           return false;
         }
+        if (!this.setPrivatePipelineSourceMuted(mediaSource, false, fadeIn)) return false;
         this.pendingMediaActivation = null;
         this.updateState({
           isPlaying: true,
@@ -2670,6 +2725,8 @@ export class AudioContextManager {
    * Pause current track
    */
   async pause() {
+    this.pauseRequestToken++;
+    if (this.pendingPause) return this.pendingPause;
     this.rollingSeekRequestToken++;
     // The invalidated seek no longer holds the token, so it cannot release the
     // marker itself; a stale marker would decline every later reservation on
@@ -2706,8 +2763,30 @@ export class AudioContextManager {
       return;
     }
 
-    this.stopRequestToken++;
-    
+    const stopToken = ++this.stopRequestToken;
+    const sourceGeneration = this.activeSourceGeneration;
+    const sourceNode = this.getPlaybackBackendAdapter().getSource(this);
+    const fade = state?.isPlaying ? this.fadeOutPlaybackSource(sourceNode) : null;
+    if (fade) {
+      this.clearRegionBoundaryTimer();
+      const pause = (async () => {
+        await fade;
+        if (this.stopRequestToken !== stopToken || this.activeSourceGeneration !== sourceGeneration ||
+            this.getPlaybackBackendAdapter().getSource(this) !== sourceNode) return;
+        await this.dispatchPlaybackBackend('pause');
+        this.convergePlaybackSpeedBackend();
+      })();
+      this.pendingPause = pause;
+      this.updateState({ isPlaying: false, isPaused: true, isStopped: false },
+        'Playback pause fade started');
+      try {
+        await pause;
+      } finally {
+        if (this.pendingPause === pause) this.pendingPause = null;
+      }
+      return;
+    }
+
     await this.dispatchPlaybackBackend('pause');
     this.convergePlaybackSpeedBackend();
   }
@@ -2871,6 +2950,11 @@ export class AudioContextManager {
    * Seek to position
    */
   async seek(time) {
+    if (this.pendingPause) {
+      const stopToken = this.stopRequestToken;
+      await this.pendingPause;
+      if (this.stopRequestToken !== stopToken) return;
+    }
     const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
     if (graphRebuildRequest) {
       const region = getPlaybackRegion(graphRebuildRequest.track);
@@ -3064,7 +3148,7 @@ export class AudioContextManager {
    */
   handleTrackEnded() {
     const state = this.getCurrentState();
-    if (state?.isStopped || state?.isTransitioning) return;
+    if (this.pendingPause || state?.isStopped || state?.isTransitioning) return;
     const region = this.activeRegion;
     const regionPlan = region?.transportPlanPending !== true &&
       this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(region?.transportPlan) === true
@@ -3874,7 +3958,7 @@ export class AudioContextManager {
   }
 
   handleRollingTrackEnded(transport) {
-    if (this.rollingTransport !== transport) return;
+    if (this.pendingPause || this.rollingTransport !== transport) return;
     if (this.commitScheduledRollingTransition(transport)) return;
     const deferred = this.nextBuffer;
     if (deferred?.decisionRecord?.deferRollingFallbackUntilBoundary === true) {
@@ -4459,7 +4543,7 @@ export class AudioContextManager {
   notifyStreamBoundary(time = this.audioPlayer.audioContext?.currentTime) {
     const sampleRate = this.audioPlayer.audioContext?.sampleRate;
     if (!sampleRate) return;
-    this.audioManager.workletNode?.port?.postMessage({
+    this.audioManager.broadcastToActiveWorklets({
       type: 'streamBoundary',
       frame: time === null ? null : Math.round(time * sampleRate)
     });

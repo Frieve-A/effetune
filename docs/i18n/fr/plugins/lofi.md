@@ -163,6 +163,8 @@ Un effet qui recrée le son des appareils numériques vintage comme les ancienne
 
 Cassette Artifacts combine la réponse en fréquence, la compression, le souffle, le pleurage et scintillement, les décrochages et les variations d'alignement d'une cassette. Utilisez-le pour obtenir le caractère complet d'une platine, et non une simple couche de bruit.
 
+Mode permet aussi d’utiliser uniquement l’encodage ou le décodage Dolby, ou de choisir les étapes à combiner.
+
 ### Différences avec les autres effets lo-fi
 
 - **Tape Artifacts** donne un son de bobine ouverte plus propre et plus large. Cassette Artifacts est plus sombre et ajoute Tape Type, réduction de bruit, décrochages et alignement de tête.
@@ -176,6 +178,8 @@ Cassette Artifacts combine la réponse en fréquence, la compression, le souffle
 - **Tape Type** change le bruit et la marge : Type I est le plus bruyant, Type II est équilibré et Type IV préserve mieux les crêtes brillantes.
 - **Noise Reduction** réduit le souffle. Dolby C agit davantage que Dolby B ; Off laisse le fond le plus brut.
 - Montez **Wow/Flutter**, **Hiss** ou **Dropouts** pour un son plus usé. **Azimuth** adoucit l'aigu et modifie sa relation entre les canaux.
+
+Pour écouter uniquement le décodage Dolby, choisissez **Mode: Decode Only**. Pour lire un enregistrement Dolby B avec Dolby C, placez deux instances de Cassette Artifacts dans cet ordre : **Encode + Artifacts / Noise Reduction: Dolby B**, puis **Decode Only / Noise Reduction: Dolby C**. Réglez le même **Record Level** sur les deux, avec **Output: 0 dB** et **Mix: 100%**, pour conserver la référence de niveau entre les étapes.
 
 ### Préréglages système
 
@@ -191,22 +195,25 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
 
 La vitesse de la cassette est fixe : il n'y a donc pas de réglage Speed.
 
+- **Mode** (par défaut : All) - Sélectionne les étapes dans cet ordre : encodage Dolby → enregistrement et lecture sur cassette → décodage Dolby. **Encode Only** et **Decode Only** exécutent uniquement l’étape Dolby correspondante. **Encode + Artifacts** omet le décodage ; **Artifacts + Decode** omet l’encodage ; **All** exécute toutes les étapes. Les réglages des étapes omises sont désactivés.
 - **Deck Grade** (Reference, Hi-Fi, Consumer ou Portable) - Choisit le caractère de la platine. Commencez avec Consumer.
 - **Tape Type** (Type I, Type II ou Type IV) - Change le bruit et la marge.
-- **Noise Reduction** (Off, Dolby B ou Dolby C) - Réduit le souffle.
+- **Noise Reduction** (Off, Dolby B ou Dolby C) - Choisit le système Dolby des étapes d’encodage et de décodage actives. L’encodage renforce les passages faibles, surtout les aigus ; le décodage les atténue. Dolby C agit davantage que Dolby B. Off désactive les deux étapes Dolby tout en conservant les effets de cassette sélectionnés.
 - **Bias** (-6.0 à +6.0 dB) - Commencez à 0 dB. Les petites valeurs positives sont plus propres et sombres ; les négatives, plus brillantes et rugueuses.
-- **Record Level** (-12.0 à +18.0 dB) - Commencez à +9 dB. Montez-le pour plus de densité ou baissez-le pour un son plus propre.
+- **Record Level** (-12.0 à +18.0 dB) - Règle le niveau d’enregistrement sur la bande et le niveau du signal par rapport à la référence Dolby. Commencez à +9 dB. Avec les effets de cassette actifs, montez-le pour renforcer compression et saturation, ou baissez-le pour préserver la dynamique. Dans les modes Dolby seuls, il règle l’intensité du traitement dépendant du niveau. Utilisez la même valeur lorsque l’encodage et le décodage sont répartis sur deux instances.
 - **Wow/Flutter** (0 à 1 %) - 0 % est stable ; 0.200 % ajoute un mouvement audible et les valeurs élevées un fort tremblement.
 - **Hiss** (-92.0 à -42.0 dB re 250 nWb/m) - Règle le bruit de bande. Le minimum le coupe.
 - **Dropouts** (0 à 20 events/min) - 0 les coupe ; 2 events/min ajoute une usure occasionnelle.
 - **Azimuth** (-6.0 à +6.0 arcmin) - S'éloigner de 0 adoucit l'aigu et modifie le décalage gauche/droite.
-- **Dolby Level Error** (-3.0 à +3.0 dB) - Avec Noise Reduction, les valeurs positives éclaircissent et les négatives assombrissent.
+- **Dolby Level Error** (-3.0 à +3.0 dB) - Simule un écart de calibration entre les platines d’enregistrement et de lecture lorsque le décodage est actif et Noise Reduction est activé. Les valeurs positives donnent un son plus brillant et plus de souffle ; les valeurs négatives l’assombrissent. Commencez à 0 dB.
 - **Output** (-24.0 à +24.0 dB) - Égalise le volume avec le bypass.
-- **Mix** (0 à 100 %) - Commencez à 100 % ; baissez-le pour un résultat plus discret.
+- **Mix** (0 à 100%) - Mélange le son traité avec l’original. Commencez à 100% pour juger l’effet complet, puis baissez-le pour un résultat plus discret. Avec les effets de cassette actifs, les valeurs intermédiaires peuvent adoucir les aigus les plus élevés par annulation partielle entre les deux trajets.
 
 ### Lecture de la ligne d'état
 
 Elle indique le pleurage/scintillement et le bruit de fond obtenus. `off` signifie que le bruit est coupé et `measuring…` que la valeur se met à jour.
+
+Ces indications concernent les modes avec effets de cassette. Dans Encode + Artifacts, le bruit indiqué ne passe pas par le décodage Dolby. Les modes Dolby seuls affichent Mode, Noise Reduction et Record Level.
 
 ### Réglages recommandés
 

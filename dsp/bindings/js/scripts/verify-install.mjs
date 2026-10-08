@@ -69,6 +69,7 @@ try {
     "  if (!observations.some(frame => frame.kind === 'noteSpectrogram' && frame.levels.length === 440)) throw new Error('note observations missing');",
     "  if (!observations.some(frame => frame.revisionAge === 0 && frame.revisedLevels === null)) throw new Error('initial note observations missing');",
     "  if (!observations.some(frame => frame.revisionAge === 8 && frame.revisedLevels.length === 440)) throw new Error('revised note observations missing');",
+    "  if (!observations.some(frame => frame.revisions.map(revision => revision.age).join(',') === '2,4,8')) throw new Error('intermediate note observations missing');",
     "  if (!(eta1 instanceof ArrayBuffer) || eta1.byteLength !== 36) throw new Error('ETA1 encoding failed');",
     "  const chain = await m.createChain({version: 1, chain: [{type: 'Compressor', parameters: {threshold: -18}}]}, {variant: 'baseline'});",
     "  const input = [new Float32Array(128).fill(1)];",

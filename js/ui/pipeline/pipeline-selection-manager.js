@@ -124,6 +124,7 @@ export class PipelineSelectionManager {
                 
                 this.audioManager.pipeline.splice(index, 1);
                 this.selectedPlugins.delete(plugin);
+                this.pipelineCore.expandedPlugins.delete(plugin);
             }
         });
         

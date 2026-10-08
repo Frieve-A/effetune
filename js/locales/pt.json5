@@ -1359,5 +1359,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "Ampliar",
   "visualizer.zoomLevel": "Zoom",
-  "visualizer.zoomOut": "Reduzir"
+  "visualizer.zoomOut": "Reduzir",
+  "dialog.config.sfzSizeLimit": "Limite de tamanho de SFZ",
+  "dialog.config.sfzSizeLimitHelp": "Define o tamanho máximo de uma biblioteca de sons SFZ que pode ser carregada.",
+  "sfzNotePlayer.missingBank": "SFZ não encontrado",
+  "sfzNotePlayer.error.missing": "Não foi possível encontrar o SFZ selecionado. Selecione-o novamente ou escolha outro SFZ.",
+  "sfzNotePlayer.error.tooLarge": "Este SFZ excede o limite de tamanho. Aumente «Limite de tamanho de SFZ» em Configuração → Geral ou escolha um SFZ menor.",
+  "sfzNotePlayer.error.noRegions": "Nenhuma amostra reproduzível foi encontrada. Escolha outro SFZ.",
+  "sfzNotePlayer.error.storage": "Não foi possível acessar a biblioteca SFZ. Verifique as permissões dos arquivos e o espaço de armazenamento disponível e tente novamente.",
+  "sfzNotePlayer.error.prepare": "Não foi possível carregar o SFZ. Verifique se os arquivos de amostras estão disponíveis ou escolha outro SFZ.",
+  "sfzNotePlayer.warning.loop-points-ignored": "As configurações de loop não utilizadas foram ajustadas para permitir o carregamento deste SFZ.",
+  "sfzNotePlayer.warning.invalid-regions": "Alguns sons foram ignorados porque suas configurações eram inválidas.",
+  "sfzNotePlayer.warning.missing-samples": "Alguns arquivos de amostras não foram encontrados. Apenas os sons disponíveis foram carregados.",
+  "sfzNotePlayer.warning.unsupported-regions": "Alguns sons foram ignorados porque usam condições de reprodução não compatíveis com este efeito.",
+  "sfzNotePlayer.warning.reduced-bank": "Uma seleção menor de sons foi carregada para respeitar o limite de tamanho, mantendo todas as notas. Aumente «Limite de tamanho de SFZ» para usar mais sons."
 }

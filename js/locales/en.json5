@@ -1379,5 +1379,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "Zoom in",
   "visualizer.zoomLevel": "Zoom",
-  "visualizer.zoomOut": "Zoom out"
+  "visualizer.zoomOut": "Zoom out",
+  "dialog.config.sfzSizeLimit": "SFZ size limit",
+  "dialog.config.sfzSizeLimitHelp": "Sets the maximum size of an SFZ sound library that can be loaded.",
+  "sfzNotePlayer.missingBank": "Missing SFZ",
+  "sfzNotePlayer.error.missing": "The selected SFZ could not be found. Choose it again or choose another SFZ.",
+  "sfzNotePlayer.error.tooLarge": "This SFZ exceeds the size limit. Increase SFZ size limit in Config → General, or choose a smaller SFZ.",
+  "sfzNotePlayer.error.noRegions": "No playable samples were found. Choose another SFZ.",
+  "sfzNotePlayer.error.storage": "The SFZ library could not be accessed. Check file permissions and available storage space, then try again.",
+  "sfzNotePlayer.error.prepare": "The SFZ could not be loaded. Check that its sample files are available, or choose another SFZ.",
+  "sfzNotePlayer.warning.loop-points-ignored": "Unused loop settings were adjusted so this SFZ could be loaded.",
+  "sfzNotePlayer.warning.invalid-regions": "Some sounds had invalid settings and were skipped.",
+  "sfzNotePlayer.warning.missing-samples": "Some sample files could not be found. The available sounds were loaded.",
+  "sfzNotePlayer.warning.unsupported-regions": "Some sounds use playback conditions this effect does not support and were skipped.",
+  "sfzNotePlayer.warning.reduced-bank": "A smaller selection of sounds was loaded to fit the size limit while keeping every note. Increase SFZ size limit for more detail."
 }

@@ -1,5 +1,5 @@
 const MULTI_F0_TAP_FRAME = 24;
-const MULTI_F0_TELEMETRY_VERSION = 4;
+const MULTI_F0_TELEMETRY_VERSION = 5;
 const MULTI_F0_PAYLOAD_HEADER_BYTES = 32;
 // A frame may carry the revised confidences of the frame this many hops earlier.
 const MULTI_F0_REVISION_AGE = 8;
@@ -11,10 +11,17 @@ const MULTI_F0_FIRST_MIDI = 21;
 const MULTI_F0_LAST_MIDI = MULTI_F0_FIRST_MIDI + MULTI_F0_NOTE_COUNT - 1;
 const MULTI_F0_DEFAULT_MIN_MIDI = 28;
 const MULTI_F0_DEFAULT_MAX_MIDI = 91;
-const MULTI_F0_DEFAULT_REGULAR_CANDIDATES = 8;
 const MULTI_F0_LEVEL_OFFSET = MULTI_F0_PAYLOAD_HEADER_BYTES + MULTI_F0_PITCH_COUNT * 4;
 const MULTI_F0_REVISED_OFFSET = MULTI_F0_LEVEL_OFFSET + MULTI_F0_PITCH_COUNT * 4;
-const MULTI_F0_PAYLOAD_BYTES = MULTI_F0_REVISED_OFFSET + MULTI_F0_PITCH_COUNT * 4;
+const MULTI_F0_INTERMEDIATE_OFFSET = MULTI_F0_REVISED_OFFSET + MULTI_F0_PITCH_COUNT * 4;
+const MULTI_F0_REVISION_BYTES = 4 + MULTI_F0_PITCH_COUNT * 4;
+const MULTI_F0_INTERMEDIATE_AGES = [2, 4];
+const MULTI_F0_PAYLOAD_BYTES = MULTI_F0_INTERMEDIATE_OFFSET + 2 * MULTI_F0_REVISION_BYTES;
+const MULTI_F0_REVISION_PLANES = MULTI_F0_INTERMEDIATE_AGES.map((age, index) => {
+    const offset = MULTI_F0_INTERMEDIATE_OFFSET + index * MULTI_F0_REVISION_BYTES;
+    return [age, offset, offset + 4];
+});
+MULTI_F0_REVISION_PLANES.push([MULTI_F0_REVISION_AGE, 28, MULTI_F0_REVISED_OFFSET]);
 const MULTI_F0_LEVEL_FLOOR = -240;
 const MULTI_F0_LEVEL_RANGE_DB = 24;
 const MULTI_F0_LEVEL_CEILING_DB = -36;
@@ -128,9 +135,10 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.ts = 2;
         this.mn = MULTI_F0_DEFAULT_MIN_MIDI;
         this.mx = MULTI_F0_DEFAULT_MAX_MIDI;
-        this.nc = MULTI_F0_DEFAULT_REGULAR_CANDIDATES;
         this.history = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_PITCH_COUNT);
         this.levelHistory = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_PITCH_COUNT);
+        // Preserve measured dB independently of the normalized bar thickness.
+        this.volumeLevelHistory = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_PITCH_COUNT).fill(NaN);
         // Marks the last column of each telemetry frame; the columns before it
         // up to the previous mark belong to the same frame.
         this.volumeFrameEnds = new Uint8Array(MULTI_F0_HISTORY_WIDTH).fill(1);
@@ -188,7 +196,6 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.ts = 2;
         this.mn = MULTI_F0_DEFAULT_MIN_MIDI;
         this.mx = MULTI_F0_DEFAULT_MAX_MIDI;
-        this.nc = MULTI_F0_DEFAULT_REGULAR_CANDIDATES;
         this.columnPeriod = this.ts / MULTI_F0_HISTORY_WIDTH;
         this.configureHistoryImage();
         this.beginTelemetryEpoch();
@@ -206,8 +213,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             vl: this.vl,
             ts: this.ts,
             mn: this.mn,
-            mx: this.mx,
-            nc: this.nc
+            mx: this.mx
         };
     }
 
@@ -260,9 +266,6 @@ class NoteSpectrogramPlugin extends PluginBase {
                 params.mx, MULTI_F0_FIRST_MIDI, MULTI_F0_LAST_MIDI, this.mx
             ));
             if (this.mx < this.mn) this.mn = this.mx;
-        }
-        if (params.nc !== undefined) {
-            this.nc = Math.round(this.parseFiniteNumber(params.nc, 1, 16, this.nc));
         }
         if (this.mn !== previousMinMidi || this.mx !== previousMaxMidi) {
             this.volumeHistoryDirty = true;
@@ -380,15 +383,20 @@ class NoteSpectrogramPlugin extends PluginBase {
             if (!Number.isFinite(volumeLevel)) return null;
             volumeLevels[pitch] = volumeLevel;
         }
-        let revisedLevels = null;
-        if (revisionAge !== 0) {
-            revisedLevels = new Float32Array(MULTI_F0_PITCH_COUNT);
+        const revisions = [];
+        for (const [expectedAge, ageOffset, levelsOffset] of MULTI_F0_REVISION_PLANES) {
+            const age = payload.getUint32(ageOffset, true);
+            if (age !== 0 && age !== expectedAge) return null;
+            if (age === 0) continue;
+            const revised = new Float32Array(MULTI_F0_PITCH_COUNT);
             for (let pitch = 0; pitch < MULTI_F0_PITCH_COUNT; pitch++) {
-                const level = payload.getFloat32(MULTI_F0_REVISED_OFFSET + pitch * 4, true);
+                const level = payload.getFloat32(levelsOffset + pitch * 4, true);
                 if (!Number.isFinite(level) || level < 0 || level > 1) return null;
-                revisedLevels[pitch] = level;
+                revised[pitch] = level;
             }
+            revisions.push({ age, levels: revised });
         }
+        const revisedLevels = revisions.find(revision => revision.age === MULTI_F0_REVISION_AGE)?.levels ?? null;
         return {
             sampleRate,
             timeSeconds,
@@ -399,7 +407,8 @@ class NoteSpectrogramPlugin extends PluginBase {
             levels,
             volumeLevels,
             revisionAge,
-            revisedLevels
+            revisedLevels,
+            revisions
         };
     }
 
@@ -418,6 +427,7 @@ class NoteSpectrogramPlugin extends PluginBase {
     clearHistory() {
         this.history?.fill(0);
         this.levelHistory?.fill(0);
+        this.volumeLevelHistory?.fill(NaN);
         this.volumeFrameEnds?.fill(1);
         this.frameRecords = [];
         this.columnSerial = 0;
@@ -662,6 +672,10 @@ class NoteSpectrogramPlugin extends PluginBase {
                 if (this.levelIntensity[pitch] > this.levelHistory[historyOffset + pitch]) {
                     this.levelHistory[historyOffset + pitch] = this.levelIntensity[pitch];
                 }
+                const previousLevel = this.volumeLevelHistory[historyOffset + pitch];
+                if (Number.isNaN(previousLevel) || snapshot.volumeLevels[pitch] > previousLevel) {
+                    this.volumeLevelHistory[historyOffset + pitch] = snapshot.volumeLevels[pitch];
+                }
             }
             this.paintColumns(column, 1);
             this._paintVolumeColumns(column, 1);
@@ -689,6 +703,11 @@ class NoteSpectrogramPlugin extends PluginBase {
                         source * MULTI_F0_PITCH_COUNT,
                         (source + 1) * MULTI_F0_PITCH_COUNT
                     );
+                    this.volumeLevelHistory.copyWithin(
+                        destination * MULTI_F0_PITCH_COUNT,
+                        source * MULTI_F0_PITCH_COUNT,
+                        (source + 1) * MULTI_F0_PITCH_COUNT
+                    );
                 } else {
                     this.history.fill(
                         0,
@@ -700,11 +719,17 @@ class NoteSpectrogramPlugin extends PluginBase {
                         destination * MULTI_F0_PITCH_COUNT,
                         (destination + 1) * MULTI_F0_PITCH_COUNT
                     );
+                    this.volumeLevelHistory.fill(
+                        NaN,
+                        destination * MULTI_F0_PITCH_COUNT,
+                        (destination + 1) * MULTI_F0_PITCH_COUNT
+                    );
                 }
             }
             const latestColumn = (startColumn + advance - 1) % MULTI_F0_HISTORY_WIDTH;
             this.history.set(this.intensity, latestColumn * MULTI_F0_PITCH_COUNT);
             this.levelHistory.set(this.levelIntensity, latestColumn * MULTI_F0_PITCH_COUNT);
+            this.volumeLevelHistory.set(snapshot.volumeLevels, latestColumn * MULTI_F0_PITCH_COUNT);
             this.volumeFrameEnds[latestColumn] = 1;
             this.writeColumn = (startColumn + advance) % MULTI_F0_HISTORY_WIDTH;
             this.paintColumns(startColumn, advance);
@@ -714,8 +739,8 @@ class NoteSpectrogramPlugin extends PluginBase {
         // The frame owns the newest column, alone or merged with earlier frames.
         const serial = this.columnSerial - 1;
         this.frameRecords.push({ frameIndex: snapshot.frameIndex, levels: snapshot.levels, start: serial, end: serial });
-        if (snapshot.revisionAge === MULTI_F0_REVISION_AGE) {
-            this._applyFrameRevision((snapshot.frameIndex - MULTI_F0_REVISION_AGE) >>> 0, snapshot.revisedLevels);
+        for (const revision of snapshot.revisions) {
+            this._applyFrameRevision((snapshot.frameIndex - revision.age) >>> 0, revision.levels);
         }
         // Keep the frames that can still be revised and any older frame that
         // shares a column with them; frames own contiguous, ordered columns.
@@ -842,10 +867,6 @@ class NoteSpectrogramPlugin extends PluginBase {
             'Time Span', 1, 10, 1, this.ts,
             value => this.setParameters({ ts: value }), 's', 'ts'
         );
-        const regularCandidatesRow = this.createParameterControl(
-            'Regular Note Limit', 1, 16, 1, this.nc,
-            value => this.setParameters({ nc: value }), 'notes', 'nc'
-        );
         const minNoteRow = this.createNoteRangeControl(
             'Lowest Note', this.mn,
             value => {
@@ -868,7 +889,6 @@ class NoteSpectrogramPlugin extends PluginBase {
         parameters.appendChild(layoutRow);
         parameters.appendChild(volumeRow);
         parameters.appendChild(timeSpanRow);
-        parameters.appendChild(regularCandidatesRow);
         parameters.appendChild(minNoteRow);
         parameters.appendChild(maxNoteRow);
         container.appendChild(parameters);
@@ -1585,9 +1605,8 @@ class NoteSpectrogramPlugin extends PluginBase {
         const center = rowTop + (MULTI_F0_FINE_DIVISIONS - 1 - pitch % MULTI_F0_FINE_DIVISIONS + 0.5) *
             rowHeight / MULTI_F0_FINE_DIVISIONS;
         // High without Volume paints every sub-row cell; otherwise each semitone row shows its strongest cell.
-        const salience = high && !this.vl
-            ? this.history[historyOffset + pitch]
-            : this._bagConfidence(historyOffset, midi);
+        const levelPitch = high && !this.vl ? pitch : this._bestBagPitch(historyOffset, midi);
+        const salience = this.history[historyOffset + levelPitch];
         const color = this.cl === 'Rainbow'
             ? (high ? multiF0InterpolatedNoteColor(pitch) : MULTI_F0_NOTE_COLORS[midi % 12])
             : frame.palette.trace;
@@ -1597,9 +1616,14 @@ class NoteSpectrogramPlugin extends PluginBase {
             value: format.percent(salience),
             y: horizontal ? u : center
         };
+        const levelRow = {
+            ...row,
+            label: 'Level',
+            value: format.db(this.volumeLevelHistory[historyOffset + levelPitch])
+        };
         const cursor = `${format.note(frequency(cellMidi), 440)} · ${
             format.time(-(rollWidth - u) / columnWidth * this.columnPeriod * 1000)}`;
-        return { cursor, rows: [row], at: horizontal ? { x: canvasWidth - center, y: u } : { x: u, y: center } };
+        return { cursor, rows: [row, levelRow], at: horizontal ? { x: canvasWidth - center, y: u } : { x: u, y: center } };
     }
 
     cleanup() {
@@ -1622,6 +1646,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.history = null;
         this.intensity = null;
         this.levelHistory = null;
+        this.volumeLevelHistory = null;
         this.volumeFrameEnds = null;
         this.frameRecords = null;
         this.levelIntensity = null;

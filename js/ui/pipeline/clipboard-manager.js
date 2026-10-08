@@ -27,7 +27,9 @@ export class ClipboardManager {
         }
 
         try {
-            const selectedPluginsArray = Array.from(this.core.selectedPlugins);
+            const selectedPluginsArray = this.audioManager.pipeline.filter(plugin =>
+                this.core.selectedPlugins.has(plugin)
+            );
             const states = selectedPluginsArray.map(plugin =>
                 getSerializablePluginStateShort(plugin)
             );

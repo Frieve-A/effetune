@@ -657,7 +657,7 @@ Params modeParams(float mode) noexcept { return {mode, 0.0F, 100.0F}; }
 class KernelHarness final {
 public:
   KernelHarness(float sample_rate, std::uint32_t channels,
-                std::uint32_t max_frames = kMaximumFrames) {
+                std::uint32_t max_frames = kMaximumFrames, std::uint32_t instance_salt = 0u) {
     descriptor_ = et_kernel_descriptor_MDSimulatorPlugin();
     check(descriptor_ != nullptr, "descriptor exists");
     if (descriptor_ == nullptr || descriptor_->objectSize > storage_.size()) {
@@ -670,6 +670,7 @@ public:
     check(kernel_ != nullptr, "kernel constructs");
     if (kernel_ != nullptr) {
       check(descriptor_->paramsHash == Params::kHash, "descriptor parameter hash matches");
+      kernel_->setInstanceSalt(instance_salt);
       kernel_->prepare({sample_rate, channels, max_frames});
     }
   }
@@ -1119,7 +1120,9 @@ void testVariableBlockSizesForMode(float mode) {
   constexpr std::uint32_t kTotal = 24000u;
   std::vector<std::vector<float>> results;
   for (const std::uint32_t size : sizes) {
-    KernelHarness harness(96000.0F, 2u);
+    // Salt 15 puts LP work at the latest phase, immediately before the drain deadline.
+    // The 128-frame reference retains phase zero; the others vary block size and phase.
+    KernelHarness harness(96000.0F, 2u, kMaximumFrames, size == 128u ? 0u : 15u);
     check(harness.ready(), "variable block size kernel prepares");
     if (!harness.ready()) {
       return;
@@ -1147,12 +1150,8 @@ void testVariableBlockSizesForMode(float mode) {
     results.push_back(std::move(captured));
   }
   for (std::size_t index = 1u; index < results.size(); ++index) {
-    double worst = 0.0;
-    for (std::uint32_t frame = 0u; frame < kTotal; ++frame) {
-      worst = std::max(worst, std::fabs(static_cast<double>(results[index][frame]) -
-                                        static_cast<double>(results[0][frame])));
-    }
-    check(worst < 1.0e-6, "output depends on the host block size");
+    check(results[index] == results[0],
+          "output depends on the host block size or instance work phase");
   }
 }
 

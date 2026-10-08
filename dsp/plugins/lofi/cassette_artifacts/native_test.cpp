@@ -90,12 +90,12 @@ private:
 
 // Consumer deck, Type I, Dolby B, every stochastic family live.
 Params cassetteParams(float mix) noexcept {
-  return {2.0F, 0.0F, 1.0F, 0.0F, 9.0F, 0.25F, -60.5F, 2.0F, 2.0F, 0.0F, 0.0F, mix};
+  return {2.0F, 0.0F, 1.0F, 0.0F, 9.0F, 0.25F, -60.5F, 2.0F, 2.0F, 0.0F, 0.0F, mix, 2.0F};
 }
 
 // Reference deck with wf = 0, hs at the bottom and dp = 0: no family draws.
 Params silentFamiliesParams() noexcept {
-  return {0.0F, 1.0F, 0.0F, 0.0F, 9.0F, 0.0F, -92.0F, 0.0F, 2.0F, 0.0F, 0.0F, 100.0F};
+  return {0.0F, 1.0F, 0.0F, 0.0F, 9.0F, 0.0F, -92.0F, 0.0F, 2.0F, 0.0F, 0.0F, 100.0F, 2.0F};
 }
 
 std::vector<float> signal(std::uint32_t frames, std::uint32_t channels, std::uint32_t phase) {
@@ -314,6 +314,41 @@ void testDolbyModeChangeCrossfades() {
   check(finite(back_off), "the crossfade back to Off remains finite");
 }
 
+void testDolbyOnlyModesSkipArtifacts() {
+  const std::vector<float> source = signal(128u, 2u, 7u);
+  for (const float mode : {0.0F, 4.0F}) {
+    Params params = cassetteParams(100.0F);
+    params.mode = mode;
+    KernelHarness first;
+    KernelHarness second;
+    first.seed(1u, 2u);
+    second.seed(3u, 4u);
+    std::vector<float> a = source;
+    std::vector<float> b = source;
+    first.stage(params);
+    first.process(a, 2u, 128u);
+    params.deckGrade = 3.0F;
+    params.tapeType = 2.0F;
+    params.bias = 6.0F;
+    params.wowFlutter = 1.0F;
+    params.hiss = -42.0F;
+    params.dropouts = 20.0F;
+    params.azimuth = -6.0F;
+    second.stage(params);
+    second.process(b, 2u, 128u);
+    check(a == b, "Dolby-only processing ignores tape settings and random seeds");
+    check(a[0] != 0.0F, "Dolby-only processing has no tape latency");
+    check(finite(a), "Dolby-only output remains finite");
+
+    params.noiseReduction = 0.0F;
+    KernelHarness off;
+    std::vector<float> dry = source;
+    off.stage(params);
+    off.process(dry, 2u, 128u);
+    check(dry == source, "Dolby-only Off passes through without artifacts or latency");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -323,5 +358,6 @@ int main() {
   testChannelCountChangeRebuildsState();
   testSilentFamiliesAreSeedIndependent();
   testDolbyModeChangeCrossfades();
+  testDolbyOnlyModesSkipArtifacts();
   return failures == 0 ? 0 : 1;
 }

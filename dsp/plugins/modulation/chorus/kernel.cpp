@@ -148,19 +148,14 @@ public:
         wet_gate =
             static_cast<double>(transition_position_) / static_cast<double>(transition_length);
 
-      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
-        const std::size_t audio_index = static_cast<std::size_t>(channel) * frame_count + frame;
-        const std::size_t buffer_offset = static_cast<std::size_t>(channel) * buffer_size_;
-        const double dry = static_cast<double>(audio[audio_index]);
-        const double write = dry + feedback_state_[channel] * feedback;
-        delay_buffers_[buffer_offset + position_] =
-            static_cast<float>(std::isfinite(write) ? write : 0.0);
-        double wet = 0.0;
-        const double side = (channel & 1u) != 0u ? 1.0 : 0.0;
+      const std::uint32_t side_count = channel_count > 1u && spread != 0.0 ? 2u : 1u;
+      double voice_delays[2][kMaximumVoices];
+      for (std::uint32_t side = 0u; side < side_count; ++side) {
         for (std::uint32_t voice = 0u; voice < voice_count; ++voice) {
           const double voice_offset =
               kTwoPi * static_cast<double>(voice) / static_cast<double>(voice_count);
-          const double stereo_offset = side * spread * 0.5 * 3.14159265358979323846;
+          const double stereo_offset =
+              static_cast<double>(side) * spread * 0.5 * 3.14159265358979323846;
           const double lfo_phase = active_mode_ == 2u ? voice_phases_[voice] : phase_;
           const double lfo = std::sin(lfo_phase + voice_offset + stereo_offset);
           double delay_ms = smoothed_[1] + smoothed_[2] * lfo;
@@ -170,7 +165,21 @@ public:
           const double maximum_delay = static_cast<double>(buffer_size_ - 3u);
           if (delay_samples > maximum_delay)
             delay_samples = maximum_delay;
-          wet += readCubic(buffer_offset, delay_samples);
+          voice_delays[side][voice] = delay_samples;
+        }
+      }
+
+      for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
+        const std::size_t audio_index = static_cast<std::size_t>(channel) * frame_count + frame;
+        const std::size_t buffer_offset = static_cast<std::size_t>(channel) * buffer_size_;
+        const double dry = static_cast<double>(audio[audio_index]);
+        const double write = dry + feedback_state_[channel] * feedback;
+        delay_buffers_[buffer_offset + position_] =
+            static_cast<float>(std::isfinite(write) ? write : 0.0);
+        double wet = 0.0;
+        const std::uint32_t side = side_count == 1u ? 0u : channel & 1u;
+        for (std::uint32_t voice = 0u; voice < voice_count; ++voice) {
+          wet += readCubic(buffer_offset, voice_delays[side][voice]);
         }
         wet /= static_cast<double>(voice_count);
         if (!std::isfinite(wet) || (wet > -1.0e-30 && wet < 1.0e-30))

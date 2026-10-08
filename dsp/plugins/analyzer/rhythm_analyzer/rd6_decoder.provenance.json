@@ -1,0 +1,40 @@
+{
+  "artifact": "rd6_decoder.h runtime-derived tables",
+  "ruling": "R6-S-27",
+  "classification": "Derived constants and state topology, not learned parameters",
+  "generator": "Rd6Decoder::prepare in rd6_decoder.h",
+  "source_sha256": "aa6fcdfc6d3131ce5dec3451671ec0ef7d7603f4dfe2633cfa5bc6688791b8db",
+  "reference_sha256": "081b2c42d373c5a98437b721db2c105a015eddfb814ba2fd9cac68e04726f944",
+  "sample_rate": 24000,
+  "hop": 256,
+  "default_bpm_range": [40, 240],
+  "interval_rounding": "round to nearest, ties to even; inclusive endpoints",
+  "default_intervals": [23, 141],
+  "default_states": 9758,
+  "transition_lambda": 100,
+  "observation_lambda": 16,
+  "tempo_prior_weight": 0.03,
+  "tempo_prior_floor": 0.0001,
+  "predictive_lead_seconds": 0.025,
+  "activation_shift_ticks": 0,
+  "free_evidence": false,
+  "gate": {
+    "short_tau_seconds": 0.5,
+    "long_tau_seconds": 2,
+    "close_threshold": 0.02,
+    "open_rule": "short EMA > 0; otherwise remain shown only while long EMA > 0.02",
+    "confidence_intercept": -1.0543807556114948,
+    "confidence_slope": 31.820095025649806
+  },
+  "analysis": {"lag_ticks": 94, "block_ticks": 94, "back_pointer_ticks": 189},
+  "arithmetic": {
+    "forward": "float64; increasing state/predecessor order; portable transcendental functions",
+    "viterbi": "float32 log transition, observation and prior; separately rounded additions and max subtraction; first predecessor wins ties",
+    "phase": "integer position divided by integer interval in float64",
+    "transition": "exp(-100*abs(destination_interval/source_interval-1)); values <= 2^-52 removed; sequential source-row normalization",
+    "tempo_class": "nearest log-frequency among 61 classes from 30 through 300 BPM; first class wins ties",
+    "contraction": "FMA disabled"
+  },
+  "reference": "tools/rhythm-analyzer/decoder.py",
+  "silence": "Digital-zero hop closes both evidence EMAs and presentation; 94 consecutive digital-zero hops cold-reset both decoders and upstream histories. Short gaps preserve committed history."
+}

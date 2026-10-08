@@ -38,10 +38,10 @@ export const GUITAR_SCALES = Object.freeze({
     major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], 'harmonic-minor': [0, 2, 3, 5, 7, 8, 11],
     'major-pentatonic': [0, 2, 4, 7, 9], 'minor-pentatonic': [0, 3, 5, 7, 10], blues: [0, 3, 5, 6, 7, 10]
 });
-// Detection range and note limit for a fretboard: the notes it can sound, and no more notes than strings.
+// Detection range for the notes a fretboard can sound.
 export const guitarAnalysis = params => {
     const mn = Math.min(108, Math.min(...params.tn) + Math.max(params.fm, params.cp));
-    return { mn, mx: Math.max(mn, Math.min(108, Math.max(...params.tn) + params.fx)), nc: params.tn.length };
+    return { mn, mx: Math.max(mn, Math.min(108, Math.max(...params.tn) + params.fx)) };
 };
 export const FONT_FAMILIES = Object.freeze([
     ['sans-serif', 'Sans-serif'], ['serif', 'Serif'], ['monospace', 'Monospace'],
@@ -306,8 +306,7 @@ export function normalizeParams(type, input) {
             kl: Math.round(number(params.kl, 100, 50, 200)),
             vl: params.vl !== false,
             ts: Math.round(number(params.ts, 2, 1, 10)),
-            mn, mx: Math.max(mn, Math.round(number(params.mx, 91, 21, 108))),
-            nc: Math.round(number(params.nc, 8, 1, 16)), ...axes
+            mn, mx: Math.max(mn, Math.round(number(params.mx, 91, 21, 108))), ...axes
         };
     }
     if (type === 'guitar') {
@@ -485,8 +484,8 @@ export function validateLayout(value) {
             Object.keys(a).every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
         return a === b;
     };
-    // Only fields added with defaults may be absent in older saved layouts. Supplied
-    // values and every original field must still match strict normalization.
+    // Added fields may be absent and valid retired fields may be migrated in older
+    // layouts. Other supplied values must still match strict normalization.
     const addedParams = {
         spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
         stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf'],
@@ -503,6 +502,8 @@ export function validateLayout(value) {
                 if (!Object.hasOwn(params, 'hubSize')) params.hubSize = params.showHub ? 3 : 0;
                 delete params.showHub;
             }
+            // Released Notes layouts stored this count before detection stopped using it.
+            if (item.type === 'notes' && Number.isInteger(params.nc) && params.nc >= 1 && params.nc <= 16) delete params.nc;
             for (const key of addedParams[item.type]) if (!Object.hasOwn(params, key)) params[key] = defaults[key];
             // Rhythm layouts saved before BPM text styling have an empty style.
             const style = item.type === 'rhythm-analyzer' && isRecord(item.style)

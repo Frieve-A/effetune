@@ -5,6 +5,7 @@ import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { VisualizerHistory } from '../../js/visualizer/visualizer-history.js';
+import { VisualizerPresetStore } from '../../js/visualizer/visualizer-preset-store.js';
 import { createDefaultLayout, createItem, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
 import { UIManager } from '../../js/ui-manager.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
@@ -117,9 +118,10 @@ test('Notes and Chroma range edits preserve the requested endpoint for every sel
                     view: { layout, changed() { saved.push(snapshotLayout(layout)); } },
                     t: (_key, fallback) => fallback,
                     field(_parent, label, _kind, current, change) {
-                        const field = { value: current, nextElementSibling: { textContent: '' }, change };
+                        const field = { value: current, change };
                         fields.set(label, field); return field;
                     },
+                    syncRangeField(input, value) { input.value = value; },
                     updateSelection() {}
                 });
                 editor.takeBaseline();
@@ -279,7 +281,7 @@ test('Phase Map edits its axis, level range, reference floor, and persistence wi
     assert.deepEqual([range.options.min, range.options.max, range.options.step], [-96, -24, 6]);
     assert.deepEqual([floor.value, floor.options.min, floor.options.max, floor.options.step], [-40, -120, -24, 1]);
     assert.deepEqual([persistence.options.min, persistence.options.max, persistence.options.step], [0.1, 2, 0.1]);
-    assert.equal(persistence.options.format(1.2), '1.2 s');
+    assert.equal(persistence.options.unit, 's');
     axis.change('balance');
     assert.equal(item.params.ax, 'balance');
 });
@@ -298,7 +300,7 @@ test('Rhythm Analyzer edits its tempo range and span', () => {
         'Axes and grid', 'Axis labels and numbers']);
     const [minimum, maximum, span, beat, bpm, tempogram, timingLanes, echoRows, beatLens] = fields;
     assert.deepEqual([minimum.options.min, minimum.options.max, maximum.options.min, maximum.options.max], [40, 192, 50, 240]);
-    assert.equal(maximum.options.format(120), '120 BPM');
+    assert.equal(maximum.options.unit, 'BPM');
     assert.deepEqual(span.options.values.map(([value]) => value), ['4', '6', '8', '12', '16']);
     span.change('12');
     assert.equal(item.params.sp, 12);
@@ -332,10 +334,10 @@ test('Rhythm Analyzer circle settings edit size, border, opacity, colors and BPM
     const circle = fields.filter(field => field.parent === 'Beat circle');
     assert.deepEqual(circle.map(field => field.label), ['Circle size', 'Border width', 'Fill opacity', 'Beat hold time', 'Beat decay time', 'Border opacity',
         'Use palette colors', 'Fill color', 'Border color', 'Fit BPM inside circle']);
-    assert.equal(circle[0].options.format(90), '90%');
-    assert.equal(circle[2].options.format(.3), '30%');
-    assert.equal(circle[3].options.format(50), '50 ms');
-    assert.equal(circle[4].options.format(90), '90 ms');
+    assert.equal(circle[0].options.unit, '%');
+    assert.deepEqual([circle[2].options.unit, circle[2].options.scale], ['%', 100]);
+    assert.equal(circle[3].options.unit, 'ms');
+    assert.equal(circle[4].options.unit, 'ms');
     assert.equal(circle[7].options.disabled, true);
     circle[0].change(60);
     circle[1].change(4);
@@ -479,7 +481,7 @@ test('The Graph scale slider updates the layout and is undoable', async () => {
         assert.equal(scale.type, 'range');
         assert.equal(scale.value, 1);
         assert.deepEqual([scale.options.min, scale.options.max, scale.options.step], [0.5, 3, 0.05]);
-        assert.equal(scale.options.format(1.5), '×1.50');
+        assert.equal(scale.options.unit, '×');
         scale.change(2);
         assert.equal(layout.graphScale, 2);
         assert.deepEqual(changes, [true]);
@@ -958,6 +960,100 @@ test('Changing view while the current Visualizer layout loads cancels that open'
         resolve();
         assert.equal(await pending, false);
     });
+});
+
+test('Visualizer preset rename collisions preserve the existing layout on the next save', async () => {
+    let provider;
+    const stores = { current: new Map(), presets: new Map() };
+    const store = new VisualizerPresetStore();
+    store.initialize = async () => ({
+        transaction(name) {
+            const values = stores[name];
+            let pending = 0, aborted = false;
+            const transaction = {
+                abort() { aborted = true; queueMicrotask(() => transaction.onabort?.()); },
+                objectStore() {
+                    const request = action => {
+                        pending++;
+                        const result = {};
+                        queueMicrotask(() => {
+                            result.result = action();
+                            result.onsuccess?.();
+                            if (--pending === 0 && !aborted) queueMicrotask(() => transaction.oncomplete?.());
+                        });
+                        return result;
+                    };
+                    return {
+                        get: key => request(() => structuredClone(values.get(key))),
+                        getAllKeys: () => request(() => [...values.keys()]),
+                        put: (value, key) => request(() => values.set(key, structuredClone(value))),
+                        add: (value, key) => request(() => values.set(key, structuredClone(value))),
+                        delete: key => request(() => values.delete(key))
+                    };
+                }
+            };
+            return transaction;
+        }
+    });
+    const original = createDefaultLayout(), existing = createDefaultLayout();
+    original.background.color = '#123456';
+    existing.background.color = '#654321';
+    await store.saveUserPreset('Original', original);
+    await store.saveUserPreset('Existing', existing);
+    const existingSaved = await store.getUserPreset('Existing');
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        layout: createDefaultLayout(), currentPresetName: '',
+        systems: { '16:9': { Default: createDefaultLayout() } }, store,
+        history: new VisualizerHistory(), sources: { setLayout() {} }, stage: { style: {} },
+        editor: { open: false, selection: new Set(), resetForLayout() {}, updateSelection() {} },
+        undoButton: {}, redoButton: {}, cutButton: {}, copyButton: {},
+        uiManager: { pipelineManager: { core: { pluginPresetDialog: {
+            show(value) { provider = value; }
+        } } } }
+    });
+    try {
+        await view.openPresets();
+        assert.equal(provider.getPresetContext(), view);
+        assert.equal(provider.getActiveSystemPresetId(), '16:9/Default');
+        assert.equal(provider.getSystemPresetGroups()[0].presets[0].id, provider.getActiveSystemPresetId());
+        assert.deepEqual(await provider.listUserPresetNames(), ['Original', 'Existing']);
+        assert.equal(await provider.applyUserPreset('Original'), true);
+        assert.deepEqual(view.layout, snapshotLayout(original));
+        assert.equal(provider.getActiveSystemPresetId(), '');
+        view.layout.background.color = '#abcdef';
+        view.changed();
+        const edited = snapshotLayout(view.layout);
+        assert.equal(provider.getActiveSystemPresetId(), '');
+
+        assert.equal(await provider.renameUserPreset('Original', 'Existing'), false);
+        assert.equal(provider.getActiveSystemPresetId(), '');
+        assert.deepEqual(await provider.listUserPresetNames(), ['Original', 'Existing']);
+        assert.equal(await provider.saveUserPreset(provider.getDefaultSaveName()), true);
+        assert.deepEqual(await store.getUserPreset('Existing'), existingSaved);
+        assert.deepEqual(await store.getUserPreset('Original'), edited);
+        assert.equal(provider.getActiveUserPresetName(), 'Original');
+        assert.equal(provider.getDefaultSaveName(), 'Original');
+        assert.deepEqual(await provider.listUserPresetNames(), ['Original', 'Existing']);
+
+        assert.equal(await provider.renameUserPreset('Original', 'Renamed'), true);
+        assert.equal(provider.getActiveUserPresetName(), 'Renamed');
+        assert.equal(provider.getDefaultSaveName(), 'Renamed');
+        view.layout.background.color = '#fedcba';
+        view.changed();
+        assert.equal(await provider.saveUserPreset(provider.getDefaultSaveName()), true);
+        assert.equal(await store.getUserPreset('Original'), null);
+        assert.deepEqual(await store.getUserPreset('Renamed'), snapshotLayout(view.layout));
+        assert.deepEqual(await store.getUserPreset('Existing'), existingSaved);
+        assert.deepEqual(await provider.listUserPresetNames(), ['Existing', 'Renamed']);
+
+        assert.equal(await provider.deleteUserPresets(['Renamed']), true);
+        assert.equal(provider.getActiveUserPresetName(), '');
+        assert.equal(provider.getDefaultSaveName(), '');
+        assert.deepEqual(await provider.listUserPresetNames(), ['Existing']);
+        assert.deepEqual(await store.getUserPreset('Existing'), existingSaved);
+    } finally {
+        await store.flushCurrent();
+    }
 });
 
 test('Visualizer Share copies a v link and shared links replace the layout only when valid', async () => {

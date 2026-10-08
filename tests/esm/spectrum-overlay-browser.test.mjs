@@ -74,6 +74,7 @@ async function loadCssInApplicationOrder(page) {
 }
 
 async function loadTargetScripts(page) {
+  await page.addScriptTag({ content: (await fs.readFile('js/ui/range-fill.js', 'utf8')).replace(/^export /gm, '') });
   for (const path of [
     'plugins/theme-palette.js',
     'plugins/plugin-base.js',
@@ -615,6 +616,7 @@ test('effect rows keep equal heights with wrapped labels and tabs retain the lar
         const page = await browser.newPage({ viewport: { width, height: 1000 } });
         try {
           await page.setContent('<main class="pipeline-item"><div class="plugin-ui expanded"></div></main>');
+          await page.addScriptTag({ content: (await fs.readFile('js/ui/range-fill.js', 'utf8')).replace(/^export /gm, '') });
           await page.evaluate(mobile => {
             document.body.classList.toggle('layout-mobile', mobile);
             document.documentElement.classList.toggle('layout-mobile', mobile);

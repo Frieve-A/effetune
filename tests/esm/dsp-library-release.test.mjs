@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const emsdkVersion = readFileSync(path.join(repoRoot, 'dsp', 'EMSDK_VERSION'), 'utf8').trim();
 const workflow = readFileSync(
   path.join(repoRoot, '.github', 'workflows', 'dsp-library-release.yml'),
   'utf8'
@@ -65,11 +66,11 @@ test('npm candidate jobs verify committed DSP artifacts with the pinned SDK befo
     const job = workflowJob(source, name);
     // Matched without the ref so the assertion survives SHA pinning of actions.
     const setup = job.indexOf('uses: emscripten-core/setup-emsdk@');
-    const version = job.indexOf('version: 6.0.2');
+    const version = job.indexOf(`version: ${emsdkVersion}`);
     const verify = job.indexOf('npm run build:dsp -- --check');
     const packageBuild = job.indexOf('working-directory: dsp/bindings/js');
     assert.ok(setup >= 0, `${name} sets up Emscripten`);
-    assert.ok(version > setup, `${name} pins Emscripten 6.0.2`);
+    assert.ok(version > setup, `${name} pins Emscripten ${emsdkVersion}`);
     assert.ok(verify > version, `${name} verifies committed DSP artifacts`);
     assert.ok(packageBuild > verify, `${name} verifies before packaging`);
   }

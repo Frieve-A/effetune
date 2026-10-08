@@ -168,8 +168,10 @@ private:
 
   [[nodiscard]] float sampleAt(std::uint32_t channel, std::size_t delay_samples) const noexcept {
     const std::size_t write_index = write_indices_[channel];
-    const std::size_t wrapped_delay = delay_samples % length_;
-    const std::size_t read_index = (write_index + length_ - 1U - wrapped_delay) % length_;
+    // All callers bound the delay below length_, so at most one wrap is needed.
+    const std::size_t read_index = write_index > delay_samples
+                                       ? write_index - 1U - delay_samples
+                                       : write_index + length_ - 1U - delay_samples;
     return samples_[static_cast<std::size_t>(channel) * length_ + read_index];
   }
 

@@ -65,7 +65,7 @@ function loadAudioPlayerClass() {
     if (!audioPlayerClassPromise) {
         audioPlayerClassPromise = (async () => {
             try {
-                await loadClassicScript('js/vendor/jsmediatags-3.9.5.min.js', {
+                await loadClassicScript('js/vendor/jsmediatags-3.9.7.min.js', {
                     globalName: 'jsmediatags'
                 });
             } catch (error) {

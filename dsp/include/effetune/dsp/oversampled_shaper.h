@@ -1,6 +1,8 @@
 #ifndef EFFETUNE_DSP_OVERSAMPLED_SHAPER_H
 #define EFFETUNE_DSP_OVERSAMPLED_SHAPER_H
 
+#include "effetune/dsp/fir.h"
+
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -41,6 +43,16 @@ public:
       }
       for (double &coefficient : coefficients)
         coefficient /= sum;
+      // The windowed sinc is symmetric; calculate each mirrored pair identically.
+      for (std::uint32_t tap = 0u; tap < length / 2u; ++tap)
+        coefficients[length - 1u - tap] = coefficients[tap];
+      auto &phases = interpolation_[level];
+      phases.resize(rate * 65u);
+      for (std::uint32_t phase = 0u; phase < rate; ++phase) {
+        const std::uint32_t taps = phase == 0u ? 65u : 64u;
+        for (std::uint32_t tap = 0u; tap < taps; ++tap)
+          phases[phase * 65u + tap] = coefficients[phase + (taps - 1u - tap) * rate];
+      }
     }
     reset();
   }
@@ -63,7 +75,7 @@ public:
     auto &state = states_[channel];
     const double output = state.dry[state.dry_position];
     state.dry[state.dry_position] = input;
-    state.dry_position = (state.dry_position + 1u) % kLatency;
+    state.dry_position = (state.dry_position + 1u) & (kLatency - 1u);
     return output;
   }
   template <typename Shape>
@@ -76,30 +88,34 @@ public:
     const auto &coefficients = coefficients_[level];
     const auto length = static_cast<std::uint32_t>(coefficients.size());
     state.input[state.input_position] = input;
+    state.input[state.input_position + 65u] = input;
     double output = 0.0;
     for (std::uint32_t phase = 0u; phase < rate; ++phase) {
-      double interpolated = 0.0;
-      for (std::uint32_t tap = phase, delay = 0u; tap < length; tap += rate, ++delay) {
-        const auto index = (state.input_position + 65u - delay) % 65u;
-        interpolated += coefficients[tap] * state.input[index];
-      }
-      state.output[state.output_position] = shape(interpolated * rate);
-      if (phase == 0u) {
-        for (std::uint32_t tap = 0u; tap < length; ++tap) {
-          const auto index = (state.output_position + length - tap) % length;
-          output += coefficients[tap] * state.output[index];
-        }
-      }
-      state.output_position = (state.output_position + 1u) % length;
+      const std::uint32_t taps = phase == 0u ? 65u : 64u;
+      const double *history = state.input.data() + state.input_position + 66u - taps;
+      const double *filter = interpolation_[level].data() + phase * 65u;
+      const double interpolated = phase == 0u || phase * 2u == rate
+                                      ? firSymmetric(filter, history, taps)
+                                      : firDot(filter, history, taps);
+      const double shaped = shape(interpolated * rate);
+      state.output[state.output_position] = shaped;
+      state.output[state.output_position + length] = shaped;
+      if (phase == 0u)
+        output = firSymmetric(coefficients.data(), state.output.data() + state.output_position + 1u,
+                              length);
+      if (++state.output_position == length)
+        state.output_position = 0u;
     }
-    state.input_position = (state.input_position + 1u) % 65u;
+    if (++state.input_position == 65u)
+      state.input_position = 0u;
     return output;
   }
 
 private:
   struct State {
-    std::array<double, 65> input{};
-    std::array<double, 1025> output{};
+    // Mirrored rings expose the entire FIR history contiguously without per-tap wrapping.
+    std::array<double, 130> input{};
+    std::array<double, 2050> output{};
     std::array<double, kLatency> dry{};
     std::uint32_t input_position = 0u;
     std::uint32_t output_position = 0u;
@@ -107,6 +123,7 @@ private:
   };
   std::vector<State> states_;
   std::array<std::vector<double>, 4> coefficients_;
+  std::array<std::vector<double>, 4> interpolation_;
   std::uint32_t active_factor_ = 1u;
   std::uint32_t active_channels_ = 0u;
 };

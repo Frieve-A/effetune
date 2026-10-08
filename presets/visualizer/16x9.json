@@ -212,6 +212,7 @@
           "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "line",
           "quantizeBars": true,
           "bc": 48,
@@ -290,6 +291,7 @@
           "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "line",
           "quantizeBars": true,
           "bc": 48,
@@ -356,6 +358,7 @@
           "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "gainDb": 0,
           "showAxes": true,
           "showAxisNumbers": true
@@ -507,6 +510,29 @@
           "ln": 0,
           "tg": -14,
           "ls": 0,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 2,
+          "needleTip": "line",
+          "arrowAspect": 1,
+          "hubSize": 3,
+          "showReadout": true,
+          "showChannel": true,
+          "showMode": true,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": false,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#f4dfa5",
+          "faceOpacity": 0,
+          "faceBorderColor": "#332b20",
+          "faceBorderWidth": 0,
+          "vignette": 0,
           "showAxes": true,
           "showAxisNumbers": true
         },
@@ -697,6 +723,7 @@
           "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "gainDb": 0,
           "showAxes": true,
           "showAxisNumbers": true
@@ -753,6 +780,7 @@
           "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "bar",
           "quantizeBars": true,
           "bc": 96,
@@ -827,7 +855,6 @@
           "ts": 3,
           "mn": 28,
           "mx": 100,
-          "nc": 8,
           "showAxes": true,
           "showAxisNumbers": true
         },
@@ -1532,9 +1559,10 @@
         "params": {
           "dr": -72,
           "pt": 12,
-          "sc": "log",
+          "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "bar",
           "quantizeBars": true,
           "bc": 32,
@@ -1749,6 +1777,29 @@
           "ln": 0,
           "tg": -23,
           "ls": 0,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 3,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 6,
+          "showReadout": true,
+          "showChannel": true,
+          "showMode": true,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": true,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#efe2c0",
+          "faceOpacity": 1,
+          "faceBorderColor": "#6e5431",
+          "faceBorderWidth": 2,
+          "vignette": 0.35,
           "showAxes": true,
           "showAxisNumbers": true
         },
@@ -1758,10 +1809,10 @@
             "type": "backplate",
             "enabled": true,
             "amount": 1,
-            "fill": "#efe2c0",
+            "fill": "#2a1a0e",
             "fillOpacity": 1,
             "border": "#b8904e",
-            "borderWidth": 3,
+            "borderWidth": 2.5,
             "radius": 14,
             "margin": 14,
             "palette": {
@@ -1822,6 +1873,29 @@
           "ln": 0,
           "tg": -23,
           "ls": 0,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 3,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 6,
+          "showReadout": true,
+          "showChannel": true,
+          "showMode": true,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": true,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#efe2c0",
+          "faceOpacity": 1,
+          "faceBorderColor": "#6e5431",
+          "faceBorderWidth": 2,
+          "vignette": 0.35,
           "showAxes": true,
           "showAxisNumbers": true
         },
@@ -1831,10 +1905,10 @@
             "type": "backplate",
             "enabled": true,
             "amount": 1,
-            "fill": "#efe2c0",
+            "fill": "#2a1a0e",
             "fillOpacity": 1,
             "border": "#b8904e",
-            "borderWidth": 3,
+            "borderWidth": 2.5,
             "radius": 14,
             "margin": 14,
             "palette": {
@@ -2330,9 +2404,10 @@
         "params": {
           "dr": -78,
           "pt": 12,
-          "sc": "log",
+          "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "bar",
           "quantizeBars": true,
           "bc": 40,
@@ -2482,9 +2557,10 @@
         "params": {
           "dr": -90,
           "pt": 12,
-          "sc": "log",
+          "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "bar",
           "quantizeBars": true,
           "bc": 64,
@@ -2584,9 +2660,10 @@
         "params": {
           "dr": -90,
           "pt": 12,
-          "sc": "log",
+          "sc": "log-hq",
           "kb": false,
           "kl": 100,
+          "mf": 40000,
           "dm": "bar",
           "quantizeBars": true,
           "bc": 64,
@@ -3210,6 +3287,1018 @@
           "shadowY": 0
         },
         "effects": []
+      }
+    ]
+  },
+  "Power Amp": {
+    "aspect": "16:9",
+    "graphScale": 1.25,
+    "background": {
+      "color": "#030405",
+      "image": null,
+      "effects": [],
+      "themeColors": {
+        "graph-bg-deep": "#0d4f96",
+        "graph-base-soft": "#0f2235",
+        "graph-grid-subtle": "#5d8fc4",
+        "graph-grid-soft": "#cfe6ff",
+        "graph-grid-strong": "#e6f2ff",
+        "graph-label": "#e3f0ff",
+        "text-primary": "#ffffff",
+        "graph-trace-tertiary": "#8fb6e0"
+      }
+    },
+    "items": [
+      {
+        "id": "shape-1",
+        "type": "shape",
+        "rect": {
+          "x": 0.016875,
+          "y": 0.03,
+          "w": 0.96625,
+          "h": 0.94
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#1b1e23"
+            },
+            {
+              "pos": 0.5,
+              "color": "#0c0d10"
+            },
+            {
+              "pos": 1,
+              "color": "#16181c"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#1b1e23",
+          "angle": 90
+        },
+        "params": {},
+        "style": {
+          "shape": "rectangle",
+          "fillOpacity": 1,
+          "borderColor": "#5a606a",
+          "borderWidth": 2,
+          "borderOpacity": 1,
+          "radius": 22
+        },
+        "effects": []
+      },
+      {
+        "id": "analog-meter-2",
+        "type": "analog-meter",
+        "rect": {
+          "x": 0.0525,
+          "y": 0.17,
+          "w": 0.4325,
+          "h": 0.5
+        },
+        "channel": "L",
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#f4f7ff"
+        },
+        "params": {
+          "md": "VU",
+          "it": 0.3,
+          "at": 5,
+          "rt": 1.5,
+          "rl": -14,
+          "rg": 40,
+          "sc": 0,
+          "ph": 1,
+          "ln": 0,
+          "tg": -23,
+          "ls": 0,
+          "dialCurvature": 0.8,
+          "dialSweep": 112,
+          "pivotOffset": 0,
+          "needleStart": 38,
+          "needleLength": 108,
+          "needleWidth": 3,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 0,
+          "showReadout": false,
+          "showChannel": false,
+          "showMode": false,
+          "showSigns": false,
+          "positiveLabels": true,
+          "showPercent": true,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#0d4f96",
+          "faceOpacity": 1,
+          "faceBorderColor": "#000000",
+          "faceBorderWidth": 3,
+          "vignette": 0.6,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "glow",
+            "enabled": true,
+            "amount": 0.35,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#6fc3ff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "analog-meter-3",
+        "type": "analog-meter",
+        "rect": {
+          "x": 0.515625,
+          "y": 0.17,
+          "w": 0.4325,
+          "h": 0.5
+        },
+        "channel": "R",
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#f4f7ff"
+        },
+        "params": {
+          "md": "VU",
+          "it": 0.3,
+          "at": 5,
+          "rt": 1.5,
+          "rl": -14,
+          "rg": 40,
+          "sc": 0,
+          "ph": 1,
+          "ln": 0,
+          "tg": -23,
+          "ls": 0,
+          "dialCurvature": 0.8,
+          "dialSweep": 112,
+          "pivotOffset": 0,
+          "needleStart": 38,
+          "needleLength": 108,
+          "needleWidth": 3,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 0,
+          "showReadout": false,
+          "showChannel": false,
+          "showMode": false,
+          "showSigns": false,
+          "positiveLabels": true,
+          "showPercent": true,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#0d4f96",
+          "faceOpacity": 1,
+          "faceBorderColor": "#000000",
+          "faceBorderWidth": 3,
+          "vignette": 0.6,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "glow",
+            "enabled": true,
+            "amount": 0.35,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#6fc3ff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "text-4",
+        "type": "text",
+        "rect": {
+          "x": 0.0525,
+          "y": 0.69,
+          "w": 0.4325,
+          "h": 0.04
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#9fb2c8"
+        },
+        "params": {
+          "text": "Left channel"
+        },
+        "style": {
+          "fontSize": 15.839999999999998,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center",
+          "textCase": "upper",
+          "letterSpacing": 6
+        },
+        "effects": []
+      },
+      {
+        "id": "text-5",
+        "type": "text",
+        "rect": {
+          "x": 0.515625,
+          "y": 0.69,
+          "w": 0.4325,
+          "h": 0.04
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#9fb2c8"
+        },
+        "params": {
+          "text": "Right channel"
+        },
+        "style": {
+          "fontSize": 15.839999999999998,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center",
+          "textCase": "upper",
+          "letterSpacing": 6
+        },
+        "effects": []
+      },
+      {
+        "id": "title-6",
+        "type": "title",
+        "rect": {
+          "x": 0.0525,
+          "y": 0.78,
+          "w": 0.895625,
+          "h": 0.05
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#dff1ff"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 24.480000000000004,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "letterSpacing": 2,
+          "shadowColor": "#4fb4ff",
+          "shadowOpacity": 0.7,
+          "shadowBlur": 10,
+          "shadowX": 0,
+          "shadowY": 0
+        },
+        "effects": []
+      },
+      {
+        "id": "artist-7",
+        "type": "artist",
+        "rect": {
+          "x": 0.0525,
+          "y": 0.835,
+          "w": 0.895625,
+          "h": 0.035
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#6f8fae"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 14.4,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "center",
+          "textCase": "upper",
+          "letterSpacing": 5
+        },
+        "effects": []
+      },
+      {
+        "id": "shape-8",
+        "type": "shape",
+        "rect": {
+          "x": 0.058125,
+          "y": 0.77,
+          "w": 0.05625,
+          "h": 0.1
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#d9dde3"
+            },
+            {
+              "pos": 0.55,
+              "color": "#8b9099"
+            },
+            {
+              "pos": 1,
+              "color": "#2a2d33"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#d9dde3",
+          "direction": "radial"
+        },
+        "params": {},
+        "style": {
+          "shape": "ellipse",
+          "fillOpacity": 1,
+          "borderColor": "#0a0b0d",
+          "borderWidth": 3,
+          "borderOpacity": 1,
+          "radius": 0
+        },
+        "effects": []
+      },
+      {
+        "id": "shape-9",
+        "type": "shape",
+        "rect": {
+          "x": 0.88625,
+          "y": 0.77,
+          "w": 0.05625,
+          "h": 0.1
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#d9dde3"
+            },
+            {
+              "pos": 0.55,
+              "color": "#8b9099"
+            },
+            {
+              "pos": 1,
+              "color": "#2a2d33"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#d9dde3",
+          "direction": "radial"
+        },
+        "params": {},
+        "style": {
+          "shape": "ellipse",
+          "fillOpacity": 1,
+          "borderColor": "#0a0b0d",
+          "borderWidth": 3,
+          "borderOpacity": 1,
+          "radius": 0
+        },
+        "effects": []
+      },
+      {
+        "id": "shape-10",
+        "type": "shape",
+        "rect": {
+          "x": 0.4622,
+          "y": 0.024799999999999992,
+          "w": 0.0756,
+          "h": 0.13440000000000002
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#5fd0ff"
+            },
+            {
+              "pos": 0.3,
+              "color": "#1d5f86"
+            },
+            {
+              "pos": 1,
+              "color": "#14161a"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#5fd0ff",
+          "direction": "radial"
+        },
+        "params": {},
+        "style": {
+          "shape": "ellipse",
+          "fillOpacity": 0.55,
+          "borderColor": "#ffffff",
+          "borderWidth": 0,
+          "borderOpacity": 1,
+          "radius": 0
+        },
+        "effects": []
+      },
+      {
+        "id": "shape-11",
+        "type": "shape",
+        "rect": {
+          "x": 0.48950000000000005,
+          "y": 0.07333333333333333,
+          "w": 0.021,
+          "h": 0.037333333333333336
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#5fd0ff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#ffffff",
+          "direction": "radial"
+        },
+        "params": {},
+        "style": {
+          "shape": "ellipse",
+          "fillOpacity": 1,
+          "borderColor": "#ffffff",
+          "borderWidth": 0,
+          "borderOpacity": 1,
+          "radius": 0
+        },
+        "effects": []
+      }
+    ]
+  },
+  "Beat Stage": {
+    "aspect": "16:9",
+    "graphScale": 1,
+    "background": {
+      "color": "#04040b",
+      "image": null,
+      "effects": [
+        {
+          "type": "flash",
+          "enabled": true,
+          "amount": 0,
+          "palette": {
+            "stops": [
+              {
+                "pos": 0,
+                "color": "#4a0f2a"
+              }
+            ],
+            "motion": {
+              "mode": "none",
+              "speed": 0.25
+            }
+          },
+          "mod": {
+            "source": "bass",
+            "depth": 0.08,
+            "speed": 1
+          }
+        }
+      ],
+      "themeColors": {
+        "graph-bg-deep": "#04040b",
+        "graph-base-soft": "#0c0e1a",
+        "graph-grid-subtle": "#141729",
+        "graph-grid-soft": "#1c2038",
+        "graph-grid-strong": "#2a2f50",
+        "graph-label": "#8a90b8",
+        "text-primary": "#eef0ff",
+        "graph-trace-tertiary": "#6a70a0"
+      }
+    },
+    "items": [
+      {
+        "id": "title-1",
+        "type": "title",
+        "rect": {
+          "x": 0.028125,
+          "y": 0.05,
+          "w": 0.94375,
+          "h": 0.06999999999999999
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#fff0f4"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "verticalAlign": "middle",
+          "textCase": "upper",
+          "letterSpacing": 4,
+          "shadowColor": "#ff2a6d",
+          "shadowOpacity": 1,
+          "shadowBlur": 16,
+          "shadowX": 0,
+          "shadowY": 0
+        },
+        "effects": []
+      },
+      {
+        "id": "artist-2",
+        "type": "artist",
+        "rect": {
+          "x": 0.028125,
+          "y": 0.1225,
+          "w": 0.94375,
+          "h": 0.04
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2a6d"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff8a3d"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe14a"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#ff2a6d",
+          "angle": 90
+        },
+        "params": {},
+        "style": {
+          "fontSize": 18,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "center",
+          "textCase": "upper",
+          "letterSpacing": 9
+        },
+        "effects": []
+      },
+      {
+        "id": "rhythm-analyzer-3",
+        "type": "rhythm-analyzer",
+        "rect": {
+          "x": 0.028125,
+          "y": 0.175,
+          "w": 0.45,
+          "h": 0.8
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2a6d"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff8a3d"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe14a"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#ff2a6d",
+          "angle": 90
+        },
+        "params": {
+          "mn": 40,
+          "mx": 240,
+          "sp": 8,
+          "showBeat": true,
+          "showBpm": true,
+          "vt": false,
+          "vm": false,
+          "ve": false,
+          "vl": false,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {
+          "fontSize": 44.800000000000004,
+          "fontFamily": "sans-serif",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "outlineWidth": 2,
+          "beatSize": 84,
+          "beatLineWidth": 5,
+          "beatFillOpacity": 0.28,
+          "beatHoldTime": 40,
+          "beatDecayTime": 220,
+          "beatStrokeOpacity": 1,
+          "beatUsePalette": true,
+          "beatFillColor": "#40dfff",
+          "beatStrokeColor": "#40dfff",
+          "beatFitBpm": true,
+          "verticalAlign": "middle",
+          "shadowColor": "#ff2a6d",
+          "shadowOpacity": 0.9,
+          "shadowBlur": 14,
+          "shadowX": 0,
+          "shadowY": 0
+        },
+        "effects": [
+          {
+            "type": "scale-pulse",
+            "enabled": true,
+            "amount": 0,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "bass",
+              "depth": 0.3,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "spectrum-4",
+        "type": "spectrum",
+        "rect": {
+          "x": 0.50625,
+          "y": 0.195,
+          "w": 0.465625,
+          "h": 0.43939393939393945
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2a6d"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff8a3d"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe14a"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#ff2a6d",
+          "angle": 90
+        },
+        "params": {
+          "dr": -84,
+          "pt": 12,
+          "sc": "log-hq",
+          "kb": false,
+          "kl": 100,
+          "mf": 40000,
+          "dm": "bar",
+          "quantizeBars": true,
+          "bc": 56,
+          "ds": 0,
+          "orientation": "horizontal",
+          "cf": 0.3,
+          "pk": true,
+          "ph": 0.6,
+          "pf": 1,
+          "sm": 0,
+          "gainDb": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "glow",
+            "enabled": true,
+            "amount": 0.2,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#ff6a3d"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "spectrum-5",
+        "type": "spectrum",
+        "rect": {
+          "x": 0.479262434334239,
+          "y": 0.6383939393939395,
+          "w": 0.465625,
+          "h": 0.26363636363636367
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": true,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2a6d"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff8a3d"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe14a"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#ff2a6d",
+          "angle": 90
+        },
+        "params": {
+          "dr": -84,
+          "pt": 12,
+          "sc": "log-hq",
+          "kb": false,
+          "kl": 100,
+          "mf": 40000,
+          "dm": "bar",
+          "quantizeBars": true,
+          "bc": 56,
+          "ds": 0,
+          "orientation": "horizontal",
+          "cf": 0.3,
+          "pk": true,
+          "ph": 0.6,
+          "pf": 1,
+          "sm": 0,
+          "gainDb": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "opacity",
+            "enabled": true,
+            "amount": 0.22,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          },
+          {
+            "type": "transform",
+            "enabled": true,
+            "amount": 1,
+            "scaleX": 100,
+            "scaleY": 100,
+            "angle": 0,
+            "offsetX": 0,
+            "offsetY": 0,
+            "skewX": -20,
+            "skewY": 0,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
       }
     ]
   }

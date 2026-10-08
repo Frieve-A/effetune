@@ -1,4 +1,4 @@
-const NUMBER_INPUT_SELECTOR = '.plugin-parameter-ui input[type="number"]';
+const NUMBER_INPUT_SELECTOR = '.plugin-parameter-ui input[type="number"], .visualizer-editor-navigation input[type="number"]';
 
 function createEvent(documentRef, type, bubbles) {
     const EventClass = documentRef.defaultView?.Event || globalThis.Event;

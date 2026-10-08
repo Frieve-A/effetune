@@ -18,14 +18,6 @@
       "min": 21,
       "max": 108,
       "default": 91
-    },
-    {
-      "name": "regularCandidates",
-      "key": "nc",
-      "kind": "int",
-      "min": 1,
-      "max": 16,
-      "default": 8
     }
   ]
 }

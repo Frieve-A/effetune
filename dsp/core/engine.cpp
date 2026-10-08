@@ -9,6 +9,7 @@
 #include "effetune/dsp/denormal_noise.h"
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -121,10 +122,12 @@ void Engine::invalidatePipeline() noexcept {
   pipeline_ = {};
   pipeline_compensation_ = {};
   pipeline_output_delays_ = {};
+  pipeline_kernel_latencies_ = {};
   pipeline_output_delay_line_ = {};
   pipeline_count_ = 0u;
   pipeline_latency_samples_ = 0u;
   pipeline_configured_ = false;
+  pipeline_latency_reserved_ = false;
   pipeline_delay_history_dirty_ = false;
 }
 
@@ -373,6 +376,7 @@ void Engine::destroySlot(InstanceSlot &slot) noexcept {
     slot.kernel = nullptr;
     slot.descriptor = nullptr;
     slot.tapId = 0;
+    slot.analysisSource = 0;
     slot.telemetrySequence = 0;
     slot.telemetryFrames = 0.0;
     slot.graphParameters = {};
@@ -424,6 +428,19 @@ et_status Engine::resetInstance(et_instance instance) noexcept {
 std::uint32_t Engine::instanceLatency(et_instance instance) const noexcept {
   const InstanceSlot *slot = findInstance(instance);
   return slot == nullptr ? 0u : slot->kernel->latencySamples();
+}
+
+et_status Engine::setInstanceAnalysisSource(et_instance consumer, et_instance producer) noexcept {
+  auto *target = findInstance(consumer);
+  const auto *source = producer ? findInstance(producer) : nullptr;
+  if (!target || std::strcmp(target->descriptor->typeName, "SFZNotePlayerPlugin") != 0 ||
+      (producer &&
+       (!source || std::strcmp(source->descriptor->typeName, "NoteSpectrogramPlugin") != 0)))
+    return ET_ERR_ARGS;
+  if (target->graphOwned || (source && source->graphOwned))
+    return ET_ERR_STATE;
+  target->analysisSource = producer;
+  return ET_OK;
 }
 
 et_status Engine::setInstanceTap(et_instance instance, std::uint32_t tap_id) noexcept {
@@ -619,7 +636,13 @@ void Engine::processSlot(InstanceSlot &slot, float *audio, std::uint32_t channel
   prepareDenormalProtectedInput(audio, channel_count, frame_count, info.timeSeconds, sample_rate_,
                                 !add_noise_after);
 #endif
-  slot.kernel->process(audio, channel_count, frame_count, info);
+  auto kernel_info = info;
+  if (!slot.graphOwned && slot.analysisSource != 0u) {
+    const auto *source = findInstance(slot.analysisSource);
+    if (source && !source->graphOwned)
+      kernel_info.noteAnalysis = source->kernel->noteAnalysisView();
+  }
+  slot.kernel->process(audio, channel_count, frame_count, kernel_info);
 #if defined(__EMSCRIPTEN__)
   if (add_noise_after) {
     addDenormalNoise(audio, channel_count, frame_count, info.timeSeconds, sample_rate_);
@@ -755,12 +778,14 @@ et_status Engine::configurePipeline(const std::uint8_t *descriptor,
   pipeline_compensation_ = std::move(update.compensation_);
   pipeline_tap_latency_ = update.tap_latency_;
   pipeline_input_latency_ = update.input_latency_;
+  pipeline_kernel_latencies_ = snapshot.latencies_;
   pipeline_output_delays_ = update.output_delays_;
   pipeline_output_delay_line_ = std::move(update.output_delay_line_);
   pipeline_count_ = node_count;
   pipeline_latency_samples_ = update.latency_;
   ++pipeline_revision_;
   pipeline_configured_ = true;
+  pipeline_latency_reserved_ = false;
   pipeline_delay_history_dirty_ = false;
   return ET_OK;
 }
@@ -781,148 +806,141 @@ et_status Engine::capturePipelineLatencySnapshot(PipelineLatencySnapshot &snapsh
   return ET_OK;
 }
 
-et_status Engine::preparePipelineLatencyUpdate(const PipelineLatencySnapshot &snapshot,
-                                               PipelineLatencyUpdate &update) noexcept {
-  // Reuse and destruction are non-real-time operations, even after a failed prepare.
+et_status Engine::planPipelineLatency(const PipelineLatencySnapshot &snapshot,
+                                      PipelineLatencyUpdate &update) noexcept {
   update.ready_ = false;
   update.latency_ = 0u;
-  update.compensation_ = {};
+  for (auto &compensation : update.compensation_) {
+    compensation.inputDelays = {};
+    compensation.targets = {};
+    compensation.delays = {};
+  }
   update.tap_latency_ = {};
   update.input_latency_ = {};
   update.output_delays_ = {};
-  update.output_delay_line_ = {};
   if (snapshot.owner_ == nullptr) {
     return ET_ERR_STATE;
   }
-  const auto build_plan = [&]() -> et_status {
-    std::array<std::array<std::uint32_t, 16>, Arena::kBusCount> latency{};
-    std::array<std::array<bool, 16>, Arena::kBusCount> has_content{};
-    auto &compensation = update.compensation_;
-    auto &output_delays = update.output_delays_;
-    auto &output_delay_line = update.output_delay_line_;
+  std::array<std::array<std::uint32_t, 16>, Arena::kBusCount> latency{};
+  std::array<std::array<bool, 16>, Arena::kBusCount> has_content{};
+  auto &compensation = update.compensation_;
+  auto &output_delays = update.output_delays_;
 
-    for (std::uint32_t channel = 0u; channel < snapshot.channel_count_; ++channel) {
-      has_content[0][channel] = true;
-    }
-
-    for (std::uint32_t index = 0u; index < snapshot.node_count_; ++index) {
-      const PipelineNode &node = snapshot.nodes_[index];
-      if (node.enabled == 0u || node.sectionGate == 0u) {
-        continue;
-      }
-
-      std::uint32_t first_channel = 0u;
-      std::uint32_t routed_channels = snapshot.channel_count_;
-      if (node.channelSpec != -2) {
-        routed_channels = node.channelSpec == -1 || node.channelSpec >= 16 ? 2u : 1u;
-        if (node.channelSpec >= 16) {
-          first_channel = static_cast<std::uint32_t>(node.channelSpec - 16) * 2u;
-        } else if (node.channelSpec >= 0) {
-          first_channel = static_cast<std::uint32_t>(node.channelSpec);
-        }
-      }
-      if (first_channel + routed_channels > snapshot.channel_count_) {
-        continue;
-      }
-
-      const std::uint32_t plugin_latency = snapshot.latencies_[index];
-      std::uint32_t input_latency = 0u;
-      for (std::uint32_t offset = 0u; offset < routed_channels; ++offset) {
-        const std::uint32_t channel = first_channel + offset;
-        if (has_content[node.inputBus][channel] &&
-            latency[node.inputBus][channel] > input_latency) {
-          input_latency = latency[node.inputBus][channel];
-        }
-      }
-      if (plugin_latency > std::numeric_limits<std::uint32_t>::max() - input_latency) {
-        return ET_ERR_DESC;
-      }
-      const std::uint32_t incoming_latency = input_latency + plugin_latency;
-      update.tap_latency_[index] = {input_latency, incoming_latency};
-      update.input_latency_[index] = input_latency;
-      std::uint32_t maximum_input_delay = 0u;
-      std::uint32_t maximum_merge_delay = 0u;
-      for (std::uint32_t offset = 0u; offset < routed_channels; ++offset) {
-        const std::uint32_t channel = first_channel + offset;
-        const std::uint32_t channel_latency =
-            has_content[node.inputBus][channel] ? latency[node.inputBus][channel] : 0u;
-        const std::uint32_t input_delay = input_latency - channel_latency;
-        compensation[index].inputDelays[channel] = input_delay;
-        maximum_input_delay = input_delay > maximum_input_delay ? input_delay : maximum_input_delay;
-
-        if (node.inputBus == node.outputBus) {
-          latency[node.outputBus][channel] = incoming_latency;
-          has_content[node.outputBus][channel] = true;
-          continue;
-        }
-
-        if (!has_content[node.outputBus][channel]) {
-          latency[node.outputBus][channel] = incoming_latency;
-          has_content[node.outputBus][channel] = true;
-          continue;
-        }
-
-        const std::uint32_t destination_latency = latency[node.outputBus][channel];
-        if (destination_latency < incoming_latency) {
-          const std::uint32_t delay = incoming_latency - destination_latency;
-          compensation[index].targets[channel] = DelayTarget::Destination;
-          compensation[index].delays[channel] = delay;
-          maximum_merge_delay = delay > maximum_merge_delay ? delay : maximum_merge_delay;
-          latency[node.outputBus][channel] = incoming_latency;
-        } else if (incoming_latency < destination_latency) {
-          const std::uint32_t delay = destination_latency - incoming_latency;
-          compensation[index].targets[channel] = DelayTarget::Incoming;
-          compensation[index].delays[channel] = delay;
-          maximum_merge_delay = delay > maximum_merge_delay ? delay : maximum_merge_delay;
-        }
-      }
-      if (maximum_input_delay != 0u && !compensation[index].inputDelayLine.prepareNothrow(
-                                           snapshot.channel_count_, maximum_input_delay)) {
-        return ET_ERR_OOM;
-      }
-      if (maximum_merge_delay != 0u && !compensation[index].delayLine.prepareNothrow(
-                                           snapshot.channel_count_, maximum_merge_delay)) {
-        return ET_ERR_OOM;
-      }
-    }
-
-    std::uint32_t total_latency = 0u;
-    for (std::uint32_t channel = 0u; channel < snapshot.channel_count_; ++channel) {
-      if (has_content[0][channel] && latency[0][channel] > total_latency) {
-        total_latency = latency[0][channel];
-      }
-    }
-    std::uint32_t maximum_output_delay = 0u;
-    for (std::uint32_t channel = 0u; channel < snapshot.channel_count_; ++channel) {
-      const std::uint32_t channel_latency = has_content[0][channel] ? latency[0][channel] : 0u;
-      output_delays[channel] = total_latency - channel_latency;
-      maximum_output_delay = output_delays[channel] > maximum_output_delay ? output_delays[channel]
-                                                                           : maximum_output_delay;
-    }
-    if (maximum_output_delay != 0u &&
-        !output_delay_line.prepareNothrow(snapshot.channel_count_, maximum_output_delay)) {
-      return ET_ERR_OOM;
-    }
-
-    update.latency_ = total_latency;
-    for (auto &tap : update.tap_latency_) {
-      tap.input = total_latency > tap.input ? total_latency - tap.input : 0;
-      tap.output = total_latency > tap.output ? total_latency - tap.output : 0;
-    }
-    update.snapshot_ = snapshot;
-    update.ready_ = true;
-    return ET_OK;
-  };
-
-#if defined(ET_ENABLE_LIFECYCLE_EXCEPTION_BOUNDARY)
-  try {
-    return build_plan();
-  } catch (...) {
-    return ET_ERR_OOM;
+  for (std::uint32_t channel = 0u; channel < snapshot.channel_count_; ++channel) {
+    has_content[0][channel] = true;
   }
-#else
-  return build_plan();
-#endif
+
+  for (std::uint32_t index = 0u; index < snapshot.node_count_; ++index) {
+    const PipelineNode &node = snapshot.nodes_[index];
+    if (node.enabled == 0u || node.sectionGate == 0u) {
+      continue;
+    }
+
+    std::uint32_t first_channel = 0u;
+    std::uint32_t routed_channels = snapshot.channel_count_;
+    if (node.channelSpec != -2) {
+      routed_channels = node.channelSpec == -1 || node.channelSpec >= 16 ? 2u : 1u;
+      if (node.channelSpec >= 16) {
+        first_channel = static_cast<std::uint32_t>(node.channelSpec - 16) * 2u;
+      } else if (node.channelSpec >= 0) {
+        first_channel = static_cast<std::uint32_t>(node.channelSpec);
+      }
+    }
+    if (first_channel + routed_channels > snapshot.channel_count_) {
+      continue;
+    }
+
+    const std::uint32_t plugin_latency = snapshot.latencies_[index];
+    std::uint32_t input_latency = 0u;
+    for (std::uint32_t offset = 0u; offset < routed_channels; ++offset) {
+      const std::uint32_t channel = first_channel + offset;
+      if (has_content[node.inputBus][channel] && latency[node.inputBus][channel] > input_latency) {
+        input_latency = latency[node.inputBus][channel];
+      }
+    }
+    if (plugin_latency > std::numeric_limits<std::uint32_t>::max() - input_latency) {
+      return ET_ERR_DESC;
+    }
+    const std::uint32_t incoming_latency = input_latency + plugin_latency;
+    update.tap_latency_[index] = {input_latency, incoming_latency};
+    update.input_latency_[index] = input_latency;
+    for (std::uint32_t offset = 0u; offset < routed_channels; ++offset) {
+      const std::uint32_t channel = first_channel + offset;
+      const std::uint32_t channel_latency =
+          has_content[node.inputBus][channel] ? latency[node.inputBus][channel] : 0u;
+      const std::uint32_t input_delay = input_latency - channel_latency;
+      compensation[index].inputDelays[channel] = input_delay;
+
+      if (node.inputBus == node.outputBus) {
+        latency[node.outputBus][channel] = incoming_latency;
+        has_content[node.outputBus][channel] = true;
+        continue;
+      }
+
+      if (!has_content[node.outputBus][channel]) {
+        latency[node.outputBus][channel] = incoming_latency;
+        has_content[node.outputBus][channel] = true;
+        continue;
+      }
+
+      const std::uint32_t destination_latency = latency[node.outputBus][channel];
+      if (destination_latency < incoming_latency) {
+        const std::uint32_t delay = incoming_latency - destination_latency;
+        compensation[index].targets[channel] = DelayTarget::Destination;
+        compensation[index].delays[channel] = delay;
+        latency[node.outputBus][channel] = incoming_latency;
+      } else if (incoming_latency < destination_latency) {
+        const std::uint32_t delay = destination_latency - incoming_latency;
+        compensation[index].targets[channel] = DelayTarget::Incoming;
+        compensation[index].delays[channel] = delay;
+      }
+    }
+  }
+
+  std::uint32_t total_latency = 0u;
+  for (std::uint32_t channel = 0u; channel < snapshot.channel_count_; ++channel) {
+    if (has_content[0][channel] && latency[0][channel] > total_latency) {
+      total_latency = latency[0][channel];
+    }
+  }
+  for (std::uint32_t channel = 0u; channel < snapshot.channel_count_; ++channel) {
+    const std::uint32_t channel_latency = has_content[0][channel] ? latency[0][channel] : 0u;
+    output_delays[channel] = total_latency - channel_latency;
+  }
+
+  update.latency_ = total_latency;
+  for (auto &tap : update.tap_latency_) {
+    tap.input = total_latency > tap.input ? total_latency - tap.input : 0;
+    tap.output = total_latency > tap.output ? total_latency - tap.output : 0;
+  }
+  update.snapshot_ = snapshot;
+  update.ready_ = true;
+  return ET_OK;
+}
+
+et_status Engine::preparePipelineLatencyUpdate(const PipelineLatencySnapshot &snapshot,
+                                               PipelineLatencyUpdate &update) noexcept {
+  // Reuse and destruction are non-real-time operations, even after a failed prepare.
+  update.compensation_ = {};
+  update.output_delay_line_ = {};
+  const et_status status = planPipelineLatency(snapshot, update);
+  if (status != ET_OK)
+    return status;
+  update.ready_ = false;
+  const auto prepare = [&](dsp::DelayLine &line, const auto &delays) noexcept {
+    const auto maximum = *std::max_element(delays.begin(), delays.end());
+    return maximum == 0u || line.prepareNothrow(snapshot.channel_count_, maximum);
+  };
+  for (std::uint32_t index = 0u; index < snapshot.node_count_; ++index) {
+    auto &compensation = update.compensation_[index];
+    if (!prepare(compensation.inputDelayLine, compensation.inputDelays) ||
+        !prepare(compensation.delayLine, compensation.delays))
+      return ET_ERR_OOM;
+  }
+  if (!prepare(update.output_delay_line_, update.output_delays_))
+    return ET_ERR_OOM;
+  update.ready_ = true;
+  return ET_OK;
 }
 
 et_status Engine::applyPipelineLatencyUpdate(PipelineLatencyUpdate &update) noexcept {
@@ -965,9 +983,123 @@ et_status Engine::applyPipelineLatencyUpdate(PipelineLatencyUpdate &update) noex
   pipeline_latency_samples_ = update.latency_;
   pipeline_tap_latency_ = update.tap_latency_;
   pipeline_input_latency_ = update.input_latency_;
+  pipeline_kernel_latencies_ = snapshot.latencies_;
   ++pipeline_revision_;
   update.ready_ = false;
   return ET_OK;
+}
+
+et_status Engine::refreshPipelineLatency() noexcept {
+  PipelineLatencySnapshot snapshot;
+  const et_status captured = capturePipelineLatencySnapshot(snapshot);
+  if (captured != ET_OK || snapshot.latencies_ == pipeline_kernel_latencies_) {
+    return captured;
+  }
+  PipelineLatencyUpdate update;
+  const et_status prepared = preparePipelineLatencyUpdate(snapshot, update);
+  return prepared == ET_OK ? applyPipelineLatencyUpdate(update) : prepared;
+}
+
+et_status Engine::reservePipelineLatency() noexcept {
+  PipelineLatencySnapshot snapshot;
+  et_status status = capturePipelineLatencySnapshot(snapshot);
+  if (status != ET_OK)
+    return status;
+  PipelineLatencyUpdate update;
+  status = planPipelineLatency(snapshot, update);
+  if (status != ET_OK)
+    return status;
+
+  std::array<LatencyRange, kMaxPipelineNodes> ranges{};
+  std::uint32_t variation = 0u;
+  bool uniform_chain = true;
+  for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
+    const auto &node = pipeline_[index];
+    if (!node.enabled || !node.sectionGate)
+      continue;
+    const auto range = findInstance(node.instance)->kernel->latencyRange();
+    const auto current = snapshot.latencies_[index];
+    if (range.minimum > current || range.maximum < current ||
+        range.maximum - range.minimum > std::numeric_limits<std::uint32_t>::max() - variation) {
+      return ET_ERR_DESC;
+    }
+    ranges[index] = range;
+    variation += range.maximum - range.minimum;
+    uniform_chain = uniform_chain && node.channelSpec == -2 && node.inputBus == node.outputBus;
+  }
+  // A path difference can change by at most the sum of kernel latency ranges.
+  const auto reserve = [&](dsp::DelayLine &line, const auto &delays, bool can_vary) noexcept {
+    const auto current = *std::max_element(delays.begin(), delays.end());
+    const auto extra = can_vary ? variation : 0u;
+    if (extra >= std::numeric_limits<std::uint32_t>::max() - current)
+      return ET_ERR_DESC;
+    const auto capacity = current + extra;
+    return capacity == 0u || line.prepareNothrow(max_channels_, capacity) ? ET_OK : ET_ERR_OOM;
+  };
+  update.ready_ = false;
+  for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
+    const auto &node = pipeline_[index];
+    if (!node.enabled || !node.sectionGate)
+      continue;
+    auto &compensation = update.compensation_[index];
+    const bool multiple_channels = node.channelSpec == -2
+                                       ? max_channels_ > 1u
+                                       : node.channelSpec == -1 || node.channelSpec >= 16;
+    status = reserve(compensation.inputDelayLine, compensation.inputDelays,
+                     multiple_channels && !uniform_chain);
+    if (status != ET_OK)
+      return status;
+    status = reserve(compensation.delayLine, compensation.delays, node.inputBus != node.outputBus);
+    if (status != ET_OK)
+      return status;
+  }
+  status = reserve(update.output_delay_line_, update.output_delays_, !uniform_chain);
+  if (status != ET_OK)
+    return status;
+  update.ready_ = true;
+  status = applyPipelineLatencyUpdate(update);
+  if (status == ET_OK) {
+    pipeline_latency_ranges_ = ranges;
+    pipeline_latency_reserved_ = true;
+  }
+  return status;
+}
+
+et_status Engine::refreshPipelineLatencyRealtime() noexcept {
+  allocation_guard::Scope allocation_scope;
+  if (!pipeline_latency_reserved_)
+    return ET_ERR_STATE;
+  PipelineLatencySnapshot snapshot;
+  const et_status captured = capturePipelineLatencySnapshot(snapshot);
+  if (captured != ET_OK || snapshot.latencies_ == pipeline_kernel_latencies_)
+    return captured;
+  for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
+    const auto &node = pipeline_[index];
+    if (!node.enabled || !node.sectionGate)
+      continue;
+    const auto range = pipeline_latency_ranges_[index];
+    if (snapshot.latencies_[index] < range.minimum || snapshot.latencies_[index] > range.maximum)
+      return ET_ERR_STATE;
+  }
+  // This temporary owns no storage, including when it leaves scope after apply.
+  PipelineLatencyUpdate update;
+  const et_status planned = planPipelineLatency(snapshot, update);
+  if (planned != ET_OK)
+    return planned;
+  const auto fits = [&](const dsp::DelayLine &line, const auto &delays) noexcept {
+    const auto maximum = *std::max_element(delays.begin(), delays.end());
+    return maximum == 0u ||
+           (line.channelCount() == max_channels_ && line.maxDelaySamples() >= maximum);
+  };
+  for (std::uint32_t index = 0u; index < pipeline_count_; ++index) {
+    const auto &active = pipeline_compensation_[index];
+    const auto &next = update.compensation_[index];
+    if (!fits(active.inputDelayLine, next.inputDelays) || !fits(active.delayLine, next.delays))
+      return ET_ERR_STATE;
+  }
+  if (!fits(pipeline_output_delay_line_, update.output_delays_))
+    return ET_ERR_STATE;
+  return applyPipelineLatencyUpdate(update);
 }
 
 bool Engine::pipelineTapLatency(et_instance instance, PipelineTapLatency &latency) const noexcept {

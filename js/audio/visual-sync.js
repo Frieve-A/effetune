@@ -10,7 +10,28 @@ export const isVisualSyncEnabled = config => config?.visualSync === true;
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const bounded = (value, fallback, low, high) => clamp(Number.isFinite(value) ? value : fallback, low, high);
 const zero = () => 0;
-const noteWindowAge = rate => clamp(Math.round(rate * 16384 / 48000), 32, 65536) / 2;
+let noteWindowRate = 0;
+let noteWindowFrames = 0;
+const noteWindowAge = rate => {
+    if (rate === noteWindowRate) return noteWindowFrames;
+    const size = Math.round(rate * 16384 / 48000);
+    const fall = Math.round(rate * 0.02);
+    const rise = size - fall;
+    let energy = 0;
+    let age = 0;
+    // The energy centroid anchors the asymmetric long window without label-timing assumptions.
+    for (let i = 0; i < size; i++) {
+        const weight = i < rise
+            ? 0.5 * (1 - Math.cos(Math.PI * (i + 0.5) / rise))
+            : 0.5 * (1 + Math.cos(Math.PI * (i - rise + 0.5) / fall));
+        const power = weight * weight;
+        energy += power;
+        age += (size - i) * power;
+    }
+    noteWindowRate = rate;
+    noteWindowFrames = age / energy;
+    return noteWindowFrames;
+};
 const rule = (generationFrames = zero, tap = 'output') => Object.freeze({ synced: true, generationFrames, tap });
 const fftSize = params => 2 ** Math.round(bounded(params.pt, 12, 8, 14));
 function spectrumAge(params, sampleRate, execution, rateLimited) {
@@ -131,8 +152,8 @@ export function dropVisualSyncOverflow(queue, sameStream, limit = VISUAL_SYNC_QU
 // These payloads record capture-end time on the worklet processing timeline.
 export function telemetryCaptureTiming(frame, contextFrameOffset) {
     if (!Number.isFinite(contextFrameOffset)) return null;
-    // Note Spectrogram telemetry v4 (see plugins/analyzer/note_spectrogram.js).
-    const note = frame?.frameType === 24 && frame.formatVersion === 4 && frame.payload?.byteLength === 5312;
+    // Note Spectrogram telemetry v5 (see plugins/analyzer/note_spectrogram.js).
+    const note = frame?.frameType === 24 && frame.formatVersion === 5 && frame.payload?.byteLength === 8840;
     const spectrogram = frame?.frameType === 5 && frame.formatVersion === 1 && frame.payload?.byteLength === 268;
     if (!note && !spectrogram) return null;
     const sampleRate = frame.payload.getFloat32(0, true);

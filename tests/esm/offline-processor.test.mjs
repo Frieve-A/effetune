@@ -932,6 +932,46 @@ test('processAudioFile renders enabled plugins through buses, sections, progress
   });
 });
 
+for (const progressTime of [20, 0]) {
+  test(`processAudioFile completes while animation frames are paused (progress time ${progressTime})`, async () => {
+    const nativeSetTimeout = globalThis.setTimeout;
+    const nativeClearTimeout = globalThis.clearTimeout;
+    await withOfflineGlobals({ window: {}, performanceValues: [progressTime] }, async ({ calls }) => {
+      const frames = [];
+      await withGlobals({
+        requestAnimationFrame(callback) {
+          frames.push(callback);
+          return frames.length;
+        }
+      }, async () => {
+        const { processor, file, encoded } = createHarness(calls);
+        const progress = [];
+        const processing = processor.processAudioFile(file, [
+          createGainPlugin(calls, { gain: 2 })
+        ], value => progress.push(value));
+        let guard;
+        try {
+          const result = await Promise.race([
+            processing,
+            new Promise((_, reject) => {
+              guard = nativeSetTimeout(() => reject(new Error('Processing waited for an animation frame')), 1000);
+            })
+          ]);
+          assert.equal(result, encoded[0]);
+          assert.equal(progress.at(-1), 100);
+          assert.equal(processor.isProcessing(), false);
+          assert.deepEqual([...result.encodedBuffer.getChannelData(0)], [...Float32Array.of(0, 0.02, 0.04, 0.06)]);
+        } finally {
+          nativeClearTimeout(guard);
+          processor.cancelProcessing();
+          for (const callback of frames) callback();
+          await processing;
+        }
+      });
+    });
+  });
+}
+
 test('processAudioFile keeps rendering after dynamic bus and plugin processing failures', async () => {
   await withOfflineGlobals({
     window: {},

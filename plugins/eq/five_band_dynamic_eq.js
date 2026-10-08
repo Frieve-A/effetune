@@ -135,8 +135,7 @@ class FiveBandDynamicEQ extends PluginBase {
                     const bandStates = []; const levelDetectors = []; const gainEnvelopes = [];
                     for(let ch=0; ch<channelCount; ++ch) {
                         bandStates.push({
-                            w1: 0, w2: 0, sc_w1: 0, sc_w2: 0, lastGain: NaN,
-                            lastCoeffs: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 }
+                            w1: 0, w2: 0
                         });
                     }
                     // Level detector and gain envelope only needed once per band for mono dynamics
@@ -148,6 +147,8 @@ class FiveBandDynamicEQ extends PluginBase {
                         levelDetector: levelDetectors[0], // Use the first instance for mono detection
                         gainEnvelope: gainEnvelopes[0],   // Use the first instance for mono gain smoothing
                         smoothedGain: 0,
+                        lastGain: NaN, lastF: NaN, lastQ: NaN, lastType: undefined,
+                        lastCoeffs: { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 },
                         mono_sc_w1: 0, // Mono state for sidechain filter
                         mono_sc_w2: 0  // Mono state for sidechain filter
                     });
@@ -271,7 +272,10 @@ class FiveBandDynamicEQ extends PluginBase {
                     const currentQ = params.qCurrent + params.qStep * geometryElapsed;
                     const currentScf = params.scfCurrent + params.scfStep * geometryElapsed;
                     const currentScq = params.scqCurrent + params.scqStep * geometryElapsed;
-                    calculateCoeffs('bp', currentScf, currentScq, 0, sampleRate, scCoeffs);
+                    if (i === 0 || (params.geometryRemaining > 0 &&
+                        (params.scfStep !== 0 || params.scqStep !== 0))) {
+                        calculateCoeffs('bp', currentScf, currentScq, 0, sampleRate, scCoeffs);
+                    }
 
                     // 3a. Mono Sidechain Filter
                     const sc_y0_mono = scCoeffs.b0 * monoSample + ctxBand.mono_sc_w1;
@@ -304,22 +308,18 @@ class FiveBandDynamicEQ extends PluginBase {
                     }
 
                     // --- Stereo EQ Filtering (based on mono dynamics) ---
+                    const gainDiff = final_G_smoothed_mono - ctxBand.lastGain;
+                    const geometryStable = ctxBand.lastF === currentF &&
+                        ctxBand.lastQ === currentQ && ctxBand.lastType === ft;
+                    if (!(gainDiff > -GAIN_THRESHOLD && gainDiff < GAIN_THRESHOLD && geometryStable)) {
+                        calculateCoeffs(ft, currentF, currentQ, final_G_smoothed_mono, sampleRate, ctxBand.lastCoeffs);
+                        ctxBand.lastGain = final_G_smoothed_mono;
+                        ctxBand.lastF = currentF; ctxBand.lastQ = currentQ; ctxBand.lastType = ft;
+                    }
+                    const eqCoeffs = ctxBand.lastCoeffs;
                     for (let ch = 0; ch < channelCount; ch++) {
                         const inputSample = currentSample[ch]; // Use the output of the previous band (or original input)
                         const bandState = ctxBand.bandStates[ch];
-
-                        // 3e. EQ Coefficient Calculation (Conditional, based on mono gain)
-                        let eqCoeffs;
-                        const gainDiff = final_G_smoothed_mono - bandState.lastGain;
-                        const geometryStable = bandState.lastF === currentF &&
-                            bandState.lastQ === currentQ && bandState.lastType === ft;
-                        if ((gainDiff > -GAIN_THRESHOLD && gainDiff < GAIN_THRESHOLD) && geometryStable) {
-                            eqCoeffs = bandState.lastCoeffs;
-                        } else {
-                            eqCoeffs = calculateCoeffs(ft, currentF, currentQ, final_G_smoothed_mono, sampleRate, bandState.lastCoeffs);
-                            bandState.lastGain = final_G_smoothed_mono;
-                            bandState.lastF = currentF; bandState.lastQ = currentQ; bandState.lastType = ft;
-                        }
 
                         // 3f. Apply EQ Filter (Per Channel)
                         const eq_y0 = eqCoeffs.b0 * inputSample + bandState.w1;

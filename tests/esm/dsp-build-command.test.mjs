@@ -143,9 +143,9 @@ test('production source digest includes promoted GSM inputs', () => {
 });
 
 test('DSP model freshness hashes binary bytes without UTF-8 decoding', t => {
-  const directory = 'dsp/plugins/analyzer/note_spectrogram/';
+  const directory = 'dsp/plugins/analyzer/rhythm_analyzer/';
   const inputs = new Set(sourceDigestInputPaths());
-  for (const model of ['learned_model', 'fine_model', 'octave_model']) {
+  for (const model of ['rhythm_d_low', 'rhythm_d_mid', 'rhythm_d_high']) {
     assert.equal(inputs.has(`${directory}${model}.bin`), true);
     assert.equal(inputs.has(`${directory}${model}.json`), true);
   }
@@ -154,7 +154,7 @@ test('DSP model freshness hashes binary bytes without UTF-8 decoding', t => {
 
   // Both byte sequences decode to the same replacement character as UTF-8.
   // Intercept synchronous reads so parallel tests never see a changed model file.
-  const modelPath = fs.realpathSync(path.join(repoRoot, directory, 'learned_model.bin'));
+  const modelPath = fs.realpathSync(path.join(repoRoot, directory, 'rhythm_d_low.bin'));
   const readFile = fs.readFileSync;
   let byte = 0xc0;
   t.mock.method(fs, 'readFileSync', (file, ...args) => {

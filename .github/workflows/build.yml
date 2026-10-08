@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -137,7 +137,7 @@ jobs:
           fi
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.release_artifacts && 'linux-release-artifacts' || 'linux-artifacts' }}
           path: |
@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -209,11 +209,40 @@ jobs:
       - name: Run rolling PCM distribution smoke
         run: npm run smoke:rolling-pcm-distribution
 
+      - name: Package Windows release ZIPs
+        if: inputs.release_artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = node -p "require('./package.json').version"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the application version.' }
+          $dist = (Resolve-Path -LiteralPath dist).Path
+          $portableRoot = (Resolve-Path -LiteralPath (Join-Path $dist 'win-unpacked')).Path
+          $setupPath = (Resolve-Path -LiteralPath (Join-Path $dist "EffeTune-${version}-Setup.exe")).Path
+          $settings = Join-Path $portableRoot 'effetune_settings'
+          [void][System.IO.Directory]::CreateDirectory($settings)
+          [System.IO.File]::WriteAllText((Join-Path $settings '.gitkeep'),
+            "# This file ensures the directory is included in ZIP archives`r`n",
+            [System.Text.UTF8Encoding]::new($false))
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($portableRoot,
+            (Join-Path $dist "EffeTune-${version}-Windows-Portable.zip"),
+            [System.IO.Compression.CompressionLevel]::Optimal, $false)
+          $setupZip = [System.IO.Compression.ZipFile]::Open(
+            (Join-Path $dist "EffeTune-${version}-Windows-Setup.zip"),
+            [System.IO.Compression.ZipArchiveMode]::Create)
+          try {
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+              $setupZip, $setupPath, [System.IO.Path]::GetFileName($setupPath),
+              [System.IO.Compression.CompressionLevel]::Optimal)
+          } finally { $setupZip.Dispose() }
+
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.release_artifacts && 'windows-release-artifacts' || 'windows-artifacts' }}
           path: |
+            dist/*-Windows-Portable.zip
+            dist/*-Windows-Setup.zip
             dist/**/*.exe
             dist/latest.yml
             dist/*-Setup.exe.blockmap
@@ -237,7 +266,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -280,7 +309,7 @@ jobs:
         run: npm run smoke:openhome-package
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.release_artifacts && format('macos-{0}-release-artifacts', matrix.arch) || format('macos-{0}-artifacts', matrix.arch) }}
           path: dist/**/*.dmg

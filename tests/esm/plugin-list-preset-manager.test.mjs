@@ -242,7 +242,7 @@ test('initPresetManager loads real system preset definitions once', async () => 
 
 test('system preset list renders categories, translated counts, and recovers from initialization errors', async () => {
   const calls = [];
-  const pluginListManager = createPluginListManager();
+  const pluginListManager = createPluginListManager({ currentTab: 'systemPresets' });
   const manager = new PresetManager(pluginListManager);
   manager.presetManager = {
     presetCategories: {
@@ -281,7 +281,7 @@ test('system preset list renders categories, translated counts, and recovers fro
   assert.deepEqual(errorCalls, [['consoleError', 'Error initializing system preset list:', 'load failed']]);
   assert.deepEqual(errorManager.pluginListManager.calls, []);
 
-  const fallbackManager = new PresetManager(createPluginListManager());
+  const fallbackManager = new PresetManager(createPluginListManager({ currentTab: 'systemPresets' }));
   fallbackManager.presetManager = {
     presetCategories: {},
     presetDefinitions: new Map()
@@ -294,7 +294,7 @@ test('system preset list renders categories, translated counts, and recovers fro
 
 test('user preset list handles translated, fallback, empty, and error states', async () => {
   const successCalls = [];
-  const successManager = new PresetManager(createPluginListManager());
+  const successManager = new PresetManager(createPluginListManager({ currentTab: 'userPresets' }));
   successManager.getUserPresetsData = async () => [
     { name: 'Alpha', description: 'User preset' },
     { name: 'Beta', description: 'User preset' }
@@ -305,14 +305,14 @@ test('user preset list handles translated, fallback, empty, and error states', a
   });
   assert.equal(successManager.pluginList.children[1].textContent, 'T:ui.userPresetsAvailable:2');
 
-  const fallbackManager = new PresetManager(createPluginListManager());
+  const fallbackManager = new PresetManager(createPluginListManager({ currentTab: 'userPresets' }));
   fallbackManager.getUserPresetsData = async () => [];
   await withPresetGlobals([], { uiManager: false }, async () => {
     await fallbackManager.initUserPresetList();
   });
   assert.equal(fallbackManager.pluginList.children[1].textContent, '0 user presets available');
 
-  const nullDataManager = new PresetManager(createPluginListManager());
+  const nullDataManager = new PresetManager(createPluginListManager({ currentTab: 'userPresets' }));
   nullDataManager.getUserPresetsData = async () => null;
   await withPresetGlobals([], { uiManager: false }, async () => {
     await nullDataManager.initUserPresetList();

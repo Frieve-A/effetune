@@ -1,0 +1,131 @@
+{
+  "defaults": {
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "channels": 2,
+    "channelMode": "stereo",
+    "frames": 48000,
+    "params": {
+      "th": 0.01,
+      "mn": 83,
+      "mx": 83
+    }
+  },
+  "cases": [
+    {
+      "id": "sine-bank-stereo-48k",
+      "stimulus": "sin1k",
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "sine-bank-mono-96k-block63",
+      "stimulus": "sin1k",
+      "sampleRate": 96000,
+      "frames": 96000,
+      "channels": 1,
+      "channelMode": "mono",
+      "blockSize": 63,
+      "params": {
+        "og": -6
+      },
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "silence-loaded-bank",
+      "stimulus": "silence",
+      "frames": 8192,
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "dry-delay-block97",
+      "stimulus": "noise",
+      "frames": 8192,
+      "blockSize": 97,
+      "params": {
+        "dm": 100,
+        "wm": 0
+      },
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "sine-bank-unloaded",
+      "stimulus": "sin1k",
+      "frames": 8192
+    },
+    {
+      "id": "independent-dry-wet",
+      "stimulus": "sin1k",
+      "params": {
+        "dm": 50,
+        "wm": 75,
+        "og": -6
+      },
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "octave-down-two",
+      "stimulus": "sin1k",
+      "params": {
+        "os": -2
+      },
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "octave-up-two",
+      "stimulus": "sin1k",
+      "params": {
+        "os": 2
+      },
+      "asset": {
+        "sfz": {
+          "kind": "sfz-sine-v1"
+        }
+      }
+    },
+    {
+      "id": "highest-positive-timing",
+      "stimulus": "sin1k",
+      "params": { "lo": false, "md": false, "hi": true, "tm": 100 },
+      "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    },
+    {
+      "id": "dry-negative-timing",
+      "stimulus": "noise",
+      "frames": 16384,
+      "blockSize": 63,
+      "params": { "dm": 100, "wm": 0, "tm": -100 },
+      "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    },
+    {
+      "id": "middle-excludes-single-note",
+      "stimulus": "sin1k",
+      "frames": 8192,
+      "params": { "lo": false, "md": true, "hi": false },
+      "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    }
+  ]
+}

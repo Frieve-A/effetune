@@ -54,8 +54,8 @@ test('original analyzer parameters and optional note octave mapping normalize in
     stereo.params.showBalance = false;
     assert.deepEqual(normalizeLayout({ ...createDefaultLayout(), items: [stereo] }).items[0].params,
         normalizeParams('stereo', { showCorrelation: false, showBalance: false }));
-    assert.deepEqual(normalizeParams('notes', { pr: 'High', ly: 'Vertical', vl: false, ts: 9, mn: 90, mx: 40, nc: 16 }),
-        { pr: 'High', ly: 'Vertical', kb: false, kl: 100, vl: false, ts: 9, mn: 90, mx: 90, nc: 16, showAxes: false, showAxisNumbers: false });
+    assert.deepEqual(normalizeParams('notes', { pr: 'High', ly: 'Vertical', vl: false, ts: 9, mn: 90, mx: 40 }),
+        { pr: 'High', ly: 'Vertical', kb: false, kl: 100, vl: false, ts: 9, mn: 90, mx: 90, showAxes: false, showAxisNumbers: false });
     const notes = createItem('notes', 'notes');
     assert.equal(notes.params.kb, false);
     assert.equal(notes.palette.mode, 'solid');
@@ -216,12 +216,12 @@ test('Guitar defaults, bounds, and detection range follow the tuning, frets, and
     const guitar = createItem('guitar', 'guitar');
     assert.deepEqual(guitar.params, { tn: [40, 45, 50, 55, 59, 64], fm: 0, fx: 12, cp: 0, pm: 'all', lb: 'sharp',
         ro: -1, sk: 'none', th: 0.5, cf: 0.2, ly: 'Horizontal', fl: false, vs: false, rs: true, fb: true, mk: true, fn: true, sn: true });
-    assert.deepEqual(guitarAnalysis(guitar.params), { mn: 40, mx: 76, nc: 6 });
+    assert.deepEqual(guitarAnalysis(guitar.params), { mn: 40, mx: 76 });
     const params = normalizeParams('guitar', { tn: [28, 33, 200], fm: 9, fx: 3, cp: 20, pm: 'x', ro: 12, th: 1 });
     assert.deepEqual([params.tn, params.fm, params.fx, params.cp, params.pm, params.ro, params.th],
         [[28, 33, 108], 9, 9, 12, 'all', -1, 0.9]);
     // The capo raises the lowest note above the open strings.
-    assert.deepEqual(guitarAnalysis({ tn: [28, 33, 38, 43], fm: 0, fx: 20, cp: 5 }), { mn: 33, mx: 63, nc: 4 });
+    assert.deepEqual(guitarAnalysis({ tn: [28, 33, 38, 43], fm: 0, fx: 20, cp: 5 }), { mn: 33, mx: 63 });
 });
 
 test('Phase Map defaults, steps, and palettes follow Phase Select EQ', () => {
@@ -410,6 +410,38 @@ test('saved layouts accept only missing newly defaulted fields and retain strict
     }
 });
 
+test('released Notes layouts migrate only valid retired note counts on restore and sharing', () => {
+    const layout = { ...createDefaultLayout(), items: [createItem('notes', 'saved-notes')] };
+    // EffeTune v2.12.0 saved nc=8 with the other Notes defaults.
+    layout.items[0].params = { pr: 'Semitone', ly: 'Horizontal', kb: false, kl: 100, vl: true,
+        ts: 2, mn: 28, mx: 91, nc: 8, showAxes: false, showAxisNumbers: false };
+    for (const count of [1, 8, 16]) {
+        layout.items[0].params.nc = count;
+        const saved = structuredClone(layout);
+        assert.equal(validateLayout(layout), true, `released nc=${count}`);
+        assert.deepEqual(layout, saved, 'validation does not rewrite the saved layout');
+        // Encode the old payload directly: the current share encoder already strips nc.
+        const shared = decodeLayoutShare(encodePipelineState(layout));
+        assert.notEqual(shared, null);
+        assert.deepEqual(normalizeLayout(shared), normalizeLayout(layout));
+        assert.equal(Object.hasOwn(normalizeLayout(shared).items[0].params, 'nc'), false);
+        assert.equal(Object.hasOwn(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params, 'nc'), false);
+    }
+    for (const count of [0, 17, 1.5, '8', null, undefined]) {
+        layout.items[0].params.nc = count;
+        assert.equal(validateLayout(layout), false, `invalid retired nc=${count}`);
+    }
+    layout.items[0].params.nc = 8;
+    layout.items[0].params.extra = 1;
+    assert.equal(validateLayout(layout), false, 'unknown fields remain invalid');
+    delete layout.items[0].params.extra;
+    layout.items[0].params.mn = 999;
+    assert.equal(validateLayout(layout), false, 'other supplied values remain strict');
+    const guitar = { ...createDefaultLayout(), items: [createItem('guitar', 'guitar')] };
+    guitar.items[0].params.nc = 8;
+    assert.equal(validateLayout(guitar), false, 'the retired field applies only to Notes');
+});
+
 test('Fall time, peak toggle, peak fall time, and smoothing normalize per type', () => {
     assert.deepEqual(normalizeParams('spectrum', { cf: 10, ph: 20, pf: 20, sm: 2 }),
         { ...normalizeParams('spectrum'), cf: 5, ph: 10, pf: 10, sm: 1 });
@@ -552,9 +584,12 @@ test('system presets retain valid layouts for every aspect ratio', () => {
     const types = new Set();
     const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope', 'Hi-Fi Deck', 'Vintage VU',
         'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala'];
+    // Featured designs ship only in the aspect ratios they were composed for, after the shared set.
+    const featured = { '21:9': ['Fretboard', 'Power Amp'], '16:9': ['Power Amp', 'Beat Stage'], '4:3': [], '1:1': ['Round Dials'],
+        '9:16': ['Fretboard', 'Round Dials', 'Beat Stage'] };
     for (const aspect of ASPECTS) {
         const presets = JSON.parse(readFileSync(new URL(`../../presets/visualizer/${ASPECT_FILES[aspect]}`, import.meta.url)));
-        assert.deepEqual(Object.keys(presets), names);
+        assert.deepEqual(Object.keys(presets), [...names, ...featured[aspect]]);
         const mastering = presets['Mastering Console'].items;
         const [right, left] = ['R', 'L'].map(channel => mastering.find(item => item.type === 'spectrum' && item.channel === channel));
         assert.deepEqual(left.rect, right.rect);
@@ -582,7 +617,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 50);
-    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase'])
+    assert.equal(count, 58);
+    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase', 'guitar', 'rhythm-analyzer'])
         assert.equal(types.has(type), true);
 });

@@ -1379,5 +1379,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "拡大",
   "visualizer.zoomLevel": "表示倍率",
-  "visualizer.zoomOut": "縮小"
+  "visualizer.zoomOut": "縮小",
+  "dialog.config.sfzSizeLimit": "SFZ の容量上限",
+  "dialog.config.sfzSizeLimitHelp": "読み込める SFZ サウンドライブラリの最大サイズを設定します。",
+  "sfzNotePlayer.missingBank": "SFZ が見つかりません",
+  "sfzNotePlayer.error.missing": "選択した SFZ が見つかりません。選び直すか、別の SFZ を選んでください。",
+  "sfzNotePlayer.error.tooLarge": "この SFZ は容量上限を超えています。設定 → 一般の「SFZ の容量上限」を上げるか、小さな SFZ を選んでください。",
+  "sfzNotePlayer.error.noRegions": "再生できるサンプルが見つかりません。別の SFZ を選んでください。",
+  "sfzNotePlayer.error.storage": "SFZ ライブラリにアクセスできませんでした。ファイルへのアクセス権と保存先の空き容量を確認してから、もう一度お試しください。",
+  "sfzNotePlayer.error.prepare": "SFZ を読み込めませんでした。サンプルファイルが利用できることを確認するか、別の SFZ を選んでください。",
+  "sfzNotePlayer.warning.loop-points-ignored": "使われないループ設定を調整して、SFZ を読み込みました。",
+  "sfzNotePlayer.warning.invalid-regions": "設定に問題のある一部の音を除いて読み込みました。",
+  "sfzNotePlayer.warning.missing-samples": "一部のサンプルファイルが見つからなかったため、利用できる音だけを読み込みました。",
+  "sfzNotePlayer.warning.unsupported-regions": "このエフェクタが対応していない発音条件の音を除いて読み込みました。",
+  "sfzNotePlayer.warning.reduced-bank": "容量上限に収まるよう、すべての音程を残しながら音の種類を絞って読み込みました。より多くの音を使うには「SFZ の容量上限」を上げてください。"
 }

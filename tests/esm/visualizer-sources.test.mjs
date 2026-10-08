@@ -177,12 +177,12 @@ test('Guitar sources detect only the playable notes and keep the stream across d
         sources.subscribeItem('g', () => {});
         sources.setVisible(true);
         const source = published.at(-1)[0];
-        assert.deepEqual([source.type, source.params], ['NoteSpectrogramPlugin', { mn: 40, mx: 76, nc: 6 }]);
+        assert.deepEqual([source.type, source.params], ['NoteSpectrogramPlugin', { mn: 40, mx: 76 }]);
         assert.equal(subscriptions.get(source.tapId).frameType, 24);
         sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params: { ...params, pm: 'shape', lb: 'interval' } }] });
         assert.equal(published.at(-1)[0].tapId, source.tapId);
         sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params: { ...params, cp: 2 } }] });
-        assert.deepEqual(published.at(-1)[0].params, { mn: 42, mx: 76, nc: 6 });
+        assert.deepEqual(published.at(-1)[0].params, { mn: 42, mx: 76 });
         sources.dispose();
     } finally {
         globalThis.window = oldWindow; globalThis.document = oldDocument;
@@ -208,14 +208,14 @@ test('Guitar and Notes share their DSP source only when analysis settings and ch
         const guitar = { id: 'guitar', type: 'guitar', channel: null,
             params: { tn: [40, 45, 50, 55, 59, 64], fm: 0, fx: 12, cp: 0 } };
         const notes = { id: 'notes', type: 'notes', channel: null,
-            params: { mn: 40, mx: 76, nc: 6 } };
+            params: { mn: 40, mx: 76 } };
         sources.setLayout({ items: [guitar, notes] });
         sources.setVisible(true);
         assert.equal(published.at(-1).length, 1);
         assert.equal(subscriptions.size, 1);
         const shared = published.at(-1)[0];
         assert.deepEqual([shared.type, shared.params, shared.channel, shared.gainDb],
-            ['NoteSpectrogramPlugin', { mn: 40, mx: 76, nc: 6 }, null, 0]);
+            ['NoteSpectrogramPlugin', { mn: 40, mx: 76 }, null, 0]);
         assert.equal(subscriptions.get(shared.tapId).frameType, 24);
         sources.subscribeItem(guitar.id, frame => received.push(frame));
         sources.subscribeItem(notes.id, frame => received.push(frame));
@@ -228,7 +228,6 @@ test('Guitar and Notes share their DSP source only when analysis settings and ch
         for (const different of [
             { ...notes, params: { ...notes.params, mn: 41 } },
             { ...notes, params: { ...notes.params, mx: 77 } },
-            { ...notes, params: { ...notes.params, nc: 5 } },
             { ...notes, channel: 'R' }
         ]) {
             sources.setLayout({ items: [guitar, different] });

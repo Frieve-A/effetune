@@ -1,3 +1,41 @@
+// Apply valid typing immediately without rewriting partial input. Blur or Enter
+// clamps the value, restores invalid input, and formats the committed number.
+export function bindNumberInput(valueInput, slider, min, max, initialValue, setter, toSlider, format) {
+    const initial = parseFloat(initialValue);
+    const applied = { value: Number.isFinite(initial) ? initial : min };
+
+    valueInput.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (!(val >= min && val <= max)) return;
+        slider.value = toSlider(val);
+        setter(val);
+        applied.value = val;
+    });
+
+    const commit = (e) => {
+        const val = parseFloat(e.target.value);
+        const finiteVal = Number.isFinite(val) ? val : applied.value;
+        const clampedVal = finiteVal < min ? min : (finiteVal > max ? max : finiteVal);
+        e.target.value = format(clampedVal);
+        slider.value = toSlider(clampedVal);
+        if (clampedVal !== applied.value) {
+            setter(clampedVal);
+            applied.value = clampedVal;
+        }
+    };
+    valueInput.addEventListener('blur', commit);
+    valueInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            commit(e);
+            e.preventDefault(); // Prevent form submission if inside a form
+        }
+    });
+    return applied;
+}
+
+// Effect plugins are classic scripts; both loaders evaluate this module first.
+globalThis.bindEffeTuneNumberInput = bindNumberInput;
+
 export function updateRangeFill(input) {
     if (!input?.matches?.('input[type="range"]')) return;
 

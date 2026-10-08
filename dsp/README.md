@@ -143,7 +143,7 @@ The WebAssembly modules are used by the web, PWA, and Electron hosts.
 - Ninja
 - Python 3.10 or newer (standard library only, for binary model embedding)
 - A C++20 compiler for native tests
-- Emscripten SDK 6.0.2 for WebAssembly builds
+- Emscripten SDK 6.0.11 for WebAssembly builds
 
 On Windows, install and activate the version recorded in `EMSDK_VERSION`, then
 set `EMSDK` to the activated SDK root. The build script checks `emcc --version`
@@ -447,7 +447,8 @@ All payloads are little-endian and four-byte aligned. Consumers must accept the
 exact payload size for the selected format version. The default format version
 is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
 `TAP_AM_RADIO_SIMULATOR` (type 17) use version 2. `TAP_NOTE_SPECTROGRAM`
-(type 24) uses version 3. `TAP_SPECTRUM` (type 4) and `TAP_SPECTROGRAM`
+(type 24) uses version 5; `TAP_RHYTHM_ANALYZER` (type 28) uses version 4.
+`TAP_SPECTRUM` (type 4) and `TAP_SPECTROGRAM`
 (type 5) use version 2 for HQ output; Chroma Spiral always uses type 4 version 2.
 
 #### Frame Types
@@ -524,18 +525,23 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   frame maximum level in dB as float32. Each record contains float32 frequency
   in Hz, signed L/R phase difference in degrees (-180 to +180), and level in dB
   relative to the frame maximum.
-- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 4 is exactly 5,312 bytes:
+- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 5 is exactly 8,840 bytes:
   a 32-byte header followed by 440 float32 pitch-confidence levels in [0, 1],
   440 float32 volume levels in dB, and 440 float32 revised pitch-confidence
-  levels in [0, 1]. The volume values include a 3 dB/octave
+  levels in [0, 1], followed by two revision records. Each record contains a
+  `u32` revision age and 440 float32 pitch-confidence levels in [0, 1].
+  The volume values include a 3 dB/octave
   correction above 100 Hz and use -240 dB for pitches without a measured level.
   The header contains float32 sample rate, observation time, and hop duration;
   `u16` pitch count 440 and first MIDI note 21; and `u32` frame index,
   divisions per semitone 5, non-zero analysis generation, and revision age.
-  The revision age at offset 28 is 0 when there is no revision (the revised
+  The revision age at offset 28 is 0 when there is no final revision (the revised
   confidence array is then zero-filled), or 8 when the revised confidences
   refer to the frame eight observations earlier in the same generation.
-  The three arrays start at offsets 32, 1792, and 3552. Public JavaScript
+  The three arrays start at offsets 32, 1792, and 3552. The additional records
+  start at offsets 5312 and 7076; their ages are 2 and 4 when available, or 0
+  with a zero-filled confidence array when unavailable. Their confidence
+  arrays start at offsets 5316 and 7080. Public JavaScript
   and Python decoders expose this as `NoteSpectrogramTelemetryFrame` with
   `kind` `noteSpectrogram`; `levels` and `volumeDb` / `volume_db` are owned
   `Float32Array` or tuple values. Index `i` maps to MIDI
@@ -544,7 +550,10 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   `revisionAge` / `revision_age` exposes the revision age; `revisedLevels` /
   `revised_levels` is an owned confidence array or tuple when the age is 8,
   otherwise null / `None`. Its pitch indexing matches `levels`; the revised
-  frame index is `(frameIndex - revisionAge)` modulo 2^32.
+  frame index is `(frameIndex - revisionAge)` modulo 2^32. `revisions` lists
+  available updates in age order 2, 4, and 8 (40, 80, and 160 ms), each with
+  `age` and owned `levels`; identify each revised frame by subtracting its age
+  from `frameIndex` modulo 2^32 within the same generation.
 
 - **Type 25 — `TAP_TV_AUDIO_SIMULATOR`.** Format version 1 is exactly 216 bytes:
   five float32 values, one cumulative little-endian `u32` error counter, and
@@ -580,21 +589,32 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   JavaScript and Python decoders expose this as `AnalogMeterTelemetryFrame`
   with `kind` `analogMeter`.
 
-- **Type 28 — `TAP_RHYTHM_ANALYZER`.** Format version 1 is exactly 1344 bytes.
+- **Type 28 — `TAP_RHYTHM_ANALYZER`.** Format version 4 is exactly 1496 bytes.
   A 32-byte header holds float32 sample rate, `u32` non-zero analysis
   generation, envelope hop in samples, and envelope frame count `E`, float32
   observation time and latency in seconds, `u32` count of events dropped since
   the previous accepted frame, and `u32` current event count. A 32-byte tracker
-  record follows: `u32` flags (bit 0 marks a locked beat grid), `u32` lock
-  epoch, float32 confidence and period in seconds, `u32` next-beat envelope
-  frame, float32 fraction of that frame, `u32` next-beat index, and float32
-  best comb tempo in BPM. While
-  unlocked, period and next-beat fields are zero. 192 float32 tempogram values
+  record follows: `u32` flags (bit 0 marks the shown-beat gate), `u32` stored
+  grid epoch, float32 evidence-derived confidence and stored grid period in
+  seconds, `u32` stored anchor envelope frame, float32 fraction of that frame,
+  `u32` anchor beat index, and float32 best tempo candidate in BPM. The gate
+  is independent of the stored grid: period and anchor fields may remain
+  available with the gate closed, but are zero on digital silence or before
+  a committed grid exists. 192 float32 tempogram values
   from 0-1 follow, then 16 event slots of 32 bytes, of which the first
   `eventCount` are valid: `u32` envelope frame, float32 fraction, `u32` lock
   epoch, `i32` beat index, float32 beat fraction from 0-1 and period in
-  seconds, float32 onset strength, `u8` band (0 low, 1 mid, 2 high), `u8`
-  flags (bit 0 marks an onset outside a locked grid), and a zero `u16`.
+  seconds, float32 strength, `u8` band (0 low, 1 mid, 2 high), `u8` event kind,
+  and a zero `u16`. Event kinds are 0 committed onset, 1 unlocated onset,
+  2 shown forward beat, 3 provisional onset, 4 hidden forward beat, and
+  5 committed beat. Kind 5 uses a signed `i32` envelope frame. Onset strength
+  is the band detector's hit probability in (0, 1]; beat strength is confidence
+  in [0, 1], with band and beat fraction both zero. An onset can be delivered
+  provisionally and later with committed coordinates at the same timestamp.
+  At offset 1344, `u32` preview count (maximum 12) and float32 preview period
+  precede twelve 12-byte preview slots: `i32` envelope frame, float32 fraction
+  in [0, 1), and `i32` beat index. The preview replaces the previous path and
+  remains revisable independently of the gate; its period is zero when unavailable.
   Public JavaScript and Python decoders expose this as
   `RhythmAnalyzerTelemetryFrame` with `kind` `rhythmAnalyzer`.
 

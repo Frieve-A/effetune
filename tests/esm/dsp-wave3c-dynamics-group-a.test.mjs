@@ -25,7 +25,7 @@ const ports = [
     type: 'GatePlugin',
     folder: 'gate',
     measurement: 'gainReduction',
-    jsEngineHash: '273306e071afff90c368309487b7af2314e154b3ab9836230300d17d969e9f6b'
+    jsEngineHash: 'f02935aefe1b4aef0560940fce8bc94d1502877f715f379c0121a31ab5402ed4'
   },
   {
     type: 'ExpanderPlugin',

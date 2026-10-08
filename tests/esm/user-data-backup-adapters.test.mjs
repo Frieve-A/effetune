@@ -16,7 +16,7 @@ import { runInThisContext } from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const zipModule = { exports: {} };
-runInThisContext(`(function(module, exports, require) {${readFileSync(new URL('../../js/vendor/jszip-3.10.1.min.js', import.meta.url), 'utf8')}\n})`)(zipModule, zipModule.exports, require);
+runInThisContext(`(function(module, exports, require) {${readFileSync(new URL('../../js/vendor/jszip-3.10.2.min.js', import.meta.url), 'utf8')}\n})`)(zipModule, zipModule.exports, require);
 const loadZip = async () => zipModule.exports;
 
 function memoryBackend() {

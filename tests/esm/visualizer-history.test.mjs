@@ -73,15 +73,23 @@ test('Drags, Alt+drag copies, and slider input each record one history entry whe
     editor.endDrag();
     assert.equal(layout.items.length, 2);
     assert.equal(view.history.entries.length, 3);
-    const listeners = {};
-    const element = () => ({ style: {}, dataset: {}, append() {}, appendChild() {}, setAttribute() {},
-        addEventListener(type, listener) { (listeners[type] ||= []).push(listener); } });
+    const element = () => ({ style: {}, dataset: {}, listeners: {}, append() {}, appendChild() {}, setAttribute() {},
+        addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); } });
     await withGlobals({ document: { createElement: element } }, () => {
         editor.root = { contains: () => false };
-        const input = editor.field({ appendChild() {} }, 'Gain', 'range', 0, value => { layout.items[0].params.gainDb = value; editor.changed(); });
-        for (const value of [1, 2, 3]) { input.value = value; listeners.input.forEach(listener => listener()); }
+        const input = editor.field({ appendChild() {} }, 'Gain', 'range', 0,
+            value => { layout.items[0].params.gainDb = value; editor.changed(); }, { min: -24, max: 24, step: 1, unit: 'dB' });
+        const { valueInput } = editor.rangeControls.get(input);
+        for (const value of [1, 2, 3]) {
+            input.value = value;
+            input.listeners.input.forEach(listener => listener({ target: input }));
+            assert.equal(layout.items[0].params.gainDb, value);
+            assert.equal(Number(valueInput.value), value);
+            assert.equal(view.history.entries.length, 3);
+            assert.equal(editor.inputActive, false);
+        }
         assert.equal(view.history.entries.length, 3);
-        listeners.change.forEach(listener => listener());
+        input.listeners.change.forEach(listener => listener({ target: input }));
     });
     assert.equal(view.history.entries.length, 4);
     assert.equal(editor.inputActive, false);

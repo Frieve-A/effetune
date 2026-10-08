@@ -222,14 +222,14 @@ test('keeps Tab focus cycling through enabled keypad buttons', () => {
   keypad.dispose();
 });
 
-test('intercepts only enabled effect parameter number inputs on pointerdown', () => {
+test('intercepts only enabled effect parameter and Visualizer navigation number inputs on pointerdown', () => {
   const documentRef = new FakeDocument();
   let enabled = true;
   const keypad = new MobileNumberKeypad({ documentRef, isEnabled: () => enabled });
   const input = {
     disabled: false,
     readOnly: false,
-    matches: selector => selector === '.plugin-parameter-ui input[type="number"]'
+    matches: selector => selector.split(', ').includes('.plugin-parameter-ui input[type="number"]')
   };
   let opened = null;
   keypad.open = target => {
@@ -249,11 +249,30 @@ test('intercepts only enabled effect parameter number inputs on pointerdown', ()
   assert.equal(opened, input);
   assert.equal(pointer.prevented, 1);
 
+  const navigationInput = {
+    disabled: false,
+    readOnly: false,
+    matches: selector => selector.split(', ').includes('.visualizer-editor-navigation input[type="number"]')
+  };
+  pointer.target = navigationInput;
+  documentRef.dispatch('pointerdown', pointer);
+  assert.equal(opened, navigationInput);
+  assert.equal(pointer.prevented, 2);
+
+  for (const state of [{ disabled: true, readOnly: false }, { disabled: false, readOnly: true }]) {
+    Object.assign(navigationInput, state);
+    opened = null;
+    documentRef.dispatch('pointerdown', pointer);
+    assert.equal(opened, null);
+    assert.equal(pointer.prevented, 2);
+  }
+  navigationInput.readOnly = false;
+
   opened = null;
   enabled = false;
   documentRef.dispatch('pointerdown', pointer);
   assert.equal(opened, null);
-  assert.equal(pointer.prevented, 1);
+  assert.equal(pointer.prevented, 2);
 
   keypad.dispose();
   assert.equal(documentRef.listeners.get('pointerdown').length, 0);

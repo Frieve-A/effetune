@@ -211,7 +211,8 @@ test('ParamAdapter reachability matches the frozen exclusions for every generate
       assert.equal(changed, true, `${id} must change through the adapter`);
     }
   }
-  assert.equal(descriptorCount, 1020);
+  // SFZ Note Player adds thirteen descriptors; Cassette Artifacts Mode adds one.
+  assert.equal(descriptorCount, 1034);
   assert.deepEqual(observedUnassignable, UNASSIGNABLE_DESCRIPTORS);
 });
 

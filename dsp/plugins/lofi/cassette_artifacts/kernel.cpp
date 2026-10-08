@@ -427,8 +427,13 @@ public:
       return;
     }
 
-    if (!configured_ || last_channel_count_ != channel_count) {
+    const int mode = static_cast<int>(params_.mode);
+    const bool encode_active = mode != 3 && mode != 4;
+    const bool artifacts_active = mode != 0 && mode != 4;
+    const bool decode_active = mode != 0 && mode != 1;
+    if (!configured_ || last_channel_count_ != channel_count || processing_mode_ != mode) {
       createState(channel_count);
+      processing_mode_ = mode;
     }
 
     const int channels = static_cast<int>(channel_count);
@@ -499,13 +504,13 @@ public:
 
     const double dropouts_parameter = static_cast<double>(params_.dropouts);
     const double dropouts_per_minute = dropouts_parameter > 0.0 ? dropouts_parameter : 0.0;
-    const bool dropouts_active = dropouts_per_minute > 0.0;
+    const bool dropouts_active = artifacts_active && dropouts_per_minute > 0.0;
     const double dropout_hazard_per_sample =
         dropouts_active ? dropouts_per_minute * (1.0 + static_cast<double>(channels)) * 0.5 /
                               (60.0 * sample_rate_)
                         : 0.0;
     const double wow_flutter = static_cast<double>(params_.wowFlutter);
-    const bool transport_active = wow_flutter > 0.0;
+    const bool transport_active = artifacts_active && wow_flutter > 0.0;
 
     const double *section_b0 = coefficients_.b0;
     const double *section_b1 = coefficients_.b1;
@@ -539,7 +544,7 @@ public:
     const double negative_ceiling_scale = 1.0 + kSaturationAsymmetry;
     const double hiss_gain = hiss_gain_ * makeup_gain;
     const double modulation_gain = modulation_gain_;
-    const bool noise_active = hiss_gain > 0.0 || modulation_gain > 0.0;
+    const bool noise_active = artifacts_active && (hiss_gain > 0.0 || modulation_gain > 0.0);
     const double capstan_delay_samples = capstan_delay_per_percent_ * wow_flutter;
     const double hub_delay_samples = hub_delay_per_percent_ * wow_flutter;
     const double flutter_delay_samples = flutter_delay_per_percent_ * wow_flutter;
@@ -575,7 +580,7 @@ public:
 
     const bool azimuth_phase_active = channels > 1;
     const double az_static_radians = static_cast<double>(params_.azimuth) * kArcminToRadians;
-    const bool az_wobble_active = az_wobble_sd_radians_ > 0.0;
+    const bool az_wobble_active = artifacts_active && az_wobble_sd_radians_ > 0.0;
     const double az_coefficient = az_coefficient_;
     const double az_wobble_scale = az_wobble_scale_;
     const double az_wobble_clamp = az_wobble_clamp_radians_;
@@ -868,16 +873,18 @@ public:
         float *dry_line = dry_buffers + static_cast<std::size_t>(ch) * delay_stride;
         dry_line[delay_position] = static_cast<float>(input);
         const double dry =
-            static_cast<double>(dry_line[(delay_position - dry_delay_samples) & delay_mask]);
+            artifacts_active
+                ? static_cast<double>(dry_line[(delay_position - dry_delay_samples) & delay_mask])
+                : input;
         double x = input * input_trim_gain;
 
         // Dolby encoder, ahead of the record EQ and the saturation.
-        if (dolby_fade_active) {
+        if (encode_active && dolby_fade_active) {
           const double encode_current = dolby_mode == 0 ? x : dolbyEncodeSample(dolby_mode, ch, x);
           const double encode_previous =
               dolby_prev_mode == 0 ? x : dolbyEncodeSample(dolby_prev_mode, ch, x);
           x = encode_previous + dolby_fade_weight * (encode_current - encode_previous);
-        } else if (dolby_cur_stages != 0) {
+        } else if (encode_active && dolby_cur_stages != 0) {
           const std::size_t enc_base =
               dolby_cur_base + static_cast<std::size_t>(ch) * kDolbySlotsPerMode;
           {
@@ -939,259 +946,272 @@ public:
           }
         }
 
-        // Record chain. The IEC 3180 us flux boost comes first, ahead of the
-        // record EQ, the band limit and - crucially - the saturator.
-        std::size_t index = static_cast<std::size_t>(kSectionRecordLf) * channels + ch;
-        double y = section_b0[kSectionRecordLf] * x + section_state[index];
-        section_state[index] = section_b1[kSectionRecordLf] * x - section_a1[kSectionRecordLf] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionRecordEq) * channels + ch;
-        y = section_b0[kSectionRecordEq] * x + section_state[index];
-        section_state[index] = section_b1[kSectionRecordEq] * x - section_a1[kSectionRecordEq] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionRecordEqB) * channels + ch;
-        y = section_b0[kSectionRecordEqB] * x + section_state[index];
-        section_state[index] =
-            section_b1[kSectionRecordEqB] * x - section_a1[kSectionRecordEqB] * y;
-        x = y;
-
-        int base = kBiquadRecordAmp * 5;
-        std::size_t state_base = (static_cast<std::size_t>(kBiquadRecordAmp) * channels + ch) * 2u;
-        y = biquad_coefficients[base] * x + biquad_state[state_base];
-        biquad_state[state_base] = biquad_coefficients[base + 1] * x -
-                                   biquad_coefficients[base + 3] * y + biquad_state[state_base + 1];
-        biquad_state[state_base + 1] =
-            biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
-        x = y;
-
-        // --- 2x oversampled tape saturation --------------------------------
-        const std::size_t os_base = static_cast<std::size_t>(ch) * kOsHistory;
-        oversample_input[os_base + oversample_position] = x;
-        const double g0 = x;
-        const double g1 = oversample_input[os_base + ((oversample_position - 1) & kOsMask)];
-        const double g2 = oversample_input[os_base + ((oversample_position - 2) & kOsMask)];
-        const double g3 = oversample_input[os_base + ((oversample_position - 3) & kOsMask)];
-        const double g4 = oversample_input[os_base + ((oversample_position - 4) & kOsMask)];
-        const double g5 = oversample_input[os_base + ((oversample_position - 5) & kOsMask)];
-        const double g6 = oversample_input[os_base + ((oversample_position - 6) & kOsMask)];
-        const double g7 = oversample_input[os_base + ((oversample_position - 7) & kOsMask)];
-        const double g8 = oversample_input[os_base + ((oversample_position - 8) & kOsMask)];
-        const double g9 = oversample_input[os_base + ((oversample_position - 9) & kOsMask)];
-        const double g10 = oversample_input[os_base + ((oversample_position - 10) & kOsMask)];
-        const double g11 = oversample_input[os_base + ((oversample_position - 11) & kOsMask)];
-        const double upper_even =
-            2.0 * (kOsH11 * (g0 + g11) + kOsH9 * (g1 + g10) + kOsH7 * (g2 + g9) +
-                   kOsH5 * (g3 + g8) + kOsH3 * (g4 + g7) + kOsH1 * (g5 + g6));
-        const double upper_odd = g5;
-
-        double level = envelope[ch];
-        double magnitude = upper_even < 0.0 ? -upper_even : upper_even;
-        level +=
-            (magnitude > level ? attack_coefficient : release_coefficient) * (magnitude - level);
-        double memory = level * memory_scale;
-        if (memory > 1.0) {
-          memory = 1.0;
-        }
-        double ceiling = saturation_base / (1.0 + memory);
-        if (upper_even < 0.0) {
-          ceiling *= negative_ceiling_scale;
-        }
-        double t = upper_even / ceiling;
-        const double saturated_even = upper_even / std::sqrt(1.0 + t * t);
-
-        magnitude = upper_odd < 0.0 ? -upper_odd : upper_odd;
-        level +=
-            (magnitude > level ? attack_coefficient : release_coefficient) * (magnitude - level);
-        envelope[ch] = level;
-        memory = level * memory_scale;
-        if (memory > 1.0) {
-          memory = 1.0;
-        }
-        ceiling = saturation_base / (1.0 + memory);
-        if (upper_odd < 0.0) {
-          ceiling *= negative_ceiling_scale;
-        }
-        t = upper_odd / ceiling;
-        const double saturated_odd = upper_odd / std::sqrt(1.0 + t * t);
-
-        // Decimate.
-        oversample_even[os_base + oversample_position] = saturated_even;
-        oversample_odd[os_base + oversample_position] = saturated_odd;
-        const double e1 = oversample_even[os_base + ((oversample_position - 1) & kOsMask)];
-        const double e2 = oversample_even[os_base + ((oversample_position - 2) & kOsMask)];
-        const double e3 = oversample_even[os_base + ((oversample_position - 3) & kOsMask)];
-        const double e4 = oversample_even[os_base + ((oversample_position - 4) & kOsMask)];
-        const double e5 = oversample_even[os_base + ((oversample_position - 5) & kOsMask)];
-        const double e6 = oversample_even[os_base + ((oversample_position - 6) & kOsMask)];
-        const double e7 = oversample_even[os_base + ((oversample_position - 7) & kOsMask)];
-        const double e8 = oversample_even[os_base + ((oversample_position - 8) & kOsMask)];
-        const double e9 = oversample_even[os_base + ((oversample_position - 9) & kOsMask)];
-        const double e10 = oversample_even[os_base + ((oversample_position - 10) & kOsMask)];
-        const double e11 = oversample_even[os_base + ((oversample_position - 11) & kOsMask)];
-        x = 0.5 * oversample_odd[os_base + ((oversample_position - 6) & kOsMask)] +
-            kOsH11 * (saturated_even + e11) + kOsH9 * (e1 + e10) + kOsH7 * (e2 + e9) +
-            kOsH5 * (e3 + e8) + kOsH3 * (e4 + e7) + kOsH1 * (e5 + e6);
-
-        x *= makeup_gain;
-
-        index = static_cast<std::size_t>(kSectionBias) * channels + ch;
-        y = section_b0[kSectionBias] * x + section_state[index];
-        section_state[index] = section_b1[kSectionBias] * x - section_a1[kSectionBias] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionBiasShelf) * channels + ch;
-        y = section_b0[kSectionBiasShelf] * x + section_state[index];
-        section_state[index] =
-            section_b1[kSectionBiasShelf] * x - section_a1[kSectionBiasShelf] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionLossA) * channels + ch;
-        y = section_b0[kSectionLossA] * x + section_state[index];
-        section_state[index] = section_b1[kSectionLossA] * x - section_a1[kSectionLossA] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionLossB) * channels + ch;
-        y = section_b0[kSectionLossB] * x + section_state[index];
-        section_state[index] = section_b1[kSectionLossB] * x - section_a1[kSectionLossB] * y;
-        x = y;
-
-        // Dropout envelope: the recorded signal is dropped here, ahead of the
-        // transport, so the hiss injected further down stays untouched.
-        if (dropouts_active) {
-          double dropout_gain = shared_dropout_gain;
-          const double local_phase = dropout_local_phase[ch];
-          if (local_phase < 1.0) {
-            dropout_gain *=
-                1.0 - dropout_local_depth[ch] * (0.5 - 0.5 * std::cos(kTwoPi * local_phase));
-            const double advanced = local_phase + dropout_local_increment[ch];
-            dropout_local_phase[ch] = advanced < 1.0 ? advanced : 1.0;
-          }
-          if (dropout_gain < 1.0) {
-            x *= dropout_gain;
-          }
-        }
-
-        // Transport modulation. The azimuth L/R lag rides the same cubic
-        // interpolator: channel 0 reads dt/2 early, channel 1 dt/2 late.
-        float *line = delay_buffers + static_cast<std::size_t>(ch) * delay_stride;
-        line[delay_position] = static_cast<float>(x);
-        double channel_read = read_position;
-        if (azimuth_phase_active) {
-          if (ch == 0) {
-            channel_read = read_position + azimuth_half_delay_samples;
-          } else if (ch == 1) {
-            channel_read = read_position - azimuth_half_delay_samples;
-          }
-        }
-        const double read_floor = std::floor(channel_read);
-        const double fraction = channel_read - read_floor;
-        const std::int32_t read_floor_index = static_cast<std::int32_t>(read_floor);
-        const double y0 = static_cast<double>(line[(read_floor_index - 1) & delay_mask]);
-        const double y1 = static_cast<double>(line[read_floor_index & delay_mask]);
-        const double y2 = static_cast<double>(line[(read_floor_index + 1) & delay_mask]);
-        const double y3 = static_cast<double>(line[(read_floor_index + 2) & delay_mask]);
-        const double c1 = 0.5 * (y2 - y0);
-        const double c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
-        const double c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-        x = ((c3 * fraction + c2) * fraction + c1) * fraction + y1;
-
-        // Azimuth in-track loss: an ordinary first-order section whose
-        // coefficients were looked up for this sample's angle above.
-        index = static_cast<std::size_t>(kSectionAzimuth) * channels + ch;
-        y = azimuth_b0 * x + section_state[index];
-        section_state[index] = azimuth_b1 * x - azimuth_a1 * y;
-        x = y;
-
-        // Head contour: up to three alternating lobes. Unused ones are exact
-        // pass-throughs written in the configuration block.
-        base = kBiquadHeadBump * 5;
-        state_base = (static_cast<std::size_t>(kBiquadHeadBump) * channels + ch) * 2u;
-        y = biquad_coefficients[base] * x + biquad_state[state_base];
-        biquad_state[state_base] = biquad_coefficients[base + 1] * x -
-                                   biquad_coefficients[base + 3] * y + biquad_state[state_base + 1];
-        biquad_state[state_base + 1] =
-            biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
-        x = y;
-
-        base = kBiquadHeadBump2 * 5;
-        state_base = (static_cast<std::size_t>(kBiquadHeadBump2) * channels + ch) * 2u;
-        y = biquad_coefficients[base] * x + biquad_state[state_base];
-        biquad_state[state_base] = biquad_coefficients[base + 1] * x -
-                                   biquad_coefficients[base + 3] * y + biquad_state[state_base + 1];
-        biquad_state[state_base + 1] =
-            biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
-        x = y;
-
-        base = kBiquadHeadBump3 * 5;
-        state_base = (static_cast<std::size_t>(kBiquadHeadBump3) * channels + ch) * 2u;
-        y = biquad_coefficients[base] * x + biquad_state[state_base];
-        biquad_state[state_base] = biquad_coefficients[base + 1] * x -
-                                   biquad_coefficients[base + 3] * y + biquad_state[state_base + 1];
-        biquad_state[state_base + 1] =
-            biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionReproduceEq) * channels + ch;
-        y = section_b0[kSectionReproduceEq] * x + section_state[index];
-        section_state[index] =
-            section_b1[kSectionReproduceEq] * x - section_a1[kSectionReproduceEq] * y;
-        x = y;
-
-        index = static_cast<std::size_t>(kSectionReproduceEqB) * channels + ch;
-        y = section_b0[kSectionReproduceEqB] * x + section_state[index];
-        section_state[index] =
-            section_b1[kSectionReproduceEqB] * x - section_a1[kSectionReproduceEqB] * y;
-        x = y;
-
-        // IEC 3180 us reproduce side, ahead of the hiss injection.
-        index = static_cast<std::size_t>(kSectionPlayLf) * channels + ch;
-        y = section_b0[kSectionPlayLf] * x + section_state[index];
-        section_state[index] = section_b1[kSectionPlayLf] * x - section_a1[kSectionPlayLf] * y;
-        x = y;
-
-        // DC block.
-        const double blocked = x - dc_input[ch] + dc_coefficient * dc_output[ch];
-        dc_input[ch] = x;
-        dc_output[ch] = blocked;
-        x = blocked;
-
-        if (noise_active) {
-          rng_noise = nextRandom(rng_noise);
-          const double hiss_draw = unsignedOf(rng_noise) * kRngScale - 1.0;
-          index = static_cast<std::size_t>(kSectionHissHp) * channels + ch;
-          y = section_b0[kSectionHissHp] * hiss_draw + section_state[index];
+        if (artifacts_active) {
+          // Record chain. The IEC 3180 us flux boost comes first, ahead of the
+          // record EQ, the band limit and - crucially - the saturator.
+          std::size_t index = static_cast<std::size_t>(kSectionRecordLf) * channels + ch;
+          double y = section_b0[kSectionRecordLf] * x + section_state[index];
           section_state[index] =
-              section_b1[kSectionHissHp] * hiss_draw - section_a1[kSectionHissHp] * y;
-          double hiss = y;
-          index = static_cast<std::size_t>(kSectionHissLp) * channels + ch;
-          y = section_b0[kSectionHissLp] * hiss + section_state[index];
-          section_state[index] = section_b1[kSectionHissLp] * hiss - section_a1[kSectionHissLp] * y;
-          hiss = y * hiss_gain;
+              section_b1[kSectionRecordLf] * x - section_a1[kSectionRecordLf] * y;
+          x = y;
 
-          rng_noise = nextRandom(rng_noise);
-          const double modulation_draw = unsignedOf(rng_noise) * kRngScale - 1.0;
-          index = static_cast<std::size_t>(kSectionModulation) * channels + ch;
-          y = section_b0[kSectionModulation] * modulation_draw + section_state[index];
+          index = static_cast<std::size_t>(kSectionRecordEq) * channels + ch;
+          y = section_b0[kSectionRecordEq] * x + section_state[index];
           section_state[index] =
-              section_b1[kSectionModulation] * modulation_draw - section_a1[kSectionModulation] * y;
-          double modulation = y * modulation_gain;
-          if (modulation > 0.5) {
-            modulation = 0.5;
-          } else if (modulation < -0.5) {
-            modulation = -0.5;
+              section_b1[kSectionRecordEq] * x - section_a1[kSectionRecordEq] * y;
+          x = y;
+
+          index = static_cast<std::size_t>(kSectionRecordEqB) * channels + ch;
+          y = section_b0[kSectionRecordEqB] * x + section_state[index];
+          section_state[index] =
+              section_b1[kSectionRecordEqB] * x - section_a1[kSectionRecordEqB] * y;
+          x = y;
+
+          int base = kBiquadRecordAmp * 5;
+          std::size_t state_base =
+              (static_cast<std::size_t>(kBiquadRecordAmp) * channels + ch) * 2u;
+          y = biquad_coefficients[base] * x + biquad_state[state_base];
+          biquad_state[state_base] = biquad_coefficients[base + 1] * x -
+                                     biquad_coefficients[base + 3] * y +
+                                     biquad_state[state_base + 1];
+          biquad_state[state_base + 1] =
+              biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
+          x = y;
+
+          // --- 2x oversampled tape saturation --------------------------------
+          const std::size_t os_base = static_cast<std::size_t>(ch) * kOsHistory;
+          oversample_input[os_base + oversample_position] = x;
+          const double g0 = x;
+          const double g1 = oversample_input[os_base + ((oversample_position - 1) & kOsMask)];
+          const double g2 = oversample_input[os_base + ((oversample_position - 2) & kOsMask)];
+          const double g3 = oversample_input[os_base + ((oversample_position - 3) & kOsMask)];
+          const double g4 = oversample_input[os_base + ((oversample_position - 4) & kOsMask)];
+          const double g5 = oversample_input[os_base + ((oversample_position - 5) & kOsMask)];
+          const double g6 = oversample_input[os_base + ((oversample_position - 6) & kOsMask)];
+          const double g7 = oversample_input[os_base + ((oversample_position - 7) & kOsMask)];
+          const double g8 = oversample_input[os_base + ((oversample_position - 8) & kOsMask)];
+          const double g9 = oversample_input[os_base + ((oversample_position - 9) & kOsMask)];
+          const double g10 = oversample_input[os_base + ((oversample_position - 10) & kOsMask)];
+          const double g11 = oversample_input[os_base + ((oversample_position - 11) & kOsMask)];
+          const double upper_even =
+              2.0 * (kOsH11 * (g0 + g11) + kOsH9 * (g1 + g10) + kOsH7 * (g2 + g9) +
+                     kOsH5 * (g3 + g8) + kOsH3 * (g4 + g7) + kOsH1 * (g5 + g6));
+          const double upper_odd = g5;
+
+          double level = envelope[ch];
+          double magnitude = upper_even < 0.0 ? -upper_even : upper_even;
+          level +=
+              (magnitude > level ? attack_coefficient : release_coefficient) * (magnitude - level);
+          double memory = level * memory_scale;
+          if (memory > 1.0) {
+            memory = 1.0;
           }
-          x = (x + hiss) * (1.0 + modulation);
+          double ceiling = saturation_base / (1.0 + memory);
+          if (upper_even < 0.0) {
+            ceiling *= negative_ceiling_scale;
+          }
+          double t = upper_even / ceiling;
+          const double saturated_even = upper_even / std::sqrt(1.0 + t * t);
+
+          magnitude = upper_odd < 0.0 ? -upper_odd : upper_odd;
+          level +=
+              (magnitude > level ? attack_coefficient : release_coefficient) * (magnitude - level);
+          envelope[ch] = level;
+          memory = level * memory_scale;
+          if (memory > 1.0) {
+            memory = 1.0;
+          }
+          ceiling = saturation_base / (1.0 + memory);
+          if (upper_odd < 0.0) {
+            ceiling *= negative_ceiling_scale;
+          }
+          t = upper_odd / ceiling;
+          const double saturated_odd = upper_odd / std::sqrt(1.0 + t * t);
+
+          // Decimate.
+          oversample_even[os_base + oversample_position] = saturated_even;
+          oversample_odd[os_base + oversample_position] = saturated_odd;
+          const double e1 = oversample_even[os_base + ((oversample_position - 1) & kOsMask)];
+          const double e2 = oversample_even[os_base + ((oversample_position - 2) & kOsMask)];
+          const double e3 = oversample_even[os_base + ((oversample_position - 3) & kOsMask)];
+          const double e4 = oversample_even[os_base + ((oversample_position - 4) & kOsMask)];
+          const double e5 = oversample_even[os_base + ((oversample_position - 5) & kOsMask)];
+          const double e6 = oversample_even[os_base + ((oversample_position - 6) & kOsMask)];
+          const double e7 = oversample_even[os_base + ((oversample_position - 7) & kOsMask)];
+          const double e8 = oversample_even[os_base + ((oversample_position - 8) & kOsMask)];
+          const double e9 = oversample_even[os_base + ((oversample_position - 9) & kOsMask)];
+          const double e10 = oversample_even[os_base + ((oversample_position - 10) & kOsMask)];
+          const double e11 = oversample_even[os_base + ((oversample_position - 11) & kOsMask)];
+          x = 0.5 * oversample_odd[os_base + ((oversample_position - 6) & kOsMask)] +
+              kOsH11 * (saturated_even + e11) + kOsH9 * (e1 + e10) + kOsH7 * (e2 + e9) +
+              kOsH5 * (e3 + e8) + kOsH3 * (e4 + e7) + kOsH1 * (e5 + e6);
+
+          x *= makeup_gain;
+
+          index = static_cast<std::size_t>(kSectionBias) * channels + ch;
+          y = section_b0[kSectionBias] * x + section_state[index];
+          section_state[index] = section_b1[kSectionBias] * x - section_a1[kSectionBias] * y;
+          x = y;
+
+          index = static_cast<std::size_t>(kSectionBiasShelf) * channels + ch;
+          y = section_b0[kSectionBiasShelf] * x + section_state[index];
+          section_state[index] =
+              section_b1[kSectionBiasShelf] * x - section_a1[kSectionBiasShelf] * y;
+          x = y;
+
+          index = static_cast<std::size_t>(kSectionLossA) * channels + ch;
+          y = section_b0[kSectionLossA] * x + section_state[index];
+          section_state[index] = section_b1[kSectionLossA] * x - section_a1[kSectionLossA] * y;
+          x = y;
+
+          index = static_cast<std::size_t>(kSectionLossB) * channels + ch;
+          y = section_b0[kSectionLossB] * x + section_state[index];
+          section_state[index] = section_b1[kSectionLossB] * x - section_a1[kSectionLossB] * y;
+          x = y;
+
+          // Dropout envelope: the recorded signal is dropped here, ahead of the
+          // transport, so the hiss injected further down stays untouched.
+          if (dropouts_active) {
+            double dropout_gain = shared_dropout_gain;
+            const double local_phase = dropout_local_phase[ch];
+            if (local_phase < 1.0) {
+              dropout_gain *=
+                  1.0 - dropout_local_depth[ch] * (0.5 - 0.5 * std::cos(kTwoPi * local_phase));
+              const double advanced = local_phase + dropout_local_increment[ch];
+              dropout_local_phase[ch] = advanced < 1.0 ? advanced : 1.0;
+            }
+            if (dropout_gain < 1.0) {
+              x *= dropout_gain;
+            }
+          }
+
+          // Transport modulation. The azimuth L/R lag rides the same cubic
+          // interpolator: channel 0 reads dt/2 early, channel 1 dt/2 late.
+          float *line = delay_buffers + static_cast<std::size_t>(ch) * delay_stride;
+          line[delay_position] = static_cast<float>(x);
+          double channel_read = read_position;
+          if (azimuth_phase_active) {
+            if (ch == 0) {
+              channel_read = read_position + azimuth_half_delay_samples;
+            } else if (ch == 1) {
+              channel_read = read_position - azimuth_half_delay_samples;
+            }
+          }
+          const double read_floor = std::floor(channel_read);
+          const double fraction = channel_read - read_floor;
+          const std::int32_t read_floor_index = static_cast<std::int32_t>(read_floor);
+          const double y0 = static_cast<double>(line[(read_floor_index - 1) & delay_mask]);
+          const double y1 = static_cast<double>(line[read_floor_index & delay_mask]);
+          const double y2 = static_cast<double>(line[(read_floor_index + 1) & delay_mask]);
+          const double y3 = static_cast<double>(line[(read_floor_index + 2) & delay_mask]);
+          const double c1 = 0.5 * (y2 - y0);
+          const double c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+          const double c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+          x = ((c3 * fraction + c2) * fraction + c1) * fraction + y1;
+
+          // Azimuth in-track loss: an ordinary first-order section whose
+          // coefficients were looked up for this sample's angle above.
+          index = static_cast<std::size_t>(kSectionAzimuth) * channels + ch;
+          y = azimuth_b0 * x + section_state[index];
+          section_state[index] = azimuth_b1 * x - azimuth_a1 * y;
+          x = y;
+
+          // Head contour: up to three alternating lobes. Unused ones are exact
+          // pass-throughs written in the configuration block.
+          base = kBiquadHeadBump * 5;
+          state_base = (static_cast<std::size_t>(kBiquadHeadBump) * channels + ch) * 2u;
+          y = biquad_coefficients[base] * x + biquad_state[state_base];
+          biquad_state[state_base] = biquad_coefficients[base + 1] * x -
+                                     biquad_coefficients[base + 3] * y +
+                                     biquad_state[state_base + 1];
+          biquad_state[state_base + 1] =
+              biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
+          x = y;
+
+          base = kBiquadHeadBump2 * 5;
+          state_base = (static_cast<std::size_t>(kBiquadHeadBump2) * channels + ch) * 2u;
+          y = biquad_coefficients[base] * x + biquad_state[state_base];
+          biquad_state[state_base] = biquad_coefficients[base + 1] * x -
+                                     biquad_coefficients[base + 3] * y +
+                                     biquad_state[state_base + 1];
+          biquad_state[state_base + 1] =
+              biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
+          x = y;
+
+          base = kBiquadHeadBump3 * 5;
+          state_base = (static_cast<std::size_t>(kBiquadHeadBump3) * channels + ch) * 2u;
+          y = biquad_coefficients[base] * x + biquad_state[state_base];
+          biquad_state[state_base] = biquad_coefficients[base + 1] * x -
+                                     biquad_coefficients[base + 3] * y +
+                                     biquad_state[state_base + 1];
+          biquad_state[state_base + 1] =
+              biquad_coefficients[base + 2] * x - biquad_coefficients[base + 4] * y;
+          x = y;
+
+          index = static_cast<std::size_t>(kSectionReproduceEq) * channels + ch;
+          y = section_b0[kSectionReproduceEq] * x + section_state[index];
+          section_state[index] =
+              section_b1[kSectionReproduceEq] * x - section_a1[kSectionReproduceEq] * y;
+          x = y;
+
+          index = static_cast<std::size_t>(kSectionReproduceEqB) * channels + ch;
+          y = section_b0[kSectionReproduceEqB] * x + section_state[index];
+          section_state[index] =
+              section_b1[kSectionReproduceEqB] * x - section_a1[kSectionReproduceEqB] * y;
+          x = y;
+
+          // IEC 3180 us reproduce side, ahead of the hiss injection.
+          index = static_cast<std::size_t>(kSectionPlayLf) * channels + ch;
+          y = section_b0[kSectionPlayLf] * x + section_state[index];
+          section_state[index] = section_b1[kSectionPlayLf] * x - section_a1[kSectionPlayLf] * y;
+          x = y;
+
+          // DC block.
+          const double blocked = x - dc_input[ch] + dc_coefficient * dc_output[ch];
+          dc_input[ch] = x;
+          dc_output[ch] = blocked;
+          x = blocked;
+
+          if (noise_active) {
+            rng_noise = nextRandom(rng_noise);
+            const double hiss_draw = unsignedOf(rng_noise) * kRngScale - 1.0;
+            index = static_cast<std::size_t>(kSectionHissHp) * channels + ch;
+            y = section_b0[kSectionHissHp] * hiss_draw + section_state[index];
+            section_state[index] =
+                section_b1[kSectionHissHp] * hiss_draw - section_a1[kSectionHissHp] * y;
+            double hiss = y;
+            index = static_cast<std::size_t>(kSectionHissLp) * channels + ch;
+            y = section_b0[kSectionHissLp] * hiss + section_state[index];
+            section_state[index] =
+                section_b1[kSectionHissLp] * hiss - section_a1[kSectionHissLp] * y;
+            hiss = y * hiss_gain;
+
+            rng_noise = nextRandom(rng_noise);
+            const double modulation_draw = unsignedOf(rng_noise) * kRngScale - 1.0;
+            index = static_cast<std::size_t>(kSectionModulation) * channels + ch;
+            y = section_b0[kSectionModulation] * modulation_draw + section_state[index];
+            section_state[index] = section_b1[kSectionModulation] * modulation_draw -
+                                   section_a1[kSectionModulation] * y;
+            double modulation = y * modulation_gain;
+            if (modulation > 0.5) {
+              modulation = 0.5;
+            } else if (modulation < -0.5) {
+              modulation = -0.5;
+            }
+            x = (x + hiss) * (1.0 + modulation);
+          }
+        } else {
+          // Return the encoded signal to line level without the tape chain.
+          x *= makeup_gain;
         }
 
         // Dolby decoder, after the noise injection and before the output gain.
-        if (dolby_fade_active) {
+        if (decode_active && dolby_fade_active) {
           const double decode_current = dolby_mode == 0 ? x : dolbyDecodeSample(dolby_mode, ch, x);
           const double decode_previous =
               dolby_prev_mode == 0 ? x : dolbyDecodeSample(dolby_prev_mode, ch, x);
           x = decode_previous + dolby_fade_weight * (decode_current - decode_previous);
-        } else if (dolby_cur_stages != 0) {
+        } else if (decode_active && dolby_cur_stages != 0) {
           const std::size_t dec_base = dolby_cur_base +
                                        static_cast<std::size_t>(ch) * kDolbySlotsPerMode +
                                        kDolbySlotsPerDir;
@@ -1421,7 +1441,7 @@ private:
   }
 
   // Mirrors the JavaScript state block, which is rebuilt whenever the host rate
-  // or the channel count changes and draws one seed from the seeded source as
+  // or the channel count or processing mode changes and draws one seed from the seeded source as
   // it is built.
   void createState(std::uint32_t channel_count) noexcept {
     clearState();
@@ -1733,6 +1753,7 @@ private:
   std::uint32_t selected_seed_low_ = static_cast<std::uint32_t>(dsp::XorShiftRng::kFallbackSeed);
   std::uint32_t selected_seed_high_ = 0u;
   bool configured_ = false;
+  int processing_mode_ = -1;
   bool has_configuration_ = false;
   int configuration_type_ = -1;
   int configuration_grade_ = -1;

@@ -53,45 +53,62 @@ async function loadPlugin(globals = {}) {
     vm.runInContext(source, context, { filename: pluginPath });
     const plugin = new context.window.RhythmAnalyzerPlugin();
     plugin.id = 7;
-    return { plugin, warnings, clock };
+    plugin.testClock = clock;
+    return { plugin, warnings, clock, context };
 }
 
-// Builds a frame-28 telemetry frame (contract section 3). The next beat is due at this frame unless given.
+// Type-28 v3: all forward and committed beats are separate from the onset slots.
 function buildFrame({
-    generation = 1, frameCount, nextBeatFrame = frameCount, locked = true, lockEpoch = 1, period = PERIOD,
-    nextBeatIndex = 0, nextBeatFraction = 0, combBestBpm = 120, events = [], size = 1344
+    generation = 1, frameCount, anchorFrame = frameCount, gateOpen = true, analysisEpoch = 1, period = PERIOD,
+    anchorIndex = 0, anchorFraction = 0, strongestBpm = 120, confidence = 0.3, events = [], size = 1344,
+    sampleRate = 48000, hop = 480, automaticAnchor = true, preview = null, previewPeriod = period
 }) {
+    if (preview !== null && size === 1344) size = 1496;
     const payload = new DataView(new ArrayBuffer(size));
-    if (size !== 1344) return { frameType: 28, formatVersion: 1, payload };
-    payload.setFloat32(0, 48000, true);
+    if (![1344, 1496].includes(size)) return { frameType: 28, formatVersion: 3, payload };
+    payload.setFloat32(0, sampleRate, true);
     payload.setUint32(4, generation, true);
-    payload.setUint32(8, 480, true);
+    payload.setUint32(8, hop, true);
     payload.setUint32(12, frameCount, true);
     payload.setFloat32(16, frameCount * 0.01, true);
-    payload.setUint32(28, events.length, true);
-    payload.setUint32(32, locked ? 1 : 0, true);
-    payload.setUint32(36, lockEpoch, true);
-    payload.setFloat32(40, locked ? 0.3 : 0.05, true);
-    payload.setFloat32(44, locked ? period : 0, true);
-    payload.setUint32(48, nextBeatFrame, true);
-    payload.setFloat32(52, nextBeatFraction, true);
-    payload.setUint32(56, nextBeatIndex, true);
-    payload.setFloat32(60, combBestBpm, true);
-    events.forEach((event, slot) => {
+    const slots = [...events];
+    if (automaticAnchor && period > 0) slots.push({ committedBeat: true, band: 0,
+        frame: anchorFrame + anchorFraction, x: anchorIndex, strength: confidence, period });
+    payload.setUint32(28, slots.length, true);
+    payload.setUint32(32, gateOpen ? 1 : 0, true);
+    payload.setUint32(36, analysisEpoch, true);
+    payload.setFloat32(40, confidence, true);
+    payload.setFloat32(44, period, true);
+    payload.setUint32(48, anchorFrame, true);
+    payload.setFloat32(52, anchorFraction, true);
+    payload.setUint32(56, anchorIndex, true);
+    payload.setFloat32(60, strongestBpm, true);
+    slots.forEach((event, slot) => {
         const base = 832 + 32 * slot;
         const beat = Math.floor(event.x);
         const frame = event.frame ?? 0;
         payload.setUint32(base, Math.floor(frame), true);
         payload.setFloat32(base + 4, frame - Math.floor(frame), true);
-        payload.setUint32(base + 8, event.epoch ?? lockEpoch, true);
+        payload.setUint32(base + 8, event.epoch ?? analysisEpoch, true);
         payload.setInt32(base + 12, event.unlocked ? 0 : beat, true);
         payload.setFloat32(base + 16, event.unlocked ? 0 : event.x - beat, true);
-        payload.setFloat32(base + 20, event.unlocked ? 0 : period, true);
+        payload.setFloat32(base + 20, event.period ?? (event.unlocked ? 0 : period), true);
         payload.setFloat32(base + 24, event.strength ?? 1, true);
         payload.setUint8(base + 28, event.band);
-        payload.setUint8(base + 29, event.unlocked ? 1 : 0);
+        payload.setUint8(base + 29, event.committedBeat ? 5 : event.hidden ? 4 : event.shown ? 2
+            : event.provisional ? 3 : event.unlocked ? 1 : 0);
     });
-    return { frameType: 28, formatVersion: 1, payload };
+    if (preview !== null) {
+        payload.setUint32(1344, preview.length, true);
+        payload.setFloat32(1348, previewPeriod, true);
+        preview.forEach((beat, i) => {
+            const base = 1352 + 12 * i;
+            payload.setInt32(base, Math.floor(beat.frame), true);
+            payload.setFloat32(base + 4, beat.frame - Math.floor(beat.frame), true);
+            payload.setInt32(base + 8, beat.index, true);
+        });
+    }
+    return { frameType: 28, formatVersion: size === 1496 ? 4 : 3, payload };
 }
 
 // Feeds one frame per tracker beat (0.5 s), each carrying the onsets of the beat that just ended.
@@ -101,12 +118,13 @@ function feed(plugin, events, options = {}) {
     const last = Math.floor(events[events.length - 1].x);
     for (let beat = first; beat <= last; beat++) {
         plugin.testFrame += FRAMES_PER_BEAT;
+        plugin.testClock.now += PERIOD * 1000;
         const chunk = events.filter(event => Math.floor(event.x) === beat).map(event => ({
             ...event,
             frame: plugin.testFrame - FRAMES_PER_BEAT * (beat + 1 - event.x)
         }));
         plugin.handleTelemetry(buildFrame({
-            frameCount: plugin.testFrame, nextBeatIndex: beat + 1, events: chunk, ...options
+            frameCount: plugin.testFrame, anchorIndex: beat + 1, events: chunk, ...options
         }));
     }
 }
@@ -331,7 +349,7 @@ test('lens easing discards old cells after missing data, a new epoch or a reset'
     assert.equal(drawOnce(plugin, 900, 600).lensSummary, null);
     summary = { rows: [{ band: 1, slot: 0, offset: -10, sd: 6, count: 10 }], swing: 1, jitter: 6 };
     assert.equal(drawOnce(plugin, 900, 600).lensSummary.rows[0].offset, -10);
-    plugin.handleTelemetry(buildFrame({ frameCount: 20, lockEpoch: 2 }));
+    plugin.handleTelemetry(buildFrame({ frameCount: 20, analysisEpoch: 2 }));
     summary.rows[0].offset = 15;
     clock.now += 10;
     assert.equal(drawOnce(plugin, 900, 600).lensSummary.rows[0].offset, 15, 'a new lock starts fresh');
@@ -346,7 +364,7 @@ test('a new lock epoch re-aligns without moving the beat clock back and restarts
     const before = plugin.beatClock;
     const oldEnd = plugin.segments.get(1).endU;
     // The new epoch counts beats from 100 and is a quarter beat later.
-    feed(plugin, pattern(1, [[0, 0.25], [1, 1.25]], 25), { lockEpoch: 2 });
+    feed(plugin, pattern(1, [[0, 0.25], [1, 1.25]], 25), { analysisEpoch: 2 });
     const segment = plugin.segments.get(2);
     assert.equal(segment.reanchor, true);
     assert.equal(segment.startU, oldEnd);
@@ -358,24 +376,86 @@ test('a new lock epoch re-aligns without moving the beat clock back and restarts
     assert.equal(plugin.beatClock, clock, 'drawing never advances the clock');
 });
 
-test('while searching the clock runs at the held period and onsets are placed untimed', async () => {
+test('a closed tick gate preserves committed analysis, while digital silence clears only current readings', async () => {
     const { plugin } = await loadPlugin();
-    const palette = { label: '#000' };
+    const palette = { label: '#000', strongGrid: '#111' };
     assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].text, 'searching');
     feed(plugin, pattern(4, BACKBEAT));
+    const previous = plugin.beatClock;
+    feed(plugin, pattern(2, BACKBEAT, 4), { gateOpen: false, confidence: 0.2 });
+    assert.ok(plugin.beatClock > previous);
+    assert.ok(plugin.openSegment);
+    assert.ok(plugin.lensSummary());
+    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].text, '120.0 BPM  searching');
+    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].opacity, Math.fround(0.2));
     const clock = plugin.beatClock;
-    const offset = plugin.segments.get(1).offset;
-    feed(plugin, pattern(2, [[0, 0.5], [2, 1.25]], 4).map(event => ({ ...event, unlocked: true })), { locked: false });
-    assert.ok(Math.abs(plugin.beatClock - clock - 6) < 1e-9);
+    plugin.handleTelemetry(buildFrame({ frameCount: plugin.testFrame + 100, period: 0, confidence: 0, strongestBpm: 0, gateOpen: false }));
+    assert.equal(plugin.beatClock, clock);
     assert.equal(plugin.openSegment, null);
     assert.equal(plugin.lensSummary(), null);
-    const index = plugin.eventSerial - 1;
-    assert.equal(plugin.eventTimed[index], 0);
-    assert.ok(Math.abs(plugin.eventU[index] - (21.25 + offset)) < 1e-4);
-    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][1].text, '(120 BPM held)  searching');
-    const frame = drawOnce(plugin, 375, 500);
-    assert.equal(frame.valid, true);
-    assert.ok(frame.lens.top > frame.main.top, 'portrait canvases stack the lens below');
+    assert.equal(drawOnce(plugin, 375, 500).valid, true);
+});
+
+test('idle lanes keep scrolling through silence and missing telemetry without bringing old hits back on resume', async () => {
+    for (const silencePackets of [true, false]) {
+        const { plugin, clock } = await loadPlugin();
+        plugin.setParameters(ALL_PANELS);
+        feed(plugin, pattern(16, BACKBEAT));
+        const rawEvents = Array.from(plugin.eventU);
+        const rawTimes = Array.from(plugin.eventTime);
+        const lens = JSON.stringify(plugin.lensSummary());
+        const initial = drawOnce(plugin, 900, 650);
+        const lastFrame = plugin.lastFrameCount;
+        const lastU = plugin.beatClock;
+        const oldestNew = plugin.eventSerial;
+        if (silencePackets) plugin.handleTelemetry(buildFrame({ frameCount: lastFrame + 1,
+            period: 0, confidence: 0, strongestBpm: 0, gateOpen: false }));
+        clock.now += 100;
+        const first = drawOnce(plugin, 900, 650);
+        clock.now += 100;
+        const second = drawOnce(plugin, 900, 650);
+        assert.ok(first.displayU > initial.displayU && second.displayU > first.displayU,
+            'visible origins move on successive idle frames');
+        for (const frame of [first, second]) frame.views.forEach((view, row) => {
+            assert.equal(view.uRight, frame.displayU - row * plugin.sp, 'all rows share one advancing origin');
+        });
+        clock.now += 60000;
+        const idle = drawOnce(plugin, 900, 650);
+        assert.ok(idle.views.at(-1).uRight - plugin.sp > lastU, 'old hits leave even the last echo window');
+        same(Array.from(plugin.eventU), rawEvents);
+        same(Array.from(plugin.eventTime), rawTimes);
+        assert.equal(plugin.beatClock, lastU, 'idle rendering does not alter committed statistics');
+        if (!silencePackets) assert.equal(JSON.stringify(plugin.lensSummary()), lens);
+        plugin.handleTelemetry(buildFrame({ frameCount: lastFrame + 2, analysisEpoch: 2,
+            period: 0, confidence: 0.3, strongestBpm: 120, gateOpen: false,
+            events: [{ band: 1, frame: lastFrame + 1, x: 0, unlocked: true }] }));
+        const unlocated = drawOnce(plugin, 900, 650);
+        const immediate = plugin._eventPoint(oldestNew % plugin.eventU.length, unlocated.views[0]);
+        assert.equal(immediate.x, unlocated.views[0].left + unlocated.views[0].width,
+            'a first resumed hit appears immediately even before a beat clock becomes available');
+        plugin.handleTelemetry(buildFrame({ frameCount: lastFrame + 2, analysisEpoch: 2,
+            anchorIndex: 0, events: [{ band: 1, frame: lastFrame + 1, x: 0.2, provisional: true }] }));
+        const resumed = drawOnce(plugin, 900, 650);
+        assert.equal(resumed.displayU, idle.displayU, 'the first resumed receipt never steps backward');
+        clock.now += 1000;
+        const settled = drawOnce(plugin, 900, 650);
+        assert.ok(settled.displayU > idle.displayU, 'the resumed clock keeps the idle interval after correction settles');
+        let oldVisible = 0;
+        for (const view of settled.views) plugin.forEachEvent(view.uRight - view.span, view.uRight,
+            index => { if (index < oldestNew) oldVisible++; }, oldestNew, true);
+        assert.equal(oldVisible, 0, 'ancient results do not reappear after resumed telemetry');
+        const point = plugin._eventPoint(oldestNew % plugin.eventU.length, settled.views[0]);
+        assert.ok(point.x >= settled.views[0].left && point.x <= settled.views[0].left + settled.views[0].width,
+            'new hits appear in the current timeline');
+        plugin.handleTelemetry(buildFrame({ frameCount: lastFrame + 102, analysisEpoch: 2,
+            anchorIndex: 2, events: [{ band: 1, frame: lastFrame + 1, x: 0.4 }] }));
+        const committed = drawOnce(plugin, 900, 650);
+        const corrected = plugin._eventPoint(oldestNew % plugin.eventU.length, committed.views[0]);
+        assert.equal(corrected.x, point.x, 'the resumed provisional point retains its displayed identity at commit');
+        assert.equal(corrected.y, point.y);
+        assert.equal(plugin.eventSerial, oldestNew + 1);
+        assert.equal(plugin.eventTime[oldestNew % plugin.eventU.length], (lastFrame + 1) * 0.01);
+    }
 });
 
 test('span snaps to the nearest supported value', async () => {
@@ -502,9 +582,10 @@ test('only enabled panels are laid out and read out, reflowed below the header',
         'beside the lanes alone the lens rows line up with the lane rows');
     plugin.setParameters({ vt: true, ve: true });
     // The lanes show the newest window, so the echo rows then start one window back.
-    assert.equal(full.views.find(view => view.echo).uRight, plugin.beatClock - plugin.sp);
+    assert.equal(full.views.find(view => view.echo).uRight, full.displayU - plugin.sp);
     plugin.setParameters({ vm: false });
-    assert.equal(drawOnce(plugin, 900, 600).views[0].uRight, plugin.beatClock, 'without the lanes the newest window stays');
+    const withoutLanes = drawOnce(plugin, 900, 600);
+    assert.equal(withoutLanes.views[0].uRight, withoutLanes.displayU, 'without the lanes the newest window stays');
 });
 
 test('on a narrow canvas the lens band labels and offset values stay clear of the marks', async () => {
@@ -614,9 +695,9 @@ test('the header layout does not move as its values change width', async () => {
     const { plugin } = await loadPlugin();
     const layout = () => JSON.parse(JSON.stringify(drawOnce(plugin, 900, 600).header));
     const searching = layout();
-    feed(plugin, pattern(8, BACKBEAT), { combBestBpm: 69 });
+    feed(plugin, pattern(8, BACKBEAT), { strongestBpm: 69 });
     same(layout(), searching);
-    feed(plugin, pattern(1, BACKBEAT, 8), { combBestBpm: 216 });
+    feed(plugin, pattern(1, BACKBEAT, 8), { strongestBpm: 216 });
     same(layout(), searching);
 });
 
@@ -638,97 +719,278 @@ test('High is on top in lanes, echo rows, lens and readout', async () => {
     same(lens.rows.map(row => row.label), ['High', 'Mid', 'Low']);
 });
 
-test('the beat LED lights at each predicted beat, fades within 90 ms and is hollow while searching', async () => {
-    const { plugin } = await loadPlugin();
+test('shown beats flash once at their time, retain pending events when the gate closes, and shade by confidence', async () => {
+    const { plugin, clock } = await loadPlugin();
+    const event = { shown: true, band: 0, x: 7, frame: 60, strength: 0.8, epoch: 3 };
+    const at = (frameCount, events = [], options = {}) => plugin.handleTelemetry(buildFrame({ frameCount, events, ...options }));
+    at(55, [event]);
+    assert.equal(plugin.eventSerial, 0, 'beat slots never enter the onset lanes');
+    assert.equal(plugin.ledLevel, 0, 'a future beat is queued without flashing');
+    at(57, [event], { gateOpen: false, analysisEpoch: 2 });
+    assert.equal(plugin.pendingBeats.length, 1, 'event identity survives gate closure and analysis epochs');
+    clock.now += 30;
+    drawOnce(plugin, 900, 600);
+    assert.ok(Math.abs(plugin.ledLevel - 0.8) < 1e-6, 'a queued event flashes between telemetry frames');
+    clock.now += 45;
+    drawOnce(plugin, 900, 600);
+    assert.ok(Math.abs(plugin.ledLevel - 0.4) < 1e-6);
+    at(70, [event], { gateOpen: false });
+    assert.equal(plugin.ledLevel, 0, 'the same shown identity cannot flash again');
     const palette = { label: '#000', strongGrid: '#111' };
-    const at = (frameCount, nextBeatFrame, locked = true) =>
-        plugin.handleTelemetry(buildFrame({ frameCount, nextBeatFrame, locked,
-            nextBeatIndex: Math.round((nextBeatFrame - 60) / 50) }));
-    const near = (expected) => assert.ok(Math.abs(plugin.ledLevel - expected) < 1e-4, `${plugin.ledLevel} vs ${expected}`);
-    at(10, 60);
-    near(0);
-    at(60, 110);
-    near(1);
-    at(65, 110);
-    near(1 - 0.05 / 0.09);
-    at(70, 110);
-    near(0);
-    // A beat passed between two frames lights the lamp from its predicted time.
-    at(112, 160);
-    near(1 - 0.02 / 0.09);
-    drawOnce(plugin, 900, 600);
-    drawOnce(plugin, 900, 600);
-    near(1 - 0.02 / 0.09);
-    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][0].lamp, true);
-    at(113, 160, false);
-    near(0);
-    const hollow = plugin._headerItems(null, palette, () => '#333')[0][0];
-    same({ level: hollow.level, color: hollow.color }, { level: null, color: '#111' });
+    assert.equal(plugin._headerItems(null, palette, () => '#333')[0][0].level, null);
 });
 
-test('a small backward move of the predicted beat does not relight the LED for the same beat', async () => {
+test('late and zero-confidence shown beats preserve event identity and never arm predicted flashes', async () => {
     const { plugin } = await loadPlugin();
-    const at = (frameCount, nextBeatFrame, locked = true) =>
-        plugin.handleTelemetry(buildFrame({ frameCount, nextBeatFrame, locked,
-            nextBeatIndex: Math.round((nextBeatFrame - 60) / 50) }));
-    const near = (expected) => assert.ok(Math.abs(plugin.ledLevel - expected) < 1e-4, `${plugin.ledLevel} vs ${expected}`);
-    // Prime the lamp: first crossing lights the beat at 0.60 s.
-    at(10, 60);
-    at(60, 110);
-    near(1);
-    // A genuine next beat, one full period later, is a real relight.
-    at(111, 112);
-    near(1 - 0.01 / 0.09);
-    // The kernel then re-reports the same beat only 0.02 s later (a phase correction well
-    // inside the half-period guard, like the metronome click uses) instead of a real next beat
-    // a full period away. The LED must keep fading from the beat it already lit, not relight.
-    at(113, 114);
-    near(1 - 0.03 / 0.09);
-});
-
-test('late beat identities light on arrival without repeating a corrected beat or searching candidates', async () => {
-    const { plugin } = await loadPlugin();
-    const at = (frameCount, nextBeatFrame, nextBeatFraction, nextBeatIndex, options = {}) =>
-        plugin.handleTelemetry(buildFrame({ frameCount, nextBeatFrame, nextBeatFraction, nextBeatIndex, ...options }));
-    at(9, 10, 0.2, 0);
-    at(11, 60, 0.2, 1);
-    at(59, 60, 0.2, 1);
-    assert.equal(plugin.ledLevel, 0);
-    // The correction moves 0.602 s to 0.598 s and advances the official beat identity.
-    at(60, 109, 0.8, 2);
-    assert.equal(plugin.ledBeat, 0.6);
-    assert.equal(plugin.ledLevel, 1);
-    at(61, 109, 0.8, 2);
-    assert.ok(Math.abs(plugin.ledLevel - (1 - 0.01 / 0.09)) < 1e-6);
-    at(63, 62, 0.2, 1);
-    assert.equal(plugin.ledBeat, 0.6, 'the same identity cannot replay after a correction');
-    at(70, 120, 0, 3, { locked: false });
-    assert.equal(plugin.ledLevel, 0);
-    at(110, 160, 0, 1, { lockEpoch: 2 });
-    assert.equal(plugin.ledLevel, 1, 'a late first confirmed beat in a new epoch is shown');
-    at(111, 161, 0, 1, { lockEpoch: 3 });
-    assert.equal(plugin.ledBeat, 1.1, 'the half-period guard also covers epoch changes');
-});
-
-test('a beat arriving after its entire LED fade starts a visible pulse on arrival', async () => {
-    const { plugin } = await loadPlugin();
-    const at = (frameCount, nextBeatFrame, nextBeatFraction, nextBeatIndex) =>
-        plugin.handleTelemetry(buildFrame({ frameCount, nextBeatFrame, nextBeatFraction, nextBeatIndex }));
-    at(9, 10, 0.2, 0);
-    at(11, 60, 0.2, 1);
-    at(59, 60, 0.2, 1);
-    assert.equal(plugin.ledLevel, 0);
-    at(80, 109, 0.8, 2);
+    const shown = { shown: true, band: 0, x: 2, frame: 10, strength: 0.6, epoch: 4 };
+    plugin.handleTelemetry(buildFrame({ frameCount: 80, events: [shown] }));
+    assert.equal(plugin.ledBeat, 0.8, 'a past beat starts its pulse when received');
+    assert.ok(Math.abs(plugin.ledLevel - 0.6) < 1e-6);
+    plugin.handleTelemetry(buildFrame({ frameCount: 81, events: [shown] }));
     assert.equal(plugin.ledBeat, 0.8);
-    assert.equal(plugin.ledLevel, 1);
-    at(81, 109, 0.8, 2);
-    assert.equal(plugin.ledBeat, 0.8, 'repeated telemetry does not restart the late pulse');
-    assert.ok(Math.abs(plugin.ledLevel - (1 - 0.01 / 0.09)) < 1e-6);
+    assert.ok(plugin.ledLevel < 0.6);
+    plugin.handleTelemetry(buildFrame({ frameCount: 100, anchorIndex: 20 }));
+    assert.equal(plugin.ledLevel, 0, 'analysis anchors never arm a lamp beat');
+    const zero = { ...shown, x: 3, frame: 100, strength: 0 };
+    assert.equal(plugin.parseTelemetryFrame(buildFrame({ frameCount: 100, events: [zero] })).shownBeats.length, 1);
+    plugin.handleTelemetry(buildFrame({ frameCount: 100, events: [zero] }));
+    assert.equal(plugin.ledLevel, 0);
+    assert.equal(plugin.shownBeatIndices.get(4), 3);
+    plugin.handleTelemetry(buildFrame({ frameCount: 100, anchorFrame: 100, anchorIndex: 20,
+        events: [{ ...shown, x: 4, frame: 150 }] }));
+    assert.equal(plugin.pendingBeats.length, 1);
+    const historySize = plugin.clockCount;
+    plugin.handleTelemetry(buildFrame({ frameCount: 101, anchorFrame: 100, anchorIndex: 20,
+        confidence: 0, strongestBpm: 0, gateOpen: false }));
+    assert.equal(plugin.pendingBeats.length, 0, 'digital silence clears queued shown beats');
+    assert.equal(plugin.shownBeatIndices.size, 0, 'digital silence resets event identities');
+    assert.equal(plugin.clockCount, historySize, 'lamp clearing leaves committed history intact');
+});
+
+test('the beat clock keeps committed anchors and advances its newest region at the current period', async () => {
+    const { plugin } = await loadPlugin();
+    plugin.handleTelemetry(buildFrame({ frameCount: 200, anchorFrame: 50, anchorIndex: 1 }));
+    plugin.handleTelemetry(buildFrame({ frameCount: 250, anchorFrame: 100, anchorIndex: 2 }));
+    assert.equal(plugin.clockAt(0), 0);
+    assert.equal(plugin.clockAt(0.75), 0.5);
+    assert.equal(plugin.clockAt(20), 39);
+    plugin.handleTelemetry(buildFrame({ frameCount: 300, anchorFrame: 100, anchorIndex: 2 }));
+    assert.equal(plugin.clockCount, 2, 'an unchanged committed anchor is stored once');
+    assert.equal(plugin.beatClock, 1);
+    assert.equal(plugin.tempogramAdopted[plugin.tempogramHead], 0, 'the adopted line is not extrapolated to the current audio');
+    assert.ok(Array.from(plugin.tempogramAdopted).some(value => value === 120));
+});
+
+test('the v3 clock shares the producer boundary, tie, reset and duplicate-time cases', async () => {
+    const { plugin } = await loadPlugin();
+    const set = (anchor, forward, epoch = 1, forwardEpoch = 1) => {
+        plugin.advanceClock({ analysisValid: false, analysisEpoch: epoch,
+            analysisBeats: anchor ? [{ time: anchor[0], periodSeconds: anchor[1], index: anchor[2], epoch }] : [],
+            forwardBeats: forward.map(([time, periodSeconds, index]) => ({ time, periodSeconds, index, epoch: forwardEpoch })) });
+        for (const segment of plugin.segments.values()) segment.offset = 0;
+    };
+    const near = (time, position, period) => {
+        const actual = plugin.clockPosition(time);
+        assert.ok(Math.abs(actual.position - position) < 1e-12, `${time}: U ${actual.position} vs ${position}`);
+        if (period !== undefined) assert.ok(Math.abs(actual.period - period) < 1e-12, `${time}: period ${actual.period} vs ${period}`);
+    };
+    assert.equal(plugin.clockPosition(0).period, 0);
+    set(null, [[1, .5, 7], [1.6, .6, 8]]);
+    near(.75, 6.5, .5); near(1.3, 7.5, .6); near(2.2, 9, .6);
+    plugin.clearHistory();
+    set([1.02, .5, 10], [[1, .5, 7], [1.6, .6, 8], [2.1, .5, 9]]);
+    near(1.31, 10.5, .58); near(2.35, 12.5, .5);
+    plugin.clearHistory();
+    set([1, .5, 10], [[1.02, .5, 7], [1.5, .5, 8]]);
+    near(1.25, 10.5, .5);
+    set([1, .5, 0], [], 2);
+    near(1.25, .5, .5);
+    set(null, [[3, .5, 0]], 2, 2);
+    near(3.25, .5, .5);
+    plugin.clearHistory();
+    set([1, 1, 10], [[.75, 1, 7], [1.25, 1, 8]]);
+    near(1.25, 11, .25);
+    plugin.clearHistory();
+    set([1, .2, 10], [[1.15, .5, 7]]);
+    near(1.15, 11, .15);
+    plugin.clearHistory();
+    set([1, 0, 0], [[1.02, .5, 7], [1.5, .5, 8]]);
+    near(1.25, .5, .5);
+    plugin.clearHistory();
+    set(null, [[1, .5, 0], [1, .5, 1], [1.5, .5, 2]]);
+    near(1.25, .5, .5);
+    const history = plugin.forwardBeats.length;
+    set(null, []);
+    assert.equal(plugin.forwardBeats.length, history, 'a short-zero presentation change does not reset the target');
+    plugin.clearHistory();
+    assert.equal(plugin.clockPosition(2).period, 0);
+});
+
+test('hidden forward slots advance U and signed first committed beats accept zero period and confidence', async () => {
+    const { plugin } = await loadPlugin();
+    const packet = buildFrame({ frameCount: 100, period: 0, automaticAnchor: false, events: [
+        { hidden: true, band: 0, frame: 100, x: 7, period: .5, strength: 0 },
+        { committedBeat: true, band: 0, frame: -1, x: 0, period: 0, strength: 0 }
+    ] });
+    const snapshot = plugin.parseTelemetryFrame(packet);
+    assert.equal(snapshot.forwardBeats.length, 1);
+    assert.equal(snapshot.shownBeats.length, 0);
+    assert.equal(snapshot.analysisBeats[0].time, -.01);
+    plugin.handleTelemetry(packet);
+    assert.equal(plugin.eventSerial, 0);
+    assert.equal(plugin.ledLevel, 0);
+    assert.ok(plugin.clockAt(1.25) > plugin.clockAt(1));
+});
+
+test('provisional onsets appear immediately and a committed resend corrects the same point smoothly', async () => {
+    const { plugin, clock } = await loadPlugin();
+    plugin.setParameters(ALL_PANELS);
+    const onset = { band: 1, frame: 100, x: 1.02, provisional: true };
+    plugin.handleTelemetry(buildFrame({ frameCount: 100, anchorFrame: 50, anchorIndex: 0, events: [onset] }));
+    assert.equal(plugin.eventSerial, 1);
+    assert.equal(plugin.eventTimed[0], 0);
+    assert.equal(plugin.eventLocated[0], 1);
+    assert.equal(plugin.lensSummary().rows.length, 0, 'provisional timing is excluded from the lens');
+    clock.now += 1000;
+    const before = drawOnce(plugin, 900, 600);
+    const point = plugin.displayedEvent(0);
+    plugin.handleTelemetry(buildFrame({ frameCount: 200, anchorFrame: 150, anchorIndex: 2,
+        events: [{ ...onset, provisional: false, x: .98 }] }));
+    const after = drawOnce(plugin, 900, 600);
+    assert.equal(plugin.eventSerial, 1, 'the committed resend does not add a second onset');
+    assert.equal(plugin.eventTime[0], 1, 'the audio timestamp stays unchanged');
+    assert.equal(plugin.eventTimed[0], 1);
+    assert.equal(after.displayU, before.displayU, 'the scroll origin is continuous at commit');
+    assert.equal(plugin.displayedEvent(0).u, point.u);
+    assert.equal(plugin.displayedEvent(0).deviation, point.deviation);
+    const raw = plugin.eventU[0];
+    const deviation = plugin.eventDeviation[0];
+    clock.now += 100;
+    const moving = drawOnce(plugin, 900, 600);
+    assert.ok(moving.views.every((view, index) => Math.abs(view.uRight - (moving.displayU - index * plugin.sp)) < 1e-12));
+    assert.ok(Math.abs(plugin.displayedEvent(0).u - raw) < Math.abs(point.u - raw));
+    assert.ok(Math.abs(plugin.displayedEvent(0).deviation - deviation) < Math.abs(point.deviation - deviation));
+    clock.now += 1000;
+    drawOnce(plugin, 900, 600);
+    assert.ok(Math.abs(plugin.displayedEvent(0).u - raw) < 1e-6);
+    plugin.handleTelemetry(buildFrame({ frameCount: 200, anchorFrame: 150, anchorIndex: 2,
+        events: [{ ...onset, provisional: false, x: .8 }] }));
+    assert.equal(plugin.eventU[0], raw, 'a committed point is immutable');
+    assert.equal(plugin.eventDeviation[0], deviation);
+});
+
+test('fresh best paths correct a pending onset before commit and preserve its identity and final history', async () => {
+    const { plugin, clock } = await loadPlugin();
+    const onset = { band: 1, frame: 100, x: 1, provisional: true };
+    const frame = (middle, events = []) => buildFrame({ frameCount: 150, anchorFrame: 50, anchorIndex: 0,
+        events, preview: [{ frame: 50, index: 0 }, { frame: middle, index: 1 }, { frame: middle + 50, index: 2 }] });
+    plugin.handleTelemetry(frame(100, [onset]));
+    const original = plugin.displayedEvent(0, clock.now);
+    clock.now += 17;
+    plugin.handleTelemetry(frame(120));
+    const target = plugin.eventU[0];
+    assert.ok(Math.abs(target - 5 / 7) < 1e-7, 'the path corrects a point without an onset resend or committed beat');
+    assert.equal(plugin.displayedEvent(0, clock.now).u, original.u, 'the correction begins continuously');
+    assert.equal(plugin.eventSerial, 1);
+    assert.equal(plugin.eventTime[0], 1);
+    assert.equal(plugin.eventTimed[0], 0);
+    clock.now += 100;
+    assert.ok(Math.abs(plugin.displayedEvent(0, clock.now).u - target) < Math.abs(original.u - target));
+    plugin.handleTelemetry(frame(110));
+    assert.ok(plugin.eventU[0] > target, 'the next path revises the same pending point');
+    plugin.handleTelemetry(buildFrame({ frameCount: 200, anchorFrame: 150, anchorIndex: 2,
+        events: [{ ...onset, provisional: false }], preview: [{ frame: 150, index: 2 }, { frame: 200, index: 3 }] }));
+    assert.equal(plugin.eventTimed[0], 1);
+    assert.equal(plugin.pendingOnsets.size, 0);
+    const committed = plugin.eventU[0];
+    plugin.handleTelemetry(buildFrame({ frameCount: 210, anchorFrame: 150, anchorIndex: 2,
+        preview: [{ frame: 150, index: 2 }, { frame: 210, index: 3 }] }));
+    assert.equal(plugin.eventU[0], committed);
+    assert.equal(plugin.eventSerial, 1);
+});
+
+test('generation rebasing keeps initially unlocated onsets available for live path corrections', async () => {
+    const { plugin, clock } = await loadPlugin();
+    plugin.handleTelemetry(buildFrame({ frameCount: 100 }));
+    const frame = (frameCount, right, events = []) => buildFrame({ generation: 2, frameCount, period: 0,
+        previewPeriod: .5, automaticAnchor: false, events,
+        preview: [{ frame: 0, index: 0 }, { frame: right, index: 1 }] });
+    plugin.handleTelemetry(frame(40, 50, [{ band: 0, frame: 25, x: 0, epoch: 0, unlocked: true }]));
+    assert.equal(plugin.pendingOnsets.size, 1);
+    assert.equal(plugin.eventLocated[0], 1);
+    assert.equal(plugin.eventEpoch[0], plugin.snapshot.analysisEpoch);
+    const position = plugin.eventU[0];
+    const time = plugin.eventTime[0];
+    clock.now += 17;
+    plugin.handleTelemetry(frame(50, 60));
+    assert.ok(plugin.eventU[0] < position, 'the next path corrects the same initially unlocated point');
+    assert.equal(plugin.eventTime[0], time);
+    assert.equal(plugin.eventSerial, 1);
+});
+
+test('reference medians are reused for identical members and recalculated only when the window changes', async () => {
+    const { plugin, context } = await loadPlugin();
+    plugin.segments.set(1, { epoch: 1, offset: 0, startU: 0, straight: 0, triplet: 0 });
+    for (let i = 1; i <= 5; i++) plugin.storeEvent({ identity: String(i), time: i / 2, position: i + i * .001,
+        beatFraction: i * .001, periodSeconds: .5, epoch: 1, band: 0, strength: 1, annotated: true });
+    let calculations = 0;
+    const median = context.rhythmAnalyzerMedian;
+    context.rhythmAnalyzerMedian = values => { calculations++; return median(values); };
+    plugin.storeEvent({ identity: 'pending', time: 3.5, position: 7, beatFraction: 0,
+        periodSeconds: .5, epoch: 1, band: 0, strength: 1, provisional: true });
+    const reference = plugin.referenceDeviation(5, 7, 1);
+    assert.equal(calculations, 1);
+    assert.equal(plugin.referenceDeviation(5, 7.2, 1), reference);
+    assert.equal(calculations, 1, 'moving inside the same membership interval reuses the median');
+    plugin.storeEvent({ identity: 'later', time: 4, position: 8, beatFraction: 0,
+        periodSeconds: .5, epoch: 1, band: 0, strength: 1, annotated: true });
+    assert.equal(plugin.referenceDeviation(5, 7.2, 1), reference);
+    assert.equal(calculations, 2, 'only the later point computed a new median; the pending point keeps its identical members');
+    const changed = plugin.referenceDeviation(5, 17.002, 1);
+    assert.ok(changed > reference);
+    assert.equal(calculations, 3);
+    assert.equal(plugin.referenceDeviation(5, 17.003, 1), changed);
+    assert.equal(calculations, 3);
+    plugin.beginTelemetryEpoch();
+    assert.equal(plugin.pendingOnsets.size, 0);
+    assert.ok(plugin.eventReference.every(value => value === null));
+});
+
+test('invalid preview counts and non-monotonic paths are rejected', async () => {
+    const { plugin } = await loadPlugin();
+    const valid = buildFrame({ frameCount: 100, preview: [{ frame: 50, index: 0 }, { frame: 100, index: 1 }] });
+    assert.ok(plugin.parseTelemetryFrame(valid));
+    valid.payload.setUint32(1344, 13, true);
+    assert.equal(plugin.parseTelemetryFrame(valid), null);
+    valid.payload.setUint32(1344, 2, true);
+    valid.payload.setInt32(1364, 40, true);
+    assert.equal(plugin.parseTelemetryFrame(valid), null);
+});
+
+test('delayed adopted history uses the original audio-time bucket and its right-edge extension never writes history', async () => {
+    const { plugin } = await loadPlugin();
+    plugin.setParameters({ vt: true });
+    for (let frame = 10; frame <= 197; frame++) plugin.handleTelemetry(buildFrame({
+        frameCount: frame, hop: 512, period: frame === 197 ? .5 : 0, anchorFrame: 90, automaticAnchor: false
+    }));
+    assert.equal(plugin.tempogramHead, 15);
+    assert.equal(plugin.tempogramAdopted[6], 120, 'frame90 belongs to bucket6 relative to first frame10');
+    assert.equal(plugin.tempogramAdopted[5], 0, 'the neighboring earlier bucket is untouched');
+    assert.equal(plugin.tempogramAdopted[15], 0, 'the current uncommitted column is not filled');
+    const stored = Array.from(plugin.tempogramAdopted);
+    const context = fakeContext();
+    const frame = drawOnce(plugin, 900, 600, context);
+    const right = frame.strip.left + frame.strip.width;
+    assert.equal(context.segments.filter(line => line.x1 === right && line.y0 === line.y1 && [2, .8].includes(line.lineWidth)).length, 3);
+    assert.ok(context.texts.filter(text => ['adopted', '×2', '×½'].includes(text.value)).every(text => text.x === right - 6));
+    same(Array.from(plugin.tempogramAdopted), stored);
 });
 
 test('the tempogram scrolls smoothly between frames, stops after two columns and reads out as drawn', async () => {
     // A canvas for the tempogram image, so its draw calls are made.
     const document = {
+        addEventListener() {},
+        removeEventListener() {},
         createElement: () => ({
             getContext: () => ({ createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }), putImageData() {} })
         })
@@ -768,7 +1030,7 @@ test('the tempogram scrolls smoothly between frames, stops after two columns and
     const xOf = step => after.strip.left + (step + 0.5 - after.scroll) / 160 * after.strip.width;
     assert.ok(context.segments.some(({ x0, x1 }) => Math.abs(x0 - xOf(158)) < 1e-6 && Math.abs(x1 - xOf(159)) < 1e-6),
         'the adopted line is drawn with the same scroll');
-    // Right of the newest column, the image holds that column and the lines hold its value up to the strip's edge.
+    // The marginal image holds its latest column; committed analysis lines stop at their latest point.
     const right = after.strip.left + after.strip.width;
     const hold = images.find(args => args.length === 9);
     assert.ok(hold && hold[1] === 159 && hold[3] === 1, 'the newest image column is stretched');
@@ -778,7 +1040,7 @@ test('the tempogram scrolls smoothly between frames, stops after two columns and
     assert.ok(hold[5] === holdLeft && Math.abs(hold[5] + hold[7] - right) < 1e-6, `held image ${hold[5]} + ${hold[7]}`);
     assert.ok(rects.some(([x, , w]) => x === after.strip.left && x + w === holdLeft), 'the history is clipped at the hold');
     assert.ok(context.segments.some(({ x0, y0, x1, y1, lineWidth }) =>
-        lineWidth === 2 && Math.abs(x0 - xOf(159)) < 1e-6 && x1 === right && y0 === y1), 'the adopted line reaches the right edge');
+        lineWidth === 2 && Math.abs(x0 - xOf(159)) < 1e-6 && x1 === right && y0 === y1), 'the latest adopted line reaches the right edge at draw time');
     // Without telemetry the scroll stops two columns (0.25 s) after the last frame.
     clock.now = 5000;
     const stalled = drawOnce(plugin, width, 600);

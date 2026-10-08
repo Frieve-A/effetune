@@ -1,3 +1,5 @@
+import { SFZ_MAX_SUPPORTED_BYTES } from '../sfz/limits.js';
+
 export const IR_LIBRARY_MAX_ORIGINAL_BYTES = 64 * 1024 * 1024;
 export const IR_LIBRARY_MAX_INDEX_BYTES = 32 * 1024 * 1024;
 export const IR_LIBRARY_MAX_ANALYSIS_BYTES = 4 * 1024 * 1024;
@@ -9,9 +11,10 @@ export const IR_LIBRARY_INDEX_TOO_LARGE_CODE = 'ir-library-index-too-large';
 
 const ANALYSIS_NAME_PATTERN = /^[a-f0-9]{24}(?:\.analysis|\.a[0-9]{9})$/;
 
-export function maxIrLibraryBytesForName(name) {
+export function maxIrLibraryBytesForName(name, namespace = 'ir-library') {
   if (name === 'index.json') return IR_LIBRARY_MAX_INDEX_BYTES;
   if (ANALYSIS_NAME_PATTERN.test(name)) return IR_LIBRARY_MAX_ANALYSIS_BYTES;
+  if (namespace === 'sfz-library' && /^[a-f0-9]{24}\.sfzbank$/.test(name)) return SFZ_MAX_SUPPORTED_BYTES;
   return IR_LIBRARY_MAX_ORIGINAL_BYTES;
 }
 

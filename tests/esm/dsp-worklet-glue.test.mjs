@@ -118,6 +118,10 @@ function createBinding(options = {}) {
       calls.push(['instanceSetTap', id, tapId]);
       return options.tapStatus ?? 0;
     },
+    instanceSetAnalysisSource(consumer, producer) {
+      calls.push(['instanceSetAnalysisSource', consumer, producer]);
+      return 0;
+    },
     instanceLatency(id) {
       calls.push(['instanceLatency', id]);
       return typeof options.instanceLatency === 'function'
@@ -375,6 +379,53 @@ function pluginConfig(overrides = {}) {
     ...overrides
   };
 }
+
+test('SFZ analysis links require an unchanged upstream note input and survive display bypass', async () => {
+  const harness = await createWorkletHarness();
+  const processor = harness.processor;
+  processor.dspLive = true;
+  processor.dspBinding = harness.binding;
+  processor.powerPolicy.displayDspBypassed = true;
+  const producer = pluginConfig({ id: 1, type: 'NoteSpectrogramPlugin',
+    parameters: { mn: 28, mx: 91 } });
+  const consumer = pluginConfig({ id: 3, type: 'SFZNotePlayerPlugin',
+    parameters: { mn: 28, mx: 91 } });
+  const display = pluginConfig({ id: 2, type: 'LevelMeterPlugin' });
+  processor.wasmInstances.set(1, { id: 101, ready: true });
+  processor.wasmInstances.set(2, { id: 102, ready: true });
+  processor.wasmInstances.set(3, { id: 103, ready: true });
+  processor.plugins = [producer, display, consumer];
+  processor.rebuildDspLatencyPlan(new Map([[1, 0], [2, 0], [3, 0]]));
+  assert.equal(processor.isDisplayOnlyDsp(producer), false);
+  assert.equal(processor.isDisplayOnlyDsp(display), true);
+  assert.deepEqual(harness.binding.calls.filter(call => call[0] === 'instanceSetAnalysisSource').at(-1),
+    ['instanceSetAnalysisSource', 103, 101]);
+
+  for (const mutate of [
+    () => { producer.inputBus = 1; },
+    () => { producer.channel = 'L'; },
+    () => { producer.parameters.mn = 29; },
+    () => { producer.enabled = false; },
+    () => { display.type = 'VolumePlugin'; },
+    () => { display.inputBus = 1; },
+    () => { processor.wasmInstances.get(1).ready = false; },
+    () => { processor.plugins.splice(0, 0, pluginConfig({ type: 'SectionPlugin', enabled: false })); }
+  ]) {
+    Object.assign(producer, { inputBus: 0, channel: 'A', enabled: true, parameters: { mn: 28, mx: 91 } });
+    Object.assign(display, { type: 'LevelMeterPlugin', inputBus: 0 });
+    processor.wasmInstances.get(1).ready = true;
+    processor.plugins = [producer, display, consumer];
+    mutate();
+    processor.rebuildDspLatencyPlan(new Map([[1, 0], [2, 0], [3, 0]]));
+    assert.deepEqual(harness.binding.calls.filter(call => call[0] === 'instanceSetAnalysisSource').at(-1),
+      ['instanceSetAnalysisSource', 103, 0]);
+  }
+  Object.assign(producer, { inputBus: 0, channel: 'A', enabled: true, parameters: { mn: 28, mx: 91 } });
+  Object.assign(display, { type: 'LevelMeterPlugin', inputBus: 0 });
+  processor.plugins = [producer, display, consumer];
+  processor.rebuildDspLatencyPlan(new Map([[1, 32], [2, 0], [3, 0]]));
+  assert.equal(processor.noteAnalysisProducers.size, 0, 'Unequal aligned inputs must unlink');
+});
 
 const TEST_WASM_EXECUTION_CAPABILITIES = Object.freeze({
   requiresWasm: true

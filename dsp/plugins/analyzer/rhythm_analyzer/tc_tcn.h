@@ -1,4 +1,4 @@
-// tcn_w64_s0 as a causal stream, one tick per push.
+// Frozen T48M as a causal stream, one tick per push.
 // h = inp((x - mu) / sd); for d = 1, 2, ..., 256: h = h + elu(conv_k5_dil_d(h)) on the zero-padded
 // past; logits = out(elu(h)); softmax. Parameters are IEEE binary16 codes; each dilated layer keeps
 // the binary16 value (nearest even) of its input's last 4 d + 1 ticks in a ring (zero history =
@@ -26,15 +26,16 @@ inline float tcElu(float x) noexcept {
 // same values; the select is branch-free, so the weight loops vectorise across outputs.
 inline float tcHalfToFloat(std::uint16_t h) noexcept {
   const std::uint32_t sign = static_cast<std::uint32_t>(h & 0x8000u) << 16;
+  if ((h & 0x7c00u) == 0x7c00u)
+    return std::bit_cast<float>(sign | 0x7f800000u |
+                                (static_cast<std::uint32_t>(h & 0x3ffu) << 13));
   const std::uint32_t normal = (static_cast<std::uint32_t>(h & 0x7fffu) << 13) + (112u << 23);
   const float small = static_cast<float>(static_cast<std::int32_t>(h & 0x3ffu)) * 0x1p-24f;
   return std::bit_cast<float>(sign |
                               ((h & 0x7c00u) != 0u ? normal : std::bit_cast<std::uint32_t>(small)));
 }
 
-// float -> binary16 code, round to nearest even (numpy's astype(float16)), in integer arithmetic
-// only; |x| >= 65520 gives infinity (NaN too: no layer input reaches it), which tcHalfToFloat
-// reads back as +-65536 since it rebiases every exponent-31 code.
+// Float -> binary16, round to nearest even using integer arithmetic.
 inline std::uint16_t tcFloatToHalf(float x) noexcept {
   const std::uint32_t bits = std::bit_cast<std::uint32_t>(x);
   const std::uint32_t sign = (bits >> 16) & 0x8000u, a = bits & 0x7fffffffu;
@@ -52,7 +53,7 @@ inline std::uint16_t tcFloatToHalf(float x) noexcept {
 
 class TcTcn {
 public:
-  static constexpr std::uint32_t kIn = 18u, kCh = 64u, kTaps = 5u, kLayers = 9u, kOut = 3u;
+  static constexpr std::uint32_t kIn = 500u, kCh = 48u, kTaps = 5u, kLayers = 9u, kOut = 63u;
   static constexpr std::uint32_t kReceptive = 1u + (kTaps - 1u) * ((1u << kLayers) - 1u); // 2045
   // Ring rows over all layers: sum of (4 d + 1).
   static constexpr std::uint32_t kRows = (kTaps - 1u) * ((1u << kLayers) - 1u) + kLayers; // 2053
@@ -74,7 +75,7 @@ public:
       h = 0u;
   }
 
-  // in: the 18 base channels of one tick (float16 values as float); out: softmax (beat, off, none).
+  // Full-precision features; beat/downbeat sigmoid followed by 61 binary16 tempo probabilities.
   void push(const float in[kIn], float out[kOut]) noexcept {
     float h[kCh], y[kCh];
     for (std::uint32_t o = 0u; o < kCh; ++o)
@@ -117,20 +118,26 @@ public:
       for (std::uint32_t j = 0u; j < kOut; ++j)
         logits[j] += tcHalfToFloat(tc::kTcnOutW[c * kOut + j]) * x;
     }
-    float top = logits[0];
-    for (std::uint32_t j = 1u; j < kOut; ++j)
+    for (std::uint32_t j = 0u; j < 2u; ++j)
+      out[j] =
+          static_cast<float>(1.0 / (1.0 + rhythm_d::portableExp(-static_cast<double>(logits[j]))));
+    float top = logits[2];
+    for (std::uint32_t j = 3u; j < kOut; ++j)
       top = logits[j] > top ? logits[j] : top;
     double e[kOut];
-    for (std::uint32_t j = 0u; j < kOut; ++j)
+    double sum = 0.0;
+    for (std::uint32_t j = 2u; j < kOut; ++j) {
       e[j] = rhythm_d::portableExp(static_cast<double>(logits[j]) - static_cast<double>(top));
-    const double sum = (e[0] + e[1]) + e[2];
-    for (std::uint32_t j = 0u; j < kOut; ++j)
-      out[j] = static_cast<float>(e[j] / sum);
+      sum += e[j];
+    }
+    for (std::uint32_t j = 2u; j < kOut; ++j)
+      out[j] = tcHalfToFloat(tcFloatToHalf(static_cast<float>(e[j] / sum)));
   }
 
   static constexpr std::uint32_t stateBytes() noexcept {
     return kRows * kCh * sizeof(std::uint16_t);
   }
+  const std::uint16_t *ring() const noexcept { return ring_; }
 
 private:
   std::uint16_t ring_[kRows * kCh];

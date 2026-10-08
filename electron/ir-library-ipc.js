@@ -23,6 +23,7 @@ const ANALYSIS_NAME = /^[a-f0-9]{24}(?:\.analysis|\.a[0-9]{9})$/;
 const INDEX_TOO_LARGE_CODE = 'ir-library-index-too-large';
 const SIZE_LIMITS = Object.freeze({
   original: 64 * 1024 * 1024,
+  sfzBank: 1024 * 1024 * 1024,
   index: 32 * 1024 * 1024,
   analysis: 4 * 1024 * 1024,
   marker: 64 * 1024,
@@ -35,10 +36,11 @@ function comparable(value) {
   return process.platform === 'win32' ? value.toLowerCase() : value;
 }
 
-function maxLibraryBytes(name) {
+function maxLibraryBytes(name, namespace) {
   if (name === 'index.json') return SIZE_LIMITS.index;
   if (name === MIGRATION_MARKER_NAME) return SIZE_LIMITS.marker;
   if (ANALYSIS_NAME.test(name)) return SIZE_LIMITS.analysis;
+  if (namespace === 'sfz-library' && /^[a-f0-9]{24}\.sfzbank$/.test(name)) return SIZE_LIMITS.sfzBank;
   return SIZE_LIMITS.original;
 }
 
@@ -125,56 +127,57 @@ async function verifyDirectoryRoot(expectedPath, errorCode) {
 
 function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
   if (!ipcMain?.handle || typeof getUserDataPath !== 'function') throw new TypeError('IR library IPC dependencies are required.');
-  let rootReady;
-  const initializeRootPath = () => {
-    if (!rootReady) {
+  const roots = new Map();
+  const caches = new Map();
+  const getNamespace = request => {
+    const namespace = request?.namespace ?? 'ir-library';
+    if (namespace !== 'ir-library' && namespace !== 'sfz-library') throw new Error('invalidNamespace');
+    return namespace;
+  };
+  const initializeRootPath = namespace => {
+    if (!roots.has(namespace)) {
       const currentPromise = (async () => {
         const userDataPath = await fs.promises.realpath(getUserDataPath());
-        const expectedRoot = path.join(userDataPath, 'ir-library');
+        const expectedRoot = path.join(userDataPath, namespace);
         await fs.promises.mkdir(expectedRoot, { recursive: true });
         const realRoot = await fs.promises.realpath(expectedRoot);
         if (comparable(realRoot) !== comparable(expectedRoot)) throw new Error('linkedLibraryRoot');
         return verifyDirectoryRoot(realRoot, 'linkedLibraryRoot');
       })().catch(error => {
-        if (rootReady === currentPromise) rootReady = null;
+        if (roots.get(namespace) === currentPromise) roots.delete(namespace);
         throw error;
       });
-      rootReady = currentPromise;
+      roots.set(namespace, currentPromise);
     }
-    return rootReady;
+    return roots.get(namespace);
   };
-  const getRootPath = async () => verifyDirectoryRoot(await initializeRootPath(), 'linkedLibraryRoot');
-  let cacheReady;
-  const initializeCacheRootPath = () => {
-    if (!cacheReady) {
-      const currentPromise = initializeRootPath()
-        .then(async rootPath => {
-          const cachePath = path.join(rootPath, 'cache');
-          await fs.promises.mkdir(cachePath, { recursive: true });
-          const realCachePath = await fs.promises.realpath(cachePath);
-          if (comparable(realCachePath) !== comparable(cachePath)) throw new Error('linkedCacheRoot');
-          return verifyDirectoryRoot(realCachePath, 'linkedCacheRoot');
-        })
-        .catch(error => {
-          if (cacheReady === currentPromise) cacheReady = null;
-          throw error;
-        });
-      cacheReady = currentPromise;
+  const getRootPath = async request => verifyDirectoryRoot(
+    await initializeRootPath(getNamespace(request)), 'linkedLibraryRoot');
+  const getCacheRootPath = async request => {
+    const namespace = getNamespace(request);
+    await getRootPath(request);
+    if (!caches.has(namespace)) {
+      const currentPromise = initializeRootPath(namespace).then(async rootPath => {
+        const cachePath = path.join(rootPath, 'cache');
+        await fs.promises.mkdir(cachePath, { recursive: true });
+        const realCachePath = await fs.promises.realpath(cachePath);
+        if (comparable(realCachePath) !== comparable(cachePath)) throw new Error('linkedCacheRoot');
+        return verifyDirectoryRoot(realCachePath, 'linkedCacheRoot');
+      }).catch(error => {
+        if (caches.get(namespace) === currentPromise) caches.delete(namespace);
+        throw error;
+      });
+      caches.set(namespace, currentPromise);
     }
-    return cacheReady;
+    return verifyDirectoryRoot(await caches.get(namespace), 'linkedCacheRoot');
   };
-  const getCacheRootPath = async () => {
-    await getRootPath();
-    return verifyDirectoryRoot(await initializeCacheRootPath(), 'linkedCacheRoot');
-  };
-
   const handlers = {
     [CHANNELS.read]: async (_event, request = {}) => {
       try {
-        const rootPath = await getRootPath();
+        const rootPath = await getRootPath(request);
         const target = await safeTarget(rootPath, request.name, { mustExist: true });
         if (!target) return { ok: true, data: null };
-        const maxBytes = maxLibraryBytes(request.name);
+        const maxBytes = maxLibraryBytes(request.name, getNamespace(request));
         const stats = await fs.promises.stat(target);
         if (request.name === 'index.json' && Number.isSafeInteger(stats?.size) && stats.size > maxBytes) {
           const error = new Error('fileTooLarge');
@@ -194,7 +197,7 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
     },
     [CHANNELS.exists]: async (_event, request = {}) => {
       try {
-        const rootPath = await getRootPath();
+        const rootPath = await getRootPath(request);
         return { ok: true, data: Boolean(await safeTarget(rootPath, request.name, { mustExist: true })) };
       } catch (error) {
         return failure(logger, 'existence check', error);
@@ -202,9 +205,9 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
     },
     [CHANNELS.writeAtomic]: async (_event, request = {}) => {
       try {
-        const rootPath = await getRootPath();
+        const rootPath = await getRootPath(request);
         const target = await safeTarget(rootPath, request.name);
-        requireBoundedData(request.bytes, maxLibraryBytes(request.name));
+        requireBoundedData(request.bytes, maxLibraryBytes(request.name, getNamespace(request)));
         const data = asBuffer(request.bytes);
         await writeAtomic(rootPath, target, data);
         return { ok: true, data: true };
@@ -214,7 +217,7 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
     },
     [CHANNELS.remove]: async (_event, request = {}) => {
       try {
-        const rootPath = await getRootPath();
+        const rootPath = await getRootPath(request);
         const target = await safeTarget(rootPath, request.name, { mustExist: true });
         if (target) await fs.promises.unlink(target);
         return { ok: true, data: true };
@@ -222,9 +225,9 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
         return failure(logger, 'remove', error);
       }
     },
-    [CHANNELS.list]: async () => {
+    [CHANNELS.list]: async (_event, request = {}) => {
       try {
-        const rootPath = await getRootPath();
+        const rootPath = await getRootPath(request);
         const entries = await fs.promises.readdir(rootPath, { withFileTypes: true });
         const data = entries
           .filter(entry => entry.isFile() && entry.name !== MIGRATION_MARKER_NAME && ALLOWED_NAME.test(entry.name))
@@ -238,9 +241,9 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
         return failure(logger, 'list', error);
       }
     },
-    [CHANNELS.cleanupTemporary]: async () => {
+    [CHANNELS.cleanupTemporary]: async (_event, request = {}) => {
       try {
-        const rootPath = await getRootPath();
+        const rootPath = await getRootPath(request);
         const names = await fs.promises.readdir(rootPath);
         for (const name of names.filter(item => /^\.tmp-[a-f0-9-]+$/i.test(item))) {
           await fs.promises.unlink(path.join(rootPath, name)).catch(() => {});
@@ -252,7 +255,7 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
     },
     [CHANNELS.readCache]: async (_event, request = {}) => {
       try {
-        const cacheRoot = await getCacheRootPath();
+        const cacheRoot = await getCacheRootPath(request);
         const target = await safeTarget(cacheRoot, request.name, { mustExist: true, validate: validateCacheName });
         if (!target) return { ok: true, data: null };
         const maxBytes = maxCacheBytes(request.name);
@@ -266,7 +269,7 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
     },
     [CHANNELS.writeCacheAtomic]: async (_event, request = {}) => {
       try {
-        const cacheRoot = await getCacheRootPath();
+        const cacheRoot = await getCacheRootPath(request);
         const target = await safeTarget(cacheRoot, request.name, { validate: validateCacheName });
         requireBoundedData(request.bytes, maxCacheBytes(request.name));
         await writeAtomic(cacheRoot, target, asBuffer(request.bytes));
@@ -277,7 +280,7 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
     },
     [CHANNELS.removeCache]: async (_event, request = {}) => {
       try {
-        const cacheRoot = await getCacheRootPath();
+        const cacheRoot = await getCacheRootPath(request);
         const target = await safeTarget(cacheRoot, request.name, { mustExist: true, validate: validateCacheName });
         if (target) await fs.promises.unlink(target);
         return { ok: true, data: true };
@@ -285,9 +288,9 @@ function registerIrLibraryIpc({ ipcMain, getUserDataPath, logger = console }) {
         return failure(logger, 'cache remove', error);
       }
     },
-    [CHANNELS.listCache]: async () => {
+    [CHANNELS.listCache]: async (_event, request = {}) => {
       try {
-        const cacheRoot = await getCacheRootPath();
+        const cacheRoot = await getCacheRootPath(request);
         const entries = await fs.promises.readdir(cacheRoot, { withFileTypes: true });
         const data = [];
         for (const entry of entries) {

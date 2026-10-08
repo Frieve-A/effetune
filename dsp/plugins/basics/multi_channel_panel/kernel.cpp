@@ -198,11 +198,13 @@ private:
       return current;
     const std::uint32_t lower = static_cast<std::uint32_t>(delay);
     const double fraction = delay - static_cast<double>(lower);
-    const float newer =
-        lower == 0u ? current : line[(write_index + delay_capacity_ - lower) % delay_capacity_];
+    const std::uint32_t newer_index =
+        write_index >= lower ? write_index - lower : write_index + delay_capacity_ - lower;
+    const float newer = lower == 0u ? current : line[newer_index];
     if (fraction == 0.0 || lower >= delay_capacity_)
       return newer;
-    const float older = line[(write_index + delay_capacity_ - lower - 1u) % delay_capacity_];
+    const std::uint32_t older_index = newer_index == 0u ? delay_capacity_ - 1u : newer_index - 1u;
+    const float older = line[older_index];
     return static_cast<float>(static_cast<double>(newer) +
                               (static_cast<double>(older) - newer) * fraction);
   }

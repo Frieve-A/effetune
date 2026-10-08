@@ -55,7 +55,6 @@ export declare function createLevelMeter(options?: LevelMeterOptions): LevelMete
 export interface NoteSpectrogramOptions extends CommonEffectOptions {
   readonly minimumMidi?: number;
   readonly maximumMidi?: number;
-  readonly regularCandidates?: number;
   readonly assets?: never;
 }
 
@@ -885,6 +884,7 @@ export interface CassetteArtifactsOptions extends CommonEffectOptions {
   readonly dolbyLevelError?: number;
   readonly output?: number;
   readonly mix?: number;
+  readonly mode?: "Encode Only" | "Encode + Artifacts" | "All" | "Artifacts + Decode" | "Decode Only";
   readonly assets?: never;
 }
 

@@ -47,6 +47,17 @@ void testAllocationGuardScope() {
     ET_CHECK(allocation_guard::active() == ((et_build_flags() & ET_BUILD_DEBUG) != 0u));
   }
   ET_CHECK(!allocation_guard::active());
+  if ((et_build_flags() & ET_BUILD_DEBUG) != 0u) {
+    auto storage = std::make_unique<float[]>(4u);
+    const auto previous = allocation_guard::violationCount();
+    allocation_guard::setAbortOnViolationForTesting(false);
+    {
+      allocation_guard::Scope scope;
+      storage.reset();
+      ET_CHECK(allocation_guard::violationCount() == previous + 1u);
+    }
+    allocation_guard::setAbortOnViolationForTesting(true);
+  }
 }
 
 void testAudioThreadEnablesDenormalFlush() {
@@ -732,6 +743,133 @@ void testDynamicLatencyHistory() {
   }
 }
 
+void testRealtimePipelineLatency() {
+  constexpr std::uint32_t kFrames = 64u;
+  auto storage = std::make_unique<Engine>();
+  auto &engine = *storage;
+  ET_CHECK(engine.prepare(48000.0F, 2u, kFrames, 0u) == ET_OK);
+  const auto limiter = engine.createInstance("BrickwallLimiterPlugin");
+  const auto shaper = engine.createInstance("SaturationPlugin");
+  const auto setLimiter = [&](float milliseconds, float oversampling = 1.0F) {
+    const std::array<float, 6> params{0.0F, 100.0F, milliseconds, oversampling, 0.0F, 0.0F};
+    ET_CHECK(engine.setInstanceParams(limiter, params.data(), 6u, 0xb531a24au, 0u) == ET_OK);
+  };
+  const auto setShaper = [&](float oversampling) {
+    const std::array<float, 5> params{1.0F, 0.0F, 0.0F, 0.0F, oversampling};
+    ET_CHECK(engine.setInstanceParams(shaper, params.data(), 5u, 0xae9fd2f7u, 0u) == ET_OK);
+  };
+  const auto process = [&](bool impulse) {
+    std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+    if (impulse)
+      engine.combined()[0] = engine.combined()[kFrames] = 0.25F;
+    ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+  };
+  const auto checkImpulse = [&](std::uint32_t latency) {
+    for (std::uint32_t block = 0u; block < 16u; ++block) {
+      process(block == 0u);
+      for (std::uint32_t channel = 0u; channel < 2u; ++channel)
+        for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+          const auto expected = block * kFrames + frame == latency ? 0.25F : 0.0F;
+          ET_CHECK(std::abs(engine.combined()[channel * kFrames + frame] - expected) < 1e-6F);
+        }
+    }
+  };
+  setLimiter(3.0F);
+  auto routing = pipelineDescriptor({{limiter, 0u, 0u, 0}});
+  ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+           ET_OK);
+  ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_ERR_STATE);
+  if ((et_build_flags() & ET_BUILD_DEBUG) != 0u) {
+    allocation_guard::failNothrowAllocationAfterForTesting(0);
+    ET_CHECK(engine.reservePipelineLatency() == ET_ERR_OOM);
+    allocation_guard::failNothrowAllocationAfterForTesting(-1);
+    ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_ERR_STATE);
+  }
+  ET_CHECK(engine.reservePipelineLatency() == ET_OK);
+  const auto violations = allocation_guard::violationCount();
+  {
+    allocation_guard::Scope scope;
+    for (const auto milliseconds : {3.0F, 6.0F, 0.0F, 10.0F}) {
+      setLimiter(milliseconds);
+      ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+      const auto latency =
+          milliseconds == 0.0F ? 1u : static_cast<std::uint32_t>(milliseconds * 48.0F);
+      ET_CHECK(engine.pipelineLatency() == latency);
+      for (std::uint32_t block = 0u; block < 16u; ++block)
+        process(false);
+      checkImpulse(latency);
+    }
+    for (const auto oversampling : {8.0F, 1.0F}) {
+      setLimiter(3.0F, oversampling);
+      ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+      ET_CHECK(engine.pipelineLatency() == (oversampling == 1.0F ? 144u : 208u));
+      process(false);
+    }
+    ET_CHECK(engine.reset() == ET_OK);
+    setLimiter(3.0F);
+    ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+    checkImpulse(144u);
+  }
+  ET_CHECK(allocation_guard::violationCount() == violations);
+
+  // Initially zero-latency channel effects must reserve future compensation too.
+  setShaper(1.0F);
+  routing = pipelineDescriptor({{shaper, 0u, 0u, 0}});
+  ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+           ET_OK);
+  ET_CHECK(engine.reservePipelineLatency() == ET_OK);
+  {
+    allocation_guard::Scope scope;
+    for (const auto oversampling : {8.0F, 1.0F}) {
+      setShaper(oversampling);
+      ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+      const auto latency = oversampling == 1.0F ? 0u : 64u;
+      ET_CHECK(engine.pipelineLatency() == latency);
+      checkImpulse(latency);
+    }
+    ET_CHECK(engine.reset() == ET_OK);
+    setShaper(1.0F);
+    ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+    checkImpulse(0u);
+  }
+  ET_CHECK(allocation_guard::violationCount() == violations);
+
+  // Preserve buffered history in every compensation location during a refresh.
+  const auto gain = engine.createInstance("TestGainPlugin");
+  const float unity = 1.0F;
+  ET_CHECK(engine.setInstanceParams(gain, &unity, 1u, kTestHash, 0u) == ET_OK);
+  for (const auto mode : {0u, 1u, 2u}) {
+    setLimiter(3.0F);
+    routing = mode == 1u   ? pipelineDescriptor({{limiter, 1u, 0u, -2}})
+              : mode == 2u ? pipelineDescriptor({{limiter, 0u, 0u, 0}, {gain, 0u, 0u, -1}})
+                           : pipelineDescriptor({{limiter, 0u, 0u, 0}});
+    ET_CHECK(engine.configurePipeline(routing.data(), static_cast<std::uint32_t>(routing.size())) ==
+             ET_OK);
+    ET_CHECK(engine.reservePipelineLatency() == ET_OK);
+    {
+      allocation_guard::Scope scope;
+      std::fill_n(engine.combined(), kFrames * 2u, 0.0F);
+      engine.combined()[kFrames] = 0.25F;
+      ET_CHECK(engine.processPipeline(2u, kFrames, 0.0, 0u) == ET_OK);
+      setLimiter(6.0F);
+      ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+      for (std::uint32_t block = 1u; block < 10u; ++block) {
+        process(false);
+        for (std::uint32_t frame = 0u; frame < kFrames; ++frame) {
+          const auto expected = block * kFrames + frame == 288u ? 0.25F : 0.0F;
+          ET_CHECK(engine.combined()[kFrames + frame] == expected);
+        }
+      }
+      setLimiter(12.0F);
+      ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_ERR_STATE);
+      ET_CHECK(engine.pipelineLatency() == 288u);
+      setLimiter(6.0F);
+      ET_CHECK(engine.refreshPipelineLatencyRealtime() == ET_OK);
+    }
+  }
+  ET_CHECK(allocation_guard::violationCount() == violations);
+}
+
 void testPipelineDescriptorFuzz() {
   const et_engine engine = et_engine_create();
   ET_CHECK(et_engine_prepare(engine, 48000.0F, 4u, 128u, 256u) == ET_OK);
@@ -1021,6 +1159,7 @@ void runAbiTests() {
   testUnrelatedInstanceDestructionPreservesPipeline();
   testDynamicPipelineLatency();
   testDynamicLatencyHistory();
+  testRealtimePipelineLatency();
   testPipelineDescriptorFuzz();
   testTelemetryCadence();
   testAssetLifecycle();

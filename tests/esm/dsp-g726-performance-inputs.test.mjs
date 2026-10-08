@@ -20,6 +20,7 @@ import {
 import { metadataContents } from '../../scripts/build-dsp-wasm.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const emsdkVersion = fs.readFileSync(path.join(repoRoot, 'dsp', 'EMSDK_VERSION'), 'utf8').trim();
 
 test('G.726 performance manifest lists production dependencies without unrelated plugin sources', () => {
   const manifest = g726PerformanceInputManifest({ repoRoot });
@@ -176,7 +177,7 @@ function fixtureBuildAuthority(root, compilerExecutable) {
       configureArguments: productionWasmConfigureArguments({
         dspRoot, buildDirectory, simd
       }),
-      emsdkVersion: '6.0.2',
+      emsdkVersion,
       variant
     });
   });
@@ -208,7 +209,7 @@ test('G.726 resolved build authority records a host-independent toolchain identi
   );
   const linuxHost = fixtureBuildAuthority(
     path.join(root, 'linux'),
-    '/opt/hostedtoolcache/emsdk/6.0.2/upstream/emscripten/em++'
+    `/opt/hostedtoolcache/emsdk/${emsdkVersion}/upstream/emscripten/em++`
   );
 
   for (const authority of [windowsHost, linuxHost]) {
@@ -216,7 +217,7 @@ test('G.726 resolved build authority records a host-independent toolchain identi
       assert.equal(variant.compiler.executable, 'em++');
       assert.equal(variant.compiler.id, 'Clang');
       assert.equal(variant.compiler.version, '23.0.0');
-      assert.equal(variant.emsdkVersion, '6.0.2');
+      assert.equal(variant.emsdkVersion, emsdkVersion);
     }
     const strings = [];
     collectAuthorityStrings(authority, 'resolved', strings);

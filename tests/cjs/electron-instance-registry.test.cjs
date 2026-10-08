@@ -11,7 +11,9 @@ const {
 
 function createHarness(t, options = {}) {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-instances-'));
-  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  t.after(() => fs.promises.rm(userDataPath, {
+    recursive: true, force: true, maxRetries: 5, retryDelay: 100
+  }));
   const clock = { now: 1000 };
   const alive = new Set(options.alive || []);
   const warnings = [];

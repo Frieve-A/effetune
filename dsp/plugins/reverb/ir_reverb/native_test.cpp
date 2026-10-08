@@ -1054,7 +1054,18 @@ void testMalformedMatrixTables() {
     IR_CHECK(status == ET_ERR_ARGS);
     IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
     IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ERROR);
+    harness.stageParams(params(0.0F, 0.0F));
+    std::array<float, 2u * 128u> dry;
+    dry.fill(0.25F);
+    {
+      effetune::allocation_guard::Scope guard;
+      harness.kernel->process(dry.data(), 2u, 128u, {0.0});
+    }
+    IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
+    IR_CHECK(std::all_of(dry.begin(), dry.end(),
+                         [](float sample) { return std::abs(sample - 0.25F) < 1.0e-6F; }));
     IR_CHECK(harness.stageAsset(ir, 2u, kIndependent, 128u, 1u));
+    harness.prepareToActive();
     harness.kernel->clearAsset(0u);
     IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_NONE);
   };
@@ -1245,16 +1256,46 @@ void testMalformedCommitAndDryMix() {
   IR_CHECK(staging != nullptr);
   std::memcpy(staging, payload.data(), payload.size());
   staging[0] = 0u;
-  IR_CHECK(harness.kernel->commitAsset(0u, static_cast<std::uint32_t>(payload.size()),
-                                       ET_ASSET_F32_MULTICH) == ET_ERR_ARGS);
+  const std::uint32_t allocationBefore = effetune::allocation_guard::violationCount();
+  et_status status = ET_OK;
+  {
+    effetune::allocation_guard::Scope guard;
+    status = harness.kernel->commitAsset(0u, static_cast<std::uint32_t>(payload.size()),
+                                         ET_ASSET_F32_MULTICH);
+  }
+  IR_CHECK(status == ET_ERR_ARGS);
+  IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
   IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ERROR);
   IR_CHECK((harness.kernel->assetState(0u) >> 8u) != 0u);
 
   harness.stageParams(params(0.0F, 0.0F));
   std::vector<float> audio(2u * 128u, 0.25F);
-  harness.kernel->process(audio.data(), 2u, 128u, {0.0});
+  {
+    effetune::allocation_guard::Scope guard;
+    harness.kernel->process(audio.data(), 2u, 128u, {0.0});
+  }
+  IR_CHECK(effetune::allocation_guard::violationCount() == allocationBefore);
   IR_CHECK(std::all_of(audio.begin(), audio.end(),
                        [](float sample) { return std::abs(sample - 0.25F) < 1.0e-6F; }));
+  IR_CHECK(harness.kernel->latencySamples() == 0u);
+  IR_CHECK(harness.stageAsset(ir, 1u, kMono, 128u, 1u));
+  harness.prepareToActive();
+  const std::uint32_t activeAllocationBefore = effetune::allocation_guard::violationCount();
+  std::array<float, 2u * 512u> rejectedAudio;
+  rejectedAudio.fill(0.25F);
+  {
+    effetune::allocation_guard::Scope guard;
+    status = harness.kernel->commitAsset(0u, static_cast<std::uint32_t>(payload.size()),
+                                         ET_ASSET_F32_MULTICH);
+    harness.kernel->process(rejectedAudio.data(), 2u, 512u, {0.0});
+  }
+  IR_CHECK(status == ET_ERR_ARGS);
+  IR_CHECK(effetune::allocation_guard::violationCount() == activeAllocationBefore);
+  IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_ERROR);
+  IR_CHECK(std::all_of(rejectedAudio.begin(), rejectedAudio.end(),
+                       [](float sample) { return std::abs(sample - 0.25F) < 1.0e-6F; }));
+  harness.kernel->clearAsset(0u);
+  IR_CHECK((harness.kernel->assetState(0u) & 0xffu) == ET_ASSET_STATE_NONE);
 }
 
 void testBeginAllocationFailuresAreRecoverable() {

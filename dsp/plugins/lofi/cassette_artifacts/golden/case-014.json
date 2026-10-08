@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "encode-only-dolby-transitions",
+  "stimulus": "noise",
+  "sampleRate": 96000,
+  "channels": 3,
+  "frameCount": 4096,
+  "blockSize": 17,
+  "channelMode": "multi",
+  "channel": null,
+  "caseIndex": 13,
+  "seed": "0xeffe7a53",
+  "params": {
+    "dg": "Consumer",
+    "tp": "Type I",
+    "nr": "Dolby B",
+    "bs": 0,
+    "rl": 9,
+    "wf": 1,
+    "hs": -42,
+    "dp": 20,
+    "az": 2,
+    "dl": 0,
+    "og": 0,
+    "mx": 100,
+    "md": "Encode Only"
+  },
+  "events": [
+    {
+      "frame": 1025,
+      "params": {
+        "nr": "Dolby C",
+        "rl": -12
+      }
+    },
+    {
+      "frame": 3073,
+      "params": {
+        "nr": "Off",
+        "og": -6,
+        "mx": 50
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c21246b2cfb936c268a20902c4826fd75b87833927fb62a042c5a710129871e9",
+  "outputFloats": 12288,
+  "byteLength": 49152,
+  "binary": "case-014.f32"
+}

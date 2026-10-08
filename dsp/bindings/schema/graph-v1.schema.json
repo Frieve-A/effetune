@@ -587,12 +587,6 @@
               "minimum": 21,
               "maximum": 108,
               "default": 91
-            },
-            "regularCandidates": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 16,
-              "default": 8
             }
           }
         }
@@ -4948,6 +4942,17 @@
               "maximum": 100,
               "x-effetune-unit": "%",
               "default": 100
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "Encode Only",
+                "Encode + Artifacts",
+                "All",
+                "Artifacts + Decode",
+                "Decode Only"
+              ],
+              "default": "All"
             }
           }
         }

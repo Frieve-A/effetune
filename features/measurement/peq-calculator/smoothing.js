@@ -169,14 +169,12 @@ export function smoothLog(freq, magDb, binsPerOct) {
               smoothed[i] = m1;
           } else if (targetFreq >= f2) {
               smoothed[i] = m2;
-               if (currentInputIdx < numBins - 2) currentInputIdx++;
           } else {
                const logTarget = Math.log10(targetFreq);
                const logF1 = Math.log10(f1);
                const logF2 = Math.log10(f2);
                const ratio = (logTarget - logF1) / (logF2 - logF1);
                smoothed[i] = m1 + ratio * (m2 - m1);
-                if (currentInputIdx < numBins - 2) currentInputIdx++;
           }
            if (typeof smoothed[i] !== 'number' || !isFinite(smoothed[i])) {
                console.warn(`smoothLog: Final interpolation yielded invalid value at index ${i}, using original.`);
@@ -190,4 +188,4 @@ export function smoothLog(freq, magDb, binsPerOct) {
       console.error("Error during smoothLog execution:", error);
       return magDb; // Return original data on error
   }
-} 
+}

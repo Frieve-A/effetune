@@ -48,6 +48,7 @@ class ChorusPlugin extends PluginBase {
                 context.chorusPosition = 0;
                 context.chorusPhase = 0;
                 context.chorusVoicePhases = new Float64Array(MAX_VOICES);
+                context.chorusVoiceDelays = new Float64Array(2 * MAX_VOICES);
                 context.chorusChannels = channelCount;
                 context.chorusMode = parameters.md;
                 const initialVoices = Math.round(parameters.vc);
@@ -106,6 +107,7 @@ class ChorusPlugin extends PluginBase {
             let position = context.chorusPosition;
             let phase = context.chorusPhase;
             const voicePhases = context.chorusVoicePhases;
+            const voiceDelays = context.chorusVoiceDelays;
 
             for (let frame = 0; frame < blockSize; ++frame) {
                 for (let index = 0; index < smooth.length; ++index) {
@@ -127,6 +129,21 @@ class ChorusPlugin extends PluginBase {
                     wetGate = context.chorusTransitionPosition / transitionLength;
                 }
 
+                const sideCount = channelCount > 1 && spread !== 0 ? 2 : 1;
+                for (let side = 0; side < sideCount; ++side) {
+                    for (let voice = 0; voice < voiceCount; ++voice) {
+                        const voiceOffset = TWO_PI * voice / voiceCount;
+                        const stereoOffset = side * spread * Math.PI * 0.5;
+                        const lfoPhase = mode === 'Ensemble' ? voicePhases[voice] : phase;
+                        const lfo = Math.sin(lfoPhase + voiceOffset + stereoOffset);
+                        const requestedDelayMs = smooth[1] + smooth[2] * lfo;
+                        const delayMs = requestedDelayMs < 0.05 ? 0.05 : requestedDelayMs;
+                        const requestedDelaySamples = delayMs * sampleRate * 0.001;
+                        voiceDelays[side * MAX_VOICES + voice] = requestedDelaySamples > bufferSize - 3 ?
+                            bufferSize - 3 : requestedDelaySamples;
+                    }
+                }
+
                 for (let channel = 0; channel < channelCount; ++channel) {
                     const audioIndex = channel * blockSize + frame;
                     const dry = data[audioIndex];
@@ -134,17 +151,9 @@ class ChorusPlugin extends PluginBase {
                     const write = dry + feedbackState[channel] * feedback;
                     buffers[bufferOffset + position] = Number.isFinite(write) ? write : 0;
                     let wet = 0;
-                    const pairSide = (channel & 1) === 1 ? 1 : 0;
+                    const pairSide = sideCount === 1 ? 0 : channel & 1;
                     for (let voice = 0; voice < voiceCount; ++voice) {
-                        const voiceOffset = TWO_PI * voice / voiceCount;
-                        const stereoOffset = pairSide * spread * Math.PI * 0.5;
-                        const lfoPhase = mode === 'Ensemble' ? voicePhases[voice] : phase;
-                        const lfo = Math.sin(lfoPhase + voiceOffset + stereoOffset);
-                        const requestedDelayMs = smooth[1] + smooth[2] * lfo;
-                        const delayMs = requestedDelayMs < 0.05 ? 0.05 : requestedDelayMs;
-                        const requestedDelaySamples = delayMs * sampleRate * 0.001;
-                        const delaySamples = requestedDelaySamples > bufferSize - 3 ?
-                            bufferSize - 3 : requestedDelaySamples;
+                        const delaySamples = voiceDelays[pairSide * MAX_VOICES + voice];
                         let read = position - delaySamples;
                         while (read < 0) read += bufferSize;
                         while (read >= bufferSize) read -= bufferSize;

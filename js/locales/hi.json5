@@ -1359,5 +1359,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "ज़ूम बढ़ाएँ",
   "visualizer.zoomLevel": "ज़ूम",
-  "visualizer.zoomOut": "ज़ूम घटाएँ"
+  "visualizer.zoomOut": "ज़ूम घटाएँ",
+  "dialog.config.sfzSizeLimit": "SFZ आकार सीमा",
+  "dialog.config.sfzSizeLimitHelp": "लोड की जा सकने वाली SFZ साउंड लाइब्रेरी का अधिकतम आकार तय करता है।",
+  "sfzNotePlayer.missingBank": "SFZ नहीं मिला",
+  "sfzNotePlayer.error.missing": "चुना गया SFZ नहीं मिला। उसे फिर से चुनें या दूसरा SFZ चुनें।",
+  "sfzNotePlayer.error.tooLarge": "यह SFZ आकार सीमा से बड़ा है। विन्यास → सामान्य में SFZ आकार सीमा बढ़ाएँ या छोटा SFZ चुनें।",
+  "sfzNotePlayer.error.noRegions": "बजाने योग्य सैंपल नहीं मिले। दूसरा SFZ चुनें।",
+  "sfzNotePlayer.error.storage": "SFZ लाइब्रेरी तक पहुँच नहीं मिल सकी। फ़ाइलों की अनुमतियाँ और उपलब्ध संग्रहण स्थान जाँचें, फिर कोशिश करें।",
+  "sfzNotePlayer.error.prepare": "SFZ लोड नहीं हो सका। जाँचें कि उसकी सैंपल फ़ाइलें उपलब्ध हैं, या दूसरा SFZ चुनें।",
+  "sfzNotePlayer.warning.loop-points-ignored": "इस SFZ को लोड करने के लिए उपयोग में न आने वाली लूप सेटिंग समायोजित की गईं।",
+  "sfzNotePlayer.warning.invalid-regions": "कुछ ध्वनियों की सेटिंग अमान्य थीं, इसलिए उन्हें छोड़ दिया गया।",
+  "sfzNotePlayer.warning.missing-samples": "कुछ सैंपल फ़ाइलें नहीं मिलीं। केवल उपलब्ध ध्वनियाँ लोड की गईं।",
+  "sfzNotePlayer.warning.unsupported-regions": "कुछ ध्वनियाँ ऐसी प्लेबैक शर्तों का उपयोग करती हैं जिन्हें यह इफ़ेक्ट समर्थित नहीं करता, इसलिए उन्हें छोड़ दिया गया।",
+  "sfzNotePlayer.warning.reduced-bank": "आकार सीमा में रखने के लिए सभी नोट बरकरार रखते हुए कम ध्वनियाँ लोड की गईं। अधिक ध्वनियों का उपयोग करने के लिए «SFZ आकार सीमा» बढ़ाएँ।"
 }

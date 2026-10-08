@@ -5,17 +5,22 @@ export class PresetManager {
         this.pluginListManager = pluginListManager;
         this.pluginList = pluginListManager.pluginList;
         this.presetManager = null;
+        this.presetManagerReady = null;
+        this.listRevision = 0;
     }
 
     async initPresetManager() {
-        if (!this.presetManager) {
-            const { PresetManager } = await import('../../preset-manager.js');
-            this.presetManager = new PresetManager();
-            await this.presetManager.loadPresets();
+        if (!this.presetManagerReady && !this.presetManager) {
+            this.presetManagerReady = import('../../preset-manager.js').then(async ({ PresetManager }) => {
+                this.presetManager = new PresetManager();
+                await this.presetManager.loadPresets();
+            });
         }
+        await this.presetManagerReady;
     }
 
     async initSystemPresetList() {
+        const revision = ++this.listRevision;
         try {
             await this.initPresetManager();
             
@@ -56,6 +61,8 @@ export class PresetManager {
                 totalPresets += presets.length;
             }
 
+            if (revision !== this.listRevision || this.pluginListManager.searchManager.currentTab !== 'systemPresets') return;
+
             // Add new content while preserving h2
             this.pluginList.appendChild(contentContainer);
 
@@ -73,6 +80,7 @@ export class PresetManager {
     }
 
     async initUserPresetList() {
+        const revision = ++this.listRevision;
         try {
             let totalPresets = 0;
             const presetCountDiv = document.createElement('div');
@@ -92,6 +100,8 @@ export class PresetManager {
                 await this.addUserPresetsCategory(contentContainer, userPresetsData);
                 totalPresets = userPresetsData.length;
             }
+
+            if (revision !== this.listRevision || this.pluginListManager.searchManager.currentTab !== 'userPresets') return;
 
             // Add new content while preserving h2
             this.pluginList.appendChild(contentContainer);

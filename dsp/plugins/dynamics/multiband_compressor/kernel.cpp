@@ -125,8 +125,12 @@ public:
     retargetControls();
 
     std::array<float, multiband_detail::kFiveBandCount * 2u> time_constants{};
+    const bool controls_ramping = control_ramp_remaining_ != 0u;
+    std::array<double, multiband_detail::kFiveBandCount> stable_makeup{};
     const double sample_rate_ms = sample_rate_ / 1000.0;
     for (std::uint32_t band = 0u; band < multiband_detail::kFiveBandCount; ++band) {
+      if (!controls_ramping)
+        stable_makeup[band] = std::exp(controlAt(band * 4u + 3u, 0u) * kGainFactor);
       double attack_samples = static_cast<double>(params_.attack[band]) * sample_rate_ms;
       if (attack_samples < 1.0)
         attack_samples = 1.0;
@@ -177,7 +181,9 @@ public:
             knee = 0.0;
           const double half_knee = knee * 0.5;
           const double slope = ratio == 1.0 ? 0.0 : 1.0 - 1.0 / ratio;
-          const double makeup = std::exp(controlAt(base + 3u, frame) * kGainFactor);
+          const double makeup = controls_ramping
+                                    ? std::exp(controlAt(base + 3u, frame) * kGainFactor)
+                                    : stable_makeup[band];
           const double difference =
               lookup_.decibels(static_cast<double>(envelope_work_[frame])) - threshold;
           double gain_change = 0.0;

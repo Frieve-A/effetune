@@ -138,12 +138,16 @@ void *operator new[](std::size_t bytes, const std::nothrow_t &tag) noexcept {
   return ::operator new(bytes, tag);
 }
 
-void operator delete(void *memory) noexcept { std::free(memory); }
-void operator delete[](void *memory) noexcept { std::free(memory); }
-void operator delete(void *memory, std::size_t) noexcept { std::free(memory); }
-void operator delete[](void *memory, std::size_t) noexcept { std::free(memory); }
-void operator delete(void *memory, const std::nothrow_t &) noexcept { std::free(memory); }
-void operator delete[](void *memory, const std::nothrow_t &) noexcept { std::free(memory); }
+void operator delete(void *memory) noexcept {
+  if (memory != nullptr)
+    effetune::allocation_guard::abortIfActive();
+  std::free(memory);
+}
+void operator delete[](void *memory) noexcept { ::operator delete(memory); }
+void operator delete(void *memory, std::size_t) noexcept { ::operator delete(memory); }
+void operator delete[](void *memory, std::size_t) noexcept { ::operator delete(memory); }
+void operator delete(void *memory, const std::nothrow_t &) noexcept { ::operator delete(memory); }
+void operator delete[](void *memory, const std::nothrow_t &) noexcept { ::operator delete(memory); }
 
 #if defined(__cpp_aligned_new)
 namespace {
@@ -158,6 +162,8 @@ void *allocateAligned(std::size_t bytes, std::size_t alignment) noexcept {
 }
 
 void freeAligned(void *memory) noexcept {
+  if (memory != nullptr)
+    effetune::allocation_guard::abortIfActive();
 #if defined(_MSC_VER)
   _aligned_free(memory);
 #else

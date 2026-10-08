@@ -82,7 +82,7 @@ function analysisSettings(type, input = {}) {
         dt: input.dt ?? 0.01, tm: input.tm ?? 'Auto', tl: input.tl ?? 0,
         te: input.te ?? 'Rising', ho: input.ho ?? 0.0001
     }, gainDb: 0 };
-    return { params: { mn: input.mn ?? 28, mx: input.mx ?? 91, nc: input.nc ?? 8 }, gainDb: 0 };
+    return { params: { mn: input.mn ?? 28, mx: input.mx ?? 91 }, gainDb: 0 };
 }
 
 const sourceKey = (type, channel, params, gainDb) =>

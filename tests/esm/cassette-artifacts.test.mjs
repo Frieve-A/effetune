@@ -15,6 +15,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -87,6 +88,7 @@ class FakeMutationObserver {
 }
 
 const sandbox = {
+    bindEffeTuneNumberInput: bindNumberInput,
     window: {},
     console,
     setTimeout,
@@ -115,12 +117,13 @@ const processor = new Function('context', 'data', 'parameters', 'time',
 // module-scope object the UI reads; the tests read it back from the string.
 const CAL = JSON.parse(prototypeInstance.processorString.match(/const CAL = (\{.*\});/)[1]);
 
-const PUBLIC_KEYS = ['dg', 'tp', 'nr', 'bs', 'rl', 'wf', 'hs', 'dp', 'az', 'dl', 'og', 'mx'];
+const PUBLIC_KEYS = ['dg', 'tp', 'nr', 'md', 'bs', 'rl', 'wf', 'hs', 'dp', 'az', 'dl', 'og', 'mx'];
+const MODES = ['Encode Only', 'Encode + Artifacts', 'All', 'Artifacts + Decode', 'Decode Only'];
 const GRADES = Object.keys(CAL.GRADES);
 const HISS_OFF = -92; // dB re 250 nWb/m, the bottom of the control
 
 const defaultParams = (over = {}) => ({
-    enabled: true, dg: CAL.GRADE_DEFAULT, tp: 'Type I', nr: 'Dolby B', bs: 0, rl: 9,
+    enabled: true, md: 'All', dg: CAL.GRADE_DEFAULT, tp: 'Type I', nr: 'Dolby B', bs: 0, rl: 9,
     wf: CAL.W_REF, hs: Math.round(CAL.H_II * 10) / 10, dp: CAL.D_DEFAULT,
     az: CAL.AZ_DEFAULT_ARCMIN, dl: 0, og: 0, mx: 100,
     blockSize: 128, channelCount: 2, sampleRate: 48000, ...over
@@ -210,6 +213,7 @@ test('cassette artifacts exposes exactly the planned parameter surface', () => {
     assert.equal(params.dg, 'Consumer');
     assert.equal(params.tp, 'Type I');
     assert.equal(params.nr, 'Dolby B');
+    assert.equal(params.md, 'All');
     assert.equal(params.bs, 0);
     assert.equal(params.rl, 9);
     assert.equal(params.wf, CAL.W_REF);
@@ -236,7 +240,7 @@ test('cassette artifacts exposes exactly the planned parameter surface', () => {
 test('get/set and serialisation roundtrips agree on every public key', () => {
     const source = new Plugin();
     source.setParameters({
-        dg: 'Portable', tp: 'Type IV', nr: 'Dolby C', bs: -3.4, rl: -4.5, wf: 0.333,
+        md: 'Artifacts + Decode', dg: 'Portable', tp: 'Type IV', nr: 'Dolby C', bs: -3.4, rl: -4.5, wf: 0.333,
         hs: -77.5, dp: 12.5, az: -3.7, dl: 1.8, og: 4.5, mx: 55, enabled: false
     });
     const copy = new Plugin();
@@ -259,7 +263,8 @@ test('get/set and serialisation roundtrips agree on every public key', () => {
 
 test('invalid enums fall back, numbers clamp, and sp is rejected', () => {
     const plugin = new Plugin();
-    plugin.setParameters({ tp: 'Type III', nr: 'dbx', dg: 'Studio', sp: '15' });
+    plugin.setParameters({ md: 'invalid', tp: 'Type III', nr: 'dbx', dg: 'Studio', sp: '15' });
+    assert.equal(plugin.md, 'All');
     assert.equal(plugin.tp, 'Type I');
     assert.equal(plugin.nr, 'Dolby B');
     assert.equal(plugin.dg, 'Consumer', 'an unknown Deck Grade falls back to the default');
@@ -291,13 +296,124 @@ test('invalid enums fall back, numbers clamp, and sp is rejected', () => {
     assert.equal(plugin.dl, -3);
 });
 
-test('temporal capability follows enabled and mix', () => {
+test('temporal capability follows enabled, mix and the cassette stage', () => {
     const plugin = new Plugin();
     assert.equal(plugin.getTemporalCapability(), 'must-process');
     plugin.setParameters({ mx: 0 });
     assert.equal(plugin.getTemporalCapability(), 'reset-on-resume');
     plugin.setParameters({ mx: 100, enabled: false });
     assert.equal(plugin.getTemporalCapability(), 'reset-on-resume');
+    plugin.setParameters({ enabled: true });
+    for (const md of MODES) {
+        plugin.setParameters({ md });
+        assert.equal(plugin.getTemporalCapability(),
+            md === 'Encode Only' || md === 'Decode Only' ? 'reset-on-resume' : 'must-process');
+    }
+});
+
+test('Mode roundtrips and old presets default to the complete chain', () => {
+    for (const md of MODES) {
+        const plugin = new Plugin();
+        plugin.setParameters({ md });
+        const restored = new Plugin();
+        restored.setSerializedParameters(JSON.parse(JSON.stringify(plugin.getSerializableParameters())));
+        assert.equal(restored.md, md);
+    }
+    const legacy = defaultParams();
+    delete legacy.md;
+    const signal = n => 0.1 * Math.sin(n * 0.7);
+    assert.deepEqual(runBlocks(legacy, signal, 2048).out,
+        runBlocks(defaultParams(), signal, 2048).out);
+    for (const preset of Plugin.getSystemPresetGroups()[0].presets) {
+        assert.equal(preset.params.md, 'All');
+    }
+});
+
+test('Dolby-only modes skip every cassette artifact and tape latency', () => {
+    const signal = n => n === 0 ? 0.1 : 0.02 * Math.sin(n * 0.91);
+    for (const md of ['Encode Only', 'Decode Only']) {
+        const reference = runBlocks(defaultParams({ md }), signal, 2048);
+        const extreme = runBlocks(defaultParams({
+            md, dg: 'Portable', tp: 'Type IV', bs: 6, wf: 1, hs: -42, dp: 20, az: -6
+        }), signal, 2048);
+        assert.deepEqual(reference.out, extreme.out, `${md} must ignore cassette controls`);
+        assert.notEqual(reference.out[0][0], 0, `${md} must have no tape delay`);
+        assert.ok(reference.ctx.cassetteArtifacts.sectionState.every(v => v === 0));
+        const silence = runBlocks(defaultParams({ md }), () => 0, 2048);
+        assert.ok(silence.out.every(channel => channel.every(v => v === 0)), 'no tape noise');
+        const off = runBlocks(defaultParams({ md, nr: 'Off', mx: 50 }), signal, 2048);
+        for (let n = 0; n < 2048; n++) {
+            assert.equal(off.out[0][n], Math.fround(signal(n)), 'NR Off must have no coloration or delay');
+        }
+    }
+});
+
+test('split stages preserve the complete chain and allow mismatched Dolby decoding', () => {
+    const frames = 4096;
+    const signal = n => 0.025 * Math.sin(n * 0.97) + 0.01 * Math.cos(n * 0.19);
+    const maxDifference = (a, b) => a.reduce((peak, channel, ch) =>
+        Math.max(peak, ...channel.map((v, n) => Math.abs(v - b[ch][n]))), 0);
+    for (const nr of ['Off', 'Dolby B', 'Dolby C']) {
+        for (const rl of [-12, 9, 18]) {
+            const full = runBlocks(defaultParams({ nr, rl }), signal, frames).out;
+            for (const [firstMode, secondMode] of [
+                ['Encode Only', 'Artifacts + Decode'], ['Encode + Artifacts', 'Decode Only']
+            ]) {
+                const first = runBlocks(defaultParams({ md: firstMode, nr, rl }), signal, frames).out;
+                const second = runBlocks(defaultParams({ md: secondMode, nr, rl }),
+                    (n, ch) => first[ch][n] ?? 0, frames).out;
+                assert.ok(maxDifference(full, second) < 1e-6,
+                    `${nr}, Record Level ${rl}: ${firstMode} → ${secondMode} must match All`);
+            }
+        }
+    }
+    const encoded = runBlocks(defaultParams({ md: 'Encode Only', nr: 'Dolby B' }), signal, frames).out;
+    const matched = runBlocks(defaultParams({ md: 'Decode Only', nr: 'Dolby B' }),
+        (n, ch) => encoded[ch][n] ?? 0, frames).out;
+    const mismatched = runBlocks(defaultParams({ md: 'Decode Only', nr: 'Dolby C' }),
+        (n, ch) => encoded[ch][n] ?? 0, frames).out;
+    const original = runBlocks(defaultParams({ enabled: false }), signal, frames).out;
+    assert.ok(maxDifference(original, matched) < 1e-6, 'matched Dolby-only roundtrip restores the signal');
+    assert.ok(maxDifference(matched, mismatched) > 0.001, 'a different decoder changes the sound');
+});
+
+test('Mode changes discard inactive stage history and remain block independent', () => {
+    const render = blockSize => runBlocks(defaultParams({ blockSize }),
+        n => 0.03 * Math.sin(n * 0.7), 5120,
+        { __seededRandom: () => 0.42 }, (p, n) => { p.md = MODES[Math.floor(n / 1024)]; }).out;
+    assert.deepEqual(render(128), render(256));
+    assert.ok(render(128).every(channel => channel.every(Number.isFinite)));
+});
+
+test('Mode disables unused controls and reports only active noise processing', () => {
+    const plugin = new Plugin();
+    const container = plugin.createUI();
+    const controls = new Map(plugin._syncedUIControls.map(control => [control.modelKey, control.elements]));
+    const mode = controls.get('md')[0];
+    for (const md of MODES) {
+        mode.onchange({ target: { value: md } });
+        assert.equal(plugin.md, md);
+        const tape = md !== 'Encode Only' && md !== 'Decode Only';
+        const decode = md === 'All' || md === 'Artifacts + Decode' || md === 'Decode Only';
+        for (const key of ['dg', 'tp', 'bs', 'wf', 'hs', 'dp', 'az']) {
+            assert.ok(controls.get(key).every(element => element.disabled === !tape));
+        }
+        assert.ok(controls.get('dl').every(element => element.disabled === !decode));
+        assert.ok(controls.get('rl').every(element => !element.disabled));
+        if (!tape) {
+            assert.doesNotMatch(plugin._statusText(), /Wow\/Flutter|Hiss|tape peak|measuring/);
+            assert.equal(plugin._nrQuietingTimer, null);
+        } else if (!decode) {
+            assert.equal(plugin._displayedNrQuietingDb(), 0);
+            assert.match(plugin._statusText(), /Dolby B encode/);
+            assert.equal(plugin._effectiveHissDbFs(), plugin.hs + CAL.H_I - CAL.H_II - plugin.rl);
+        }
+    }
+    plugin.setParameters({ nr: 'Off' });
+    assert.ok(controls.get('dl').every(element => element.disabled));
+    assert.ok(controls.get('rl').every(element => element.disabled));
+    assert.equal(container.querySelectorAll('.cassette-artifacts-status')[0].textContent, plugin._statusText());
+    plugin.cleanup();
 });
 
 // ==== bit-exact early returns ==============================================
@@ -1795,8 +1911,10 @@ test('the UI carries the radio groups, sliders and ARIA status, and states the s
     // disagree and a row of screen for no information.
     const statusRows = container.querySelectorAll('.cassette-artifacts-status');
     assert.equal(statusRows.length, 1, 'exactly one status row: the live one at the bottom');
-    assert.equal(container.children[0], container.querySelectorAll('.radio-group')[0],
-        'the panel now opens on the Deck Grade, not on a fixed speed row');
+    assert.equal(container.children[0].children[0].textContent, 'Mode:');
+    const mode = container.children[0].querySelector('select');
+    assert.equal(mode.value, 'All');
+    assert.deepEqual(mode.children.map(option => option.value), MODES);
     assert.equal(CAL.SPEED_LABEL, '4.76 cm/s (1⅞ ips)');
     assert.match(plugin._statusText(), /at 4\.76 cm\/s \(1⅞ ips\)/,
         'and the surviving statement carries the full label the removed row had');

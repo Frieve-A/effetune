@@ -2,6 +2,7 @@ import { ElectronIrLibraryBackend } from './electron-ir-library-backend.js';
 import { IR_LIBRARY_INDEX_NAME, IrLibraryStore } from './ir-library-store.js';
 import { PersistentIrPcmCache } from './ir-pcm-cache.js';
 import { openOpfsIrLibraryBackend } from './opfs-ir-library-backend.js';
+import { requireLibraryNamespace } from './library-namespace.js';
 
 // Written into native storage once the legacy browser-storage (OPFS) library
 // has been copied there, or once OPFS was found to hold no library. While it
@@ -168,21 +169,12 @@ async function openElectronBackend(electronBridge, storage, diagnostic) {
 }
 
 export async function openIrLibrary(options = {}) {
-  let backend;
-  let requestPersistence = null;
-  const electronBridge = options.electronBridge || globalThis.window?.electronAPI?.irLibraryV1;
+  const backend = await openIrLibraryBackend(options);
   const storage = options.storage || globalThis.navigator?.storage;
-  if (electronBridge) {
-    backend = await openElectronBackend(electronBridge, storage, options.onDiagnostic);
-  } else {
-    try {
-      backend = await openOpfsIrLibraryBackend(storage);
-      if (typeof storage?.persist === 'function') requestPersistence = () => storage.persist();
-    } catch (error) {
-      options.onDiagnostic?.(error);
-      throw unavailableError();
-    }
-  }
+  const electronBridge = options.electronBridge || globalThis.window?.electronAPI?.irLibraryV1;
+  const requestPersistence = !electronBridge && typeof storage?.persist === 'function'
+    ? () => storage.persist()
+    : null;
   let pcmCache = null;
   try {
     pcmCache = await new PersistentIrPcmCache(backend, options).open();
@@ -192,4 +184,22 @@ export async function openIrLibrary(options = {}) {
   const store = new IrLibraryStore(backend, { ...options, requestPersistence, pcmCache });
   await store.open();
   return store;
+}
+
+export async function openIrLibraryBackend(options = {}) {
+  const namespace = requireLibraryNamespace(options.namespace);
+  const electronBridge = options.electronBridge || globalThis.window?.electronAPI?.irLibraryV1;
+  const storage = options.storage || globalThis.navigator?.storage;
+  if (electronBridge) {
+    return namespace === 'ir-library'
+      ? openElectronBackend(electronBridge, storage, options.onDiagnostic)
+      : new ElectronIrLibraryBackend(electronBridge, namespace);
+  } else {
+    try {
+      return await openOpfsIrLibraryBackend(storage, namespace);
+    } catch (error) {
+      options.onDiagnostic?.(error);
+      throw unavailableError();
+    }
+  }
 }

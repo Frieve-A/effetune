@@ -4,10 +4,11 @@ const CUE_REGION_SMOKE_FIXTURE_PATH = '/__cue-region-smoke__/index.html';
 
 async function runBrowserScenario(page) {
   return page.evaluate(async () => {
-    const [{ AudioContextManager }, { PlaybackManager }, { CatalogPlaybackBridge }] = await Promise.all([
+    const [{ AudioContextManager }, { PlaybackManager }, { CatalogPlaybackBridge }, { AudioManager }] = await Promise.all([
       import('/js/ui/audio-player/audio-context-manager.js'),
       import('/js/ui/audio-player/playback-manager.js'),
-      import('/js/ui/audio-player/catalog-playback-bridge.js')
+      import('/js/ui/audio-player/catalog-playback-bridge.js'),
+      import('/js/audio-manager.js')
     ]);
     const check = (condition, message) => {
       if (!condition) throw new Error(message);
@@ -153,6 +154,9 @@ async function runBrowserScenario(page) {
       const audioManager = {
         audioContext: context,
         workletNode: null,
+        _getPrimaryWorkletNode: AudioManager.prototype._getPrimaryWorkletNode,
+        _getActivePowerWorklets: AudioManager.prototype._getActivePowerWorklets,
+        broadcastToActiveWorklets: AudioManager.prototype.broadcastToActiveWorklets,
         sourceNode: null,
         powerPolicyController: {
           enabled: true,

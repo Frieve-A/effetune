@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
 import { DoubleBlindTest } from '../../js/ui/double-blind-test/double-blind-test.js';
+import { PluginManager } from '../../js/plugin-manager.js';
 import { encodePipelineState, decodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
@@ -1065,6 +1067,50 @@ test('restores shared payloads and rejects malformed or empty shares', async () 
     assert.equal(h.uiManager.audioManager.pipelineB[0].channel, '3');
   });
 });
+
+for (const source of ['saved', 'shared']) {
+  test(`repeated ${source} test replacement releases the previous plugins`, async () => {
+    await withHarness({}, async h => {
+      const listeners = new Set();
+      const observers = new Set();
+      h.windowObject.workletNode = { port: {
+        addEventListener(_type, callback) { listeners.add(callback); },
+        removeEventListener(_type, callback) { listeners.delete(callback); },
+        postMessage() {}
+      } };
+      const context = vm.createContext({
+        window: h.windowObject, document: h.document, console, setTimeout, clearTimeout,
+        MutationObserver: class {
+          observe() { observers.add(this); }
+          disconnect() { observers.delete(this); }
+        }
+      });
+      vm.runInContext(readFileSync(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8') + '\n' +
+        'globalThis.TestPlugin = class extends PluginBase { constructor() { super("Lifetime", "Lifetime"); } getParameters() { return {}; } updateParameters() {} };', context);
+      const pluginManager = new PluginManager();
+      pluginManager.pluginClasses.Lifetime = context.TestPlugin;
+      h.dbt.pluginManager = pluginManager;
+      const audioManager = h.uiManager.audioManager;
+      audioManager.pipelineA = [pluginManager.createPlugin('Lifetime')];
+      audioManager.pipelineB = [pluginManager.createPlugin('Lifetime')];
+      for (const plugin of [...audioManager.pipelineA, ...audioManager.pipelineB]) h.uiManager.expandedPlugins.add(plugin);
+      const state = { pA: [{ nm: 'Lifetime', en: true }], pB: [{ nm: 'Lifetime', en: true }], tc: 20 };
+      await h.dbt._persistTests({ saved: state });
+      h.dbt.enterFresh();
+      for (let count = 0; count < 5; count++) {
+        if (source === 'saved') await h.dbt._loadTest('saved');
+        else {
+          await h.dbt.exit();
+          assert.equal(h.dbt.restoreFromShare(encodePipelineState(state)), true);
+        }
+        assert.equal(listeners.size, 2);
+        assert.equal(observers.size, 2);
+        assert.deepEqual(h.uiManager.expandedPlugins, new Set([...audioManager.pipelineA, ...audioManager.pipelineB]));
+      }
+      await h.dbt.exit();
+    });
+  });
+}
 
 test('starts tests, randomizes trials, switches labels, and handles keyboard shortcuts', async () => {
   await withHarness({ rejectEnableParallel: true, throwFadeOut: true, throwFadeIn: true }, async h => {

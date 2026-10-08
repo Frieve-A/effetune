@@ -19,7 +19,7 @@ const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
 const kernelPath = path.join(pluginRoot, 'kernel.cpp');
 const rendererPath = path.join(repoRoot, 'plugins', 'analyzer', 'stereo_meter.js');
-const jsEngineHash = 'a1d12c5d0e5b989f5727a07f1700b2a11b243ca6cbc47bee12b709db9d5f5f66';
+const jsEngineHash = 'f3dc1fe834b5c42f4db2581f0d5da68bbfb4669f0f5c7d3682cab4fcb66e4ef3';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -119,6 +119,39 @@ test('Stereo Meter legacy fallback freezes planar XY, angle, cadence, and decay'
   }, 1.1);
   assert.ok(near(output.measurements.peakBuffer[270], 0.7943282));
   assert.match(plugin.processorString, /measurementInterval = 1 \/ 60/);
+});
+
+test('Stereo Meter fallback excludes denormal noise from measurements and passes audio through', async () => {
+  const session = await createReferenceSession('StereoMeterPlugin', { repoRoot });
+  const plugin = session.plugin;
+  const state = {};
+  const blockSize = 64;
+  const noiseLimit = Math.fround(10 ** (-288 / 20));
+  const parameters = {
+    ...plugin.getParameters(), channelCount: 2, blockSize, sampleRate: 1000
+  };
+  const noise = Float32Array.from({ length: blockSize * 2 }, (_, index) =>
+    index % 3 === 0 ? noiseLimit : index % 3 === 1 ? -noiseLimit : 1e-19
+  );
+  for (let block = 0; block < 3; block++) {
+    const input = noise.slice();
+    const output = plugin.executeProcessor(state, input, parameters, 1 + block * 0.064);
+    assert.equal(output, input);
+    assert.deepEqual(output.slice(), noise);
+    for (const buffer of ['xBuffer', 'yBuffer', 'peakBuffer']) {
+      assert.ok(output.measurements[buffer].every(value => value === 0), buffer);
+    }
+  }
+
+  const quietAudio = new Float32Array(blockSize * 2);
+  quietAudio.fill(1e-8, 0, blockSize);
+  quietAudio.fill(-1e-8, blockSize);
+  const original = quietAudio.slice();
+  const output = plugin.executeProcessor(state, quietAudio, parameters, 1.192);
+  assert.deepEqual(output.slice(), original);
+  assert.equal(output.measurements.xBuffer[blockSize * 3], Math.fround(-2e-8));
+  assert.equal(output.measurements.yBuffer[blockSize * 3], 0);
+  assert.ok(output.measurements.peakBuffer[180] > 0);
 });
 
 test('Stereo Meter kernel and renderer freeze the bounded v2 sample-delta contract', async () => {

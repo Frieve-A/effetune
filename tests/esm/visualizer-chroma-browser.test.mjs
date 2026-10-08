@@ -11,6 +11,7 @@ test('Chroma stays drawable when a small visualizer tile receives a signal', asy
     try {
         const page = await browser.newPage();
         await page.setContent('<!doctype html><body></body>');
+        await page.addScriptTag({ content: moduleScript('../../js/ui/range-fill.js') });
         await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
         for (const file of ['note_spectrogram', 'chroma_spiral']) {
             await page.addScriptTag({ content: read(`../../plugins/analyzer/${file}.js`) });
@@ -56,6 +57,7 @@ test('Chroma receives native HQ frames and keeps its guides and upright labels o
     try {
         const page = await browser.newPage();
         await page.setContent('<!doctype html><body></body>');
+        await page.addScriptTag({ content: moduleScript('../../js/ui/range-fill.js') });
         await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
         await page.addScriptTag({ content: read('../../plugins/frequency-axis.js') });
         await page.addScriptTag({ content: `

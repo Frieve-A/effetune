@@ -25,6 +25,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_reset',
     'et_instance_latency',
     'et_instance_set_tap',
+    'et_instance_set_analysis_source',
     'et_instance_set_seed',
     'et_instance_set_params',
     'et_instance_set_param_bytes',
@@ -42,6 +43,9 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_telemetry_capacity',
     'et_telemetry_read',
     'et_pipeline_configure',
+    'et_pipeline_refresh_latency',
+    'et_pipeline_reserve_latency',
+    'et_pipeline_refresh_latency_realtime',
     'et_pipeline_latency',
     'et_pipeline_process'
 ];
@@ -537,6 +541,11 @@ class DspEngineBinding {
         return this.exports.et_instance_set_tap(this.engine, instanceId, tapId >>> 0);
     }
 
+    instanceSetAnalysisSource(consumer, producer = 0) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_set_analysis_source(this.engine, consumer, producer);
+    }
+
     instanceSetSeed(instanceId, seedLow, seedHigh = 0) {
         if (!this.engine) return ET_ERR_STATE;
         return this.exports.et_instance_set_seed(
@@ -838,9 +847,44 @@ class DspEngineBinding {
         return status;
     }
 
+    pipelineRefreshLatency() {
+        if (!this.engine) return ET_ERR_STATE;
+        this._preparing = true;
+        let status = ET_ERR_STATE;
+        try {
+            status = this.exports.et_pipeline_refresh_latency(this.engine);
+        } finally {
+            this._refreshViews();
+            this._preparing = false;
+        }
+        this.getArenaViews();
+        return status;
+    }
+
     pipelineLatency() {
         if (!this.engine) return 0;
         return this.exports.et_pipeline_latency(this.engine) >>> 0;
+    }
+
+    pipelineReserveLatency() {
+        if (!this.engine) return ET_ERR_STATE;
+        this._preparing = true;
+        let status = ET_ERR_STATE;
+        try {
+            status = this.exports.et_pipeline_reserve_latency(this.engine);
+        } finally {
+            this._refreshViews();
+            this._preparing = false;
+        }
+        this.getArenaViews();
+        return status;
+    }
+
+    pipelineRefreshLatencyRealtime() {
+        if (!this.engine) return ET_ERR_STATE;
+        const status = this.exports.et_pipeline_refresh_latency_realtime(this.engine);
+        this._refreshViews();
+        return status;
     }
 
     pipelineProcess(channelCount, frameCount, timeSeconds, masterBypass = false) {
@@ -1216,8 +1260,10 @@ const ET_DSP_DEFAULT_MAX_FRAMES = 128;
 const ET_STREAM_BOUNDARY_PLUGIN_TYPE = 'RhythmAnalyzerPlugin';
 const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
-// Keep half of the 256 MiB module ceiling available for arenas, other kernels, and replacement probes.
+// SFZ sample banks have a separate allowance; other assets retain their existing budget.
+// The 2 GiB module ceiling leaves 896 MiB for arenas, kernels, and replacement probes.
 const ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES = 128 * 1024 * 1024;
+const ET_DSP_SFZ_ASSET_AGGREGATE_BUDGET_BYTES = 1024 * 1024 * 1024;
 const ET_DSP_FIR_REPLACEMENT_DRY_MODE = -1;
 const ET_DSP_FIR_REPLACEMENT_DRY_READY = 1 << 16;
 const ET_DSP_PACKET_POOL_SIZE = 3;
@@ -3318,9 +3364,12 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.releaseAssetHold(pluginId);
     }
 
-    dspAssetFootprintBytes(excludedPluginId = null, excludedSlot = null) {
+    dspAssetFootprintBytes(excludedPluginId = null, excludedSlot = null, sfzOnly = null) {
         let total = 0;
+        const included = pluginId => sfzOnly === null ||
+            (this.plugins.find(plugin => plugin.id === pluginId)?.type === 'SFZNotePlayerPlugin') === sfzOnly;
         for (const [pluginId, slots] of this.dspAssetCache) {
+            if (!included(pluginId)) continue;
             for (const [slot, asset] of slots) {
                 if (pluginId === excludedPluginId && slot === excludedSlot) continue;
                 const deferred = this.dspDeferredAssetStages.get(`${pluginId}:${slot}`);
@@ -3328,6 +3377,7 @@ class PluginProcessor extends AudioWorkletProcessor {
             }
         }
         for (const deferred of this.dspDeferredAssetStages.values()) {
+            if (!included(deferred.pluginId)) continue;
             if (deferred.pluginId === excludedPluginId && deferred.slot === excludedSlot) continue;
             if (this.dspAssetCache.get(deferred.pluginId)?.has(deferred.slot)) continue;
             total += deferred.candidate.footprintBytes;
@@ -3377,9 +3427,11 @@ class PluginProcessor extends AudioWorkletProcessor {
             );
             return;
         }
-        const aggregateFootprint =
-            this.dspAssetFootprintBytes(pluginId, slot) + footprintBytes;
-        if (aggregateFootprint > ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES) {
+        const sfz = this.plugins.find(plugin => plugin.id === pluginId)?.type === 'SFZNotePlayerPlugin';
+        const aggregateFootprint = this.dspAssetFootprintBytes(pluginId, slot, sfz) + footprintBytes;
+        const aggregateBudget = sfz ? ET_DSP_SFZ_ASSET_AGGREGATE_BUDGET_BYTES :
+            ET_DSP_ASSET_AGGREGATE_BUDGET_BYTES;
+        if (aggregateFootprint > aggregateBudget) {
             console.warn('[dsp-wasm] Plugin asset load exceeds the module asset budget.');
             this.rejectDspAssetCandidate(
                 pluginId, slot, 'module-budget', operationRevision, previousDescriptor,
@@ -3943,16 +3995,78 @@ class PluginProcessor extends AudioWorkletProcessor {
             latencySnapshot = this.captureExecutionLatencySnapshot();
         }
         this.executionLatencySnapshot = latencySnapshot;
+        const analysisSources = this.findNoteAnalysisSources();
+        this.noteAnalysisProducers = new Set(analysisSources.values());
         // The current plan is always the history: delay lines whose delays and
         // targets are unchanged keep their queued audio across any mutation.
         const plan = this.masterBypass ? null : this.computeDspLatencyPlan(
             this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
         this.dspLatencyPlan = plan;
-        if (plan) {
-            this.publishDspPipelineLatency(plan.totalSamples, this.dspLive || plan.totalSamples > 0);
+        let removedSource = false;
+        for (const [consumer, producer] of analysisSources) {
+            if (!plan || plan.tapPositions[consumer]?.input === undefined ||
+                plan.tapPositions[consumer].input !== plan.tapPositions[producer]?.input) {
+                analysisSources.delete(consumer);
+                removedSource = true;
+            }
+        }
+        this.noteAnalysisProducers = new Set(analysisSources.values());
+        if (removedSource && !this.masterBypass) {
+            this.dspLatencyPlan = this.computeDspLatencyPlan(
+                this.plugins, latencySnapshot, this.jsFallbackAdmissions, this.dspLatencyPlan);
+        }
+        if (this.dspLive && this.dspBinding) {
+            for (const plugin of this.plugins) {
+                if (plugin.type !== 'SFZNotePlayerPlugin') continue;
+                const entry = this.wasmInstances.get(plugin.id);
+                if (!entry?.ready) continue;
+                const producer = this.wasmInstances.get(analysisSources.get(plugin.id));
+                const status = this.dspBinding.instanceSetAnalysisSource(entry.id, producer?.id || 0);
+                if (status !== 0) this.reportDspFailure('analysis-source', `status ${status}`);
+            }
+        }
+        if (this.dspLatencyPlan) {
+            this.publishDspPipelineLatency(this.dspLatencyPlan.totalSamples,
+                this.dspLive || this.dspLatencyPlan.totalSamples > 0);
         } else {
             this.publishDspPipelineLatency(0, false);
         }
+    }
+
+    findNoteAnalysisSources() {
+        const sources = new Map();
+        if (!this.dspLive || this.masterBypass) return sources;
+        const active = [];
+        let sectionEnabled = true;
+        for (const plugin of this.plugins) {
+            if (plugin.type === 'SectionPlugin') {
+                sectionEnabled = Boolean(plugin.enabled);
+            } else if (plugin.enabled && sectionEnabled) {
+                active.push(plugin);
+            }
+        }
+        for (let index = 0; index < active.length; index++) {
+            const consumer = active[index];
+            if (consumer.type !== 'SFZNotePlayerPlugin' ||
+                !this.wasmInstances.get(consumer.id)?.ready ||
+                pluginExecutionUnsupportedReason(consumer, this.dspSampleRate, this.outputChannelCount)) continue;
+            for (let upstream = index - 1; upstream >= 0; upstream--) {
+                const producer = active[upstream];
+                if (producer.type !== 'NoteSpectrogramPlugin') continue;
+                if (this.wasmInstances.get(producer.id)?.ready &&
+                    !pluginExecutionUnsupportedReason(producer, this.dspSampleRate, this.outputChannelCount) &&
+                    producer.inputBus === consumer.inputBus && producer.channel === consumer.channel &&
+                    producer.parameters?.mn === consumer.parameters?.mn &&
+                    producer.parameters?.mx === consumer.parameters?.mx &&
+                    active.slice(upstream + 1, index).every(plugin =>
+                        plugin.outputBus !== consumer.inputBus ||
+                        (plugin.inputBus === plugin.outputBus && this.isPureDisplayDsp(plugin)))) {
+                    sources.set(consumer.id, producer.id);
+                }
+                break;
+            }
+        }
+        return sources;
     }
 
     // Pure plan computation: nothing on the processor changes, so a candidate
@@ -4818,6 +4932,10 @@ class PluginProcessor extends AudioWorkletProcessor {
 
     // A Rhythm Analyzer with its metronome click on writes audio, so it is not display-only.
     isDisplayOnlyDsp(plugin) {
+        return this.isPureDisplayDsp(plugin) && !this.noteAnalysisProducers?.has(plugin.id);
+    }
+
+    isPureDisplayDsp(plugin) {
         return DISPLAY_ONLY_DSP_TYPES.has(plugin?.type) &&
             !(plugin.type === 'RhythmAnalyzerPlugin' && plugin.parameters?.ck === true);
     }

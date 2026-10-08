@@ -2422,6 +2422,80 @@ test('discard-and-continue navigation restores the full snapshot before continui
     });
 });
 
+test('cancelled measurement confirmations cannot change the next confirmed action', async t => {
+    await withPatchedSingletons(t, async () => {
+        const original = {
+            id: 'measurement-confirmation', name: 'Original',
+            points: [point(0, 1), point(1, 3)],
+            averageFrequencyResponse: [[100, 2]]
+        };
+        const measurement = {
+            ...structuredClone(original),
+            _editSnapshot: structuredClone(original),
+            _deletedPointIds: [1]
+        };
+        measurement.points.pop();
+        dataStorage.measurements = [measurement];
+        const elements = new Map(
+            ['confirmationDialog', 'confirmationMessage', 'confirmationCheckbox', 'doNotWarnAgain']
+                .map(id => [id, { style: {}, checked: false }])
+        );
+        globalThis.document = { getElementById: id => elements.get(id) };
+        const manager = new UIManager();
+        manager.selectedMeasurementId = measurement.id;
+        manager.hasUnsavedChanges = true;
+        manager.showScreen = () => {};
+        manager.correctionHandler.requestCorrectionUpdate = () => {};
+        manager.measurementDisplay.updateSelectedMeasurementHighlight = () => {};
+        manager.measurementDisplay.displayMeasurementDetails = () => {};
+        const deletedPoints = [];
+        const deletedMeasurements = [];
+        manager.measurementDisplay.deletePoint = index => deletedPoints.push(index);
+        manager.measurementDisplay.deleteMeasurement = id => deletedMeasurements.push(id);
+
+        await manager.measurementDisplay.selectMeasurement('measurement-other');
+        manager.dialogController.handleConfirmation(false);
+        manager.measurementDisplay.confirmDeletePoint(0);
+        manager.dialogController.handleConfirmation(true);
+        assert.deepEqual(deletedPoints, [0]);
+        assert.equal(manager.selectedMeasurementId, measurement.id);
+        assert.equal(manager.hasUnsavedChanges, true);
+        assert.equal(measurement.points.length, 1);
+        assert.equal(manager.pendingAction, null);
+        assert.equal(manager.pendingDeleteId, null);
+        assert.equal(manager.pendingDeleteType, null);
+
+        manager.measurementDisplay.confirmDeleteMeasurement(measurement.id);
+        manager.dialogController.handleConfirmation(false);
+        await manager.measurementDisplay.selectMeasurement('measurement-other');
+        manager.dialogController.handleConfirmation(true);
+        assert.deepEqual(deletedMeasurements, []);
+        assert.equal(manager.selectedMeasurementId, 'measurement-other');
+        assert.deepEqual(measurement, original);
+        assert.equal(manager.hasUnsavedChanges, false);
+        assert.equal(manager.pendingAction, null);
+        assert.equal(manager.pendingDeleteId, null);
+        assert.equal(manager.pendingDeleteType, null);
+    });
+});
+
+test('a confirmed measurement action may set the next pending confirmation', async t => {
+    await withPatchedSingletons(t, async () => {
+        globalThis.document = { getElementById: () => ({ style: {} }) };
+        const manager = new UIManager();
+        let nextActionCalls = 0;
+        const nextAction = () => { nextActionCalls += 1; };
+        manager.pendingAction = () => { manager.pendingAction = nextAction; };
+
+        manager.dialogController.handleConfirmation(true);
+        assert.strictEqual(manager.pendingAction, nextAction);
+        assert.equal(nextActionCalls, 0);
+        manager.dialogController.handleConfirmation(false);
+        assert.equal(manager.pendingAction, null);
+        assert.equal(nextActionCalls, 0);
+    });
+});
+
 test('measurement deletion updates the UI only after persistence succeeds and notifies on failure', async t => {
     await withPatchedSingletons(t, async () => {
         let resolveDelete;

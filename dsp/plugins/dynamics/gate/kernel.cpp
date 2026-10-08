@@ -48,6 +48,8 @@ public:
 
     prepareCurveRamps();
     double maximum_reduction = 0.0;
+    const bool gain_ramping = gain_.remaining != 0u;
+    const double stable_gain = gain_ramping ? 1.0 : std::exp(gain_.target * detail::kGainFactor);
 
     for (std::uint32_t channel = 0u; channel < channel_count; ++channel) {
       dsp::AttackReleaseEnvelope &envelope = envelopes_[channel];
@@ -59,7 +61,8 @@ public:
         const double ratio_slope = ratio_.value(frame) - 1.0;
         const double knee = knee_.value(frame);
         const double half_knee = knee * 0.5;
-        const double output_gain = std::exp(gain_.value(frame) * detail::kGainFactor);
+        const double output_gain =
+            gain_ramping ? std::exp(gain_.value(frame) * detail::kGainFactor) : stable_gain;
         const double input = static_cast<double>(channel_audio[frame]);
         const double magnitude = input >= 0.0 ? input : -input;
         double envelope_value = envelope.process(magnitude);

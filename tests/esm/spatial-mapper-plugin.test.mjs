@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -95,6 +96,7 @@ async function loadPlugin() {
     querySelectorAll() { return []; }
   };
   const sandbox = {
+    bindEffeTuneNumberInput: bindNumberInput,
     window: { audioContext: { destination: { channelCount: 6 } } },
     document,
     console,

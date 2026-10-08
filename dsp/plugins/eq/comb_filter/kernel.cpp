@@ -120,7 +120,8 @@ private:
                                  double delay) const noexcept {
     const auto newer_delay = static_cast<std::uint32_t>(delay);
     const double fraction = delay - static_cast<double>(newer_delay);
-    const std::uint32_t newer = (write + max_delay_ - newer_delay) % max_delay_;
+    const std::uint32_t newer =
+        write >= newer_delay ? write - newer_delay : write + max_delay_ - newer_delay;
     const std::uint32_t older = newer == 0u ? max_delay_ - 1u : newer - 1u;
     const double newer_sample = static_cast<double>(delay_buffer_[offset + newer]);
     const double older_sample = static_cast<double>(delay_buffer_[offset + older]);

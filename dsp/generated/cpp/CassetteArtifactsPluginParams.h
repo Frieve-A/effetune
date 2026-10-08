@@ -19,10 +19,11 @@ struct CassetteArtifactsPluginParams {
   float dolbyLevelError;
   float output;
   float mix;
-  static constexpr std::uint32_t kHash = 0xf65e7185u;
-  static constexpr std::uint32_t kFloatCount = 12u;
+  float mode;
+  static constexpr std::uint32_t kHash = 0x328491aeu;
+  static constexpr std::uint32_t kFloatCount = 13u;
 };
-static_assert(12u == 0u || sizeof(CassetteArtifactsPluginParams) == sizeof(float) * 12u);
+static_assert(13u == 0u || sizeof(CassetteArtifactsPluginParams) == sizeof(float) * 13u);
 
 } // namespace effetune::generated
 

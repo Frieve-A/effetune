@@ -35,6 +35,7 @@ export const GRAPH_V1_CAPACITY = Object.freeze({
   maxWorkspaceBytes: 64 * 1024 * 1024
 });
 const maximumAssetBytes = 32 * 1024 * 1024;
+export const APP_ONLY_EFFECT_TYPES = Object.freeze(['SFZNotePlayerPlugin']);
 const maximumUint32 = 0xffffffff;
 const digestPattern = /^[0-9a-f]{64}$/;
 

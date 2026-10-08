@@ -182,10 +182,13 @@ const presetCalibrationTests = [
   'tests/esm/dsp-tube-simulator-listening-presets-v1.test.mjs'
 ];
 const presetCalibrationTestSet = new Set(presetCalibrationTests);
-// These tests mutate generated DSP package output. Keep them separate from
-// parallel tests that copy the package into the demo.
-const dspBuildCommandTests = ['tests/esm/dsp-build-command.test.mjs'];
-const dspBuildCommandTestSet = new Set(dspBuildCommandTests);
+// Builds write generated output and evaluate time-limited scripts. Run them
+// serially outside the parallel functional tests.
+const buildTests = [
+  'tests/esm/dsp-build-command.test.mjs',
+  'tests/esm/oss-distribution-notices.test.mjs'
+];
+const buildTestSet = new Set(buildTests);
 const automationContractTests = [
   'tools/dsp-parity/automation-mixed.test.mjs',
   'dsp/plugins/reverb/ir_reverb/automation_test.mjs'
@@ -196,7 +199,7 @@ const esmTests = allEsmTests
     !performanceTestSet.has(file) &&
     !isolatedTestSet.has(file) &&
     !presetCalibrationTestSet.has(file) &&
-    !dspBuildCommandTestSet.has(file));
+    !buildTestSet.has(file));
 const cjsCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'electron'), {
   exclude: ['electron/main.js']
 });
@@ -232,7 +235,7 @@ const allTests = [
   ...browserTests,
   ...presetCalibrationTests,
   ...automationContractTests,
-  ...dspBuildCommandTests,
+  ...buildTests,
   ...performanceTests
 ];
 checkTestTitles(allTests);
@@ -291,9 +294,10 @@ if (esmTests.length > 0) {
   ]);
 }
 
-runNodeTestPhase('DSP build command tests', [
+runNodeTestPhase('Build tests', [
   '--test',
-  ...dspBuildCommandTests
+  '--test-concurrency=1',
+  ...buildTests
 ]);
 
 runNodeTestPhase('DSP automation contract tests', [

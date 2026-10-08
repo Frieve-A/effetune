@@ -4933,13 +4933,13 @@ test('Visual Sync reserves the telemetry interval and forwards recorded capture 
       constructor: { name: 'NoteSpectrogramPlugin' }, getParameters: () => ({}) }];
     manager.dspLatencyTaps = { 7: { input: 0, output: 0, execution: 'wasm', instanceId: 100 } };
     await manager.setVisualSyncEnabled(true);
-    assert.equal(manager.visualSyncDelayFrames, 9600);
-    const payload = new DataView(new ArrayBuffer(5312));
+    assert.equal(manager.visualSyncDelayFrames, 5693);
+    const payload = new DataView(new ArrayBuffer(8840));
     payload.setFloat32(0, 48000, true);
     payload.setFloat32(4, 1, true);
-    const frame = { frameType: 24, formatVersion: 4, payload };
+    const frame = { frameType: 24, formatVersion: 5, payload };
     const due = manager.telemetryHub.resolveDue(7, 60000, 7, frame, 48000);
-    assert.ok(Math.abs(due - (2000 + (9600 - 8192) / 48)) < 1e-8);
+    assert.ok(Math.abs(due - (2000 + (5693 - 4284.474399459274) / 48)) < 1e-8);
     await manager.setVisualSyncEnabled(false);
   });
 });

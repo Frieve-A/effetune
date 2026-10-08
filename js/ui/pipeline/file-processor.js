@@ -27,6 +27,7 @@ export class FileProcessor {
         // Initialize properties
         this.dropArea = null;
         this.downloadContainer = null;
+        this._downloadUrl = null;
         this.progressContainer = null;
         this.progressBar = null;
         this.progressText = null;
@@ -548,7 +549,7 @@ export class FileProcessor {
      * @param {string|null} folderPath - Folder path for Electron, null for Web FSA
      */
     _showSavedMessage(count, folderPath) {
-        this.downloadContainer.innerHTML = '';
+        this._clearDownload();
 
         const msg = document.createElement('div');
         msg.className = 'download-link';
@@ -812,7 +813,7 @@ export class FileProcessor {
             ? window.uiManager.t('status.creatingZipFile')
             : 'Creating zip file...');
         const JSZipClass = window.JSZip || await loadClassicScript(
-            'js/vendor/jszip-3.10.1.min.js',
+            'js/vendor/jszip-3.10.2.min.js',
             { globalName: 'JSZip' }
         );
         if (typeof JSZipClass !== 'function') {
@@ -850,7 +851,7 @@ export class FileProcessor {
         const filename = isZip ? originalName : this.getProcessedFileName(originalName, extension);
 
         // Clear previous download links
-        this.downloadContainer.innerHTML = '';
+        this._clearDownload();
 
         // Create download link
         const downloadLink = document.createElement('a');
@@ -939,7 +940,9 @@ export class FileProcessor {
             });
         } else {
             // For web browser, use standard download
-            downloadLink.href = URL.createObjectURL(blob);
+            const downloadUrl = URL.createObjectURL(blob);
+            this._downloadUrl = downloadUrl;
+            downloadLink.href = downloadUrl;
             downloadLink.download = filename;
             downloadLink.className = 'download-link';
             const downloadText = window.uiManager && window.uiManager.t ?
@@ -955,7 +958,8 @@ export class FileProcessor {
             // Clean up object URL when downloaded
             downloadLink.addEventListener('click', () => {
                 setTimeout(() => {
-                    URL.revokeObjectURL(downloadLink.href);
+                    URL.revokeObjectURL(downloadUrl);
+                    if (this._downloadUrl === downloadUrl) this._downloadUrl = null;
                 }, 100);
             });
         }
@@ -970,6 +974,14 @@ export class FileProcessor {
         this.downloadContainer.appendChild(downloadLink);
         this.downloadContainer.style.display = 'block';
         this.dropArea.classList.add('file-processing-active');
+    }
+
+    _clearDownload() {
+        if (this._downloadUrl) {
+            URL.revokeObjectURL(this._downloadUrl);
+            this._downloadUrl = null;
+        }
+        this.downloadContainer.innerHTML = '';
     }
 
     /**

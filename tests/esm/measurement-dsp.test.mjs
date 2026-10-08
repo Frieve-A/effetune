@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PEQCalculator, fitPEQ } from '../../features/measurement/peq-calculator/peq-calculator.js';
+import { PEQCalculator, fitPEQ, smoothLog } from '../../features/measurement/peq-calculator/peq-calculator.js';
 
 import FFT from '../../js/utils/measurement-dsp/fft.js';
 import { detectOnset } from '../../js/utils/measurement-dsp/onset.js';
@@ -43,6 +43,18 @@ test('PEQ design supports a narrow high-frequency band and ignores out-of-band t
         [-3, 2, 1400, -3, 2, 1900], 1500, 1800, 96000);
     for (const index of [2, 5]) {
         assert.ok(fitted[index] >= 1500 - 1e-9 && fitted[index] <= 1800 + 1e-9);
+    }
+});
+
+test('PEQ smoothing retains a dense log-linear response between coarse grid points', () => {
+    const frequencies = Array.from({ length: 1001 }, (_, index) => 20 * 1000 ** (index / 1000));
+    const magnitudes = frequencies.map(frequency => 6 * Math.log2(frequency / 1000));
+    for (const binsPerOct of [3, 6, 13.5, 24]) {
+        const smoothed = smoothLog(frequencies, magnitudes, binsPerOct);
+        const interiorErrors = frequencies.flatMap((frequency, index) =>
+            frequency > 100 && frequency < 10000 ? [Math.abs(smoothed[index] - magnitudes[index])] : []);
+        // A symmetric log-space window preserves a linear slope away from its reflected endpoints.
+        assert.ok(Math.max(...interiorErrors) < 0.000001, `binsPerOct=${binsPerOct}`);
     }
 });
 

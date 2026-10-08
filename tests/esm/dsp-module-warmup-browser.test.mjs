@@ -58,6 +58,17 @@ test('Rhythm Analyzer worker warm-up leaves first audio-worklet creation short a
                                     b.instanceSetTap(this.id, 213);
                                     this.arena = b.getArenaViews();
                                     this.packet = new ArrayBuffer(262144);
+                                    // Sample pristine state before the first 10.667 ms decoder tick.
+                                    b.setTelemetryRate(240);
+                                    const pristineBlocks = Math.ceil(sampleRate / (240 * 128));
+                                    for (let block = 0; block < pristineBlocks; block++) {
+                                        this.arena.combined.fill(0, 0, 256);
+                                        b.instanceProcess(this.id, this.arena.offsets.combined, 2, 128, block * 128 / sampleRate);
+                                    }
+                                    const pristineBytes = b.telemetryRead(this.packet);
+                                    this.pristineFrame = [...new Uint8Array(this.packet, 0, pristineBytes)];
+                                    this.prerollFrames = pristineBlocks * 128;
+                                    b.setTelemetryRate(60);
                                     this.maxBlockMs = 0;
                                     this.passthrough = true;
                                     this.blocks = 0;
@@ -77,7 +88,8 @@ test('Rhythm Analyzer worker warm-up leaves first audio-worklet creation short a
                                     }
                                     const expected = arena.combined.slice(0, 256);
                                     const start = Date.now();
-                                    b.instanceProcess(this.id, arena.offsets.combined, 2, 128, this.blocks * 128 / sampleRate);
+                                    b.instanceProcess(this.id, arena.offsets.combined, 2, 128,
+                                        (this.prerollFrames + this.blocks * 128) / sampleRate);
                                     this.maxBlockMs = Math.max(this.maxBlockMs, Date.now() - start);
                                     this.passthrough &&= expected.every((value, i) => Math.abs(value - arena.combined[i]) < 1e-18);
                                     if (this.blocks % 32 === 31) {
@@ -86,7 +98,8 @@ test('Rhythm Analyzer worker warm-up leaves first audio-worklet creation short a
                                     }
                                     if (++this.blocks === Math.ceil(sampleRate * 18 / 128)) {
                                         this.port.postMessage({ createMs: this.createMs, maxBlockMs: this.maxBlockMs,
-                                            passthrough: this.passthrough, firstFrame: this.firstFrame });
+                                            passthrough: this.passthrough, pristineFrame: this.pristineFrame,
+                                            firstFrame: this.firstFrame });
                                     }
                                     return true;
                                 }
@@ -111,10 +124,22 @@ test('Rhythm Analyzer worker warm-up leaves first audio-worklet creation short a
                     // the old synchronous 15.5 s warm-up takes over 200 ms on the reference host.
                     assert.ok(result.createMs < 50, `initial creation stalled for ${result.createMs} ms`);
                     assert.equal(result.passthrough, true);
+                    const pristinePacket = Uint8Array.from(result.pristineFrame);
+                    let pristine;
+                    assert.equal(parseTelemetryPacket(pristinePacket, pristinePacket.byteLength,
+                        frame => { pristine ??= frame; }).ok, true);
+                    assert.ok(pristine, 'the live instance emits a pristine telemetry snapshot');
+                    assert.equal(pristine.frameType, 28);
+                    assert.equal(pristine.formatVersion, 4);
+                    assert.equal(pristine.payload.getUint32(12, true), 0, 'no decoder tick or silence reset has run');
+                    assert.equal(pristine.payload.getUint32(32, true), 0, 'no shown beat reaches the live instance');
+                    assert.equal(pristine.payload.getFloat32(40, true), 0, 'no warm-up confidence reaches the live instance');
+                    assert.equal(pristine.payload.getFloat32(44, true), 0, 'no warm-up committed period reaches the live instance');
+                    assert.equal(pristine.payload.getUint32(28, true), 0, 'no warm-up event reaches the live instance');
+                    assert.equal(pristine.payload.getUint32(1344, true), 0, 'no warm-up preview reaches the live instance');
                     const packet = Uint8Array.from(result.firstFrame);
                     let first;
                     assert.equal(parseTelemetryPacket(packet, packet.byteLength, frame => { first ??= frame; }).ok, true);
-                    assert.equal(first.payload.getUint32(32, true) & 1, 0, 'worker beat lock must not reach the live instance');
                     assert.ok(first.payload.getFloat32(16, true) < .2, 'analysis starts on the real input timeline');
                 }
                 await page.close();

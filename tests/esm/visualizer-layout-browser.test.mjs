@@ -15,7 +15,9 @@ const modelSource = read('../../js/visualizer/visualizer-model.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '') + '\nwindow.createDefaultLayout = createDefaultLayout; window.createItem = createItem; window.normalizeEffect = normalizeEffect;';
 const palettePresetsSource = read('../../js/visualizer/visualizer-palette-presets.js').replace(/^export /gm, '');
-const editorSource = read('../../js/visualizer/visualizer-editor.js')
+const editorSource = read('../../js/ui/range-fill.js').replace(/^export /gm, '') +
+    `\nfunction visualizerFieldLabel(row) { return row.querySelector('label')?.textContent.replace(/\\s*\\([^)]*\\):$|:$/g, ''); }\n` +
+    read('../../js/visualizer/visualizer-editor.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerEditor', 'window.VisualizerEditor = class VisualizerEditor');
 
@@ -442,7 +444,7 @@ test('Rainbow stop sliders retain fractional positions and update the saved and 
             editor.selection = new Set([layout.items[0].id]);
             editor.setOpen(true);
             const dbRange = [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(row => row.querySelector('label')?.textContent === 'DB Range').querySelector('input').value;
+                .find(row => visualizerFieldLabel(row) === 'DB Range').querySelector('input').value;
             const preset = [...editor.root.querySelectorAll('select')]
                 .find(select => [...select.options].some(option => option.value === 'rainbow'));
             const presetCount = preset.options.length;
@@ -472,7 +474,7 @@ test('Rainbow stop sliders retain fractional positions and update the saved and 
             const stereo = createItem('stereo'); layout.items.push(stereo);
             editor.selection = new Set([stereo.id]); editor.render();
             const windowRange = [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(row => row.querySelector('label')?.textContent === 'Window').querySelector('input').value;
+                .find(row => visualizerFieldLabel(row) === 'Window').querySelector('input').value;
             return { initial, stops, edited: sliders[1].value, saved, before, after, dbRange, windowRange,
                 presetCount, expandedPreset };
         });
@@ -579,7 +581,7 @@ test('Chroma octave sliders retain pointer and keyboard interaction while synchr
             editor.selection = new Set([item.id]);
             editor.setOpen(true);
             const fields = [...editor.root.querySelectorAll('.visualizer-field')];
-            const slider = label => fields.find(row => row.querySelector('label')?.textContent === label).querySelector('input');
+            const slider = label => fields.find(row => visualizerFieldLabel(row) === label.replace(/\s*\([^)]*\)$/, '')).querySelector('input');
             const low = slider('Lowest Octave'), high = slider('Highest Octave');
             low.style.width = '400px';
             window.__octaves = { layout, low, high, inputCount: 0, refreshed: [] };
@@ -590,23 +592,23 @@ test('Chroma octave sliders retain pointer and keyboard interaction while synchr
             const { layout, low, high, inputCount, refreshed } = window.__octaves;
             return { values: [layout.items[0].params.lo, layout.items[0].params.hi],
                 inputs: [Number(low.value), Number(high.value)],
-                outputs: [low.nextElementSibling.textContent, high.nextElementSibling.textContent],
+                outputs: [low.nextElementSibling.value, high.nextElementSibling.value],
                 connected: low.isConnected && high.isConnected, inputCount, refreshed,
                 saved: normalizeLayout(JSON.parse(JSON.stringify(layout))).items[0].params };
         });
-        await page.getByLabel('Lowest Octave', { exact: true }).focus();
+        await page.getByRole('slider', { name: 'Lowest Octave:', exact: true }).focus();
         for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
         const raised = await readState();
         assert.deepEqual(raised.values, [5, 5]);
         assert.deepEqual(raised.inputs, [5, 5]);
         assert.deepEqual(raised.outputs, ['5', '5']);
-        await page.getByLabel('Highest Octave', { exact: true }).focus();
+        await page.getByRole('slider', { name: 'Highest Octave:', exact: true }).focus();
         for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowLeft');
         const lowered = await readState();
         assert.deepEqual(lowered.values, [2, 2]);
         assert.deepEqual(lowered.inputs, [2, 2]);
         assert.deepEqual(lowered.outputs, ['2', '2']);
-        const box = await page.getByLabel('Lowest Octave', { exact: true }).boundingBox();
+        const box = await page.getByRole('slider', { name: 'Lowest Octave:', exact: true }).boundingBox();
         await page.mouse.move(box.x + box.width * .15, box.y + box.height / 2);
         await page.mouse.down();
         await page.mouse.move(box.x + box.width * .95, box.y + box.height / 2, { steps: 12 });
@@ -618,7 +620,7 @@ test('Chroma octave sliders retain pointer and keyboard interaction while synchr
         assert.deepEqual(dragged.inputs, dragged.values);
         assert.deepEqual(dragged.outputs, dragged.values.map(String));
         assert.deepEqual([dragged.saved.lo, dragged.saved.hi], dragged.values);
-        assert.equal(dragged.refreshed.at(-1), String(dragged.values[1]));
+        assert.ok(await page.evaluate(() => window.__octaves.high.style.getPropertyValue('--et-range-fill') !== ''));
     } finally {
         await browser.close();
     }
@@ -647,7 +649,7 @@ test('Trail Feedback sliders save zoom, rotation, and horizontal and vertical fl
             editor.selection = new Set([layout.items[0].id]);
             editor.setOpen(true);
             const slider = label => [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(row => row.querySelector('label')?.textContent === label)?.querySelector('input');
+                .find(row => visualizerFieldLabel(row) === label.replace(/\s*\([^)]*\)$/, ''))?.querySelector('input');
             const inputs = [slider('Zoom'), slider('Rotation angle (°)'),
                 slider('Horizontal flow'), slider('Vertical flow')];
             const types = inputs.map(input => input?.type);
@@ -656,13 +658,13 @@ test('Trail Feedback sliders save zoom, rotation, and horizontal and vertical fl
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             }
             return { types, ranges: inputs.map(input => [input.min, input.max, input.step]),
-                values: inputs.map(input => input.nextElementSibling?.textContent),
+                values: inputs.map(input => input.nextElementSibling?.value),
                 effect: normalizeLayout(layout).items[0].effects[0] };
         });
         assert.deepEqual(result.types, ['range', 'range', 'range', 'range']);
         assert.deepEqual(result.ranges, [['-2', '2', '0.05'], ['-3', '3', '0.05'],
             ['-1', '1', '0.05'], ['-1', '1', '0.05']]);
-        assert.deepEqual(result.values, ['-1.5%', '-2°', '0.5%', '-0.6%']);
+        assert.deepEqual(result.values, ['-1.5', '-2', '0.5', '-0.6']);
         assert.deepEqual([result.effect.zoom, result.effect.angle, result.effect.flowX, result.effect.flowY],
             [-1.5, -2, .5, -.6]);
     } finally {
@@ -1387,23 +1389,23 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             const notes = window.createItem('notes');
             layout.items.push(notes); editor.selection = new Set([notes.id]); editor.render();
             const noteRow = label => [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(field => field.querySelector('label')?.textContent === label);
+                .find(field => visualizerFieldLabel(field) === label.replace(/\s*\([^)]*\)$/, ''));
             const lowRow = noteRow('Lowest note'), highRow = noteRow('Highest note');
             const lowSlider = lowRow.querySelector('input'), highSlider = highRow.querySelector('input');
             const noteRangeInitial = lowSlider.type === 'range' && highSlider.type === 'range' &&
                 lowSlider.min === '21' && lowSlider.max === '108' && lowSlider.step === '1' &&
-                lowRow.querySelector('output').textContent === 'E1' &&
-                highRow.querySelector('output').textContent === 'G6' &&
+                lowRow.querySelector('input[type=number]').title === 'E1' &&
+                highRow.querySelector('input[type=number]').title === 'G6' &&
                 lowRow.getBoundingClientRect().height === 26 &&
                 highRow.getBoundingClientRect().top - lowRow.getBoundingClientRect().top === 30;
             lowSlider.value = '100'; lowSlider.dispatchEvent(new Event('input', { bubbles: true }));
             const noteRangeUp = notes.params.mn === 100 && notes.params.mx === 100 &&
-                lowRow.querySelector('output').textContent === 'E7' &&
-                highRow.querySelector('output').textContent === 'E7';
+                lowRow.querySelector('input[type=number]').title === 'E7' &&
+                highRow.querySelector('input[type=number]').title === 'E7';
             highSlider.value = '21'; highSlider.dispatchEvent(new Event('input', { bubbles: true }));
             const noteRangeDown = notes.params.mn === 21 && notes.params.mx === 21 &&
-                lowRow.querySelector('output').textContent === 'A0' &&
-                highRow.querySelector('output').textContent === 'A0' &&
+                lowRow.querySelector('input[type=number]').title === 'A0' &&
+                highRow.querySelector('input[type=number]').title === 'A0' &&
                 lowSlider.isConnected && highSlider.isConnected;
             notes.params.mn = 28; notes.params.mx = 91; editor.render();
             window.__notesSliderTest = { editor, notes };
@@ -1510,7 +1512,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             chroma.palette.mode = 'gradient';
             layout.items.push(chroma); editor.selection = new Set([chroma.id]); editor.render();
             const chromaField = label => [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(field => field.querySelector('label')?.textContent === label);
+                .find(field => visualizerFieldLabel(field) === label.replace(/\s*\([^)]*\)$/, ''));
             const display = chromaField('Display').querySelector('select');
             display.value = '1'; display.dispatchEvent(new Event('change', { bubbles: true }));
             chromaField('Lowest Octave').querySelector('input').value = '8';
@@ -1537,11 +1539,11 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                         specimen.palette.mode === 'solid';
                     const meterFields = type === 'level-meter'
                         ? [...editor.root.querySelector('.visualizer-section').querySelectorAll('.visualizer-field > label')]
-                            .map(label => label.textContent) : null;
+                            .map(label => label.textContent.replace(/\s*\([^)]*\):$|:$/g, '')) : null;
                     let spectrumOrientationSaved = null, spectrumQuantizeSaved = null;
                     if (type === 'spectrum') {
                         const spectrumField = label => [...editor.root.querySelectorAll('.visualizer-field')]
-                            .find(row => row.querySelector('label')?.textContent === label);
+                            .find(row => visualizerFieldLabel(row) === label.replace(/\s*\([^)]*\)$/, ''));
                         const display = spectrumField('Display').querySelector('select');
                         const quantize = spectrumField('Quantize').querySelector('input');
                         const defaultQuantize = quantize.checked && quantize.disabled;
@@ -1562,7 +1564,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                     let meterSaved = null;
                     if (type === 'level-meter') {
                         const fields = [...editor.root.querySelectorAll('.visualizer-field')];
-                        const dbRange = fields.find(field => field.querySelector('label')?.textContent === 'DB Range').querySelector('input');
+                        const dbRange = fields.find(field => visualizerFieldLabel(field) === 'DB Range').querySelector('input');
                         const orientation = fields.find(field => field.querySelector('label')?.textContent === 'Orientation').querySelector('select');
                         const levelValues = fields.find(field => field.querySelector('label')?.textContent === 'Level values').querySelector('input');
                         dbRange.value = '-61'; dbRange.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1757,7 +1759,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             const { editor, notes } = window.__notesSliderTest;
             editor.selection = new Set([notes.id]); editor.render();
             const row = [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(field => field.querySelector('label')?.textContent === 'Lowest note');
+                .find(field => visualizerFieldLabel(field) === 'Lowest note');
             const slider = row.querySelector('input');
             window.__draggedNoteSlider = slider;
             window.__noteInputCount = 0;
@@ -1773,11 +1775,11 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
         const dragResult = await page.evaluate(() => {
             const { editor, notes } = window.__notesSliderTest;
             const highRow = [...editor.root.querySelectorAll('.visualizer-field')]
-                .find(field => field.querySelector('label')?.textContent === 'Highest note');
+                .find(field => visualizerFieldLabel(field) === 'Highest note');
             return { events: window.__noteInputCount, connected: window.__draggedNoteSlider.isConnected,
                 low: notes.params.mn, high: notes.params.mx,
                 highSlider: Number(highRow.querySelector('input').value),
-                highName: highRow.querySelector('output').textContent };
+                highName: highRow.querySelector('input[type=number]').title };
         });
         assert.ok(dragResult.events >= 2 && dragResult.connected && dragResult.low > 91 &&
             dragResult.high === dragResult.low && dragResult.highSlider === dragResult.high &&
@@ -1896,6 +1898,261 @@ test('Visualizer multi-selection shows plain selected bounds and the marquee onl
         const after = await page.evaluate(() => getComputedStyle(editor.marquee).display);
         assert.deepEqual(during, { shown: true, selection: [2] });
         assert.equal(after, 'none');
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test('Every Visualizer numeric slider supports unit-aware input, history, and the mobile keypad', async t => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer"><div class="main-container"></div></body>');
+        await page.addStyleTag({ content: css });
+        await page.addScriptTag({ content: `
+            window.VisualizerPresetStore = class { saveCurrent() {} };
+            window.VisualizerSources = class { setLayout() {} };
+            window.VisualizerRenderer = class {};
+        ` });
+        for (const source of [modelSource, palettePresetsSource, editorSource, viewSource,
+            read('../../js/ui/mobile-number-keypad.js').replace(/^export /gm, '')]) {
+            await page.addScriptTag({ content: source });
+        }
+        const result = await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            VisualizerView.prototype.initialize = async () => {};
+            const view = new VisualizerView({ t: key => key, audioManager: {} }), editor = view.editor;
+            window.view = view;
+            view.setEditing(true);
+            const violations = [], counts = {};
+            const inspect = type => {
+                const sliders = [...view.root.querySelectorAll('.visualizer-field > input[type=range]')];
+                counts[type] = Math.max(counts[type] ?? 0, sliders.length);
+                for (const slider of sliders) {
+                    const row = slider.parentElement, input = row.querySelector('input[type=number]');
+                    const label = row.querySelector('label').textContent;
+                    if (!input || !Number.isFinite(Number(input.value)) || input.value === '' ||
+                        !Number.isFinite(Number(input.min)) || !Number.isFinite(Number(input.max)) ||
+                        !(Number(input.step) > 0) || input.disabled !== slider.disabled ||
+                        !label.endsWith(':') || row.querySelector('output') ||
+                        input !== row.lastElementChild || getComputedStyle(input).textAlign !== 'right') {
+                        violations.push(`${type}: ${label}`);
+                    }
+                }
+            };
+            for (const type of ITEM_TYPES) {
+                const item = createItem(type);
+                item.palette.mode = 'gradient';
+                item.effects = Object.entries(EFFECT_CATALOG).filter(([, effect]) => effect.allowedOn.includes('item'))
+                    .filter(([key]) => key !== 'ken-burns' || type === 'artwork')
+                    .map(([key]) => normalizeEffect({ type: key }, 'item'));
+                for (const effect of item.effects) { effect.mod.source = 'time'; effect.palette.mode = 'gradient'; }
+                if (type === 'analog-meter') item.params.needleTip = 'arrow';
+                view.setLayout({ ...createDefaultLayout(), items: [item] });
+                editor.selection = new Set([item.id]); editor.render(); inspect(type);
+                if (type === 'spectrum') { view.layout.items[0].params.dm = 'bar'; editor.render(); inspect(type); }
+                if (type === 'shape') for (const shape of SHAPES) { view.layout.items[0].style.shape = shape; editor.render(); inspect(type); }
+            }
+            const select = type => {
+                const item = createItem(type);
+                view.setLayout({ ...createDefaultLayout(), items: [item] });
+                editor.selection = new Set([item.id]); editor.render();
+                return view.layout.items[0];
+            };
+            const number = label => [...editor.root.querySelectorAll('.visualizer-field')]
+                .find(row => visualizerFieldLabel(row) === label).querySelector('input[type=number]');
+            const type = (input, value, commit = 'blur') => {
+                input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+                if (commit === 'Enter') input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+                else input.dispatchEvent(new Event(commit));
+            };
+            const shape = select('shape'), opacity = number('Fill opacity');
+            const before = view.history.entries.length, originalOpacity = shape.style.fillOpacity;
+            opacity.value = '3'; opacity.dispatchEvent(new Event('input', { bubbles: true }));
+            opacity.value = '33'; opacity.dispatchEvent(new Event('input', { bubbles: true }));
+            const typing = [shape.style.fillOpacity, opacity.value, view.history.entries.length - before];
+            opacity.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+            opacity.dispatchEvent(new Event('blur'));
+            const committed = [view.history.entries.length - before,
+                opacity.previousElementSibling.style.getPropertyValue('--et-range-fill')];
+            view.stepHistory('undo'); const undone = view.layout.items[0].style.fillOpacity;
+            view.stepHistory('redo'); const redone = view.layout.items[0].style.fillOpacity;
+            const stereo = select('stereo'); type(number('Window'), '150');
+            const scope = select('oscilloscope'); type(number('Holdoff'), '1.5');
+            const spectrum = select('spectrum'), frequency = number('Max Frequency'); type(frequency, '15');
+            const converted = [stereo.params.wt, scope.params.ho, spectrum.params.mf];
+            const range = number('DB Range'), initial = spectrum.params.dr;
+            range.value = '-999'; range.dispatchEvent(new Event('input', { bubbles: true }));
+            const invalidUnapplied = spectrum.params.dr === initial;
+            range.dispatchEvent(new Event('blur'));
+            const clamped = [spectrum.params.dr, range.value, range.previousElementSibling.value];
+            type(range, ''); const restored = range.value;
+            const bands = number('Bands'), segment = number('dB per Segment');
+            const initialDisabled = bands.disabled && segment.disabled;
+            const display = [...editor.root.querySelectorAll('select')].find(input => [...input.options].some(option => option.value === 'bar'));
+            display.value = 'bar'; display.dispatchEvent(new Event('change'));
+            const enabled = !bands.disabled && !segment.disabled;
+            display.value = 'line'; display.dispatchEvent(new Event('change'));
+            const disabled = bands.disabled && segment.disabled;
+            const notes = select('notes'); type(number('Lowest note'), '100.2');
+            const noteRange = [notes.params.mn, notes.params.mx, number('Highest note').value, number('Highest note').title];
+            type(number('Highest note'), ''); const peerRestored = number('Highest note').value;
+            const rhythm = select('rhythm-analyzer'); type(number('Max BPM'), '120'); type(number('Min BPM'), '180.2');
+            const bpmRange = [rhythm.params.mn, rhythm.params.mx, number('Max BPM').value];
+            const mobileItem = select('spectrum'); document.body.classList.add('layout-mobile');
+            const keypad = new MobileNumberKeypad(), mobileInput = number('Max Frequency');
+            mobileInput.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+            const inspectorKeypad = keypad.target === mobileInput;
+            keypad.edit('clear'); keypad.edit('2'); keypad.edit('4'); keypad.commit();
+            const scale = editor.navigation.querySelector('input[type=number]');
+            scale.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+            const navigationKeypad = keypad.target === scale;
+            keypad.edit('clear'); keypad.edit('2'); keypad.commit();
+            const mobile = [inspectorKeypad, mobileItem.params.mf, navigationKeypad, view.layout.graphScale,
+                scale.previousElementSibling.style.getPropertyValue('--et-range-fill')];
+            keypad.dispose();
+            return { violations, counts, typing, committed, originalOpacity, undone, redone, converted,
+                invalidUnapplied, clamped, restored, initialDisabled, enabled, disabled, noteRange, peerRestored, bpmRange, mobile };
+        });
+        assert.deepEqual(result.violations, []);
+        assert.equal(Object.keys(result.counts).length, 17);
+        assert.ok(Object.values(result.counts).every(count => count > 0));
+        assert.deepEqual(result.typing, [.33, '33', 0]);
+        assert.deepEqual(result.committed, [1, '33%']);
+        assert.equal(result.undone, result.originalOpacity); assert.equal(result.redone, .33);
+        assert.deepEqual(result.converted, [.15, .0015, 15000]);
+        assert.equal(result.invalidUnapplied, true);
+        assert.deepEqual(result.clamped, [-144, '-144', '-144']); assert.equal(result.restored, '-144');
+        assert.equal(result.initialDisabled && result.enabled && result.disabled, true);
+        assert.deepEqual(result.noteRange, [100, 100, '100', 'E7']); assert.equal(result.peerRestored, '100');
+        assert.deepEqual(result.bpmRange, [180, 225, '225']);
+        assert.deepEqual(result.mobile, [true, 24000, true, 2, '60%']);
+        await page.setViewportSize({ width: 1024, height: 768 });
+        await page.evaluate(() => {
+            document.body.classList.remove('layout-mobile');
+            document.body.classList.add('layout-desktop');
+        });
+        const slider = page.locator('.visualizer-editor-navigation input[type=range]').first();
+        const geometry = await slider.evaluate(range => {
+            const row = range.parentElement, number = row.querySelector('input[type=number]');
+            const rowRect = row.getBoundingClientRect(), numberRect = number.getBoundingClientRect();
+            return { sliderWidth: range.getBoundingClientRect().width, numberWidth: numberRect.width,
+                rightMargin: rowRect.right - numberRect.right, rightAligned: getComputedStyle(number).textAlign,
+                overflow: row.scrollWidth - row.clientWidth };
+        });
+        t.diagnostic(`1024px navigation numeric row: ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.sliderWidth >= 100, 'Graph scale slider remains usable at the minimum desktop width');
+        assert.equal(geometry.numberWidth, 80);
+        assert.ok(Math.abs(geometry.rightMargin) < 1);
+        assert.equal(geometry.rightAligned, 'right');
+        assert.ok(geometry.overflow <= 1);
+        const box = await slider.boundingBox();
+        await page.mouse.move(box.x + box.width * .25, box.y + box.height / 2);
+        await page.mouse.down();
+        const startValue = await slider.inputValue();
+        await page.mouse.move(box.x + box.width * .85, box.y + box.height / 2, { steps: 6 });
+        await page.mouse.up();
+        const dragged = await slider.evaluate(range => ({ value: Number(range.value),
+            number: Number(range.nextElementSibling.value), model: view.layout.graphScale,
+            fill: parseFloat(range.style.getPropertyValue('--et-range-fill')),
+            expectedFill: (Number(range.value) - Number(range.min)) / (Number(range.max) - Number(range.min)) * 100 }));
+        assert.ok(dragged.value > Number(startValue), 'dragging right increases Graph scale');
+        assert.equal(dragged.number, dragged.value);
+        assert.equal(dragged.model, dragged.value);
+        assert.ok(Math.abs(dragged.fill - dragged.expectedFill) < .01);
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test('Visualizer number edits commit one canonical step value after native blur, Enter, or keypad OK', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer"><div class="main-container"></div></body>');
+        await page.addStyleTag({ content: css });
+        await page.addScriptTag({ content: `
+            window.VisualizerPresetStore = class { saveCurrent() {} };
+            window.VisualizerSources = class { setLayout() {} };
+            window.VisualizerRenderer = class {};
+        ` });
+        for (const source of [modelSource, palettePresetsSource, editorSource, viewSource,
+            read('../../js/ui/mobile-number-keypad.js').replace(/^export /gm, '')]) {
+            await page.addScriptTag({ content: source });
+        }
+        await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            VisualizerView.prototype.initialize = async () => {};
+            window.view = new VisualizerView({ t: key => key, audioManager: {} });
+            window.editor = view.editor; view.setEditing(true);
+            window.pick = type => {
+                const item = createItem(type);
+                view.setLayout({ ...createDefaultLayout(), items: [item] });
+                editor.selection = new Set([item.id]); editor.render();
+                return view.layout.items[0];
+            };
+            pick('shape'); window.beforeHistory = view.history.entries.length;
+        });
+        const scale = page.locator('.visualizer-editor-navigation input[type=number]');
+        await scale.click(); await scale.press('Control+a'); await scale.pressSequentially('20');
+        await page.locator('.visualizer-item-name').click();
+        assert.deepEqual(await page.evaluate(() => ({ value: view.layout.graphScale,
+            history: view.history.entries.slice(beforeHistory - 1).map(entry => JSON.parse(entry.json).graphScale) })),
+        { value: 3, history: [1, 3] });
+        await page.evaluate(() => view.stepHistory('undo'));
+        assert.equal(await page.evaluate(() => view.layout.graphScale), 1);
+        await page.evaluate(() => view.stepHistory('redo'));
+        assert.equal(await page.evaluate(() => view.layout.graphScale), 3);
+
+        const frequency = page.getByRole('spinbutton', { name: 'Max Frequency(kHz):', exact: true });
+        await page.evaluate(() => pick('spectrum'));
+        await frequency.fill('12.5'); await frequency.press('Enter');
+        await scale.fill('1.23'); await scale.press('Enter');
+        assert.deepEqual(await page.evaluate(() => {
+            const state = (input, model) => {
+                const slider = input.previousElementSibling, applied = editor.rangeControls.get(slider).applied.value;
+                return [model, input.value, slider.value, applied, slider.style.getPropertyValue('--et-range-fill')];
+            };
+            return {
+                frequency: state(editor.root.querySelector('input[aria-label="Max Frequency(kHz):"]'), view.layout.items[0].params.mf),
+                scale: state(editor.navigation.querySelector('input[type=number]'), view.layout.graphScale),
+                persisted: [JSON.parse(view.history.entries.at(-1).json).graphScale,
+                    normalizeLayout(view.layout).graphScale, normalizeLayout(view.layout).items[0].params.mf]
+            };
+        }), { frequency: [13000, '13', '13000', 13, `${12000 / 39000 * 100}%`],
+            scale: [1.25, '1.25', '1.25', 1.25, '30%'], persisted: [1.25, 1.25, 13000] });
+
+        await page.evaluate(() => pick('shape'));
+        const opacity = page.getByRole('spinbutton', { name: 'Fill opacity(%):', exact: true });
+        await opacity.fill('33.3'); await opacity.press('Enter');
+        assert.deepEqual(await page.evaluate(() => [view.layout.items[0].style.fillOpacity,
+            editor.root.querySelector('input[aria-label="Fill opacity(%):"]').value]), [.33, '33']);
+        await page.evaluate(() => pick('oscilloscope'));
+        const holdoff = page.getByRole('spinbutton', { name: 'Holdoff(ms):', exact: true });
+        await holdoff.fill('1.55'); await holdoff.press('Enter');
+        assert.deepEqual(await page.evaluate(() => [view.layout.items[0].params.ho,
+            editor.root.querySelector('input[aria-label="Holdoff(ms):"]').value]), [.0016, '1.6']);
+
+        await page.evaluate(() => {
+            pick('shape'); document.body.classList.add('layout-mobile');
+            window.keypad = new MobileNumberKeypad(); window.beforeHistory = view.history.entries.length;
+        });
+        await scale.click();
+        await page.locator('[data-key="clear"]').click(); await page.locator('[data-key="9"]').click();
+        await page.locator('.mobile-number-keypad-ok').click();
+        assert.deepEqual(await page.evaluate(() => [view.layout.graphScale,
+            editor.navigation.querySelector('input[type=number]').value,
+            view.history.entries.slice(beforeHistory - 1).map(entry => JSON.parse(entry.json).graphScale)]), [3, '3', [1, 3]]);
+        await page.evaluate(() => { keypad.dispose(); view.stepHistory('undo'); });
+        assert.equal(await page.evaluate(() => view.layout.graphScale), 1);
     } finally {
         await browser.close();
     }

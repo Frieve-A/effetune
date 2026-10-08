@@ -10,7 +10,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
 const HASH = /^[a-f0-9]{64}$/;
 
 export async function loadZipClass() {
-    return globalThis.JSZip || loadClassicScript(new URL('../vendor/jszip-3.10.1.min.js', import.meta.url).href,
+    return globalThis.JSZip || loadClassicScript(new URL('../vendor/jszip-3.10.2.min.js', import.meta.url).href,
         { globalName: 'JSZip' });
 }
 

@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "type": "SFZNotePlayerPlugin",
+  "id": "middle-excludes-single-note",
+  "stimulus": "sin1k",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 8192,
+  "blockSize": 128,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 10,
+  "seed": "0xeffe7a54",
+  "params": {
+    "th": 0.01,
+    "vf": -60,
+    "vc": -10,
+    "mn": 83,
+    "mx": 83,
+    "pl": 32,
+    "dm": 20,
+    "wm": 100,
+    "os": 0,
+    "og": 0,
+    "lo": false,
+    "md": true,
+    "hi": false,
+    "tm": 0,
+    "rd": 40,
+    "nh": 50
+  },
+  "events": [],
+  "asset": {
+    "sfz": {
+      "kind": "sfz-sine-v1"
+    }
+  },
+  "tolerance": {
+    "abs": 0.000001,
+    "policy": "per-sample"
+  },
+  "referenceEngine": "production-native-promoted-v1",
+  "referenceHash": "sha256:d0afca6952dba302e7ef3f00e52b92480f1aa0815a972b9b1c97d0b1b2a35331",
+  "generationCommand": "node tools/dsp-parity/generate.mjs --type SFZNotePlayerPlugin --promote-production-native",
+  "outputFloats": 16384,
+  "byteLength": 65536,
+  "binary": "case-011.f32"
+}

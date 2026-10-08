@@ -102,8 +102,8 @@
     },
     "NoteSpectrogram": {
       "internalType": "NoteSpectrogramPlugin",
-      "layoutHash": 211541838,
-      "floatCount": 3,
+      "layoutHash": 2641392907,
+      "floatCount": 2,
       "packedParameters": [
         {
           "publicName": "minimumMidi",
@@ -124,18 +124,6 @@
             "mx"
           ],
           "offset": 1,
-          "count": 1,
-          "transform": {
-            "kind": "identity"
-          }
-        },
-        {
-          "publicName": "regularCandidates",
-          "field": "regularCandidates",
-          "keys": [
-            "nc"
-          ],
-          "offset": 2,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -4119,8 +4107,8 @@
     },
     "CassetteArtifacts": {
       "internalType": "CassetteArtifactsPlugin",
-      "layoutHash": 4133384581,
-      "floatCount": 12,
+      "layoutHash": 847548846,
+      "floatCount": 13,
       "packedParameters": [
         {
           "publicName": "deckGrade",
@@ -4261,6 +4249,18 @@
             "mx"
           ],
           "offset": 11,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "mode",
+          "field": "mode",
+          "keys": [
+            "md"
+          ],
+          "offset": 12,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -10827,5 +10827,5 @@
     "dsp/plugins/spatial/spatial_mapper/params.json": "dsp/plugins/spatial/spatial_mapper/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "a5c8858fdb96deb9b685eca0ba856486d415e0c18da35bc07ecf34e48436cacf"
+  "contractDigest": "1670a41fce89dc7b4d1bbc79fa0f07fda23c81b184d48248b847401a4d5685ec"
 }

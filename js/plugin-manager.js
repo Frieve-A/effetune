@@ -1,3 +1,5 @@
+import './ui/range-fill.js';
+
 export class PluginManager {
     constructor() {
         this.pluginClasses = {};

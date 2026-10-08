@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { SearchManager } from '../../js/ui/plugin-list/search-manager.js';
+import { keyboardMethods } from '../../js/ui/library/library-view-keyboard.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeElement {
@@ -328,6 +329,35 @@ test('search controls toggle input state, clear text, and handle keyboard search
     keydown({ ...keyEvent, ctrlKey: false, metaKey: false });
     assert.equal(manager.isSearchActive, true);
     keydown({ ...keyEvent, key: 'g' });
+    assert.equal(manager.isSearchActive, true);
+  });
+});
+
+test('Library Ctrl and Cmd search shortcuts pass through Effects capture to Library', async () => {
+  await withSearchGlobals({}, async ({ calls, controls, windowRef }) => {
+    let libraryVisible = true;
+    document.body = { classList: { contains: className => libraryVisible && className === 'view-library' } };
+    const manager = new SearchManager(createPluginListManager(createPluginList(), calls));
+    const keydown = windowRef.listeners.get('keydown')[0];
+    let libraryFocus = 0;
+    const libraryView = { searchInput: { focus() { libraryFocus += 1; }, select() {} } };
+    for (const modifier of ['ctrlKey', 'metaKey']) {
+      let stopped = false;
+      const event = {
+        key: 'f', [modifier]: true, target: { tagName: 'DIV' },
+        preventDefault() {}, stopPropagation() { stopped = true; }
+      };
+      keydown(event);
+      if (!stopped) keyboardMethods.handleContentKeyDown.call(libraryView, event);
+      assert.equal(stopped, false);
+    }
+    assert.equal(libraryFocus, 2);
+    assert.equal(controls.searchInput.focusCount, 0);
+    assert.equal(manager.isSearchActive, false);
+
+    libraryVisible = false;
+    keydown({ key: 'f', ctrlKey: true, preventDefault() {}, stopPropagation() {} });
+    assert.equal(controls.searchInput.focusCount, 1);
     assert.equal(manager.isSearchActive, true);
   });
 });

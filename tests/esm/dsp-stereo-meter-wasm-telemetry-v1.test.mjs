@@ -25,6 +25,65 @@ function readPacket(binding, packet) {
 }
 
 for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+  test(`Stereo Meter telemetry from ${artifact} stays neutral at the denormal noise floor`, async () => {
+    const binding = await instantiateDsp(fs.readFileSync(
+      new URL(`../../plugins/dsp/${artifact}`, import.meta.url)
+    ));
+    try {
+      assert.notEqual(binding.createEngine(), 0);
+      assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 256 * 1024), 0);
+      const instanceId = binding.createInstance('StereoMeterPlugin');
+      assert.notEqual(instanceId, 0);
+      assert.equal(binding.instanceSetTap(instanceId, 79), 0);
+      const packer = DSP_PARAM_PACKERS.get('StereoMeterPlugin');
+      assert.equal(binding.instanceSetParams(instanceId, packer.pack({ wt: 0.01 }), packer.hash), 0);
+      const arena = binding.getArenaViews();
+      const packet = new ArrayBuffer(256 * 1024);
+      const statisticsOffset = 8 + BLOCK_SIZE * 8 + 360 * 4;
+      for (let block = 0; block < 4; block++) {
+        for (let sample = 0; sample < BLOCK_SIZE * 2; sample++) {
+          arena.combined[sample] = block === 0 ? 0 : Math.sin(sample + block) * 1e-19;
+        }
+        assert.equal(binding.instanceProcess(
+          instanceId, arena.offsets.combined, 2, BLOCK_SIZE, block * BLOCK_SIZE / SAMPLE_RATE
+        ), 0);
+        const { frames } = readPacket(binding, packet);
+        assert.equal(frames.length, 1);
+        const payload = frames[0].payload;
+        for (let offset = 8; offset < PAYLOAD_BYTES; offset += 4) {
+          assert.equal(payload.getFloat32(offset, true), 0, `silent telemetry at byte ${offset}`);
+        }
+        assert.ok(arena.combined.subarray(0, BLOCK_SIZE * 2).some(sample => sample !== 0),
+          'denormal protection remains present in the audio');
+      }
+
+      arena.combined.fill(1e-8, 0, BLOCK_SIZE);
+      arena.combined.fill(-1e-8, BLOCK_SIZE, 2 * BLOCK_SIZE);
+      assert.equal(binding.instanceProcess(
+        instanceId, arena.offsets.combined, 2, BLOCK_SIZE, 4 * BLOCK_SIZE / SAMPLE_RATE
+      ), 0);
+      let { frames } = readPacket(binding, packet);
+      assert.equal(frames.length, 1);
+      assert.equal(frames[0].payload.getFloat32(statisticsOffset, true), -1);
+      assert.equal(frames[0].payload.getFloat32(statisticsOffset + 8, true), Math.fround(1e-8));
+      assert.equal(frames[0].payload.getFloat32(statisticsOffset + 12, true), Math.fround(1e-8));
+
+      arena.combined.fill(0);
+      assert.equal(binding.instanceProcess(
+        instanceId, arena.offsets.combined, 2, BLOCK_SIZE, 5 * BLOCK_SIZE / SAMPLE_RATE
+      ), 0);
+      ({ frames } = readPacket(binding, packet));
+      assert.equal(frames.length, 1);
+      for (let offset = statisticsOffset; offset < PAYLOAD_BYTES; offset += 4) {
+        assert.equal(frames[0].payload.getFloat32(offset, true), 0);
+      }
+      assert.ok(frames[0].payload.getFloat32(8 + BLOCK_SIZE * 8 + 180 * 4, true) > 0,
+        'the real signal envelope keeps its normal decay after silence');
+    } finally {
+      binding.close();
+    }
+  });
+
   test(`Stereo Meter telemetry from ${artifact} streams v2 sample deltas at 60 Hz`, async () => {
     const bytes = fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url));
     const binding = await instantiateDsp(bytes);

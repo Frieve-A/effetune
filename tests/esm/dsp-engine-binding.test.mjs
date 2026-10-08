@@ -92,6 +92,10 @@ function createFakeInstance(options = {}) {
       calls.push(['instanceSetTap', ...args]);
       return 0;
     },
+    et_instance_set_analysis_source(...args) {
+      calls.push(['instanceSetAnalysisSource', ...args]);
+      return 0;
+    },
     et_instance_set_seed(...args) {
       calls.push(['instanceSetSeed', ...args]);
       return 0;
@@ -162,6 +166,21 @@ function createFakeInstance(options = {}) {
       if (options.growDuringPipelineConfigure) memory.grow(1);
       return options.pipelineStatus ?? 0;
     },
+    et_pipeline_refresh_latency(engine) {
+      calls.push(['pipelineRefreshLatency', engine]);
+      if (options.growDuringPipelineRefresh) memory.grow(1);
+      return options.pipelineStatus ?? 0;
+    },
+    et_pipeline_reserve_latency(engine) {
+      calls.push(['pipelineReserveLatency', engine]);
+      if (options.growDuringPipelineReserve) memory.grow(1);
+      return options.pipelineStatus ?? 0;
+    },
+    et_pipeline_refresh_latency_realtime(engine) {
+      calls.push(['pipelineRefreshLatencyRealtime', engine]);
+      if (options.growDuringPipelineRealtimeRefresh) memory.grow(1);
+      return options.pipelineStatus ?? 0;
+    },
     et_pipeline_latency(engine) {
       calls.push(['pipelineLatency', engine]);
       return options.pipelineLatency ?? 384;
@@ -225,6 +244,9 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.resetInstance(11), 0);
   assert.equal(binding.instanceLatency(11), 32);
   assert.equal(binding.instanceSetTap(11, 99), 0);
+  assert.equal(binding.instanceSetAnalysisSource(11, 12), 0);
+  assert.deepEqual(fake.calls.find(call => call[0] === 'instanceSetAnalysisSource'),
+    ['instanceSetAnalysisSource', 7, 11, 12]);
   assert.equal(binding.instanceSetSeed(11, 0x89abcdef, 0x01234567), 0);
   assert.equal(binding.setTelemetryRate(30), 0);
   assert.equal(binding.instanceSetParams(11, [0.25, 0.5], 0xfeedbeef, 3), 0);
@@ -346,6 +368,7 @@ test('binding reads telemetry and stages pipeline descriptors without temporary 
   assert.equal(stagingViewCalls, 0);
 
   assert.equal(binding.pipelineConfigure(Uint8Array.of(1, 2, 3)), 0);
+  assert.equal(binding.pipelineRefreshLatency(), 0);
   assert.equal(binding.pipelineLatency(), 384);
   assert.equal(binding.pipelineProcess(2, 128, 4.25, true), 0);
   assert.ok(fake.calls.some(call => call[0] === 'pipelineConfigure' && String(call[2]) === '1,2,3'));
@@ -509,6 +532,41 @@ test('pipeline configuration permits memory growth and refreshes arena views', (
   assert.notEqual(fake.memory.buffer, previousBuffer);
   assert.equal(binding.memoryGrowthViolation, false);
   assert.equal(binding.getArenaViews().combined.buffer, fake.memory.buffer);
+});
+
+test('pipeline latency refresh permits memory growth and refreshes arena views', () => {
+  const fake = createFakeInstance({ growDuringPipelineRefresh: true });
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine();
+  binding.prepare(48000, 2, 128, 64);
+  const previousBuffer = fake.memory.buffer;
+
+  assert.equal(binding.pipelineRefreshLatency(), 0);
+  assert.notEqual(fake.memory.buffer, previousBuffer);
+  assert.equal(binding.memoryGrowthViolation, false);
+  assert.equal(binding.getArenaViews().combined.buffer, fake.memory.buffer);
+});
+
+test('latency reservation permits growth while realtime refresh keeps memory fixed', () => {
+  const fake = createFakeInstance({ growDuringPipelineReserve: true });
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine();
+  binding.prepare(48000, 2, 128, 64);
+  const beforeReservation = fake.memory.buffer;
+  assert.equal(binding.pipelineReserveLatency(), 0);
+  assert.notEqual(fake.memory.buffer, beforeReservation);
+  assert.equal(binding.memoryGrowthViolation, false);
+  const reserved = fake.memory.buffer;
+  assert.equal(binding.pipelineRefreshLatencyRealtime(), 0);
+  assert.equal(fake.memory.buffer, reserved);
+  assert.equal(binding.memoryGrowthViolation, false);
+
+  const faulty = createFakeInstance({ growDuringPipelineRealtimeRefresh: true });
+  const faultyBinding = new DspEngineBinding(faulty.instance, { warning: () => {} });
+  faultyBinding.createEngine();
+  faultyBinding.prepare(48000, 2, 128, 64);
+  faultyBinding.pipelineRefreshLatencyRealtime();
+  assert.equal(faultyBinding.memoryGrowthViolation, true);
 });
 
 test('WASI imports report debug writes and surface proc_exit without host dependencies', () => {

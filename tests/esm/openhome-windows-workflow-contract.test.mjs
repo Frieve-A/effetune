@@ -27,6 +27,7 @@ import {
 import {
   parseBuildOptions,
   parseLinuxLibnlDependencies,
+  patchOhNetSizeFormats,
   posixOhNetMakeArgs,
 } from '../../scripts/build-openhome-sidecar.mjs';
 
@@ -218,6 +219,62 @@ test('OpenHome dependency builds use portable copy arguments on macOS', () => {
     'Mac-x64=1',
   ]);
   assert.deepEqual(posixOhNetMakeArgs('linux', 'x64'), ['ohNetCore', 'rsync=no']);
+});
+
+const ohNetSizeFormats = [
+  [
+    'OpenHome/Net/Device/DviService.cpp',
+    'Log::Print(", refCount=%u, subscriptions=%u\\n", iRefCount, iSubscriptions.size());',
+    'Log::Print(", refCount=%u, subscriptions=%zu\\n", iRefCount, iSubscriptions.size());',
+  ],
+  [
+    'OpenHome/Net/Device/DviSubscription.cpp',
+    'summary.AppendPrintf("Subscriptions: %u current, %u since startup\\n", iMap.size(), iCount);',
+    'summary.AppendPrintf("Subscriptions: %zu current, %u since startup\\n", iMap.size(), iCount);',
+  ],
+];
+
+test('pinned ohNet size formats are corrected on fresh and reused extraction sources', t => {
+  const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'effetune-ohnet-formats-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const [relativePath, before] of ohNetSizeFormats) {
+    const file = path.join(root, relativePath);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, '// preserved source\n' + before + '\n');
+  }
+  for (let application = 0; application < 2; application += 1) {
+    patchOhNetSizeFormats(root);
+    for (const [relativePath, , after] of ohNetSizeFormats) {
+      assert.equal(readFileSync(path.join(root, relativePath), 'utf8'), '// preserved source\n' + after + '\n');
+    }
+  }
+  const invocation = sidecarBuildScript.indexOf('  patchOhNetSizeFormats(ohNetRoot);');
+  assert.ok(invocation > sidecarBuildScript.indexOf("  const ohNetRoot = roots.get('ohNet');"));
+  assert.ok(invocation < sidecarBuildScript.indexOf('  let ohNetLibrary;'));
+});
+
+test('pinned ohNet size format corrections reject unexpected upstream source before writing', t => {
+  const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'effetune-ohnet-formats-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (let invalid = 0; invalid < ohNetSizeFormats.length; invalid += 1) {
+    const sourceRoot = path.join(root, String(invalid));
+    for (const [index, [relativePath, before]] of ohNetSizeFormats.entries()) {
+      const file = path.join(sourceRoot, relativePath);
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, index === invalid ? '// unexpected upstream source\n' : before);
+    }
+    assert.throws(
+      () => patchOhNetSizeFormats(sourceRoot),
+      error => error.message.includes('Unexpected pinned ohNet size-format source') &&
+        error.message.includes(ohNetSizeFormats[invalid][0])
+    );
+    for (const [index, [relativePath, before]] of ohNetSizeFormats.entries()) {
+      assert.equal(
+        readFileSync(path.join(sourceRoot, relativePath), 'utf8'),
+        index === invalid ? '// unexpected upstream source\n' : before
+      );
+    }
+  }
 });
 
 test('desktop tag jobs build every platform package after exact-version preflight', () => {

@@ -157,7 +157,7 @@ export function startBrandAnimation(canvas, { icon, title, reveal = [] }) {
   };
 
   const drawSpectrum = (t, dt, phase, morph) => {
-    const areaHeight = height * 0.28;
+    const areaHeight = height * 0.56;
     const bottom = height;
     const slot = width / BAR_COUNT;
     const beatFrac = fract(phase);
@@ -264,7 +264,7 @@ export function startBrandAnimation(canvas, { icon, title, reveal = [] }) {
     ctx.clearRect(0, 0, width, height);
     ctx.globalCompositeOperation = colors.dark ? 'lighter' : 'source-over';
     const { kick, areaHeight } = drawSpectrum(t, dt, phase, morph);
-    drawEqCurve(t, morph, areaHeight);
+    drawEqCurve(t, morph, areaHeight * 0.5);
     drawRings(t, phase);
     drawWaveform(t, t > 0.4 ? kick : 0);
     const beat = Math.floor(phase);

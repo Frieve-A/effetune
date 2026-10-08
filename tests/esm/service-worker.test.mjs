@@ -216,8 +216,8 @@ test('precache retains application and third-party notices for offline use', () 
   for (const relativePath of [
     'LICENSE',
     'plugins/dsp/NOTICE.txt',
-    'js/vendor/jszip-3.10.1.NOTICE.txt',
-    'js/vendor/jsmediatags-3.9.5.NOTICE.txt',
+    'js/vendor/jszip-3.10.2.NOTICE.txt',
+    'js/vendor/jsmediatags-3.9.7.NOTICE.txt',
     'js/vendor/music-metadata-browser.NOTICE.txt',
     'js/vendor/offline-audio-encoders.NOTICE.txt',
     'js/vendor/rolling-pcm-decoder-worker.NOTICE.txt',

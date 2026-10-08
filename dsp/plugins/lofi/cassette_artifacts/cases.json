@@ -183,6 +183,68 @@
       "frames": 20000,
       "blockSize": 127,
       "params": { "dg": "Portable", "tp": "Type I", "nr": "Dolby B", "bs": 0, "rl": 0, "wf": 1, "hs": -60.5, "dp": 20, "az": 6, "dl": 0 }
+    },
+    {
+      "id": "encode-only-dolby-transitions",
+      "stimulus": "noise",
+      "sampleRate": 96000,
+      "channels": 3,
+      "channelMode": "multi",
+      "frames": 4096,
+      "blockSize": 17,
+      "params": { "md": "Encode Only", "nr": "Dolby B", "hs": -42, "wf": 1, "dp": 20 },
+      "events": [
+        { "frame": 1025, "params": { "nr": "Dolby C", "rl": -12 } },
+        { "frame": 3073, "params": { "nr": "Off", "og": -6, "mx": 50 } }
+      ]
+    },
+    {
+      "id": "encode-with-artifacts",
+      "stimulus": "sweep",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 4096,
+      "blockSize": 63,
+      "params": { "md": "Encode + Artifacts", "nr": "Dolby C", "dg": "Portable", "hs": -42, "wf": 1 }
+    },
+    {
+      "id": "artifacts-with-decode",
+      "stimulus": "noise",
+      "sampleRate": 44100,
+      "channels": 1,
+      "channelMode": "mono",
+      "frames": 4096,
+      "blockSize": 31,
+      "params": { "md": "Artifacts + Decode", "nr": "Dolby B", "dl": -3 }
+    },
+    {
+      "id": "decode-only-dolby-transitions",
+      "stimulus": "step",
+      "sampleRate": 192000,
+      "channels": 6,
+      "channelMode": "multi",
+      "frames": 4096,
+      "blockSize": 65,
+      "params": { "md": "Decode Only", "nr": "Dolby C", "hs": -42, "wf": 1, "dp": 20 },
+      "events": [
+        { "frame": 1025, "params": { "nr": "Dolby B", "rl": 18, "dl": 3 } },
+        { "frame": 3073, "params": { "nr": "Off", "og": 6, "mx": 25 } }
+      ]
+    },
+    {
+      "id": "processing-mode-transitions",
+      "stimulus": "noise",
+      "channels": 2,
+      "channelMode": "stereo",
+      "frames": 6144,
+      "blockSize": 127,
+      "events": [
+        { "frame": 1025, "params": { "md": "Encode Only" } },
+        { "frame": 2049, "params": { "md": "Encode + Artifacts" } },
+        { "frame": 3073, "params": { "md": "Artifacts + Decode" } },
+        { "frame": 4097, "params": { "md": "Decode Only" } },
+        { "frame": 5121, "params": { "md": "All" } }
+      ]
     }
   ]
 }

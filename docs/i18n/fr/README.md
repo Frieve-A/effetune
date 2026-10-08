@@ -55,6 +55,7 @@ Avant d'utiliser EffeTune, vous devez configurer votre routage audio. Voici comm
    - Ou sélectionnez **Ouvrir un fichier musical...** depuis le menu **Fichier** (application de bureau uniquement)
    - Ou faites glisser le fichier musical dans la fenêtre
 - Pour une utilisation limitée au lecteur, sélectionnez Aucun (lecteur de fichiers musicaux uniquement) comme périphérique d'entrée dans Configuration audio afin de ne pas utiliser d'entrée audio en direct
+- Une courte baisse progressive du son accompagne la mise en pause, et une remontée progressive la reprise, pour réduire les clics audibles.
 - Cliquez sur le bouton de vitesse à côté de Shuffle pour ouvrir la fenêtre contextuelle. Choisissez l’un des neuf préréglages ou utilisez le curseur horizontal ou le champ numérique pour régler la vitesse de 0,25x à 4x par incréments de 0,01x. Le bouton **Conserver la hauteur**, situé à côté, est activé par défaut : la hauteur du son reste alors la même quand la vitesse change ; désactivez-le pour que la hauteur monte ou descende avec la vitesse, comme lorsqu'on change la vitesse d'une bande ou d'un disque.
 
 ### Configuration des services de streaming
@@ -441,6 +442,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Spatial   | Spatial Mapper | Sépare le son Direct, Diffuse et Residual pour un routage multicanal flexible | [Détails](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Contrôle la largeur stéréo du mono à la stéréo élargie | [Détails](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Générateur de sons de test et de bruit pour vérifier enceintes/casques | [Détails](plugins/others.md#oscillator) |
+| Others    | SFZ Note Player | Joue un instrument SFZ importé à partir des notes détectées | [Détails](plugins/others.md#sfz-note-player) |
 | Control   | Section | Regroupe les effets pour contourner ou rétablir toute une section | [Détails](plugins/control.md) |
 
 ## Informations techniques

@@ -27,6 +27,7 @@ import {
   SpectrumAnalyzer,
   StereoMeter,
   StateError,
+  StereoBlend,
   ValidationError,
   Volume,
   createChain,
@@ -914,8 +915,10 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         assert.ok(frame.envelopeFrameCount > 0);
         assert.ok(frame.timeSeconds > 0);
         assert.ok(frame.latencySeconds > 0);
-        assert.equal(frame.locked, false);
+        assert.equal(frame.locked, true);
         assert.equal(frame.periodSeconds, 0);
+        assert.ok(frame.previewPeriodSeconds > 0);
+        assert.ok(frame.previewBeats.length > 0 && frame.previewBeats.length <= 12);
         assert.ok(frame.combBestBpm >= 40 && frame.combBestBpm <= 240);
         assert.equal(frame.tempogram.length, 192);
         assert.ok(frame.tempogram.every(value => value >= 0 && value <= 1));
@@ -977,10 +980,16 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         assert.ok(frame.levels.some(value => value > 0));
         assert.equal(frame.volumeDb.length, 440);
         assert.ok(frame.volumeDb.every(Number.isFinite));
-        assert.ok(frame.volumeDb.some(value => value > -240));
+        assert.ok(frame.levels.some((value, cell) => value < 0.5 && frame.volumeDb[cell] > -240));
+        // Cells outside the default MIDI 28-91 range stay at the floor.
+        assert.ok(frame.volumeDb.slice(0, 35).every(value => value === -240));
+        assert.ok(frame.volumeDb.slice(355).every(value => value === -240));
         assert.equal(frame.revisionAge, 8);
         assert.equal(frame.revisedLevels.length, 440);
         assert.ok(frame.revisedLevels.every(value => Number.isFinite(value) && value >= 0 && value <= 1));
+        assert.deepEqual(frame.revisions.map(revision => revision.age), [2, 4, 8]);
+        assert.ok(frame.revisions.every(revision => revision.levels.length === 440 &&
+          revision.levels.every(value => Number.isFinite(value) && value >= 0 && value <= 1)));
       }
     },
     {
@@ -1208,6 +1217,63 @@ test('Frequency Shifter reports its sample-rate-dependent latency on chains and 
       }
     }
   } finally {
+    chain.close();
+  }
+});
+
+test('channel-selected latency aligns output and stereo inputs', async () => {
+  for (const effects of [
+    [new FrequencyShifter({ channel: 'left', mix: 0 })],
+    [new FrequencyShifter({ channel: 'left', mix: 0 }),
+      new FrequencyShifter({ channel: 'right', mix: 0 })],
+    [new FrequencyShifter({ channel: 'left', mix: 0 }), new StereoBlend({ stereo: 0 })]
+  ]) {
+    const chain = await createChain(effects, { variant: 'baseline' });
+    const stream = await chain.stream({ sampleRate: 48000, channels: 2, blockSize: 64 });
+    try {
+      assert.equal(stream.latencySamples, 114);
+      const input = constantAudio(2, 1024, 0);
+      input[0][0] = input[1][0] = 0.1;
+      const output = await stream.process(input);
+      for (const channel of output) {
+        const peak = channel.findIndex(value => Math.abs(value) > 0.05);
+        assert.equal(peak, stream.latencySamples);
+        assert.ok(Math.abs(channel[peak] - 0.1) < 1e-6);
+      }
+    } finally {
+      stream.close();
+      chain.close();
+    }
+  }
+});
+
+test('channel compensation follows staged latency changes and reset', async () => {
+  const chain = await createChain([
+    new BrickwallLimiter({ id: 'limiter', channel: 'left', lookahead: 3 })
+  ], { variant: 'baseline' });
+  const stream = await chain.stream({ sampleRate: 48000, channels: 2, blockSize: 64 });
+  const impulse = constantAudio(2, 1024, 0);
+  impulse[0][0] = impulse[1][0] = 0.1;
+  const assertImpulse = async expected => {
+    assert.equal(stream.latencySamples, expected);
+    const output = await stream.process(impulse);
+    for (const channel of output) {
+      assert.equal(channel.findIndex(value => Math.abs(value) > 0.05), expected);
+      assert.ok(Math.abs(channel[expected] - 0.1) < 1e-6);
+    }
+  };
+  try {
+    await assertImpulse(144);
+    stream.setParam('limiter', 'lookahead', 6);
+    await assertImpulse(288);
+    stream.reset();
+    await assertImpulse(144);
+    await stream.process(constantAudio(2, 64, 0), {
+      events: [{ frame: 0, effectId: 'limiter', parameters: { lookahead: 9 } }]
+    });
+    await assertImpulse(432);
+  } finally {
+    stream.close();
     chain.close();
   }
 });

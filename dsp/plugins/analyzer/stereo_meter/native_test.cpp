@@ -1,3 +1,4 @@
+#include "effetune/dsp/denormal_noise.h"
 #include "effetune/kernel.h"
 
 #include <array>
@@ -680,6 +681,50 @@ void testOutOfFieldCoordinatesRetainTheirRange() {
   STEREO_CHECK(near(readF32(data + statistics + 12u), 2.0F));
 }
 
+void testDenormalNoiseDoesNotEnterTelemetry() {
+  constexpr std::uint32_t frames = 64u;
+  constexpr float noise_limit =
+      static_cast<float>(effetune::dsp::NyquistDenormalNoise::kMaximumOutputNoiseAmplitude);
+  KernelHarness harness(1000.0F, frames);
+  harness.setWindow(0.01F);
+  std::array<float, frames * 2u> noise{};
+  for (std::uint32_t sample = 0u; sample < noise.size(); ++sample) {
+    noise[sample] = sample % 3u == 0u ? noise_limit : sample % 3u == 1u ? -noise_limit : 1.0e-19F;
+  }
+  for (std::uint32_t block = 0u; block < 3u; ++block) {
+    auto audio = noise;
+    harness.process(audio.data(), 2u, frames, static_cast<double>(block) * 0.064);
+    STEREO_CHECK(audio == noise);
+    emitFrame(harness, frames);
+    const auto *data = payload(harness);
+    for (std::uint32_t offset = kPayloadHeaderBytes; offset < payloadBytes(frames); offset += 4u) {
+      STEREO_CHECK(readF32(data + offset) == 0.0F);
+    }
+  }
+
+  std::array<float, frames * 2u> quiet_audio{};
+  for (std::uint32_t frame = 0u; frame < frames; ++frame) {
+    quiet_audio[frame] = 1.0e-8F;
+    quiet_audio[frames + frame] = -1.0e-8F;
+  }
+  const auto original = quiet_audio;
+  harness.process(quiet_audio.data(), 2u, frames, 0.192);
+  STEREO_CHECK(quiet_audio == original);
+  emitFrame(harness, frames);
+  STEREO_CHECK(readF32(payload(harness) + kPayloadHeaderBytes) == -2.0e-8F);
+  STEREO_CHECK(readF32(payload(harness) + statisticsOffset(frames)) == -1.0F);
+  STEREO_CHECK(readF32(payload(harness) + statisticsOffset(frames) + 8u) == 1.0e-8F);
+  STEREO_CHECK(readF32(payload(harness) + statisticsOffset(frames) + 12u) == 1.0e-8F);
+
+  harness.process(noise.data(), 2u, frames, 0.256);
+  emitFrame(harness, frames);
+  for (std::uint32_t offset = statisticsOffset(frames); offset < payloadBytes(frames);
+       offset += 4u) {
+    STEREO_CHECK(readF32(payload(harness) + offset) == 0.0F);
+  }
+  STEREO_CHECK(readF32(payload(harness) + envelopeOffset(frames) + 180u * 4u) > 0.0F);
+}
+
 void testOversizedDeltaKeepsLatestSamplesAndMarksDiscontinuity() {
   KernelHarness harness(384000.0F, 1000u);
   harness.tap_id = 66u;
@@ -714,6 +759,7 @@ int main() {
   testWindowBucketsAt44100HzAcrossPartialWrapAndFrameSplits();
   testResetClearsEnvelopeAndPendingTelemetry();
   testOutOfFieldCoordinatesRetainTheirRange();
+  testDenormalNoiseDoesNotEnterTelemetry();
   testOversizedDeltaKeepsLatestSamplesAndMarksDiscontinuity();
   if (failures != 0) {
     std::fprintf(stderr, "%d Stereo Meter native check(s) failed\n", failures);

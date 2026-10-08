@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "BrickwallLimiterPluginParams.h"
 #include "effetune/dsp/delay_line.h"
+#include "effetune/dsp/fir.h"
 
 #include "../auto_leveler/group_b_telemetry.h"
 
@@ -65,6 +66,9 @@ public:
                      kMaximumDownsampleState);
     gain_states_.resize(info.maxChannels);
     threshold_lookup_.resize(kLookupSize);
+    prototype_.resize(kFilterLength);
+    for (auto &phase : polyphase_)
+      phase.resize(kMaximumUpsampleState + 1u);
     const auto maximum_delay = static_cast<std::uint32_t>(
         std::ceil(sample_rate_ * 0.01) * static_cast<double>(kMaximumOversampling));
     delay_prepared_ = delay_line_.prepare(info.maxChannels, maximum_delay);
@@ -82,9 +86,9 @@ public:
     std::fill(gain_states_.begin(), gain_states_.end(), 1.0F);
     buildThresholdLookup();
     delay_line_.reset();
-    prototype_.fill(0.0F);
+    std::fill(prototype_.begin(), prototype_.end(), 0.0);
     for (auto &phase : polyphase_) {
-      phase.fill(0.0F);
+      std::fill(phase.begin(), phase.end(), 0.0);
     }
     phase_lengths_.fill(0u);
     active_channels_ = 0u;
@@ -144,6 +148,10 @@ public:
     if (has_measurement_) {
       group_b_detail::writeGainReduction(writer, latest_reduction_db_);
     }
+  }
+
+  [[nodiscard]] LatencyRange latencyRange() const noexcept override {
+    return {1u, static_cast<std::uint32_t>(std::ceil(sample_rate_ * 0.01)) + 64u};
   }
 
   [[nodiscard]] std::uint32_t latencySamples() const noexcept override {
@@ -327,18 +335,19 @@ private:
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const std::uint32_t input_index = upsample_state_length + frame;
         for (std::uint32_t phase = 0u; phase < factor; ++phase) {
-          double accumulator = 0.0;
-          for (std::uint32_t tap = 0u; tap < phase_lengths_[phase]; ++tap) {
-            accumulator += static_cast<double>(polyphase_[phase][tap]) *
-                           static_cast<double>(x_buffer_[input_index - tap]);
-          }
+          const std::uint32_t taps = phase_lengths_[phase];
+          const double *history = x_buffer_.data() + input_index + 1u - taps;
+          const double accumulator =
+              phase == 0u || phase * 2u == factor
+                  ? dsp::firSymmetric(polyphase_[phase].data(), history, taps)
+                  : dsp::firDot(polyphase_[phase].data(), history, taps);
           oversampled_[output_offset + static_cast<std::size_t>(frame) * factor + phase] =
               static_cast<float>(accumulator);
         }
       }
       const std::uint32_t combined = upsample_state_length + frame_count;
       for (std::uint32_t index = 0u; index < upsample_state_length; ++index) {
-        state[index] = x_buffer_[combined - upsample_state_length + index];
+        state[index] = static_cast<float>(x_buffer_[combined - upsample_state_length + index]);
       }
     }
 
@@ -386,11 +395,9 @@ private:
       const std::size_t output_offset = static_cast<std::size_t>(channel) * frame_count;
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const std::uint32_t input_index = frame * factor + downsample_state_length;
-        double accumulator = 0.0;
-        for (std::uint32_t tap = 0u; tap < filter_length_; ++tap) {
-          accumulator += static_cast<double>(prototype_[tap]) *
-                         static_cast<double>(z_buffer_[input_index - tap]);
-        }
+        const double accumulator =
+            dsp::firSymmetric(prototype_.data(),
+                              z_buffer_.data() + input_index + 1u - filter_length_, filter_length_);
         // Reconstruction can overshoot even when oversampled peaks were limited.
         const double output = accumulator / static_cast<double>(factor);
         const double ceiling = threshold_ramp_.value(frame * factor);
@@ -400,7 +407,7 @@ private:
       }
       const std::uint32_t combined = downsample_state_length + oversampled_frames;
       for (std::uint32_t index = 0u; index < downsample_state_length; ++index) {
-        state[index] = z_buffer_[combined - downsample_state_length + index];
+        state[index] = static_cast<float>(z_buffer_[combined - downsample_state_length + index]);
       }
     }
     threshold_ramp_.advance(oversampled_frames);
@@ -473,6 +480,8 @@ private:
       prototype_[index] =
           static_cast<float>(static_cast<double>(prototype_[index]) * normalization);
     }
+    for (std::uint32_t index = 0u; index < filter_length_ / 2u; ++index)
+      prototype_[filter_length_ - 1u - index] = prototype_[index];
 
     maximum_phase_length_ = 0u;
     phase_lengths_.fill(0u);
@@ -483,7 +492,7 @@ private:
         maximum_phase_length_ = length;
       }
       for (std::uint32_t tap = 0u; tap < length; ++tap) {
-        polyphase_[phase][tap] = prototype_[phase + factor * tap];
+        polyphase_[phase][tap] = prototype_[phase + factor * (length - 1u - tap)];
       }
     }
   }
@@ -493,15 +502,15 @@ private:
   std::vector<float> processed_oversampled_;
   std::vector<float> upsample_states_;
   std::vector<float> downsample_states_;
-  std::vector<float> x_buffer_;
-  std::vector<float> z_buffer_;
+  std::vector<double> x_buffer_;
+  std::vector<double> z_buffer_;
   std::vector<float> gain_states_;
   std::vector<float> threshold_lookup_;
   Params params_{};
   Params staged_params_{};
   dsp::DelayLine delay_line_;
-  std::array<float, kFilterLength> prototype_{};
-  std::array<std::array<float, kMaximumUpsampleState + 1u>, kMaximumOversampling> polyphase_{};
+  std::vector<double> prototype_;
+  std::array<std::vector<double>, kMaximumOversampling> polyphase_;
   std::array<std::uint32_t, kMaximumOversampling> phase_lengths_{};
   double sample_rate_ = 0.0;
   double active_lookahead_ = 0.0;

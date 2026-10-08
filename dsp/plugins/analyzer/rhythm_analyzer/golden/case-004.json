@@ -22,7 +22,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:ebf7114caa519caeed20af5717b827fcda517296bb05f69b41fabbd3c13b3f48",
+  "referenceHash": "sha256:baed8cb7219f0e9d9542ec729afa374501f983b60424f60790155c36ad54e27b",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type RhythmAnalyzerPlugin --promote-production-native",
   "outputFloats": 2540,
   "byteLength": 10160,

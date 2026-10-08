@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 
 class FakeElement {
   constructor(tagName) {
@@ -120,6 +121,7 @@ function loadPluginBase(overrides = {}) {
     }
   };
   const context = {
+    bindEffeTuneNumberInput: bindNumberInput,
     window: overrides.window || {},
     document: documentRef,
     console,

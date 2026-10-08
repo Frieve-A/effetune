@@ -328,7 +328,9 @@ export class AudioManager {
      * Copy pipeline A to B and switch to B
      */
     copyAToB() {
-        this.pipelineB = this._copyPipeline(this.pipelineA);
+        const copiedPipeline = this._copyPipeline(this.pipelineA);
+        this._cleanupPipeline(this.pipelineB);
+        this.pipelineB = copiedPipeline;
         this.setCurrentPipeline('B');
     }
 
@@ -337,8 +339,17 @@ export class AudioManager {
      */
     copyBToA() {
         if (this.pipelineB !== null) {
-            this.pipelineA = this._copyPipeline(this.pipelineB);
+            const copiedPipeline = this._copyPipeline(this.pipelineB);
+            this._cleanupPipeline(this.pipelineA);
+            this.pipelineA = copiedPipeline;
             this.setCurrentPipeline('A');
+        }
+    }
+
+    _cleanupPipeline(pipeline) {
+        for (const plugin of pipeline || []) {
+            if (typeof plugin.cleanup === 'function') plugin.cleanup();
+            this.pipelineManager?.expandedPlugins?.delete(plugin);
         }
     }
 

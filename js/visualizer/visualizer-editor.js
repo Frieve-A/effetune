@@ -2,6 +2,7 @@ import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
+import { bindNumberInput, updateRangeFill } from '../ui/range-fill.js';
 
 // Identifies copied Visualizer items in clipboard text.
 const CLIPBOARD_KEY = 'effetuneVisualizerItems';
@@ -36,6 +37,7 @@ const THEME_COLOR_LABELS = {
 // Every choice is divisible by 4 so the quarter guide lines stay on the snap grid.
 const GRID_DIVISIONS = [4, 8, 20, 40, 80];
 const MIN_ZOOM = .1, MAX_ZOOM = 4, FIT_MARGIN = 32;
+const DRAG_THRESHOLD = 4;
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const midiNoteName = midi => `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
 // Note names such as E2, F#3, or Bb1; NaN for anything else.
@@ -149,7 +151,7 @@ export class VisualizerEditor {
         view.stage.addEventListener('keydown', event => this.onStageKeyDown(event));
         document.addEventListener?.('keyup', event => {
             if (event.code === 'Space' || event.key === ' ') this.setHandTool(false);
-            if (this.open) this.view.commitPending();
+            if (this.open && !event.target?.matches?.('.visualizer-field input[type="number"]')) this.view.commitPending();
         });
         globalThis.addEventListener?.('blur', () => { this.setHandTool(false); this.endDrag(); });
         this.updateZoomControls();
@@ -431,18 +433,69 @@ export class VisualizerEditor {
         } else if (kind !== 'textarea') input.type = kind;
         for (const key of ['min', 'max', 'step', 'accept', 'disabled', 'maxLength', 'rows']) if (options[key] !== undefined) input[key] = options[key];
         if (kind === 'checkbox') input.checked = value; else input.value = value;
-        const output = kind === 'range' && options.format ? document.createElement('output') : null;
-        if (output) output.textContent = options.format(value);
-        const continuous = kind === 'range' || kind === 'color' || kind === 'textarea';
+        if (kind === 'range') {
+            const scale = options.scale ?? 1, unit = options.unit ?? '';
+            const embeddedUnit = `(${unit})`;
+            const baseLabel = unit && label.trimEnd().endsWith(embeddedUnit)
+                ? label.trimEnd().slice(0, -embeddedUnit.length).trimEnd() : label;
+            name.textContent = `${baseLabel}${unit ? `(${unit})` : ''}:`;
+            const valueInput = document.createElement('input');
+            valueInput.type = 'number'; valueInput.id = `${input.id}-value`;
+            valueInput.name = valueInput.id; valueInput.autocomplete = input.autocomplete = 'off';
+            valueInput.min = options.min * scale; valueInput.max = options.max * scale;
+            valueInput.step = options.step * scale; valueInput.value = round(value * scale);
+            valueInput.disabled = input.disabled;
+            valueInput.setAttribute('aria-label', name.textContent);
+            const apply = () => {
+                // The range input owns step rounding, including translated display units.
+                const next = Number(input.value);
+                this.inputActive = true;
+                try { action(next); } finally { this.inputActive = false; }
+                updateRangeFill(input);
+                if (options.hint) valueInput.title = options.hint(next);
+            };
+            const applied = bindNumberInput(valueInput, input, Number(valueInput.min), Number(valueInput.max),
+                Number(valueInput.value), apply, next => next / scale, options.format ?? (next => String(round(next))));
+            this.rangeControls ??= new WeakMap();
+            this.rangeControls.set(input, { valueInput, applied, scale, hint: options.hint });
+            valueInput.addEventListener('input', () => { applied.value = round(Number(input.value) * scale); });
+            input.addEventListener('input', () => {
+                const next = Number(input.value);
+                valueInput.value = round(next * scale); applied.value = Number(valueInput.value);
+                apply();
+            });
+            const commit = () => this.view.commitPending();
+            input.addEventListener('change', commit);
+            const finishNumberEdit = () => {
+                this.syncRangeField(input, Number(input.value));
+                commit();
+            };
+            // Native change precedes blur; commit only after the binding normalizes the value.
+            valueInput.addEventListener('blur', finishNumberEdit);
+            valueInput.addEventListener('keydown', event => { if (event.key === 'Enter') finishNumberEdit(); });
+            if (options.hint) valueInput.title = options.hint(value);
+            row.append(name, input, valueInput); parent.appendChild(row);
+            updateRangeFill(input);
+            return input;
+        }
+        const continuous = kind === 'color' || kind === 'textarea';
         input.addEventListener(continuous ? 'input' : 'change', () => {
-            const next = kind === 'checkbox' ? input.checked : kind === 'range' || kind === 'number' ? Number(input.value) : kind === 'file' ? input.files[0] : input.value;
-            if (output) output.textContent = options.format(next);
+            const next = kind === 'checkbox' ? input.checked : kind === 'number' ? Number(input.value) : kind === 'file' ? input.files[0] : input.value;
             // Continuous input streams become one history entry, recorded on change.
             this.inputActive = continuous;
             try { action(next); } finally { this.inputActive = false; }
         });
         if (continuous) input.addEventListener('change', () => this.view.commitPending());
-        row.append(name, input); if (output) row.appendChild(output); parent.appendChild(row); return input;
+        row.append(name, input); parent.appendChild(row); return input;
+    }
+    syncRangeField(input, value) {
+        const control = this.rangeControls.get(input);
+        input.value = value;
+        const canonical = Number(input.value);
+        control.valueInput.value = round(canonical * control.scale);
+        control.applied.value = Number(control.valueInput.value);
+        if (control.hint) control.valueInput.title = control.hint(canonical);
+        updateRangeFill(input);
     }
     group(parent, title) {
         const group = document.createElement('section');
@@ -492,7 +545,7 @@ export class VisualizerEditor {
         const scene = this.group(this.navigationContent, this.t('visualizer.layout', 'Layout'));
         this.field(scene, this.t('visualizer.aspect', 'Aspect ratio'), 'select', layout.aspect, value => { layout.aspect = value; this.changed(); }, { values: ASPECTS });
         this.field(scene, this.t('visualizer.graphScale', 'Graph scale'), 'range', layout.graphScale, value => { layout.graphScale = value; this.changed(); },
-            { min: 0.5, max: 3, step: 0.05, format: value => `×${value.toFixed(2)}` });
+            { min: 0.5, max: 3, step: 0.05, unit: '×' });
         this.field(scene, this.t('visualizer.grid', 'Snap to grid'), 'select', String(this.gridDivisions), value => {
             this.gridDivisions = Number(value);
             localStorage.setItem('effetune_visualizer_grid_divisions', value);
@@ -611,15 +664,15 @@ export class VisualizerEditor {
         }, { values: SHAPES.map(shape => [shape, this.t(`visualizer.shape.${shape}`, labels[shape])]) });
         if (style.shape !== 'line') {
             this.field(parent, this.t('visualizer.backplateFillOpacity', 'Fill opacity'), 'range', style.fillOpacity,
-                set('fillOpacity'), { min: 0, max: 1, step: 0.01, format: value => `${Math.round(value * 100)}%` });
+                set('fillOpacity'), { min: 0, max: 1, step: 0.01, unit: '%', scale: 100 });
             this.field(parent, this.t('visualizer.backplateBorder', 'Border color'), 'color', style.borderColor, set('borderColor'));
         }
         this.field(parent, this.t('visualizer.backplateBorderWidth', 'Border width'), 'range', style.borderWidth,
-            set('borderWidth'), { min: 0, max: 20, step: 0.5 });
+            set('borderWidth'), { min: 0, max: 20, step: 0.5, unit: 'px' });
         this.field(parent, this.t('visualizer.borderOpacity', 'Border opacity'), 'range', style.borderOpacity,
-            set('borderOpacity'), { min: 0, max: 1, step: 0.01, format: value => `${Math.round(value * 100)}%` });
+            set('borderOpacity'), { min: 0, max: 1, step: 0.01, unit: '%', scale: 100 });
         if (style.shape === 'rectangle') this.field(parent, this.t('visualizer.backplateRadius', 'Corner radius'), 'range', style.radius,
-            set('radius'), { min: 0, max: 200, step: 1 });
+            set('radius'), { min: 0, max: 200, step: 1, unit: 'px' });
     }
 
     textStyle(parent, style, type = null) {
@@ -628,17 +681,16 @@ export class VisualizerEditor {
         const label = (key, fallback) => this.t(`visualizer.style.${key}`, fallback);
         const select = (group, key, fallback, values) => this.field(group, label(key, fallback), 'select', value(key), set(key),
             { values: values.map(([entry, name]) => [entry, this.t(`visualizer.value.${entry}`, name)]) });
-        const range = (group, key, fallback, min, max, step = 1, format = String) => this.field(group, label(key, fallback), 'range', value(key), set(key),
-            { min, max, step, format });
+        const range = (group, key, fallback, min, max, step = 1, unit = '', scale = 1) => this.field(group, label(key, fallback), 'range', value(key), set(key),
+            { min, max, step, unit, scale });
         if (type === 'rhythm-analyzer') {
             const circle = this.group(parent, label('beatCircle', 'Beat circle'));
-            const percent = next => `${Math.round(next * 100)}%`;
-            range(circle, 'beatSize', 'Circle size', 10, 100, 1, next => `${next}%`);
-            range(circle, 'beatLineWidth', 'Border width', 0, 20, 0.5);
-            range(circle, 'beatFillOpacity', 'Fill opacity', 0, 1, 0.01, percent);
-            range(circle, 'beatHoldTime', 'Beat hold time', 0, 1000, 10, next => `${next} ms`);
-            range(circle, 'beatDecayTime', 'Beat decay time', 10, 2000, 10, next => `${next} ms`);
-            range(circle, 'beatStrokeOpacity', 'Border opacity', 0, 1, 0.01, percent);
+            range(circle, 'beatSize', 'Circle size', 10, 100, 1, '%');
+            range(circle, 'beatLineWidth', 'Border width', 0, 20, 0.5, 'px');
+            range(circle, 'beatFillOpacity', 'Fill opacity', 0, 1, 0.01, '%', 100);
+            range(circle, 'beatHoldTime', 'Beat hold time', 0, 1000, 10, 'ms');
+            range(circle, 'beatDecayTime', 'Beat decay time', 10, 2000, 10, 'ms');
+            range(circle, 'beatStrokeOpacity', 'Border opacity', 0, 1, 0.01, '%', 100);
             this.field(circle, label('beatUsePalette', 'Use palette colors'), 'checkbox', value('beatUsePalette'), next => {
                 style.beatUsePalette = next; this.changed(true);
             });
@@ -648,21 +700,21 @@ export class VisualizerEditor {
             this.field(circle, label('beatFitBpm', 'Fit BPM inside circle'), 'checkbox', value('beatFitBpm'), set('beatFitBpm'));
         }
         select(parent, 'fontFamily', 'Font', FONT_FAMILIES);
-        range(parent, 'fontSize', 'Text size', 8, 200);
+        range(parent, 'fontSize', 'Text size', 8, 200, 1, 'px');
         select(parent, 'align', 'Alignment', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]);
         select(parent, 'verticalAlign', 'Vertical alignment', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]);
-        range(parent, 'letterSpacing', 'Letter spacing', -20, 100);
+        range(parent, 'letterSpacing', 'Letter spacing', -20, 100, 1, 'px');
         select(parent, 'textCase', 'Case', [['none', 'None'],['upper', 'UPPERCASE'], ['lower', 'lowercase']]);
         const outline = this.group(parent, this.t('visualizer.style.outline', 'Outline'));
-        range(outline, 'outlineWidth', 'Width', 0, 20, 0.5);
+        range(outline, 'outlineWidth', 'Width', 0, 20, 0.5, 'px');
         this.field(outline, this.t('visualizer.color', 'Color'), 'color', value('outlineColor'), set('outlineColor'));
         const shadow = this.group(parent, this.t('visualizer.style.shadow', 'Shadow'));
         this.field(shadow, this.t('visualizer.color', 'Color'), 'color', value('shadowColor'), set('shadowColor'));
         this.field(shadow, label('shadowOpacity', 'Opacity'), 'range', value('shadowOpacity'), set('shadowOpacity'),
-            { min: 0, max: 1, step: 0.01, format: next => `${Math.round(next * 100)}%` });
-        range(shadow, 'shadowBlur', 'Blur', 0, 50);
-        range(shadow, 'shadowX', 'Offset X', -50, 50);
-        range(shadow, 'shadowY', 'Offset Y', -50, 50);
+            { min: 0, max: 1, step: 0.01, unit: '%', scale: 100 });
+        range(shadow, 'shadowBlur', 'Blur', 0, 50, 1, 'px');
+        range(shadow, 'shadowX', 'Offset X', -50, 50, 1, 'px');
+        range(shadow, 'shadowY', 'Offset Y', -50, 50, 1, 'px');
     }
 
     parameters(parent, item) {
@@ -682,49 +734,50 @@ export class VisualizerEditor {
             ['horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')],
             ['vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]
         ]);
-        const range = (key, label, min, max, step, format) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, format });
+        const range = (key, label, min, max, step, unit = '', scale = 1, hint = null) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, unit, scale, hint });
         const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value));
         // Integer range endpoints; an endpoint dragged past its partner carries the partner along.
-        const rangePair = (entries, format) => {
+        const rangePair = (entries, unit = '') => {
             const sliders = {};
             for (const [key, label, min, max, labelKey = key] of entries) {
                 sliders[key] = this.field(parent, this.t(`visualizer.param.${labelKey}`, label), 'range', params[key], value => {
-                    params[key] = value;
+                    params[key] = Math.round(value);
                     const otherKey = adjustRangeEndpoint(item, key);
                     if (otherKey) {
-                        sliders[otherKey].value = params[otherKey];
-                        sliders[otherKey].nextElementSibling.textContent = format(params[otherKey]);
-                        window.uiManager?.refreshRangeFillStyling?.(sliders[otherKey]);
+                        this.syncRangeField(sliders[otherKey], params[otherKey]);
                     }
                     this.changed(false, false, key);
-                }, { min, max, step: 1, format });
+                }, { min, max, step: 1, unit, format: value => String(Math.round(value)) });
             }
         };
         // Bar segment size in dB; 0 draws continuous bars.
-        const stepFormat = value => value > 0 ? `${value.toFixed(1)} dB` : this.t('visualizer.value.continuous', 'Continuous');
+        const stepHint = value => value > 0 ? `${value.toFixed(1)} dB` : this.t('visualizer.value.continuous', 'Continuous');
         // Peak Hold and Peak Fall Time only matter while the peak indicator (pk) is shown.
         const peakControls = (fallMin = 0.1) => {
             check('pk', 'Peak');
             if (params.pk) {
-                range('ph', 'Peak Hold', 0, 10, 0.1, value => `${value.toFixed(1)} s`);
-                range('pf', 'Peak Fall Time', fallMin, 10, 0.1, value => `${value.toFixed(1)} s`);
+                range('ph', 'Peak Hold', 0, 10, 0.1, 's');
+                range('pf', 'Peak Fall Time', fallMin, 10, 0.1, 's');
             }
         };
         if (item.type === 'spectrum' || item.type === 'spectrogram') {
-            range('dr', 'DB Range', -144, -48, 1, value => `${value} dB`);
+            range('dr', 'DB Range', -144, -48, 1, 'dB');
             select('pt', 'Points', Array.from({ length: 7 }, (_, index) => [String(index + 8), String(2 ** (index + 8))]));
             select('sc', 'Frequency Scale', [['log', this.t('visualizer.paramChoice.log', 'Log')], ['log-hq', this.t('visualizer.paramChoice.log-hq', 'Log (HQ)')], ['linear', this.t('visualizer.paramChoice.linear', 'Linear')]]);
             check('kb', 'Keyboard');
             // 100% is half the length of real piano keys; 200% is the real proportion.
-            range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
-            range('mf', 'Max Frequency', 1000, 40000, 1000, value => `${value / 1000} kHz`);
+            range('kl', 'Keyboard Length', 50, 200, 5, '%');
+            range('mf', 'Max Frequency', 1000, 40000, 1000, 'kHz', .001);
             if (item.type === 'spectrum') {
                 // Bar-only controls toggle in place, so dragging a slider never rebuilds the panel.
                 const disabled = () => ({ bars: params.dm !== 'bar', quantize: params.dm !== 'bar' || params.ds === 0 });
                 let bands, segment, quantize;
                 const syncBarFields = () => {
                     const state = disabled();
-                    bands.disabled = segment.disabled = state.bars;
+                    for (const input of [bands, segment]) {
+                        input.disabled = state.bars;
+                        this.rangeControls.get(input).valueInput.disabled = state.bars;
+                    }
                     quantize.disabled = state.quantize;
                 };
                 this.field(parent, this.t('visualizer.param.dm', 'Display'), 'select', params.dm, value => {
@@ -733,46 +786,46 @@ export class VisualizerEditor {
                 }, { values: [['line', this.t('visualizer.paramChoice.line', 'Line')],
                     ['bar', this.t('visualizer.paramChoice.bar', 'Bar')]] });
                 bands = this.field(parent, this.t('visualizer.param.bc', 'Bands'), 'range', params.bc,
-                    value => update('bc', value), { min: 8, max: 128, step: 1, format: String, disabled: disabled().bars });
+                    value => update('bc', value), { min: 8, max: 128, step: 1, disabled: disabled().bars });
                 segment = this.field(parent, this.t('visualizer.param.ds', 'dB per Segment'), 'range', params.ds, value => {
                     update('ds', value);
                     syncBarFields();
-                }, { min: 0, max: 12, step: 0.5, format: stepFormat, disabled: disabled().bars });
+                }, { min: 0, max: 12, step: 0.5, unit: 'dB', hint: stepHint, disabled: disabled().bars });
                 quantize = this.field(parent, this.t('visualizer.param.quantizeBars', 'Quantize'),
                     'checkbox', params.quantizeBars, value => update('quantizeBars', value),
                     { disabled: disabled().quantize });
                 orientation();
-                range('sm', 'Smoothing', 0, 1, 0.01, value => `${value.toFixed(2)} oct`);
-                range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
+                range('sm', 'Smoothing', 0, 1, 0.01, 'oct');
+                range('cf', 'Fall Time', 0, 5, 0.05, 's');
                 peakControls();
             }
         } else if (item.type === 'stereo') {
-            range('wt', 'Window', 0.01, 1, 0.001, value => `${Math.round(value * 1000)} ms`);
+            range('wt', 'Window', 0.01, 1, 0.001, 'ms', 1000);
             peakControls(1);
             check('showCorrelation', 'Correlation');
             check('showBalance', 'Balance');
         } else if (item.type === 'oscilloscope') {
-            range('dt', 'Display Time', 0.001, 0.1, 0.001, value => `${Math.round(value * 1000)} ms`);
+            range('dt', 'Display Time', 0.001, 0.1, 0.001, 'ms', 1000);
             select('tm', 'Trigger Mode', ['Auto', 'Normal', 'Off'].map(value =>
                 [value, this.t(`visualizer.paramChoice.${value}`, value)]));
-            range('tl', 'Trigger Level', -1, 1, 0.01, value => value.toFixed(2));
+            range('tl', 'Trigger Level', -1, 1, 0.01, '');
             select('te', 'Trigger Edge', ['Rising', 'Falling'].map(value =>
                 [value, this.t(`visualizer.paramChoice.${value}`, value)]));
-            range('ho', 'Holdoff', 0.0001, 0.01, 0.0001, value => `${(value * 1000).toFixed(1)} ms`);
-            range('dl', 'Display Level', -96, 0, 1, value => `${value} dB`);
-            range('vo', 'Vertical Offset', -1, 1, 0.01, value => value.toFixed(2));
+            range('ho', 'Holdoff', 0.0001, 0.01, 0.0001, 'ms', 1000);
+            range('dl', 'Display Level', -96, 0, 1, 'dB');
+            range('vo', 'Vertical Offset', -1, 1, 0.01, '');
         } else if (item.type === 'level-meter') {
-            range('dr', 'DB Range', -144, -48, 1, value => `${value} dB`);
+            range('dr', 'DB Range', -144, -48, 1, 'dB');
             orientation();
-            range('ds', 'dB per Segment', 0, 12, 0.5, stepFormat);
+            range('ds', 'dB per Segment', 0, 12, 0.5, 'dB', 1, stepHint);
             check('showLevelValues', 'Level values');
-            range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
+            range('cf', 'Fall Time', 0, 5, 0.05, 's');
             peakControls();
         } else if (item.type === 'notes') {
             select('pr', 'Pitch Resolution', [['Semitone', this.t('visualizer.paramChoice.Semitone', '1/12 Octave')], ['High', this.t('visualizer.paramChoice.High', 'High (1/60 Octave)')]]);
             select('ly', 'Layout', [['Horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')], ['Vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]]);
             check('vl', 'Volume');
-            range('ts', 'Time Span', 1, 10, 1, value => `${value} s`);
+            range('ts', 'Time Span', 1, 10, 1, 's');
             const noteSliders = {};
             for (const [key, label] of [['mn', 'Lowest note'], ['mx', 'Highest note']]) {
                 noteSliders[key] = this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => {
@@ -780,17 +833,15 @@ export class VisualizerEditor {
                     params[key] = midi;
                     const otherKey = adjustRangeEndpoint(item, key);
                     if (otherKey) {
-                        noteSliders[otherKey].value = midi;
-                        noteSliders[otherKey].nextElementSibling.textContent = midiNoteName(midi);
-                        window.uiManager?.refreshRangeFillStyling?.(noteSliders[otherKey]);
+                        this.syncRangeField(noteSliders[otherKey], midi);
                     }
                     this.changed(false, false, key);
-                }, { min: 21, max: 108, step: 1, format: midiNoteName });
+                }, { min: 21, max: 108, step: 1, unit: 'MIDI',
+                    format: value => String(Math.round(value)), hint: value => midiNoteName(Math.round(value)) });
             }
-            range('nc', 'Regular Note Limit', 1, 16, 1, value => String(value));
             check('kb', 'Keyboard');
             // 100% is half the length of real piano keys; 200% is the real proportion.
-            range('kl', 'Keyboard Length', 50, 200, 5, value => `${value}%`);
+            range('kl', 'Keyboard Length', 50, 200, 5, '%');
         } else if (guitar) {
             const preset = Object.keys(GUITAR_TUNINGS).find(key => GUITAR_TUNINGS[key].join() === params.tn.join()) ?? 'custom';
             this.field(parent, this.t('visualizer.param.tn', 'Tuning'), 'select', preset, value => {
@@ -805,8 +856,8 @@ export class VisualizerEditor {
                 if (tuning.length <= 10 && tuning.every(midi => midi >= 21 && midi <= 108)) params.tn = tuning;
                 this.changed(true);
             });
-            rangePair([['fm', 'Lowest Fret', 0, 24], ['fx', 'Highest Fret', 0, 24]], String);
-            range('cp', 'Capo', 0, 12, 1, value => value ? String(value) : this.t('visualizer.value.none', 'None'));
+            rangePair([['fm', 'Lowest Fret', 0, 24], ['fx', 'Highest Fret', 0, 24]]);
+            range('cp', 'Capo', 0, 12, 1, '', 1, value => value ? String(value) : this.t('visualizer.value.none', 'None'));
             select('pm', 'Positions', [['all', this.t('visualizer.guitar.all', 'All Positions')],
                 ['shape', this.t('visualizer.guitar.shape', 'One Shape')],
                 ['shape-dim', this.t('visualizer.guitar.shape-dim', 'One Shape + Alternatives')]]);
@@ -818,8 +869,8 @@ export class VisualizerEditor {
                 ...NOTE_NAMES.map((name, index) => [String(index), name])]);
             if (params.ro >= 0) select('sk', 'Scale Guide', [['none', this.t('visualizer.value.none', 'None')],
                 ...Object.keys(GUITAR_SCALES).map(key => [key, this.t(`visualizer.guitar.${key}`, GUITAR_SCALE_LABELS[key])])]);
-            range('th', 'Threshold', 0.1, 0.9, 0.05, value => `${Math.round(value * 100)}%`);
-            range('cf', 'Fall Time', 0, 2, 0.05, value => `${value.toFixed(2)} s`);
+            range('th', 'Threshold', 0.1, 0.9, 0.05, '%', 100);
+            range('cf', 'Fall Time', 0, 2, 0.05, 's');
             select('ly', 'Layout', [['Horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')], ['Vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]]);
             check('vs', 'Size by Volume');
             check('fl', 'Fretless');
@@ -830,17 +881,17 @@ export class VisualizerEditor {
             check('sn', 'String Names');
         } else if (item.type === 'chroma') {
             select('dm', 'Display', [['0', this.t('visualizer.value.dots', 'Dots')], ['1', this.t('visualizer.value.fill', 'Fill')]]);
-            rangePair([['lo', 'Lowest Octave', 1, 8], ['hi', 'Highest Octave', 1, 9]], value => String(value));
-            range('ft', 'Frequency Tilt', -6, 6, 0.5, value => `${value} dB/oct`);
-            range('lr', 'Level Range', 6, 96, 1, value => `${value} dB`);
-            range('df', 'Display Floor', -120, -24, 1, value => `${value} dB`);
-            range('cf', 'Fall Time', 0, 5, 0.05, value => `${value.toFixed(2)} s`);
+            rangePair([['lo', 'Lowest Octave', 1, 8], ['hi', 'Highest Octave', 1, 9]]);
+            range('ft', 'Frequency Tilt', -6, 6, 0.5, 'dB/oct');
+            range('lr', 'Level Range', 6, 96, 1, 'dB');
+            range('df', 'Display Floor', -120, -24, 1, 'dB');
+            range('cf', 'Fall Time', 0, 5, 0.05, 's');
         } else if (item.type === 'phase') {
             select('ax', 'X Axis', [['phase', this.t('visualizer.paramChoice.phase', 'Phase')],
                 ['balance', this.t('visualizer.paramChoice.balance', 'Balance')]]);
-            range('dr', 'DB Range', -96, -24, 6, value => `${value} dB`);
-            range('ml', 'Reference Floor', -120, -24, 1, value => `${value} dB`);
-            range('pe', 'Persistence', 0.1, 2, 0.1, value => `${value.toFixed(1)} s`);
+            range('dr', 'DB Range', -96, -24, 6, 'dB');
+            range('ml', 'Reference Floor', -120, -24, 1, 'dB');
+            range('pe', 'Persistence', 0.1, 2, 0.1, 's');
         } else if (analogMeter) {
             // Before the effect script loads every parameter is shown; the next rebuild hides inactive ones.
             const active = key => window.AnalogMeterPlugin?.isParameterActive(key, params) ?? true;
@@ -848,21 +899,21 @@ export class VisualizerEditor {
                 this.t(`visualizer.paramChoice.${label.replace(/ /g, '-').replace('+', '')}`, label)]);
             select('md', 'Mode', ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness'].map(value =>
                 [value, this.t(`visualizer.paramChoice.${value.replace(/ /g, '-')}`, value)]));
-            if (active('it')) range('it', 'Integration', 0.05, 3, 0.01, value => `${value.toFixed(2)} s`);
-            if (active('at')) range('at', 'Attack', 1, 20, 0.1, value => `${value.toFixed(1)} ms`);
-            if (active('rt')) range('rt', 'Release', 0.1, 5, 0.01, value => `${value.toFixed(2)} s`);
-            if (active('rl')) range('rl', 'Reference', -30, 0, 1, value => `${value} dBFS`);
-            if (active('rg')) range('rg', 'Range', 20, 60, 1, value => `${value} dB`);
+            if (active('it')) range('it', 'Integration', 0.05, 3, 0.01, 's');
+            if (active('at')) range('at', 'Attack', 1, 20, 0.1, 'ms');
+            if (active('rt')) range('rt', 'Release', 0.1, 5, 0.01, 's');
+            if (active('rl')) range('rl', 'Reference', -30, 0, 1, 'dBFS');
+            if (active('rg')) range('rg', 'Range', 20, 60, 1, 'dB');
             if (active('sc')) this.field(parent, this.t('visualizer.param.meterScale', 'PPM Scale'), 'select',
                 params.sc, value => update('sc', value), { values: choices(['DIN', 'BBC', 'dB']) });
-            if (active('ph')) range('ph', 'Peak Hold', 0, 10, 0.1, value => `${value.toFixed(1)} s`);
+            if (active('ph')) range('ph', 'Peak Hold', 0, 10, 0.1, 's');
             if (active('ln')) select('ln', 'Needle', choices(['Momentary', 'Short-term']));
-            if (active('tg')) range('tg', 'Target', -36, -10, 1, value => `${value} LUFS`);
+            if (active('tg')) range('tg', 'Target', -36, -10, 1, 'LUFS');
             if (active('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
             this.meterAppearance(parent, item);
         } else if (rhythm) {
             rangePair([['mn', 'Min BPM', 40, 192, 'bpmMin'], ['mx', 'Max BPM', 50, 240, 'bpmMax']],
-                value => `${value} BPM`);
+                'BPM');
             select('sp', 'Span (beats)', RHYTHM_SPANS.map(value => [String(value), String(value)]));
             check('showBeat', 'Beat');
             check('showBpm', 'BPM');
@@ -872,7 +923,7 @@ export class VisualizerEditor {
             // 'vl' already labels the Notes item's Volume checkbox; the lens checkbox uses its own label key.
             this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value));
         }
-        if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, value => `${value > 0 ? '+' : ''}${value} dB`);
+        if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, 'dB');
         if (guitar) return;
         check('showAxes', 'Axes and grid');
         check('showAxisNumbers', 'Axis labels and numbers');
@@ -885,25 +936,24 @@ export class VisualizerEditor {
             this.t(`visualizer.param.${key}`, label), type, params[key], value => {
                 params[key] = value; this.changed(key === 'needleTip');
             }, options);
-        const range = (parent, key, label, min, max, step = 1, format = String) =>
-            field(parent, key, label, 'range', { min, max, step, format });
+        const range = (parent, key, label, min, max, step = 1, unit = '', scale = 1) =>
+            field(parent, key, label, 'range', { min, max, step, unit, scale });
         const check = (parent, key, label) => field(parent, key, label, 'checkbox');
         const select = (parent, key, label, entries) => field(parent, key, label, 'select', {
             values: entries.map(([value, label]) => [value, this.t(`visualizer.meter.${value}`, label)])
         });
-        const percent = value => `${Math.round(value * 100)}%`;
         const geometry = group('dial', 'Dial geometry');
-        range(geometry, 'dialCurvature', 'Dial curvature', 0, 1, 0.01, percent);
-        range(geometry, 'dialSweep', 'Dial sweep', 30, 160, 1, value => `${value}°`);
-        range(geometry, 'pivotOffset', 'Pivot below dial', 0, 100, 1, value => `${value}%`);
+        range(geometry, 'dialCurvature', 'Dial curvature', 0, 1, 0.01, '%', 100);
+        range(geometry, 'dialSweep', 'Dial sweep', 30, 160, 1, '°');
+        range(geometry, 'pivotOffset', 'Pivot below dial', 0, 100, 1, '%');
         const needle = group('needle', 'Needle appearance');
-        range(needle, 'needleStart', 'Hidden needle base', 0, 90, 1, value => `${value}%`);
-        range(needle, 'needleLength', 'Needle length', 50, 120, 1, value => `${value}%`);
-        range(needle, 'needleWidth', 'Needle width', 0.5, 8, 0.5);
+        range(needle, 'needleStart', 'Hidden needle base', 0, 90, 1, '%');
+        range(needle, 'needleLength', 'Needle length', 50, 120, 1, '%');
+        range(needle, 'needleWidth', 'Needle width', 0.5, 8, 0.5, 'px');
         select(needle, 'needleTip', 'Needle tip', [['line', 'Line'], ['taper', 'Tapered'], ['arrow', 'Arrow']]);
         if (params.needleTip === 'arrow') range(needle, 'arrowAspect', 'Arrow tip aspect ratio', 0.25, 4, 0.05,
-            value => `${value.toFixed(2)}:1`);
-        range(needle, 'hubSize', 'Pivot hub size', 0, 20, 0.5);
+            ':1');
+        range(needle, 'hubSize', 'Pivot hub size', 0, 20, 0.5, 'px');
         const labels = group('labels', 'Dial labels');
         for (const [key, label] of [['showReadout', 'Numeric reading'], ['showChannel', 'Channel heading'],
             ['showMode', 'Mode heading'], ['showSigns', '− / + marks'], ['positiveLabels', 'Positive value signs'],
@@ -915,10 +965,10 @@ export class VisualizerEditor {
         const face = group('face', 'Meter face');
         select(face, 'faceShape', 'Window shape', [['rectangle', 'Rectangle'], ['ellipse', 'Ellipse'], ['circle', 'Circle']]);
         field(face, 'faceColor', 'Face color', 'color');
-        range(face, 'faceOpacity', 'Face opacity', 0, 1, 0.01, percent);
+        range(face, 'faceOpacity', 'Face opacity', 0, 1, 0.01, '%', 100);
         field(face, 'faceBorderColor', 'Face border color', 'color');
-        range(face, 'faceBorderWidth', 'Face border width', 0, 20, 0.5);
-        range(face, 'vignette', 'Vignette', 0, 1, 0.01, percent);
+        range(face, 'faceBorderWidth', 'Face border width', 0, 20, 0.5, 'px');
+        range(face, 'vignette', 'Vignette', 0, 1, 0.01, '%', 100);
     }
 
     palette(parent, palette, itemType = null) {
@@ -959,7 +1009,7 @@ export class VisualizerEditor {
                 palette.angle = value;
                 if (!frequency) palette.direction = 'linear';
                 this.changed();
-            }, { min: -180, max: 180, step: 1, format: value => `${value}°` });
+            }, { min: -180, max: 180, step: 1, unit: '°' });
         }
         const presetRow = document.createElement('div');
         presetRow.className = 'visualizer-select-action-row'; group.appendChild(presetRow);
@@ -1041,35 +1091,34 @@ export class VisualizerEditor {
                 for (const { key, label, min, max, unit } of TRANSFORM_PARAMETERS) {
                     this.field(block, this.t(`visualizer.transform.${key}`, label), 'range', effect[key],
                         value => { effect[key] = value; this.changed(); },
-                        { min, max, step: 1, format: value => `${value}${unit}`, disabled: !effect.enabled });
+                        { min, max, step: 1, unit, disabled: !effect.enabled });
                 }
             }
             if (effect.type === 'trail-feedback') {
                 this.field(block, this.t('visualizer.feedbackZoom', 'Zoom'), 'range', effect.zoom ?? 2,
                     value => { effect.zoom = value; this.changed(); },
-                    { min: -2, max: 2, step: .05, format: value => `${value}%`, disabled: !effect.enabled });
+                    { min: -2, max: 2, step: .05, unit: '%', disabled: !effect.enabled });
                 this.field(block, this.t('visualizer.feedbackAngle', 'Rotation angle (°)'), 'range', effect.angle ?? 1.15,
                     value => { effect.angle = value; this.changed(); },
-                    { min: -3, max: 3, step: .05, format: value => `${value}°`, disabled: !effect.enabled });
+                    { min: -3, max: 3, step: .05, unit: '°', disabled: !effect.enabled });
                 for (const [axis, key, label] of [['X', 'flowX', 'Horizontal flow'], ['Y', 'flowY', 'Vertical flow']]) {
                     this.field(block, this.t(`visualizer.feedback${axis}`, label), 'range', effect[key] ?? 0,
                         value => { effect[key] = value; this.changed(); },
-                        { min: -1, max: 1, step: .05, format: value => `${value}%`, disabled: !effect.enabled });
+                        { min: -1, max: 1, step: .05, unit: '%', disabled: !effect.enabled });
                 }
             }
             if (effect.type === 'backplate') {
                 const set = key => value => { effect[key] = value; this.changed(); };
-                const percent = value => `${Math.round(value * 100)}%`;
                 this.field(block, this.t('visualizer.backplateFill', 'Fill color'), 'color', effect.fill, set('fill'), { disabled: !effect.enabled });
                 this.field(block, this.t('visualizer.backplateFillOpacity', 'Fill opacity'), 'range', effect.fillOpacity, set('fillOpacity'),
-                    { min: 0, max: 1, step: .01, format: percent, disabled: !effect.enabled });
+                    { min: 0, max: 1, step: .01, unit: '%', scale: 100, disabled: !effect.enabled });
                 this.field(block, this.t('visualizer.backplateBorder', 'Border color'), 'color', effect.border, set('border'), { disabled: !effect.enabled });
                 this.field(block, this.t('visualizer.backplateBorderWidth', 'Border width'), 'range', effect.borderWidth, set('borderWidth'),
-                    { min: 0, max: 20, step: .5, format: String, disabled: !effect.enabled });
+                    { min: 0, max: 20, step: .5, unit: 'px', disabled: !effect.enabled });
                 this.field(block, this.t('visualizer.backplateRadius', 'Corner radius'), 'range', effect.radius, set('radius'),
-                    { min: 0, max: 200, step: 1, format: String, disabled: !effect.enabled });
+                    { min: 0, max: 200, step: 1, unit: 'px', disabled: !effect.enabled });
                 this.field(block, this.t('visualizer.backplateMargin', 'Margin'), 'range', effect.margin, set('margin'),
-                    { min: -200, max: 200, step: 1, format: String, disabled: !effect.enabled });
+                    { min: -200, max: 200, step: 1, unit: 'px', disabled: !effect.enabled });
             }
             this.field(block, this.t('visualizer.modulation', 'Modulation'), 'radio', effect.mod.source, value => { effect.mod.source = value; this.changed(true); }, { values: ['none', 'time', 'level', 'bass'].map(value => [value, this.t(`visualizer.value.${value}`, value)]), disabled: !effect.enabled });
             this.field(block, this.t('visualizer.depth', 'Depth'), 'range', effect.mod.depth, value => { effect.mod.depth = value; this.changed(); }, { min: 0, max: 1, step: .01, disabled: !effect.enabled || effect.mod.source === 'none' });
@@ -1148,7 +1197,11 @@ export class VisualizerEditor {
         if (!this.dragging) return;
         const { point, rect, corner, starts } = this.dragging;
         const current = this.point(event), dx = current.x - point.x, dy = current.y - point.y;
-        if (dx === 0 && dy === 0) return;
+        if (!this.dragging.moved) {
+            // Ignore click jitter in viewport pixels, independent of artboard and body zoom.
+            const bounds = this.view.canvas.getBoundingClientRect();
+            if (Math.hypot(dx * bounds.width, dy * bounds.height) < DRAG_THRESHOLD) return;
+        }
         this.dragging.moved = true;
         if (this.dragging.duplicateOnMove) {
             const copies = this.insertCopies(this.dragging.items, false);
@@ -1344,6 +1397,7 @@ export class VisualizerEditor {
         if (event.code === 'Space' || event.key === ' ') {
             if (event.ctrlKey || event.metaKey || event.altKey) return;
             event.preventDefault();
+            event.stopPropagation();
             if (!this.dragging && !this.marqueeStart) this.setHandTool(true);
             return;
         }

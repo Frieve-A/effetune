@@ -1359,5 +1359,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "Увеличить",
   "visualizer.zoomLevel": "Масштаб",
-  "visualizer.zoomOut": "Уменьшить"
+  "visualizer.zoomOut": "Уменьшить",
+  "dialog.config.sfzSizeLimit": "Ограничение размера SFZ",
+  "dialog.config.sfzSizeLimitHelp": "Задаёт максимальный размер звуковой библиотеки SFZ, которую можно загрузить.",
+  "sfzNotePlayer.missingBank": "SFZ не найден",
+  "sfzNotePlayer.error.missing": "Выбранный SFZ не найден. Выберите его ещё раз или укажите другой SFZ.",
+  "sfzNotePlayer.error.tooLarge": "Этот SFZ превышает ограничение размера. Увеличьте «Ограничение размера SFZ» в разделе Настройка → Общие или выберите SFZ меньшего размера.",
+  "sfzNotePlayer.error.noRegions": "Сэмплы для воспроизведения не найдены. Выберите другой SFZ.",
+  "sfzNotePlayer.error.storage": "Не удалось получить доступ к библиотеке SFZ. Проверьте права доступа к файлам и свободное место в хранилище, затем повторите попытку.",
+  "sfzNotePlayer.error.prepare": "Не удалось загрузить SFZ. Убедитесь, что файлы сэмплов доступны, или выберите другой SFZ.",
+  "sfzNotePlayer.warning.loop-points-ignored": "Неиспользуемые настройки цикла были скорректированы, чтобы загрузить этот SFZ.",
+  "sfzNotePlayer.warning.invalid-regions": "Некоторые звуки пропущены из-за некорректных настроек.",
+  "sfzNotePlayer.warning.missing-samples": "Некоторые файлы сэмплов не найдены. Загружены только доступные звуки.",
+  "sfzNotePlayer.warning.unsupported-regions": "Некоторые звуки пропущены, поскольку их условия воспроизведения не поддерживаются этим эффектом.",
+  "sfzNotePlayer.warning.reduced-bank": "Чтобы уложиться в ограничение размера, загружен сокращённый набор звуков с сохранением всех нот. Для загрузки большего количества звуков увеличьте «Ограничение размера SFZ»."
 }

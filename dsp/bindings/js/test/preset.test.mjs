@@ -70,7 +70,7 @@ test('explicit legacy import converts long and short parameters and channels', (
 test('legacy Note Spectrogram discards display settings and preserves analysis settings', () => {
   const parameters = {
     cl: 'Rainbow', pr: 'High', ly: 'Vertical', vl: false, ts: 5,
-    mn: 36, mx: 84, nc: 4
+    mn: 36, mx: 84
   };
   for (const preset of [
     { pipeline: [{ name: 'Note Spectrogram', parameters }] },
@@ -79,7 +79,7 @@ test('legacy Note Spectrogram discards display settings and preserves analysis s
     const document = importLegacyPreset(preset);
     assert.equal(document.chain[0].type, 'NoteSpectrogram');
     assert.deepEqual(document.chain[0].parameters, {
-      minimumMidi: 36, maximumMidi: 84, regularCandidates: 4
+      minimumMidi: 36, maximumMidi: 84
     });
   }
   assert.equal(parameters.cl, 'Rainbow');

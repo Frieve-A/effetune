@@ -76,7 +76,8 @@ public:
       const double current_delay = delay_.value(frame);
       const double delayed_left = readDelay(delay_left_, delay_position_, current_delay);
       const double delayed_right = readDelay(delay_right_, delay_position_, current_delay);
-      delay_position_ = (delay_position_ + 1u) % size;
+      if (++delay_position_ == size)
+        delay_position_ = 0u;
 
       const double noise = denormal_noise_.sample(frame);
       low_pass_left_ =
@@ -133,7 +134,8 @@ private:
     const std::size_t size = buffer.size();
     const auto newer_delay = static_cast<std::size_t>(delay);
     const double fraction = delay - static_cast<double>(newer_delay);
-    const std::size_t newer = (write + size - newer_delay) % size;
+    const std::size_t newer =
+        write >= newer_delay ? write - newer_delay : write + size - newer_delay;
     const std::size_t older = newer == 0u ? size - 1u : newer - 1u;
     const double newer_sample = static_cast<double>(buffer[newer]);
     return newer_sample + (static_cast<double>(buffer[older]) - newer_sample) * fraction;

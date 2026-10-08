@@ -55,6 +55,7 @@ Antes de usar EffeTune, deberás configurar el enrutamiento de audio. Aquí se e
    - O selecciona **Abrir archivo de música...** desde el menú **Archivo** (solo aplicación de escritorio)
    - O arrastra el archivo de música a la ventana
 - Para usar solo el reproductor, selecciona Ninguno (solo reproductor de archivos de música) como dispositivo de entrada en Configuración de audio y evita usar una entrada de audio en vivo
+- Al pausar, el sonido se desvanece brevemente; al reanudar, vuelve de forma gradual para reducir los chasquidos.
 - Pulsa el botón de velocidad junto a Shuffle para abrir la ventana emergente. Elige uno de los nueve ajustes predefinidos o usa el control deslizante horizontal o el campo numérico para ajustar la velocidad de 0,25x a 4x en incrementos de 0,01x. El botón **Mantener el tono**, situado junto a él, está activado de forma predeterminada, por lo que el tono se mantiene igual al cambiar la velocidad; desactívalo para que el tono suba o baje junto con la velocidad, como al cambiar la velocidad de una cinta o un disco de vinilo.
 
 ### Configuración para Servicios de Streaming
@@ -441,6 +442,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Spatial   | Spatial Mapper | Separa sonido Direct, Diffuse y Residual para un enrutamiento multicanal flexible | [Detalles](plugins/spatial.md#spatial-mapper) |
 | Spatial   | Stereo Blend | Controla la anchura estéreo desde polaridad lateral invertida, pasando por mono, hasta estéreo ampliado | [Detalles](plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Generador de tonos de prueba y ruido para comprobar altavoces/auriculares | [Detalles](plugins/others.md#oscillator) |
+| Others    | SFZ Note Player | Reproduce un instrumento SFZ importado a partir de las notas detectadas | [Detalles](plugins/others.md#sfz-note-player) |
 | Control   | Section | Agrupa efectos para poder omitir o restaurar una sección completa | [Detalles](plugins/control.md) |
 
 ## Información Técnica

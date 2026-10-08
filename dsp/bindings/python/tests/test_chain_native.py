@@ -303,8 +303,11 @@ class NativeChainTests(unittest.TestCase):
                         self.assertGreater(frame.envelope_frame_count, 0)
                         self.assertGreater(frame.time_seconds, 0)
                         self.assertGreater(frame.latency_seconds, 0)
-                        self.assertFalse(frame.locked)
+                        self.assertTrue(frame.locked)
                         self.assertEqual(frame.period_seconds, 0)
+                        self.assertGreater(frame.preview_period_seconds, 0)
+                        self.assertGreater(len(frame.preview_beats), 0)
+                        self.assertLessEqual(len(frame.preview_beats), 12)
                         self.assertGreaterEqual(frame.comb_best_bpm, 40)
                         self.assertLessEqual(frame.comb_best_bpm, 240)
                         self.assertEqual(len(frame.tempogram), 192)
@@ -354,11 +357,21 @@ class NativeChainTests(unittest.TestCase):
                         self.assertGreater(max(frame.levels), 0)
                         self.assertEqual(len(frame.volume_db), 440)
                         self.assertTrue(np.isfinite(frame.volume_db).all())
-                        self.assertGreater(max(frame.volume_db), -240)
+                        self.assertTrue(any(
+                            confidence < 0.5 and volume > -240
+                            for confidence, volume in zip(frame.levels, frame.volume_db)
+                        ))
+                        # Cells outside the default MIDI 28-91 range stay at the floor.
+                        self.assertTrue(all(value == -240 for value in frame.volume_db[:35]))
+                        self.assertTrue(all(value == -240 for value in frame.volume_db[355:]))
                         self.assertEqual(frame.revision_age, 8)
                         self.assertEqual(len(frame.revised_levels), 440)
                         self.assertTrue(np.isfinite(frame.revised_levels).all())
                         self.assertTrue(all(0 <= value <= 1 for value in frame.revised_levels))
+                        self.assertEqual([revision.age for revision in frame.revisions], [2, 4, 8])
+                        self.assertTrue(all(len(revision.levels) == 440 and
+                            all(math.isfinite(value) and 0 <= value <= 1 for value in revision.levels)
+                            for revision in frame.revisions))
                     elif kind == "spectrogram":
                         self.assertEqual(frame.sample_rate, 48_000)
                         self.assertEqual(frame.points, 10)
@@ -524,6 +537,51 @@ class NativeChainTests(unittest.TestCase):
                     sample_rate, channels=2, block_size=64
                 ) as stream:
                     self.assertEqual(stream.latency_samples, expected)
+
+    def test_channel_selected_latency_aligns_output_and_stereo_inputs(self) -> None:
+        cases = (
+            [effetune.FrequencyShifter(channel="left", mix=0)],
+            [effetune.FrequencyShifter(channel="left", mix=0),
+             effetune.FrequencyShifter(channel="right", mix=0)],
+            [effetune.FrequencyShifter(channel="left", mix=0),
+             effetune.StereoBlend(stereo=0)],
+        )
+        impulse = np.zeros((2, 1024), dtype=np.float32)
+        impulse[:, 0] = 0.1
+        for effects in cases:
+            with self.subTest(effects=effects):
+                chain = effetune.Chain(effects)
+                self.assertEqual(chain.latency_samples(48_000, channels=2), 114)
+                with chain.stream(48_000, channels=2, block_size=64) as stream:
+                    self.assertEqual(stream.latency_samples, 114)
+                    output = stream.process(impulse)
+                    np.testing.assert_array_equal(np.argmax(np.abs(output), axis=1), [114, 114])
+                    np.testing.assert_allclose(output[:, 114], 0.1, atol=1e-6)
+
+    def test_channel_compensation_follows_staged_latency_changes_and_reset(self) -> None:
+        chain = effetune.Chain([
+            effetune.BrickwallLimiter(id="limiter", channel="left", lookahead=3)
+        ])
+        impulse = np.zeros((2, 1024), dtype=np.float32)
+        impulse[:, 0] = 0.1
+        with chain.stream(48_000, channels=2, block_size=64) as stream:
+            def assert_impulse(expected: int) -> None:
+                self.assertEqual(stream.latency_samples, expected)
+                output = stream.process(impulse)
+                np.testing.assert_array_equal(np.argmax(np.abs(output), axis=1), [expected, expected])
+                np.testing.assert_allclose(output[:, expected], 0.1, atol=1e-6)
+
+            assert_impulse(144)
+            stream.process(np.zeros((2, 64), dtype=np.float32), events=[{
+                "frame": 0, "effectId": "limiter", "parameters": {"lookahead": 6}
+            }])
+            assert_impulse(288)
+            stream.reset()
+            assert_impulse(144)
+            stream.process(np.zeros((2, 64), dtype=np.float32), events=[{
+                "frame": 0, "effectId": "limiter", "parameters": {"lookahead": 9}
+            }])
+            assert_impulse(432)
 
     def test_chain_latency_resolves_assets_for_convolution_effects(self) -> None:
         ir = effetune.AssetData(

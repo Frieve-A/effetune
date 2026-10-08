@@ -1,6 +1,7 @@
 #include "effetune/kernel.h"
 #include "StereoMeterPluginParams.h"
 #include "binary_io.h"
+#include "effetune/dsp/denormal_noise.h"
 
 #include <array>
 #include <cmath>
@@ -28,6 +29,8 @@ constexpr std::uint16_t kSampleFlagDiscontinuity = 1u;
 constexpr double kRadiansToDegrees = 57.2957795130823208768;
 constexpr double kLogTen = 2.30258509299404568402;
 constexpr double kEnergyEpsilon = 1.0e-12;
+constexpr float kDenormalNoiseLimit =
+    static_cast<float>(dsp::NyquistDenormalNoise::kMaximumOutputNoiseAmplitude);
 constexpr double kEnvelopeScaleRenormalizeThreshold = 1.0e-100;
 
 static_assert(kMaxPayloadBytes == 65464u);
@@ -120,10 +123,12 @@ public:
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       float left = audio[frame];
       float right = channel_count > 1u ? audio[frame_count + frame] : left;
-      if (!std::isfinite(left)) {
+      // Sanitize measurement samples without changing the pass-through audio.
+      if (!std::isfinite(left) || (left >= -kDenormalNoiseLimit && left <= kDenormalNoiseLimit)) {
         left = 0.0F;
       }
-      if (!std::isfinite(right)) {
+      if (!std::isfinite(right) ||
+          (right >= -kDenormalNoiseLimit && right <= kDenormalNoiseLimit)) {
         right = 0.0F;
       }
       writeIncrementalDelta(left, right);

@@ -8,6 +8,8 @@ import { validateItemShape } from '../../js/user-data-backup/portable.js';
 import { VisualizerEditor } from '../../js/visualizer/visualizer-editor.js';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
+import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { handleSpaceKeyDown } from '../../js/utils/space-key-guard.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function offFrameLayout() {
@@ -200,7 +202,7 @@ test('Space and middle-button drag pan over a selected item without moving it or
             const { editor, view, layout, saved, captures } = setupViewport(1.5);
             editor.selection = new Set(['main-spectrum']);
             const before = structuredClone(layout);
-            if (mode === 'space') editor.onStageKeyDown({ key: ' ', code: 'Space', target: view.stage, preventDefault() {} });
+            if (mode === 'space') editor.onStageKeyDown({ key: ' ', code: 'Space', target: view.stage, preventDefault() {}, stopPropagation() {} });
             const start = pointer(editor, 0.5, 0.5, { button: mode === 'middle' ? 1 : 0 });
             editor.startDrag(start);
             assert.ok(editor.panning);
@@ -223,11 +225,46 @@ test('Space and middle-button drag pan over a selected item without moving it or
     });
 });
 
+test('Space hand-pan consumes the player shortcut, including repeats, while ordinary Space plays', async () => {
+    let documentKeyDown;
+    await withGlobals({ document: { body: body(1), addEventListener(type, handler) {
+        if (type === 'keydown') documentKeyDown = handler;
+    } } }, () => {
+        const { editor, view } = setupViewport();
+        view.stage.matches = () => false;
+        let toggles = 0;
+        const player = Object.assign(Object.create(PlaybackManager.prototype), {
+            audioPlayer: {}, runPlaybackCommand: operation => operation(),
+            togglePlayPause: () => toggles++
+        });
+        player.initKeyboardShortcuts();
+        const press = (target, repeat = false) => {
+            const event = { key: ' ', code: 'Space', target, repeat, defaultPrevented: false,
+                preventDefault() { this.defaultPrevented = true; },
+                stopPropagation() { this.cancelBubble = true; } };
+            handleSpaceKeyDown(event);
+            editor.onStageKeyDown(event);
+            if (!event.cancelBubble) documentKeyDown(event);
+            return event;
+        };
+        for (const repeat of [false, true]) {
+            assert.equal(press(view.stage, repeat).defaultPrevented, true);
+            assert.equal(editor.handTool, true);
+            assert.equal(toggles, 0);
+        }
+        assert.equal(press({ matches: () => false }).defaultPrevented, true);
+        assert.equal(toggles, 1);
+        editor.open = false;
+        press(view.stage);
+        assert.equal(toggles, 2);
+    });
+});
+
 test('Edit navigation keys work without a selection and preserve shortcuts in text controls', async () => {
     await withGlobals({ document: { body: body(1) } }, () => {
         const { editor, view, saved } = setupViewport();
         const press = (key, target = view.stage, extra = {}) => {
-            const event = { key, target, preventDefault() { this.prevented = true; }, ...extra };
+            const event = { key, target, preventDefault() { this.prevented = true; }, stopPropagation() {}, ...extra };
             editor.onStageKeyDown(event);
             return event.prevented === true;
         };
@@ -247,6 +284,74 @@ test('Edit navigation keys work without a selection and preserve shortcuts in te
         assert.equal(press('+'), false);
         assert.equal(view.history.entries.length, 1);
         assert.deepEqual(saved, []);
+    });
+});
+
+test('Selection clicks tolerate pointer jitter without editing the layout or history', async () => {
+    await withGlobals({ document: { body: body(1.5) } }, () => {
+        for (const zoom of [0.5, 2]) for (const gridDivisions of [40, 0]) {
+            for (const gesture of ['select', 'group', 'alt', 'resize']) {
+                const { editor, view, layout, saved } = setupViewport(1.5);
+                editor.zoomAt(zoom);
+                editor.gridDivisions = gridDivisions;
+                layout.items = [
+                    { ...createItem('shape', 'first'), rect: { x: 0.103, y: 0.207, w: 0.397, h: 0.293 } },
+                    { ...createItem('shape', 'second'), rect: { x: 0.65, y: 0.207, w: 0.2, h: 0.2 } }
+                ];
+                view.recordHistory();
+                const before = structuredClone(layout), history = structuredClone(view.history.entries);
+                editor.selection = new Set(gesture === 'group' ? ['first', 'second'] :
+                    gesture === 'resize' ? ['first'] : ['second']);
+                const start = gesture === 'resize' ? pointer(editor, 0.5, 0.5, {
+                    target: { dataset: { corner: 'se' }, closest: () => null }
+                }) : pointer(editor, 0.15, 0.25, { altKey: gesture === 'alt' });
+                editor.startDrag(start);
+                for (const [dx, dy] of [[0, 0], [1, 1], [-2, 1], [0, 0]]) {
+                    editor.drag({ ...start, clientX: start.clientX + dx, clientY: start.clientY + dy });
+                    assert.deepEqual(layout, before, `${gesture} at zoom ${zoom}, grid ${gridDivisions}`);
+                }
+                editor.endDrag(start);
+                assert.deepEqual([...editor.selection], ['first']);
+                assert.deepEqual(saved, []);
+                assert.deepEqual(view.history.entries, history);
+                assert.equal(view.historyPending, false);
+            }
+        }
+    });
+});
+
+test('Group drags start after a viewport pixel threshold and keep moving near the starting point', async () => {
+    await withGlobals({ document: { body: body(1.5) } }, () => {
+        for (const zoom of [0.5, 2]) for (const gridDivisions of [40, 0]) {
+            const { editor, view, layout, saved } = setupViewport(1.5);
+            editor.zoomAt(zoom);
+            editor.gridDivisions = gridDivisions;
+            layout.items = [
+                { ...createItem('shape', 'first'), rect: { x: 0.103, y: 0.207, w: 0.397, h: 0.293 } },
+                { ...createItem('shape', 'second'), rect: { x: 0.65, y: 0.207, w: 0.2, h: 0.2 } }
+            ];
+            editor.selection = new Set(['first', 'second']);
+            view.recordHistory();
+            const historyLength = view.history.entries.length, before = structuredClone(layout);
+            const start = pointer(editor, 0.15, 0.25), bounds = view.canvas.getBoundingClientRect();
+            const snap = value => gridDivisions ? Math.round(value * gridDivisions) / gridDivisions : value;
+            editor.startDrag(start);
+            for (const [dx, dy] of [[2, 1], [80, 40], [1, 1], [0, 0]]) {
+                editor.drag({ ...start, clientX: start.clientX + dx, clientY: start.clientY + dy });
+                if (dx === 2) assert.deepEqual(layout, before);
+                else for (const [index, item] of layout.items.entries()) {
+                    near(item.rect.x, snap(0.103 + dx / bounds.width) + before.items[index].rect.x - 0.103, 'Group X');
+                    near(item.rect.y, snap(0.207 + dy / bounds.height), 'Group Y');
+                }
+                assert.equal(view.history.entries.length, historyLength);
+            }
+            // Finish away from the initial layout so the completed gesture records one edit.
+            editor.drag({ ...start, clientX: start.clientX + 80, clientY: start.clientY + 40 });
+            editor.endDrag(start);
+            assert.deepEqual([...editor.selection], ['first', 'second']);
+            assert.equal(view.history.entries.length, historyLength + 1);
+            assert.deepEqual(saved.at(-1), snapshotLayout(layout));
+        }
     });
 });
 

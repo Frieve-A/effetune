@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { MIC_DENIED_PREFIX } from '../../js/audio/audio-io-manager.js';
 import { PipelineWorkletSync } from '../../js/ui/pipeline/pipeline-worklet-sync.js';
+import { PluginManager } from '../../js/plugin-manager.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 test('frequency preview holds one force-active lease through stop ramps and rapid restarts', async () => {
@@ -756,6 +759,76 @@ test('manages pipeline selection, copying, state, and history integration', asyn
     assert.equal(manager.pipeline, manager.pipelineA);
     manager.setPipelineState({ pipelineB: [createPlugin('BetaPlugin', { id: 'state-b', calls })], currentPipeline: 'B' });
     assert.equal(manager.currentPipeline, 'B');
+  });
+});
+
+test('repeated A/B copies release replaced plugins and retain only owned expanded references', async () => {
+  const listeners = new Set();
+  const observers = new Set();
+  const disposed = [];
+  const windowRef = { workletNode: { port: {
+    addEventListener(_type, callback) { listeners.add(callback); },
+    removeEventListener(_type, callback) { listeners.delete(callback); },
+    postMessage() {}
+  } } };
+  const source = fs.readFileSync(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8');
+  const PluginBase = vm.runInNewContext(`${source}\nPluginBase`, {
+    window: windowRef,
+    document: {},
+    console,
+    setTimeout,
+    clearTimeout,
+    MutationObserver: class {
+      observe() { observers.add(this); }
+      disconnect() { observers.delete(this); }
+    }
+  });
+  class CopyTestPlugin extends PluginBase {
+    constructor() { super('Copy Test', 'Pipeline copy resource test'); }
+    getParameters() { return {}; }
+    updateParameters() {}
+    cleanup() {
+      disposed.push(this);
+      super.cleanup();
+    }
+  }
+
+  await withGlobals({ window: windowRef }, async () => {
+    const pluginManager = new PluginManager();
+    pluginManager.pluginClasses['Copy Test'] = CopyTestPlugin;
+    const first = pluginManager.createPlugin('Copy Test');
+    const expandedPlugins = new Set([first]);
+    const manager = Object.assign(Object.create(AudioManager.prototype), {
+      pipelineA: [first],
+      pipelineB: null,
+      pipelineManager: { pluginManager, expandedPlugins },
+      setCurrentPipeline(slot) {
+        this.currentPipeline = slot;
+        this.pipeline = this.getCurrentPipeline();
+      }
+    });
+    manager.copyAToB();
+    assert.deepEqual(disposed, []);
+
+    for (let repeat = 0; repeat < 3; repeat++) {
+      for (const [copy, sourceSlot, targetSlot] of [
+        ['copyAToB', 'pipelineA', 'pipelineB'],
+        ['copyBToA', 'pipelineB', 'pipelineA']
+      ]) {
+        const sourcePlugin = manager[sourceSlot][0];
+        const previousTarget = manager[targetSlot][0];
+        const disposedCount = disposed.length;
+        manager[copy]();
+        assert.equal(manager[sourceSlot][0], sourcePlugin);
+        assert.equal(disposed.length, disposedCount + 1);
+        assert.equal(disposed.at(-1), previousTarget);
+        assert.equal(disposed.includes(sourcePlugin), false);
+        assert.equal(listeners.size, 2);
+        assert.equal(observers.size, 2);
+        assert.deepEqual(expandedPlugins, new Set([...manager.pipelineA, ...manager.pipelineB]));
+      }
+    }
+    for (const plugin of [...manager.pipelineA, ...manager.pipelineB]) plugin.cleanup();
   });
 });
 

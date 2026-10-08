@@ -25,6 +25,7 @@ import {
   normalizeOfflineOutputSettings
 } from '../audio/offline-output-settings.js';
 import { isVisualSyncEnabled } from '../audio/visual-sync.js';
+import { SFZ_SIZE_LIMIT_MIB_OPTIONS, normalizeSfzSizeLimitMiB } from '../sfz/limits.js';
 import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
 
 import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-registry.mjs';
@@ -55,6 +56,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   config.frequencyPreviewSound = config.frequencyPreviewSound === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
+  config.sfzMaxSizeMiB = normalizeSfzSizeLimitMiB(config.sfzMaxSizeMiB);
   config.spectrumOverlayQuality = config.spectrumOverlayQuality === 'hq' ? 'hq' : 'normal';
   config.spectrumOverlayPeakHold = config.spectrumOverlayPeakHold === true;
   let powerSavingSettings = normalizePowerSettings(config.powerSaving);
@@ -215,6 +217,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
             <label class="section-label" for="frequency-preview-sound" id="frequency-preview-sound-label"></label>
             <select id="frequency-preview-sound" class="config-select"></select>
           </div>
+          <div class="device-section">
+            <label class="section-label" for="sfz-size-limit" id="sfz-size-limit-label"></label>
+            <select id="sfz-size-limit" class="config-select" aria-describedby="sfz-size-limit-help"></select>
+            <div class="power-mode-help" id="sfz-size-limit-help"></div>
+          </div>
           ${electronGeneralSections}`,
     startup: `
           ${electronStartupSections}
@@ -352,7 +359,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       flex: 0 0 auto;
       padding: 8px 12px;
       border: none;
-      border-radius: 4px;
+      border-radius: 0;
       background: transparent;
       color: var(--et-surface-89);
       font: inherit;
@@ -682,6 +689,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       value => t(`dialog.config.frequencyPreview.${value}`));
   }
 
+  function renderSfzSizeLimitOptions() {
+    replaceOptions(document.getElementById('sfz-size-limit'), SFZ_SIZE_LIMIT_MIB_OPTIONS,
+      normalizeSfzSizeLimitMiB(config.sfzMaxSizeMiB), value => `${value} MiB`);
+  }
+
   function renderPresetOptions() {
     replaceOptions(document.getElementById('preset-select'), presetNames, config.startupPreset || '');
   }
@@ -1000,6 +1012,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-theme-label').textContent = t('dialog.config.theme');
     document.getElementById('frequency-preview-sound-label').textContent = t('dialog.config.frequencyPreview.sound');
     renderFrequencyPreviewOptions();
+    document.getElementById('sfz-size-limit-label').textContent = t('dialog.config.sfzSizeLimit');
+    document.getElementById('sfz-size-limit-help').textContent = t('dialog.config.sfzSizeLimitHelp');
+    renderSfzSizeLimitOptions();
     document.getElementById('visual-sync-label').textContent = t('dialog.config.visualSync.label');
     document.getElementById('visual-sync-help').textContent = t('dialog.config.visualSync.help');
     renderThemeOptions();
@@ -1115,6 +1130,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderOfflineOutputControls();
     renderSpectrumOverlayOptions();
     renderFrequencyPreviewOptions();
+    renderSfzSizeLimitOptions();
   }
 
   let configSaveSequence = 0;
@@ -1266,6 +1282,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
   document.getElementById('frequency-preview-sound').addEventListener('change', async e => {
     const frequencyPreviewSound = e.target.value === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
     await save({ frequencyPreviewSound });
+  });
+  document.getElementById('sfz-size-limit').addEventListener('change', async e => {
+    await save({ sfzMaxSizeMiB: normalizeSfzSizeLimitMiB(Number(e.target.value)) });
   });
   document.getElementById('spectrum-overlay-quality')?.addEventListener('change', async e => {
     const quality = e.target.value === 'hq' ? 'hq' : 'normal';

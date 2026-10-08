@@ -54,20 +54,22 @@ class DialogController {
         }
         
         confirmationDialog.style.display = 'none';
-        
-        if (confirmed && this.uiManager.pendingAction) {
+
+        const { pendingAction, pendingDeleteId, pendingDeleteType } = this.uiManager;
+        this.uiManager.pendingAction = null;
+        this.uiManager.pendingDeleteId = null;
+        this.uiManager.pendingDeleteType = null;
+
+        if (confirmed && pendingAction) {
             // Execute the pending action
-            this.uiManager.pendingAction();
-            this.uiManager.pendingAction = null;
-        } else if (confirmed && this.uiManager.pendingDeleteId !== null) {
+            pendingAction();
+        } else if (confirmed && pendingDeleteId !== null) {
             // Handle deletion
-            if (this.uiManager.pendingDeleteType === 'measurement') {
-                this.uiManager.measurementDisplay.deleteMeasurement(this.uiManager.pendingDeleteId);
-            } else if (this.uiManager.pendingDeleteType === 'point') {
-                this.uiManager.measurementDisplay.deletePoint(this.uiManager.pendingDeleteId);
+            if (pendingDeleteType === 'measurement') {
+                this.uiManager.measurementDisplay.deleteMeasurement(pendingDeleteId);
+            } else if (pendingDeleteType === 'point') {
+                this.uiManager.measurementDisplay.deletePoint(pendingDeleteId);
             }
-            this.uiManager.pendingDeleteId = null;
-            this.uiManager.pendingDeleteType = null;
         }
     }
 
@@ -106,4 +108,4 @@ class DialogController {
     }
 }
 
-export default DialogController; 
+export default DialogController;

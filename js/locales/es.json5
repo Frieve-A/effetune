@@ -1360,5 +1360,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "Acercar",
   "visualizer.zoomLevel": "Zoom",
-  "visualizer.zoomOut": "Alejar"
+  "visualizer.zoomOut": "Alejar",
+  "dialog.config.sfzSizeLimit": "Límite de tamaño de SFZ",
+  "dialog.config.sfzSizeLimitHelp": "Establece el tamaño máximo de una biblioteca de sonidos SFZ que se puede cargar.",
+  "sfzNotePlayer.missingBank": "SFZ no encontrado",
+  "sfzNotePlayer.error.missing": "No se encuentra el SFZ seleccionado. Vuelve a seleccionarlo o elige otro SFZ.",
+  "sfzNotePlayer.error.tooLarge": "Este SFZ supera el límite de tamaño. Aumente «Límite de tamaño de SFZ» en Configuración → General o elija un SFZ más pequeño.",
+  "sfzNotePlayer.error.noRegions": "No se encontraron muestras reproducibles. Elige otro SFZ.",
+  "sfzNotePlayer.error.storage": "No se pudo acceder a la biblioteca SFZ. Comprueba los permisos de los archivos y el espacio de almacenamiento disponible, y vuelve a intentarlo.",
+  "sfzNotePlayer.error.prepare": "No se pudo cargar el SFZ. Comprueba que sus archivos de muestras estén disponibles o elige otro SFZ.",
+  "sfzNotePlayer.warning.loop-points-ignored": "Se ajustaron los parámetros de bucle que no se utilizan para poder cargar este SFZ.",
+  "sfzNotePlayer.warning.invalid-regions": "Se omitieron algunos sonidos porque su configuración no era válida.",
+  "sfzNotePlayer.warning.missing-samples": "No se encontraron algunos archivos de muestras. Solo se cargaron los sonidos disponibles.",
+  "sfzNotePlayer.warning.unsupported-regions": "Se omitieron algunos sonidos porque sus condiciones de reproducción no son compatibles con este efecto.",
+  "sfzNotePlayer.warning.reduced-bank": "Se cargó una selección reducida de sonidos para respetar el límite de tamaño, conservando todas las notas. Aumente «Límite de tamaño de SFZ» para usar más sonidos."
 }

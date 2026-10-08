@@ -308,7 +308,6 @@ public:
                         std::uint32_t format_tag) noexcept override {
     if (slot != kAssetSlot || asset_state_ != ET_ASSET_STATE_STAGED ||
         bytes != begin_info_.byteSize || format_tag != kAssetFormat || !validatePayload()) {
-      convolver_.clear();
       setAssetError(1u);
       return ET_ERR_ARGS;
     }
@@ -318,7 +317,6 @@ public:
       std::array<dsp::ConvolutionPath, kMaximumPaths> paths{};
       if (!decodeMatrixPaths(paths) ||
           !convolver_.updatePathsWithoutAllocation(paths.data(), begin_info_.pathCount)) {
-        convolver_.clear();
         setAssetError(1u);
         return ET_ERR_ARGS;
       }
@@ -326,7 +324,6 @@ public:
     const float *samples =
         staging_payload_.data() + (kAssetHeaderBytes + pathTableBytes) / sizeof(float);
     if (!convolver_.commit(samples, begin_info_.channels, begin_info_.frames)) {
-      convolver_.clear();
       setAssetError(3u);
       return ET_ERR_STATE;
     }

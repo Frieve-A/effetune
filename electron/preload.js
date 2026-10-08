@@ -52,6 +52,7 @@ const libraryCatalogV1 = Object.freeze({
 
 const IR_LIBRARY_BRIDGE_LIMITS = Object.freeze({
   original: 64 * 1024 * 1024,
+  sfzBank: 1024 * 1024 * 1024,
   index: 32 * 1024 * 1024,
   analysis: 4 * 1024 * 1024,
   cacheEntry: 64 * 1024 * 1024,
@@ -59,6 +60,14 @@ const IR_LIBRARY_BRIDGE_LIMITS = Object.freeze({
 });
 const IR_LIBRARY_ANALYSIS_NAME = /^[a-f0-9]{24}(?:\.analysis|\.a[0-9]{9})$/;
 const IR_LIBRARY_INDEX_TOO_LARGE_CODE = 'ir-library-index-too-large';
+
+function requireIrLibraryRequest(request = {}) {
+  const namespace = request.namespace ?? 'ir-library';
+  if (namespace !== 'ir-library' && namespace !== 'sfz-library') {
+    throw new TypeError('Invalid audio library namespace.');
+  }
+  return request;
+}
 
 function normalizeIrLibraryReadResponse(request, response) {
   if (response?.ok !== false) return response;
@@ -82,6 +91,8 @@ function requireBoundedIrLibraryWrite(request, cache = false) {
       : IR_LIBRARY_BRIDGE_LIMITS.cacheEntry;
   } else if (request?.name === 'index.json') {
     maxBytes = IR_LIBRARY_BRIDGE_LIMITS.index;
+  } else if (request?.namespace === 'sfz-library' && /^[a-f0-9]{24}\.sfzbank$/.test(request?.name)) {
+    maxBytes = IR_LIBRARY_BRIDGE_LIMITS.sfzBank;
   } else {
     maxBytes = IR_LIBRARY_ANALYSIS_NAME.test(request?.name)
       ? IR_LIBRARY_BRIDGE_LIMITS.analysis
@@ -96,23 +107,25 @@ function requireBoundedIrLibraryWrite(request, cache = false) {
 
 const irLibraryV1 = Object.freeze({
   apiVersion: 1,
-  read: request => ipcRenderer.invoke('ir-library-v1:read', request)
+  read: request => ipcRenderer.invoke('ir-library-v1:read', requireIrLibraryRequest(request))
     .then(response => normalizeIrLibraryReadResponse(request, response)),
-  exists: request => ipcRenderer.invoke('ir-library-v1:exists', request),
+  exists: request => ipcRenderer.invoke('ir-library-v1:exists', requireIrLibraryRequest(request)),
   writeAtomic: request => {
+    requireIrLibraryRequest(request);
     requireBoundedIrLibraryWrite(request);
     return ipcRenderer.invoke('ir-library-v1:write-atomic', request);
   },
-  remove: request => ipcRenderer.invoke('ir-library-v1:remove', request),
-  list: request => ipcRenderer.invoke('ir-library-v1:list', request),
-  cleanupTemporary: request => ipcRenderer.invoke('ir-library-v1:cleanup-temporary', request),
-  readCache: request => ipcRenderer.invoke('ir-library-v1:cache-read', request),
+  remove: request => ipcRenderer.invoke('ir-library-v1:remove', requireIrLibraryRequest(request)),
+  list: request => ipcRenderer.invoke('ir-library-v1:list', requireIrLibraryRequest(request)),
+  cleanupTemporary: request => ipcRenderer.invoke('ir-library-v1:cleanup-temporary', requireIrLibraryRequest(request)),
+  readCache: request => ipcRenderer.invoke('ir-library-v1:cache-read', requireIrLibraryRequest(request)),
   writeCacheAtomic: request => {
+    requireIrLibraryRequest(request);
     requireBoundedIrLibraryWrite(request, true);
     return ipcRenderer.invoke('ir-library-v1:cache-write-atomic', request);
   },
-  removeCache: request => ipcRenderer.invoke('ir-library-v1:cache-remove', request),
-  listCache: request => ipcRenderer.invoke('ir-library-v1:cache-list', request)
+  removeCache: request => ipcRenderer.invoke('ir-library-v1:cache-remove', requireIrLibraryRequest(request)),
+  listCache: request => ipcRenderer.invoke('ir-library-v1:cache-list', requireIrLibraryRequest(request))
 });
 
 const measurementBackupV1 = Object.freeze({
@@ -120,6 +133,15 @@ const measurementBackupV1 = Object.freeze({
   write: request => ipcRenderer.invoke('measurement-backup-v1:write', request),
   remove: request => ipcRenderer.invoke('measurement-backup-v1:remove', request),
   list: request => ipcRenderer.invoke('measurement-backup-v1:list', request)
+});
+
+const sfzLibraryV1 = Object.freeze({
+  apiVersion: 1,
+  select: () => ipcRenderer.invoke('sfz-library-v1:select'),
+  list: () => ipcRenderer.invoke('sfz-library-v1:list'),
+  remove: request => ipcRenderer.invoke('sfz-library-v1:remove', request),
+  readRelative: request => ipcRenderer.invoke('sfz-library-v1:read-relative', request),
+  statRelative: request => ipcRenderer.invoke('sfz-library-v1:stat-relative', request)
 });
 
 const libraryServiceV1 = Object.freeze({
@@ -287,6 +309,7 @@ contextBridge.exposeInMainWorld(
 
     // Versioned IR storage exposes generated logical names only; native paths stay in the main process.
     irLibraryV1,
+    sfzLibraryV1,
 
     // Measurement JSON backups are mirrored into application data by the main process.
     measurementBackupV1,

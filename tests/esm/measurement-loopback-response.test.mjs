@@ -285,6 +285,40 @@ test('frequency response normalization intersects audible and measured bands', (
     assert.equal(normalized.find(([frequency]) => frequency === 5000)[1], -24);
 });
 
+test('limited sweep response retains the high-frequency endpoint of a low-pass impulse', t => {
+    const previousState = {
+        initialized: audioUtils.initialized,
+        lastTspSignal: audioUtils.lastTspSignal,
+        lastInverseFilter: audioUtils.lastInverseFilter,
+        lastSweepFrequencyResponse: audioUtils.lastSweepFrequencyResponse,
+        lastDeconvolutionRefScale: audioUtils.lastDeconvolutionRefScale,
+        sweepMinFreq: audioUtils.sweepMinFreq,
+        sweepMaxFreq: audioUtils.sweepMaxFreq
+    };
+    t.after(() => Object.assign(audioUtils, previousState));
+    audioUtils.initialized = true;
+
+    const sampleRate = 48000;
+    const sweepLength = 4096;
+    audioUtils.generateTSP(sweepLength, sampleRate, 'left', 20, 10000, true);
+    const impulse = Float32Array.from({ length: sweepLength }, (_, index) => 0.1 * 0.9 ** index);
+    const smoothed = audioUtils.smoothFrequencyResponse(
+        audioUtils.calculateFFT(impulse, sampleRate, true), 0.005);
+    const response = audioUtils.calculateFrequencyResponseWithSmoothing(
+        impulse, sampleRate, true, 0.005);
+
+    // The FFT grid ends just below 10 kHz, while the displayed grid ends at 10 kHz.
+    assert.ok(smoothed.at(-1)[0] < response.at(-1)[0]);
+    assert.equal(response.at(-1)[0], 10000);
+    assert.ok(Math.abs(response.at(-1)[1] - smoothed.at(-1)[1]) < 0.000001);
+
+    const frequencies = [20000, 20, 1000];
+    assert.deepEqual(audioUtils.findNearestFrequencies(10, frequencies), [20]);
+    assert.deepEqual(audioUtils.findNearestFrequencies(500, frequencies), [20, 1000]);
+    assert.deepEqual(audioUtils.findNearestFrequencies(1000, frequencies), [1000]);
+    assert.deepEqual(audioUtils.findNearestFrequencies(22000, frequencies), [20000]);
+});
+
 test('repeated TSP deconvolution is flat for an ideal delayed loopback', t => {
     const previousState = {
         initialized: audioUtils.initialized,

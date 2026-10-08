@@ -1359,5 +1359,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "放大",
   "visualizer.zoomLevel": "缩放比例",
-  "visualizer.zoomOut": "缩小"
+  "visualizer.zoomOut": "缩小",
+  "dialog.config.sfzSizeLimit": "SFZ 容量上限",
+  "dialog.config.sfzSizeLimitHelp": "设置可加载的 SFZ 音色库的最大容量。",
+  "sfzNotePlayer.missingBank": "找不到 SFZ",
+  "sfzNotePlayer.error.missing": "找不到所选 SFZ。请重新选择，或选择其他 SFZ。",
+  "sfzNotePlayer.error.tooLarge": "此 SFZ 超出容量上限。请在设置 → 常规中提高 SFZ 容量上限，或选择较小的 SFZ。",
+  "sfzNotePlayer.error.noRegions": "未找到可播放的采样。请选择其他 SFZ。",
+  "sfzNotePlayer.error.storage": "无法访问 SFZ 库。请检查文件访问权限和可用存储空间，然后重试。",
+  "sfzNotePlayer.error.prepare": "无法加载 SFZ。请确认其采样文件可用，或选择其他 SFZ。",
+  "sfzNotePlayer.warning.loop-points-ignored": "已调整未使用的循环设置，以便加载此 SFZ。",
+  "sfzNotePlayer.warning.invalid-regions": "部分声音的设置无效，已跳过这些声音。",
+  "sfzNotePlayer.warning.missing-samples": "找不到部分采样文件，仅加载了可用的声音。",
+  "sfzNotePlayer.warning.unsupported-regions": "部分声音的触发条件不受此效果器支持，已跳过这些声音。",
+  "sfzNotePlayer.warning.reduced-bank": "为满足容量限制，已在保留所有音符的前提下精简加载的声音。若要使用更多声音，请提高“SFZ 容量上限”。"
 }

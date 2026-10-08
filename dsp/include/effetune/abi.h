@@ -123,6 +123,9 @@ ET_EXPORT et_instance et_instance_create(et_engine engine, const char *type_name
 ET_EXPORT void et_instance_destroy(et_engine engine, et_instance instance);
 ET_EXPORT et_status et_instance_reset(et_engine engine, et_instance instance);
 ET_EXPORT uint32_t et_instance_latency(et_engine engine, et_instance instance);
+/* App-internal note-analysis reuse; producer 0 clears the link. */
+ET_EXPORT et_status et_instance_set_analysis_source(et_engine engine, et_instance consumer,
+                                                    et_instance producer);
 ET_EXPORT et_status et_instance_set_tap(et_engine engine, et_instance instance, uint32_t tap_id);
 ET_EXPORT et_status et_instance_set_seed(et_engine engine, et_instance instance, uint32_t seed_low,
                                          uint32_t seed_high);
@@ -165,6 +168,14 @@ ET_EXPORT uint32_t et_telemetry_read(et_engine engine, uint8_t *output, uint32_t
 
 ET_EXPORT et_status et_pipeline_configure(et_engine engine, const uint8_t *descriptor,
                                           uint32_t descriptor_bytes);
+/* Control-side refresh; may allocate and free compensation storage. */
+ET_EXPORT et_status et_pipeline_refresh_latency(et_engine engine);
+/* Reserve storage off the audio thread after configuration and before processing. */
+ET_EXPORT et_status et_pipeline_reserve_latency(et_engine engine);
+/* Parameter-only refresh without allocation/free; returns ET_ERR_STATE if unreserved
+ * or a
+ * latency/storage bound is exceeded. Never falls back to allocation. */
+ET_EXPORT et_status et_pipeline_refresh_latency_realtime(et_engine engine);
 ET_EXPORT uint32_t et_pipeline_latency(et_engine engine);
 ET_EXPORT et_status et_pipeline_process(et_engine engine, uint32_t channel_count,
                                         uint32_t frame_count, double time_seconds,

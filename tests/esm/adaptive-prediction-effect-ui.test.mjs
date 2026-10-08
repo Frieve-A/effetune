@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
+import { bindNumberInput } from '../../js/ui/range-fill.js';
 
 const [baseSource, effectSource] = await Promise.all([
     fs.readFile(new URL('../../plugins/plugin-base.js', import.meta.url), 'utf8'),
@@ -38,6 +39,7 @@ class Element {
 function effect() {
     const window = {};
     const context = vm.createContext({
+        bindEffeTuneNumberInput: bindNumberInput,
         window,
         document: { createElement: tag => new Element(tag) },
         MutationObserver: class { observe() {} disconnect() {} },

@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "type": "CassetteArtifactsPlugin",
+  "id": "processing-mode-transitions",
+  "stimulus": "noise",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frameCount": 6144,
+  "blockSize": 127,
+  "channelMode": "stereo",
+  "channel": null,
+  "caseIndex": 17,
+  "seed": "0xeffe7a4f",
+  "params": {
+    "dg": "Consumer",
+    "tp": "Type I",
+    "nr": "Dolby B",
+    "bs": 0,
+    "rl": 9,
+    "wf": 0.25,
+    "hs": -60.5,
+    "dp": 2,
+    "az": 2,
+    "dl": 0,
+    "og": 0,
+    "mx": 100,
+    "md": "All"
+  },
+  "events": [
+    {
+      "frame": 1025,
+      "params": {
+        "md": "Encode Only"
+      }
+    },
+    {
+      "frame": 2049,
+      "params": {
+        "md": "Encode + Artifacts"
+      }
+    },
+    {
+      "frame": 3073,
+      "params": {
+        "md": "Artifacts + Decode"
+      }
+    },
+    {
+      "frame": 4097,
+      "params": {
+        "md": "Decode Only"
+      }
+    },
+    {
+      "frame": 5121,
+      "params": {
+        "md": "All"
+      }
+    }
+  ],
+  "tolerance": {
+    "abs": 0.00001,
+    "policy": "per-sample"
+  },
+  "jsEngineHash": "c21246b2cfb936c268a20902c4826fd75b87833927fb62a042c5a710129871e9",
+  "outputFloats": 12288,
+  "byteLength": 49152,
+  "binary": "case-018.f32"
+}

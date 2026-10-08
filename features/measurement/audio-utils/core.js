@@ -277,7 +277,7 @@ class AudioUtils {
         const sortedFreqs = [...freqArray].sort((a, b) => a - b);
         
         // Find the smallest and largest values
-        let lowerIndex = -1;
+        let lowerIndex = sortedFreqs.length - 1;
         for (let i = 0; i < sortedFreqs.length; i++) {
             if (sortedFreqs[i] > freq) {
                 lowerIndex = i - 1;

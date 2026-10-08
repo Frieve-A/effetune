@@ -13,53 +13,74 @@ const PALETTES = {
 
 // Page-side helpers: a frame-28 builder and a groove fed through locked and searching states.
 const PAGE_HELPERS = `
-window.buildRhythmFrame = ({ generation = 1, frameCount, locked = true, lockEpoch = 1, nextBeatIndex = 0, events = [] }) => {
-    const payload = new DataView(new ArrayBuffer(1344));
+window.rhythmNow = 1000;
+Object.defineProperty(performance, 'now', { configurable: true, value: () => window.rhythmNow });
+window.buildRhythmFrame = ({ generation = 1, frameCount, gateOpen = true, analysisEpoch = 1,
+    anchorFrame = frameCount, anchorIndex = 0, confidence = 0.3, period = 0.5, strongestBpm = 120, events = [], automaticAnchor = true,
+    preview = null }) => {
+    const payload = new DataView(new ArrayBuffer(preview === null ? 1344 : 1496));
     payload.setFloat32(0, 48000, true);
     payload.setUint32(4, generation, true);
     payload.setUint32(8, 480, true);
     payload.setUint32(12, frameCount, true);
     payload.setFloat32(16, frameCount * 0.01, true);
-    payload.setUint32(28, events.length, true);
-    payload.setUint32(32, locked ? 1 : 0, true);
-    payload.setUint32(36, lockEpoch, true);
-    payload.setFloat32(40, locked ? 0.3 : 0.05, true);
-    payload.setFloat32(44, locked ? 0.5 : 0, true);
-    payload.setUint32(48, frameCount, true);
-    payload.setUint32(56, nextBeatIndex, true);
-    payload.setFloat32(60, 120, true);
+    const slots = [...events];
+    if (automaticAnchor && period > 0) slots.push({ committedBeat: true, band: 0,
+        frame: anchorFrame, x: anchorIndex, strength: confidence, period });
+    payload.setUint32(28, slots.length, true);
+    payload.setUint32(32, gateOpen ? 1 : 0, true);
+    payload.setUint32(36, analysisEpoch, true);
+    payload.setFloat32(40, confidence, true);
+    payload.setFloat32(44, period, true);
+    payload.setUint32(48, anchorFrame, true);
+    payload.setUint32(56, anchorIndex, true);
+    payload.setFloat32(60, strongestBpm, true);
     for (let bin = 0; bin < 192; bin++) {
         const distance = (bin - 96) / 6;
         payload.setFloat32(64 + 4 * bin, Math.exp(-distance * distance), true);
     }
-    events.forEach((event, slot) => {
+    slots.forEach((event, slot) => {
         const base = 832 + 32 * slot;
         const beat = Math.floor(event.x);
         payload.setUint32(base, Math.floor(event.frame), true);
         payload.setFloat32(base + 4, event.frame % 1, true);
-        payload.setUint32(base + 8, lockEpoch, true);
+        payload.setUint32(base + 8, event.epoch ?? analysisEpoch, true);
         payload.setInt32(base + 12, beat, true);
         payload.setFloat32(base + 16, event.x - beat, true);
-        payload.setFloat32(base + 20, 0.5, true);
-        payload.setFloat32(base + 24, 0.8, true);
+        payload.setFloat32(base + 20, event.period ?? 0.5, true);
+        payload.setFloat32(base + 24, event.strength ?? 0.8, true);
         payload.setUint8(base + 28, event.band);
+        payload.setUint8(base + 29, event.committedBeat ? 5 : event.hidden ? 4 : event.shown ? 2 : event.provisional ? 3 : 0);
     });
-    return { frameType: 28, formatVersion: 1, payload };
+    if (preview !== null) {
+        payload.setUint32(1344, preview.length, true);
+        payload.setFloat32(1348, period, true);
+        preview.forEach((beat, i) => {
+            const base = 1352 + i * 12;
+            payload.setInt32(base, Math.floor(beat.frame), true);
+            payload.setFloat32(base + 4, beat.frame - Math.floor(beat.frame), true);
+            payload.setInt32(base + 8, beat.index, true);
+        });
+    }
+    return { frameType: 28, formatVersion: preview === null ? 3 : 4, payload };
 };
 window.feedRhythm = (handle, generation = 1) => {
     // One frame per beat at 120 BPM (50 frames of 10 ms), carrying the onsets of the beat that just ended.
     let frameCount = 1;
     let beat = 0;
-    const send = options => handle(window.buildRhythmFrame({ generation, frameCount: (frameCount += 50), ...options }));
+    const send = options => {
+        window.rhythmNow += 500;
+        handle(window.buildRhythmFrame({ generation, frameCount: (frameCount += 50), ...options }));
+    };
     const bar = [[0, 0], [1, 1.02], [0, 2], [1, 3.02], ...Array.from({ length: 8 }, (_, i) => [2, i / 2 + 0.01])];
-    for (const [lockEpoch, bars] of [[1, 6], [2, 10]]) {
+    for (const [analysisEpoch, bars] of [[1, 6], [2, 10]]) {
         for (let index = 0; index < 4 * bars; index++, beat++) {
             const events = bar.filter(([, offset]) => Math.floor(offset) === index % 4)
                 .map(([band, offset]) => ({ band, x: beat + offset - (index % 4), frame: frameCount + 50 * (offset % 1) }));
-            send({ lockEpoch, nextBeatIndex: beat + 1, events });
+            send({ analysisEpoch, anchorIndex: beat + 1, events });
         }
-        if (lockEpoch === 1) {
-            for (let index = 0; index < 4; index++) send({ locked: false, lockEpoch });
+        if (analysisEpoch === 1) {
+            for (let index = 0; index < 4; index++) send({ gateOpen: false, analysisEpoch });
         }
     }
 };
@@ -92,12 +113,132 @@ async function openPage(browser, width, theme) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await page.setContent('<!doctype html><body style="margin:0;padding:8px"></body>');
     await page.addScriptTag({ content: `window.ThemePalette = { get: role => (${JSON.stringify(PALETTES[theme])})[role] };` });
+    await page.addScriptTag({ content: read('../../js/ui/range-fill.js').replace(/^export /gm, '') });
     await page.addScriptTag({ content: read('../../plugins/plugin-base.js') });
     await page.addScriptTag({ content: read('../../plugins/graph-readout.js') });
     await page.addScriptTag({ content: read('../../plugins/analyzer/rhythm_analyzer.js') });
     await page.addScriptTag({ content: PAGE_HELPERS });
     return page;
 }
+
+test('visible Rhythm lanes keep their real animation callback while audio power UI sleeps and release it when hidden', { timeout: 60000 }, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await openPage(browser, 900, 'dark');
+        const result = await page.evaluate(() => {
+            const callbacks = new Map();
+            let id = 0;
+            window.requestAnimationFrame = callback => { callbacks.set(++id, callback); return id; };
+            window.cancelAnimationFrame = key => callbacks.delete(key);
+            Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+            const plugin = new window.RhythmAnalyzerPlugin();
+            plugin.canvas = document.createElement('canvas');
+            plugin.canvas.width = 900;
+            plugin.canvas.height = 650;
+            plugin.canvasCtx = plugin.canvas.getContext('2d');
+            plugin.graphCssWidth = 900;
+            plugin.setParameters({ ve: true });
+            plugin.isVisible = true;
+            plugin.setPowerUiEnabled(false);
+            const initialEmpty = callbacks.size;
+            window.feedRhythm(frame => plugin.handleTelemetry(frame));
+            plugin.setPowerUiEnabled(true);
+            plugin.setPowerUiEnabled(false);
+            const sleepCallback = callbacks.size;
+            const tick = milliseconds => {
+                window.rhythmNow += milliseconds;
+                const entry = callbacks.entries().next().value;
+                if (!entry) throw new Error('the visible idle graph lost its scheduled callback');
+                callbacks.delete(entry[0]);
+                entry[1](window.rhythmNow);
+                return plugin._readoutFrame.displayU;
+            };
+            const first = tick(100);
+            const second = tick(100);
+            const running = callbacks.size;
+            const sleepFlag = plugin._powerUiEnabled;
+            Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+            document.dispatchEvent(new Event('visibilitychange'));
+            const hidden = callbacks.size;
+            Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+            document.dispatchEvent(new Event('visibilitychange'));
+            const foreground = callbacks.size;
+            plugin.handleIntersect([{ isIntersecting: false }]);
+            const offscreen = callbacks.size;
+            plugin.handleIntersect([{ isIntersecting: true }]);
+            plugin.setEnabled(false);
+            const disabled = callbacks.size;
+            plugin.setEnabled(true);
+            plugin._setSectionEnabled(false);
+            const sectionDisabled = callbacks.size;
+            plugin._setSectionEnabled(true);
+            plugin.setParameters({ vm: false, ve: false });
+            const noLanes = callbacks.size;
+            plugin.setParameters({ ve: true });
+            const restarted = callbacks.size;
+            plugin.cleanup();
+            const cleaned = callbacks.size;
+            document.dispatchEvent(new Event('visibilitychange'));
+            const afterCleanup = callbacks.size;
+            return { initialEmpty, sleepCallback, first, second, running, sleepFlag, hidden, foreground, offscreen,
+                disabled, sectionDisabled, noLanes, restarted, cleaned, afterCleanup };
+        });
+        assert.equal(result.initialEmpty, 0);
+        assert.equal(result.sleepCallback, 1, 'the real power transition retains the visible callback');
+        assert.ok(result.second > result.first);
+        assert.equal(result.running, 1);
+        assert.equal(result.sleepFlag, false, 'scrolling never changes the audio power UI state');
+        assert.equal(result.foreground, 1);
+        assert.equal(result.restarted, 1);
+        for (const key of ['hidden', 'offscreen', 'disabled', 'sectionDisabled', 'noLanes', 'cleaned', 'afterCleanup']) {
+            assert.equal(result[key], 0, key);
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('live best-path corrections move the existing canvas point on successive frames before confirmation', { timeout: 60000 }, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await openPage(browser, 1024, 'dark');
+        const result = await page.evaluate(async () => {
+            const plugin = new window.RhythmAnalyzerPlugin();
+            plugin.id = 1;
+            document.body.appendChild(plugin.createUI());
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const receive = middle => plugin.handleTelemetry(window.buildRhythmFrame({ frameCount: 150,
+                anchorFrame: 50, anchorIndex: 0,
+                events: middle === 100 ? [{ frame: 100, x: 1, band: 1, provisional: true }] : [],
+                preview: [{ frame: 50, index: 0 }, { frame: middle, index: 1 }, { frame: middle + 50, index: 2 }] }));
+            const point = () => {
+                plugin.drawGraph();
+                const view = plugin._readoutFrame.views[0];
+                return plugin._eventPoint(0, view);
+            };
+            receive(100);
+            const before = point();
+            receive(120);
+            const arrival = point();
+            window.rhythmNow += 17;
+            const next = point();
+            window.rhythmNow += 17;
+            const later = point();
+            const result = { before, arrival, next, later, serial: plugin.eventSerial, time: plugin.eventTime[0],
+                confirmed: plugin.eventTimed[0], target: plugin.eventU[0] };
+            plugin.cleanup();
+            return result;
+        });
+        for (const key of ['x', 'y', 'radius']) assert.ok(Math.abs(result.before[key] - result.arrival[key]) < 1e-9);
+        assert.notEqual(result.next.y, result.arrival.y);
+        assert.notEqual(result.later.y, result.next.y);
+        assert.equal(result.serial, 1);
+        assert.equal(result.time, 1);
+        assert.equal(result.confirmed, 0);
+        assert.ok(Math.abs(result.target - 5 / 7) < 1e-7);
+        await page.close();
+    } finally { await browser.close(); }
+});
 
 test('Rhythm Analyzer effect graph lays out its header at desktop and mobile widths in both themes', { timeout: 60000 }, async () => {
     const browser = await chromium.launch({ headless: true });
@@ -229,14 +370,14 @@ test('Visualizer BPM fits inside the beat circle across sizes and preserves manu
                 };
                 const display = RhythmCircleTest.createAnalyzerDisplay(item, canvas,
                     { subscribeItem(_id, callback) { receive = callback; return () => {}; } });
-                for (const locked of [true, false]) {
-                    receive(window.buildRhythmFrame({ frameCount: locked ? 100 : 110, locked }), {});
+                for (const gateOpen of [true, false]) {
+                    receive(window.buildRhythmFrame({ frameCount: gateOpen ? 100 : 110, gateOpen }), {});
                     display.draw(item, 1, width / scale, undefined, scale);
                     const offsetX = textBox.x - circle.x;
                     const xs = [offsetX - textBox.left - textBox.outline, offsetX + textBox.right + textBox.outline];
                     const ys = [-textBox.top - textBox.outline, textBox.bottom + textBox.outline];
                     const extent = Math.max(...xs.flatMap(x => ys.map(y => Math.hypot(x, y))));
-                    results.push({ width, height, locked, fits: extent <= circle.radius - item.style.beatLineWidth * scale / 2,
+                    results.push({ width, height, gateOpen, fits: extent <= circle.radius - item.style.beatLineWidth * scale / 2,
                         // Canvas serializes the computed letter spacing with limited precision.
                         centered: Math.abs(textBox.x - textBox.spacing / 2 - circle.x) < 1e-4 && Math.abs(textBox.y - circle.y) < 1e-6 });
                 }
@@ -392,6 +533,55 @@ test('Rhythm Analyzer draws through the Visualizer adapter path with split signa
         assert.deepEqual(result.solidRaster, [208, 208, 208, 255]);
         assert.ok(result.markerInRange && result.marker120);
         await page.close();
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test('shown beat events keep their timing and identity across a closed gate in the browser', { timeout: 60000 }, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await openPage(browser, 900, 'dark');
+        const result = await page.evaluate(() => {
+            let now = 1000;
+            Object.defineProperty(performance, 'now', { value: () => now });
+            const plugin = new window.RhythmAnalyzerPlugin();
+            plugin._sectionEnabled = true;
+            const shown = { shown: true, band: 0, x: 8, frame: 60, strength: 0.7, epoch: 3 };
+            const send = options => plugin.handleTelemetry(window.buildRhythmFrame(options));
+            send({ frameCount: 55, events: [shown] });
+            const future = plugin.ledLevel;
+            send({ frameCount: 57, gateOpen: false, analysisEpoch: 2, events: [shown] });
+            now = 1030;
+            const context = document.createElement('canvas').getContext('2d');
+            const draw = () => plugin.drawGroove(context, { width: 900, height: 600,
+                palette: { label: '#fff', strongGrid: '#aaa', subtleGrid: '#555' },
+                showText: false, showAxes: true, text: context,
+                drawSignal: (target, paint) => paint(target), markerColor: () => '#fff' });
+            draw();
+            const flashed = plugin.ledLevel;
+            now = 1075;
+            draw();
+            const fading = plugin.ledLevel;
+            send({ frameCount: 70, gateOpen: false, events: [shown] });
+            const repeated = plugin.ledLevel;
+            send({ frameCount: 80, gateOpen: false, events: [{ ...shown, x: 9, frame: 10 }] });
+            const late = plugin.ledLevel;
+            send({ frameCount: 81, gateOpen: false, events: [{ ...shown, x: 10, frame: 81, strength: 0 }] });
+            const zero = plugin.ledLevel;
+            return { future, flashed, fading, repeated, late, zero, lanes: plugin.eventSerial,
+                identity: plugin.shownBeatIndices.get(3), period: plugin.snapshot.periodSeconds };
+        });
+        assert.equal(result.future, 0);
+        assert.ok(Math.abs(result.flashed - 0.7) < 1e-6);
+        assert.ok(Math.abs(result.fading - 0.35) < 1e-6);
+        assert.equal(result.repeated, 0);
+        assert.ok(Math.abs(result.late - 0.7) < 1e-6);
+        assert.equal(result.zero, 0);
+        assert.equal(result.lanes, 0);
+        assert.equal(result.identity, 10);
+        assert.equal(result.period, 0.5);
     } finally {
         await browser.close();
     }

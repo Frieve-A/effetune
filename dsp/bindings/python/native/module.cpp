@@ -36,7 +36,7 @@ using MatrixUint32 =
 constexpr std::uint32_t kAssetHeaderBytes = 32u;
 constexpr std::uint32_t kAssetMagic = 0x31415445u;
 constexpr std::uint32_t kPathRecordBytes = 12u;
-constexpr std::uint32_t kTelemetryRingBytes = 256u * 1024u;
+constexpr std::uint32_t kTelemetryRingBytes = 512u * 1024u;
 constexpr float kTelemetryRateHz = 60.0F;
 constexpr std::size_t kAssetCapacity = 32u * 1024u * 1024u;
 constexpr std::size_t kConvolverImplUpperBound = 16u * 1024u;
@@ -399,6 +399,9 @@ public:
                 engine_->setInstanceParams(nodes_[node_index].handle, parameters.data(),
                                            static_cast<std::uint32_t>(parameters.shape(0)),
                                            layout_hash, 0u));
+    if (!graph_mode_) {
+      checkStatus("DSP latency configuration", engine_->refreshPipelineLatency());
+    }
   }
 
   et_status setGraphInstanceParameters(std::uint32_t node_index, PackedFloat32 parameters,
@@ -428,6 +431,8 @@ public:
       nodes_[node_index].parameter_bytes.assign(parameters.data(),
                                                 parameters.data() + parameters.shape(0));
       nodes_[node_index].layout_hash = layout_hash;
+    } else if (!graph_mode_) {
+      checkStatus("DSP latency configuration", engine_->refreshPipelineLatency());
     }
   }
 
@@ -493,11 +498,7 @@ public:
     if (!finished_) {
       throw std::runtime_error("native chain is not ready");
     }
-    std::uint64_t latency = 0u;
-    for (const Node &node : nodes_) {
-      latency += engine_->instanceLatency(node.handle);
-    }
-    return latency;
+    return engine_->pipelineLatency();
   }
 
   std::uint32_t graphLatencySamples() const {

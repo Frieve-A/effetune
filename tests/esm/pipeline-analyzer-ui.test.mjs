@@ -7,10 +7,10 @@ import { MAX_OUTPUT_SLOTS, PipelineAnalyzerUI } from '../../js/pipeline-analyzer
 
 // This DOM stress suite can consume substantial memory, so the repository runner
 // starts it in a dedicated process with EFFETUNE_RUN_PIPELINE_ANALYZER_UI_TEST=1.
-// Direct execution without that opt-in keeps every test skipped.
-const uiTest = process.env.EFFETUNE_RUN_PIPELINE_ANALYZER_UI_TEST === '1'
-  ? test
-  : test.skip;
+// Direct execution requires the same explicit opt-in.
+assert.equal(process.env.EFFETUNE_RUN_PIPELINE_ANALYZER_UI_TEST, '1',
+  'Run this suite in its dedicated process with EFFETUNE_RUN_PIPELINE_ANALYZER_UI_TEST=1.');
+const uiTest = test;
 
 uiTest('places one accessible Analyzer button directly after Share with dedicated spacing', () => {
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');

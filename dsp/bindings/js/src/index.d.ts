@@ -532,6 +532,8 @@ export type NoteSpectrogramTelemetryFrame = TelemetryFrameBase & {
   readonly generation: number;
   readonly levels: Float32Array;
   readonly volumeDb: Float32Array;
+  /** Updates for the observations 2, 4 and 8 analysis hops earlier, in that order. */
+  readonly revisions: ReadonlyArray<{ readonly age: 2 | 4 | 8; readonly levels: Float32Array }>;
 } & (
   | { readonly revisionAge: 0; readonly revisedLevels: null }
   | { readonly revisionAge: 8; readonly revisedLevels: Float32Array }
@@ -583,6 +585,9 @@ export interface AnalogMeterTelemetryFrame extends TelemetryFrameBase {
 }
 
 export interface RhythmAnalyzerTelemetryEvent {
+  /** 0 committed onset, 1 unlocated onset, 2 shown forward beat, 3 provisional onset,
+   * 4 hidden forward beat, 5 committed beat. Absent in legacy version 1 packets. */
+  readonly flags?: number;
   /** Onset time as envelope frame integer part plus `fraction`, bias-corrected. */
   readonly frame: number;
   readonly fraction: number;
@@ -613,7 +618,7 @@ export interface RhythmAnalyzerTelemetryFrame extends TelemetryFrameBase {
   readonly locked: boolean;
   readonly lockEpoch: number;
   readonly confidence: number;
-  /** Beat period; 0 while unlocked. */
+  /** Beat period for the stored grid; 0 when unavailable. */
   readonly periodSeconds: number;
   readonly nextBeatFrame: number;
   readonly nextBeatFraction: number;
@@ -622,6 +627,10 @@ export interface RhythmAnalyzerTelemetryFrame extends TelemetryFrameBase {
   /** 192 normalized bins, 48 per octave from 30 to 480 BPM. */
   readonly tempogram: Float32Array;
   readonly events: readonly RhythmAnalyzerTelemetryEvent[];
+  /** Current best beat period for mutable display coordinates; 0 when unavailable. */
+  readonly previewPeriodSeconds: number;
+  /** Current path replaces the previous preview; these beats remain revisable. */
+  readonly previewBeats: readonly { readonly frame: number; readonly fraction: number; readonly beatIndex: number }[];
 }
 
 export interface SpectrogramTelemetryFrame extends TelemetryFrameBase {

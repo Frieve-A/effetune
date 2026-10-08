@@ -1359,5 +1359,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "تكبير",
   "visualizer.zoomLevel": "نسبة التكبير",
-  "visualizer.zoomOut": "تصغير"
+  "visualizer.zoomOut": "تصغير",
+  "dialog.config.sfzSizeLimit": "الحد الأقصى لحجم SFZ",
+  "dialog.config.sfzSizeLimitHelp": "يحدد الحد الأقصى لحجم مكتبة أصوات SFZ التي يمكن تحميلها.",
+  "sfzNotePlayer.missingBank": "لم يُعثر على SFZ",
+  "sfzNotePlayer.error.missing": "تعذر العثور على SFZ المحدد. حدده مرة أخرى أو اختر SFZ آخر.",
+  "sfzNotePlayer.error.tooLarge": "يتجاوز هذا SFZ الحد الأقصى للحجم. ارفع «الحد الأقصى لحجم SFZ» في «إعدادات → عام»، أو اختر SFZ أصغر.",
+  "sfzNotePlayer.error.noRegions": "لم يُعثر على عينات قابلة للعزف. اختر SFZ آخر.",
+  "sfzNotePlayer.error.storage": "تعذر الوصول إلى مكتبة SFZ. تحقق من أذونات الملفات ومساحة التخزين المتاحة، ثم حاول مرة أخرى.",
+  "sfzNotePlayer.error.prepare": "تعذر تحميل SFZ. تأكد من توفر ملفات العينات، أو اختر SFZ آخر.",
+  "sfzNotePlayer.warning.loop-points-ignored": "تم تعديل إعدادات التكرار غير المستخدمة حتى يمكن تحميل SFZ.",
+  "sfzNotePlayer.warning.invalid-regions": "تم تجاوز بعض الأصوات لأن إعداداتها غير صالحة.",
+  "sfzNotePlayer.warning.missing-samples": "تعذر العثور على بعض ملفات العينات، لذا تم تحميل الأصوات المتاحة فقط.",
+  "sfzNotePlayer.warning.unsupported-regions": "تم تجاوز بعض الأصوات لأنها تستخدم شروط تشغيل لا يدعمها هذا المؤثر.",
+  "sfzNotePlayer.warning.reduced-bank": "تم تحميل مجموعة أصغر من الأصوات لتناسب الحد الأقصى للحجم، مع الاحتفاظ بجميع النغمات. لاستخدام مزيد من الأصوات، ارفع «الحد الأقصى لحجم SFZ»."
 }

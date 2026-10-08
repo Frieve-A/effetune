@@ -1359,5 +1359,18 @@
   "visualizer.value.time": "Time",
   "visualizer.zoomIn": "Zoom avant",
   "visualizer.zoomLevel": "Zoom",
-  "visualizer.zoomOut": "Zoom arrière"
+  "visualizer.zoomOut": "Zoom arrière",
+  "dialog.config.sfzSizeLimit": "Limite de taille SFZ",
+  "dialog.config.sfzSizeLimitHelp": "Définit la taille maximale d’une bibliothèque de sons SFZ pouvant être chargée.",
+  "sfzNotePlayer.missingBank": "SFZ introuvable",
+  "sfzNotePlayer.error.missing": "Le SFZ sélectionné est introuvable. Sélectionnez-le à nouveau ou choisissez un autre SFZ.",
+  "sfzNotePlayer.error.tooLarge": "Ce SFZ dépasse la limite de taille. Augmentez « Limite de taille SFZ » dans Configuration → Général ou choisissez un SFZ plus petit.",
+  "sfzNotePlayer.error.noRegions": "Aucun échantillon jouable n’a été trouvé. Choisissez un autre SFZ.",
+  "sfzNotePlayer.error.storage": "Impossible d’accéder à la bibliothèque SFZ. Vérifiez les autorisations des fichiers et l’espace de stockage disponible, puis réessayez.",
+  "sfzNotePlayer.error.prepare": "Le SFZ n’a pas pu être chargé. Vérifiez que ses fichiers d’échantillons sont disponibles ou choisissez un autre SFZ.",
+  "sfzNotePlayer.warning.loop-points-ignored": "Les réglages de boucle inutilisés ont été ajustés pour permettre le chargement de ce SFZ.",
+  "sfzNotePlayer.warning.invalid-regions": "Certains sons ont été ignorés, car leurs réglages étaient incorrects.",
+  "sfzNotePlayer.warning.missing-samples": "Certains fichiers d’échantillons sont introuvables. Seuls les sons disponibles ont été chargés.",
+  "sfzNotePlayer.warning.unsupported-regions": "Certains sons ont été ignorés, car leurs conditions de lecture ne sont pas prises en charge par cet effet.",
+  "sfzNotePlayer.warning.reduced-bank": "Une sélection réduite de sons a été chargée pour respecter la limite de taille, en conservant toutes les notes. Augmentez « Limite de taille SFZ » pour utiliser davantage de sons."
 }

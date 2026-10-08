@@ -163,6 +163,8 @@ Um efeito que recria o som de dispositivos digitais vintage como consoles de jog
 
 Cassette Artifacts combina a resposta de frequência de uma cassete, compressão da fita, chiado, wow e flutter, quedas de sinal e alterações no alinhamento da cabeça. Use-o para obter o caráter completo de um deck cassete, e não apenas uma camada de ruído sobre uma música inalterada.
 
+Mode também permite usar apenas a codificação ou a decodificação Dolby, ou escolher quais etapas combinar.
+
 ### Diferenças em relação a outros efeitos lo-fi
 
 - **Tape Artifacts** oferece o som mais limpo e de banda mais larga de um gravador de rolo, com velocidade selecionável. Cassette Artifacts é mais escuro e oferece Deck Grade, Tape Type, redução de ruído, quedas de sinal e alinhamento da cabeça, próprios de cassetes.
@@ -178,6 +180,8 @@ Cassette Artifacts combina a resposta de frequência de uma cassete, compressão
 - **Noise Reduction** reduz o chiado. Dolby C atua mais que Dolby B, enquanto Off mantém o fundo cru da cassete.
 - Aumente **Wow/Flutter**, **Hiss** ou **Dropouts** para um som mais gasto. **Azimuth** suaviza os agudos e altera sua posição temporal entre os canais.
 
+Para ouvir apenas a decodificação Dolby, escolha **Mode: Decode Only**. Para reproduzir uma gravação Dolby B com Dolby C, coloque duas instâncias de Cassette Artifacts nesta ordem: **Encode + Artifacts / Noise Reduction: Dolby B**, seguida de **Decode Only / Noise Reduction: Dolby C**. Use o mesmo **Record Level** nas duas, com **Output: 0 dB** e **Mix: 100%**, para manter a referência de nível entre as etapas.
+
 ### Predefinições do sistema
 
 Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
@@ -192,22 +196,25 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
 
 A velocidade da cassete compacta é fixa, por isso não há controle Speed.
 
+- **Mode** (padrão: All) - Seleciona as etapas nesta ordem: codificação Dolby → gravação e reprodução em cassete → decodificação Dolby. **Encode Only** e **Decode Only** executam apenas a etapa Dolby correspondente. **Encode + Artifacts** omite a decodificação; **Artifacts + Decode** omite a codificação; **All** executa todas. Os controles das etapas omitidas ficam desativados.
 - **Deck Grade** (Reference, Hi-Fi, Consumer ou Portable) - Seleciona o caráter do deck. Reference é o mais amplo e estável; Portable, o mais escuro e instável. Comece com Consumer para um som familiar de deck doméstico.
 - **Tape Type** (Type I, Type II ou Type IV) - Altera o ruído e a margem antes da saturação. Type I é a mais ruidosa, Type II é equilibrada e Type IV mantém os picos agudos mais limpos.
-- **Noise Reduction** (Off, Dolby B ou Dolby C) - Reduz o chiado. Dolby B é moderado, Dolby C é mais forte e Off mantém o fundo cru da cassete. Use Dolby Level Error para obter o som mais brilhante ou mais escuro de decks incompatíveis.
+- **Noise Reduction** (Off, Dolby B ou Dolby C) - Escolhe o sistema Dolby das etapas de codificação e decodificação ativas. A codificação realça os sons mais baixos, sobretudo os agudos; a decodificação os atenua. Dolby C atua mais que Dolby B. Off desativa as duas etapas Dolby e mantém os efeitos de cassete selecionados.
 - **Bias** (-6.0 a +6.0 dB) - Altera os agudos e a distorção. Comece em 0 dB. Pequenos valores positivos soam mais limpos e escuros; pequenos valores negativos, mais brilhantes e ásperos. Valores negativos extremos acrescentam distorção sem continuar clareando o som.
-- **Record Level** (-12.0 a +18.0 dB) - Controla a intensidade com que a fita é gravada. Comece em +9 dB. Aumente-o para obter compressão e saturação mais densas; diminua-o para preservar a dinâmica. Depois, iguale o volume com Output.
+- **Record Level** (-12.0 a +18.0 dB) - Ajusta a intensidade da gravação na fita e o nível do sinal em relação à referência Dolby. Comece em +9 dB. Com os efeitos de cassete ativos, aumente-o para mais compressão e saturação ou diminua-o para preservar a dinâmica. Nos modos apenas Dolby, ele muda a intensidade do processamento que depende do nível. Use o mesmo valor ao separar codificação e decodificação em duas instâncias.
 - **Wow/Flutter** (0 a 1%) - Controla a instabilidade de afinação. 0% é estável, o padrão de 0.200% cria um movimento audível de cassete em notas sustentadas e valores maiores produzem a oscilação de um deck gasto.
 - **Hiss** (-92.0 a -42.0 dB re 250 nWb/m) - Controla o chiado da fita e o ruído de modulação relacionado ao sinal. Aumente-o para uma fita mais ruidosa ou use o mínimo para desligar a camada de ruído. A linha de estado mostra o nível de fundo resultante com os ajustes atuais.
 - **Dropouts** (0 a 20 eventos/min) - Define a frequência de breves quedas de sinal. 0 as desativa, 2 eventos/min acrescenta desgaste ocasional e valores maiores soam cada vez mais danificados.
 - **Azimuth** (-6.0 a +6.0 arcmin) - Simula o desalinhamento da cabeça. Afaste-o de 0 para suavizar os agudos e alterar o tempo entre os canais; o sinal escolhe qual canal se adianta.
-- **Dolby Level Error** (-3.0 a +3.0 dB) - Simula uma incompatibilidade entre os decks de gravação e reprodução quando Noise Reduction está ligado. Valores positivos soam mais brilhantes e com mais chiado; valores negativos, mais escuros. Comece em 0 dB.
+- **Dolby Level Error** (-3.0 a +3.0 dB) - Simula uma diferença de calibração entre os decks de gravação e reprodução quando a decodificação está ativa e Noise Reduction está ligado. Valores positivos soam mais brilhantes e com mais chiado; negativos, mais escuros. Comece em 0 dB.
 - **Output** (-24.0 a +24.0 dB) - Ajusta o nível depois de toda a cadeia. Use-o para igualar o volume ao comparar com o bypass ou para recuperar o volume perdido com Record Level alto.
-- **Mix** (0 a 100%) - Mistura o som de cassete com o original. Comece em 100% para avaliar o efeito completo; diminua-o para um resultado mais sutil. Valores intermediários podem suavizar os agudos mais altos porque os dois caminhos se cancelam parcialmente nessa região.
+- **Mix** (0 a 100%) - Mistura o som processado com o original. Comece em 100% para avaliar o efeito completo; diminua-o para um resultado mais sutil. Com os efeitos de cassete ativos, valores intermediários podem suavizar os agudos mais altos por cancelamento parcial entre os dois caminhos.
 
 ### Leitura da linha de estado
 
 A linha abaixo dos controles mostra o wow/flutter efetivo e o nível de ruído de fundo com os ajustes atuais. Use-a para comparar alterações em Tape Type, Noise Reduction, Record Level e Hiss. `off` significa que a camada de ruído da fita está desligada.
+
+Essas leituras se aplicam aos modos com efeitos de cassete. Em Encode + Artifacts, o ruído indicado não passa pela decodificação Dolby. Os modos apenas Dolby mostram Mode, Noise Reduction e Record Level.
 
 ### Ajustes recomendados
 
