@@ -90,10 +90,9 @@ def _unix_exports(extension: Path, system: str) -> set[str]:
 
 
 def _allowed_windows_export(name: str) -> bool:
-    return name == "PyInit__native" or (
-        "@nanobind@@" in name
-        and ("python_error@nanobind@@" in name or "builtin_exception@nanobind@@" in name)
-    )
+    return name == "PyInit__native" or re.search(
+        r"(?:python_error|builtin_exception)@(?:abi1@)?nanobind@@", name
+    ) is not None
 
 
 def audit(extension: Path) -> set[str]:
