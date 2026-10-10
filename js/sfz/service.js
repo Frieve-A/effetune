@@ -2,8 +2,10 @@ import { openIrLibraryBackend } from '../ir-library/ir-library-factory.js';
 import { parseIrAudioHeader } from '../ir-library/audio-header-metadata.js';
 import { decodeSfzBank, encodeSfzBank, identifySfzBank, readSfzAudioHeader, estimateSfzBankBytes } from './bank.js';
 import { packSfzAsset, SFZ_REGION_FIELDS } from './asset.js';
-import { getSfzMaxBytes, requireSfzMaxBytes } from './limits.js';
+import { getSfzMaxBytes, requireSfzMaxBytes, SFZ_MAX_SUPPORTED_BYTES } from './limits.js';
 import { normalizeSfzPath, parseSfz, sfzError } from './parser.js';
+import { decodeSfzText, readSfzBankDefines } from './source.js';
+import { isSfzGenerator, sfzGeneratorMetadata, createSfzGeneratorSample } from './generators.js';
 
 const pathsByFile = new WeakMap();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -13,7 +15,6 @@ let defaultServicePromise;
 
 function fileMap(files) {
   const entries = Array.from(files || []);
-  if (entries.length > 10000) throw sfzError('prepare', 'The SFZ folder contains too many files.');
   const rootNames = entries.filter(file => !pathsByFile.has(file)).map(file => file.webkitRelativePath?.split('/')[0]);
   const stripRoot = rootNames.length > 0 && rootNames.every(name => name && name === rootNames[0]);
   const result = new Map();
@@ -24,6 +25,9 @@ function fileMap(files) {
     if (!path || result.has(path)) throw sfzError('prepare', 'The SFZ folder contains duplicate file paths.');
     result.set(path, file);
   }
+  if ([...result.keys()].filter(path => /\.sfz$/i.test(path)).length > 10000) {
+    throw sfzError('prepare', 'The SFZ folder contains too many instruments.');
+  }
   return result;
 }
 
@@ -33,6 +37,7 @@ export function listSfzFolderFiles(files) {
 
 export async function enumerateSfzDirectory(directoryHandle, { isCurrent } = {}) {
   const files = [];
+  let instruments = 0;
   async function visit(directory, depth, prefix) {
     if (isCurrent?.() === false) throw sfzError('cancelled', 'SFZ import was cancelled.');
     if (depth > 32) throw sfzError('prepare', 'The SFZ folder is nested too deeply.');
@@ -41,10 +46,12 @@ export async function enumerateSfzDirectory(directoryHandle, { isCurrent } = {})
       const path = normalizeSfzPath(name, prefix);
       if (handle.kind === 'directory') await visit(handle, depth + 1, path);
       else if (handle.kind === 'file') {
-        if (files.length >= 10000) throw sfzError('prepare', 'The SFZ folder contains too many files.');
-        const file = await handle.getFile();
-        pathsByFile.set(file, path);
-        files.push(file);
+        if (/\.sfz$/i.test(path) && ++instruments > 10000) {
+          throw sfzError('prepare', 'The SFZ folder contains too many instruments.');
+        }
+        // Retrieve File objects only for definitions and samples used by the selected instrument.
+        pathsByFile.set(handle, path);
+        files.push(handle);
       }
     }
   }
@@ -53,11 +60,13 @@ export async function enumerateSfzDirectory(directoryHandle, { isCurrent } = {})
 }
 
 async function parseBankFiles(selectedPath, files, onDiagnostic, maxBytes) {
-  return parseSfz({ selectedPath, maxBytes,
-    readText: async path => {
-      const bytes = files.get(path);
-      return bytes ? decoder.decode(bytes) : null;
-    },
+  const readText = async path => {
+    const bytes = files.get(path);
+    return bytes ? decodeSfzText(bytes) : null;
+  };
+  const { defines } = await readSfzBankDefines(selectedPath,
+    [...files.keys()].filter(path => /\.bank\.xml$/i.test(path)), readText);
+  return parseSfz({ selectedPath, maxBytes, defines, readText,
     hasSample: path => files.has(path), onDiagnostic });
 }
 
@@ -80,10 +89,19 @@ export function mergeSfzWarnings(...groups) {
 }
 
 export async function prepareSfzSamples(parsed, readSample, decode, maxBytes, onDiagnostic) {
-  if (typeof decode !== 'function') throw sfzError('prepare', 'SFZ audio decoding is unavailable.');
+  if (typeof decode !== 'function' && parsed.regions.some(region => !isSfzGenerator(region.sample))) {
+    throw sfzError('prepare', 'SFZ audio decoding is unavailable.');
+  }
   const samples = new Map();
   let decodedBytes = 0;
   for (const path of [...new Set(parsed.regions.map(region => region.sample))].sort()) {
+    if (isSfzGenerator(path)) {
+      const pcm = createSfzGeneratorSample(path);
+      decodedBytes += pcm.channels[0].byteLength;
+      if (decodedBytes > maxBytes) throw sfzError('too-large', 'The SFZ samples are too large to load.');
+      samples.set(path, pcm);
+      continue;
+    }
     const bytes = await readSample(path);
     const header = parseIrAudioHeader(bytes);
     if (header.channels > 2) throw sfzError('prepare', 'SFZ samples must contain mono or stereo audio.');
@@ -171,7 +189,8 @@ export function selectSfzRegionsForBudget(regions, metadata, maxBytes, definitio
 function representativeSfzText(regions, selectedPath) {
   const root = '../'.repeat(selectedPath.split('/').length - 1);
   const loopModes = ['no_loop', 'one_shot', 'loop_continuous', 'loop_sustain'];
-  return regions.map(region => '<region> sample=' + JSON.stringify(root + region.sample) + ' ' +
+  return regions.map(region => '<region> sample=' + JSON.stringify(isSfzGenerator(region.sample)
+    ? region.sample : root + region.sample) + ' ' +
     SFZ_REGION_FIELDS.slice(4).filter(key => key !== 'seqGroup' && region[key] !== undefined)
       .map(key => `${key}=${key === 'loop_mode' ? loopModes[region[key]] : region[key]}`).join(' ')).join('\n');
 }
@@ -213,8 +232,15 @@ export class SfzLibraryService {
     const maxBytes = requireSfzMaxBytes(this.getMaxBytes());
     const selectedFiles = fileMap(files);
     selectedPath = normalizeSfzPath(selectedPath);
+    const getFile = async path => {
+      const source = selectedFiles.get(path);
+      if (typeof source?.getFile !== 'function') return source;
+      const file = await source.getFile();
+      selectedFiles.set(path, file);
+      return file;
+    };
     const read = async path => {
-      const file = selectedFiles.get(path);
+      const file = await getFile(path);
       if (!file) return null;
       if (file.size > maxBytes) throw sfzError('too-large', 'An SFZ file is too large to save.');
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -222,23 +248,31 @@ export class SfzLibraryService {
       return bytes;
     };
     const storedFiles = new Map();
-    const parsed = await parseSfz({ selectedPath, maxBytes,
-      readText: async path => {
-        let bytes = storedFiles.get(path);
-        if (!bytes) {
-          bytes = await read(path);
-          if (!bytes) return null;
-          storedFiles.set(path, bytes);
-        }
-        return decoder.decode(bytes);
-      },
+    const readText = async path => {
+      let bytes = storedFiles.get(path);
+      if (!bytes) {
+        bytes = await read(path);
+        if (!bytes) return null;
+        storedFiles.set(path, bytes);
+      }
+      return decodeSfzText(bytes);
+    };
+    const { defines, bankPath } = await readSfzBankDefines(selectedPath,
+      [...selectedFiles.keys()].filter(path => /\.bank\.xml$/i.test(path)), readText);
+    // Only the matching bank's definitions are needed when the saved instrument reopens.
+    for (const path of storedFiles.keys()) if (path !== bankPath) storedFiles.delete(path);
+    const parsed = await parseSfz({ selectedPath, maxBytes, defines, readText,
       hasSample: path => selectedFiles.has(path), onDiagnostic: this.onDiagnostic });
     if (!parsed.regions.length) throw sfzError('no-regions', 'The SFZ has no playable regions.');
     let accumulatedBytes = [...storedFiles.values()].reduce((sum, bytes) => sum + bytes.byteLength, 0);
     const metadata = new Map();
     const sizes = new Map([...storedFiles].map(([path, bytes]) => [path, bytes.byteLength]));
     for (const path of [...new Set(parsed.regions.map(region => region.sample))].sort()) {
-      const file = selectedFiles.get(path);
+      if (isSfzGenerator(path)) {
+        metadata.set(path, sfzGeneratorMetadata(path));
+        continue;
+      }
+      const file = await getFile(path);
       const header = typeof file.slice === 'function'
         ? await readSfzAudioHeader(async (position, length) =>
           new Uint8Array(await file.slice(position, position + length).arrayBuffer()), file.size) : {};
@@ -259,6 +293,7 @@ export class SfzLibraryService {
       accumulatedBytes = storedFiles.get(selectedPath).byteLength;
     }
     for (const path of [...new Set(parsed.regions.map(region => region.sample))].sort()) {
+      if (isSfzGenerator(path)) continue;
       if (storedFiles.has(path)) continue;
       const file = selectedFiles.get(path);
       if (Number.isFinite(file?.size) && accumulatedBytes + file.size > maxBytes) {
@@ -274,7 +309,8 @@ export class SfzLibraryService {
     const id = await identifySfzBank(bytes);
     const prepared = { ...await prepareSfzSamples(parsed, path => storedFiles.get(path),
       options.decode, maxBytes, this.onDiagnostic), name: selectedPath.split('/').pop() };
-    const entry = { id, name: selectedPath.split('/').pop(), regionCount: prepared.regionCount };
+    const entry = { id, name: selectedPath.split('/').pop(), regionCount: prepared.regionCount,
+      size: bytes.byteLength, fileCount: storedFiles.size, importedAt: new Date().toISOString() };
     await this._write(async () => {
       try {
         await this.backend.writeAtomic(`${id}.sfzbank`, bytes);
@@ -327,6 +363,17 @@ export class SfzLibraryService {
         if (this.prepared?.id === id) this.prepared = null;
       } catch (cause) { throw sfzError('storage', 'The SFZ bank could not be removed.', cause); }
     });
+  }
+
+  async readMetadata(id) {
+    await this.writes;
+    const entry = this.entries.find(entry => entry.id === id);
+    if (!entry) return null;
+    if (entry.size !== undefined && entry.fileCount !== undefined) return { ...entry };
+    const bytes = await this.backend.read(`${id}.sfzbank`);
+    if (!bytes) return null;
+    const bank = decodeSfzBank(bytes, { maxBytes: SFZ_MAX_SUPPORTED_BYTES });
+    return { ...entry, size: bytes.byteLength, fileCount: bank.files.size };
   }
 
   _saveIndex(entries) {

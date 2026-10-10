@@ -2,6 +2,7 @@
 #include "effetune/dsp/pffft_incremental.h"
 #include "effetune/kernel.h"
 #include "pffft.h"
+#include "spectral_analysis.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -295,9 +296,7 @@ void testVolumeLevels() {
     CHECK(!frames.empty());
     const auto *payload = lastPayload(frames);
     if (amplitude == 1.0) {
-      // The full-scale A1 sine is below the decision threshold, but still has a real level.
-      if (midi == 33.0)
-        CHECK(bagLevel(payload, static_cast<std::uint32_t>(midi) - 21u) < 0.5F);
+      // Full-scale tones have a real level in every fine division.
       for (auto division = 0u; division < kFineDivisions; ++division)
         CHECK(pitchVolume(payload, static_cast<std::uint32_t>(midi), division) > -240.0F);
     }
@@ -625,6 +624,47 @@ void testPresenceRoutingAndLifecycle() {
   CHECK(readU32(queued.data() + 32u) == 17u);
   CHECK(readU32(lastPayload(queued) + 16u) == 48u);
 }
+void testAnalysisOnsets() {
+  constexpr auto rate = 48000.0F;
+  Harness harness(rate, 60.0F, 72.0F);
+  const auto check_frames = [&](bool signal_present) {
+    auto frame_count = 0u;
+    bool positive = false;
+    for (auto block = 0u; block < 40u; ++block) {
+      std::array<float, 960> audio{};
+      if (signal_present)
+        for (auto i = 0u; i < audio.size(); ++i)
+          audio[i] = static_cast<float>(
+              0.1 * std::sin(2.0 * kPi * 440.0 * (block * audio.size() + i) / rate));
+      {
+        const effetune::allocation_guard::Scope guard;
+        harness.kernel->process(audio.data(), 1u, static_cast<std::uint32_t>(audio.size()),
+                                {static_cast<double>(block * audio.size()) / rate});
+      }
+      const auto *view = harness.kernel->noteAnalysisView();
+      CHECK(view != nullptr);
+      if (!view)
+        continue;
+      frame_count += view->count;
+      for (auto i = 0u; i < view->count; ++i)
+        for (auto pitch = 0u; pitch < kNoteCount; ++pitch) {
+          const auto value = view->frames[i].onsets[pitch];
+          CHECK(std::isfinite(value) && value >= 0.0F && value <= 1.0F);
+          if (!signal_present || pitch + 21u < 60u || pitch + 21u > 72u)
+            CHECK(value == 0.0F);
+          else
+            positive = positive || value > 0.0F;
+        }
+    }
+    CHECK(frame_count != 0u);
+    CHECK(!signal_present || positive);
+  };
+  check_frames(false);
+  check_frames(true);
+  harness.kernel->reset();
+  CHECK(harness.kernel->noteAnalysisView()->count == 0u);
+  check_frames(false);
+}
 void testRevisionsRetainCapturedPitchShape() {
   Harness harness(48000.0F);
   const auto frames = render(harness, 48000.0F, 0.5, [](double t, std::uint32_t) {
@@ -676,6 +716,7 @@ int main(int argc, char **argv) {
   testVolumeLevels();
   testPresenceRoutingAndLifecycle();
   testConfiguredRecognitionRange();
+  testAnalysisOnsets();
   testRevisionsRetainCapturedPitchShape();
   testSampleRateFiniteSignal();
   testLowOctaveDiscrimination();

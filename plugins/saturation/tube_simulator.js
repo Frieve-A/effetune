@@ -7314,7 +7314,7 @@ class TubeSimulatorPlugin extends PluginBase {
 
     _drawTrajectory(context, xValues, yValues, mapX, mapY, color, dpr = 1, narrow = false,
         now = performance.now()) {
-        if (this.trajectoryCount === 0) return;
+        if (this.hasLocalAudio === false || this.trajectoryCount === 0) return;
         const first = (this.trajectoryIndex - this.trajectoryCount +
             TUBE_SIMULATOR_TRAJECTORY_FRAMES) % TUBE_SIMULATOR_TRAJECTORY_FRAMES;
         // Points, not a polyline. The samples are telemetry frames, not a continuous curve, so
@@ -7536,9 +7536,9 @@ class TubeSimulatorPlugin extends PluginBase {
         this.hudCanvas.setAttribute('role', 'img');
         const values = document.createElement('div');
         values.className = 'tube-simulator-values';
-        const addValue = (key, label) => {
+        const addValue = (key, label, requiresLocalAudio = true) => {
             const item = document.createElement('div');
-            item.className = 'tube-simulator-value';
+            item.className = requiresLocalAudio ? 'tube-simulator-value local-audio-only' : 'tube-simulator-value';
             const heading = document.createElement('span');
             heading.className = 'tube-simulator-value-label';
             heading.textContent = label;
@@ -7555,8 +7555,8 @@ class TubeSimulatorPlugin extends PluginBase {
         addValue('bPlus', 'B+');
         addValue('plateSag1', 'STAGE 1 PLATE − B+ SAG');
         addValue('plateSag2', 'STAGE 2 PLATE − B+ SAG');
-        addValue('inputReference', 'INPUT REFERENCE (0 dBFS)');
-        addValue('stage1ExternalInput', 'STAGE 1 EXTERNAL INPUT (0 dBFS)');
+        addValue('inputReference', 'INPUT REFERENCE (0 dBFS)', false);
+        addValue('stage1ExternalInput', 'STAGE 1 EXTERNAL INPUT (0 dBFS)', false);
         addValue('ltpBalance', 'POWER LTP BALANCE');
         addValue('powerBPlus', 'POWER B+');
         addValue('speakerVrms', 'SPEAKER OUTPUT (100 ms)');
@@ -7564,7 +7564,7 @@ class TubeSimulatorPlugin extends PluginBase {
         addValue('transformerFlux', 'TRANSFORMER FLUX');
 
         const status = document.createElement('div');
-        status.className = 'tube-simulator-status';
+        status.className = 'tube-simulator-status local-audio-only';
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
         status.setAttribute('aria-atomic', 'true');

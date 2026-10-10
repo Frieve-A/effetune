@@ -55,7 +55,7 @@ Avant d'utiliser EffeTune, vous devez configurer votre routage audio. Voici comm
    - Ou sélectionnez **Ouvrir un fichier musical...** depuis le menu **Fichier** (application de bureau uniquement)
    - Ou faites glisser le fichier musical dans la fenêtre
 - Pour une utilisation limitée au lecteur, sélectionnez Aucun (lecteur de fichiers musicaux uniquement) comme périphérique d'entrée dans Configuration audio afin de ne pas utiliser d'entrée audio en direct
-- Une courte baisse progressive du son accompagne la mise en pause, et une remontée progressive la reprise, pour réduire les clics audibles.
+- Le son baisse progressivement pendant un court instant à la mise en pause ou à la fermeture du lecteur avec le bouton × en haut à droite, puis remonte progressivement à la reprise pour réduire les clics audibles.
 - Cliquez sur le bouton de vitesse à côté de Shuffle pour ouvrir la fenêtre contextuelle. Choisissez l’un des neuf préréglages ou utilisez le curseur horizontal ou le champ numérique pour régler la vitesse de 0,25x à 4x par incréments de 0,01x. Le bouton **Conserver la hauteur**, situé à côté, est activé par défaut : la hauteur du son reste alors la même quand la vitesse change ; désactivez-le pour que la hauteur monte ou descende avec la vitesse, comme lorsqu'on change la vitesse d'une bande ou d'un disque.
 
 ### Configuration des services de streaming
@@ -90,6 +90,8 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
    * Sortie : Audio traité vers votre amplificateur ou vos enceintes
 
 ## Utilisation
+
+Au premier lancement, une courte visite vous montre où écouter de la musique, ajouter des effets et ajuster le son. Vous pouvez la revoir à tout moment avec **Découvrir l’application** dans le menu des paramètres, dans le menu **Aide** de l’application de bureau ou via le bouton de menu sur mobile.
 
 ### Paramètres de l'application
 

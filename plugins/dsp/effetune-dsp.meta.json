@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:9a0a1d0e881bed83abf5e588933f63ffde097689d1e70ae341b9344a1736245f",
+  "sourceDigest": "sha256:eff8c6eb1a98ab17efde5d180873e1a9bf54da5ed2ca119faed2266a36b31a1a",
   "emsdkVersion": "6.0.11",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:90dcb3448904662d06fbed0c2e89acc609ae59a8b115ec4b22658fe90850ce3b",
+    "digest": "sha256:6d3b5ff6b95c505862b45c1deba623389a7e39560529cdfcecd1ea53d1d2931a",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:c1954b7f421e73c28bfbc944809df4573294ea8357e582a47faa27c56573e3e9"
+        "sha256": "sha256:00a8700b218c1eb0bc760688f67045d055cf955a325bcfb22b3d6c301ee32c5f"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:98de25f2e03d85ef61b2354d26ad52a69f2d24486dd1b8cb47dfbaa76e3929c2"
+        "sha256": "sha256:6debcb7575c24bdbf16e5fc6e806110de1c8b256b6b84ece1e2a6fee50f891af"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -95,7 +95,7 @@
       {
         "id": "dsp/include/effetune/kernel.h",
         "kind": "file",
-        "sha256": "sha256:99098209ab458d53bb6e79b3aa86a2c94a96aaef434891c9ec7830f01e6c41e6"
+        "sha256": "sha256:9e536a29435d050d4e13acbcb96e46130dfe440c7476e84a296f5fae5356cfff"
       },
       {
         "id": "dsp/include/effetune/telemetry.h",
@@ -927,7 +927,7 @@
     },
     {
       "name": "SFZNotePlayerPlugin",
-      "hash": 253190780,
+      "hash": 1301391717,
       "byteCapacity": 0,
       "assets": [
         {
@@ -1128,7 +1128,7 @@
     }
   ],
   "sizes": {
-    "baseline": 2208174,
-    "simd": 2374310
+    "baseline": 2230526,
+    "simd": 2398097
   }
 }

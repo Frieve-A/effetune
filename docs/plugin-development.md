@@ -376,6 +376,13 @@ Do not post messages or allocate payloads from `process()`.
 - Cancel animation frames and remove listeners in `cleanup()`.
 - Keep analyzer drawing on the main thread; only capture and reduction belong in the DSP
   kernel.
+- Mark views that require local audio measurements or asset state with `local-audio-only`
+  (graph helpers accept it in `className`). The remote editor hides these views and the shared
+  `plugin-execution-status` messages. For graphs that also show settings, keep the graph and
+  use `this.hasLocalAudio !== false` to omit only measurement traces, meters, and their readouts.
+  The remote plugin factory sets this capability to `false`; other contexts use local audio by default.
+  Respect the same capability before reading local asset libraries or starting analysis;
+  parameter editing and synchronization must remain available without local audio.
 
 ## Final Checklist
 

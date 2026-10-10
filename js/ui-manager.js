@@ -21,6 +21,7 @@ import { copyTextToClipboard, readTextFromClipboard } from './utils/clipboard-ut
 import { LayoutModeManager } from './ui/layout-mode-manager.js';
 import { MobileMenu } from './ui/mobile-menu.js';
 import { MobileNav } from './ui/mobile-nav.js';
+import { OnboardingTour } from './ui/onboarding-tour.js';
 import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
@@ -286,6 +287,7 @@ export class UIManager {
         );
         this.mobileMenu = new MobileMenu(this);
         this.mobileNav = new MobileNav(this);
+        this.onboardingTour = new OnboardingTour(this);
         this.mobileNumberKeypad = new MobileNumberKeypad({
             isEnabled: () => this.layoutMode.isMobile,
             translate: (key, fallback) => {
@@ -1323,6 +1325,7 @@ export class UIManager {
         const shareButton = document.getElementById('shareButton');
         this.stateManager?.updateLabels?.();
         this.mobileMenu?.updateLabels?.();
+        this.onboardingTour?.updateLabels?.();
         this.mobileNumberKeypad?.updateLabels?.();
         this.powerStateView?.redrawLanguage?.();
         if (this.doubleBlindTestButton) {
@@ -1795,6 +1798,7 @@ export class UIManager {
         if (window.electronAPI?.onIPC) {
             window.electronAPI.onIPC('open-library-view', () => this.showLibraryView());
             window.electronAPI.onIPC('open-effect-pipeline-view', () => this.showEffectPipelineView());
+            window.electronAPI.onIPC('start-onboarding-tour', () => this.startOnboardingTour());
             window.electronAPI.onIPC('open-visualizer-view', () => this.showVisualizerView());
             window.electronAPI.onIPC('add-music-folder', async () => {
                 try {
@@ -2189,6 +2193,13 @@ export class UIManager {
         });
         this.hideLibraryRecoveryShell();
         document.body?.classList?.remove('view-library');
+    }
+
+    async startOnboardingTour() {
+        await this.localizationReady;
+        if (await this.showEffectPipelineView() !== true) return false;
+        this.onboardingTour.start();
+        return true;
     }
 
     showEffectPipelineView(options = {}) {

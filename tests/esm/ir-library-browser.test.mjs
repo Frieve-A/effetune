@@ -2,106 +2,63 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { openIrLibraryBrowser } from '../../js/ir-library/browser.js';
+import { openSfzLibraryBrowser } from '../../js/sfz/browser.js';
 import {
   createConsoleHarness,
   replaceGlobal
 } from '../helpers/global-test-utils.mjs';
 
-class Element {
-  constructor(tagName) {
-    this.tagName = tagName.toUpperCase();
-    this.children = [];
-    this.parentNode = null;
-    this.listeners = new Map();
-    this.attributes = {};
-    this.className = '';
-    this.value = '';
-    this.disabled = false;
-    this.hidden = false;
-    this.clickCount = 0;
-    this._textContent = '';
-    this.canvasCalls = [];
+import { Element, flatten, byClass, button, rowName, deferred, nextTurn } from '../helpers/asset-library-browser.mjs';
+
+test('IR and SFZ library import results use the localized shared file and folder messages', async t => {
+  const translations = {
+    'irLibrary.status.importResult': '取り込み{imported}件、失敗{failed}件、非対応{unsupported}件。',
+    'irLibrary.status.folderResult': '取り込み{imported}件、失敗{failed}件。'
+  };
+  const body = new Element('body');
+  t.after(replaceGlobal('document', { body, createElement: tag => new Element(tag) }));
+  t.after(replaceGlobal('window', {
+    electronAPI: {},
+    uiManager: { t: (key, params) => Object.entries(params).reduce(
+      (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), translations[key] || key) }
+  }));
+  for (const openBrowser of [openIrLibraryBrowser, openSfzLibraryBrowser]) {
+    const modal = openBrowser({ service: {
+      list: async () => [],
+      importFiles: async () => ({ imported: [{}], failedCount: 0, unsupportedCount: 0 }),
+      importFolderFiles: async () => ({ id: 'a'.repeat(24), name: 'Instrument.sfz' })
+    } });
+    const inputs = flatten(modal.element).filter(node => node.type === 'file');
+    for (const folder of [false, true]) {
+      const input = inputs.find(node => Boolean(node.webkitdirectory) === folder);
+      input.files = [{ name: 'Instrument.sfz', webkitRelativePath: folder ? 'Bank/Instrument.sfz' : '' }];
+      await input.dispatch('change');
+      assert.equal(byClass(modal.element, 'ir-library-status')[0].textContent,
+        folder ? '取り込み1件、失敗0件。' : '取り込み1件、失敗0件、非対応0件。');
+    }
+    modal.close();
   }
+});
 
-  set textContent(value) {
-    this._textContent = String(value);
-    if (value === '') this.children = [];
-  }
-
-  get textContent() { return this._textContent; }
-
-  appendChild(child) {
-    child.parentNode = this;
-    this.children.push(child);
-    if (this.tagName === 'SELECT' && !this.value) this.value = child.value;
-    return child;
-  }
-
-  append(...children) { children.forEach(child => this.appendChild(child)); }
-
-  remove() {
-    if (!this.parentNode) return;
-    this.parentNode.children = this.parentNode.children.filter(child => child !== this);
-    this.parentNode = null;
-  }
-
-  setAttribute(name, value) { this.attributes[name] = String(value); }
-
-  removeAttribute(name) { delete this.attributes[name]; }
-
-  addEventListener(type, listener) {
-    const listeners = this.listeners.get(type) || [];
-    listeners.push(listener);
-    this.listeners.set(type, listeners);
-  }
-
-  async dispatch(type, event = {}) {
-    await Promise.all((this.listeners.get(type) || []).map(listener => listener({ target: this, ...event })));
-  }
-
-  focus() {
-    this.focused = true;
-    if (globalThis.document) globalThis.document.activeElement = this;
-  }
-
-  querySelectorAll() {
-    return flatten(this).slice(1).filter(element =>
-      !element.disabled && !element.hidden &&
-      (element.tagName === 'BUTTON' || element.tagName === 'INPUT' || element.tagName === 'SELECT' ||
-        (element.attributes.tabindex !== undefined && element.attributes.tabindex !== '-1'))
-    );
-  }
-
-  click() {
-    this.clickCount += 1;
-    return this.dispatch('click');
-  }
-
-  getContext() {
-    if (this.tagName !== 'CANVAS') return null;
-    const call = name => (...args) => this.canvasCalls.push([name, ...args]);
-    return {
-      clearRect: call('clearRect'),
-      beginPath: call('beginPath'),
-      moveTo: call('moveTo'),
-      lineTo: call('lineTo'),
-      stroke: call('stroke'),
-      set strokeStyle(value) { this._strokeStyle = value; }
-    };
-  }
-}
-
-const flatten = root => [root, ...root.children.flatMap(flatten)];
-const byClass = (root, className) => flatten(root).filter(element => element.className === className);
-const buttons = root => flatten(root).filter(element => element.tagName === 'BUTTON');
-const button = (root, text) => buttons(root).find(element => element.textContent === text);
-const rowName = row => flatten(row).find(element => element.tagName === 'STRONG')?.textContent;
-const deferred = () => {
-  let resolve;
-  const promise = new Promise(complete => { resolve = complete; });
-  return { promise, resolve };
-};
-const nextTurn = () => new Promise(resolve => setImmediate(resolve));
+test('a host library picker offers selection without local imports, deletion or analysis', async t => {
+  const body = new Element('body');
+  t.after(replaceGlobal('document', { body, createElement: tag => new Element(tag) }));
+  t.after(replaceGlobal('window', {}));
+  const entry = { irId: 'a'.repeat(24), fileLabel: 'Host hall.wav', channels: 2 };
+  let selected;
+  const modal = openIrLibraryBrowser({
+    service: { readOnly: true, list: async () => [entry] },
+    onLoad: value => { selected = value; }
+  });
+  await modal.render();
+  assert.equal(flatten(modal.element).filter(node => node.type === 'file').length, 0);
+  assert.equal(byClass(modal.element, 'ir-library-entry-selection').length, 0);
+  assert.equal(byClass(modal.element, 'ir-library-danger-action').length, 0);
+  assert.equal(byClass(modal.element, 'ir-library-decay').length, 0);
+  await button(modal.element, 'Load').click();
+  assert.equal(selected.irId, entry.irId);
+  assert.equal(body.children.includes(modal.element), false);
+});
 
 test('IR library modal executes filename filtering, sorting, actions, previews, and cleanup', async () => {
   const previousDocument = globalThis.document;
@@ -249,6 +206,7 @@ test('IR library modal selects multiple entries and deletes them in one confirme
   const confirmations = [false, true];
   const confirmationMessages = [];
   const deleteCalls = [];
+  const deleteSelectionStates = [];
   const diagnostics = [];
   const restoreConsole = replaceGlobal('console', createConsoleHarness({
     error: (...args) => diagnostics.push(args)
@@ -285,6 +243,9 @@ test('IR library modal selects multiple entries and deletes them in one confirme
     async delete(id, options) {
       const inUse = options.isInUse(id);
       deleteCalls.push([id, inUse]);
+      deleteSelectionStates.push([
+        button(body, 'Select all').disabled, button(body, 'Deselect all').disabled
+      ]);
       if (inUse) return { removed: false, reason: 'in-use' };
       if (id === 'cccccccccccccccccccccccc') throw new Error('raw bulk delete diagnostic');
       const index = entries.findIndex(entry => entry.irId === id);
@@ -309,8 +270,12 @@ test('IR library modal selects multiple entries and deletes them in one confirme
     });
     await modal.render();
     const deleteSelected = button(modal.element, 'Delete selected');
+    const selectAllButton = button(modal.element, 'Select all');
+    const deselectAll = button(modal.element, 'Deselect all');
     const selectionCount = byClass(modal.element, 'ir-library-selection-count')[0];
     assert.equal(deleteSelected.disabled, true);
+    assert.equal(selectAllButton.disabled, false);
+    assert.equal(deselectAll.disabled, true);
     assert.equal(selectionCount.textContent, '0 selected');
 
     const select = async name => {
@@ -335,6 +300,16 @@ test('IR library modal selects multiple entries and deletes them in one confirme
     await search.dispatch('input');
     assert.equal(selectionCount.textContent, '0 selected');
     assert.equal(byClass(modal.element, 'ir-library-entry-selection')[0].checked, false);
+
+    await selectAllButton.click();
+    assert.equal(selectionCount.textContent, '1 selected');
+    assert.equal(selectAllButton.disabled, true);
+    assert.equal(deselectAll.disabled, false);
+    await deselectAll.click();
+    assert.equal(selectionCount.textContent, '0 selected');
+    assert.equal(byClass(modal.element, 'ir-library-entry-selection')[0].checked, false);
+    assert.equal(selectAllButton.disabled, false);
+    assert.equal(deselectAll.disabled, true);
 
     let selectAllPrevented = 0;
     const selectAll = (target = modal.element) => modal.element.dispatch('keydown', {
@@ -368,6 +343,7 @@ test('IR library modal selects multiple entries and deletes them in one confirme
       ['cccccccccccccccccccccccc', false],
       ['aaaaaaaaaaaaaaaaaaaaaaaa', false]
     ]);
+    assert.deepEqual(deleteSelectionStates, [[true, true], [true, true], [true, true]]);
     assert.match(confirmationMessages[0], /3 selected impulse responses/);
     assert.equal(byClass(modal.element, 'ir-library-status')[0].textContent,
       '1 deleted, 1 in use, 1 failed.');
@@ -379,6 +355,8 @@ test('IR library modal selects multiple entries and deletes them in one confirme
       .every(checkbox => checkbox.checked === false), true);
     assert.equal(selectionCount.textContent, '0 selected');
     assert.equal(deleteSelected.disabled, true);
+    assert.equal(selectAllButton.disabled, false);
+    assert.equal(deselectAll.disabled, true);
     assert.equal(diagnostics.length, 1);
   } finally {
     restoreConsole();
@@ -512,6 +490,10 @@ test('IR library modal shows per-item progress and adds each completed import to
     assert.match(status.textContent, /Second Hall\.wav.*1 of 2/);
     assert.equal(button(modal.element, 'Load').disabled, true);
     assert.equal(button(modal.element, 'Delete').disabled, true);
+    assert.equal(button(modal.element, 'Select all').disabled, true);
+    assert.equal(button(modal.element, 'Deselect all').disabled, true);
+    await button(modal.element, 'Select all').click();
+    assert.equal(byClass(modal.element, 'ir-library-selection-count')[0].textContent, '0 selected');
 
     secondReady.resolve();
     await importing;
@@ -521,6 +503,7 @@ test('IR library modal shows per-item progress and adds each completed import to
     assert.equal(status.textContent, '2 imported, 0 failed, 0 unsupported.');
     assert.equal(button(modal.element, 'Load').disabled, false);
     assert.equal(button(modal.element, 'Delete').disabled, false);
+    assert.equal(button(modal.element, 'Select all').disabled, false);
   } finally {
     firstReady.resolve();
     secondReady.resolve();

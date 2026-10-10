@@ -4,6 +4,7 @@ import test from 'node:test';
 import { MidiMappingEngine } from '../../js/midi/midi-mapping-engine.js';
 import { ParamAdapter } from '../../js/midi/param-adapter.js';
 import { DSP_AUTOMATION_CATALOG } from '../../js/audio/dsp-params.generated.js';
+import { HistoryManager } from '../../js/ui/pipeline/history-manager.js';
 
 const descriptor = {
   key: 'gain', element: 0, field: 'gn', containerKey: '', memberKey: '', kind: 'float',
@@ -60,6 +61,75 @@ function harness(mappings, pipeline) {
   });
   return { engine, calls, windowRef };
 }
+
+function useRealHistory(windowRef) {
+  const history = new HistoryManager({
+    audioManager: { pipelineA: windowRef.audioManager.pipeline, pipelineB: null, currentPipeline: 'A' },
+    core: { getSerializablePluginState: target => ({ id: target.id, gn: target.gn }) }
+  });
+  windowRef.pipelineManager.historyManager = history;
+  return history;
+}
+
+test('empty frames and automation preserve an ongoing editor operation with real history', () => {
+  for (const source of ['empty', 'missing', 'timer', 'clock']) {
+    const automated = plugin(1);
+    const edited = plugin(2);
+    const item = mapping('background', { kind: source === 'clock' ? 'clock' : 'timer' });
+    item.map.behavior = 'random';
+    if (source === 'missing') item.target.type = 'MissingPlugin';
+    const { engine, windowRef, calls } = harness([item], [automated, edited]);
+    const history = useRealHistory(windowRef);
+    history.saveState();
+    const token = {};
+    history.beginOperation(token);
+    for (const value of [0.2, 0.4, 0.6]) {
+      edited.gn = value;
+      history.saveState({ operationToken: token });
+      if (source !== 'empty') engine.onAutomationEvent(item.id, { kind: item.source.kind, value });
+      engine.applyFrame();
+      assert.equal(history.isOperationActive(token), true, source);
+      history.saveState({ operationToken: token });
+      assert.equal(history.history.length, 2, source);
+    }
+    assert.equal(history.history[1].pipelineA[1].gn, 0.6, source);
+    assert.equal(calls.history, 0, source);
+    assert.equal(calls.url, 0, source);
+  }
+});
+
+test('timer and clock changes never append undo entries or discard existing redo', () => {
+  for (const kind of ['timer', 'clock']) {
+    const automated = plugin(1);
+    const edited = plugin(2);
+    const item = mapping('background', { kind });
+    item.map.behavior = 'random';
+    const { engine, windowRef, calls } = harness([item], [automated, edited]);
+    const history = useRealHistory(windowRef);
+    history.saveState();
+    for (const phase of ['idle', 'redo']) {
+      if (phase === 'redo') {
+        edited.gn = 0.5;
+        history.saveState();
+        history.historyIndex = 0;
+        edited.gn = 0;
+      }
+      const recorded = structuredClone(history.history);
+      for (const value of [0.2, 0.4, 0.6]) {
+        engine.randomFn = () => value;
+        engine.onAutomationEvent(item.id, { kind, value });
+        assert.equal(engine.applyFrame(), true);
+        assert.ok(Math.abs(automated.gn - value) < 1e-9);
+        assert.deepEqual(history.history, recorded, `${kind}: ${phase}`);
+        assert.equal(history.historyIndex, 0);
+        assert.equal(history.canUndo, false);
+        assert.equal(history.canRedo, phase === 'redo');
+      }
+    }
+    assert.equal(calls.history, 0, kind);
+    assert.equal(calls.url, 0, kind);
+  }
+});
 
 test('absolute messages coalesce and all targets update with one URL reflection', () => {
   const plugins = [plugin(1), plugin(2)];

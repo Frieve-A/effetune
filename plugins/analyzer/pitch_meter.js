@@ -437,6 +437,7 @@ class PitchMeterPlugin extends PluginBase {
         ));
         container.appendChild(parameters);
         const graph = this.createResponsiveGraph({
+            className: 'local-audio-only',
             maxWidth: 1024,
             aspectRatio: '32 / 15',
             mobileAspectRatio: '4 / 3',

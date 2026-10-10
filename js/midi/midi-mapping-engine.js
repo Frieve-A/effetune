@@ -255,8 +255,12 @@ export class MidiMappingEngine {
       }
     };
     try {
-      if (historyManager?.withHistorySuppressed) historyManager.withHistorySuppressed(apply);
-      else apply();
+      if (historyManager?.withHistorySuppressed) {
+        // Background automation must not split an ongoing editor or remote gesture.
+        historyManager.withHistorySuppressed(apply, {
+          preserveOperation: !entries.some(([, pending]) => pending.physical)
+        });
+      } else apply();
     } finally {
       if (uiManager) uiManager.urlReflectionEnabled = previousReflection;
     }

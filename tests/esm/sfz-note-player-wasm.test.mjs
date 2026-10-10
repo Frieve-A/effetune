@@ -7,6 +7,8 @@ import { instantiateDsp } from '../../js/audio/dsp-wasm-loader.js';
 import { instantiateDspBinding } from '../../js/audio/dsp-engine-binding.js';
 import { parseSfz } from '../../js/sfz/parser.js';
 import { packSfzAsset } from '../../js/sfz/asset.js';
+import { prepareSfzSamples } from '../../js/sfz/service.js';
+import { SFZ_DEFAULT_MAX_BYTES } from '../../js/sfz/limits.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 const SAMPLE_RATE = 48000;
@@ -34,10 +36,113 @@ class SFZNotePlayerPlugin {
 
 test('SFZ parameter packing preserves note controls and supplies defaults for older presets', () => {
   const { pack } = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
-  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50]);
-  assert.deepEqual(Array.from(pack(PARAMETERS).slice(-2)), [40, 50]);
-  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 96, nh: 100 }).slice(-2)), [96, 100]);
-  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 6, nh: 37 }).slice(-2)), [6, 37]);
+  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0]);
+  assert.deepEqual(Array.from(pack(PARAMETERS).slice(-3)), [40, 50, 0]);
+  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 96, nh: 100 }).slice(-3)), [96, 100, 0]);
+  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 6, nh: 37, ss: 1 }).slice(-3)), [6, 37, 1]);
+  assert.equal(pack({ ss: -6 })[16], -6);
+  assert.equal(pack({ ss: 6 })[16], 6);
+});
+
+test('built-in SFZ sine cycles play the detected pitch through the WASM sample pipeline', async () => {
+  const parsed = await parseSfz({ selectedPath: 'synth.sfz', onDiagnostic: null,
+    readText: async () => '<region> sample=*sine key=69 amp_veltrack=0' });
+  const { descriptor } = await prepareSfzSamples(parsed, () => assert.fail('No sample file is needed'),
+    undefined, SFZ_DEFAULT_MAX_BYTES);
+  const binding = await instantiateDspBinding(fs.readFileSync(
+    new URL('../../plugins/dsp/effetune-dsp.simd.wasm', import.meta.url)));
+  binding.createEngine();
+  assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
+  try {
+    const id = binding.createInstance('SFZNotePlayerPlugin');
+    const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
+    assert.equal(binding.instanceSetParams(id, packer.pack(PARAMETERS), packer.hash), 0);
+    assert.equal(binding.instanceSetAsset(id, 0, descriptor.payload,
+      { ...descriptor, frames: descriptor.samples, topology: 0 }), 0);
+    const { combined, offsets } = binding.getArenaViews();
+    for (let step = 0; step < 100 && (binding.instanceAssetState(id, 0) & 0xff) !== 3; step++) {
+      combined.fill(0);
+      assert.equal(binding.instanceProcess(id, offsets.combined, 2, BLOCK_SIZE, step * BLOCK_SIZE / SAMPLE_RATE), 0);
+    }
+    assert.equal(binding.instanceAssetState(id, 0) & 0xff, 3);
+    assert.equal(binding.resetInstance(id), 0);
+    let sine = 0, cosine = 0, measured = 0;
+    for (let offset = 0; offset < SAMPLE_RATE; offset += BLOCK_SIZE) {
+      for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+        const time = (offset + frame) / SAMPLE_RATE;
+        combined[frame] = combined[BLOCK_SIZE + frame] = .25 * Math.sin(2 * Math.PI * 440 * time);
+      }
+      assert.equal(binding.instanceProcess(id, offsets.combined, 2, BLOCK_SIZE, offset / SAMPLE_RATE), 0);
+      for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+        assert.ok(Number.isFinite(combined[frame]));
+        if (offset < SAMPLE_RATE * .4) continue;
+        const phase = 2 * Math.PI * 440 * (offset + frame) / SAMPLE_RATE;
+        sine += combined[frame] * Math.sin(phase);
+        cosine += combined[frame] * Math.cos(phase);
+        measured++;
+      }
+    }
+    assert.ok(Math.hypot(sine, cosine) / measured > .005, 'Generated samples must play the detected A4 pitch');
+  } finally { binding.destroyEngine(); }
+});
+
+test('SFZ sample shifts select neighboring keys while preserving pitch in baseline and SIMD WASM', async t => {
+  const frequency = 440 * 2 ** ((60 - 69) / 12);
+  for (const variant of ['baseline', 'simd']) {
+    await t.test(variant, async () => {
+      const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
+      const binding = await instantiateDspBinding(fs.readFileSync(
+        new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+      binding.createEngine();
+      assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
+      try {
+        const id = binding.createInstance('SFZNotePlayerPlugin');
+        const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
+        for (const shift of [-6, -1, 0, 1, 6]) {
+          const parsed = await parseSfz({ selectedPath: 'shift.sfz', onDiagnostic: null,
+            readText: async () => `<region> sample=tone.wav key=${60 + shift} amp_veltrack=0`,
+            hasSample: () => true });
+          const sampleFrequency = frequency * 2 ** (shift / 12);
+          const sample = Float32Array.from({ length: SAMPLE_RATE }, (_, frame) =>
+            .25 * Math.sin(2 * Math.PI * sampleFrequency * frame / SAMPLE_RATE));
+          const asset = packSfzAsset(parsed.regions, new Map([['tone.wav',
+            { channels: [sample], sampleRate: SAMPLE_RATE }]]));
+          assert.equal(binding.instanceSetParams(id,
+            packer.pack({ ...PARAMETERS, mn: 60, mx: 60, ss: shift, rd: 96 }), packer.hash), 0);
+          assert.equal(binding.instanceSetAsset(id, 0, asset.payload,
+            { ...asset, frames: asset.samples, topology: 0 }), 0);
+          const { combined, offsets } = binding.getArenaViews();
+          for (let block = 0; block < 100 && (binding.instanceAssetState(id, 0) & 0xff) !== 3; block++) {
+            combined.fill(0);
+            assert.equal(binding.instanceProcess(id, offsets.combined, 2, BLOCK_SIZE,
+              block * BLOCK_SIZE / SAMPLE_RATE), 0);
+          }
+          assert.equal(binding.instanceAssetState(id, 0) & 0xff, 3);
+          assert.equal(binding.resetInstance(id), 0);
+          let sine = 0, cosine = 0, measured = 0;
+          for (let offset = 0; offset < SAMPLE_RATE * .7; offset += BLOCK_SIZE) {
+            for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+              const time = (offset + frame) / SAMPLE_RATE;
+              combined[frame] = combined[BLOCK_SIZE + frame] = .25 * Math.sin(2 * Math.PI * frequency * time);
+            }
+            assert.equal(binding.instanceProcess(id, offsets.combined, 2, BLOCK_SIZE,
+              offset / SAMPLE_RATE), 0);
+            for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+              assert.ok(Number.isFinite(combined[frame]));
+              const time = (offset + frame) / SAMPLE_RATE;
+              if (time < .35) continue;
+              sine += combined[frame] * Math.sin(2 * Math.PI * frequency * time);
+              cosine += combined[frame] * Math.cos(2 * Math.PI * frequency * time);
+              measured++;
+            }
+          }
+          const amplitude = 2 * Math.hypot(sine, cosine) / measured;
+          assert.ok(Math.abs(amplitude - .25) < .005,
+            `Sample Shift ${shift}: select MIDI ${60 + shift} and play it at C4 pitch`);
+        }
+      } finally { binding.destroyEngine(); }
+    });
+  }
 });
 
 test('synthetic SFZ bank produces detected notes through the offline WASM pipeline', async () => {
@@ -109,8 +214,10 @@ test('synthetic SFZ bank produces detected notes through the offline WASM pipeli
           }
         }
         assert.ok(outputPower > 1, 'Detected notes must play the imported synthetic sample');
-        assert.equal(firstOutputFrame, SAMPLE_RATE * 0.18 + 1,
-          'The revised detection must begin after 80 ms of analysis latency');
+        // The attack commits at sample 8640. Its triangular peak position is 0.464889
+        // hops later; the half-hop schedule rounds to 926 samples and the sample starts at zero.
+        assert.equal(firstOutputFrame, SAMPLE_RATE * 0.18 + 926 + 1,
+          'The detected attack must use its refined onset time and half-hop playback schedule');
         assert.ok(Math.hypot(sampleSine, sampleCosine) / measuredFrames > 0.005,
           'The output must contain the bank’s 500 Hz sample rather than the input’s 440 Hz pitch');
         endings.push(lastOutputFrame);
@@ -142,6 +249,13 @@ test('boundary sine notes share Note Spectrogram analysis and select the matchin
           const packer = DSP_PARAM_PACKERS.get(type);
           assert.equal(binding.instanceSetParams(id,
             packer.pack({ ...PARAMETERS, mn: 21, mx: 108, rd: 96 }), packer.hash), 0);
+        }
+        assert.equal(binding.instanceLatency(source), 0,
+          'Note Spectrogram must pass audio through without delaying it');
+        const analysisLatency = SAMPLE_RATE * .08;
+        for (const id of [linked, own]) {
+          assert.equal(binding.instanceLatency(id), analysisLatency + SAMPLE_RATE * .01,
+            'SFZ playback latency must include half a hop beyond the shared analysis latency');
         }
         const sample = Float32Array.from({ length: 4800 }, (_, frame) =>
           .4 * Math.sin(2 * Math.PI * 500 * frame / SAMPLE_RATE));

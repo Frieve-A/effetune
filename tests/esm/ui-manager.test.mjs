@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { UIManager } from '../../js/ui-manager.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
+import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { getAnalyzerAudioFormat } from '../../js/pipeline-analyzer/pipeline-snapshot.js';
 import { encodePipelineState, decodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
@@ -993,6 +994,42 @@ test('rapid mini player toggles preserve the latest requested mode', async () =>
   });
 });
 
+test('starting the onboarding tour waits for Mini Player to return to the Effect Pipeline', async () => {
+  await withUIHarness({}, async ({ manager }) => {
+    const restoration = createDeferred();
+    const starts = [];
+    manager.miniPlayerMode = true;
+    manager.miniPlayerTargetMode = true;
+    manager.setMiniPlayerMode = async enabled => {
+      assert.equal(enabled, false);
+      await restoration.promise;
+      manager.miniPlayerMode = false;
+      manager.miniPlayerTargetMode = false;
+      return true;
+    };
+    manager.onboardingTour.start = () => starts.push(manager.miniPlayerMode);
+
+    const started = manager.startOnboardingTour();
+    await flushMicrotasks();
+    assert.deepEqual(starts, []);
+    restoration.resolve();
+    assert.equal(await started, true);
+    assert.deepEqual(starts, [false]);
+  });
+});
+
+test('starting the onboarding tour leaves an active Library dialog open', async () => {
+  await withUIHarness({ bodyClassName: 'view-library' }, async ({ document, manager }) => {
+    let starts = 0;
+    manager.libraryView = { hasActiveDialog: () => true };
+    manager.onboardingTour.start = () => { starts += 1; };
+
+    assert.equal(await manager.startOnboardingTour(), false);
+    assert.equal(starts, 0);
+    assert.equal(document.body.classList.contains('view-library'), true);
+  });
+});
+
 test('suppresses analyzer DSP whenever the Effect Pipeline is not displayed', async () => {
   const startupSuppression = [];
   await withUIHarness({
@@ -1587,7 +1624,13 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
     electronAPI: { openHomeV1: createOpenHomeBridge(bridgeCalls) }
   }, async ({ calls, manager }) => {
     const player = await manager.setOpenHomeRemoteRuntimeReady();
+    const track = { name: 'Song.flac', meta: { title: 'Song', album: 'Album', artist: 'Artist' } };
+    player.stateManager.updateState({ currentTrack: track, artworkUrl: 'blob:cover' }, 'test');
+    const visualizer = Object.assign(Object.create(VisualizerView.prototype), { uiManager: manager });
     player.ui.container = { id: 'player-ui' };
+    assert.deepEqual(visualizer.metadata(), {
+      title: 'Song', album: 'Album', artist: 'Artist', artwork: [{ src: 'blob:cover' }]
+    });
     player.ui.removeUI = () => {
       calls.push(['AudioPlayerUI.removeUI']);
       player.ui.container = null;
@@ -1596,16 +1639,24 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
     player.stop = async () => calls.push(['AudioPlayer.stop']);
 
     assert.equal(player.close(), false);
+    assert.equal(visualizer.metadata(), null);
     await flushMicrotasks();
     assert.equal(manager.audioPlayer, player);
     assert.equal(player.ui.container, null);
+    assert.equal(player.stateManager.getStateSnapshot().currentTrack, track);
+    assert.equal(visualizer.metadata(), null);
     assert.equal(calls.some(call => call[0] === 'AudioPlayer.savePlayerState'), true);
     assert.equal(calls.some(call => call[0] === 'AudioPlayer.stop'), true);
     assert.equal(calls.some(call => call[0] === 'AudioPlayerUI.removeUI'), true);
     assert.equal(bridgeCalls.some(call => call[0] === 'openHome.rendererUnavailable'), false);
 
+    player.ui.container = { id: 'reopened-player-ui' };
+    assert.equal(visualizer.metadata().title, 'Song');
+    player.ui.removeUI();
+
     await manager.setOpenHomeRemoteControlEnabled(false);
     assert.equal(manager.audioPlayer, null);
+    assert.equal(visualizer.metadata(), null);
     assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
   });
 });

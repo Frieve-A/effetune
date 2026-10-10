@@ -597,7 +597,7 @@
             "displayTime": {
               "type": "number",
               "minimum": 0.001,
-              "maximum": 0.1,
+              "maximum": 10,
               "x-effetune-unit": "s",
               "default": 0.01
             },

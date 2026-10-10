@@ -6,6 +6,13 @@ import { createOverlayHarness } from '../helpers/spectrum-overlay-harness.mjs';
 
 const commands = harness => harness.posts.map(({ type, enabled }) => [type, enabled]);
 
+test('remote graphs omit spectrum controls that cannot receive local audio', () => {
+  const h = createOverlayHarness();
+  h.plugin.hasLocalAudio = false;
+  assert.equal(h.attach().instance, null);
+  assert.equal(h.posts.length + h.frames.size + h.timers.size, 0);
+});
+
 test('overlay is dormant until enabled and releases all work when disabled', () => {
   const h = createOverlayHarness();
   const { instance, mount, plot } = h.attach();

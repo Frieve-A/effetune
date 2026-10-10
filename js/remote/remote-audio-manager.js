@@ -11,6 +11,7 @@ class NullWorkletPort extends EventTarget {
 
 export class RemoteAudioManager {
     constructor() {
+        this.hasLocalAudio = false;
         this.pipelineA = [];
         this.pipelineB = null;
         // Always 'A': the host's A/B choice is only a label here, because the
@@ -27,7 +28,35 @@ export class RemoteAudioManager {
         this.audioContext = audioContext;
         this.contextManager = { workletNode: this.workletNode, audioContext };
         this.pipelineProcessor = { setMasterBypass() {} };
-        this.outputChannelCount = 2;
+        this.outputChannelCount = 16;
+    }
+
+    applyHostAudioState(format) {
+        if (!format) return false;
+        const sampleRate = Number.isFinite(format.sampleRate) && format.sampleRate > 0
+            ? format.sampleRate : this.audioContext.sampleRate;
+        const channelCount = Number.isInteger(format.channelCount) && format.channelCount >= 1 && format.channelCount <= 16
+            ? format.channelCount : this.audioContext.destination.channelCount;
+        const routingChannelCount = Number.isInteger(format.routingChannelCount) && format.routingChannelCount >= 1 && format.routingChannelCount <= 16
+            ? format.routingChannelCount : this.outputChannelCount;
+        const changed = sampleRate !== this.audioContext.sampleRate ||
+            channelCount !== this.workletNode.channelCount || routingChannelCount !== this.outputChannelCount;
+        this.audioContext.sampleRate = sampleRate;
+        this.audioContext.destination.channelCount = channelCount;
+        this.workletNode.channelCount = channelCount;
+        this.outputChannelCount = routingChannelCount;
+        if (changed) {
+            const previous = this.suppressMutations;
+            this.suppressMutations = true;
+            try {
+                for (const plugin of this.pipelineA) {
+                    plugin.getParameters({ sampleRate, outputChannelCount: channelCount, commitSampleRate: true });
+                }
+            } finally {
+                this.suppressMutations = previous;
+            }
+        }
+        return changed;
     }
 
     get pipeline() { return this.pipelineA; }

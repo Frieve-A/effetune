@@ -1527,6 +1527,7 @@ class PhaseSelectEqPlugin extends PluginBase {
     // paint(point, level, ageOpacity, y) sets the fill style and alpha of each point;
     // radiusScale multiplies the level-dependent point radius in CSS pixels.
     _drawPhaseMapPoints(context, now, paint, radiusScale = 1) {
+        if (this.hasLocalAudio === false) return;
         const floorDb = this.levelFloorDb;
         for (const frame of this.phaseMapFrames) {
             const ageOpacity = Math.exp(-(now - frame.time) / this.decayMs);

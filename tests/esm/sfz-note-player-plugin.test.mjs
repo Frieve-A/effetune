@@ -4,7 +4,6 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
-import { SfzLibraryService } from '../../js/sfz/service.js';
 import { PluginManager } from '../../js/plugin-manager.js';
 import { SFZ_DEFAULT_MAX_BYTES } from '../../js/sfz/limits.js';
 
@@ -71,9 +70,8 @@ test('initial SFZ imports remain pending offline through bank preparation', asyn
   const imported = deferred();
   const loaded = deferred();
   const plugin = createPlugin({ importFolderFiles: () => imported.promise, prepare: () => loaded.promise });
-  plugin._importRow = {};
   plugin._refreshBanks = async () => {};
-  const operation = plugin._importFolder(folderFiles, 'Piano.sfz');
+  const operation = plugin._selectBank(service => service.importFolderFiles(folderFiles, 'Piano.sfz'));
   assert.equal(plugin.externalAssetInfo.pending, true);
   assert.equal(plugin.offlineDspAssetRequired, true);
   let resolved = false;
@@ -100,16 +98,15 @@ test('a later bank selection or import keeps ownership when an older import comp
       return (++imports === 1 ? older : newer).promise;
     },
       prepare: async () => prepared });
-    plugin._importRow = {};
-    plugin._refreshBanks = async () => {};
+      plugin._refreshBanks = async () => {};
     if (selection === 'a'.repeat(24)) {
       plugin.setParameters({ sf: selection });
       await plugin.resolveOfflineDspAssetRequirement();
     }
-    const operation = plugin._importFolder(folderFiles, 'Older.sfz');
+    const operation = plugin._selectBank(service => service.importFolderFiles(folderFiles, 'Older.sfz'));
     await started.promise;
     if (selection === 'import') {
-      const replacement = plugin._importFolder(folderFiles, 'Newer.sfz');
+      const replacement = plugin._selectBank(service => service.importFolderFiles(folderFiles, 'Newer.sfz'));
       newer.resolve({ id: 'b'.repeat(24) });
       await replacement;
     } else plugin.setParameters({ sf: selection });
@@ -131,10 +128,9 @@ test('stale import failures and cleanup cannot change a newer pending operation'
     started[imports].resolve();
     return (++imports === 1 ? older : newer).promise;
   } });
-  plugin._importRow = {};
-  const first = plugin._importFolder(folderFiles, 'Older.sfz');
+  const first = plugin._selectBank(service => service.importFolderFiles(folderFiles, 'Older.sfz'));
   await started[0].promise;
-  const second = plugin._importFolder(folderFiles, 'Newer.sfz');
+  const second = plugin._selectBank(service => service.importFolderFiles(folderFiles, 'Newer.sfz'));
   await started[1].promise;
   older.reject({ code: 'too-large' });
   await first;
@@ -148,7 +144,7 @@ test('stale import failures and cleanup cannot change a newer pending operation'
   assert.equal(plugin._error, '');
   const failed = createPlugin({ importFolderFiles: async () => { throw { code: 'storage' }; } });
   failed._status = { dataset: {} };
-  await failed._importFolder(folderFiles, 'Failure.sfz');
+  await failed._selectBank(service => service.importFolderFiles(folderFiles, 'Failure.sfz'));
   assert.equal(failed.externalAssetInfo, null);
   assert.equal(failed.offlineDspAssetRequired, false);
   assert.match(failed._status.textContent, /file permissions and available storage space/);
@@ -165,6 +161,7 @@ test('SFZ parameter bounds and WASM-only temporal behavior', () => {
   assert.equal(plugin.dm, 20);
   assert.equal(plugin.wm, 100);
   assert.equal(plugin.os, 0);
+  assert.equal(plugin.ss, 0);
   assert.equal(plugin.tm, 0);
   assert.equal(plugin.rd, 40);
   assert.equal(plugin.nh, 50);
@@ -174,10 +171,15 @@ test('SFZ parameter bounds and WASM-only temporal behavior', () => {
     assert.equal(plugin.getParameters().os, expected);
   }
   const restored = createPlugin();
-  plugin.setParameters({ os: -1 });
+  for (const [input, expected] of [[-9, -6], [-1.6, -2], [1.6, 2], [9, 6], [NaN, 6], [0, 0]]) {
+    plugin.setParameters({ ss: input });
+    assert.equal(plugin.getParameters().ss, expected);
+  }
+  plugin.setParameters({ os: -1, ss: 1 });
   plugin.setParameters({ lo: false, md: false, hi: true, tm: -25, rd: 96, nh: 100 });
   restored.setParameters(plugin.getParameters());
   assert.equal(restored.os, -1);
+  assert.equal(restored.ss, 1);
   assert.deepEqual([restored.lo, restored.md, restored.hi, restored.tm], [false, false, true, -25]);
   assert.equal(restored.rd, 96);
   assert.equal(restored.nh, 100);
@@ -191,6 +193,7 @@ test('SFZ parameter bounds and WASM-only temporal behavior', () => {
   }
   const legacy = createPlugin();
   legacy.setParameters({ th: 0.7 });
+  assert.equal(legacy.getParameters().ss, 0);
   assert.equal(legacy.getParameters().rd, 40);
   assert.equal(legacy.getParameters().nh, 50);
   for (const [value, expected] of [[-200, -100], [200, 100], [12.5, 12.5]]) {
@@ -251,7 +254,7 @@ test('SFZ assets carry the bank signature and pending loads remain required offl
 test('SFZ missing and capacity failures use plain SFZ messages', async () => {
   const missing = createPlugin({ list: async () => [], prepare: async () => null });
   missing.createUI();
-  await missing._bankSelect.dispatchEvent('change', { target: { value: 'a'.repeat(24) } });
+  await missing._selectBank(async () => ({ id: 'a'.repeat(24) }));
   await missing.resolveOfflineDspAssetRequirement();
   assert.equal(missing.externalAssetInfo.missing, true);
   assert.match(missing._status.textContent, /selected SFZ could not be found/);
@@ -259,7 +262,7 @@ test('SFZ missing and capacity failures use plain SFZ messages', async () => {
   assert.equal(missing._status.dataset.state, 'error');
   const large = createPlugin({ list: async () => [], prepare: async () => { throw { code: 'too-large' }; } });
   large.createUI();
-  await large._bankSelect.dispatchEvent('change', { target: { value: 'b'.repeat(24) } });
+  await large._selectBank(async () => ({ id: 'b'.repeat(24) }));
   await large.resolveOfflineDspAssetRequirement();
   assert.match(large._status.textContent, /exceeds the size limit/);
   large.onWasmAssetRejected(0, 'module-budget');
@@ -267,7 +270,7 @@ test('SFZ missing and capacity failures use plain SFZ messages', async () => {
   assert.equal(large._error, 'tooLarge');
 });
 
-test('SFZ shows only errors, without initial, loading, or success messages', async () => {
+test('SFZ automatic loads stay quiet and manual selection failures show their status', async () => {
   const pending = deferred();
   const plugin = createPlugin({ list: async () => [], prepare: () => pending.promise }, createDocument());
   plugin.createUI();
@@ -292,6 +295,13 @@ test('SFZ shows only errors, without initial, loading, or success messages', asy
   assert.equal(plugin._status.dataset.state, 'error');
   plugin.setParameters({ sf: '' });
   assertQuiet();
+  const selecting = deferred();
+  const search = plugin._selectBank(() => selecting.promise);
+  assert.equal(plugin.externalAssetInfo.pending, true);
+  assertQuiet();
+  selecting.resolve(null);
+  await search;
+  assertQuiet();
 });
 
 test('SFZ size errors use each language’s actual settings and General labels', () => {
@@ -299,14 +309,15 @@ test('SFZ size errors use each language’s actual settings and General labels',
     const lines = fs.readFileSync(new URL(`../../js/locales/${language}.json5`, import.meta.url), 'utf8')
       .split(/\r?\n/).map(line => line.trim());
     const strings = Object.fromEntries(['dialog.config.title', 'dialog.config.category.general',
-      'dialog.config.sfzSizeLimit', 'sfzNotePlayer.error.tooLarge',
-      ...['loop-points-ignored', 'invalid-regions', 'missing-samples', 'unsupported-regions', 'reduced-bank']
+      'dialog.config.sfzSizeLimit', 'sfzNotePlayer.error.tooLarge', 'sfzNotePlayer.status.scanning',
+      ...['loop-points-ignored', 'invalid-regions', 'missing-samples', 'envelope-times-adjusted', 'reduced-bank']
         .map(code => `sfzNotePlayer.warning.${code}`)].map(key => {
       const line = lines.find(line => line.startsWith(`"${key}":`));
       return [key, JSON.parse(line.slice(line.indexOf(':') + 1).trim().replace(/,$/, ''))];
     }));
     const plugin = createPlugin({}, createDocument(), { uiManager: { t: key => strings[key] || key } });
     plugin._status = { dataset: {} };
+    plugin._renderStatus();
     plugin._showError({ code: 'too-large' });
     const message = plugin._status.textContent;
     assert.ok(message.includes(strings['dialog.config.title']), language);
@@ -318,22 +329,29 @@ test('SFZ size errors use each language’s actual settings and General labels',
   }
 });
 
-test('SFZ controls remain English with a non-English app translator', async () => {
-  for (const native of [false, true]) {
-    const plugin = createPlugin({ list: async () => [] }, createDocument(), {
-      ...(native ? { electronAPI: {} } : {}),
-      uiManager: { t: key => `翻訳:${key}` }
-    });
-    const ui = plugin.createUI();
-    await plugin._refreshBanks();
-    const bankRow = ui.children[0].children[0];
-    assert.equal(plugin._bankSelect.children[0].textContent, 'None');
-    assert.deepEqual([
-      bankRow.children[2].textContent,
-      bankRow.children[3].textContent,
-      plugin._importRow.children[1].textContent
-    ], [native ? 'Select SFZ Folder…' : 'Import Folder…', 'Remove', native ? 'Select' : 'Import']);
-  }
+test('SFZ controls open the library and clear the selection without deleting an instrument', async () => {
+  const entries = [{ id: 'a'.repeat(24), name: 'Piano.sfz' }];
+  const plugin = createPlugin({ list: async () => entries, prepare: async () => prepared,
+    remove() { assert.fail('Clearing the selection must retain the instrument'); }
+  }, createDocument(), { uiManager: { t: key => `翻訳:${key}` } });
+  const ui = plugin.createUI();
+  let opened = false;
+  plugin._openLibraryBrowser = () => { opened = true; };
+  await plugin._libraryButton.dispatchEvent('click');
+  assert.equal(opened, true);
+  assert.equal(plugin._libraryButton.textContent, 'SFZ Library…');
+  assert.equal(plugin._selectedBankName.textContent, 'None');
+  assert.equal(ui.querySelectorAll('select').length, 0);
+  await plugin._selectBank(async () => entries[0]);
+  assert.equal(plugin._selectedBankName.textContent, 'Piano.sfz');
+  await plugin._clearButton.dispatchEvent('click');
+  assert.equal(plugin.sf, '');
+  assert.equal(plugin._selectedBankName.textContent, 'None');
+  assert.equal(plugin.getWasmAssets().size, 0);
+  let disposed = false;
+  plugin._libraryBrowser = { dispose() { disposed = true; } };
+  plugin.cleanup();
+  assert.equal(disposed, true);
 });
 
 function createDocument() {
@@ -353,265 +371,20 @@ function createDocument() {
   return document;
 }
 
-async function createLibrary() {
-  const stored = new Map();
-  return new SfzLibraryService({
-    read: async name => stored.get(name),
-    writeAtomic: async (name, bytes) => stored.set(name, bytes.slice())
-  }, { onDiagnostic: null }).open();
-}
-
-function folderFile(name, text, size) {
-  const bytes = new TextEncoder().encode(text);
-  return { name, webkitRelativePath: `Instrument/${name}`, size: size ?? bytes.length,
-    arrayBuffer: async () => bytes.slice().buffer };
-}
-
-test('Electron selects an external SFZ directly and keeps preparation pending', async () => {
-  const selection = deferred();
-  const loading = deferred();
-  const entered = deferred();
-  const entry = { id: 'd'.repeat(24), name: 'External.sfz' };
-  let selected = false;
-  const plugin = createPlugin({
-    list: async () => selected ? [entry] : [],
-    selectFolder: ({ isCurrent }) => { assert.equal(isCurrent(), true); entered.resolve(); return selection.promise; },
-    prepare: async id => { assert.equal(id, entry.id); return loading.promise; },
-    importFolderFiles() { assert.fail('Electron must not copy a folder into a bank'); }
-  }, createDocument(), { electronAPI: {}, showDirectoryPicker() { assert.fail('No browser picker'); } });
-  const ui = plugin.createUI();
-  plugin._folderInput.click = () => assert.fail('No folder picker');
-  const button = ui.children[0].children[0].children[2];
-  assert.equal(button.textContent, 'Select SFZ Folder…');
-  const operation = button.dispatchEvent('click');
-  await entered.promise;
-  assert.equal(plugin.externalAssetInfo.pending, true);
-  selected = true;
-  selection.resolve([entry]);
-  await Promise.resolve();
-  loading.resolve(prepared);
-  await operation;
-  assert.equal(plugin.sf, entry.id);
-  assert.equal(plugin.getWasmAssets().get(0).externalAssetSignature, entry.id);
-  assert.equal(plugin._bankSelect.value, entry.id);
-  assert.equal(plugin.externalAssetInfo.pending, false);
-  assert.equal(plugin._status.hidden, true);
-});
-
-test('Electron file selection respects cancellation, later selection, cleanup and current errors', async () => {
-  for (const outcome of ['cancel', 'later', 'cleanup', 'error']) {
-    const selection = deferred();
-    const entered = deferred();
-    const plugin = createPlugin({ list: async () => [], prepare: async () => prepared,
-      selectFolder: () => { entered.resolve(); return selection.promise; }
-    }, createDocument(), { electronAPI: {} });
-    plugin.createUI();
-    const operation = plugin._selectNativeFolder();
-    await entered.promise;
-    if (outcome === 'later') {
-      plugin.setParameters({ sf: 'b'.repeat(24) });
-      await plugin.resolveOfflineDspAssetRequirement();
-    } else if (outcome === 'cleanup') plugin.cleanup();
-    if (outcome === 'error') selection.reject({ code: 'too-large' });
-    else selection.resolve(outcome === 'cancel' ? null : [{ id: 'a'.repeat(24), name: 'Old.sfz' }]);
-    await operation;
-    assert.equal(plugin.sf, outcome === 'later' ? 'b'.repeat(24) : '');
-    assert.equal(plugin.externalAssetInfo?.pending ?? false, false);
-    assert.equal(plugin._error, outcome === 'error' ? 'tooLarge' : '');
-  }
-});
-
-test('Electron folder candidates share the existing chooser and stale choices never load', async () => {
-  for (const outcome of ['select', 'cleanup', 'later']) {
-    const entries = [{ id: 'a'.repeat(24), name: 'Keys/Piano.sfz' },
-      { id: 'b'.repeat(24), name: 'Brass/Trumpet.sfz' }];
-    const preparing = [];
-    const plugin = createPlugin({ selectFolder: async () => entries, list: async () => entries,
-      prepare: async id => { preparing.push(id); return prepared; }
-    }, createDocument(), { electronAPI: {} });
-    plugin.createUI();
-    const choosing = deferred();
-    const wait = plugin._waitImportSelection.bind(plugin);
-    plugin._waitImportSelection = () => { const pending = wait(); choosing.resolve(); return pending; };
-    const operation = plugin._selectNativeFolder();
-    await choosing.promise;
-    assert.equal(plugin.externalAssetInfo.pending, true);
-    assert.equal(plugin._importRow.hidden, false);
-    assert.deepEqual(plugin._importChoices.children.map(option => option.textContent), entries.map(entry => entry.name));
-    assert.equal(plugin._importRow.children[1].textContent, 'Select');
-    if (outcome === 'select') {
-      plugin._importChoices.value = entries[1].id;
-      await plugin._importRow.children[1].dispatchEvent('click');
-    } else if (outcome === 'cleanup') plugin.cleanup();
-    else plugin.setParameters({ sf: 'c'.repeat(24) });
-    await operation;
-    await plugin.resolveOfflineDspAssetRequirement();
-    assert.deepEqual(preparing, outcome === 'select' ? [entries[1].id] : outcome === 'later' ? ['c'.repeat(24)] : []);
-    assert.equal(plugin._importRow.hidden, true);
-    assert.equal(plugin.externalAssetInfo?.pending ?? false, false);
-  }
-});
-
-test('Web imports and selects FileList banks when the native directory API is unavailable', async () => {
-  const service = await createLibrary();
-  const clicked = deferred();
-  const plugin = createPlugin(service, createDocument());
-  plugin._decodeAudioData = async () => ({ sampleRate: 48000, channels: [new Float32Array([.1, .2, .3])] });
-  plugin.createUI();
-  plugin._folderInput.click = () => clicked.resolve();
-  const operation = plugin._chooseFolder();
-  await clicked.promise;
-  plugin._folderInput.files = [folderFile('Piano.sfz', '<region> sample=tone.wav key=60'),
-    folderFile('tone.wav', 'synthetic PCM decoded by the test')];
-  await plugin._folderInput.dispatchEvent('change');
-  await operation;
-  const [entry] = await service.list();
-  assert.equal(entry.name, 'Piano.sfz');
-  assert.equal(plugin.sf, entry.id);
-  assert.equal(plugin._bankSelect.value, entry.id);
-  assert.ok(plugin._bankSelect.children.some(option => option.value === entry.id));
-  assert.equal(plugin.getWasmAssets().get(0).externalAssetSignature, entry.id);
-  assert.equal(plugin.externalAssetInfo.pending, false);
-});
-
-test('Web folder imports report unsupported event regions and oversized sample banks', async () => {
-  for (const definition of [
-    '<group> on_locc64=0 <region> sample=tone.wav',
-    '<group> locc64=64 <region> sample=tone.wav',
-    '<region> sample=tone.wav loop_mode=one_shot',
-    '<region> sample=tone.wav loop_mode=loop_continuous'
-  ]) {
-    const service = await createLibrary();
-    const clicked = deferred();
-    const plugin = createPlugin(service, createDocument());
-    plugin.createUI();
-    plugin._folderInput.click = () => clicked.resolve();
-    const operation = plugin._chooseFolder();
-    await clicked.promise;
-    plugin._folderInput.files = [folderFile('Instrument.sfz', definition),
-      folderFile('tone.wav', '', SFZ_DEFAULT_MAX_BYTES + 1)];
-    await plugin._folderInput.dispatchEvent('change');
-    await operation;
-    const pedal = definition.includes('cc64');
-    assert.equal(plugin._error, pedal ? 'noRegions' : 'tooLarge');
-    assert.match(plugin._status.textContent, pedal ? /No playable samples/ : /choose a smaller SFZ/);
-    assert.equal(plugin.externalAssetInfo, null);
-    assert.deepEqual(await service.list(), []);
-  }
-});
-
-test('folder enumeration is pending from the UI entry and cannot override a later selection or cleanup', async () => {
-  for (const action of ['select', 'cleanup']) {
-    const entered = deferred();
-    const enumerated = deferred();
-    let imports = 0;
-    const handle = { async *entries() {
-      entered.resolve();
-      await enumerated.promise;
-      yield ['Piano.sfz', { kind: 'file', getFile: async () => folderFiles[0] }];
-    } };
-    const plugin = createPlugin({ list: async () => [], prepare: async () => prepared,
-      importFolderFiles: async () => { imports++; return { id: 'a'.repeat(24) }; }
-    }, createDocument(), { showDirectoryPicker: async () => handle });
-    plugin.createUI();
-    const operation = plugin._chooseFolder();
-    assert.equal(plugin.externalAssetInfo.pending, true);
-    assert.equal(plugin.offlineDspAssetRequired, true);
-    await entered.promise;
-    let finished = false;
-    const offline = plugin.resolveOfflineDspAssetRequirement().then(value => { finished = true; return value; });
-    await Promise.resolve();
-    assert.equal(finished, false);
-    if (action === 'select') {
-      plugin.setParameters({ sf: 'b'.repeat(24) });
-      await plugin.resolveOfflineDspAssetRequirement();
-    } else plugin.cleanup();
-    enumerated.resolve();
-    await operation;
-    assert.equal((await offline).required, action === 'select');
-    assert.equal(imports, 0, 'Stale enumeration must not start saving a bank');
-    assert.equal(plugin.sf, action === 'select' ? 'b'.repeat(24) : '');
-    assert.equal(plugin.externalAssetInfo?.pending ?? false, false);
-    assert.equal(plugin._error, '');
-  }
-});
-
-test('fallback folder and multiple-SFZ choices share pending ownership through preparation', async () => {
-  const clicked = deferred();
-  const choosing = deferred();
-  const preparing = deferred();
-  const loaded = deferred();
-  let importedPath;
-  const plugin = createPlugin({ list: async () => [],
-    importFolderFiles: async (files, path) => { importedPath = path; return { id: 'a'.repeat(24) }; },
-    prepare: () => { preparing.resolve(); return loaded.promise; }
-  }, createDocument());
-  plugin.createUI();
-  plugin._folderInput.click = () => clicked.resolve();
-  const accept = plugin._acceptFolder.bind(plugin);
-  plugin._acceptFolder = (...args) => { const result = accept(...args); choosing.resolve(); return result; };
-  const operation = plugin._chooseFolder();
-  const offline = plugin.resolveOfflineDspAssetRequirement();
-  assert.equal(plugin.externalAssetInfo.pending, true);
-  await clicked.promise;
-  plugin._folderInput.files = [{ name: 'First.sfz' }, { name: 'Second.sfz' }];
-  await plugin._folderInput.dispatchEvent('change');
-  await choosing.promise;
-  assert.equal(plugin._importRow.hidden, false);
-  assert.equal(plugin.externalAssetInfo.pending, true);
-  plugin._importChoices.value = 'Second.sfz';
-  await plugin._importRow.children[1].dispatchEvent('click');
-  await preparing.promise;
-  assert.equal(importedPath, 'Second.sfz');
-  assert.equal(plugin.externalAssetInfo.pending, true);
-  loaded.resolve(prepared);
-  await operation;
-  assert.equal((await offline).required, true);
-  assert.equal(plugin.externalAssetInfo.pending, false);
-  assert.equal(plugin.getWasmAssets().get(0).externalAssetSignature, 'a'.repeat(24));
-});
-
-test('folder picker cancellation, latest failure and abandoned fallback choices finish pending', async () => {
-  for (const error of [{ name: 'AbortError' }, { code: 'storage' }]) {
-    const plugin = createPlugin({}, undefined, { showDirectoryPicker() { throw error; } });
-    await plugin._chooseFolder();
-    assert.equal(plugin.externalAssetInfo, null);
-    assert.equal(plugin.offlineDspAssetRequired, false);
-    assert.equal(plugin._error, error.code === 'storage' ? 'storage' : '');
-  }
-  for (const action of ['cancel', 'cleanup', 'select']) {
-    const clicked = deferred();
-    const plugin = createPlugin({ list: async () => [] }, createDocument());
-    plugin.createUI();
-    plugin._folderInput.click = () => clicked.resolve();
-    const operation = plugin._chooseFolder();
-    await clicked.promise;
-    if (action === 'cancel') await plugin._folderInput.dispatchEvent('cancel');
-    else if (action === 'cleanup') plugin.cleanup();
-    else plugin.setParameters({ sf: '' });
-    await operation;
-    assert.equal(plugin.externalAssetInfo, null);
-    assert.equal(plugin._finishImportSelection, null);
-    assert.equal(plugin._importRow.hidden, true);
-  }
-});
-
 test('SFZ UI uses independent Dry/Wet controls and standard-width readable note names', async () => {
   const document = createDocument();
   const plugin = createPlugin({ list: async () => [] }, document);
   const ui = plugin.createUI();
   assert.match(ui.className, /plugin-parameter-ui/);
-  assert.equal(plugin._folderInput.hasAttribute('webkitdirectory'), true);
-  assert.equal(plugin._folderInput.hasAttribute('accept'), false, 'Folder imports must retain sample files');
   assert.equal(plugin._status.getAttribute('role'), 'status');
   const controls = ui.children.at(-1);
   assert.equal(controls.className, 'sfz-controls analyzer-parameters');
-  assert.equal(controls.children.length, 20);
-  assert.equal(controls.children[0].className, 'parameter-row sfz-bank-row');
+  assert.equal(controls.children.length, 19);
+  assert.equal(controls.children[0].className, 'parameter-row sfz-bank-row local-audio-only');
   assert.deepEqual(controls.children.filter(row => row.controlKey).map(row => row.controlKey),
-    ['hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'og', 'tm']);
+    ['hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'ss', 'og', 'tm']);
   for (const [index, key, label] of [[0, 'hi', 'Highest'], [1, 'md', 'Middle'], [2, 'lo', 'Lowest']]) {
-    const control = controls.children[index + 4].control;
+    const control = controls.children[index + 2].control;
     assert.equal(control.label, label);
     assert.equal(control.checked, true);
     control.setter(false);
@@ -630,6 +403,11 @@ test('SFZ UI uses independent Dry/Wet controls and standard-width readable note 
     { label: 'Octave', min: -2, max: 2, step: 1, value: 0, setter: undefined, unit: '' });
   octave.control.setter(-2);
   assert.equal(plugin.getParameters().os, -2);
+  const sampleShift = controls.children.find(row => row.controlKey === 'ss').control;
+  assert.deepEqual({ ...sampleShift, setter: undefined },
+    { label: 'Sample Shift', min: -6, max: 6, step: 1, value: 0, setter: undefined, unit: '' });
+  sampleShift.setter(1);
+  assert.equal(plugin.getParameters().ss, 1);
   assert.equal(controls.children.at(-4).controlKey, 'og');
   const timing = controls.children.at(-3);
   assert.equal(timing.controlKey, 'tm');
@@ -645,7 +423,7 @@ test('SFZ UI uses independent Dry/Wet controls and standard-width readable note 
   assert.equal(plugin.mn, 60);
   assert.equal(controls.children.at(-2).children.at(-1).value, 'C4');
   await Promise.resolve();
-  assert.equal(plugin._removeButton.disabled, true);
+  assert.equal(plugin._clearButton.disabled, true);
 });
 
 test('SFZ load problems show once per selection, with Close, Escape and cleanup', async () => {
@@ -655,8 +433,7 @@ test('SFZ load problems show once per selection, with Close, Escape and cleanup'
   plugin._isCurrentWasmAssetOperation = () => true;
   plugin.createUI();
   const notices = () => document.body.children.filter(x => x.className.includes('sfz-load-notice-overlay'));
-  plugin._bankSelect.value = 'a'.repeat(24);
-  await plugin._bankSelect.dispatchEvent('change', { target: plugin._bankSelect });
+  await plugin._selectBank(async () => ({ id: 'a'.repeat(24) }));
   await plugin._pending;
   assert.equal(notices().length, 0, 'A recovered warning waits for actual asset readiness');
   plugin.onWasmAssetState(0, 3, 1);
@@ -669,14 +446,14 @@ test('SFZ load problems show once per selection, with Close, Escape and cleanup'
   await plugin.resolveOfflineDspAssetRequirement();
   plugin.setParameters({ th: .4, sf: 'a'.repeat(24) });
   assert.equal(notices().length, 0, 'Redraw, parameter updates and offline waits do not repeat a notice');
-  await plugin._bankSelect.dispatchEvent('change', { target: { value: 'b'.repeat(24) } });
+  await plugin._selectBank(async () => ({ id: 'b'.repeat(24) }));
   await plugin._pending;
   plugin.onWasmAssetState(0, 3, 2);
   assert.equal(notices().length, 1);
   await document.dispatchEvent('keydown', { key: 'Escape', preventDefault() {}, stopPropagation() {} });
   assert.equal(notices().length, 0);
   assert.equal(document.listenerCount('keydown'), 0);
-  await plugin._bankSelect.dispatchEvent('change', { target: { value: 'c'.repeat(24) } });
+  await plugin._selectBank(async () => ({ id: 'c'.repeat(24) }));
   await plugin._pending;
   plugin.onWasmAssetState(0, 3, 3);
   plugin.cleanup();
@@ -691,7 +468,7 @@ test('first WASM admission and preparation failures take priority over recovered
       warnings: [{ code: 'loop-points-ignored', count: 1 }] }) }, document);
     plugin._isCurrentWasmAssetOperation = (slot, revision) => revision === 2;
     plugin.createUI();
-    await plugin._bankSelect.dispatchEvent('change', { target: { value: 'a'.repeat(24) } });
+    await plugin._selectBank(async () => ({ id: 'a'.repeat(24) }));
     await plugin._pending;
     const notices = () => document.body.children.filter(x => x.className.includes('sfz-load-notice-overlay'));
     plugin.onWasmAssetRejected(0, 'capacity', 1);
@@ -720,11 +497,11 @@ test('SFZ load dialogs exclude normal, cancelled and stale loads but explain the
     id === 'a'.repeat(24) ? older.promise : Promise.resolve(result) }, document);
   plugin.createUI();
   const notices = () => document.body.children.filter(x => x.className.includes('sfz-load-notice-overlay'));
-  plugin._bankSelect.dispatchEvent('change', { target: { value: 'a'.repeat(24) } });
+  plugin._selectBank(async () => ({ id: 'a'.repeat(24) }));
   await Promise.resolve();
   await Promise.resolve();
   const oldLoad = plugin._pending;
-  await plugin._bankSelect.dispatchEvent('change', { target: { value: 'b'.repeat(24) } });
+  await plugin._selectBank(async () => ({ id: 'b'.repeat(24) }));
   await plugin._pending;
   older.resolve({ ...prepared, warnings: [{ code: 'missing-samples', count: 1 }] });
   await oldLoad;
@@ -774,7 +551,7 @@ test('only explicit SFZ loading owns a notice, not preset restoration or later D
   quiet();
 
   result = prepared;
-  await plugin._bankSelect.dispatchEvent('change', { target: { value: 'c'.repeat(24) } });
+  await plugin._selectBank(async () => ({ id: 'c'.repeat(24) }));
   plugin.onWasmAssetState(0, 3, 2);
   quiet();
   plugin.setParameters({ th: .7 });
@@ -783,7 +560,7 @@ test('only explicit SFZ loading owns a notice, not preset restoration or later D
   quiet();
   assert.equal(plugin._error, 'prepare');
 
-  await plugin._bankSelect.dispatchEvent('change', { target: { value: 'd'.repeat(24) } });
+  await plugin._selectBank(async () => ({ id: 'd'.repeat(24) }));
   plugin.onWasmAssetState(0, 4, 3);
   assert.equal(notices().length, 1);
   assert.equal(plugin._status.hidden, false);
@@ -795,7 +572,7 @@ test('only explicit SFZ loading owns a notice, not preset restoration or later D
   quiet();
 
   // Restoring the same ID before ACTIVE also cancels the previous manual token.
-  await plugin._bankSelect.dispatchEvent('change', { target: { value: 'e'.repeat(24) } });
+  await plugin._selectBank(async () => ({ id: 'e'.repeat(24) }));
   plugin.setParameters(plugin.getParameters());
   plugin.onWasmAssetRejected(0, 'capacity', 4);
   quiet();
@@ -830,7 +607,7 @@ test('post-selection list failures respect the current unconsumed manual attempt
     plugin.createUI();
     await new Promise(resolve => setImmediate(resolve));
     refreshing = true;
-    const selection = plugin._bankSelect.dispatchEvent('change', { target: { value: 'a'.repeat(24) } });
+    const selection = plugin._selectBank(async () => ({ id: 'a'.repeat(24) }));
     await entered.promise;
     if (state === 'active') plugin.onWasmAssetState(0, 3, 1);
     if (state === 'stale') {

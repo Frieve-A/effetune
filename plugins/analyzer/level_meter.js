@@ -344,7 +344,7 @@ class LevelMeterPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '16 / 1',
             mobileAspectRatio: '8 / 1',
-            className: 'level-meter-plugin-ui',
+            className: 'level-meter-plugin-ui local-audio-only',
             onResize: ({ canvas, cssWidth, dpr }) => {
                 this.foregroundCanvas = canvas;
                 this.graphDpr = dpr;

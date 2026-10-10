@@ -43,12 +43,34 @@ export class SyncEngine {
         this.divergences = 0;    // reconcile passes that needed a second apply
         // A change is only sent while the user is acting on this page.
         this.lastGestureAt = Number.NEGATIVE_INFINITY;
+        this.operation = null;
     }
 
     // ---- inputs ------------------------------------------------------------
 
     noteGesture() {
         this.lastGestureAt = this.now();
+    }
+
+    beginOperation(token) {
+        if (this.operation?.token === token) return;
+        this.endOperation();
+        this.flushNow();
+        this.noteGesture();
+        const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+        const id = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+        this.operation = { token, id, sent: false };
+    }
+
+    endOperation(token) {
+        const operation = this.operation;
+        if (!operation || (token !== undefined && operation.token !== token)) return;
+        // Flush the last value before closing the host's undo operation.
+        this.flushNow();
+        if (operation.sent && this.connected && this.confirmed) {
+            this.sendBatch([], { operationEnd: true });
+        }
+        this.operation = null;
     }
 
     onConnected() {
@@ -59,6 +81,7 @@ export class SyncEngine {
     // could bring back a value somebody else has overwritten since.
     onDisconnected() {
         this.connected = false;
+        this.operation = null;
         this.confirmed = null;
         this.clearPending();
         this.clearDirty();
@@ -178,7 +201,7 @@ export class SyncEngine {
         }
     }
 
-    sendBatch(ops) {
+    sendBatch(ops, { operationEnd = false } = {}) {
         const entry = { ops, ackRev: null, timer: null };
         this.pending.push(entry);
         entry.timer = this.setTimer(() => {
@@ -190,9 +213,15 @@ export class SyncEngine {
         const base = this.confirmed.rev;
         // The pipeline the batch was made against; the host refuses it when another one is active.
         const slot = this.confirmed.snapshot.slot;
+        const message = { op: 'edit', epoch, base, slot, ops };
+        if (this.operation) {
+            message.operation = this.operation.id;
+            if (operationEnd) message.operationEnd = true;
+            this.operation.sent = true;
+        }
         let reply;
         try {
-            reply = this.sendMessage({ op: 'edit', epoch, base, slot, ops });
+            reply = this.sendMessage(message);
         } catch (error) {
             this.settle(entry);
             this.onError(error);

@@ -50,8 +50,8 @@ export class HistoryManager {
         this.activeOperationShiftedStates = [];
     }
 
-    withHistorySuppressed(callback) {
-        this.endOperation();
+    withHistorySuppressed(callback, { preserveOperation = false } = {}) {
+        if (!this.isHistorySuppressed && !preserveOperation) this.endOperation();
         this.historySuppressionDepth++;
         try {
             return callback();
@@ -131,13 +131,12 @@ export class HistoryManager {
      * Save current pipeline state to history
      */
     saveState({ operationToken } = {}) {
+        if (this.isHistorySuppressed) return;
         if (operationToken === undefined) {
             this.endOperation();
         } else if (operationToken !== this.activeOperationToken) {
             return;
         }
-        if (this.isHistorySuppressed) return;
-
         const state = this.createSnapshot();
         const activeState = this.history[this.historyIndex] || null;
 

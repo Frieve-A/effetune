@@ -2204,14 +2204,14 @@ class AMRadioSimulatorPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '16 / 1',
             mobileAspectRatio: '3 / 1',
-            className: 'am-radio-simulator-hud',
+            className: 'am-radio-simulator-hud local-audio-only',
             onResize: () => this.drawHud()
         });
         this.hudGraphDispose = graph.dispose;
         this.hudCanvas = graph.canvas;
         this.hudCanvas.setAttribute('aria-label', 'AM radio receiver status');
         const stereoLamp = document.createElement('div');
-        stereoLamp.className = 'am-radio-simulator-stereo-lamp';
+        stereoLamp.className = 'am-radio-simulator-stereo-lamp local-audio-only';
         stereoLamp.setAttribute('role', 'status');
         stereoLamp.setAttribute('aria-label', 'Stereo reception off');
         const stereoIndicator = document.createElement('span');

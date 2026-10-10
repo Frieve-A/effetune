@@ -223,6 +223,8 @@ export class ElectronIntegration {
       this.showConfigDialog();
     });
 
+    window.electronAPI.remoteV1?.onOpenPanel?.(() => this.showRemoteControlDialog());
+
     window.electronAPI.onBackupRestore(() => {
       window.uiManager?.stateManager?.openBackupRestore?.();
     });
@@ -626,6 +628,14 @@ export class ElectronIntegration {
     await this.loadConfig();
     const { showConfigDialog } = await import('./electron/configIntegration.js');
     return showConfigDialog(this.isElectron, this.config);
+  }
+
+  async showRemoteControlDialog() {
+    const api = this.isElectron && window.electronAPI?.remoteV1?.settings;
+    if (!api) return;
+    const { RemoteControlDialog } = await import('./remote/remote-control-dialog.js');
+    this.remoteControlDialog ||= new RemoteControlDialog(window, api);
+    this.remoteControlDialog.show();
   }
 }
 

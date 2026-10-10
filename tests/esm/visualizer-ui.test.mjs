@@ -639,6 +639,82 @@ test('Visualizer side handles snap the moved edge while keeping the opposite edg
     }
 });
 
+test('Visualizer resize handles preserve proportions with Shift and resize from the center with Ctrl or Cmd', () => {
+    const item = { rect: {} };
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        view: { canvas: { getBoundingClientRect: () => ({ left: 100, top: 50, width: 1000, height: 500 }) } },
+        gridDivisions: 0, changed() {}
+    });
+    const before = { x: .2, y: .25, w: .4, h: .2 };
+    const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 1e-9, label);
+    for (const corner of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+        const horizontal = corner.includes('w') || corner.includes('e');
+        const vertical = corner.includes('n') || corner.includes('s');
+        for (const modifiers of [{ shiftKey: true }, { ctrlKey: true }, { metaKey: true },
+            { shiftKey: true, ctrlKey: true }]) {
+            for (const [dx, dy] of [[.04, .04], [.08, .01], [-.04, -.04]]) {
+                item.rect = { ...before };
+                const point = { x: .4, y: .35 };
+                editor.beginDrag(item, [item], point, corner);
+                editor.drag({ clientX: 100 + (point.x + (corner.includes('w') ? -dx : horizontal ? dx : 0)) * 1000,
+                    clientY: 50 + (point.y + (corner.includes('n') ? -dy : vertical ? dy : 0)) * 500, ...modifiers });
+                const centered = modifiers.ctrlKey || modifiers.metaKey;
+                const factor = centered ? 2 : 1;
+                if (modifiers.shiftKey) {
+                    near(item.rect.w / item.rect.h, before.w / before.h, `${corner} proportions`);
+                    const change = horizontal && (!vertical || Math.abs(dx / before.w) > Math.abs(dy / before.h))
+                        ? dx / before.w : dy / before.h;
+                    near(item.rect.w, before.w * (1 + change * factor), `${corner} proportional width`);
+                } else {
+                    near(item.rect.w, before.w + (horizontal ? dx * factor : 0), `${corner} width`);
+                    near(item.rect.h, before.h + (vertical ? dy * factor : 0), `${corner} height`);
+                }
+                if (centered || !horizontal) near(item.rect.x + item.rect.w / 2, .4, `${corner} horizontal center`);
+                else near(corner.includes('w') ? item.rect.x + item.rect.w : item.rect.x,
+                    corner.includes('w') ? .6 : .2, `${corner} opposite horizontal edge`);
+                if (centered || !vertical) near(item.rect.y + item.rect.h / 2, .35, `${corner} vertical center`);
+                else near(corner.includes('n') ? item.rect.y + item.rect.h : item.rect.y,
+                    corner.includes('n') ? .45 : .25, `${corner} opposite vertical edge`);
+            }
+        }
+    }
+});
+
+test('Visualizer resize modifiers change during a drag and respect snapping and proportional size limits', () => {
+    const item = { rect: { x: .1, y: .2, w: .2, h: .1 } };
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        view: { canvas: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 500 }) } },
+        gridDivisions: 8, changed() {}
+    });
+    const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 1e-9, label);
+    editor.beginDrag(item, [item], { x: .3, y: .25 }, 'e');
+    for (const [modifiers, expected] of [
+        [{}, { x: .1, y: .2, w: .275, h: .1 }],
+        [{ ctrlKey: true }, { x: .025, y: .2, w: .35, h: .1 }],
+        [{ ctrlKey: true, shiftKey: true }, { x: .025, y: .1625, w: .35, h: .175 }],
+        [{ ctrlKey: true, shiftKey: true, altKey: true }, { x: .047, y: .1735, w: .306, h: .153 }],
+        [{ shiftKey: true, altKey: true }, { x: .1, y: .18675, w: .253, h: .1265 }],
+        [{}, { x: .1, y: .2, w: .275, h: .1 }]
+    ]) {
+        editor.drag({ clientX: 353, clientY: 125, ...modifiers });
+        for (const key of ['x', 'y', 'w', 'h']) near(item.rect[key], expected[key], `${JSON.stringify(modifiers)} ${key}`);
+    }
+    editor.gridDivisions = 0;
+    for (const corner of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+        for (const [delta, width, height] of [[-2, .04, .02], [2, 1, .5]]) {
+            item.rect = { x: .2, y: .25, w: .4, h: .2 };
+            editor.beginDrag(item, [item], { x: .4, y: .35 }, corner);
+            editor.drag({ clientX: (.4 + (corner.includes('w') ? -delta : corner.includes('e') ? delta : 0)) * 1000,
+                clientY: (.35 + (corner.includes('n') ? -delta : corner.includes('s') ? delta : 0)) * 500,
+                ctrlKey: true, shiftKey: true });
+            near(item.rect.w, width, `${corner} limited width`);
+            near(item.rect.h, height, `${corner} limited height`);
+            near(item.rect.x + item.rect.w / 2, .4, `${corner} limited horizontal center`);
+            near(item.rect.y + item.rect.h / 2, .35, `${corner} limited vertical center`);
+        }
+    }
+});
+
 test('Visualizer snapping follows the selected grid division and Alt places items freely', () => {
     const item = { rect: { x: .1, y: .1, w: .2, h: .2 } };
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {

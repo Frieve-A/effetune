@@ -15,6 +15,8 @@ lang: ko
 
 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ 및 Room EQ의 Additional EQ에 있는 드래그 가능한 포인트 그래프에서는 포인트를 일반적으로 드래그하면 두 축의 값이 모두 바뀝니다. 드래그하는 동안 Shift를 누르면 움직임을 한 축으로 제한할 수 있습니다. 처음에 주로 가로 방향으로 움직이면 Frequency만, 주로 세로 방향으로 움직이면 Level만 바뀝니다(Group Delay PEQ에서는 Delay). Shift를 놓으면 다시 자유롭게 움직일 수 있습니다. 포인트 위에 마우스 포인터를 놓고 휠을 위로 돌리면 Q가 커지고 아래로 돌리면 Q가 작아집니다.
 
+모바일에서는 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ의 Additional EQ, Tonal Balance EQ의 Target Adjust가 선택한 한 밴드의 설정만 표시합니다. 번호가 있는 밴드 버튼을 탭해 편집할 밴드를 바꾸세요. 밴드를 바꿔도 각 밴드의 설정은 유지됩니다.
+
 ## 플러그인 목록
 
 - [15Band GEQ](#15band-geq) - 15개의 정밀한 컨트롤로 세밀한 사운드 조정

@@ -187,23 +187,28 @@ Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano r
 Affiche la forme de l'onde sonore en temps réel, afin de voir les impacts, les battements et les changements de niveau pendant l'écoute. Les réglages de déclenchement peuvent stabiliser l'affichage lorsqu'une forme d'onde se répète.
 
 ### Guide de Visualisation
-- L'axe horizontal montre le temps (millisecondes)
+- L’axe horizontal indique le temps en millisecondes ou en secondes
 - L'axe vertical montre l'amplitude normalisée ; la plage visible change avec Display Level et Vertical Offset
-- La ligne verte trace la forme d'onde réelle
+- Pour les durées courtes, une ligne montre le détail de l’onde ; pour les durées longues, une bande remplie montre les amplitudes minimale et maximale de chaque intervalle
 - Les lignes de la grille aident à mesurer les valeurs de temps et d'amplitude
 - Quand un déclenchement est détecté, la forme d'onde affichée démarre depuis cette position ; aucun marqueur séparé n'est affiché
 
 ### Affichage Visuel
 - Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
+### Conseils d’utilisation
+- Pour examiner une onde répétitive, réglez Display Time sur 1–20 ms et Trigger Mode sur Auto.
+- Pour suivre les battements et les variations de volume, réglez Display Time sur 1 000–10 000 ms et Trigger Mode sur Off. Le son le plus récent apparaît à droite et la forme d’onde défile régulièrement vers la gauche.
+- En modes Auto et Normal, une nouvelle capture apparaît après avoir recueilli la durée définie par Display Time.
+
 ### Paramètres
-- **Display Time** - Durée d'affichage (1 à 100 ms)
+- **Display Time** - Durée affichée (de 1 à 10 000 ms, soit jusqu’à 10 secondes)
   - Valeurs basses : Voir plus de détails dans les événements courts
   - Valeurs hautes : Voir des motifs plus longs
 - **Trigger Mode**
   - Auto : Mises à jour continues même sans déclenchement
   - Normal : Fige l'affichage jusqu'au prochain déclenchement
-  - Off : Sans déclenchement ; affiche en continu la forme d'onde la plus récente. Trigger Level, Trigger Edge et Holdoff sont sans effet
+  - Off : Sans déclenchement ; le son le plus récent apparaît à droite et la forme d’onde défile vers la gauche. Trigger Level, Trigger Edge et Holdoff sont sans effet
 - La détection du déclenchement utilise la moyenne des canaux gauche et droit. Une entrée mono est utilisée directement.
 - **Trigger Level** - Niveau d'amplitude qui démarre la capture
   - Plage : -1 à 1 (amplitude normalisée)
@@ -215,7 +220,7 @@ Affiche la forme de l'onde sonore en temps réel, afin de voir les impacts, les 
 - **Vertical Offset** - Décale la forme d'onde vers le haut/bas (-1 à 1)
 
 ### Note sur l'Affichage de la Forme d'Onde
-La forme d'onde relie les points capturés dans l'ordre chronologique. Pour les durées d'affichage longues, chaque intervalle conserve son premier et son dernier échantillon, ainsi que les échantillons minimum et maximum à leur position d'origine. La continuité et les pics brefs sont ainsi préservés dans les limites de la résolution d'affichage. Utilisez-la comme guide visuel plutôt que comme outil de mesure exact.
+Pour les durées longues, la bande remplie conserve les amplitudes minimale et maximale de chaque intervalle. Les pics brefs restent donc visibles même lorsque de nombreux échantillons occupent la même position à l’écran. Le curseur indique Minimum et Maximum pour cet intervalle ; pour les durées courtes, il indique Amplitude sur la forme d’onde. Utilisez cet affichage comme repère visuel plutôt que comme instrument de mesure précis.
 
 ## Pitch Meter
 

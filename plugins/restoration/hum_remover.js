@@ -234,7 +234,7 @@ class HumRemoverPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '16 / 1',
             mobileAspectRatio: '3 / 1',
-            className: 'restoration-telemetry-hud',
+            className: 'restoration-telemetry-hud local-audio-only',
             onResize: () => this._renderTelemetry()
         });
         this._telemetryHudCanvas = graph.canvas;

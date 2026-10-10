@@ -174,6 +174,22 @@ class NativeChainTests(unittest.TestCase):
         second = chain(source, 48_000, block_size=128)
         np.testing.assert_array_equal(first, second)
 
+    def test_ten_second_oscilloscope_preserves_brief_peaks(self) -> None:
+        source = np.zeros((1, 483200), dtype=np.float32)
+        source[0, 12000] = 1
+        source[0, 432000] = -0.75
+        received = []
+        chain = effetune.Chain([effetune.Oscilloscope(display_time=10, trigger_mode="Off")])
+        chain(source, 48000, block_size=127, on_telemetry=received.append)
+        self.assertTrue(received)
+        frame = received[-1]
+        self.assertEqual(frame.encoding, "envelope")
+        self.assertEqual(frame.capture_sample_count, 480000)
+        self.assertGreaterEqual(frame.end_sample, 480000)
+        self.assertLessEqual(len(frame.extrema), 4226 * 2)
+        self.assertEqual(max(frame.extrema), 1)
+        self.assertEqual(min(frame.extrema), -0.75)
+
     def test_analyzer_telemetry_is_decoded_owned_and_opt_in(self) -> None:
         frames = 16_384
         phase = np.arange(frames, dtype=np.float32)

@@ -1,4 +1,5 @@
 const NUMBER_INPUT_SELECTOR = '.plugin-parameter-ui input[type="number"], .visualizer-editor-navigation input[type="number"]';
+const TAP_MOVE_TOLERANCE = 10;
 
 function createEvent(documentRef, type, bubbles) {
     const EventClass = documentRef.defaultView?.Event || globalThis.Event;
@@ -135,21 +136,53 @@ export class MobileNumberKeypad {
         this.numberButtons = [];
         this.originalReadOnly = false;
         this.originalInputMode = null;
+        this.pendingPointer = null;
 
         this.onPointerDown = event => {
             if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
+            this.pendingPointer = null;
             if (!this.isEligibleInput(event.target)) return;
+            // Suppress native input focus while leaving touch scrolling available.
             event.preventDefault();
-            this.open(event.target);
+            this.pendingPointer = {
+                input: event.target,
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                moved: false
+            };
+        };
+        this.onPointerMove = event => {
+            const pointer = this.pendingPointer;
+            if (!pointer || event.pointerId !== pointer.pointerId) return;
+            if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > TAP_MOVE_TOLERANCE) {
+                pointer.moved = true;
+            }
+        };
+        this.onPointerUp = event => {
+            const pointer = this.pendingPointer;
+            if (!pointer || event.pointerId !== pointer.pointerId) return;
+            this.onPointerMove(event);
+            this.pendingPointer = null;
+            if (pointer.moved || event.target !== pointer.input || !this.isEligibleInput(pointer.input)) return;
+            event.preventDefault();
+            this.open(pointer.input);
+        };
+        this.onPointerCancel = event => {
+            if (event.pointerId === this.pendingPointer?.pointerId) this.pendingPointer = null;
+        };
+        this.onScroll = () => {
+            if (this.pendingPointer) this.pendingPointer.moved = true;
         };
         this.onClick = event => {
             if (!this.isEligibleInput(event.target)) return;
             event.preventDefault();
-            this.open(event.target);
+            // Pointer clicks are handled on release; keep keyboard/assistive activation.
+            if (event.detail === 0) this.open(event.target);
         };
         this.onFocusIn = event => {
             if (!this.isEligibleInput(event.target)) return;
-            this.open(event.target);
+            if (this.pendingPointer?.input !== event.target) this.open(event.target);
             event.target.blur?.();
         };
         this.onKeyDown = event => {
@@ -209,6 +242,10 @@ export class MobileNumberKeypad {
             capture: true,
             passive: false
         });
+        this.documentRef?.addEventListener?.('pointermove', this.onPointerMove, { capture: true, passive: true });
+        this.documentRef?.addEventListener?.('pointerup', this.onPointerUp, true);
+        this.documentRef?.addEventListener?.('pointercancel', this.onPointerCancel, true);
+        this.documentRef?.addEventListener?.('scroll', this.onScroll, { capture: true, passive: true });
         this.documentRef?.addEventListener?.('click', this.onClick, true);
         this.documentRef?.addEventListener?.('focusin', this.onFocusIn, true);
         this.documentRef?.addEventListener?.('keydown', this.onKeyDown, true);
@@ -431,6 +468,7 @@ export class MobileNumberKeypad {
     }
 
     cancel() {
+        this.pendingPointer = null;
         if (!this.target) return;
         this.restoreTargetState();
         this.close();
@@ -449,6 +487,10 @@ export class MobileNumberKeypad {
     dispose() {
         this.cancel();
         this.documentRef?.removeEventListener?.('pointerdown', this.onPointerDown, true);
+        this.documentRef?.removeEventListener?.('pointermove', this.onPointerMove, true);
+        this.documentRef?.removeEventListener?.('pointerup', this.onPointerUp, true);
+        this.documentRef?.removeEventListener?.('pointercancel', this.onPointerCancel, true);
+        this.documentRef?.removeEventListener?.('scroll', this.onScroll, true);
         this.documentRef?.removeEventListener?.('click', this.onClick, true);
         this.documentRef?.removeEventListener?.('focusin', this.onFocusIn, true);
         this.documentRef?.removeEventListener?.('keydown', this.onKeyDown, true);

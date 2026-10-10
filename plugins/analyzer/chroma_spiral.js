@@ -245,6 +245,7 @@ class ChromaSpiralPlugin extends PluginBase {
             value => this.setParameters({ df: value }), 'dB', 'df'));
         container.appendChild(parameters);
         const graph = this.createResponsiveGraph({
+            className: 'local-audio-only',
             maxWidth: 640, aspectRatio: '1 / 1', mobileAspectRatio: '1 / 1',
             onResize: ({ canvas, dpr }) => {
                 this.initializeDisplayCanvas(canvas);

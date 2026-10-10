@@ -6,7 +6,7 @@ const MAGIC = 0x315a4653;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const WARNING_CODES = new Set(['invalid-regions', 'missing-samples', 'unsupported-regions',
-  'reduced-bank', 'loop-points-ignored']);
+  'reduced-bank', 'loop-points-ignored', 'envelope-times-adjusted']);
 
 export async function readSfzAudioHeader(readRange, size) {
   const read = async (position, length) => {

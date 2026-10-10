@@ -1,10 +1,14 @@
+@import "../../css/asset-library.css";
+
 .sfz-note-player-plugin-ui .sfz-bank-row {
     column-span: all;
     row-gap: 4px;
 }
 .sfz-note-player-plugin-ui .sfz-bank-row[hidden] { display: none; }
-.sfz-note-player-plugin-ui .sfz-bank-row select { flex: 1; min-width: 100px; }
-.sfz-note-player-plugin-ui .sfz-bank-status { column-span: all; margin: 8px 0 12px; color: var(--et-danger); overflow-wrap: anywhere; }
+.sfz-note-player-plugin-ui .sfz-clear-button { flex: 0 0 80px; width: 80px; }
+.sfz-note-player-plugin-ui .sfz-selected-bank { flex: 1; min-width: 100px; overflow-wrap: anywhere; color: var(--et-text-secondary); }
+.sfz-note-player-plugin-ui .sfz-bank-status { column-span: all; margin: 8px 0 12px; color: var(--et-text-secondary); overflow-wrap: anywhere; }
+.sfz-note-player-plugin-ui .sfz-bank-status[data-state="error"] { color: var(--et-danger); }
 .sfz-note-player-plugin-ui .sfz-controls > .parameter-row:not(.sfz-bank-row),
 body.layout-mobile .sfz-note-player-plugin-ui .sfz-controls > .parameter-row:not(.sfz-bank-row) { flex-wrap: nowrap; }
 .sfz-note-player-plugin-ui .sfz-controls .parameter-row input[type="range"],

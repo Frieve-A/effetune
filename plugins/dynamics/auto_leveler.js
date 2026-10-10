@@ -701,7 +701,7 @@ class AutoLevelerPlugin extends PluginBase {
             maxWidth: 2048,
             aspectRatio: '2048 / 300',
             mobileAspectRatio: '2.5 / 1',
-            className: 'auto-leveler-graph',
+            className: 'auto-leveler-graph local-audio-only',
             onResize: ({ canvas }) => {
                 this.canvas = canvas;
                 this.canvasCtx = canvas.getContext('2d');

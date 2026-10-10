@@ -39,14 +39,19 @@ test('SFZ selection persists references only and reads current source bytes afte
   assert.equal(result.ok, true);
   const entry = result.data.banks[0];
   assert.match(entry.id, /^[a-f0-9]{24}$/);
-  assert.deepEqual(Object.keys(entry).sort(), ['id', 'name', 'selectedPath']);
+  assert.deepEqual(Object.keys(entry).sort(), ['id', 'importedAt', 'name', 'selectedPath']);
+  assert.match(entry.importedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   assert.equal(entry.selectedPath, 'Example.sfz');
-  assert.deepEqual((await f.call('select')).data.banks, [entry]);
+  const reselected = (await f.call('select')).data.banks[0];
+  assert.deepEqual({ id: reselected.id, name: reselected.name, selectedPath: reselected.selectedPath },
+    { id: entry.id, name: entry.name, selectedPath: entry.selectedPath });
+  assert.match(reselected.importedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   assert.deepEqual(await fs.promises.readdir(f.data), ['sfz-references.json']);
   const stored = JSON.parse(await fs.promises.readFile(path.join(f.data, 'sfz-references.json'), 'utf8'));
   assert.equal(stored[0].path, await fs.promises.realpath(f.selected));
+  assert.equal(stored[0].importedAt, reselected.importedAt);
   f.restart();
-  assert.deepEqual((await f.call('list')).data, [entry]);
+  assert.deepEqual((await f.call('list')).data, [reselected]);
   await fs.promises.writeFile(path.join(f.source, 'tone.wav'), 'updated');
   const request = { id: entry.id, relativePath: 'tone.wav', maxBytes: 1024 };
   assert.equal(Buffer.from((await f.call('readRelative', request)).data).toString(), 'updated');

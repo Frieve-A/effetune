@@ -15,6 +15,7 @@ class SFZNotePlayerPlugin extends PluginBase {
         this.dm = 20;
         this.wm = 100;
         this.os = 0;
+        this.ss = 0;
         this.lo = this.md = this.hi = true;
         this.tm = 0;
         this.og = 0;
@@ -39,18 +40,18 @@ class SFZNotePlayerPlugin extends PluginBase {
     getParameters() {
         return { ...super.getParameters(), sf: this.sf, th: this.th, rd: this.rd, nh: this.nh, vf: this.vf,
             vc: this.vc, mn: this.mn, mx: this.mx, pl: this.pl, dm: this.dm, wm: this.wm,
-            os: this.os, lo: this.lo, md: this.md, hi: this.hi, tm: this.tm, og: this.og };
+            os: this.os, ss: this.ss, lo: this.lo, md: this.md, hi: this.hi, tm: this.tm, og: this.og };
     }
 
     setParameters(params = {}) {
         super._setValidatedParameters(params);
         const ranges = { th: [0.01, 1], rd: [1, 96], nh: [0, 100], vf: [-96, 0], vc: [-60, 24],
             mn: [21, 108], mx: [21, 108], pl: [1, 128], dm: [0, 100], wm: [0, 100],
-            os: [-2, 2], tm: [-100, 100], og: [-60, 12] };
+            os: [-2, 2], ss: [-6, 6], tm: [-100, 100], og: [-60, 12] };
         for (const [key, [min, max]] of Object.entries(ranges)) {
             if (params[key] !== undefined) {
                 const value = this.parseFiniteNumber(params[key], min, max, this[key]);
-                this[key] = ['mn', 'mx', 'pl', 'os'].includes(key) ? Math.round(value) : value;
+                this[key] = ['mn', 'mx', 'pl', 'os', 'ss'].includes(key) ? Math.round(value) : value;
             }
         }
         for (const key of ['lo', 'md', 'hi']) {
@@ -63,7 +64,7 @@ class SFZNotePlayerPlugin extends PluginBase {
             if (next !== this.sf || this._importing) {
                 this.sf = next;
                 this._name = '';
-                this._loadBank();
+                if (this.hasLocalAudio !== false) this._loadBank();
             } else {
                 this._resetLoadNotice();
                 this._errorVisible = false;
@@ -114,7 +115,6 @@ class SFZNotePlayerPlugin extends PluginBase {
     _loadBank(generation = ++this._generation, manual = false) {
         this._resetLoadNotice();
         this._initialAssetLoad = manual;
-        this._finishImportSelection?.(null);
         this._importing = false;
         const id = this.sf;
         this.clearWasmAsset(0);
@@ -218,7 +218,7 @@ class SFZNotePlayerPlugin extends PluginBase {
             'loop-points-ignored': 'Unused loop settings were adjusted so this SFZ could be loaded.',
             'invalid-regions': 'Some sounds had invalid settings and were skipped.',
             'missing-samples': 'Some sample files could not be found. The available sounds were loaded.',
-            'unsupported-regions': 'Some sounds use playback conditions this effect does not support and were skipped.',
+            'envelope-times-adjusted': 'Some sound fade times were invalid and were adjusted so this SFZ could be loaded.',
             'reduced-bank': 'A smaller selection of sounds was loaded to fit the size limit while keeping every note. Increase SFZ size limit for more detail.'
         };
         return [...new Set(warnings.map(warning => warning.code))]
@@ -288,107 +288,49 @@ class SFZNotePlayerPlugin extends PluginBase {
         this._status.textContent = this._errorVisible ? this._errorMessage() : '';
         this._status.hidden = !this._status.textContent;
         this._status.dataset.state = this._status.hidden ? '' : 'error';
-        if (this._bankSelect) this._bankSelect.value = this.sf;
-        if (this._removeButton) this._removeButton.disabled = !this.sf || Boolean(this._pending);
+        if (this._selectedBankName) this._selectedBankName.textContent = this.sf
+            ? this._name || this._t('sfzNotePlayer.missingBank', 'Missing SFZ') : 'None';
+        if (this._clearButton) this._clearButton.disabled = !this.sf || Boolean(this._pending);
     }
 
     async _refreshBanks(generation) {
         const entries = await (await this._getLibraryService()).list();
-        if (!this._bankSelect || (generation !== undefined && generation !== this._generation)) return;
-        this._bankSelect.replaceChildren();
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = 'None';
-        this._bankSelect.appendChild(empty);
-        for (const entry of entries) {
-            const option = document.createElement('option');
-            option.value = entry.id;
-            option.textContent = entry.name;
-            this._bankSelect.appendChild(option);
-        }
-        if (this.sf && !entries.some(entry => entry.id === this.sf)) {
-            const missing = document.createElement('option');
-            missing.value = this.sf;
-            missing.textContent = this._t('sfzNotePlayer.missingBank', 'Missing SFZ');
-            this._bankSelect.appendChild(missing);
-        }
+        if (!this._selectedBankName || (generation !== undefined && generation !== this._generation)) return;
+        this._name = entries.find(entry => entry.id === this.sf)?.name || this._name;
         this._renderStatus();
     }
 
-    _chooseFolder() {
-        return this._importFolder();
-    }
-
-    async _acceptFolder(files, module) {
-        const paths = module.listSfzFolderFiles(files);
-        return this._chooseInstrument(paths.map(path => ({ id: path, name: path })));
-    }
-
-    _chooseInstrument(entries) {
-        if (!entries.length) throw Object.assign(new Error('No SFZ in folder'), { code: 'no-regions' });
-        if (entries.length === 1) return entries[0].id;
-        this._importChoices.replaceChildren();
-        for (const entry of entries) {
-            const option = document.createElement('option');
-            option.value = entry.id;
-            option.textContent = entry.name;
-            this._importChoices.appendChild(option);
+    async _openLibraryBrowser() {
+        if (this._libraryBrowser) {
+            this._libraryBrowser.element.querySelector('input[type="search"]')?.focus();
+            return;
         }
-        this._importRow.hidden = false;
-        return this._waitImportSelection();
-    }
-
-    _waitImportSelection() {
-        return new Promise(resolve => {
-            this._finishImportSelection = value => {
-                this._finishImportSelection = null;
-                this._importRow.hidden = true;
-                resolve(value);
-            };
-        });
-    }
-
-    _selectNativeFolder() {
-        return this._selectBank(async (service, isCurrent) => {
-            const entries = await service.selectFolder({ isCurrent });
-            if (!isCurrent() || !entries) return null;
-            const id = await this._chooseInstrument(entries);
-            return isCurrent() ? entries.find(entry => entry.id === id) || null : null;
-        });
-    }
-
-    _importFolder(files, path) {
-        return this._selectBank(async (service, isCurrent) => {
-            if (!files) {
-                if (typeof window.showDirectoryPicker === 'function') {
-                    const handle = await window.showDirectoryPicker();
-                    if (!isCurrent()) return null;
-                    const module = await import('../../js/sfz/service.js');
-                    if (!isCurrent()) return null;
-                    files = await module.enumerateSfzDirectory(handle, { isCurrent });
-                } else {
-                    const selection = this._waitImportSelection();
-                    this._folderInput.click();
-                    files = await selection;
-                }
-            }
-            if (!isCurrent() || !files?.length) return null;
-            if (!path) {
-                const module = await import('../../js/sfz/service.js');
-                if (!isCurrent()) return null;
-                path = await this._acceptFolder(files, module);
-            }
-            if (!isCurrent() || !path) return null;
-            return service.importFolderFiles(files, path, {
-                decode: (bytes, rate) => this._decodeAudioData(bytes, rate)
+        const button = this._libraryButton;
+        if (!button || button.disabled) return;
+        button.disabled = true;
+        try {
+            const [browser, service] = await Promise.all([
+                import('../../js/sfz/browser.js'), this._getLibraryService()
+            ]);
+            if (button !== this._libraryButton) return;
+            this._libraryBrowser = browser.openSfzLibraryBrowser({
+                service,
+                returnFocus: button,
+                decode: (bytes, rate) => this._decodeAudioData(bytes, rate),
+                audioManager: window.uiManager?.audioManager,
+                onLoad: entry => this._selectBank(async () => entry),
+                onClose: () => { this._libraryBrowser = null; }
             });
-        });
+        } catch (error) {
+            if (button === this._libraryButton) this._showError(error);
+        } finally {
+            button.disabled = false;
+        }
     }
 
     async _selectBank(select) {
         this._resetLoadNotice();
         this._initialAssetLoad = true;
-        this._finishImportSelection?.(null);
         const generation = ++this._generation;
         this._importing = true;
         this._error = '';
@@ -402,7 +344,7 @@ class SFZNotePlayerPlugin extends PluginBase {
                 const entry = await select(service, isCurrent);
                 if (!isCurrent() || !entry) return;
                 this.sf = entry.id;
-                this._name = '';
+                this._name = entry.name || '';
                 const preparation = this._loadBank(generation, true);
                 this.updateParameters();
                 await preparation;
@@ -415,7 +357,6 @@ class SFZNotePlayerPlugin extends PluginBase {
                 }
             } finally {
                 if (generation === this._generation && this._pending === pending) {
-                    this._finishImportSelection?.(null);
                     this._pending = null;
                     this._importing = false;
                     this._initialAssetLoad = false;
@@ -465,16 +406,9 @@ class SFZNotePlayerPlugin extends PluginBase {
         const container = document.createElement('div');
         container.className = 'sfz-note-player-plugin-ui plugin-parameter-ui';
         const bankRow = document.createElement('div');
-        bankRow.className = 'parameter-row sfz-bank-row';
+        bankRow.className = 'parameter-row sfz-bank-row local-audio-only';
         const label = document.createElement('label');
         label.textContent = 'SFZ:';
-        this._bankSelect = document.createElement('select');
-        this._bankSelect.id = `${this.id}-sfz-bank`;
-        label.htmlFor = this._bankSelect.id;
-        this._bankSelect.addEventListener('change', event => {
-            const id = event.target.value;
-            return this._selectBank(async () => ({ id }));
-        });
         const button = (text, action) => {
             const element = document.createElement('button');
             element.type = 'button';
@@ -482,43 +416,20 @@ class SFZNotePlayerPlugin extends PluginBase {
             element.addEventListener('click', action);
             return element;
         };
-        this._removeButton = button('Remove', async () => {
-            try {
-                await (await this._getLibraryService()).remove(this.sf);
-                this.setParameters({ sf: '' });
-                await this._refreshBanks();
-            } catch (error) { this._showError(error); }
-        });
-        bankRow.append(label, this._bankSelect,
-            window.electronAPI
-                ? button('Select SFZ Folder…', () => this._selectNativeFolder())
-                : button('Import Folder…', () => this._chooseFolder()),
-            this._removeButton);
-        this._folderInput = document.createElement('input');
-        this._folderInput.type = 'file';
-        this._folderInput.multiple = true;
-        this._folderInput.setAttribute('webkitdirectory', '');
-        this._folderInput.hidden = true;
-        this._folderInput.addEventListener('change', () => {
-            this._finishImportSelection?.(Array.from(this._folderInput.files || []));
-            this._folderInput.value = '';
-        });
-        this._folderInput.addEventListener('cancel', () => this._finishImportSelection?.(null));
+        this._libraryButton = button('SFZ Library…', () => this._openLibraryBrowser());
+        this._libraryButton.id = `${this.id}-sfz-library`;
+        this._selectedBankName = document.createElement('span');
+        this._selectedBankName.className = 'sfz-selected-bank';
+        this._clearButton = button('Clear', () => this.setParameters({ sf: '' }));
+        this._clearButton.className = 'sfz-clear-button';
+        bankRow.append(label, this._libraryButton, this._selectedBankName, this._clearButton);
         this._status = document.createElement('div');
-        this._status.className = 'sfz-bank-status';
+        this._status.className = 'sfz-bank-status local-audio-only';
         this._status.setAttribute('role', 'status');
         this._status.setAttribute('aria-live', 'polite');
-        this._importRow = document.createElement('div');
-        this._importRow.className = 'parameter-row sfz-bank-row';
-        this._importRow.hidden = true;
-        this._importChoices = document.createElement('select');
-        this._importChoices.setAttribute('aria-label', 'SFZ');
-        this._importRow.append(this._importChoices,
-            button(window.electronAPI ? 'Select' : 'Import', () =>
-                this._finishImportSelection?.(this._importChoices.value)));
         const controls = document.createElement('div');
         controls.className = 'sfz-controls analyzer-parameters';
-        controls.append(bankRow, this._folderInput, this._importRow, this._status);
+        controls.append(bankRow, this._status);
         for (const [key, label] of [['hi', 'Highest'], ['md', 'Middle'], ['lo', 'Lowest']]) {
             controls.appendChild(this.createCheckboxControl(label, this[key],
                 value => this.setParameters({ [key]: value }), key));
@@ -532,13 +443,14 @@ class SFZNotePlayerPlugin extends PluginBase {
             ['pl', 'Max Voices', 1, 128, 1, ''],
             ['dm', 'Dry', 0, 100, 1, '%'], ['wm', 'Wet', 0, 100, 1, '%'],
             ['os', 'Octave', -2, 2, 1, ''],
+            ['ss', 'Sample Shift', -6, 6, 1, ''],
             ['og', 'Output Gain', -60, 12, 0.1, 'dB'],
             ['tm', 'Timing', -100, 100, 1, 'ms']
         ]) controls.appendChild(this.createParameterControl(labelText, min, max, step, this[key],
             value => this.setParameters({ [key]: value }), unit, key));
         controls.append(this._noteControl('Lowest Note', 'mn'), this._noteControl('Highest Note', 'mx'));
         container.appendChild(controls);
-        this._refreshBanks().catch(error => this._showError(error, false));
+        if (this.hasLocalAudio !== false) this._refreshBanks().catch(error => this._showError(error, false));
         this._renderStatus();
         this._showLoadNotice();
         return container;
@@ -547,10 +459,11 @@ class SFZNotePlayerPlugin extends PluginBase {
     cleanup() {
         this._resetLoadNotice();
         ++this._generation;
-        this._finishImportSelection?.(null);
         this._pending = null;
         this._importing = false;
-        this._bankSelect = this._status = this._removeButton = null;
+        this._libraryBrowser?.dispose();
+        this._libraryBrowser = null;
+        this._libraryButton = this._selectedBankName = this._status = this._clearButton = null;
         super.cleanup();
     }
 }

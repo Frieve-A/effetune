@@ -804,6 +804,7 @@ class GatePlugin extends PluginBase {
     }
 
     updateReductionMeter() {
+        if (this.hasLocalAudio === false) return;
         const canvas = this.canvas;
         if (!canvas) return;
 
@@ -877,7 +878,7 @@ class GatePlugin extends PluginBase {
         this._graphReadout = window.GraphReadout?.attach({
             mount: graphContainer,
             surface: canvas,
-            plot: () => ({ left: 32, top: 0, width: canvas.width - 32, height: canvas.height }),
+            plot: () => ({ left: this.hasLocalAudio !== false ? 32 : 0, top: 0, width: canvas.width - (this.hasLocalAudio !== false ? 32 : 0), height: canvas.height }),
             read: x => this._readGraph(x),
             crosshair: 'xy'
         });

@@ -701,7 +701,7 @@ class PowerAmpSagPlugin extends PluginBase {
         
         // Create graph container
         const graphContainer = document.createElement('div');
-        graphContainer.className = 'power-amp-sag-graphs';
+        graphContainer.className = 'power-amp-sag-graphs local-audio-only';
         
         const leftGraph = this.createResponsiveGraph({
             maxWidth: 1014,

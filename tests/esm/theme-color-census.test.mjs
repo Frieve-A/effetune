@@ -27,6 +27,7 @@ const targets = [
   'css/effetune-mobile.css',
   'css/effetune-library.css',
   'css/pipeline-analyzer.css',
+  'css/onboarding-tour.css',
   'effetune.html',
   'features/measurement/measurement.html',
   'features/effetune_bench.html',

@@ -17,7 +17,9 @@ const isWithin = (root, file) => {
   const relative = path.relative(root, file);
   return Boolean(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
-const publicEntry = entry => ({ id: entry.id, name: entry.name, selectedPath: relativePath(entry.root, entry.path) });
+const publicEntry = entry => ({ id: entry.id, name: entry.name, selectedPath: relativePath(entry.root, entry.path),
+  ...(entry.importedAt ? { importedAt: entry.importedAt } : {}),
+  ...(entry.bankPaths?.length ? { bankPaths: entry.bankPaths } : {}) });
 
 function boundedSize(size, limit = MAX_BYTES) {
   if (!Number.isSafeInteger(size) || size < 0 || size > limit) {
@@ -52,7 +54,10 @@ function registerSfzLibraryIpc({ ipcMain, getUserDataPath, showOpenDialog, logge
         for (const entry of data) {
           if (!/^[a-f0-9]{24}$/.test(entry?.id) || typeof entry.name !== 'string' ||
               !path.isAbsolute(entry.path || '') || !path.isAbsolute(entry.root || '') ||
-              !isWithin(entry.root, entry.path) || path.extname(entry.path).toLowerCase() !== '.sfz') {
+              !isWithin(entry.root, entry.path) || path.extname(entry.path).toLowerCase() !== '.sfz' ||
+              (entry.bankPaths !== undefined && (!Array.isArray(entry.bankPaths) || entry.bankPaths.length > 10000 ||
+                entry.bankPaths.some(file => typeof file !== 'string' || !file.toLowerCase().endsWith('.bank.xml') ||
+                  !isWithin(entry.root, path.resolve(entry.root, file)))))) {
             throw new Error('Invalid SFZ reference');
           }
           entries.set(entry.id, entry);
@@ -99,12 +104,17 @@ function registerSfzLibraryIpc({ ipcMain, getUserDataPath, showOpenDialog, logge
     return target;
   };
   const handlers = {
-    [CHANNELS.select]: async () => {
-      const selection = await showOpenDialog({ properties: ['openDirectory'] });
+    [CHANNELS.select]: async (_request = {}) => {
+      const fileSelection = _request.mode === 'files';
+      const selection = await showOpenDialog(fileSelection
+        ? { properties: ['openFile', 'multiSelections'], filters: [{ name: 'SFZ instruments', extensions: ['sfz'] }] }
+        : { properties: ['openDirectory'] });
       if (selection.canceled || !selection.filePaths?.length) return null;
-      const root = await fs.promises.realpath(selection.filePaths[0]);
+      if (fileSelection && selection.filePaths.length > 10000) throw new Error('Too many SFZ files selected');
+      const root = await fs.promises.realpath(fileSelection ? path.dirname(selection.filePaths[0]) : selection.filePaths[0]);
       if (!(await fs.promises.stat(root)).isDirectory()) throw new Error('Invalid SFZ folder');
       const files = [];
+      const bankPaths = [];
       const visit = async (directory, depth) => {
         if (depth > 32) throw new Error('SFZ folder is nested too deeply');
         const canonicalDirectory = await fs.promises.realpath(directory);
@@ -117,10 +127,25 @@ function registerSfzLibraryIpc({ ipcMain, getUserDataPath, showOpenDialog, logge
             const canonical = await fs.promises.realpath(file);
             if (!isWithin(root, canonical)) throw new Error('SFZ file is outside its folder');
             files.push(canonical);
+          } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.bank.xml')) {
+            if (bankPaths.length >= 10000) throw new Error('SFZ folder contains too many bank definitions');
+            const canonical = await fs.promises.realpath(file);
+            if (!isWithin(root, canonical)) throw new Error('SFZ bank is outside its folder');
+            bankPaths.push(relativePath(root, canonical));
           }
         }
       };
-      await visit(root, 0);
+      if (fileSelection) {
+        for (const selected of selection.filePaths) {
+          const canonical = await fs.promises.realpath(selected);
+          if (!isWithin(root, canonical) || path.extname(canonical).toLowerCase() !== '.sfz' ||
+              !(await fs.promises.stat(canonical)).isFile()) throw new Error('Invalid SFZ selection');
+          files.push(canonical);
+        }
+        for (const file of await fs.promises.readdir(root, { withFileTypes: true })) {
+          if (file.isFile() && file.name.toLowerCase().endsWith('.bank.xml')) bankPaths.push(file.name);
+        }
+      } else await visit(root, 0);
       files.sort();
       return update(entries => {
         const byPath = new Map([...entries.values()].map(entry =>
@@ -128,7 +153,8 @@ function registerSfzLibraryIpc({ ipcMain, getUserDataPath, showOpenDialog, logge
         const banks = files.map(selected => {
           const existing = byPath.get(process.platform === 'win32' ? selected.toLowerCase() : selected);
           const entry = { id: existing?.id || crypto.randomBytes(12).toString('hex'),
-            name: relativePath(root, selected), path: selected, root };
+            name: relativePath(root, selected), path: selected, root, bankPaths: bankPaths.sort(),
+            importedAt: new Date().toISOString() };
           entries.set(entry.id, entry);
           return publicEntry(entry);
         });

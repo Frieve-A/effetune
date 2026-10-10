@@ -1083,7 +1083,7 @@ class MultibandTransientPlugin extends PluginBase {
 
         // Transfer graphs UI (from multiband_saturation.js structure)
         const graphsContainer = document.createElement('div');
-        graphsContainer.className = 'mbt-transfer-graphs';
+        graphsContainer.className = 'mbt-transfer-graphs local-audio-only';
         this._readoutFrames = [];
         this._graphReadouts = [];
         for (let i = 0; i < this.bands.length; i++) {

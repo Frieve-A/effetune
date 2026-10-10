@@ -559,7 +559,7 @@ body.layout-mobile .plugin-list {
     max-width: none;
     min-width: 0;
     max-height: none;
-    padding: calc(60px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom));
+    padding: 0 12px calc(16px + env(safe-area-inset-bottom));
     border-radius: 0;
     overflow-y: auto;
     overflow-x: hidden;
@@ -612,12 +612,15 @@ body.layout-mobile .plugin-list-header {
     grid-template-rows: 40px;
     align-items: center;
     gap: 8px;
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 1;
     height: auto;
     min-height: 54px;
     width: 100%;
-    padding: 0 0 14px;
+    padding: calc(60px + env(safe-area-inset-top)) 0 14px;
     margin-bottom: 10px;
+    background: var(--et-panel-gradient);
     border-bottom: 1px solid var(--et-surface-17);
     box-sizing: border-box;
 }
@@ -673,7 +676,7 @@ body.layout-mobile .search-button {
 }
 
 body.layout-mobile .effect-search-clear-button {
-    top: 11px;
+    top: calc(71px + env(safe-area-inset-top));
     right: 48px;
 }
 
@@ -944,6 +947,7 @@ body.layout-mobile .analog-meter-reset-button {
 
 body.layout-mobile .plugin-parameter-ui input[type="range"]:not(.vertical-slider) {
     min-width: var(--et-mobile-effect-slider-min-width);
+    touch-action: pan-y;
 }
 
 body.layout-mobile .plugin-parameter-ui .parameter-row input[type="range"] {
@@ -971,6 +975,12 @@ body.layout-mobile .plugin-parameter-ui .parameter-row > select {
     min-width: var(--et-mobile-field-min-width);
     max-width: 100%;
     box-sizing: border-box;
+}
+
+/* Slider readouts use the same compact width as numeric parameter fields. */
+body.layout-mobile .plugin-parameter-ui .parameter-row > input[type="range"] + input[type="text"][readonly] {
+    flex: 0 0 var(--et-mobile-field-min-width);
+    width: var(--et-mobile-field-min-width);
 }
 
 body.layout-mobile .plugin-parameter-ui label,

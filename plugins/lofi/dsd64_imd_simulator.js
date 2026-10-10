@@ -754,7 +754,7 @@ class DSD64IMDSimulatorPlugin extends PluginBase {
 
         // Term contribution meters
         const meterWrap = document.createElement('div');
-        meterWrap.className = 'dsd64-imd-meter-wrap';
+        meterWrap.className = 'dsd64-imd-meter-wrap local-audio-only';
         const meterTitle = document.createElement('div');
         meterTitle.className = 'dsd64-imd-viz-title';
         meterTitle.textContent = 'Term Contribution (dBFS RMS)';

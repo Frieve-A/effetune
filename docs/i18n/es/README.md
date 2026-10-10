@@ -55,7 +55,7 @@ Antes de usar EffeTune, deberás configurar el enrutamiento de audio. Aquí se e
    - O selecciona **Abrir archivo de música...** desde el menú **Archivo** (solo aplicación de escritorio)
    - O arrastra el archivo de música a la ventana
 - Para usar solo el reproductor, selecciona Ninguno (solo reproductor de archivos de música) como dispositivo de entrada en Configuración de audio y evita usar una entrada de audio en vivo
-- Al pausar, el sonido se desvanece brevemente; al reanudar, vuelve de forma gradual para reducir los chasquidos.
+- Al pausar o cerrar el reproductor con el botón × de la esquina superior derecha, el sonido se desvanece brevemente; al reanudar, vuelve de forma gradual para reducir los chasquidos.
 - Pulsa el botón de velocidad junto a Shuffle para abrir la ventana emergente. Elige uno de los nueve ajustes predefinidos o usa el control deslizante horizontal o el campo numérico para ajustar la velocidad de 0,25x a 4x en incrementos de 0,01x. El botón **Mantener el tono**, situado junto a él, está activado de forma predeterminada, por lo que el tono se mantiene igual al cambiar la velocidad; desactívalo para que el tono suba o baje junto con la velocidad, como al cambiar la velocidad de una cinta o un disco de vinilo.
 
 ### Configuración para Servicios de Streaming
@@ -90,6 +90,8 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
    * **Salida:** Audio procesado hacia tu amplificador o altavoces
 
 ## Uso
+
+Al abrir la aplicación por primera vez, un breve recorrido te muestra dónde reproducir música, añadir efectos y ajustar el sonido. Puedes repetirlo en cualquier momento con **Recorrer la aplicación** en el menú de configuración, en **Ayuda** en la aplicación de escritorio o desde el botón de menú en el móvil.
 
 ### Configuración de la aplicación
 

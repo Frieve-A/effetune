@@ -56,9 +56,14 @@ Analyzer fields:
 | Oscilloscope | `captureSampleCount` / `capture_sample_count` | Samples in the full capture |
 | Oscilloscope | `triggerOffset` / `trigger_offset` | Trigger position in samples from capture start |
 | Oscilloscope | `triggered` / `triggered` | True for a real trigger; false for an automatic sweep |
-| Oscilloscope | `encoding` / `encoding` | `samples` for raw points or `minMax` for ordered envelope points |
-| Oscilloscope | `sampleIndices` / `sample_indices` | `[point]` capture indices, paired by position with `values` |
-| Oscilloscope | `values` / `values` | `[point]` linear-amplitude values |
+| Oscilloscope | `encoding` / `encoding` | `samples` for raw points, `minMax` for ordered reduced points, or `envelope` for minimum/maximum bands |
+| Oscilloscope | `sampleIndices` / `sample_indices` | `[point]` capture indices, paired with `values`; empty for `envelope` |
+| Oscilloscope | `values` / `values` | `[point]` linear-amplitude values; empty for `envelope` |
+| Oscilloscope | `extrema` / `extrema` | `envelope` only: interleaved minimum/maximum amplitude pairs, oldest first |
+| Oscilloscope | `bucketCount` / `bucket_count` | Number of envelope intervals, including the overlap preceding a rolling window |
+| Oscilloscope | `bucketSamples` / `bucket_samples` | Samples per rolling interval; zero for triggered captures, whose boundaries are floor(i × captureSampleCount / bucketCount) |
+| Oscilloscope | `endSample` / `end_sample` | Exclusive sample counter at the right edge of a rolling snapshot; zero for triggered captures |
+| Oscilloscope | `rolling` / `rolling` | True for Trigger Mode Off envelopes. The first interval starts at (floor((endSample − 1) / bucketSamples) − bucketCount + 1) × bucketSamples; clip to the displayed window |
 | Spectrum | `sampleRate` / `sample_rate` | Hz |
 | Spectrum | `points` / `points` | FFT size exponent; FFT size is `2 ** points` |
 | Spectrum | `binsTruncated` / `bins_truncated` | True when the highest bins were omitted to fit transport capacity |

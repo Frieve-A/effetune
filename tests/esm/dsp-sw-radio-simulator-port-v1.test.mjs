@@ -153,7 +153,7 @@ test('SW Radio Simulator freezes the parameter layout and representative parity 
   assert.equal(goldens.length, 28);
   assert.ok(goldens.every(item =>
     item.metadata.jsEngineHash ===
-      'abb2c42e07844b12232b2f5c442d1bd34cce4d0cbfacd979609323f31cd1d2c0'
+      '07d57942bf09f20dafc318b86ef3354aa4af4f0cd47847ac3251765bfe6dff39'
   ));
 });
 

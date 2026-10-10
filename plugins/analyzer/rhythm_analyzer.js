@@ -1084,6 +1084,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         });
         container.appendChild(parameters);
         const graph = this.createResponsiveGraph({
+            className: 'local-audio-only',
             maxWidth: 1024,
             aspectRatio: '3 / 2',
             mobileAspectRatio: '3 / 4',
@@ -1101,7 +1102,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.canvas.setAttribute('aria-label', 'Tempo history, beat timing and groove');
         container.appendChild(graph.container);
         const resetButton = document.createElement('button');
-        resetButton.className = 'analog-meter-reset-button';
+        resetButton.className = 'analog-meter-reset-button local-audio-only';
         resetButton.textContent = 'Reset';
         resetButton.title = 'Restart the rhythm analysis';
         resetButton.addEventListener('click', () => this.resetAnalysis());

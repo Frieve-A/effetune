@@ -1264,7 +1264,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '5 / 1',
             mobileAspectRatio: '2.5 / 1',
-            className: 'fm-radio-simulator-hud',
+            className: 'fm-radio-simulator-hud local-audio-only',
             onResize: () => this.drawHud()
         });
         this.hudGraphDispose = graph.dispose;
@@ -1274,7 +1274,7 @@ class FMRadioSimulatorPlugin extends PluginBase {
         graph.resize();
 
         const note = document.createElement('div');
-        note.className = 'fm-radio-simulator-status-note';
+        note.className = 'fm-radio-simulator-status-note local-audio-only';
         note.setAttribute('role', 'status');
         note.setAttribute('aria-live', 'polite');
         note.setAttribute('aria-atomic', 'true');

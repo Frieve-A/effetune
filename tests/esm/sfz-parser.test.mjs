@@ -86,6 +86,17 @@ test('instrument initial CC settings select the opposite layer regardless of hea
   assert.deepEqual(result.regions.map(region => region.sample), ['on.wav']);
 });
 
+test('external bank defines expand opcode names and local SFZ defines take priority', async () => {
+  const result = await parse('#define $key 61\n<group> sustain_sw=off sostenuto_sw=on\n' +
+    '<region> sample=tone$extension key=$key locc$cc=0 hicc$cc=64', {
+    defines: new Map([['$key', '60'], ['$extension', '.flac'], ['$cc', '64']])
+  });
+  assert.equal(result.regions.length, 1);
+  assert.equal(result.regions[0].sample, 'tone.flac');
+  assert.equal(result.regions[0].lokey, 61);
+  assert.deepEqual(result.diagnostics.ignoredOpcodes, ['sostenuto_sw', 'sustain_sw']);
+});
+
 test('initial CC values use volume, centered pan, expression, and zero for other controllers', async () => {
   for (const [cc, value] of [[7, 100], [10, 64], [11, 127], [1, 0]]) {
     const result = await parse(`<region> sample=match.wav locc${cc}=${value} hicc${cc}=${value}\n` +
@@ -133,6 +144,14 @@ test('explicit keyswitch defaults select one static articulation without enablin
   assert.equal((await parse('<region> sample=a.wav volume=144')).regions[0].volume, 144);
 });
 
+test('keyswitch range conditions retain the default articulation without reporting unsupported layers', async () => {
+  const result = await parse('<global> sw_default=24\n' +
+    '<group> sw_lolast=24 sw_hilast=24\n<region> sample=single.wav\n' +
+    '<group> sw_lolast=26 sw_hilast=28\n<region> sample=other.wav');
+  assert.deepEqual(result.regions.map(region => region.sample), ['single.wav']);
+  assert.deepEqual(result.warnings, []);
+});
+
 test('bank serialization and IDs are deterministic and include only supplied dependencies', async () => {
   const one = encodeSfzBank('a.sfz', new Map([['sample.wav', new Uint8Array([1, 2])], ['a.sfz', encode('<region> sample=sample.wav')]]));
   const two = encodeSfzBank('a.sfz', new Map([['a.sfz', encode('<region> sample=sample.wav')], ['sample.wav', new Uint8Array([1, 2])]]));
@@ -156,13 +175,17 @@ test('sample metadata reads seek over WAV chunk bodies without reading PCM', asy
   assert.deepEqual(reads, [[0, 12], [12, 8], [1020, 8], [1028, 16], [1044, 8]]);
 });
 
-test('SFZ envelope times accept the kernel limit and reject values above it', async () => {
+test('SFZ invalid envelope times are repaired within playback limits and reported without discarding sounds', async () => {
   for (const key of ['ampeg_attack', 'ampeg_hold', 'ampeg_decay', 'ampeg_release']) {
     const { regions } = await parse(`<region> sample=a.wav ${key}=100`);
     assert.equal(regions[0][key], 100);
-    const invalid = await parse(`<region> sample=a.wav ${key}=101`);
-    assert.equal(invalid.regions.length, 0);
-    assert.equal(invalid.diagnostics.invalidRegions.length, 1);
+    for (const [value, expected] of [['163.6', 100], ['-1', 0], ['bad', key === 'ampeg_release' ? .001 : 0]]) {
+      const repaired = await parse(`<region> sample=a.wav ${key}=${value}`);
+      assert.equal(repaired.regions.length, 1);
+      assert.equal(repaired.regions[0][key], expected);
+      assert.deepEqual(repaired.warnings, [{ code: 'envelope-times-adjusted', count: 1 }]);
+      assert.equal(repaired.diagnostics.adjustedEnvelopes.length, 1);
+    }
   }
 });
 

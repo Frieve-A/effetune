@@ -15,6 +15,8 @@ Pulsa el icono de espectro de un gráfico compatible para alternar entre After, 
 
 En los gráficos de puntos arrastrables de 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ y Additional EQ de Room EQ, arrastra un punto normalmente para cambiar ambos ejes. Mantén pulsada la tecla Shift mientras arrastras para limitar el movimiento a un solo eje: empieza a moverlo principalmente en horizontal para cambiar solo Frequency, o principalmente en vertical para cambiar solo Level (Delay en Group Delay PEQ). Suelta Shift para volver al movimiento libre. Coloca el puntero sobre un punto y desplaza la rueda hacia arriba para aumentar Q o hacia abajo para reducirlo.
 
+En móvil, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Additional EQ de Room EQ y Target Adjust de Tonal Balance EQ muestran los ajustes de una sola banda a la vez. Toca un botón numerado para cambiar de banda. Los ajustes de todas las bandas se conservan.
+
 ## Lista de Plugins
 
 - [15Band GEQ](#15band-geq) - Ajuste detallado del sonido con 15 controles precisos

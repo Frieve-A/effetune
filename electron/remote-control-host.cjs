@@ -73,7 +73,7 @@ const STATE_DRAIN_BYTES = 64 * 1024;
 const STATE_DIRTY_CHECK_MS = 250;
 const IR_ID_PATTERN = /^[a-f0-9]{24}$/;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{4,64}$/;
-const FEATURES = Object.freeze(['origin', 'savePreset', 'irSync', 'sync1']);
+const FEATURES = Object.freeze(['origin', 'savePreset', 'irSync', 'sync1', 'irSelection']);
 const APP_NAME = 'EffeTune';
 const CLIENT_INFO_MAX = 48;
 
@@ -97,13 +97,13 @@ function cleanEffectNames(value) {
 }
 const CLIENT_OPS = new Set([
   'hello', 'get', 'chain', 'params', 'bypass', 'listPresets', 'getPreset',
-  'savePreset', 'listIRs', 'getIR', 'putIR',
+  'savePreset', 'listIRs', 'getIR', 'putIR', 'selectIR',
   // sync1
   'edit', 'history', 'slot', 'copySlot', 'presets', 'loadPreset', 'deletePreset'
 ]);
 // Ops whose ack carries `rev` (the host revision that contains the command).
 const MUTATING_OPS = new Set([
-  'chain', 'params', 'bypass', 'edit', 'history', 'slot', 'copySlot', 'loadPreset'
+  'chain', 'params', 'bypass', 'edit', 'history', 'slot', 'copySlot', 'loadPreset', 'selectIR'
 ]);
 
 let activeHost = null;
@@ -231,7 +231,6 @@ class RemoteControlHost {
     this.activeCause = null;
     this.lastCause = null;
     this.listening = false;
-    this.panelWindow = null;
     this.disposed = false;
     this.toggleQueue = Promise.resolve();
     this.irsChangedTimer = null;
@@ -352,10 +351,7 @@ class RemoteControlHost {
     const win = this.getMainWindow();
     if (win?.webContents && !win.isDestroyed?.()) {
       try { win.webContents.send(CHANNELS.status, this.getBriefStatus()); } catch (_) { /* ignore */ }
-    }
-    const panel = this.panelWindow;
-    if (panel && !panel.isDestroyed()) {
-      try { panel.webContents.send(PANEL_CHANNELS.status, this.getStatus({ withQr: true })); } catch (_) { /* ignore */ }
+      try { win.webContents.send(PANEL_CHANNELS.status, this.getStatus({ withQr: true })); } catch (_) { /* ignore */ }
     }
   }
 
@@ -570,42 +566,10 @@ class RemoteControlHost {
   // ---- settings panel ----------------------------------------------------
 
   openPanel() {
-    if (this.panelWindow && !this.panelWindow.isDestroyed()) {
-      this.panelWindow.show();
-      this.panelWindow.focus();
-      return this.panelWindow;
-    }
-    const { BrowserWindow } = require('electron');
-    const parent = this.getMainWindow();
-    const panel = new BrowserWindow({
-      width: 460,
-      height: 700,
-      minWidth: 360,
-      minHeight: 480,
-      title: 'Remote Control',
-      parent: parent && !parent.isDestroyed?.() ? parent : undefined,
-      modal: false,
-      show: false,
-      autoHideMenuBar: true,
-      webPreferences: {
-        preload: path.join(__dirname, 'remote-control-panel-preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true
-      }
-    });
-    panel.setMenuBarVisibility(false);
-    panel.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    panel.webContents.on('will-navigate', event => event.preventDefault());
-    panel.once('ready-to-show', () => panel.show());
-    panel.on('closed', () => {
-      if (this.panelWindow === panel) this.panelWindow = null;
-    });
-    this.panelWindow = panel;
-    panel.loadFile(path.join(__dirname, 'remote-control-panel.html')).catch(error => {
-      this.log('[remote] panel failed to load:', error?.message || error);
-    });
-    return panel;
+    const window = this.getMainWindow();
+    if (!window?.webContents || window.isDestroyed?.()) return false;
+    window.webContents.send(CHANNELS.openPanel);
+    return true;
   }
 
   // Does host:port name this very server? (Joining it would only show the app itself.)
@@ -625,7 +589,7 @@ class RemoteControlHost {
   }
 
   // Copy button: the main process puts the link of the offered address on the system clipboard
-  // (navigator.clipboard needs focus and a permission the panel window does not reliably have).
+  // (navigator.clipboard needs focus and a permission that is not always available).
   copyLink(index) {
     const address = this.getStatus().addresses[Number.isInteger(index) ? index : 0];
     if (!address) return false;
@@ -636,10 +600,6 @@ class RemoteControlHost {
       this.log('[remote] copy link failed:', error?.message || error);
       return false;
     }
-  }
-
-  isPanelSender(sender) {
-    return !!this.panelWindow && !this.panelWindow.isDestroyed() && sender === this.panelWindow.webContents;
   }
 
   // ---- renderer bridge ---------------------------------------------------
@@ -767,7 +727,8 @@ class RemoteControlHost {
       pipeline: Array.isArray(snapshot.pipeline) ? snapshot.pipeline : [],
       ids: Array.isArray(snapshot.ids) ? snapshot.ids : [],
       slot: snapshot.slot === 'B' ? 'B' : 'A',
-      epoch: typeof snapshot.epoch === 'string' ? snapshot.epoch : ''
+      epoch: typeof snapshot.epoch === 'string' ? snapshot.epoch : '',
+      audio: snapshot.audio
     };
     // Ids, slot and epoch take part in the comparison: re-creating identical
     // content (a preset load) must still reach clients, because every id is new.
@@ -794,6 +755,7 @@ class RemoteControlHost {
       epoch: this.snapshot ? this.snapshot.epoch : '',
       ids: this.snapshot ? this.snapshot.ids : [],
       slot: this.snapshot ? this.snapshot.slot : 'A',
+      ...(this.snapshot?.audio && { audio: this.snapshot.audio }),
       host: os.hostname(),
       ...extra
     };
@@ -1132,9 +1094,6 @@ class RemoteControlHost {
     if (activeHost === this) activeHost = null;
     this.setRendererUnavailable();
     for (const waiter of [...this.readyWaiters]) waiter(false);
-    if (this.panelWindow && !this.panelWindow.isDestroyed()) {
-      try { this.panelWindow.destroy(); } catch (_) { /* ignore */ }
-    }
     closeAllClientWindows();
     await this.stop({ reason: 'shutdown' });
   }
@@ -1152,19 +1111,8 @@ function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
     [CHANNELS.state, (host, snapshot) => (host ? host.handleRendererState(snapshot) : false)],
     [CHANNELS.presetsChanged, host => (host ? host.handlePresetsChanged() : false)],
     [CHANNELS.irsChanged, host => (host ? host.handleIrsChanged() : false)],
-    [CHANNELS.openPanel, host => { host?.openPanel(); return !!host; }],
-    [CHANNELS.getStatus, host => (host ? host.getBriefStatus() : { enabled: false })]
-  ]);
-  for (const [channel, handler] of handlers) {
-    ipcMain.handle(channel, (event, ...args) => {
-      const window = getMainWindow();
-      if (!window?.webContents || event.sender !== window.webContents) {
-        throw new Error('invalid-sender');
-      }
-      return handler(getHost(), ...args);
-    });
-  }
-  const panelHandlers = new Map([
+    [CHANNELS.openPanel, host => host?.openPanel() || false],
+    [CHANNELS.getStatus, host => (host ? host.getBriefStatus() : { enabled: false })],
     [PANEL_CHANNELS.getStatus, host => host.getStatus({ withQr: true })],
     [PANEL_CHANNELS.setEnabled, async (host, enabled) => {
       await host.setEnabled(enabled === true);
@@ -1177,16 +1125,17 @@ function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
     [PANEL_CHANNELS.copyLink, (host, index) => host.copyLink(index)],
     [PANEL_CHANNELS.join, (host, input) => host.joinRemote(typeof input === 'string' ? input.slice(0, 600) : '')]
   ]);
-  for (const [channel, handler] of panelHandlers) {
+  for (const [channel, handler] of handlers) {
     ipcMain.handle(channel, (event, ...args) => {
-      const host = getHost();
-      if (!host || !host.isPanelSender(event.sender)) throw new Error('invalid-sender');
-      return handler(host, ...args);
+      const window = getMainWindow();
+      if (!window?.webContents || window.isDestroyed?.() || event.sender !== window.webContents) {
+        throw new Error('invalid-sender');
+      }
+      return handler(getHost(), ...args);
     });
   }
   return () => {
     for (const channel of handlers.keys()) ipcMain.removeHandler(channel);
-    for (const channel of panelHandlers.keys()) ipcMain.removeHandler(channel);
   };
 }
 

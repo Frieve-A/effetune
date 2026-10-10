@@ -198,8 +198,14 @@ test('Japanese named external asset warning controls spacing and punctuation', a
 });
 
 test('IR library modal source includes filename search, sort, badges, decay preview, and actions', async () => {
-  const source = await fs.readFile(path.join(repoRoot, 'js', 'ir-library', 'browser.js'), 'utf8');
-  const css = await fs.readFile(path.join(repoRoot, 'plugins', 'reverb', 'ir_reverb.css'), 'utf8');
+  const source = [
+    await fs.readFile(path.join(repoRoot, 'js', 'ir-library', 'browser.js'), 'utf8'),
+    await fs.readFile(path.join(repoRoot, 'js', 'ui', 'asset-library-browser.js'), 'utf8')
+  ].join('\n');
+  const css = [
+    await fs.readFile(path.join(repoRoot, 'plugins', 'reverb', 'ir_reverb.css'), 'utf8'),
+    await fs.readFile(path.join(repoRoot, 'css', 'asset-library.css'), 'utf8')
+  ].join('\n');
   for (const pattern of [
     /Search filenames/,
     /Recently imported/,
@@ -209,11 +215,11 @@ test('IR library modal source includes filename search, sort, badges, decay prev
     /drawDecay/,
     /Load/,
     /Delete/,
-    /service\.delete\(entry\.irId,\s*\{\s*isInUse:/s,
+    /service\.delete\(entry\.id,\s*\{\s*isInUse:/s,
     /collectUniquePipelinePlugins/,
     /collectExternalAssetInfo/,
-    /info\.ids\.includes\(irId\)/,
-    /info\.protectedIds\.includes\(irId\)/
+    /info\.ids\.includes\(id\)/,
+    /info\.protectedIds\.includes\(id\)/
   ]) assert.match(source, pattern);
   assert.doesNotMatch(source, /\bactiveIds\b/);
   assert.doesNotMatch(source, /\bprompt\s*\(/);
@@ -223,6 +229,8 @@ test('IR library modal source includes filename search, sort, badges, decay prev
   assert.match(css, /\.ir-library-controls input\[type="search"\],[^}]*background: var\(--et-input-gradient\)/s);
   assert.match(css, /\.ir-library-dialog\s*\{[^}]*background: var\(--et-panel-gradient\)/s);
   assert.match(css, /\.ir-library-entry\s*\{[^}]*background: var\(--et-card-gradient\)/s);
-  assert.match(css, /\.ir-reverb-ui button,\s*\.ir-library-dialog button\s*\{[^}]*background: var\(--et-control-gradient\)/s);
+  for (const selector of ['ir-reverb-ui', 'ir-library-dialog']) {
+    assert.match(css, new RegExp(`\\.${selector} button\\s*\\{[^}]*background: var\\(--et-control-gradient\\)`, 's'));
+  }
   assert.doesNotMatch(css, /\.ir-reverb-ui\s*\{[^}]*\bgap:/s);
 });

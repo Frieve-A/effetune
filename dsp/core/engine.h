@@ -22,7 +22,7 @@ public:
   static constexpr std::uint32_t kKernelStorageBytes = 16384;
   static constexpr std::uint32_t kPipelineDescriptorVersion = 1;
 
-  Engine() = default;
+  Engine() noexcept;
   ~Engine();
   Engine(const Engine &) = delete;
   Engine &operator=(const Engine &) = delete;
@@ -72,6 +72,22 @@ public:
   void abortInstanceAsset(et_instance instance, std::uint32_t slot) noexcept;
   [[nodiscard]] std::uint32_t instanceAssetState(et_instance instance,
                                                  std::uint32_t slot) const noexcept;
+  class InstanceAssetSnapshot;
+  class InstanceAssetUpdate;
+  // Capture supersedes older requests on the owner thread between blocks.
+  // Static preparation touches only the snapshot and caller-owned payload.
+  et_status captureInstanceAssetSnapshot(et_instance instance, std::uint32_t slot,
+                                         InstanceAssetSnapshot &snapshot) noexcept;
+  static et_status prepareInstanceAssetUpdate(const InstanceAssetSnapshot &snapshot,
+                                              const AssetBeginInfo &info,
+                                              const std::uint8_t *payload, std::uint32_t byte_size,
+                                              std::uint32_t format_tag,
+                                              InstanceAssetUpdate &update) noexcept;
+  static et_status prepareInstanceAssetClear(const InstanceAssetSnapshot &snapshot,
+                                             InstanceAssetUpdate &update) noexcept;
+  // Apply on the owner between blocks, including while audio is stopped.
+  // Leaves retired storage in update for reclamation off the audio thread.
+  et_status applyInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept;
   et_status processInstance(et_instance instance, float *audio, std::uint32_t channel_count,
                             std::uint32_t frame_count, double time_seconds) noexcept;
   et_status readInstanceRuntimeEvent(et_instance instance, RuntimeEventState &state) const noexcept;
@@ -154,6 +170,7 @@ private:
     const KernelDescriptor *descriptor = nullptr;
     PluginKernel *kernel = nullptr;
     std::uint16_t generation = 1;
+    std::uint64_t assetRevision = 0u;
     std::uint32_t tapId = 0;
     et_instance analysisSource = 0;
     std::uint32_t telemetrySequence = 0;
@@ -214,6 +231,7 @@ private:
                          std::uint32_t delay_samples, float *audio,
                          std::uint32_t frame_count) noexcept;
 
+  const std::uint64_t identity_;
   Arena arena_;
   PipelineObserver pipeline_observer_ = nullptr;
   void *pipeline_observer_context_ = nullptr;
@@ -233,6 +251,7 @@ private:
   std::uint32_t pipeline_count_ = 0;
   std::uint32_t pipeline_latency_samples_ = 0;
   std::uint64_t pipeline_revision_ = 0;
+  std::uint64_t asset_revision_ = 0;
   float sample_rate_ = 0.0F;
   float telemetry_rate_hz_ = 60.0F;
   std::uint32_t max_channels_ = 0;
@@ -244,6 +263,39 @@ private:
   bool pipeline_configured_ = false;
   bool pipeline_latency_reserved_ = false;
   bool pipeline_delay_history_dirty_ = false;
+};
+
+// Fixed-size value for a synchronized handoff; contains no live kernel pointer.
+class Engine::InstanceAssetSnapshot {
+private:
+  friend class Engine;
+  const Engine *owner_ = nullptr;
+  std::uint64_t identity_ = 0u;
+  AssetPreparer preparer_ = nullptr;
+  et_instance instance_ = 0u;
+  std::uint64_t revision_ = 0u;
+  std::uint32_t slot_ = 0u, capacity_ = 0u, max_channels_ = 0u;
+};
+
+// Exclusive access must be handed back to control after apply (including failure).
+// Destruction, reclaim and reuse may free large banks and belong off audio.
+class Engine::InstanceAssetUpdate {
+public:
+  InstanceAssetUpdate() = default;
+  InstanceAssetUpdate(const InstanceAssetUpdate &) = delete;
+  InstanceAssetUpdate &operator=(const InstanceAssetUpdate &) = delete;
+  void reclaim() noexcept {
+    asset_.reset();
+    snapshot_ = {};
+    ready_ = false;
+  }
+  [[nodiscard]] bool hasRetiredAsset() const noexcept { return !ready_ && asset_ != nullptr; }
+
+private:
+  friend class Engine;
+  InstanceAssetSnapshot snapshot_;
+  std::unique_ptr<PreparedAsset> asset_;
+  bool ready_ = false;
 };
 
 // Fixed-size value for caller-owned, synchronized transfer to the preparation thread.

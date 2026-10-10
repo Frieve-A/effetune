@@ -207,6 +207,10 @@ class IRReverbPlugin extends PluginBase {
     }
 
     setSerializedParameters(params) {
+        if (this.hasLocalAudio === false) {
+            super.setSerializedParameters(params);
+            return;
+        }
         const clearedPluginId = this.id;
         const nextIr = typeof params?.ir === 'string' && /^[a-f0-9]{24}$/.test(params.ir)
             ? params.ir
@@ -1428,7 +1432,9 @@ class IRReverbPlugin extends PluginBase {
             browser.openIrLibraryBrowser({
                 service,
                 audioManager: window.uiManager?.audioManager,
-                onLoad: entry => this.loadLibraryEntry(entry)
+                onLoad: entry => service.selectEntry
+                    ? service.selectEntry(this, entry)
+                    : this.loadLibraryEntry(entry)
             });
         } catch (error) {
             console.error('IR library browser failed:', error);
@@ -1995,8 +2001,11 @@ class IRReverbPlugin extends PluginBase {
         container.appendChild(input);
 
         const importActions = document.createElement('div');
-        importActions.className = 'ir-reverb-import-actions';
+        importActions.className = 'parameter-row ir-reverb-import-actions';
+        const irLabel = document.createElement('label');
+        irLabel.textContent = 'IR:';
         const importButton = document.createElement('button');
+        importButton.className = 'local-audio-only';
         importButton.type = 'button';
         importButton.textContent = this._t('irReverb.action.importFile', 'Import file…');
         importButton.addEventListener('click', () => input.click());
@@ -2006,17 +2015,17 @@ class IRReverbPlugin extends PluginBase {
         libraryButton.addEventListener('click', () => this._openLibraryBrowser());
 
         const status = document.createElement('div');
-        status.className = 'ir-reverb-status';
+        status.className = 'ir-reverb-status local-audio-only';
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
         this._statusElement = status;
         this._setStatus(this._statusMessage || this._t('irReverb.status.importPrompt',
             'Import an impulse response to use IR Reverb.'), this._statusState);
-        importActions.append(importButton, libraryButton, status);
+        importActions.append(irLabel, importButton, libraryButton, status);
         container.appendChild(importActions);
 
         const metadata = document.createElement('div');
-        metadata.className = 'ir-reverb-metadata';
+        metadata.className = 'ir-reverb-metadata local-audio-only';
         this._metadataElement = metadata;
         this._updateMetadata();
         container.appendChild(metadata);
@@ -2025,7 +2034,7 @@ class IRReverbPlugin extends PluginBase {
             maxWidth: 760,
             aspectRatio: '3 / 1',
             mobileAspectRatio: '2 / 1',
-            className: 'ir-reverb-edc',
+            className: 'ir-reverb-edc local-audio-only',
             onResize: () => this._drawEdcGraph()
         });
         this._graphCanvas = graph.canvas;
@@ -2046,7 +2055,7 @@ class IRReverbPlugin extends PluginBase {
         ], this.cm, value => this.setParameters({ cm: value }), 'cm');
         this._channelModeSelect = channelModeRow.querySelector('select');
         const resolvedMode = document.createElement('span');
-        resolvedMode.className = 'ir-reverb-mode-note';
+        resolvedMode.className = 'ir-reverb-mode-note local-audio-only';
         resolvedMode.setAttribute('aria-live', 'polite');
         channelModeRow.appendChild(resolvedMode);
         this._resolvedModeElement = resolvedMode;
@@ -2067,7 +2076,7 @@ class IRReverbPlugin extends PluginBase {
         ], this.cr, value => this.setParameters({ cr: value }), 'cr');
         this._convolutionRateSelect = convolutionRateRow.querySelector('select');
         const resolvedRate = document.createElement('span');
-        resolvedRate.className = 'ir-reverb-mode-note';
+        resolvedRate.className = 'ir-reverb-mode-note local-audio-only';
         resolvedRate.setAttribute('aria-live', 'polite');
         convolutionRateRow.appendChild(resolvedRate);
         this._resolvedRateElement = resolvedRate;

@@ -1211,7 +1211,7 @@ test('Tube Simulator creates Phase C controls, one responsive graph, and status'
       'TRANSFORMER FLUX'
     ]
   );
-  assert.equal(container.children[4].className, 'tube-simulator-status');
+  assert.equal(container.children[4].className, 'tube-simulator-status local-audio-only');
   assert.equal(container.children[4].attributes.role, 'status');
   assert.equal(container.children[4].attributes['aria-live'], 'polite');
   assert.equal(container.children[4].attributes['aria-atomic'], 'true');

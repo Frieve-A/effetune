@@ -274,6 +274,7 @@ function createElectronAPI(calls, options = {}) {
     onSavePresetAs: register('savePresetAs'),
     onConfigAudio: register('configAudio'),
     onConfigApp: register('configApp'),
+    remoteV1: { settings: {}, onOpenPanel: register('remoteControl') },
     onBackupRestore: register('backupRestore'),
     onLoadUserPreset: register('loadUserPreset'),
     onShowAboutDialog: register('showAboutDialog'),
@@ -544,6 +545,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
       'processAudioFiles',
       'showAudioConfigDialog',
       'showConfigDialog',
+      'showRemoteControlDialog',
       'updateTrayMenu',
       'showAboutDialog'
     ]) {
@@ -573,6 +575,9 @@ test('Electron constructor defers preferences and config while callbacks dispatc
     electronAPI.handlers.savePresetAs();
     electronAPI.handlers.configAudio();
     electronAPI.handlers.configApp();
+    windowRef.app = null;
+    electronAPI.handlers.remoteControl();
+    assert.ok(calls.some(call => call[0] === 'showRemoteControlDialog'));
     windowRef.uiManager.stateManager = {
       openBackupRestore() {
         calls.push(['openBackupRestore']);

@@ -11,7 +11,8 @@ const TOKEN = 'tok-sync';
 
 // A stand-in for the renderer: answers forwarded requests from a tiny model.
 function createFakeRenderer(host) {
-  const model = { epoch: 'abcd0123', ids: ['h.1'], pipeline: [{ nm: 'Volume', en: true, vl: 0 }], slot: 'A', masterBypass: false };
+  const model = { epoch: 'abcd0123', ids: ['h.1'], pipeline: [{ nm: 'Volume', en: true, vl: 0 }], slot: 'A', masterBypass: false,
+    audio: { sampleRate: 96000, channelCount: 8, routingChannelCount: 16 } };
   const requests = [];
   const snapshot = () => JSON.parse(JSON.stringify(model));
   const window = {
@@ -33,6 +34,8 @@ function createFakeRenderer(host) {
             result = { ok: true, presets: { Demo: { plugins: [] } } };
           } else if (message.op === 'params') {
             model.pipeline[0].vl = message.params.vl;
+          } else if (message.op === 'selectIR') {
+            model.pipeline[0].ir = message.ir;
           }
           host.handleRendererResponse({ requestId, ...result, snapshot: snapshot() });
         });
@@ -99,11 +102,35 @@ test('hello reply carries sync fields, features and per-client flags', async () 
     assert.deepEqual(state.ids, ['h.1']);
     assert.equal(state.slot, 'A');
     assert.equal(typeof state.host, 'string');
-    for (const feature of ['origin', 'savePreset', 'irSync', 'sync1']) {
+    assert.deepEqual(state.audio, { sampleRate: 96000, channelCount: 8, routingChannelCount: 16 });
+    for (const feature of ['origin', 'savePreset', 'irSync', 'sync1', 'irSelection']) {
       assert.ok(state.features.includes(feature), feature);
     }
     const devices = host.getStatus().devices;
     assert.equal(devices[0].build, 'browser');
+    client.ws.close();
+  } finally {
+    await host.dispose();
+  }
+});
+
+test('IR selection is forwarded to the renderer and broadcasts an acknowledged state revision', async () => {
+  const { host, renderer } = makeHost();
+  try {
+    await host.start();
+    host.setRendererReady();
+    const client = await open();
+    client.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
+    await client.next(message => message.op === 'state' && message.seq === 1);
+    const command = { op: 'selectIR', seq: 2, epoch: 'abcd0123', slot: 'A', id: 'h.1', ir: 'a'.repeat(24) };
+    client.send(command);
+    const ack = await client.next(message => message.op === 'ack' && message.seq === 2);
+    assert.equal(ack.ok, true);
+    assert.equal(ack.rev, host.rev);
+    assert.deepEqual(renderer.requests.at(-1), command);
+    const state = await client.next(message => message.op === 'state' && message.seq === 2);
+    assert.equal(state.pipeline[0].ir, command.ir);
+    assert.equal(state.rev, ack.rev);
     client.ws.close();
   } finally {
     await host.dispose();

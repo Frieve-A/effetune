@@ -1040,7 +1040,7 @@ class MultibandExpanderPlugin extends PluginBase {
       const bottomLabelOffset = 20 * scale;
       const axisBottomOffset = 3 * scale;
       const axisX = 10 * scale;
-      const meterWidth = 5 * scale;
+      const meterWidth = this.hasLocalAudio !== false ? 5 * scale : 0;
 
       if (!band) {
         console.warn(`Band ${bandIndex} is undefined`);
@@ -1105,7 +1105,7 @@ class MultibandExpanderPlugin extends PluginBase {
       ctx.stroke();
 
       // Draw gain boost meter (from top down, similar to expander)
-      if (band.gb > 0) {
+      if (this.hasLocalAudio !== false && band.gb > 0) {
         ctx.fillStyle = METER_COLOR;
         const meterHeight = Math.min(height, (band.gb / 60) * height);
         ctx.fillRect(width - meterWidth, 0, meterWidth, meterHeight);

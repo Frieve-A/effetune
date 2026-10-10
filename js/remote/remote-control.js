@@ -11,6 +11,7 @@ import { identifySingleIr } from '../ir-library/ir-library-id.js';
 import { isSupportedIrFileName } from '../ir-library/audio-header-metadata.js';
 import { subscribeIrLibraryChanges } from '../ir-library/ir-library-store.js';
 import { initRemoteControlButton } from './remote-control-button.js';
+import { ID_PATTERN } from './sync-ops.mjs';
 import {
     applyMasterBypass,
     applyOpsToPipeline,
@@ -120,7 +121,12 @@ class RemoteControl {
             pipeline,
             ids: plugins.map(plugin => this.ids.idOf(plugin)),
             slot: audioManager?.currentPipeline === 'B' ? 'B' : 'A',
-            epoch: this.epoch
+            epoch: this.epoch,
+            audio: {
+                sampleRate: audioManager?.audioContext?.sampleRate || 48000,
+                channelCount: audioManager?.audioContext?.destination?.channelCount || 2,
+                routingChannelCount: audioManager?.outputChannelCount ?? 16
+            }
         };
     }
 
@@ -257,7 +263,9 @@ class RemoteControl {
             case 'savePreset':
                 return this.opSavePreset(msg);
             case 'listIRs':
-                return this.opListIRs();
+                return this.opListIRs(msg);
+            case 'selectIR':
+                return this.opSelectIR(msg);
             case 'getIR':
                 return this.opGetIR(msg);
             case 'putIR':
@@ -334,30 +342,56 @@ class RemoteControl {
         return {};
     }
 
-    // Id-addressed batch from a sync1 client; see sync-ops.mjs for the semantics.
-    opEdit(msg) {
-        this.requireApp();
+    requireCurrentPipeline(msg) {
+        const { audioManager } = this.requireApp();
         if (msg.epoch !== this.epoch) throw new Error('stale-epoch');
         // Stage ids belong to the pipeline the client was looking at; an edit made
         // against the other slot must not land in the active one.
         if (msg.slot !== undefined) {
             if (msg.slot !== 'A' && msg.slot !== 'B') throw new Error('invalid-op');
-            const active = this.win.audioManager?.currentPipeline === 'B' ? 'B' : 'A';
+            const active = audioManager.currentPipeline === 'B' ? 'B' : 'A';
             if (msg.slot !== active) throw new Error('slot-mismatch');
         }
+        return audioManager.pipeline;
+    }
+
+    // Id-addressed batch from a sync1 client; see sync-ops.mjs for the semantics.
+    opEdit(msg) {
+        this.requireCurrentPipeline(msg);
         const checked = validateEdit(this.win, msg.ops, { isHost: true });
         if (!checked.ok) throw new Error(checked.error);
-        const result = applyOpsToPipeline(this.win, msg.ops, { registry: this.ids });
-        finishBatch(this.win, result, {
-            saveHistory: () => this.win.pipelineManager.historyManager.saveState(),
-            scheduleHistorySave: () => this.scheduleHistorySave()
-        });
+        const operationToken = msg.operation;
+        if ((operationToken !== undefined &&
+            (typeof operationToken !== 'string' || !ID_PATTERN.test(operationToken))) ||
+            (msg.operationEnd !== undefined &&
+                (typeof msg.operationEnd !== 'boolean' || operationToken === undefined))) {
+            throw new Error('invalid-op');
+        }
+        const history = this.win.pipelineManager.historyManager;
+        if (msg.operationEnd && msg.ops.length === 0) {
+            history.endOperation(operationToken);
+            return {};
+        }
+        this.flushHistorySave();
+        if (operationToken !== undefined) history.beginOperation(operationToken);
+        else history.endOperation();
+        // Plugin setters also record history; only the complete remote batch owns this save.
+        const result = history.withHistorySuppressed(() => {
+            const result = applyOpsToPipeline(this.win, msg.ops, { registry: this.ids });
+            finishBatch(this.win, result);
+            return result;
+        }, { preserveOperation: true });
+        if (result.structural || result.touched.size > 0) {
+            history.saveState(operationToken === undefined ? undefined : { operationToken });
+        }
+        if (msg.operationEnd) history.endOperation(operationToken);
         return result.skipped.length ? { skipped: result.skipped } : {};
     }
 
     // Global undo/redo: reverts the last change by anyone, like the host's own buttons.
     opHistory(msg) {
         const { pipelineManager } = this.requireApp();
+        this.flushHistorySave();
         if (msg.dir === 'undo') pipelineManager.historyManager.undo();
         else if (msg.dir === 'redo') pipelineManager.historyManager.redo();
         else throw new Error('dir must be undo or redo');
@@ -416,6 +450,13 @@ class RemoteControl {
             this.historyTimer = null;
             this.win.pipelineManager?.historyManager?.saveState?.();
         }, HISTORY_SAVE_DEBOUNCE_MS);
+    }
+
+    flushHistorySave() {
+        if (this.historyTimer === null) return;
+        clearTimeout(this.historyTimer);
+        this.historyTimer = null;
+        this.win.pipelineManager?.historyManager?.saveState?.();
     }
 
     async opListPresets() {
@@ -480,24 +521,44 @@ class RemoteControl {
         return module.getDefaultIrLibraryService();
     }
 
-    // Single-file entries only: a true-stereo pair is two files with a combined id.
-    async opListIRs() {
+    // File transfer lists single originals; selection may also include true-stereo pairs.
+    async opListIRs({ includePairs = false } = {}) {
         const service = await this.irLibrary();
         const items = service.list()
-            .filter(entry => entry.composition === 'single' && entry.originals?.length === 1)
+            .filter(entry => includePairs === true || (entry.composition === 'single' && entry.originals?.length === 1))
             .map(entry => {
                 const original = entry.originals[0];
                 return {
                     id: entry.irId,
-                    name: original.fileName,
-                    bytes: original.byteLength,
+                    name: includePairs ? entry.fileLabel : original.fileName,
+                    bytes: entry.originals.reduce((bytes, file) => bytes + file.byteLength, 0),
                     ext: extensionOf(original.fileName) || extensionOf(original.storageName) || 'bin',
                     channels: entry.channels,
                     sampleRate: entry.sampleRate,
-                    frames: entry.frames
+                    frames: entry.frames,
+                    ...(includePairs && { topology: entry.topology, importedAt: entry.importedAt })
                 };
             });
         return { items };
+    }
+
+    async opSelectIR(msg) {
+        if (msg.slot !== 'A' && msg.slot !== 'B') throw new Error('invalid slot');
+        this.requireCurrentPipeline(msg);
+        if (typeof msg.ir !== 'string' || !IR_ID_PATTERN.test(msg.ir)) throw new Error('invalid id');
+        const service = await this.irLibrary();
+        const pipeline = this.requireCurrentPipeline(msg);
+        const plugin = pipeline.find(candidate => this.ids.idOf(candidate) === msg.id);
+        if (plugin?.name !== 'IR Reverb' || typeof plugin.loadLibraryEntry !== 'function') {
+            throw new Error('IR Reverb stage not found');
+        }
+        const entry = service.get(msg.ir);
+        if (!entry) throw new Error('ir not found');
+        if (await plugin.loadLibraryEntry(entry) === false) throw new Error('ir load failed');
+        plugin.syncUIControls?.();
+        this.win.uiManager?.updateURL?.();
+        this.scheduleHistorySave();
+        return {};
     }
 
     async opGetIR(msg) {

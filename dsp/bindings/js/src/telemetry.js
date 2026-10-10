@@ -31,7 +31,7 @@ const ANALYZER_FRAMES = Object.freeze({
   ChromaSpiral: [SPECTRUM_FRAME, [2]],
   LevelMeter: [LEVEL_FRAME, [1]],
   NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, [5]],
-  Oscilloscope: [SCOPE_FRAME, [2]],
+  Oscilloscope: [SCOPE_FRAME, [2, 3]],
   PitchMeter: [PITCH_METER_FRAME, [1]],
   RhythmAnalyzer: [RHYTHM_ANALYZER_FRAME, [1, 3, 4]],
   SpectrumAnalyzer: [SPECTRUM_FRAME, [1, 2]],
@@ -79,7 +79,7 @@ function decodeLevel(payload, node, sequence, dropped) {
   return { ...common(node, 'level', sequence, dropped), channels };
 }
 
-function decodeOscilloscope(payload, node, sequence, dropped) {
+function decodeOscilloscope(payload, node, sequence, dropped, version) {
   if (payload.byteLength < 20) return null;
   const sampleRate = payload.getFloat32(0, true);
   const captureSampleCount = payload.getUint32(4, true);
@@ -87,6 +87,31 @@ function decodeOscilloscope(payload, node, sequence, dropped) {
   const bucketCount = payload.getUint16(12, true);
   const encoding = payload.getUint8(14);
   const flags = payload.getUint8(15);
+  if (version === 3) {
+    if (encoding !== 2 || !Number.isFinite(sampleRate) || sampleRate <= 0 ||
+        captureSampleCount <= 2048 || captureSampleCount > Math.ceil(sampleRate * 10) ||
+        triggerOffset >= captureSampleCount || bucketCount < 1 || bucketCount > 8188 ||
+        (flags & ~3) !== 0 || payload.byteLength !== 28 + bucketCount * 8) return null;
+    const bucketSamples = payload.getUint32(16, true);
+    const endSample = payload.getUint32(20, true) + payload.getUint32(24, true) * 0x100000000;
+    const rolling = (flags & 2) !== 0;
+    if (rolling ? bucketSamples !== Math.ceil(captureSampleCount / 4096) ||
+        !Number.isSafeInteger(endSample) || endSample < 1 ||
+        bucketCount > Math.ceil(endSample / bucketSamples) || (flags & 1)
+      : bucketSamples !== 0 || endSample !== 0 || bucketCount !== 4096) return null;
+    const extrema = new Float32Array(bucketCount * 2);
+    for (let bucket = 0; bucket < bucketCount; bucket++) {
+      const minimum = payload.getFloat32(28 + bucket * 8, true);
+      const maximum = payload.getFloat32(32 + bucket * 8, true);
+      if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || minimum > maximum) return null;
+      extrema[bucket * 2] = minimum;
+      extrema[bucket * 2 + 1] = maximum;
+    }
+    return { ...common(node, 'oscilloscope', sequence, dropped), sampleRate, captureSampleCount,
+      triggerOffset, triggered: (flags & 1) !== 0, encoding: 'envelope',
+      sampleIndices: new Uint32Array(0), values: new Float32Array(0),
+      bucketCount, bucketSamples, endSample, rolling, extrema };
+  }
   if (!Number.isFinite(sampleRate) || sampleRate <= 0 ||
       captureSampleCount < 1 || captureSampleCount > 65536 ||
       triggerOffset >= captureSampleCount || (flags & ~1) !== 0) {
@@ -711,7 +736,7 @@ function decodePayload(frameType, formatVersion, payload, node, sequence, droppe
     case LEVEL_FRAME:
       return decodeLevel(payload, node, sequence, dropped);
     case SCOPE_FRAME:
-      return decodeOscilloscope(payload, node, sequence, dropped);
+      return decodeOscilloscope(payload, node, sequence, dropped, formatVersion);
     case SPECTRUM_FRAME:
       return decodeSpectrum(payload, node, sequence, dropped);
     case SPECTROGRAM_FRAME:

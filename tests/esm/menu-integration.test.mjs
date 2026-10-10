@@ -177,6 +177,7 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
   assert.equal(menuState['toggle-fullscreen'].label, 'label:menu.view.toggleFullscreen');
   assert.equal(menuState['view.miniPlayer'].label, 'label:menu.view.miniPlayer');
   assert.equal(menuState['help.discord'].label, 'Discord');
+  assert.equal(menuState['help.tour'].label, 'label:tour.menu');
   assert.equal(harness.calls[2][0], 'updateTrayMenu');
 });
 

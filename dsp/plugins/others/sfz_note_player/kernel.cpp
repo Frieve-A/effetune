@@ -4,10 +4,12 @@
 #include "bank.h"
 #include "effetune/dsp/fir.h"
 #include "nothrow_storage.h"
+#include "onset_rule.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 
 namespace effetune::plugins::others {
@@ -50,101 +52,33 @@ struct SampleFilter {
   double step = 0.0;
   std::uint32_t radius = 0u, taps = 0u;
 };
-} // namespace
 
-class SFZNotePlayerKernel final : public PluginKernel {
-  EFFETUNE_PARAMS(generated::SFZNotePlayerPluginParams)
-public:
-  static std::uint32_t assetCapacityForSlot(std::uint32_t slot) noexcept {
-    return slot == 0u ? kCapacity : 0u;
-  }
-  std::uint32_t assetCapacity(std::uint32_t slot) const noexcept override {
-    return assetCapacityForSlot(slot);
-  }
-  void prepare(const PrepareInfo &info) override {
-    rate_ = info.sampleRate;
-    max_channels_ = info.maxChannels;
-    fade_length_ = std::max(1u, static_cast<std::uint32_t>(rate_ * .002F));
-    analysis_ = std::make_unique<analyzer::SpectralAnalysis>();
-    analysis_->prepare(info);
-    latency_ = analysis_->latencySamples();
-    maximum_shift_ = static_cast<std::uint32_t>(std::round(rate_ * .1F));
-    dry_length_ = latency_ + maximum_shift_ + 1u;
-    wet_length_ = maximum_shift_ + 1u;
-    voices_ = std::make_unique<std::array<Voice, kVoices>>();
-    filters_ = std::make_unique<std::array<SampleFilter, kVoices>>();
-    constexpr double pi = 3.14159265358979323846;
-    // A 64-tap Blackman-windowed sinc preserves the band below 0.4 of the lower sample rate.
-    resampling_filter_ =
-        std::make_unique<std::array<float, kFilterRadius * kFilterResolution + 2u>>();
-    for (std::size_t i = 0; i < resampling_filter_->size(); ++i) {
-      const auto distance = static_cast<double>(i) / kFilterResolution;
-      const auto window = .42 + .5 * std::cos(pi * distance / kFilterRadius) +
-                          .08 * std::cos(2.0 * pi * distance / kFilterRadius);
-      (*resampling_filter_)[i] = static_cast<float>(
-          distance >= kFilterRadius ? 0.0
-          : distance == 0.0         ? .9
-                                    : std::sin(.9 * pi * distance) / (pi * distance) * window);
-    }
-    prepared_ = analysis_->ready() &&
-                dry_.allocate(static_cast<std::size_t>(max_channels_) * dry_length_) &&
-                wet_.allocate(2u * wet_length_) &&
-                filter_coefficients_.allocate(static_cast<std::size_t>(kVoices) *
-                                              (kFilterPhases + 1u) * kCachedFilterTaps);
-    clearAsset(0u);
-    reset();
-  }
-  bool preparedSuccessfully() const noexcept override { return prepared_; }
-  std::uint32_t latencySamples() const noexcept override {
-    const auto timing = bounded(params_.timingOffsetMs, -100, 100, 0);
-    return latency_ +
-           static_cast<std::uint32_t>(std::round((timing < 0 ? -timing : 0) * rate_ * .001F));
-  }
-  void reset() noexcept override {
-    if (analysis_)
-      analysis_->reset(1u);
-    clearNotes();
-    dry_.clear();
-    wet_.clear();
-    dry_position_ = 0u;
-    wet_position_ = 0u;
-    delay_initialized_ = false;
-    timing_fade_ = 0u;
-    sample_clock_ = last_detection_ = 0u;
-    linked_ = false;
-    random_ = seed_ ^ (salt_ * 0x9e3779b9u);
-    if (random_ == 0u)
-      random_ = 1u;
-    if (state_ == ET_ASSET_STATE_ACTIVE && indices_.data())
-      std::fill_n(indices_.data() + 129u, 2u * group_count_, 0u);
-  }
-  void setRandomSeed(std::uint32_t low, std::uint32_t high) noexcept override {
-    seed_ = low ^ high;
-    random_ = seed_ ^ (salt_ * 0x9e3779b9u);
-    if (random_ == 0u)
-      random_ = 1u;
-  }
-  void setInstanceSalt(std::uint32_t salt) noexcept override { salt_ = salt; }
+// Playback owns exactly one bank; prepared updates carry its replacement or retirement.
+struct SFZBank final : PreparedAsset {
+  NothrowStorage<float> payload_;
+  NothrowStorage<std::uint32_t> indices_;
+  AssetBeginInfo begin_{};
+  std::array<std::uint32_t, 128> key_cursors_{};
+  std::uint32_t state_ = ET_ASSET_STATE_NONE, region_count_ = 0u, group_count_ = 0u,
+                pool_offset_ = 0u, preparation_ = 0u, cursor_ = 0u;
 
-  std::uint8_t *beginAsset(std::uint32_t slot, const AssetBeginInfo &info) noexcept override {
-    if (slot != 0u || info.channels != 1u || info.topology != 0u ||
-        info.byteSize < 32u + kHeader * 4u || info.byteSize % 4u != 0u ||
-        info.footprintBytes < info.byteSize + 129u * 4u || info.footprintBytes > kCapacity ||
+  et_status allocate(const AssetBeginInfo &info) noexcept {
+    if (info.channels != 1u || info.topology != 0u || info.byteSize < 32u + kHeader * 4u ||
+        info.byteSize % 4u != 0u ||
+        static_cast<std::uint64_t>(info.footprintBytes) <
+            static_cast<std::uint64_t>(info.byteSize) + 129u * 4u ||
+        info.footprintBytes > kCapacity ||
         static_cast<std::uint64_t>(info.frames) * 4u + 32u != info.byteSize)
-      return nullptr;
-    clearAsset(0u);
+      return ET_ERR_ARGS;
     if (!payload_.allocate(info.byteSize / 4u) ||
-        !indices_.allocate((info.footprintBytes - info.byteSize) / 4u)) {
-      state_ = ET_ASSET_STATE_ERROR;
-      return nullptr;
-    }
+        !indices_.allocate((info.footprintBytes - info.byteSize) / 4u))
+      return ET_ERR_OOM;
     begin_ = info;
     state_ = ET_ASSET_STATE_STAGED;
-    return reinterpret_cast<std::uint8_t *>(payload_.data());
+    return ET_OK;
   }
-  et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
-                        std::uint32_t format) noexcept override {
-    if (slot != 0u || state_ != ET_ASSET_STATE_STAGED || bytes != begin_.byteSize ||
+  et_status commit(std::uint32_t bytes, std::uint32_t format) noexcept {
+    if (state_ != ET_ASSET_STATE_STAGED || bytes != begin_.byteSize ||
         format != ET_ASSET_F32_MULTICH)
       return failAsset();
     const auto *raw = reinterpret_cast<const std::uint8_t *>(payload_.data());
@@ -163,142 +97,11 @@ public:
     if (indices_.size() < 129u + 2u * group_count_)
       return failAsset();
     std::fill_n(indices_.data(), 129u + 2u * group_count_, 0u);
-    preparation_ = 0u;
-    cursor_ = 0u;
     state_ = ET_ASSET_STATE_PREPARING;
     return ET_OK;
   }
-  void clearAsset(std::uint32_t slot) noexcept override {
-    if (slot != 0u)
-      return;
-    state_ = ET_ASSET_STATE_NONE;
-    clearNotes();
-    payload_.release();
-    indices_.release();
-  }
-  std::uint32_t assetState(std::uint32_t slot) const noexcept override {
-    return slot == 0u ? state_ : static_cast<std::uint32_t>(ET_ASSET_STATE_NONE);
-  }
-  void process(float *audio, std::uint32_t channels, std::uint32_t frames,
-               const ProcessInfo &info) noexcept override {
-    if (!prepared_ || !audio || !channels || channels > max_channels_)
-      return;
-    const auto minimum =
-        static_cast<std::uint32_t>(std::round(bounded(params_.minimumMidi, 21, 108, 28)));
-    const auto maximum = std::max(
-        minimum, static_cast<std::uint32_t>(std::round(bounded(params_.maximumMidi, 21, 108, 91))));
-    if (analysis_->configure(minimum, maximum)) {
-      analysis_->reset(1u);
-      clearNotes();
-    }
-    if (state_ == ET_ASSET_STATE_PREPARING)
-      prepareAsset(frames);
-    const auto *view = info.noteAnalysis;
-    const bool valid = view && view->timeSeconds == info.timeSeconds &&
-                       view->blockFrames == frames && view->minimumMidi == minimum &&
-                       view->maximumMidi == maximum && view->channels == channels &&
-                       view->latencySamples == latency_;
-    if (!valid) {
-      if (linked_)
-        analysis_->reset(1u);
-      analysis_->process(audio, channels, frames, info);
-      view = &analysis_->view();
-    }
-    linked_ = valid;
-    voice_limit_ =
-        static_cast<std::uint32_t>(std::round(bounded(params_.maxVoices, 1, kVoices, 32)));
-    for (auto v = voice_limit_; v < kVoices; ++v)
-      (*voices_)[v] = {};
-    const auto dry_gain = bounded(params_.dryMix, 0, 100, 0) * .01F;
-    const auto wet_gain = bounded(params_.wetMix, 0, 100, 100) * .01F;
-    const auto output_gain = std::pow(10.0F, bounded(params_.outputGain, -60, 12, 0) * .05F);
-    const auto timing = bounded(params_.timingOffsetMs, -100, 100, 0);
-    const auto dry_delay = latencySamples();
-    const auto wet_delay =
-        static_cast<std::uint32_t>(std::round((timing > 0 ? timing : 0) * rate_ * .001F));
-    if (!delay_initialized_) {
-      dry_delay_ = old_dry_delay_ = dry_delay;
-      wet_delay_ = old_wet_delay_ = wet_delay;
-      delay_initialized_ = true;
-    } else if (dry_delay != dry_delay_ || wet_delay != wet_delay_) {
-      old_dry_delay_ = dry_delay_;
-      old_wet_delay_ = wet_delay_;
-      dry_delay_ = dry_delay;
-      wet_delay_ = wet_delay;
-      timing_fade_ = fade_length_;
-    }
-    auto event = 0u;
-    for (auto frame = 0u; frame <= frames; ++frame) {
-      while (event < view->count && view->frames[event].sampleOffset <= frame) {
-        if (state_ == ET_ASSET_STATE_ACTIVE)
-          detect(view->frames[event], minimum, maximum, sample_clock_ + frame);
-        ++event;
-      }
-      if (next_note_off_ && sample_clock_ + frame >= next_note_off_)
-        expireNoteOffs(sample_clock_ + frame);
-      if (frame == frames)
-        break;
-      float left = 0.0F, right = 0.0F;
-      if (state_ == ET_ASSET_STATE_ACTIVE)
-        for (auto v = 0u; v < voice_limit_; ++v)
-          renderVoice((*voices_)[v], left, right);
-      wet_.data()[wet_position_] = left;
-      wet_.data()[wet_length_ + wet_position_] = right;
-      const auto previous_weight = static_cast<float>(timing_fade_) / fade_length_;
-      const auto delayed_sample = [previous_weight](const float *buffer, std::uint32_t length,
-                                                    std::uint32_t position, std::uint32_t delay,
-                                                    std::uint32_t old_delay) {
-        const auto current = buffer[(position + length - delay) % length];
-        return previous_weight == 0
-                   ? current
-                   : current * (1.0F - previous_weight) +
-                         buffer[(position + length - old_delay) % length] * previous_weight;
-      };
-      left = delayed_sample(wet_.data(), wet_length_, wet_position_, wet_delay_, old_wet_delay_);
-      right = delayed_sample(wet_.data() + wet_length_, wet_length_, wet_position_, wet_delay_,
-                             old_wet_delay_);
-      for (auto channel = 0u; channel < channels; ++channel) {
-        const auto index = static_cast<std::size_t>(channel) * dry_length_ + dry_position_;
-        const auto input = audio[channel * frames + frame];
-        dry_.data()[index] = input;
-        const auto delayed =
-            delayed_sample(dry_.data() + static_cast<std::size_t>(channel) * dry_length_,
-                           dry_length_, dry_position_, dry_delay_, old_dry_delay_);
-        const auto wet = channels == 1u  ? .5F * (left + right)
-                         : channel == 0u ? left
-                         : channel == 1u ? right
-                                         : 0.0F;
-        audio[channel * frames + frame] = (delayed * dry_gain + wet * wet_gain) * output_gain;
-      }
-      dry_position_ = (dry_position_ + 1u) % dry_length_;
-      wet_position_ = (wet_position_ + 1u) % wet_length_;
-      if (timing_fade_)
-        --timing_fade_;
-    }
-    sample_clock_ += frames;
-  }
-
-private:
-  void clearNotes() noexcept {
-    if (voices_)
-      voices_->fill({});
-    latched_.fill(false);
-    roles_.fill(0u);
-    register_valid_ = false;
-    silent_frames_ = 0u;
-    wet_.clear();
-    wet_position_ = 0u;
-    trough_.fill(0.0F);
-    onset_peak_.fill(0.0F);
-    retrigger_armed_.fill(false);
-    retrigger_cooldown_.fill(0u);
-    note_off_at_.fill(0u);
-    next_note_off_ = 0u;
-    age_ = 0u;
-  }
   et_status failAsset() noexcept {
     state_ = ET_ASSET_STATE_ERROR;
-    clearNotes();
     return ET_ERR_ARGS;
   }
   const float *region(std::uint32_t index) const noexcept {
@@ -333,9 +136,8 @@ private:
       return false;
     return true;
   }
-  // Admission allocates; validation and index construction advance in bounded processing slices.
-  void prepareAsset(std::uint32_t frames) noexcept {
-    auto budget = static_cast<std::uint64_t>(frames) * 8u;
+  // The legacy API advances in slices; native preparation completes off audio.
+  void prepareSlice(std::uint64_t budget) noexcept {
     while (budget-- && state_ == ET_ASSET_STATE_PREPARING) {
       if (preparation_ == 0u) {
         if (cursor_ < region_count_) {
@@ -379,10 +181,276 @@ private:
           }
         if (cursor_ == begin_.frames) {
           state_ = ET_ASSET_STATE_ACTIVE;
-          clearNotes();
         }
       }
     }
+  }
+
+  static et_status prepare(const AssetBeginInfo &info, const std::uint8_t *payload,
+                           std::uint32_t format, std::unique_ptr<PreparedAsset> &asset) noexcept {
+    auto next = std::unique_ptr<SFZBank>(new (std::nothrow) SFZBank());
+    if (!next)
+      return ET_ERR_OOM;
+    const auto allocated = next->allocate(info);
+    if (allocated != ET_OK)
+      return allocated;
+    std::memcpy(next->payload_.data(), payload, info.byteSize);
+    const auto committed = next->commit(info.byteSize, format);
+    if (committed != ET_OK)
+      return committed;
+    next->prepareSlice(std::numeric_limits<std::uint64_t>::max());
+    if (next->state_ != ET_ASSET_STATE_ACTIVE)
+      return ET_ERR_ARGS;
+    asset = std::move(next);
+    return ET_OK;
+  }
+};
+} // namespace
+
+class SFZNotePlayerKernel final : public PluginKernel {
+  EFFETUNE_PARAMS(generated::SFZNotePlayerPluginParams)
+public:
+  static std::uint32_t assetCapacityForSlot(std::uint32_t slot) noexcept {
+    return slot == 0u ? kCapacity : 0u;
+  }
+  std::uint32_t assetCapacity(std::uint32_t slot) const noexcept override {
+    return assetCapacityForSlot(slot);
+  }
+  void prepare(const PrepareInfo &info) override {
+    rate_ = info.sampleRate;
+    max_channels_ = info.maxChannels;
+    fade_length_ = std::max(1u, static_cast<std::uint32_t>(rate_ * .002F));
+    analysis_ = std::make_unique<analyzer::SpectralAnalysis>();
+    analysis_->prepare(info);
+    latency_ = analysis_->latencySamples();
+    maximum_shift_ = static_cast<std::uint32_t>(std::round(rate_ * .1F));
+    hop_ = analysis_->hopSamples();
+    dry_length_ = latency_ + hop_ / 2u + maximum_shift_ + 1u;
+    wet_length_ = maximum_shift_ + 1u;
+    voices_ = std::make_unique<std::array<Voice, kVoices>>();
+    filters_ = std::make_unique<std::array<SampleFilter, kVoices>>();
+    constexpr double pi = 3.14159265358979323846;
+    // A 64-tap Blackman-windowed sinc preserves the band below 0.4 of the lower sample rate.
+    resampling_filter_ =
+        std::make_unique<std::array<float, kFilterRadius * kFilterResolution + 2u>>();
+    for (std::size_t i = 0; i < resampling_filter_->size(); ++i) {
+      const auto distance = static_cast<double>(i) / kFilterResolution;
+      const auto window = .42 + .5 * std::cos(pi * distance / kFilterRadius) +
+                          .08 * std::cos(2.0 * pi * distance / kFilterRadius);
+      (*resampling_filter_)[i] = static_cast<float>(
+          distance >= kFilterRadius ? 0.0
+          : distance == 0.0         ? .9
+                                    : std::sin(.9 * pi * distance) / (pi * distance) * window);
+    }
+    prepared_ = analysis_->ready() &&
+                dry_.allocate(static_cast<std::size_t>(max_channels_) * dry_length_) &&
+                wet_.allocate(2u * wet_length_) &&
+                filter_coefficients_.allocate(static_cast<std::size_t>(kVoices) *
+                                              (kFilterPhases + 1u) * kCachedFilterTaps);
+    clearAsset(0u);
+    reset();
+  }
+  bool preparedSuccessfully() const noexcept override { return prepared_; }
+  std::uint32_t latencySamples() const noexcept override {
+    const auto timing = bounded(params_.timingOffsetMs, -100, 100, 0);
+    return latency_ + hop_ / 2u +
+           static_cast<std::uint32_t>(std::round((timing < 0 ? -timing : 0) * rate_ * .001F));
+  }
+  void reset() noexcept override {
+    if (analysis_)
+      analysis_->reset(1u);
+    clearNotes();
+    dry_.clear();
+    wet_.clear();
+    dry_position_ = 0u;
+    wet_position_ = 0u;
+    delay_initialized_ = false;
+    timing_fade_ = 0u;
+    sample_clock_ = last_detection_ = 0u;
+    linked_ = false;
+    random_ = seed_ ^ (salt_ * 0x9e3779b9u);
+    if (random_ == 0u)
+      random_ = 1u;
+    if (bank() && bank()->state_ == ET_ASSET_STATE_ACTIVE)
+      std::fill_n(bank()->indices_.data() + 129u, 2u * bank()->group_count_, 0u);
+  }
+  void setRandomSeed(std::uint32_t low, std::uint32_t high) noexcept override {
+    seed_ = low ^ high;
+    random_ = seed_ ^ (salt_ * 0x9e3779b9u);
+    if (random_ == 0u)
+      random_ = 1u;
+  }
+  void setInstanceSalt(std::uint32_t salt) noexcept override { salt_ = salt; }
+
+  AssetPreparer assetPreparer(std::uint32_t slot) const noexcept override {
+    return slot == 0u ? &SFZBank::prepare : nullptr;
+  }
+  et_status exchangePreparedAsset(std::uint32_t slot,
+                                  std::unique_ptr<PreparedAsset> &asset) noexcept override {
+    if (slot != 0u)
+      return ET_ERR_UNSUPPORTED;
+    bank_.swap(asset);
+    // Drop old voice references before the next playback access, without touching PCM here.
+    notes_reset_pending_ = true;
+    return ET_OK;
+  }
+  std::uint8_t *beginAsset(std::uint32_t slot, const AssetBeginInfo &info) noexcept override {
+    if (slot != 0u)
+      return nullptr;
+    auto next = std::unique_ptr<SFZBank>(new (std::nothrow) SFZBank());
+    if (!next || next->allocate(info) != ET_OK)
+      return nullptr;
+    clearNotes();
+    bank_ = std::move(next);
+    return reinterpret_cast<std::uint8_t *>(bank()->payload_.data());
+  }
+  et_status commitAsset(std::uint32_t slot, std::uint32_t bytes,
+                        std::uint32_t format) noexcept override {
+    if (slot != 0u || !bank())
+      return ET_ERR_ARGS;
+    const auto status = bank()->commit(bytes, format);
+    if (status != ET_OK)
+      clearNotes();
+    return status;
+  }
+  void clearAsset(std::uint32_t slot) noexcept override {
+    if (slot != 0u)
+      return;
+    clearNotes();
+    bank_.reset();
+  }
+  std::uint32_t assetState(std::uint32_t slot) const noexcept override {
+    return slot == 0u && bank() ? bank()->state_ : static_cast<std::uint32_t>(ET_ASSET_STATE_NONE);
+  }
+  void process(float *audio, std::uint32_t channels, std::uint32_t frames,
+               const ProcessInfo &info) noexcept override {
+    if (!prepared_ || !audio || !channels || channels > max_channels_)
+      return;
+    const auto minimum =
+        static_cast<std::uint32_t>(std::round(bounded(params_.minimumMidi, 21, 108, 28)));
+    const auto maximum = std::max(
+        minimum, static_cast<std::uint32_t>(std::round(bounded(params_.maximumMidi, 21, 108, 91))));
+    if (analysis_->configure(minimum, maximum)) {
+      analysis_->reset(1u);
+      clearNotes();
+    }
+    if (notes_reset_pending_)
+      clearNotes();
+    if (bank() && bank()->state_ == ET_ASSET_STATE_PREPARING) {
+      bank()->prepareSlice(static_cast<std::uint64_t>(frames) * 8u);
+      if (bank()->state_ != ET_ASSET_STATE_PREPARING)
+        clearNotes();
+    }
+    const auto *view = info.noteAnalysis;
+    const bool valid = view && view->timeSeconds == info.timeSeconds &&
+                       view->blockFrames == frames && view->minimumMidi == minimum &&
+                       view->maximumMidi == maximum && view->channels == channels &&
+                       view->latencySamples == latency_;
+    if (!valid) {
+      if (linked_)
+        analysis_->reset(1u);
+      analysis_->process(audio, channels, frames, info);
+      view = &analysis_->view();
+    }
+    linked_ = valid;
+    voice_limit_ =
+        static_cast<std::uint32_t>(std::round(bounded(params_.maxVoices, 1, kVoices, 32)));
+    for (auto v = voice_limit_; v < kVoices; ++v)
+      (*voices_)[v] = {};
+    const auto dry_gain = bounded(params_.dryMix, 0, 100, 0) * .01F;
+    const auto wet_gain = bounded(params_.wetMix, 0, 100, 100) * .01F;
+    const auto output_gain = std::pow(10.0F, bounded(params_.outputGain, -60, 12, 0) * .05F);
+    const auto timing = bounded(params_.timingOffsetMs, -100, 100, 0);
+    const auto dry_delay = latencySamples();
+    const auto wet_delay =
+        static_cast<std::uint32_t>(std::round((timing > 0 ? timing : 0) * rate_ * .001F));
+    if (!delay_initialized_) {
+      dry_delay_ = old_dry_delay_ = dry_delay;
+      wet_delay_ = old_wet_delay_ = wet_delay;
+      delay_initialized_ = true;
+    } else if (dry_delay != dry_delay_ || wet_delay != wet_delay_) {
+      old_dry_delay_ = dry_delay_;
+      old_wet_delay_ = wet_delay_;
+      dry_delay_ = dry_delay;
+      wet_delay_ = wet_delay;
+      timing_fade_ = fade_length_;
+    }
+    auto event = 0u;
+    for (auto frame = 0u; frame <= frames; ++frame) {
+      while (event < view->count && view->frames[event].sampleOffset <= frame) {
+        if (bank() && bank()->state_ == ET_ASSET_STATE_ACTIVE)
+          detect(view->frames[event], minimum, maximum, sample_clock_ + frame);
+        ++event;
+      }
+      if (frame == frames)
+        break;
+      if (next_note_event_ && sample_clock_ + frame >= next_note_event_)
+        processNoteEvents(sample_clock_ + frame);
+      float left = 0.0F, right = 0.0F;
+      if (bank() && bank()->state_ == ET_ASSET_STATE_ACTIVE)
+        for (auto v = 0u; v < voice_limit_; ++v)
+          renderVoice((*voices_)[v], left, right);
+      wet_.data()[wet_position_] = left;
+      wet_.data()[wet_length_ + wet_position_] = right;
+      const auto previous_weight = static_cast<float>(timing_fade_) / fade_length_;
+      const auto delayed_sample = [previous_weight](const float *buffer, std::uint32_t length,
+                                                    std::uint32_t position, std::uint32_t delay,
+                                                    std::uint32_t old_delay) {
+        const auto current = buffer[(position + length - delay) % length];
+        return previous_weight == 0
+                   ? current
+                   : current * (1.0F - previous_weight) +
+                         buffer[(position + length - old_delay) % length] * previous_weight;
+      };
+      left = delayed_sample(wet_.data(), wet_length_, wet_position_, wet_delay_, old_wet_delay_);
+      right = delayed_sample(wet_.data() + wet_length_, wet_length_, wet_position_, wet_delay_,
+                             old_wet_delay_);
+      for (auto channel = 0u; channel < channels; ++channel) {
+        const auto index = static_cast<std::size_t>(channel) * dry_length_ + dry_position_;
+        const auto input = audio[channel * frames + frame];
+        dry_.data()[index] = input;
+        const auto delayed =
+            delayed_sample(dry_.data() + static_cast<std::size_t>(channel) * dry_length_,
+                           dry_length_, dry_position_, dry_delay_, old_dry_delay_);
+        const auto wet = channels == 1u  ? .5F * (left + right)
+                         : channel == 0u ? left
+                         : channel == 1u ? right
+                                         : 0.0F;
+        audio[channel * frames + frame] = (delayed * dry_gain + wet * wet_gain) * output_gain;
+      }
+      dry_position_ = (dry_position_ + 1u) % dry_length_;
+      wet_position_ = (wet_position_ + 1u) % wet_length_;
+      if (timing_fade_)
+        --timing_fade_;
+    }
+    sample_clock_ += frames;
+  }
+
+private:
+  SFZBank *bank() noexcept { return static_cast<SFZBank *>(bank_.get()); }
+  const SFZBank *bank() const noexcept { return static_cast<const SFZBank *>(bank_.get()); }
+  const float *region(std::uint32_t index) const noexcept { return bank()->region(index); }
+  void clearNotes() noexcept {
+    notes_reset_pending_ = false;
+    if (voices_)
+      voices_->fill({});
+    onset_rules_.fill({});
+    roles_.fill(0u);
+    register_valid_ = false;
+    silent_frames_ = 0u;
+    wet_.clear();
+    wet_position_ = 0u;
+    trough_.fill(0.0F);
+    onset_peak_.fill(0.0F);
+    retrigger_armed_.fill(false);
+    retrigger_cooldown_.fill(0u);
+    note_off_at_.fill(0u);
+    note_on_at_.fill(0u);
+    output_note_off_at_.fill(0u);
+    released_at_.fill(0u);
+    note_on_level_.fill(0.0F);
+    next_note_event_ = 0u;
+    age_ = 0u;
   }
   void release(Voice &v) noexcept {
     if (!v.region || v.released || v.region[LoopMode] == 1.0F)
@@ -403,19 +471,45 @@ private:
     retrigger_armed_[pitch] = false;
     retrigger_cooldown_[pitch] = 4u;
   }
-  void expireNoteOffs(std::uint64_t sample_time) noexcept {
-    next_note_off_ = 0u;
-    for (auto pitch = 0u; pitch < note_off_at_.size(); ++pitch) {
-      const auto deadline = note_off_at_[pitch];
-      if (!deadline)
-        continue;
-      if (deadline <= sample_time) {
+  void scheduleNoteEvent(std::uint64_t time) noexcept {
+    if (!next_note_event_ || time < next_note_event_)
+      next_note_event_ = time;
+  }
+  void scheduleNoteOff(std::uint32_t pitch, std::uint64_t time) noexcept {
+    output_note_off_at_[pitch] = time + hop_ / 2u;
+    scheduleNoteEvent(output_note_off_at_[pitch]);
+  }
+  void scheduleNoteOn(std::uint32_t pitch, float level, std::uint64_t time,
+                      double delta = 0.0) noexcept {
+    note_off_at_[pitch] = output_note_off_at_[pitch] = 0u;
+    note_on_at_[pitch] = time + static_cast<std::uint64_t>(std::round((delta + .5) * hop_));
+    note_on_level_[pitch] = level;
+    scheduleNoteEvent(note_on_at_[pitch]);
+  }
+  void processNoteEvents(std::uint64_t sample_time) noexcept {
+    // Detection deadlines and output reservations live on separate time axes.
+    for (auto pitch = 0u; pitch < note_off_at_.size(); ++pitch)
+      if (note_off_at_[pitch] && note_off_at_[pitch] <= sample_time) {
+        scheduleNoteOff(pitch, note_off_at_[pitch]);
         note_off_at_[pitch] = 0u;
         roles_[pitch] = 0u;
+      }
+    // A release at the same sample always precedes a new attack.
+    for (auto pitch = 0u; pitch < output_note_off_at_.size(); ++pitch)
+      if (output_note_off_at_[pitch] && output_note_off_at_[pitch] <= sample_time) {
+        output_note_off_at_[pitch] = 0u;
         releaseKey(pitch + 21u);
-      } else if (!next_note_off_ || deadline < next_note_off_)
-        next_note_off_ = deadline;
-    }
+      }
+    for (auto pitch = 0u; pitch < note_on_at_.size(); ++pitch)
+      if (note_on_at_[pitch] && note_on_at_[pitch] <= sample_time) {
+        note_on_at_[pitch] = 0u;
+        noteOn(pitch + 21u, note_on_level_[pitch]);
+      }
+    next_note_event_ = 0u;
+    for (auto pitch = 0u; pitch < note_off_at_.size(); ++pitch)
+      for (const auto time : {note_off_at_[pitch], output_note_off_at_[pitch], note_on_at_[pitch]})
+        if (time)
+          scheduleNoteEvent(time);
   }
   void detect(const NoteAnalysisFrame &frame, std::uint32_t minimum, std::uint32_t maximum,
               std::uint64_t sample_time) noexcept {
@@ -434,31 +528,58 @@ private:
         if (roles_[midi - 21u] && !(roles_[midi - 21u] & mask)) {
           releaseKey(midi);
           roles_[midi - 21u] = 0u;
-          note_off_at_[midi - 21u] = 0u;
+          note_off_at_[midi - 21u] = note_on_at_[midi - 21u] = output_note_off_at_[midi - 21u] = 0u;
         }
       selection_mask_ = mask;
     }
     const auto elapsed = sample_time - last_detection_;
     last_detection_ = sample_time;
-    std::array<bool, 88> trigger{};
+    std::array<bool, 88> trigger{}, eligible{};
+    std::array<double, 88> delta{};
     int lowest = -1, highest = -1, playing_lowest = -1, playing_highest = -1;
     // Update every input gate before assigning roles, independently of playback selection.
     for (auto midi = minimum; midi <= maximum; ++midi) {
       const auto pitch = midi - 21u;
-      if (retrigger_cooldown_[pitch])
-        --retrigger_cooldown_[pitch];
-      if (latched_[pitch]) {
-        if (frame.probabilities[pitch] < off) {
-          latched_[pitch] = false;
-          if (hold_frames && roles_[pitch]) {
-            note_off_at_[pitch] = sample_time + hold_frames;
-            if (!next_note_off_ || note_off_at_[pitch] < next_note_off_)
-              next_note_off_ = note_off_at_[pitch];
-          } else {
-            roles_[pitch] = 0u;
-            releaseKey(midi);
-          }
+      auto &rule = onset_rules_[pitch];
+      const bool onset_range = midi <= analyzer::harmnet_weights::kOnsetMaximumMidi;
+      const bool was_latched = rule.latched();
+      const OnsetRuleSettings settings{
+          threshold,
+          off,
+          analyzer::harmnet_weights::kOnsetThreshold,
+          analyzer::harmnet_weights::kOnsetProminence,
+          analyzer::harmnet_weights::kOnsetGate,
+          onset_range ? analyzer::harmnet_weights::kOnsetRefractoryFrames : 0u};
+      const auto decision =
+          rule.step(frame.probabilities[pitch], onset_range ? frame.onsets[pitch] : 0.0F, settings);
+      if (decision.released && roles_[pitch]) {
+        released_at_[pitch] = sample_time;
+        const auto extension = std::max(hold_frames, rule.cooldown() * hop_);
+        if (extension) {
+          note_off_at_[pitch] = sample_time + extension;
+          scheduleNoteEvent(note_off_at_[pitch]);
         } else {
+          roles_[pitch] = 0u;
+          scheduleNoteOff(pitch, sample_time);
+        }
+      }
+      trigger[pitch] = decision.fire != OnsetFire::None;
+      delta[pitch] = decision.delta;
+      if (decision.fire == OnsetFire::Fallback && roles_[pitch] && note_off_at_[pitch] &&
+          hold_frames && sample_time <= released_at_[pitch] + hold_frames) {
+        // Only Note Hold, rather than a refractory extension, continues a fallback.
+        trigger[pitch] = false;
+        note_off_at_[pitch] = 0u;
+      } else if (decision.fire == OnsetFire::None && !was_latched && rule.latched() &&
+                 roles_[pitch] && note_off_at_[pitch] && sample_time <= note_off_at_[pitch]) {
+        note_off_at_[pitch] = 0u;
+      }
+      if (!onset_range) {
+        if (retrigger_cooldown_[pitch])
+          --retrigger_cooldown_[pitch];
+        if (decision.fire != OnsetFire::None)
+          startOnset(pitch, frame.levels[pitch]);
+        else if (was_latched && rule.latched()) {
           const auto level = frame.levels[pitch];
           // Raising the setting cancels a pending retrigger from a shallower dip.
           if (retrigger_armed_[pitch] && onset_peak_[pitch] - trough_[pitch] < retrigger_drop)
@@ -477,14 +598,10 @@ private:
             startOnset(pitch, level);
           }
         }
-      } else if (frame.probabilities[pitch] >= threshold) {
-        latched_[pitch] = true;
-        // Detection returning during the hold continues the existing note.
-        trigger[pitch] = !note_off_at_[pitch];
-        note_off_at_[pitch] = 0u;
-        startOnset(pitch, frame.levels[pitch]);
       }
-      if (latched_[pitch]) {
+      eligible[pitch] = rule.latched() && rule.active() &&
+                        (frame.probabilities[pitch] >= threshold || trigger[pitch]);
+      if (eligible[pitch]) {
         if (lowest < 0)
           lowest = static_cast<int>(midi);
         highest = static_cast<int>(midi);
@@ -529,7 +646,7 @@ private:
     std::array<std::uint8_t, 88> candidates{};
     for (auto midi = minimum; midi <= maximum; ++midi) {
       const auto pitch = midi - 21u;
-      if (!latched_[pitch] || frame.probabilities[pitch] < threshold)
+      if (!eligible[pitch])
         continue;
       auto roles = static_cast<std::uint8_t>(
           (static_cast<int>(midi) == lowest ? 1u : 0u) |
@@ -548,16 +665,17 @@ private:
     }
     for (auto midi = minimum; midi <= maximum; ++midi) {
       const auto pitch = midi - 21u;
-      if (!latched_[pitch])
+      if (!onset_rules_[pitch].latched())
         continue;
       // Keep the admitted role until its note-off deadline or disabling that role.
       if (roles_[pitch]) {
         if (trigger[pitch])
-          noteOn(midi, frame.levels[pitch]);
+          scheduleNoteOn(pitch, frame.levels[pitch], sample_time, delta[pitch]);
       } else if (candidates[pitch]) {
         roles_[pitch] = candidates[pitch];
-        noteOn(midi, frame.levels[pitch]);
-        startOnset(pitch, frame.levels[pitch]);
+        scheduleNoteOn(pitch, frame.levels[pitch], sample_time, delta[pitch]);
+        if (midi > analyzer::harmnet_weights::kOnsetMaximumMidi)
+          startOnset(pitch, frame.levels[pitch]);
       }
       if (roles_[pitch] & 1u)
         low_register_ = std::min(low_register_, static_cast<float>(midi));
@@ -581,6 +699,11 @@ private:
         12 * static_cast<int>(std::round(bounded(params_.octaveShift, -2, 2, 0)));
     if (target_key < 0 || target_key > 127)
       return;
+    // Select a neighboring key's timbre, but tune playback to the unshifted target key.
+    const auto sample_key =
+        target_key + static_cast<int>(std::round(bounded(params_.sampleShift, -6, 6, 0)));
+    if (sample_key < 0 || sample_key > 127)
+      return;
     const auto floor = bounded(params_.velocityFloor, -96, 0, -30);
     const auto ceiling = std::max(floor + 1.0F, bounded(params_.velocityCeiling, -60, 24, 3));
     const auto velocity = static_cast<std::uint32_t>(
@@ -589,17 +712,18 @@ private:
     random_ ^= random_ >> 17u;
     random_ ^= random_ << 5u;
     const auto random = static_cast<double>(random_) / 4294967296.0;
-    const auto *keys = indices_.data() + 129u + 2u * group_count_;
-    auto *sequences = indices_.data() + 129u;
-    auto *stamps = sequences + group_count_;
+    const auto *keys = bank()->indices_.data() + 129u + 2u * bank()->group_count_;
+    auto *sequences = bank()->indices_.data() + 129u;
+    auto *stamps = sequences + bank()->group_count_;
     if (++note_serial_ == 0u) {
-      std::fill_n(stamps, group_count_, 0u);
+      std::fill_n(stamps, bank()->group_count_, 0u);
       ++note_serial_;
     }
     std::array<const float *, kVoices> selected{};
     std::uint32_t selected_count = 0u;
     // Groups share one sequence counter, advanced once for this note-on.
-    for (auto i = indices_.data()[target_key]; i < indices_.data()[target_key + 1]; ++i) {
+    for (auto i = bank()->indices_.data()[sample_key]; i < bank()->indices_.data()[sample_key + 1];
+         ++i) {
       const auto *r = region(keys[i]);
       const auto group = static_cast<std::uint32_t>(r[SequenceGroup]);
       if (stamps[group] != note_serial_) {
@@ -678,7 +802,8 @@ private:
     if ((r[LoopMode] == 2.0F || r[LoopMode] == 3.0F) && v.step >= loop_frames &&
         v.step >= indexValue(r, LoopEnd) + 1.0 - v.position) {
       const auto channels = static_cast<std::uint32_t>(r[Channels]);
-      const auto *pcm = payload_.data() + 8u + pool_offset_ + indexValue(r, Sample) +
+      const auto *pcm = bank()->payload_.data() + 8u + bank()->pool_offset_ +
+                        indexValue(r, Sample) +
                         static_cast<std::size_t>(indexValue(r, LoopStart)) * channels;
       double left = 0.0, right = 0.0;
       for (auto frame = 0u; frame < loop_frames; ++frame) {
@@ -739,13 +864,13 @@ private:
     const auto channels = static_cast<std::uint32_t>(r[Channels]);
     const auto at = indexValue(r, Sample) + static_cast<std::size_t>(frame) * channels +
                     (channels == 1u ? 0u : channel);
-    return payload_.data()[8u + pool_offset_ + at];
+    return bank()->payload_.data()[8u + bank()->pool_offset_ + at];
   }
   const float *sampleWindow(const Voice &v, std::int64_t first, std::uint32_t count,
                             std::uint32_t channel, float *scratch) const noexcept {
     const auto *r = v.region;
     const auto channels = static_cast<std::uint32_t>(r[Channels]);
-    const auto *pcm = payload_.data() + 8u + pool_offset_ + indexValue(r, Sample);
+    const auto *pcm = bank()->payload_.data() + 8u + bank()->pool_offset_ + indexValue(r, Sample);
     const bool looping = r[LoopMode] == 2.0F || (r[LoopMode] == 3.0F && !v.released);
     const auto loop_start = static_cast<std::int64_t>(indexValue(r, LoopStart)),
                loop_end = static_cast<std::int64_t>(indexValue(r, LoopEnd)),
@@ -871,32 +996,31 @@ private:
   std::unique_ptr<std::array<Voice, kVoices>> voices_;
   std::unique_ptr<std::array<SampleFilter, kVoices>> filters_;
   std::unique_ptr<std::array<float, kFilterRadius * kFilterResolution + 2u>> resampling_filter_;
-  NothrowStorage<float> dry_, wet_, payload_;
+  NothrowStorage<float> dry_, wet_;
+  std::unique_ptr<PreparedAsset> bank_;
   NothrowStorage<float> filter_coefficients_;
-  NothrowStorage<std::uint32_t> indices_;
-  std::array<std::uint32_t, 128> key_cursors_{};
-  std::array<bool, 88> latched_{};
+  std::array<OnsetRule, 88> onset_rules_{};
   std::array<std::uint8_t, 88> roles_{};
   std::array<float, 88> trough_{};
   std::array<float, 88> onset_peak_{};
   std::array<bool, 88> retrigger_armed_{};
   std::array<std::uint32_t, 88> retrigger_cooldown_{};
-  std::array<std::uint64_t, 88> note_off_at_{};
-  AssetBeginInfo begin_{};
+  std::array<std::uint64_t, 88> note_off_at_{}, note_on_at_{}, output_note_off_at_{},
+      released_at_{};
+  std::array<float, 88> note_on_level_{};
   float rate_ = 48000.0F;
-  std::uint32_t max_channels_ = 0u, latency_ = 0u, dry_position_ = 0u, fade_length_ = 96u;
+  std::uint32_t max_channels_ = 0u, latency_ = 0u, hop_ = 0u, dry_position_ = 0u,
+                fade_length_ = 96u;
   std::uint32_t maximum_shift_ = 0u, dry_length_ = 0u, wet_length_ = 0u, wet_position_ = 0u;
   std::uint32_t dry_delay_ = 0u, old_dry_delay_ = 0u, wet_delay_ = 0u, old_wet_delay_ = 0u,
                 timing_fade_ = 0u, selection_mask_ = 7u;
-  std::uint32_t state_ = ET_ASSET_STATE_NONE, region_count_ = 0u, group_count_ = 0u,
-                pool_offset_ = 0u;
-  std::uint32_t preparation_ = 0u, cursor_ = 0u, voice_limit_ = 32u, seed_ = 1u, salt_ = 0u,
-                random_ = 1u;
+  std::uint32_t voice_limit_ = 32u, seed_ = 1u, salt_ = 0u, random_ = 1u;
   std::uint64_t age_ = 0u;
   std::uint64_t sample_clock_ = 0u, last_detection_ = 0u, silent_frames_ = 0u;
-  std::uint64_t next_note_off_ = 0u;
+  std::uint64_t next_note_event_ = 0u;
   float low_register_ = 0.0F, high_register_ = 0.0F;
   std::uint32_t note_serial_ = 0u;
+  bool notes_reset_pending_ = false;
   bool prepared_ = false, linked_ = false, register_valid_ = false, delay_initialized_ = false;
 };
 static_assert(sizeof(SFZNotePlayerKernel) <= 8192u);

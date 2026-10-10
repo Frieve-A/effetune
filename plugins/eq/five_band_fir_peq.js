@@ -687,10 +687,11 @@ class FiveBandFIRPEQPlugin extends PluginBase {
     for (let index = 0; index < 5; index += 1) {
       controls.appendChild(this._createBandControls(index));
     }
+    container.appendChild(MobileBandSelector.create(this, controls, markers));
     container.appendChild(controls);
 
     const statusLine = document.createElement('div');
-    statusLine.className = 'five-band-fir-peq-status-line';
+    statusLine.className = 'five-band-fir-peq-status-line local-audio-only';
     const status = document.createElement('div');
     status.className = 'five-band-fir-peq-status';
     status.setAttribute('role', 'status');

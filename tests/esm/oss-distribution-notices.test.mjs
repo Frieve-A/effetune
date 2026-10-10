@@ -10,11 +10,12 @@ vm.runInNewContext(await readFile(new URL('js/vendor/jszip-3.10.2.min.js', repos
     { module: zipModule, exports: zipModule.exports, setImmediate, Buffer, Uint8Array, ArrayBuffer });
 const JSZip = zipModule.exports;
 
-test('browser extension ships vendor and DSP notices and preserves legal comments', async () => {
+test('browser extension ships required styles, notices, and preserves legal comments', async () => {
     const result = await buildExtension();
     const archive = await new JSZip().loadAsync(await readFile(result.archive));
     for (const filename of [
         'LICENSE',
+        'css/asset-library.css',
         'plugins/dsp/NOTICE.txt',
         'js/vendor/jszip-3.10.2.NOTICE.txt',
         'js/vendor/offline-audio-encoders.NOTICE.txt'

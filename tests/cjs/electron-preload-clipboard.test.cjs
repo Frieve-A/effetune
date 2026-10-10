@@ -65,6 +65,15 @@ function loadPreload(harness) {
   });
 }
 
+test('SFZ library preload forwards file and folder selection modes', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  for (const mode of ['files', 'folder']) {
+    await harness.exposed.electronAPI.sfzLibraryV1.select({ mode });
+    assert.deepEqual(harness.invocations.at(-1), ['sfz-library-v1:select', { mode }]);
+  }
+});
+
 test('preload exposes electronAPI invoke and send wrappers', async () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -324,6 +333,34 @@ test('preload exposes the versioned remote control bridge', async () => {
   assert.deepEqual(statuses, [{ enabled: true }]);
   removeStatus();
   assert.equal(harness.listeners.has('remote-v1:status'), false);
+
+  let opened = false;
+  const removeOpen = bridge.onOpenPanel(() => { opened = true; });
+  harness.listeners.get('remote-v1:open-panel')({});
+  assert.equal(opened, true);
+  removeOpen();
+  assert.equal(harness.listeners.has('remote-v1:open-panel'), false);
+
+  const settings = bridge.settings;
+  await settings.getStatus();
+  await settings.setEnabled(true);
+  await settings.regenerateToken();
+  await settings.copyLink(1);
+  await settings.join('http://192.168.0.5:47300/?t=abcd');
+  assert.deepEqual(harness.invocations.slice(-5), [
+    ['remote-panel-v1:get-status'],
+    ['remote-panel-v1:set-enabled', true],
+    ['remote-panel-v1:regenerate-token'],
+    ['remote-panel-v1:copy-link', 1],
+    ['remote-panel-v1:join', 'http://192.168.0.5:47300/?t=abcd']
+  ]);
+  const panelStatuses = [];
+  const removePanelStatus = settings.onStatus(status => panelStatuses.push(status));
+  harness.listeners.get('remote-panel-v1:status')({}, { running: true, addresses: [] });
+  assert.deepEqual(panelStatuses, [{ running: true, addresses: [] }]);
+  removePanelStatus();
+  assert.equal(harness.listeners.has('remote-panel-v1:status'), false);
+  assert.equal(Object.isFrozen(settings), true);
   assert.equal(Object.hasOwn(bridge, 'invoke'), false);
   assert.equal(Object.hasOwn(bridge, 'send'), false);
 });
@@ -448,6 +485,8 @@ test('preload exposes listener registration wrappers', () => {
   harness.listeners.get('request-tray-menu-update')({}, 'a', 'b');
   api.onIPC('open-visualizer-view', () => calls.push(['onVisualizerView']));
   harness.listeners.get('open-visualizer-view')({});
+  api.onIPC('start-onboarding-tour', () => calls.push(['onStartOnboardingTour']));
+  harness.listeners.get('start-onboarding-tour')({});
   assert.throws(
     () => api.onIPC('custom-channel', () => {}),
     /not allowed/
@@ -492,6 +531,7 @@ test('preload exposes listener registration wrappers', () => {
       folderId: 'folder-one', phase: 'removing', deleted: 3, total: 10
     }],
     ['onIPC', ['a', 'b']],
-    ['onVisualizerView']
+    ['onVisualizerView'],
+    ['onStartOnboardingTour']
   ]);
 });

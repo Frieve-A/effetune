@@ -4077,6 +4077,7 @@ input[type="radio"]:disabled {
 
 .audio-config-dialog,
 .config-dialog,
+.remote-control-dialog,
 .about-dialog {
     background: var(--et-panel-gradient) !important;
     color: var(--et-text-primary) !important;
@@ -4085,6 +4086,7 @@ input[type="radio"]:disabled {
 
 .audio-config-dialog h2,
 .config-dialog h2,
+.remote-control-dialog h2,
 .about-dialog h2 {
     color: var(--et-text-primary) !important;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.045), 0 8px 22px rgba(0, 0, 0, 0.28);
@@ -4137,6 +4139,169 @@ input[type="radio"]:disabled {
     background: linear-gradient(180deg, var(--et-accent-hover), var(--et-accent)) !important;
 }
 
+.remote-control-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    z-index: 1000;
+}
+
+.remote-control-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 460px;
+    max-width: 100%;
+    max-height: 100%;
+    padding: 20px;
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+.remote-control-dialog h2 {
+    margin: 0 0 16px;
+}
+
+.remote-control-content {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.remote-control-dialog .checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.remote-control-dialog .checkbox-container input {
+    margin: 0;
+    accent-color: var(--et-accent);
+}
+
+.remote-control-help,
+.remote-control-devices {
+    color: var(--et-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 8px 0;
+}
+
+.remote-control-devices {
+    padding-left: 20px;
+}
+
+.remote-control-qr {
+    display: block;
+    width: 240px;
+    max-width: 100%;
+    aspect-ratio: 1;
+    margin: 16px auto;
+    border-radius: 4px;
+    background: var(--et-on-accent);
+}
+
+.remote-control-field {
+    margin-top: 16px;
+}
+
+.remote-control-field > label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--et-text-secondary);
+}
+
+.remote-control-field select,
+.remote-control-join-row input {
+    width: 100%;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--et-surface-28);
+    border-radius: 4px;
+    font: inherit;
+    background: var(--et-input-gradient);
+    color: var(--et-text-primary);
+    box-sizing: border-box;
+}
+
+.remote-control-join-row input:focus {
+    outline: none;
+    border-color: var(--et-accent);
+    box-shadow: var(--et-focus-ring);
+}
+
+.remote-control-link {
+    padding: 8px;
+    border: 1px solid var(--et-surface-28);
+    border-radius: 4px;
+    background: var(--et-input-gradient);
+    font: 12px/1.45 ui-monospace, Consolas, monospace;
+    overflow-wrap: anywhere;
+    user-select: all;
+}
+
+.remote-control-dialog .dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.remote-control-dialog .dialog-buttons button {
+    padding: 8px 16px;
+    margin: 0;
+    border-radius: 4px;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.remote-control-dialog .dialog-buttons button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.remote-control-dialog .remote-control-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.remote-control-join-section,
+.remote-control-dialog .remote-control-footer {
+    padding-top: 16px;
+    border-top: 1px solid var(--et-surface-20);
+}
+
+.remote-control-dialog .remote-control-footer {
+    margin-top: 16px;
+}
+
+.remote-control-join-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.remote-control-join-row input {
+    flex: 1 1 0;
+}
+
+.remote-control-join-row .dialog-buttons {
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+
+.remote-control-error {
+    color: var(--et-danger);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 @keyframes et-pop-in {
     from {
         opacity: 0;
@@ -4180,13 +4345,45 @@ body.layout-mobile { --et-effect-tab-height: var(--et-mobile-control-height); }
     .phase-select-eq-region-tabs,
     .spatial-mapper-tabs
 ) {
-    display: flex;
-    flex-wrap: wrap;
+    /* Share column widths with the incomplete final row. */
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--et-effect-tab-min-width, 8em), 1fr));
     gap: 4px;
     margin-bottom: 12px;
 }
 
 :is(
+    .multiband-compressor-band-tabs,
+    .multiband-expander-band-tabs
+) {
+    --et-effect-tab-min-width: 5em;
+}
+
+:is(.mbt-band-tabs, .mbs-band-tabs) {
+    --et-effect-tab-min-width: 4em;
+}
+
+.fifteen-band-peq-band-tabs {
+    --et-effect-tab-min-width: 4.6em;
+}
+
+:is(.fbdyn-band-tabs, .phase-select-eq-region-tabs) {
+    --et-effect-tab-min-width: 6.5em;
+}
+
+body.layout-mobile :is(
+    .room-eq-tabs,
+    .am-radio-simulator-tabs,
+    .tv-audio-simulator-tabs,
+    .sw-radio-simulator-tabs,
+    .vinyl-simulator-tabs,
+    .tube-simulator-tabs
+) {
+    --et-effect-tab-min-width: calc(50% - 4px);
+}
+
+:is(
+    .mobile-band-tab,
     .multiband-compressor-band-tab,
     .multiband-expander-band-tab,
     .mbt-band-tab,
@@ -4228,6 +4425,7 @@ body.layout-mobile { --et-effect-tab-height: var(--et-mobile-control-height); }
 }
 
 :is(
+    .mobile-band-tab,
     .multiband-compressor-band-tab,
     .multiband-expander-band-tab,
     .mbt-band-tab,
@@ -4250,6 +4448,7 @@ body.layout-mobile { --et-effect-tab-height: var(--et-mobile-control-height); }
 }
 
 :is(
+    .mobile-band-tab,
     .multiband-compressor-band-tab,
     .multiband-expander-band-tab,
     .mbt-band-tab,
@@ -4272,6 +4471,7 @@ body.layout-mobile { --et-effect-tab-height: var(--et-mobile-control-height); }
 }
 
 :is(
+    .mobile-band-tab,
     .multiband-compressor-band-tab,
     .multiband-expander-band-tab,
     .mbt-band-tab,
@@ -4292,6 +4492,7 @@ body.layout-mobile { --et-effect-tab-height: var(--et-mobile-control-height); }
 }
 
 :is(
+    .mobile-band-tab,
     .multiband-compressor-band-tab,
     .multiband-expander-band-tab,
     .mbt-band-tab,
@@ -4349,6 +4550,40 @@ body.layout-mobile :is(
     min-width: 16px;
     min-height: 16px;
     margin: 0;
+}
+
+.mobile-band-tabs {
+    display: none;
+}
+
+body.layout-mobile .mobile-band-tabs {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    max-width: 1024px;
+    margin-top: 12px;
+}
+
+body.layout-mobile .mobile-band-tab {
+    flex: 1;
+    min-width: 0;
+    padding: 0 6px;
+}
+
+body.layout-mobile .mobile-band-controls > .mobile-band-panel {
+    display: none;
+}
+
+body.layout-mobile .mobile-band-controls > .mobile-band-panel.mobile-band-selected {
+    display: flex;
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+}
+
+body.layout-mobile .mobile-band-controls > .mobile-band-panel select {
+    flex: 1;
+    min-width: 0;
 }
 
 /* Keep every tab panel in the layout; the largest panel determines the height. */

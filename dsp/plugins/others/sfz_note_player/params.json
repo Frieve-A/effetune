@@ -160,6 +160,16 @@
       "default": 50,
       "automation": true,
       "step": 1
+    },
+    {
+      "name": "sampleShift",
+      "key": "ss",
+      "kind": "int",
+      "min": -6,
+      "max": 6,
+      "default": 0,
+      "automation": true,
+      "step": 1
     }
   ]
 }

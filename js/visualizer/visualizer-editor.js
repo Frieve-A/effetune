@@ -151,7 +151,7 @@ export class VisualizerEditor {
         view.stage.addEventListener('keydown', event => this.onStageKeyDown(event));
         document.addEventListener?.('keyup', event => {
             if (event.code === 'Space' || event.key === ' ') this.setHandTool(false);
-            if (this.open && !event.target?.matches?.('.visualizer-field input[type="number"]')) this.view.commitPending();
+            if (this.open && !this.dragging && !event.target?.matches?.('.visualizer-field input[type="number"]')) this.view.commitPending();
         });
         globalThis.addEventListener?.('blur', () => { this.setHandTool(false); this.endDrag(); });
         this.updateZoomControls();
@@ -805,7 +805,7 @@ export class VisualizerEditor {
             check('showCorrelation', 'Correlation');
             check('showBalance', 'Balance');
         } else if (item.type === 'oscilloscope') {
-            range('dt', 'Display Time', 0.001, 0.1, 0.001, 'ms', 1000);
+            range('dt', 'Display Time', 0.001, 10, 0.001, 'ms', 1000);
             select('tm', 'Trigger Mode', ['Auto', 'Normal', 'Off'].map(value =>
                 [value, this.t(`visualizer.paramChoice.${value}`, value)]));
             range('tl', 'Trigger Level', -1, 1, 0.01, '');
@@ -1224,11 +1224,31 @@ export class VisualizerEditor {
             });
         } else {
             const item = this.dragging.grabbed;
-            const left = corner.includes('w') ? clamp(snap(rect.x + dx), rect.x + rect.w - MAX_ITEM_SIZE, rect.x + rect.w - MIN_ITEM_SIZE) : rect.x;
-            const top = corner.includes('n') ? clamp(snap(rect.y + dy), rect.y + rect.h - MAX_ITEM_SIZE, rect.y + rect.h - MIN_ITEM_SIZE) : rect.y;
-            const right = corner.includes('e') ? clamp(snap(rect.x + rect.w + dx), left + MIN_ITEM_SIZE, left + MAX_ITEM_SIZE) : rect.x + rect.w;
-            const bottom = corner.includes('s') ? clamp(snap(rect.y + rect.h + dy), top + MIN_ITEM_SIZE, top + MAX_ITEM_SIZE) : rect.y + rect.h;
-            item.rect = { x: left, y: top, w: right - left, h: bottom - top };
+            const horizontal = corner.includes('w') ? -1 : corner.includes('e') ? 1 : 0;
+            const vertical = corner.includes('n') ? -1 : corner.includes('s') ? 1 : 0;
+            const centered = event.ctrlKey || event.metaKey;
+            const factor = centered ? 2 : 1;
+            const edgeX = rect.x + (horizontal > 0 ? rect.w : 0);
+            const edgeY = rect.y + (vertical > 0 ? rect.h : 0);
+            let width = rect.w + (horizontal ? (snap(edgeX + dx) - edgeX) * horizontal * factor : 0);
+            let height = rect.h + (vertical ? (snap(edgeY + dy) - edgeY) * vertical * factor : 0);
+            if (event.shiftKey) {
+                // Follow the edge with the larger proportional change and limit both dimensions together.
+                const scaleX = width / rect.w, scaleY = height / rect.h;
+                const scale = clamp(Math.abs(scaleX - 1) > Math.abs(scaleY - 1) ? scaleX : scaleY,
+                    Math.max(MIN_ITEM_SIZE / rect.w, MIN_ITEM_SIZE / rect.h),
+                    Math.min(MAX_ITEM_SIZE / rect.w, MAX_ITEM_SIZE / rect.h));
+                width = rect.w * scale; height = rect.h * scale;
+            } else {
+                width = clamp(width, MIN_ITEM_SIZE, MAX_ITEM_SIZE);
+                height = clamp(height, MIN_ITEM_SIZE, MAX_ITEM_SIZE);
+            }
+            // Side handles keep the perpendicular center fixed when Shift changes that dimension.
+            const x = centered || (!horizontal && event.shiftKey) ? rect.x + (rect.w - width) / 2
+                : horizontal < 0 ? rect.x + rect.w - width : rect.x;
+            const y = centered || (!vertical && event.shiftKey) ? rect.y + (rect.h - height) / 2
+                : vertical < 0 ? rect.y + rect.h - height : rect.y;
+            item.rect = { x, y, w: width, h: height };
         }
         this.changed();
     }

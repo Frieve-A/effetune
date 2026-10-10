@@ -237,6 +237,7 @@ class StereoMeterPlugin extends PluginBase {
 
     // Create the graph container and canvas.
     const graph = this.createResponsiveGraph({
+      className: 'local-audio-only',
       maxWidth: 480,
       aspectRatio: '1 / 1',
       onResize: ({ canvas, cssWidth, dpr }) => {

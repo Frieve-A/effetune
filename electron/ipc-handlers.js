@@ -589,6 +589,10 @@ function createApplicationMenuTemplate(menuState = {}) {
             });
           }
         }),
+        item('help.tour', {
+          label: 'Take the tour',
+          click: () => sendToRenderer('start-onboarding-tour')
+        }),
         item('help.discord', {
           label: 'Discord',
           click: () => shell.openExternal('https://discord.gg/gf95v3Gza2')

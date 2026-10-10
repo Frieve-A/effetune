@@ -790,7 +790,7 @@ class BassManagementPlugin extends PluginBase {
     this._routeElement = route;
     container.appendChild(route);
     const statusLine = document.createElement('div');
-    statusLine.className = 'bass-management-status-line';
+    statusLine.className = 'bass-management-status-line local-audio-only';
     const status = document.createElement('div');
     status.className = 'bass-management-status';
     status.setAttribute('role', 'status');

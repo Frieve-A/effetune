@@ -82,7 +82,7 @@ test('partial CC import reads and stores only the selected layer and prepares it
   const second = await reopened.prepare(entry.id, { decode });
   assert.equal(second.regionCount, 1);
   assert.deepEqual(second.descriptor.payload, first.descriptor.payload);
-  assert.deepEqual(first.warnings, [{ code: 'unsupported-regions', count: 1 }]);
+  assert.equal(first.warnings, undefined, 'Valid unsupported playback conditions are omitted without an error notice');
   assert.deepEqual(second.warnings, first.warnings);
 });
 
@@ -119,8 +119,7 @@ test('over-budget Web imports persist representative velocity and sequence mappi
   const second = await reloaded.prepare(entry.id, { decode });
   assert.deepEqual(new Uint8Array(second.descriptor.payload), new Uint8Array(first.descriptor.payload));
   assert.deepEqual(first.warnings, [{ code: 'invalid-regions', count: 1 },
-    { code: 'missing-samples', count: 1 }, { code: 'reduced-bank', count: 1 },
-    { code: 'unsupported-regions', count: 1 }]);
+    { code: 'missing-samples', count: 1 }, { code: 'reduced-bank', count: 1 }]);
   assert.deepEqual(second.warnings, first.warnings);
   const table = new Float32Array(second.descriptor.payload, 64);
   assert.deepEqual([...table.slice(4, 12)], [60, 61, 1, 127, 0, 1, 1, 1]);
@@ -143,7 +142,7 @@ test('load warnings aggregate genuine omissions and keep normal static projectio
   const cached = await service.prepare(entry.id, { decode });
   assert.deepEqual(cached.warnings, [
     { code: 'invalid-regions', count: 1 }, { code: 'loop-points-ignored', count: 1 },
-    { code: 'missing-samples', count: 1 }, { code: 'unsupported-regions', count: 1 }
+    { code: 'missing-samples', count: 1 }
   ]);
   assert.equal(Object.hasOwn(cached.descriptor, 'warnings'), false);
   const cold = await (await new SfzLibraryService(backend, { onDiagnostic: null }).open()).prepare(entry.id, { decode });

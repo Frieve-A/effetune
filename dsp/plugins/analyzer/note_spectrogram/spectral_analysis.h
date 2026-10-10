@@ -18,6 +18,7 @@ struct NoteAnalysisFrame {
   std::uint32_t sampleOffset = 0u;
   std::array<float, 88> probabilities{};
   std::array<float, 88> levels{};
+  std::array<float, 88> onsets{};
 };
 // Borrowed immutable frames committed during one process call.
 struct NoteAnalysisView {
@@ -49,6 +50,7 @@ class SpectralAnalysis final {
 public:
   bool ready() const noexcept { return ready_; }
   const NoteAnalysisView &view() const noexcept { return view_; }
+  std::uint32_t hopSamples() const noexcept { return hop_; }
   std::uint32_t latencySamples() const noexcept {
     // Match the long-window peak, distributed computation, and shortest revised head.
     return HarmNetFrontend::referenceDelaySamples(rate_, true) + slots_ * 16u +
@@ -276,6 +278,7 @@ private:
         frame.sampleOffset = commit_offset_;
         const auto level_frame =
             (history_head_ + kRevisionFrames - kSynthesisRevisionAge) % (kRevisionFrames + 1u);
+        const auto onset_frame = (history_head_ + kRevisionFrames - 1u) % (kRevisionFrames + 1u);
         for (auto pitch = 0u; pitch < kPitches; ++pitch) {
           float probability = 0.0F;
           for (auto fine = 0u; fine < kFineDivisions; ++fine) {
@@ -287,6 +290,10 @@ private:
           }
           frame.probabilities[pitch] = probability;
           frame.levels[pitch] = level_history_[level_frame][pitch];
+          frame.onsets[pitch] =
+              below_floor_[onset_frame] || pitch < minimum_pitch_ || pitch > maximum_pitch_
+                  ? 0.0F
+                  : network_->onset(pitch);
         }
       }
       if (pending_count_ == kPendingFrames) {

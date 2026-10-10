@@ -89,7 +89,11 @@ const rules = {
         const hop = pow2(0.00267 * rate, 8, 4096);
         return Math.max(pow2(0.0213 * rate, 64, 32768), 4 * hop) / 2 + 2 * hop;
     }),
-    OscilloscopePlugin: rule((p, rate) => clamp(Math.floor(rate * bounded(p.dt, 0.01, 0.001, 0.1)), 1, 65536) / 2),
+    OscilloscopePlugin: rule((p, rate) => {
+        const samples = Math.max(1, Math.floor(rate * bounded(p.dt, 0.01, 0.001, 10)));
+        // Rolling envelopes follow the right edge, buffered by two 60 Hz telemetry periods.
+        return p.tm === 'Off' && samples > 2048 ? rate / 30 : samples / 2;
+    }),
     StereoMeterPlugin: rule((p, rate) => Math.ceil(rate * bounded(p.wt, 0.1, 0.01, 1)) / 2),
     spectrumOverlay: rule((params, rate) => {
         const timing = SpectrumTapContract.profile(params?.quality, rate);

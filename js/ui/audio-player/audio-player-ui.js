@@ -366,7 +366,12 @@ export class AudioPlayerUI {
     this.stopButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.stop()));
     this.prevButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playPrevious()));
     this.nextButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playNext()));
-    this.closeButton.addEventListener('click', () => this.audioPlayer.close());
+    this.closeButton.addEventListener('click', async () => {
+      if (this.closeButton.disabled) return;
+      this.closeButton.disabled = true;
+      await runPlaybackCommand(() => this.audioPlayer.pause());
+      this.audioPlayer.close();
+    });
 
     this.expandButton?.addEventListener('click', () => {
       this.setDesktopQueueExpanded(!this.desktopQueueExpanded);

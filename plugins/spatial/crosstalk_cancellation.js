@@ -271,7 +271,7 @@ class CrosstalkCancellationPlugin extends PluginBase {
     }
 
     _scheduleDesign(delay = CROSSTALK_CANCELLATION_DESIGN_DEBOUNCE_MS) {
-        if (this._disposed) return;
+        if (this._disposed || this.hasLocalAudio === false) return;
         if (this._designTimer !== null) clearTimeout(this._designTimer);
         const generation = ++this._designGeneration;
         this._designPending = true;
@@ -668,6 +668,7 @@ class CrosstalkCancellationPlugin extends PluginBase {
     }
 
     async _refreshMeasurements(scheduleDesign = false) {
+        if (this.hasLocalAudio === false) return;
         try {
             const store = await this._getMeasurementStore(true);
             if (this._disposed) return;
@@ -687,7 +688,7 @@ class CrosstalkCancellationPlugin extends PluginBase {
 
     _createMeasurementGrid() {
         const section = document.createElement('section');
-        section.className = 'crosstalk-cancellation-measurements';
+        section.className = 'crosstalk-cancellation-measurements local-audio-only';
         const heading = document.createElement('div');
         heading.className = 'crosstalk-cancellation-section-title';
         heading.textContent = 'Measurements';
@@ -757,7 +758,7 @@ class CrosstalkCancellationPlugin extends PluginBase {
         container.appendChild(design);
 
         const statusLine = document.createElement('div');
-        statusLine.className = 'crosstalk-cancellation-status-line';
+        statusLine.className = 'crosstalk-cancellation-status-line local-audio-only';
         const status = document.createElement('div');
         status.className = 'crosstalk-cancellation-status';
         status.setAttribute('role', 'status');

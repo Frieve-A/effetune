@@ -177,7 +177,7 @@ class AdaptivePredictionEffectPlugin extends PluginBase {
             checked => this.setParameters({ hold: checked }), 'hold'));
         const resetButton = document.createElement('button');
         resetButton.type = 'button';
-        resetButton.className = 'analog-meter-reset-button';
+        resetButton.className = 'analog-meter-reset-button local-audio-only';
         resetButton.textContent = 'Reset';
         resetButton.title = 'Clear learned predictions and audio history';
         resetButton.addEventListener('click', () => this.resetLearning());

@@ -23,7 +23,7 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
-| `displayTime` | `display_time` | number / 1 | `0.01` | s | 0.001 … 0.1 |
+| `displayTime` | `display_time` | number / 1 | `0.01` | s | 0.001 … 10 |
 | `triggerMode` | `trigger_mode` | string / 1 | `"Auto"` | Not declared in catalog | `Auto`, `Normal`, `Off` |
 | `triggerLevel` | `trigger_level` | number / 1 | `0` | Not declared in catalog | -1 … 1 |
 | `triggerEdge` | `trigger_edge` | string / 1 | `"Rising"` | Not declared in catalog | `Rising`, `Falling` |
@@ -42,20 +42,25 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 Shows the shape of the sound wave in real time, so you can see beats, sharp hits, and changes in loudness while listening. Trigger settings can steady the display when the waveform repeats.
 
 ### Visualization Guide
-- Horizontal axis shows time (milliseconds)
+- Horizontal axis shows time in milliseconds or seconds
 - Vertical axis shows normalized amplitude; the visible range changes with Display Level and Vertical Offset
-- Green line traces the actual waveform
+- A line shows waveform detail at short display times; a filled band shows the minimum and maximum amplitudes over each interval at long display times
 - Grid lines help measure time and amplitude values
 - Trigger settings determine where the waveform capture begins; no separate marker is shown
 
+### Usage Guide
+- Set Display Time to 1–20 ms and Trigger Mode to Auto to inspect a repeating waveform.
+- Set Display Time to 1,000–10,000 ms and Trigger Mode to Off to follow beats and changes in loudness. The newest audio appears at the right edge and the waveform scrolls smoothly to the left.
+- In Auto and Normal modes, a new capture appears after the selected Display Time has been collected.
+
 ### Parameters
-- **Display Time** - How much time to show (1 to 100 ms)
+- **Display Time** - How much time to show (1 to 10,000 ms, or 10 seconds)
   - Lower values: See more detail in shorter events
   - Higher values: View longer patterns
 - **Trigger Mode**
   - Auto: Continuous updates even without trigger
   - Normal: Freezes display until next trigger
-  - Off: No trigger; continuously shows the latest waveform as it arrives. Trigger Level, Trigger Edge, and Holdoff have no effect
+  - Off: No trigger; the latest audio appears at the right edge while the waveform scrolls left. Trigger Level, Trigger Edge, and Holdoff have no effect
 - Trigger detection uses the averaged left/right waveform. Mono input is used directly.
 - **Trigger Level** - Amplitude level that starts capture
   - Range: -1 to 1 (normalized amplitude)

@@ -186,6 +186,75 @@ Build directories are created below the repository-root `out/dsp/` directory.
 
 ### ABI and Real-Time Memory
 
+#### Native SFZ bank updates
+
+Native hosts using `core/engine.h` can prepare and replace the SFZ Note Player's
+slot 0 bank while its existing wet processing and every other effect continue.
+The Engine remains single-owner. The host provides the synchronized handoff;
+the new methods do not make ordinary Engine calls thread-safe. The C ABI,
+legacy asset API, instance IDs, shared note analysis and latency contracts are
+unchanged. Other asset-backed effects do not implement this extension.
+
+1. On the Engine owner, between blocks, call
+   `captureInstanceAssetSnapshot(instance, 0, snapshot)` for each new load or
+   clear request. Capture allocates nothing and supersedes earlier requests for
+   that instance, even if the new preparation later fails. Transfer the copied
+   snapshot to control without borrowing the live kernel.
+2. Off audio, call
+   `Engine::prepareInstanceAssetUpdate(snapshot, info, payload, byteSize,
+   ET_ASSET_F32_MULTICH, update)`. Use the existing `AssetBeginInfo` and ETA1/SFZ
+   bank format. Preparation owns a copy of the payload, validates the complete
+   bank and PCM, and builds the key and sequence indices. Only the snapshot and
+   supplied bytes are accessed, so audio continues during allocation, copying,
+   validation or a stalled control thread. Keep the source bytes readable and
+   unchanged until this call returns. For clear, use
+   `Engine::prepareInstanceAssetClear(snapshot, update)` instead.
+3. Transfer exclusive access to the update to the Engine owner. Immediately
+   before a processing block, call `applyInstanceAssetUpdate(update)`. It checks
+   the Engine lifetime, full instance handle, asset slot and request revision, then
+   exchanges bank ownership in constant time without allocation, deallocation,
+   locks, copying PCM or building indices. The replacement is immediately
+   `ACTIVE`, or `NONE` for clear. Existing voices are discarded before their
+   next playback access; the analysis link, parameters, instance ID and reported
+   latency are retained. No pipeline reconfiguration is required.
+4. Return exclusive access to control after every application attempt. Call
+   `update.reclaim()`, reuse the update for another preparation, or destroy it
+   there. On success, `update.hasRetiredAsset()` indicates that it owns the
+   previous bank, including after clear. On a rejected apply, it still owns the
+   uninstalled candidate. Both can be large and must be released off audio.
+
+While audio is stopped, transfer Engine ownership to control after callbacks
+are quiescent and run the same capture, prepare and apply sequence there. Apply
+does not depend on a subsequent callback; do not overlap it with processing or
+wait for an audio callback that will not occur.
+
+Preparation returns `ET_ERR_ARGS` for malformed metadata, format, regions,
+indices or PCM, and `ET_ERR_OOM` for allocation failure. Any failure invalidates
+that update and leaves the current bank unchanged. Capture returns
+`ET_ERR_UNSUPPORTED` for an unsupported effect or slot and `ET_ERR_ARGS` for an
+invalid instance. Apply returns `ET_ERR_STATE` for an unprepared, consumed,
+superseded, wrong-Engine (including a reused address) or deleted-instance update,
+preserving the current bank. Instance/Engine reset, deletion, re-preparation and
+legacy asset mutations invalidate outstanding requests. A successful apply consumes the update and
+invalidates duplicate results from its snapshot.
+
+Snapshots and updates may be prepared or reclaimed after the originating
+Engine is destroyed: they never dereference it during those operations. Never
+apply them to a replacement Engine, and keep the DSP library loaded until all
+snapshots and updates are discarded. During state replacement, quiesce the
+owner, invalidate requests through reset or instance replacement, then capture
+new requests for the restored state. Do not prepare, reclaim, destroy or access
+an update concurrently with application. Each live, pending or retired bank
+occupies its own storage; promptly reclaim rejected candidates and retired
+banks on control.
+
+The legacy `beginInstanceAsset`/copy/`commitInstanceAsset` path remains serialized
+with Engine ownership and performs incremental preparation during processing.
+Hosts adopting this extension must move SFZ preparation out of any mutation
+window that makes overlapping callbacks bypass the pipeline. Only capture and
+the bounded apply belong at the block boundary; the host must continue using
+its existing pipeline while control prepares the replacement.
+
 #### Native pipeline latency updates
 
 Native hosts using `core/engine.h` can update compensation for an existing

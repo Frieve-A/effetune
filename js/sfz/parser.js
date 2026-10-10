@@ -1,4 +1,5 @@
 import { SFZ_DEFAULT_MAX_BYTES, requireSfzMaxBytes } from './limits.js';
+import { isSfzGenerator } from './generators.js';
 
 const MAX_INCLUDE_VISITS = 10000;
 const SUPPORTED = new Set([
@@ -19,6 +20,7 @@ const LOOP_MODES = new Map([['no_loop', 0], ['one_shot', 1], ['loop_continuous',
 const NOTE_KEYS = new Set(['key', 'lokey', 'hikey', 'pitch_keycenter']);
 const INTEGER_KEYS = new Set(['lokey', 'hikey', 'lovel', 'hivel', 'seq_length', 'seq_position',
   'pitch_keycenter', 'transpose', 'offset', 'end', 'loop_start', 'loop_end']);
+const ENVELOPE_TIMES = new Set(['ampeg_attack', 'ampeg_hold', 'ampeg_decay', 'ampeg_release']);
 
 export function sfzError(code, message, cause) {
   const error = new Error(message, cause ? { cause } : undefined);
@@ -77,15 +79,19 @@ function midi(value) {
 function conditionalOpcode(key, value) {
   return key === 'trigger' ? value !== 'attack'
     : /^(?:on_)?(?:lo|hi)(?:cc|hdcc|realcc|oncc|bend|chanaft|polyaft|prog|chan|timer|bpm)/.test(key) ||
-      key.startsWith('sw_') || key === 'sustain_sw' || key === 'sostenuto_sw';
+      key.startsWith('sw_');
 }
 
-function normalizeRegion(raw, samplePath, seqGroup) {
+function normalizeRegion(raw, samplePath, seqGroup, adjustedEnvelopes) {
   const region = { ...DEFAULTS, sample: samplePath, seqGroup };
   for (const [key, value] of Object.entries(raw)) {
     if (!SUPPORTED.has(key) || key === 'sample') continue;
     let number = key === 'loop_mode' ? LOOP_MODES.get(value)
       : NOTE_KEYS.has(key) ? midi(value) : Number(value);
+    if (ENVELOPE_TIMES.has(key) && (!Number.isFinite(number) || number < 0 || number > 100)) {
+      adjustedEnvelopes.add(`${samplePath}: ${key}=${value}`);
+      number = Number.isFinite(number) ? (number < 0 ? 0 : 100) : DEFAULTS[key];
+    }
     if (!Number.isFinite(number)) throw sfzError('prepare', `Invalid SFZ opcode ${key}.`);
     if (key === 'key') {
       region.lokey = region.hikey = region.pitch_keycenter = number;
@@ -115,14 +121,15 @@ function normalizeRegion(raw, samplePath, seqGroup) {
 
 // The selected SFZ owns sample paths; includes are resolved relative to the including text.
 export async function parseSfz({ selectedPath, readText, hasSample, maxBytes = SFZ_DEFAULT_MAX_BYTES,
+  defines: sourceDefines = new Map(),
   onDiagnostic = detail => console.warn('SFZ import:', detail) }) {
   requireSfzMaxBytes(maxBytes);
   selectedPath = normalizeSfzPath(selectedPath);
   const directory = selectedPath.includes('/') ? selectedPath.slice(0, selectedPath.lastIndexOf('/')) : '';
   const dependencies = new Set();
-  const defines = new Map();
+  const defines = new Map(sourceDefines);
   const diagnostics = { ignoredOpcodes: new Set(), excludedOpcodes: new Set(),
-    missingSamples: new Set(), invalidRegions: new Set() };
+    missingSamples: new Set(), invalidRegions: new Set(), adjustedEnvelopes: new Set() };
   let includeVisits = 0;
   let sourceChars = 0;
   let expandedChars = 0;
@@ -214,13 +221,19 @@ export async function parseSfz({ selectedPath, readText, hasSample, maxBytes = S
   }
   finishRegion();
   let invalidRegionCount = 0;
-  let unsupportedRegionCount = 0;
   // All control headers describe the instrument's initial state, regardless of their position.
   for (const { raw, defaultPath: regionDefaultPath, seqGroup: regionSeqGroup } of pendingRegions) {
     try {
       const excluded = Object.entries(raw).filter(([key, value]) => {
         if (['sw_default', 'sw_lokey', 'sw_hikey', 'sw_label'].includes(key)) return false;
         if (key === 'sw_last') return initialSwitch === null || midi(value) !== initialSwitch;
+        if (key === 'sw_lolast' || key === 'sw_hilast') {
+          const bound = midi(value);
+          if (!Number.isInteger(bound) || bound < 0 || bound > 127) {
+            throw sfzError('prepare', `Invalid SFZ opcode ${key}.`);
+          }
+          return initialSwitch === null || (key === 'sw_lolast' ? initialSwitch < bound : initialSwitch > bound);
+        }
         const cc = /^(lo|hi)cc([0-9]{1,3})$/.exec(key);
         if (!cc || Number(cc[2]) >= 128) return conditionalOpcode(key, value);
         const bound = Number(value);
@@ -231,17 +244,18 @@ export async function parseSfz({ selectedPath, readText, hasSample, maxBytes = S
       });
       if (excluded.length) {
         for (const [key] of excluded) diagnostics.excludedOpcodes.add(key);
-        if (excluded.some(([key]) => {
-          if (key === 'sw_last') return initialSwitch === null;
-          const cc = /^(?:lo|hi)cc([0-9]{1,3})$/.exec(key);
-          return !cc || Number(cc[1]) >= 128;
-        })) unsupportedRegionCount++;
         continue;
       }
       if (!raw.sample) continue;
-      const sample = normalizeSfzPath(regionDefaultPath + unquote(raw.sample), directory);
-      const region = normalizeRegion(raw, sample, regionSeqGroup);
-      if (hasSample && !hasSample(sample)) {
+      const generator = isSfzGenerator(raw.sample);
+      const sample = generator ? raw.sample : normalizeSfzPath(regionDefaultPath + unquote(raw.sample), directory);
+      const region = normalizeRegion(raw, sample, regionSeqGroup, diagnostics.adjustedEnvelopes);
+      if (generator) {
+        // Generated cycles have a fixed middle-C reference and sustain until note release.
+        region.pitch_keycenter = 60;
+        region.loop_mode = 2;
+      }
+      if (!generator && hasSample && !hasSample(sample)) {
         diagnostics.missingSamples.add(sample);
         continue;
       }
@@ -257,6 +271,6 @@ export async function parseSfz({ selectedPath, readText, hasSample, maxBytes = S
   const warnings = [];
   if (invalidRegionCount) warnings.push({ code: 'invalid-regions', count: invalidRegionCount });
   if (diagnostics.missingSamples.size) warnings.push({ code: 'missing-samples', count: diagnostics.missingSamples.size });
-  if (unsupportedRegionCount) warnings.push({ code: 'unsupported-regions', count: unsupportedRegionCount });
+  if (diagnostics.adjustedEnvelopes.size) warnings.push({ code: 'envelope-times-adjusted', count: diagnostics.adjustedEnvelopes.size });
   return { regions, dependencies: [...dependencies].sort(), diagnostics: detail, warnings };
 }

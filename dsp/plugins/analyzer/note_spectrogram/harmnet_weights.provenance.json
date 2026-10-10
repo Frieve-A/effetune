@@ -1,8 +1,8 @@
 {
   "artifact": "harmnet_weights.h",
   "model": "HarmNet L",
-  "weights_bytes": 188048,
-  "weights_sha256": "0164ecb8b4eb9143a20255669612aed306c9db9b670d892de1aee7492051b6a3",
+  "weights_bytes": 205296,
+  "weights_sha256": "0cdfd80bcea58834fd264f60079d932dadb54d67a4962a7c2a6bd63701d27bae",
   "architecture": {
     "input_bins": 300,
     "input_windows": 2,
@@ -44,10 +44,18 @@
       2,
       4,
       8
-    ]
+    ],
+    "onset_head": {
+      "output": "o1",
+      "delay_frames": 1,
+      "weights_per_pitch": 48,
+      "bias_per_pitch": 1,
+      "input": "Per-pitch recurrent state (the same state used by the pitch heads)",
+      "calibration": "None; the sigmoid of the onset logit is used directly"
+    }
   },
   "training": {
-    "seed": 1,
+    "seed": 2,
     "steps": 3000,
     "batch": 16,
     "sequence_frames": 192,
@@ -57,38 +65,59 @@
     "weight_decay": 0.0001,
     "schedule": "OneCycle",
     "maximum_learning_rate": 0.0005,
-    "warmup_fraction": 0.05
+    "warmup_fraction": 0.05,
+    "onset_loss": {
+      "loss_weight": 0.18,
+      "positive_weight": 10.0,
+      "target": "Triangular target spanning 2 frames on each side of each annotated note onset",
+      "target_frames": 2.0,
+      "onset_timing_correction": "Off",
+      "trained_delays_frames": [
+        1,
+        2,
+        4
+      ],
+      "shipped_delay_frames": 1
+    }
   },
   "calibration": {
     "logit_offsets": [
       0.25,
-      0.2,
-      0.2,
-      0.2
+      0.15,
+      0.15,
+      0.25
     ],
     "selection": "Equal average F1 across the calibration datasets, averaged equally between clean and mixed audio.",
     "band_logit_offsets": {
       "21-47": [
-        0.55,
-        0.35,
-        0.35,
-        0.3
+        0.45,
+        0.25,
+        0.25,
+        0.2
       ],
       "48-71": [
+        0.3,
         0.25,
-        0.35,
-        0.2,
-        0.25
+        0.25,
+        0.3
       ],
       "72-91": [
         0.25,
         0.15,
-        0.05,
-        0.05
+        0.1,
+        0.2
       ]
     },
     "application": "MIDI21-47/48-71/72-91 use band biases; MIDI92-108 uses global bias",
     "folding": "Float32 (band - global) added to per-pitch bias."
+  },
+  "onset_rule": {
+    "threshold": 0.5,
+    "prominence": 0.3,
+    "gate": 0.3,
+    "refractory_frames": 6,
+    "maximum_midi": 83,
+    "scope": "Fixed constants for the SFZ Note Player onset rule; evaluated with this model"
   },
   "runtime": "Fixed float32 weights; no runtime training or adaptation.",
   "training_exclusion": "Development and held-out test data were excluded from training and calibration.",
@@ -130,25 +159,34 @@
     {
       "dataset": "Synthetic low-register tones",
       "eligible_crop_probability_percent": 46.0,
-      "scope": "Configured probability of adding synthetic notes to eligible audio segments; these segments also contain base-dataset audio"
+      "scope": "Configured probability of adding synthetic notes to eligible audio segments that are not replaced by GeneralUser GS renders; these segments also contain base-dataset audio"
     },
     {
       "dataset": "Slakh2100-redux",
-      "donor_sampling_percent": 22.8,
-      "base_sampling_percent": 3.55,
+      "donor_sampling_percent": 21.5,
+      "base_sampling_percent": 3.85,
       "scope": "Drum replacement frequencies measured in 2000 sampled audio segments; not totals over all training steps"
+    },
+    {
+      "dataset": "GeneralUser GS 2.0.3",
+      "replaced_segment_probability_percent": 10.0,
+      "scope": "Configured probability of replacing a whole audio segment with notes rendered from this SoundFont (General MIDI melodic instruments; single notes, octaves, fifths, two-note chords and repeated notes); these segments contain no base-dataset audio"
     }
   ],
   "fine_tune_chain": [
     {
       "model": "HarmNet L (base)",
       "steps": 10400,
+      "seed": 1,
+      "learning_rate": 0.002,
       "additions": "Base datasets and vocal recordings"
     },
     {
-      "model": "HarmNet L (fine-tuned)",
+      "model": "HarmNet L with onset head (fine-tuned)",
       "steps": 3000,
-      "additions": "Drum, vocal, mastering and level augmentation; synthetic low-register tones including pure sine waves and tones with harmonics, with sustained, decaying, slowly rising or brief notes (MIDI 21-60); Slakh2100-redux drum stems as unpitched negatives"
+      "seed": 2,
+      "learning_rate": 0.0005,
+      "additions": "Drum, vocal, mastering and level augmentation; synthetic low-register tones including pure sine waves and tones with harmonics, with sustained, decaying, slowly rising or brief notes (MIDI 21-60); Slakh2100-redux drum stems as unpitched negatives; per-pitch onset head trained jointly with the pitch heads; GeneralUser GS 2.0.3 renders replacing 10% of audio segments"
     }
   ],
   "training_sources_scope": "Base audio sampling percentages; augmentation audio may occur in the same segment."

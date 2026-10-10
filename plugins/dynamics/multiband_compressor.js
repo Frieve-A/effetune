@@ -1184,7 +1184,7 @@ class MultibandCompressorPlugin extends PluginBase {
       const bottomLabelOffset = 20 * scale;
       const axisBottomOffset = 3 * scale;
       const axisX = 10 * scale;
-      const meterWidth = 5 * scale;
+      const meterWidth = this.hasLocalAudio !== false ? 5 * scale : 0;
       
       // Skip processing if band is undefined
       if (!band) {
@@ -1252,7 +1252,7 @@ class MultibandCompressorPlugin extends PluginBase {
       ctx.stroke();
 
       // Draw gain reduction meter if applicable
-      if (band.gr > 0) {
+      if (this.hasLocalAudio !== false && band.gr > 0) {
         ctx.fillStyle = METER_COLOR;
         const meterHeight = Math.min(height, (band.gr / 60) * height);
         ctx.fillRect(width - meterWidth, 0, meterWidth, meterHeight);

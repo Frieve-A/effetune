@@ -117,6 +117,7 @@ export async function updateApplicationMenu(isElectron) {
       'settings.frequencyResponseMeasurement': { label: t('menu.settings.frequencyResponseMeasurement') },
       'menu.help': { label: t('menu.help') },
       'help.help': { label: t('menu.help.help') },
+      'help.tour': { label: t('tour.menu') },
       'help.discord': { label: 'Discord' },
       'help.support': { label: t('menu.help.support') },
       'help.about': { label: t('menu.help.about') }

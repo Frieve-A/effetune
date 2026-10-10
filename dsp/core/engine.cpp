@@ -10,6 +10,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -29,6 +30,7 @@ constexpr std::uint32_t kDescriptorNodeBytes = 12;
 constexpr std::uint32_t kIrDryEnabledIndex = 4u;
 constexpr std::uint32_t kIrDryLevelIndex = 5u;
 constexpr float kIrDrySilenceDb = -96.0F;
+std::atomic<std::uint64_t> next_engine_identity{1u};
 
 void enableDenormalFlushForCurrentThread() noexcept {
 #if defined(ET_HAS_X86_MXCSR)
@@ -113,7 +115,24 @@ bool validChannelSpec(std::int8_t spec) noexcept {
   return spec == -2 || spec == -1 || (spec >= 0 && spec <= 15) || (spec >= 16 && spec <= 23);
 }
 
+bool validAssetInfo(const AssetBeginInfo &info, std::uint32_t capacity,
+                    std::uint32_t max_channels) noexcept {
+  return info.channels != 0u && info.channels <= 16u && info.frames != 0u && info.byteSize != 0u &&
+         info.byteSize <= capacity && info.topology <= 4u && info.processingChannels != 0u &&
+         info.processingChannels <= max_channels && info.footprintBytes >= info.byteSize &&
+         info.footprintBytes <= capacity &&
+         (info.headBlock == 0u || info.headBlock == 128u || info.headBlock == 256u ||
+          info.headBlock == 512u || info.headBlock == 1024u) &&
+         (info.rateDivider == 1u || info.rateDivider == 2u || info.rateDivider == 4u) &&
+         (info.topology == 4u ? info.pathCount != 0u && info.pathCount <= 16u &&
+                                    info.inputCount != 0u && info.inputCount <= 16u
+                              : info.pathCount == 0u && info.inputCount == 0u);
+}
+
 } // namespace
+
+Engine::Engine() noexcept
+    : identity_(next_engine_identity.fetch_add(1u, std::memory_order_relaxed)) {}
 
 Engine::~Engine() { destroyAllInstances(); }
 
@@ -248,6 +267,7 @@ et_status Engine::reset() noexcept {
   arena_.clear();
   telemetry_.adopt(arena_.telemetryStorage(), arena_.telemetryCapacity());
   for (InstanceSlot &slot : instances_) {
+    slot.assetRevision = ++asset_revision_;
     if (slot.kernel != nullptr && !slot.graphOwned) {
       slot.kernel->reset();
       slot.telemetrySequence = 0;
@@ -372,6 +392,7 @@ et_instance Engine::createInstance(const char *type_name) noexcept {
 
 void Engine::destroySlot(InstanceSlot &slot) noexcept {
   if (slot.kernel != nullptr) {
+    slot.assetRevision = ++asset_revision_;
     slot.descriptor->destroy(slot.kernel);
     slot.kernel = nullptr;
     slot.descriptor = nullptr;
@@ -419,6 +440,7 @@ et_status Engine::resetInstance(et_instance instance) noexcept {
   if (slot->graphOwned) {
     return ET_ERR_STATE;
   }
+  slot->assetRevision = ++asset_revision_;
   slot->kernel->reset();
   slot->telemetrySequence = 0;
   slot->telemetryFrames = 0.0;
@@ -516,20 +538,11 @@ et_status Engine::setInstanceParamBytes(et_instance instance, const std::uint8_t
 std::uint8_t *Engine::beginInstanceAsset(et_instance instance, std::uint32_t asset_slot,
                                          const AssetBeginInfo &info) noexcept {
   InstanceSlot *slot = findInstance(instance);
-  if (slot == nullptr || slot->graphOwned || info.channels == 0u || info.channels > 16u ||
-      info.frames == 0u || info.byteSize == 0u ||
-      info.byteSize > slot->kernel->assetCapacity(asset_slot) || info.topology > 4u ||
-      info.processingChannels == 0u || info.processingChannels > max_channels_ ||
-      info.footprintBytes < info.byteSize ||
-      info.footprintBytes > slot->kernel->assetCapacity(asset_slot) ||
-      (info.headBlock != 0u && info.headBlock != 128u && info.headBlock != 256u &&
-       info.headBlock != 512u && info.headBlock != 1024u) ||
-      (info.rateDivider != 1u && info.rateDivider != 2u && info.rateDivider != 4u) ||
-      (info.topology == 4u && (info.pathCount == 0u || info.pathCount > 16u ||
-                               info.inputCount == 0u || info.inputCount > 16u)) ||
-      (info.topology != 4u && (info.pathCount != 0u || info.inputCount != 0u))) {
+  if (slot == nullptr || slot->graphOwned ||
+      !validAssetInfo(info, slot->kernel->assetCapacity(asset_slot), max_channels_)) {
     return nullptr;
   }
+  slot->assetRevision = ++asset_revision_;
   return slot->kernel->beginAsset(asset_slot, info);
 }
 
@@ -542,12 +555,14 @@ et_status Engine::commitInstanceAsset(et_instance instance, std::uint32_t asset_
   if (slot->graphOwned) {
     return ET_ERR_STATE;
   }
+  slot->assetRevision = ++asset_revision_;
   return slot->kernel->commitAsset(asset_slot, byte_size, format_tag);
 }
 
 void Engine::abortInstanceAsset(et_instance instance, std::uint32_t asset_slot) noexcept {
   InstanceSlot *slot = findInstance(instance);
   if (slot != nullptr && !slot->graphOwned) {
+    slot->assetRevision = ++asset_revision_;
     slot->kernel->clearAsset(asset_slot);
   }
 }
@@ -557,6 +572,74 @@ std::uint32_t Engine::instanceAssetState(et_instance instance,
   const InstanceSlot *slot = findInstance(instance);
   return slot == nullptr ? static_cast<std::uint32_t>(ET_ASSET_STATE_NONE)
                          : slot->kernel->assetState(asset_slot);
+}
+
+et_status Engine::captureInstanceAssetSnapshot(et_instance instance, std::uint32_t asset_slot,
+                                               InstanceAssetSnapshot &snapshot) noexcept {
+  snapshot = {};
+  auto *slot = findInstance(instance);
+  if (!slot)
+    return ET_ERR_ARGS;
+  if (slot->graphOwned)
+    return ET_ERR_STATE;
+  const auto preparer = slot->kernel->assetPreparer(asset_slot);
+  if (!preparer)
+    return ET_ERR_UNSUPPORTED;
+  slot->assetRevision = ++asset_revision_;
+  snapshot.owner_ = this;
+  snapshot.instance_ = instance;
+  snapshot.identity_ = identity_;
+  snapshot.revision_ = slot->assetRevision;
+  snapshot.slot_ = asset_slot;
+  snapshot.capacity_ = slot->kernel->assetCapacity(asset_slot);
+  snapshot.max_channels_ = max_channels_;
+  snapshot.preparer_ = preparer;
+  return ET_OK;
+}
+
+et_status Engine::prepareInstanceAssetUpdate(const InstanceAssetSnapshot &snapshot,
+                                             const AssetBeginInfo &info,
+                                             const std::uint8_t *payload, std::uint32_t byte_size,
+                                             std::uint32_t format_tag,
+                                             InstanceAssetUpdate &update) noexcept {
+  update.reclaim();
+  if (!snapshot.owner_ || !snapshot.preparer_)
+    return ET_ERR_STATE;
+  if (!payload || byte_size != info.byteSize ||
+      !validAssetInfo(info, snapshot.capacity_, snapshot.max_channels_))
+    return ET_ERR_ARGS;
+  const auto status = snapshot.preparer_(info, payload, format_tag, update.asset_);
+  if (status == ET_OK) {
+    update.snapshot_ = snapshot;
+    update.ready_ = true;
+  }
+  return status;
+}
+
+et_status Engine::prepareInstanceAssetClear(const InstanceAssetSnapshot &snapshot,
+                                            InstanceAssetUpdate &update) noexcept {
+  update.reclaim();
+  if (!snapshot.owner_ || !snapshot.preparer_)
+    return ET_ERR_STATE;
+  update.snapshot_ = snapshot;
+  update.ready_ = true;
+  return ET_OK;
+}
+
+et_status Engine::applyInstanceAssetUpdate(InstanceAssetUpdate &update) noexcept {
+  allocation_guard::Scope allocation_scope;
+  const auto &snapshot = update.snapshot_;
+  auto *slot = findInstance(snapshot.instance_);
+  if (!update.ready_ || snapshot.owner_ != this || snapshot.identity_ != identity_ || !slot ||
+      slot->graphOwned || snapshot.revision_ != slot->assetRevision ||
+      snapshot.preparer_ != slot->kernel->assetPreparer(snapshot.slot_))
+    return ET_ERR_STATE;
+  const auto status = slot->kernel->exchangePreparedAsset(snapshot.slot_, update.asset_);
+  if (status == ET_OK) {
+    slot->assetRevision = ++asset_revision_;
+    update.ready_ = false;
+  }
+  return status;
 }
 
 et_status Engine::validateProcessArgs(const float *audio, std::uint32_t channel_count,

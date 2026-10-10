@@ -209,6 +209,7 @@
         attach(plugin, uiRoot) {
             axes.pruneDetached(instances);
             instances.get(plugin.id)?.dispose();
+            if (plugin.hasLocalAudio === false) return null;
             const target = axes.targets.get(plugin.constructor.name);
             if (!target) return null;
             const plot = uiRoot.querySelector(target.plotSelector);

@@ -681,6 +681,7 @@
             });
             window.FrequencyAxis.pruneDetached(instances);
             instances.get(plugin.id)?.dispose();
+            if (plugin.hasLocalAudio === false) return null;
             const target = targets.get(plugin.constructor.name);
             if (!target) return null;
             const plot = uiRoot.querySelector(target.plotSelector);

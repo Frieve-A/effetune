@@ -3157,13 +3157,13 @@ test('IR Reverb UI source exposes persistent library and multi-file import contr
   assert.doesNotMatch(pluginSource, /ir-reverb-importer/);
   assert.match(pluginSource, /value: 'true', label: this\._t\('irReverb\.option\.trueStereo', 'True Stereo'\)/);
   assert.match(pluginSource, /value: 'multi', label: this\._t\('irReverb\.option\.diagonalMatrix', 'Diagonal Matrix'\)/);
-  assert.match(pluginSource, /resolvedMode\.className = 'ir-reverb-mode-note'/);
-  assert.match(pluginSource, /resolvedRate\.className = 'ir-reverb-mode-note'/);
+  assert.match(pluginSource, /resolvedMode\.className = 'ir-reverb-mode-note(?: [^']+)?'/);
+  assert.match(pluginSource, /resolvedRate\.className = 'ir-reverb-mode-note(?: [^']+)?'/);
   assert.match(pluginCss, /\.ir-reverb-mode-note\s*\{[^}]*white-space: nowrap/s);
   assert.match(pluginSource, /this\._t\('irReverb\.action\.chooseLibrary', 'Choose from library…'\)/);
   assert.match(pluginSource, /this\._t\('irReverb\.action\.importFile', 'Import file…'\)/);
-  assert.match(pluginSource, /importActions\.className = 'ir-reverb-import-actions'/);
-  assert.match(pluginSource, /importActions\.append\(importButton, libraryButton, status\)/);
+  assert.match(pluginSource, /importActions\.className = 'parameter-row ir-reverb-import-actions'/);
+  assert.match(pluginSource, /importActions\.append\(irLabel, importButton, libraryButton, status\)/);
   assert.match(pluginCss, /\.ir-reverb-status:not\(\[data-state="ready"\]\)\s*\{[^}]*flex-basis: 100%/s);
   assert.match(pluginCss, /body\.layout-desktop \.ir-reverb-status\[data-state="preparing"\],\s*\.ir-reverb-status\[data-state="ready"\]\s*\{[^}]*flex: 0 0 auto/s);
   assert.doesNotMatch(pluginSource, /irReverb\.import\.(?:namePlaceholder|tagsPlaceholder|sourcePlaceholder)/);

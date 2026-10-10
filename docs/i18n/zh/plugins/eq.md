@@ -15,6 +15,8 @@ lang: zh
 
 在 5Band PEQ、15Band PEQ、5Band FIR PEQ、Group Delay PEQ 和 Room EQ 的 Additional EQ 中，可拖动点位的图表默认会同时改变两个轴的数值。拖动时按住 Shift 可将移动锁定到一个轴：开始时以横向移动为主，则只改变 Frequency；以纵向移动为主，则只改变 Level（在 Group Delay PEQ 中为 Delay）。松开 Shift 即可恢复自由移动。将鼠标指针移到点位上，向上滚动滚轮可增大 Q，向下滚动可减小 Q。
 
+在移动端，5Band PEQ、5Band FIR PEQ、Group Delay PEQ、Room EQ 的 Additional EQ 和 Tonal Balance EQ 的 Target Adjust 每次只显示所选频段的设置。点击带编号的频段按钮即可切换要调整的频段。切换后，各频段的设置都会保留。
+
 ## 插件列表
 
 - [15Band GEQ](#15band-geq) - 15个精确控制实现详细的声音调整

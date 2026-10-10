@@ -11,22 +11,21 @@ plain http/ws, so use it only on a network you trust.
 
 ## Enabling
 
-Open **Settings > Remote Control...**. The window has an on/off switch; while it is on it
-shows a QR code and the pairing link as text. The switch and the token are saved in
+Open **Settings > Remote Control...**. The dialog opens over the main window. **Allow remote control**
+enables the server and shows a QR code and the pairing link as text. The setting and the token are saved in
 `config.json` in the user-data folder, so the server comes back after a restart. **New token**
 replaces the token; clients that are connected are closed with 4401 and must pair again.
-Turning the switch off closes all clients (1001) and releases the port.
+Clearing the checkbox closes all clients (1001) and releases the port.
 
 In the main window, the Effect Pipeline header has a Remote Control icon (broadcast symbol,
 tooltip "Remote Control", Electron app only). It is dimmed while the server is off, drawn in the
 accent color while it listens, and shows a small badge with the number of connected devices.
-Clicking it opens the same Remote Control window.
+Clicking it opens the same Remote Control dialog. Close it with **Close** or Escape; remote control stays enabled.
 
 The port is **47300 unless it is busy**. When another process (for example a previous instance
 that is still shutting down) holds it, the app retries the same port 4 times, 750 ms apart, then
 moves up to the next free port (47301 ... 47309). The pairing link and QR code always carry the
-port that was actually bound, and the Remote Control window shows it (with a note such as
-"47300 was busy"). If every port from 47300 to 47309 is taken, the window
+port that was actually bound, and the Remote Control dialog shows it. If every port from 47300 to 47309 is taken, the dialog
 reports the error.
 
 Overrides, mainly for tests:
@@ -48,7 +47,7 @@ http://<LAN IPv4>:<port>/?t=<token>
 ```
 
 A browser opens it as is. A native client that speaks WebSocket takes the same link and derives the connection URL from it: same host and port, scheme `ws`, same
-`t` (see Connection). The Remote Control window does not ask which kind of client will connect.
+`t` (see Connection). The Remote Control dialog does not ask which kind of client will connect.
 **Copy link** puts this link on the system clipboard.
 
 The address is the computer's private IPv4 address (192.168.x, 10.x, 172.16-31.x). Virtual
@@ -87,7 +86,7 @@ requests that also return data, the ack comes first and the data message carries
 
 | Request | Effect |
 |---|---|
-| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","sync1"]`, `"appName"` and `"effects"`. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client; they are shown in the Remote Control window (control characters removed, cut to 48 characters). Other extra fields are ignored. |
+| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","irSelection","sync1"]`, `"appName"` and `"effects"`. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client (control characters removed, cut to 48 characters). The Remote Control dialog shows `app` and `version`. Other extra fields are ignored. |
 | `{"op":"get"}` | Replies with `state`. |
 | `{"op":"chain","pipeline":[...]}` | Replaces the whole pipeline (at most 256 items). If any `nm` is unknown, the request fails and nothing changes. Master bypass keeps its state. |
 | `{"op":"params","index":i,"params":{...}}` | Applies the keys to stage `i` (0-based) of the current pipeline. Keys that are not given stay as they are. |
@@ -96,6 +95,8 @@ requests that also return data, the ack comes first and the data message carries
 | `{"op":"getPreset","name":"..."}` | Replies `{"op":"preset","name":"...","pipeline":[...]}` in the short format. |
 | `{"op":"savePreset","name":"...","pipeline":[...]}` | Saves the pipeline as a preset under `name`, overwriting one with the same name. Same file and format as the preset dialog's Save. Fails if any `nm` is unknown or the name is empty. The live pipeline does not change. |
 | `{"op":"listIRs"}` | Replies `{"op":"irs","items":[{"id","name","bytes","ext","channels","sampleRate","frames"}]}`. |
+| `{"op":"listIRs","includePairs":true}` | Also lists true-stereo pairs for selection and includes `topology` and `importedAt`. File transfer remains limited to single-file entries. |
+| `{"op":"selectIR","epoch":"...","slot":"A","id":"h.1","ir":"..."}` | Loads a saved IR on the host into the addressed IR Reverb stage. Requires the current epoch and slot; a missing stage or IR fails. Advertised by the `irSelection` feature. |
 | `{"op":"getIR","id":"..."}` | Sends the IR file (see IR transfer). Unknown id: `ok:false`. |
 | `{"op":"putIR", ...}` | Uploads an IR file into the library (see IR transfer). |
 
@@ -132,6 +133,10 @@ was produces no push, so do not wait for one to confirm a command; the ack does 
 
 Since the `sync1` extension every `state` also carries `epoch`, `ids`, `slot` and `host` (see
 Sync extension). Clients that do not know them ignore them.
+
+`audio` carries the host's `sampleRate`, `channelCount`, and `routingChannelCount`. The last
+field is the channel limit used by the host's routing editor, which may allow preparing
+routing before the output device is active. The browser editor uses these values for its UI.
 
 The reply to `hello` also carries `"appName"` (`"EffeTune"`) next to `"app"`, which is the
 version string. They are for display. Clients decide what they can do from `features`, never
@@ -187,12 +192,24 @@ The desktop app also serves the EffeTune web client on the remote port, over pla
 http://<LAN IPv4>:<port>/?t=<token>
 ```
 
-The Remote Control window shows this link and its QR code (the same ones apps use). The page is `remote.html`: the real effect list and pipeline editor
+The Remote Control dialog shows this link and its QR code (the same ones apps use). The page is `remote.html`: the real effect list and pipeline editor
 of EffeTune, without the player, library, audio settings or measurement tools. It keeps the token
 in `localStorage`, removes `t` from the address bar and opens `ws://<same host:port>/?t=<token>`.
 The hosted web version (https) cannot do this: a browser refuses `ws://` to a LAN address from an
 https page, which is why the desktop app serves the page itself. The desktop app can also join
-another one: **Join another EffeTune** in the same window opens a client window for a pasted link.
+another one: **Join another EffeTune** in the same dialog opens a client window for a pasted link.
+
+The remote editor receives effect settings, not audio measurements or processing status. It hides
+analyzer results, live meters, and local IR or filter readiness messages. Graphs that also explain
+the settings remain visible, with their unsynchronized measurement traces and readouts removed.
+On mobile, the **+** button sits near the bottom edge because this page has no player or navigation tabs.
+
+In IR Reverb, **Choose from library…** selects a saved IR from the connected computer,
+including true-stereo pairs. Importing and deleting files stays on that computer.
+Measurement and SFZ library selection are unavailable in the remote editor and their selectors
+are hidden. Existing assignments remain in use, and their effect parameters can still be adjusted.
+Actions that only reset local audio analysis or learning are also hidden. Graph editing remains
+available, while frequency audition is unavailable from the remote editor.
 
 - Static files: `GET` and `HEAD` only. Only the files the web version precaches
   (`sw-precache.js`, without `effetune.html`, `sw.js`, `sw-precache.js` and `manifest.json`) are
@@ -274,8 +291,17 @@ A/B button was pressed in the meantime) the host answers `slot-mismatch` and app
 active pipeline. A malformed `slot` is `invalid-op`; an `edit` without `slot` is applied to the
 active pipeline as before (clients written before this field).
 
+`edit` may carry `operation`, a unique string matching `^[A-Za-z0-9_.-]{1,40}$`, to group
+successive batches from one user action into one undo step. Keep the same id throughout a
+slider drag, including pauses, and use a new id for the next action. Send the final value
+before `operationEnd:true`; an empty `ops` array with the same id can close the action when
+its last value was already sent. Batches without `operation` are recorded individually.
+An intervening host or client action starts a separate undo step. Undo and redo remain global.
+The browser editor uses its pointer, keyboard and text-edit boundaries and flushes pending
+values before requesting undo or redo.
+
 `rev` on acks: every ack of `edit`, `history`, `slot`, `copySlot`, `loadPreset` and also of the older
-`chain`, `params` and `bypass` carries `rev`, the app's revision after the command took effect. A
+`chain`, `params` and `bypass`, plus `selectIR`, carries `rev`, the app's revision after the command took effect. A
 `state` with `rev >= ack.rev` contains the command. `skipped` lists the indexes of ops that did not
 apply.
 
@@ -347,8 +373,11 @@ Conflicts:
   upload by itself.
 - Analyzer readings, effect overlays and meters are not sent to clients.
 - The IR library window does not refresh while it is open when an IR arrives.
-- Browser clients do not show analyzers (they render idle), the IR picker, or MIDI and clipboard
-  features. Undo and redo are global, not per client.
+- Browser clients hide unsynchronized analyzer outputs and runtime status. Parameter-derived graphs
+  stay visible, including the settings portion of graphs that also show real-time readings.
+  The IR picker uses the host's saved library. Measurement and SFZ selectors, local file import,
+  audio preview, spectrum overlays, and learning reset are unavailable and hidden.
+  MIDI and clipboard features are unavailable. Undo and redo are global, not per client.
 - A client whose plugin rewrites its own parameters without a user gesture is not allowed to send
   that change (the app's value is restored); only edits made within 2 s of a touch, key or pointer
   event are sent.

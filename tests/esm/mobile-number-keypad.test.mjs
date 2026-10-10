@@ -222,7 +222,7 @@ test('keeps Tab focus cycling through enabled keypad buttons', () => {
   keypad.dispose();
 });
 
-test('intercepts only enabled effect parameter and Visualizer navigation number inputs on pointerdown', () => {
+test('opens eligible number inputs on release instead of initial contact', () => {
   const documentRef = new FakeDocument();
   let enabled = true;
   const keypad = new MobileNumberKeypad({ documentRef, isEnabled: () => enabled });
@@ -237,6 +237,9 @@ test('intercepts only enabled effect parameter and Visualizer navigation number 
   };
   const pointer = {
     target: input,
+    pointerId: 1,
+    clientX: 100,
+    clientY: 100,
     button: 0,
     isPrimary: true,
     prevented: 0,
@@ -246,8 +249,10 @@ test('intercepts only enabled effect parameter and Visualizer navigation number 
   };
 
   documentRef.dispatch('pointerdown', pointer);
-  assert.equal(opened, input);
+  assert.equal(opened, null);
   assert.equal(pointer.prevented, 1);
+  documentRef.dispatch('pointerup', { ...pointer, clientY: 103 });
+  assert.equal(opened, input);
 
   const navigationInput = {
     disabled: false,
@@ -255,27 +260,100 @@ test('intercepts only enabled effect parameter and Visualizer navigation number 
     matches: selector => selector.split(', ').includes('.visualizer-editor-navigation input[type="number"]')
   };
   pointer.target = navigationInput;
+  opened = null;
   documentRef.dispatch('pointerdown', pointer);
+  assert.equal(opened, null);
+  documentRef.dispatch('pointerup', pointer);
   assert.equal(opened, navigationInput);
-  assert.equal(pointer.prevented, 2);
+  const prevented = pointer.prevented;
 
   for (const state of [{ disabled: true, readOnly: false }, { disabled: false, readOnly: true }]) {
     Object.assign(navigationInput, state);
     opened = null;
     documentRef.dispatch('pointerdown', pointer);
+    documentRef.dispatch('pointerup', pointer);
     assert.equal(opened, null);
-    assert.equal(pointer.prevented, 2);
+    assert.equal(pointer.prevented, prevented);
   }
   navigationInput.readOnly = false;
 
   opened = null;
   enabled = false;
   documentRef.dispatch('pointerdown', pointer);
+  documentRef.dispatch('pointerup', pointer);
   assert.equal(opened, null);
-  assert.equal(pointer.prevented, 2);
+  assert.equal(pointer.prevented, prevented);
 
   keypad.dispose();
-  assert.equal(documentRef.listeners.get('pointerdown').length, 0);
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'scroll', 'click', 'focusin', 'keydown']) {
+    assert.equal(documentRef.listeners.get(type).length, 0);
+  }
+});
+
+test('does not open the keypad after movement, scrolling, or pointer cancellation', () => {
+  const documentRef = new FakeDocument();
+  const keypad = new MobileNumberKeypad({ documentRef });
+  const input = { matches: () => true };
+  const opened = [];
+  keypad.open = target => opened.push(target);
+  const pointer = {
+    target: input, pointerId: 1, clientX: 100, clientY: 100,
+    button: 0, isPrimary: true, preventDefault() {}
+  };
+
+  for (const [type, event] of [
+    ['pointermove', { ...pointer, clientY: 130 }],
+    ['pointermove', { ...pointer, clientX: 130 }],
+    ['scroll', { target: documentRef.body }],
+    ['pointercancel', pointer]
+  ]) {
+    documentRef.dispatch('pointerdown', pointer);
+    documentRef.dispatch(type, event);
+    // Returning to the starting position must not turn a swipe into a tap.
+    documentRef.dispatch('pointerup', pointer);
+    documentRef.dispatch('click', { ...pointer, detail: 1 });
+    assert.deepEqual(opened, []);
+  }
+
+  documentRef.dispatch('pointerdown', pointer);
+  documentRef.dispatch('pointerup', { ...pointer, clientY: 130 });
+  assert.deepEqual(opened, []);
+
+  documentRef.dispatch('pointerdown', pointer);
+  documentRef.dispatch('pointerup', { ...pointer, pointerId: 2 });
+  assert.deepEqual(opened, []);
+  documentRef.dispatch('pointerup', pointer);
+  assert.deepEqual(opened, [input]);
+  keypad.dispose();
+});
+
+test('keeps keyboard activation while suppressing focus and clicks from a pending tap', () => {
+  const documentRef = new FakeDocument();
+  const keypad = new MobileNumberKeypad({ documentRef });
+  let blurred = 0;
+  const input = { matches: () => true, blur: () => blurred++ };
+  const opened = [];
+  keypad.open = target => opened.push(target);
+  const pointer = {
+    target: input, pointerId: 1, clientX: 100, clientY: 100,
+    button: 0, isPrimary: true, preventDefault() {}
+  };
+
+  documentRef.dispatch('pointerdown', pointer);
+  documentRef.dispatch('focusin', { target: input });
+  assert.equal(blurred, 1);
+  assert.deepEqual(opened, []);
+  documentRef.dispatch('pointerup', pointer);
+  documentRef.dispatch('click', { ...pointer, detail: 1 });
+  assert.deepEqual(opened, [input]);
+
+  opened.length = 0;
+  documentRef.dispatch('click', { ...pointer, detail: 0 });
+  assert.deepEqual(opened, [input]);
+  opened.length = 0;
+  documentRef.dispatch('focusin', { target: input });
+  assert.deepEqual(opened, [input]);
+  keypad.dispose();
 });
 
 test('defines a three-column, touch-sized mobile keypad overlay', async () => {

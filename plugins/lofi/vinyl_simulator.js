@@ -1596,7 +1596,7 @@ class VinylSimulatorPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '7 / 1',
             mobileAspectRatio: '3 / 1',
-            className: 'vinyl-simulator-hud',
+            className: 'vinyl-simulator-hud local-audio-only',
             onResize: () => this.drawHud()
         });
         this.hudGraphDispose = graph.dispose;
@@ -1606,7 +1606,7 @@ class VinylSimulatorPlugin extends PluginBase {
         graph.resize();
 
         const note = document.createElement('div');
-        note.className = 'vinyl-simulator-status-note';
+        note.className = 'vinyl-simulator-status-note local-audio-only';
         note.setAttribute('role', 'status');
         note.setAttribute('aria-live', 'polite');
         note.setAttribute('aria-atomic', 'true');

@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { startRemoteControl } from '../../js/remote/remote-control.js';
 import { IrLibraryStore } from '../../js/ir-library/ir-library-store.js';
+import { HistoryManager } from '../../js/ui/pipeline/history-manager.js';
+import { PipelineItemBuilder } from '../../js/ui/pipeline/pipeline-item-builder.js';
+import { getSerializablePluginStateShort } from '../../js/utils/serialization-utils.js';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakePlugin {
     constructor(name, id) {
@@ -14,8 +18,9 @@ class FakePlugin {
         this.parameters = { vl: 0 };
     }
 
-    setParameters(p) { Object.assign(this.parameters, p); }
-    setEnabled(on) { this.enabled = on; }
+    setParameters(p) { Object.assign(this.parameters, p); this.updateParameters(); }
+    setEnabled(on) { this.enabled = on; this.updateParameters(); }
+    updateParameters() {}
     setSerializedParameters(state) {
         const { nm, en, ib, ob, ch, ...rest } = state;
         this.parameters = { ...rest };
@@ -97,6 +102,9 @@ async function setup({ presets = { Demo: { plugins: [{ nm: 'Volume', en: true, v
             presetManager,
             historyManager: {
                 saveState: () => calls.push('saveState'),
+                beginOperation() {},
+                endOperation() {},
+                withHistorySuppressed: callback => callback(),
                 undo: () => calls.push('undo'),
                 redo: () => calls.push('redo')
             },
@@ -122,6 +130,123 @@ async function setup({ presets = { Demo: { plugins: [{ nm: 'Volume', en: true, v
     return { controller, win, api, ask, published, calls, pipeline, audioManager, presetManager };
 }
 
+function usePipelineHistory(win) {
+    const { audioManager, pipelineManager, pluginManager } = win;
+    audioManager.pipelineA = audioManager.pipeline;
+    audioManager.pipelineB = null;
+    audioManager.getCurrentPipeline = () => audioManager.pipelineA;
+    audioManager.dispatchEvent = () => {};
+    audioManager.pipelineManager = pipelineManager;
+    pipelineManager.audioManager = audioManager;
+    pipelineManager.pluginManager = pluginManager;
+    pipelineManager.core.audioManager = audioManager;
+    pipelineManager.core.getSerializablePluginState = getSerializablePluginStateShort;
+    win.uiManager.updatePipelineToggleButton = () => {};
+    const history = new HistoryManager(pipelineManager);
+    pipelineManager.historyManager = history;
+    const builder = new PipelineItemBuilder(pipelineManager.core);
+    for (const plugin of audioManager.pipeline) builder.setupParameterUpdateHandling(plugin);
+    const createPlugin = pluginManager.createPlugin;
+    pluginManager.createPlugin = name => {
+        const plugin = createPlugin(name);
+        builder.setupParameterUpdateHandling(plugin);
+        return plugin;
+    };
+    history.saveState();
+    return history;
+}
+
+test('remote parameter updates in one drag form one undo step even across a pause', async t => {
+    const { controller, win, ask, pipeline } = await setup();
+    pipeline.push(new FakePlugin('Volume', 1));
+    const history = usePipelineHistory(win);
+    const { ids, epoch } = controller.takeSnapshot();
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    await withGlobals({ window: win, document: win.document }, async () => {
+        for (const vl of [-1, -2, -3]) {
+            const response = await ask({
+                op: 'edit', epoch, slot: 'A', operation: 'drag-1',
+                ops: [{ t: 'set', id: ids[0], p: { vl } }]
+            });
+            assert.equal(response.ok, true);
+            t.mock.timers.tick(1500);
+        }
+        await ask({ op: 'edit', epoch, slot: 'A', operation: 'drag-1', operationEnd: true, ops: [] });
+        assert.equal(history.history.length, 2, 'initial state plus one complete drag');
+        await ask({ op: 'history', dir: 'undo' });
+        assert.equal(win.audioManager.pipeline[0].parameters.vl, 0);
+        await ask({ op: 'history', dir: 'redo' });
+        assert.equal(win.audioManager.pipeline[0].parameters.vl, -3);
+    });
+});
+
+test('separate remote drags stay separate and a net unchanged drag preserves redo', async t => {
+    const { controller, win, ask, pipeline } = await setup();
+    pipeline.push(new FakePlugin('Volume', 1));
+    const history = usePipelineHistory(win);
+    const { ids, epoch } = controller.takeSnapshot();
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const drag = async (operation, values) => {
+        for (const vl of values) {
+            assert.equal((await ask({
+                op: 'edit', epoch, operation, ops: [{ t: 'set', id: ids[0], p: { vl } }]
+            })).ok, true);
+        }
+        await ask({ op: 'edit', epoch, operation, operationEnd: true, ops: [] });
+    };
+    await withGlobals({ window: win, document: win.document }, async () => {
+        await drag('drag-1', [-3, -6]);
+        await drag('drag-2', [-8, -9]);
+        assert.equal(history.history.length, 3);
+        await ask({ op: 'history', dir: 'undo' });
+        assert.equal(win.audioManager.pipeline[0].parameters.vl, -6);
+        t.mock.timers.tick(1500);
+        assert.equal(history.canRedo, true, 'no delayed save replaces the undo state');
+        ids[0] = controller.takeSnapshot().ids[0];
+        await drag('drag-3', [-4, -6]);
+        assert.equal(history.history.length, 3);
+        assert.equal(history.canRedo, true);
+        await ask({ op: 'history', dir: 'redo' });
+        assert.equal(win.audioManager.pipeline[0].parameters.vl, -9);
+    });
+});
+
+test('remote parameter resets preserve the drag operation through serialized-state application', async () => {
+    const { controller, win, ask, pipeline } = await setup();
+    const plugin = new FakePlugin('Volume', 1);
+    plugin.parameters.optional = true;
+    pipeline.push(plugin);
+    const history = usePipelineHistory(win);
+    const { ids, epoch } = controller.takeSnapshot();
+    await withGlobals({ window: win, document: win.document }, async () => {
+        for (const vl of [-1, -2, -3]) {
+            assert.equal((await ask({
+                op: 'edit', epoch, operation: 'drag-reset',
+                ops: [{ t: 'set', id: ids[0], p: { vl }, d: ['optional'] }]
+            })).ok, true);
+            assert.equal(history.isOperationActive('drag-reset'), true);
+            assert.equal(history.history.length, 2);
+        }
+        await ask({ op: 'edit', epoch, operation: 'drag-reset', operationEnd: true, ops: [] });
+        await ask({ op: 'history', dir: 'undo' });
+        assert.deepEqual(win.audioManager.pipeline[0].parameters, { vl: 0, optional: true });
+        await ask({ op: 'history', dir: 'redo' });
+        assert.deepEqual(win.audioManager.pipeline[0].parameters, { vl: -3 });
+    });
+});
+
+test('a remote drag end does not close a newer host operation', async () => {
+    const { controller, win, ask, pipeline } = await setup();
+    pipeline.push(new FakePlugin('Volume', 1));
+    const history = usePipelineHistory(win);
+    const { ids, epoch } = controller.takeSnapshot();
+    await ask({ op: 'edit', epoch, operation: 'drag-1', ops: [{ t: 'set', id: ids[0], p: { vl: -3 } }] });
+    const localToken = {};
+    history.beginOperation(localToken);
+    await ask({ op: 'edit', epoch, operation: 'drag-1', operationEnd: true, ops: [] });
+    assert.equal(history.isOperationActive(localToken), true);
+});
+
 test('the snapshot carries ids, slot and an epoch that is stable for this window', async () => {
     const { controller, pipeline } = await setup();
     pipeline.push(new FakePlugin('Volume', 1), new FakePlugin('Mute', 2));
@@ -134,6 +259,51 @@ test('the snapshot carries ids, slot and an epoch that is stable for this window
     const second = controller.takeSnapshot();
     assert.deepEqual(second.ids, ['h.3', 'h.1', 'h.2']);
     assert.equal(second.epoch, first.epoch);
+});
+
+test('snapshots carry the host audio format and the host routing limit', async () => {
+    const { controller, audioManager } = await setup();
+    audioManager.audioContext = { sampleRate: 96000, destination: { channelCount: 8 } };
+    assert.deepEqual(controller.takeSnapshot().audio, {
+        sampleRate: 96000, channelCount: 8, routingChannelCount: 16
+    });
+    audioManager.outputChannelCount = 8;
+    assert.equal(controller.takeSnapshot().audio.routingChannelCount, 8);
+});
+
+test('IR selection loads on the host and rejects stale or unrelated target stages', async () => {
+    const { controller, ask, pipeline, win } = await setup();
+    const entry = { irId: 'a'.repeat(24), fileLabel: 'Hall.wav' };
+    const loaded = [];
+    const plugin = new FakePlugin('IR Reverb', 1);
+    plugin.loadLibraryEntry = async selected => { loaded.push(selected); plugin.parameters.ir = selected.irId; return true; };
+    pipeline.push(plugin, new FakePlugin('Volume', 2));
+    win.irLibraryService = { get: id => id === entry.irId ? entry : null };
+    const { ids, epoch } = controller.takeSnapshot();
+    const message = { op: 'selectIR', epoch, slot: 'A', id: ids[0], ir: entry.irId };
+    const result = await ask(message);
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.pipeline[0].ir, entry.irId);
+    assert.deepEqual(loaded, [entry]);
+    for (const invalid of [
+        { epoch: 'old' }, { slot: 'B' }, { slot: undefined }, { id: ids[1] }, { id: 'removed' },
+        { ir: 'not-an-id' }, { ir: 'b'.repeat(24) }
+    ]) assert.equal((await ask({ ...message, ...invalid })).ok, false);
+    assert.equal(loaded.length, 1);
+});
+
+test('selection can list true-stereo IR pairs without changing the file-sync list', async () => {
+    const { ask, win } = await setup();
+    const single = { irId: 'a'.repeat(24), composition: 'single', fileLabel: 'A.wav', channels: 1,
+        topology: 'mono', originals: [{ fileName: 'A.wav', byteLength: 100 }] };
+    const pair = { irId: 'b'.repeat(24), composition: 'pair', fileLabel: 'B L.wav + B R.wav', channels: 4,
+        topology: 'true-stereo', originals: [{ fileName: 'B L.wav', byteLength: 100 }, { fileName: 'B R.wav', byteLength: 100 }] };
+    win.irLibraryService = { list: () => [single, pair] };
+    assert.deepEqual((await ask({ op: 'listIRs' })).items.map(entry => entry.id), [single.irId]);
+    const selectable = (await ask({ op: 'listIRs', includePairs: true })).items;
+    assert.deepEqual(selectable.map(entry => entry.id), [single.irId, pair.irId]);
+    assert.equal(selectable[1].topology, 'true-stereo');
+    assert.equal(selectable[1].bytes, 200);
 });
 
 test('an edit batch changes the pipeline by ids and reports skipped ops', async () => {
@@ -163,6 +333,10 @@ test('an edit batch is refused for a stale epoch, a bad op, an unknown effect or
     assert.equal((await ask({ op: 'edit', epoch, ops: [{ t: 'zap' }] })).error, 'invalid-op');
     assert.equal((await ask({ op: 'edit', epoch, ops: [{ t: 'ins', id: 'c1.1', after: null, at: 0, item: { nm: 'Nope' } }] })).error, 'unknown-effect');
     assert.equal((await ask({ op: 'edit', epoch, ops: [{ t: 'ins', id: 'h.9', after: null, at: 0, item: { nm: 'Volume' } }] })).error, 'invalid-op');
+    assert.equal((await ask({ op: 'edit', epoch, operation: {}, ops: [] })).error, 'invalid-op');
+    assert.equal((await ask({ op: 'edit', epoch, operation: 'bad id', ops: [] })).error, 'invalid-op');
+    assert.equal((await ask({ op: 'edit', epoch, operationEnd: true, ops: [] })).error, 'invalid-op');
+    assert.equal((await ask({ op: 'edit', epoch, operation: 'drag-1', operationEnd: 'yes', ops: [] })).error, 'invalid-op');
     assert.equal(controller.takeSnapshot().ids.length, 0);
 });
 

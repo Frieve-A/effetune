@@ -137,7 +137,7 @@ const measurementBackupV1 = Object.freeze({
 
 const sfzLibraryV1 = Object.freeze({
   apiVersion: 1,
-  select: () => ipcRenderer.invoke('sfz-library-v1:select'),
+  select: request => ipcRenderer.invoke('sfz-library-v1:select', request),
   list: () => ipcRenderer.invoke('sfz-library-v1:list'),
   remove: request => ipcRenderer.invoke('sfz-library-v1:remove', request),
   readRelative: request => ipcRenderer.invoke('sfz-library-v1:read-relative', request),
@@ -200,8 +200,17 @@ const remoteV1 = Object.freeze({
   notifyIrs: () => ipcRenderer.invoke('remote-v1:irs-changed', {}),
   openPanel: () => ipcRenderer.invoke('remote-v1:open-panel', {}),
   getStatus: () => ipcRenderer.invoke('remote-v1:get-status', {}),
+  onOpenPanel: callback => addSingleArgIpcListener('remote-v1:open-panel', callback),
   onRequest: callback => addSingleArgIpcListener('remote-v1:request', callback),
-  onStatus: callback => addSingleArgIpcListener('remote-v1:status', callback)
+  onStatus: callback => addSingleArgIpcListener('remote-v1:status', callback),
+  settings: Object.freeze({
+    getStatus: () => ipcRenderer.invoke('remote-panel-v1:get-status'),
+    setEnabled: enabled => ipcRenderer.invoke('remote-panel-v1:set-enabled', enabled === true),
+    regenerateToken: () => ipcRenderer.invoke('remote-panel-v1:regenerate-token'),
+    copyLink: index => ipcRenderer.invoke('remote-panel-v1:copy-link', Number(index) || 0),
+    join: input => ipcRenderer.invoke('remote-panel-v1:join', String(input || '')),
+    onStatus: callback => addSingleArgIpcListener('remote-panel-v1:status', callback)
+  })
 });
 
 function withoutOpenHomeOwnedConfig(config) {
@@ -234,6 +243,7 @@ const ALLOWED_IPC_LISTENER_CHANNELS = new Set([
   'exit-mini-player',
   'load-preset-from-tray',
   'open-effect-pipeline-view',
+  'start-onboarding-tour',
   'open-frequency-response-measurement',
   'open-library-view',
   'open-visualizer-view',

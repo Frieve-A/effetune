@@ -53,6 +53,30 @@ function harness(definition = '<region> sample=tone.wav key=60', options = {}) {
 
 const decode = () => ({ sampleRate: 44100, channels: [new Float32Array([.1, .2, .3])] });
 
+test('native SFZ generators use the sample pipeline without requesting nonexistent source files', async () => {
+  const h = harness('<region> sample=*sine key=60\n<region> sample=*noise key=61 ampeg_decay=163.6');
+  const prepared = await h.service.prepare(id);
+  assert.equal(prepared.regionCount, 2);
+  assert.deepEqual(h.stats, []);
+  assert.deepEqual(h.reads.map(request => request.relativePath), ['piano.sfz']);
+  assert.deepEqual(prepared.warnings, [{ code: 'envelope-times-adjusted', count: 1 }]);
+});
+
+test('native library metadata totals referenced definitions and samples without reading sample audio', async () => {
+  const h = harness('#include "defs.inc"');
+  h.files.set('defs.inc', encode('<region> sample=tone.wav key=60\n<region> sample=tone.wav key=61'));
+  assert.deepEqual(await h.service.readMetadata(id), {
+    size: h.files.get('piano.sfz').length + h.files.get('defs.inc').length + h.files.get('tone.wav').length,
+    fileCount: 3, regionCount: 2
+  });
+  assert.deepEqual(h.reads.map(request => request.relativePath), ['piano.sfz', 'defs.inc']);
+  assert.deepEqual(h.stats, ['tone.wav']);
+  h.files.set('piano.sfz', encode('<region> sample=*sine key=60'));
+  assert.deepEqual(await h.service.readMetadata(id), {
+    size: h.files.get('piano.sfz').length, fileCount: 1, regionCount: 1
+  });
+});
+
 test('native sample-aware invalid regions retain usable notes with additive warnings on reload', async () => {
   const h = harness('<region> sample=tone.wav key=60\n<region> sample=tone.wav key=61 end=99\n' +
     '<region> sample=tone.wav key=62 loop_mode=loop_sustain loop_end=99\n' +
@@ -112,12 +136,87 @@ test('native service consumes the production broker shape and stores reference m
   const [selected] = await service.selectFolder().catch(() => assert.fail(JSON.stringify(diagnostics)));
   assert.match(selected.id, /^[a-f0-9]{24}$/);
   assert.equal(selected.name, 'Keys/piano.sfz');
+  assert.match(selected.importedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal((await service.prepare(selected.id, { decode })).regionCount, 1);
   assert.deepEqual(await fs.readdir(userData), ['sfz-references.json']);
   await service.remove(selected.id);
   assert.deepEqual(await service.list(), []);
   assert.deepEqual(await fs.readdir(source), ['Keys', 'libs']);
   assert.equal((await fs.stat(path.join(source, 'libs', 'tone.wav'))).size, 44);
+});
+
+test('native SFZ file selection registers only selected files and keeps their original samples on removal', async t => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-sfz-files-')));
+  t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }));
+  const userData = path.join(root, 'user-data');
+  await fs.mkdir(userData);
+  const selectedPath = path.join(root, 'Piano.sfz');
+  await fs.writeFile(selectedPath, '<region> sample=tone.wav key=60');
+  await fs.writeFile(path.join(root, 'Other.sfz'), '<region> sample=*sine key=60');
+  await fs.writeFile(path.join(root, 'tone.wav'), wav());
+  const { registerSfzLibraryIpc, SFZ_LIBRARY_CHANNELS } = createRequire(import.meta.url)('../../electron/sfz-library-ipc.js');
+  const handlers = new Map();
+  let dialogOptions;
+  t.after(registerSfzLibraryIpc({ ipcMain: {
+    handle(channel, handler) { handlers.set(channel, handler); },
+    removeHandler(channel) { handlers.delete(channel); }
+  }, getUserDataPath: () => userData,
+  showOpenDialog: async options => {
+    dialogOptions = options;
+    return { canceled: false, filePaths: [selectedPath] };
+  } }));
+  const bridge = { apiVersion: 1 };
+  for (const [method, channel] of Object.entries(SFZ_LIBRARY_CHANNELS)) {
+    bridge[method] = request => handlers.get(channel)({}, request);
+  }
+  const service = new NativeSfzLibraryService(bridge);
+  const [selected] = await service.selectFiles();
+  assert.deepEqual(dialogOptions.properties, ['openFile', 'multiSelections']);
+  assert.deepEqual(dialogOptions.filters[0].extensions, ['sfz']);
+  assert.deepEqual((await service.list()).map(entry => entry.name), ['Piano.sfz']);
+  assert.deepEqual(await service.readMetadata(selected.id), {
+    size: Buffer.byteLength('<region> sample=tone.wav key=60') + wav().length,
+    fileCount: 2, regionCount: 1
+  });
+  await service.remove(selected.id);
+  assert.deepEqual(await service.list(), []);
+  assert.equal((await fs.stat(selectedPath)).isFile(), true);
+  assert.equal((await fs.stat(path.join(root, 'tone.wav'))).size, wav().length);
+});
+
+test('native ARIA loading discovers companion definitions and reads legacy SFZ text', async t => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-sfz-aria-')));
+  t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }));
+  const source = path.join(root, 'source');
+  const userData = path.join(root, 'user-data');
+  await fs.mkdir(path.join(source, 'Programs', 'Keys'), { recursive: true });
+  await fs.mkdir(path.join(source, 'Samples', 'Keys'), { recursive: true });
+  await fs.mkdir(userData);
+  await fs.writeFile(path.join(source, 'Example.bank.xml'), '<AriaBank>' +
+    '<Define name="$sample_dir" value="$Banks/Example/sample_dir"/>' +
+    '<Define name="$GEXT2" value=".flac"/>' +
+    '<AriaElement path="Programs/Keys/piano.sfz"/></AriaBank>');
+  await fs.writeFile(path.join(source, 'Programs', 'Keys', 'piano.sfz'), Buffer.concat([
+    Buffer.from('// Copyright '), Buffer.from([0xa9]),
+    Buffer.from('\n<control> default_path=$sample_dir/Keys/\n<region> sample=tone$GEXT2 key=60')
+  ]));
+  await fs.writeFile(path.join(source, 'Samples', 'Keys', 'tone.flac'), wav());
+  const { registerSfzLibraryIpc, SFZ_LIBRARY_CHANNELS } = createRequire(import.meta.url)('../../electron/sfz-library-ipc.js');
+  const handlers = new Map();
+  t.after(registerSfzLibraryIpc({ ipcMain: {
+    handle(channel, handler) { handlers.set(channel, handler); },
+    removeHandler(channel) { handlers.delete(channel); }
+  }, getUserDataPath: () => userData,
+  showOpenDialog: async () => ({ canceled: false, filePaths: [source] }) }));
+  const bridge = { apiVersion: 1 };
+  for (const [method, channel] of Object.entries(SFZ_LIBRARY_CHANNELS)) {
+    bridge[method] = request => handlers.get(channel)({}, request);
+  }
+  const service = new NativeSfzLibraryService(bridge, { onDiagnostic: null });
+  const [selected] = await service.selectFolder();
+  assert.equal((await service.prepare(selected.id, { decode })).regionCount, 1);
+  assert.deepEqual((await bridge.list()).data[0].bankPaths, ['Example.bank.xml']);
+  assert.deepEqual(await fs.readdir(userData), ['sfz-references.json']);
 });
 
 test('native SFZ reads includes and adopted samples only, without copying source files', async () => {

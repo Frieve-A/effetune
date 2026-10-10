@@ -15,6 +15,7 @@ export class StateManager {
         this.installAppElement = document.getElementById('installAppElement');
         this.installAppButton = document.getElementById('installAppButton');
         this.configSettingsButton = document.getElementById('configSettingsButton');
+        this.tourSettingsButton = document.getElementById('tourSettingsButton');
         this.audioConfigSettingsButton = document.getElementById('audioConfigSettingsButton');
         this.benchmarkSettingsButton = document.getElementById('benchmarkSettingsButton');
         this.measurementSettingsButton = document.getElementById('measurementSettingsButton');
@@ -41,6 +42,7 @@ export class StateManager {
         });
         this.audioConfigSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openAudioConfig()));
         this.configSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openConfig()));
+        this.tourSettingsButton?.addEventListener('click', () => this.runMenuAction(() => window.uiManager.startOnboardingTour()));
         this.benchmarkSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openFeaturePage('features/effetune_bench.html')));
         this.measurementSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openFeaturePage('features/measurement/measurement.html')));
         this.backupRestoreSettingsButton?.addEventListener('click', () => this.runMenuAction(() => this.openBackupRestore()));
@@ -120,6 +122,9 @@ export class StateManager {
         }
         if (this.configSettingsButton) {
             this.configSettingsButton.textContent = this.translate('dialog.config.title', 'Config');
+        }
+        if (this.tourSettingsButton) {
+            this.tourSettingsButton.textContent = this.translate('tour.menu', 'Take the tour');
         }
         if (this.audioConfigSettingsButton) {
             this.audioConfigSettingsButton.textContent = this.translate('dialog.audioConfig.title', 'Audio Configuration');

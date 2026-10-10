@@ -277,7 +277,7 @@ export function normalizeParams(type, input) {
         pf: Math.round(number(params.pf, 1, 1, 10) * 10) / 10,
         showCorrelation: params.showCorrelation !== false, showBalance: params.showBalance !== false, ...axes };
     if (type === 'oscilloscope') return {
-        dt: Math.round(number(params.dt, 0.01, 0.001, 0.1) * 1000) / 1000,
+        dt: Math.round(number(params.dt, 0.01, 0.001, 10) * 1000) / 1000,
         tm: choice(params.tm, ['Auto', 'Normal', 'Off'], 'Auto'),
         tl: Math.round(number(params.tl, 0, -1, 1) * 100) / 100,
         te: choice(params.te, ['Rising', 'Falling'], 'Rising'),

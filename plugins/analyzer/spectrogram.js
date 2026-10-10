@@ -799,6 +799,7 @@ class SpectrogramPlugin extends PluginBase {
         container.appendChild(parameters);
 
         const { container: graphContainer, canvas, dispose } = this.createResponsiveGraph({
+            className: 'local-audio-only',
             maxWidth: 1024,
             aspectRatio: '32 / 15',
             mobileAspectRatio: '4 / 3',

@@ -2,7 +2,7 @@
 // client of another EffeTune's remote-v1 server. The page serves two jobs at
 // once: it shows the host's pipeline live and it edits it, with edits of the host
 // and of other clients folded in (see remote-sync-engine.mjs). It never touches
-// audio, the library or the Electron integration.
+// local audio, file storage or the Electron integration.
 
 import { PluginManager } from '../plugin-manager.js';
 import { publishDspParamPackers } from '../audio/dsp-wasm-loader.js';
@@ -13,11 +13,12 @@ import { PluginListManager } from '../ui/plugin-list-manager.js';
 import { MobileNumberKeypad } from '../ui/mobile-number-keypad.js';
 import { TelemetryHub } from '../audio/telemetry-hub.js';
 import { installRangeFillStyling } from '../ui/range-fill.js';
+import { installRangePrecisionControl } from '../ui/range-precision-controller.js';
 import { RemoteAudioManager } from './remote-audio-manager.js';
+import { createRemoteIrLibrary } from './remote-ir-library.js';
 import { RemoteSession, resolveRemoteTarget } from './remote-session.js';
 import { SyncEngine } from './remote-sync-engine.mjs';
 import { createRemoteUiManager, loadTranslations, RemoteMobileShell } from './remote-ui-manager.js';
-import { guardPluginsForClientCsp } from './client-csp-guards.js';
 import { applyOpsToPipeline, createIdRegistry, finishBatch, randomClientPrefix } from './pipeline-apply.js';
 
 const MESSAGE_DURATION_MS = 3000;
@@ -139,10 +140,10 @@ export async function startRemoteClient(win = window) {
         pluginManager.loadPlugins(),
         loadTranslations({ language: win.navigator.language })
     ]);
-    guardPluginsForClientCsp(pluginManager);
     const createPlugin = pluginManager.createPlugin.bind(pluginManager);
     pluginManager.createPlugin = name => {
         const plugin = createPlugin(name);
+        plugin.hasLocalAudio = win.audioManager.hasLocalAudio;
         plugin.setWasmAssetTargetResolver?.(() => []);
         return plugin;
     };
@@ -166,13 +167,6 @@ export async function startRemoteClient(win = window) {
     });
     win.uiManager = uiManager;
     win.pluginManager = pluginManager;
-    // Impulse responses are not offered on a remote client (IR Reverb shows its
-    // "IR not found" state); this is the library read view the plugin asks for.
-    win.irLibraryService = {
-        list: () => [], get: () => null, refresh: async () => [], readAnalysis: async () => null,
-        subscribe: () => () => {}, addEventListener() {}, removeEventListener() {}
-    };
-
     const audioManager = new RemoteAudioManager();
     uiManager.audioManager = audioManager;
     win.audioManager = audioManager;
@@ -208,12 +202,16 @@ export async function startRemoteClient(win = window) {
     history.saveStateAtomicallyIfChanged = () => false;
     history.undo = () => {
         engine.noteGesture();
+        history.endOperation();
+        engine.flushNow();
         session.sendCommand({ op: 'history', dir: 'undo' }).then(
             () => messages.show('Undid last change', true, MESSAGE_DURATION_MS),
             error => showCommandError('EffeTune could not undo the last change. Try again.', error));
     };
     history.redo = () => {
         engine.noteGesture();
+        history.endOperation();
+        engine.flushNow();
         session.sendCommand({ op: 'history', dir: 'redo' })
             .catch(error => showCommandError('EffeTune could not redo the last change. Try again.', error));
     };
@@ -229,7 +227,27 @@ export async function startRemoteClient(win = window) {
         send: message => session.send(message),
         onError: error => showCommandError('EffeTune could not apply this change. Try again.', error)
     });
+    // Reuse the editor's pointer, keyboard and text-edit boundaries for remote undo.
+    const beginOperation = history.beginOperation.bind(history);
+    const endOperation = history.endOperation.bind(history);
+    history.beginOperation = token => {
+        beginOperation(token);
+        engine.beginOperation(token);
+    };
+    history.endOperation = token => {
+        engine.endOperation(token);
+        endOperation(token);
+    };
     audioManager.onLocalChange = plugin => engine.markDirty(plugin ? registry.idOf(plugin) : null);
+    win.irLibraryService = createRemoteIrLibrary(session, async (plugin, entry) => {
+        engine.noteGesture();
+        engine.flushNow();
+        await session.sendCommand({
+            op: 'selectIR', epoch: engine.confirmed?.epoch, slot: adapter.slot,
+            id: registry.idOf(plugin), ir: entry.irId
+        });
+        return true;
+    });
 
     // ---- layout and page wiring ---------------------------------------------
     uiManager.layoutModeUnsubscribe = uiManager.layoutMode.onChange(mode => {
@@ -241,6 +259,7 @@ export async function startRemoteClient(win = window) {
     });
     mobileShell.applyMode(uiManager.layoutMode.mode);
     uiManager.rangeFill = installRangeFillStyling(document);
+    installRangePrecisionControl(document);
     pluginListManager.initPluginList();
     pipelineManager.initDragAndDrop();
     uiManager.rangeFill.refresh();
@@ -277,7 +296,10 @@ export async function startRemoteClient(win = window) {
     session.addEventListener('state', event => {
         const message = event.detail;
         if (typeof message.host === 'string') $('remoteHost').textContent = message.host;
+        const formatChanged = audioManager.applyHostAudioState(message.audio);
+        uiManager.debugChannelCount = audioManager.audioContext.destination.channelCount;
         engine.onState(message);
+        if (formatChanged) pipelineManager.core.updatePipelineUI();
     });
     session.addEventListener('status', event => {
         const { status } = event.detail;

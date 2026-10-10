@@ -330,6 +330,34 @@ test('scoped suppression is nested, closes active operations, and restores depth
   assert.equal(manager.isHistorySuppressed, false);
 });
 
+test('preserving an operation suppresses nested serialized updates without ending the gesture', () => {
+  const plugin = createSourcePlugin('Tone', { serialized: { nm: 'Tone', gain: 0 } });
+  const runtime = createRuntime({ pipelineA: [plugin] });
+  const manager = new HistoryManager(runtime.pipelineManager);
+  manager.saveState();
+  const token = {};
+  manager.beginOperation(token);
+  plugin.serialized.gain = 1;
+  manager.saveState({ operationToken: token });
+
+  manager.withHistorySuppressed(() => {
+    manager.withHistorySuppressed(() => {
+      plugin.serialized.gain = 2;
+      manager.saveState();
+      assert.equal(manager.isOperationActive(token), true);
+      assert.equal(manager.history[1].pipelineA[0].gain, 1);
+    });
+    manager.saveState({ operationToken: token });
+    assert.equal(manager.isOperationActive(token), true);
+  }, { preserveOperation: true });
+
+  manager.saveState({ operationToken: token });
+  manager.endOperation(token);
+  assert.equal(manager.history.length, 2);
+  assert.equal(manager.history[1].pipelineA[0].gain, 2);
+  assert.equal(manager.isHistorySuppressed, false);
+});
+
 test('undo and redo guard history boundaries and missing redo state', () => {
   const runtime = createRuntime();
   const manager = new HistoryManager(runtime.pipelineManager);

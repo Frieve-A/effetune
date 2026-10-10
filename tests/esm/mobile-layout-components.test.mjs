@@ -537,12 +537,16 @@ test('MobileMenu applies translated labels to settings actions', async () => {
     'menu.settings.frequencyResponseMeasurement': 'Translated Measurement',
     'ui.resetButton': 'Translated Reset',
     'ui.shareButton': 'Translated Share',
-    'ui.whatsThisApp': 'Translated Whats'
+    'ui.whatsThisApp': 'Translated Whats',
+    'tour.menu': 'Translated Tour'
   };
   const uiManager = {
     layoutMode,
     t(key) {
       return labels[key] ?? key;
+    },
+    startOnboardingTour() {
+      uiManager.tourStarts = (uiManager.tourStarts || 0) + 1;
     }
   };
 
@@ -560,6 +564,12 @@ test('MobileMenu applies translated labels to settings actions', async () => {
     assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Benchmark'), true);
     assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Share'), true);
     assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Whats'), true);
+    const tourItem = menu.panel.children.find(item => item.textContent === 'Translated Tour');
+    assert.ok(tourItem);
+    menu.open();
+    tourItem.click();
+    assert.equal(uiManager.tourStarts, 1);
+    assert.equal(menu.panel.classList.contains('mobile-open'), false);
     assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Measurement'), true);
     assert.equal(menu.panel.children.some(item => item.textContent === 'Translated Reset'), true);
 

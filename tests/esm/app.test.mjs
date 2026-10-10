@@ -24,6 +24,9 @@ function createElement(document, tagName) {
     tagName: tagName.toUpperCase(),
     id: '',
     className: '',
+    get classList() {
+      return this.className.split(/\s+/).filter(Boolean);
+    },
     textContent: '',
     parentNode: null,
     nextSibling: null,
@@ -809,6 +812,68 @@ test('App initialize handles success, audio warnings, and initialization failure
     assert.equal(calls.some(call => call[0] === 'ui.setOpenHomeRemoteRuntimeReady'), false);
   });
 
+});
+
+test('onboarding captures saved state before startup writes and uses the launch query', async () => {
+  for (const scenario of [
+    { search: '', savedState: null, expected: true },
+    { search: '?p=shared', savedState: null, expected: false },
+    { search: '', savedState: '[]', expected: false }
+  ]) {
+    await withAppModule({ search: scenario.search }, async ({ calls, mod, window }) => {
+      window.electronIntegration = { isElectron: false };
+      let storedState = scenario.savedState;
+      window.localStorage = {
+        getItem(key) {
+          assert.equal(key, 'effetune_pipeline_state');
+          return storedState;
+        }
+      };
+      const dependencies = createDependencies(calls);
+      dependencies.startupConfig = { pipelineStartup: 'default' };
+      let starts = 0;
+      const app = new mod.App(dependencies);
+      dependencies.uiManager.startOnboardingTour = () => {
+        assert.equal(app.initialized, true);
+        starts += 1;
+        return true;
+      };
+      app.initializeAndBuildPipeline = async () => {
+        storedState = '[{"name":"Volume"}]';
+        window.location.search = '?p=reflected';
+        return true;
+      };
+
+      await app.initialize();
+      assert.equal(app.hadSavedPipelineState, scenario.savedState !== null);
+      assert.equal(starts, scenario.expected ? 1 : 0);
+    });
+  }
+});
+
+test('onboarding saved-state detection ignores Electron restore flags and reports unavailable storage', async () => {
+  await withAppModule({}, async ({ calls, mod, window }) => {
+    window.electronIntegration = { isElectron: true };
+    window.__FORCE_SKIP_PIPELINE_STATE_LOAD = true;
+    window.pipelineStateLoaded = false;
+    window.electronAPI.getPath = async name => {
+      assert.equal(name, 'userData');
+      return 'app-data';
+    };
+    window.electronAPI.joinPaths = async (...parts) => parts.join('/');
+    window.electronAPI.fileExists = async path => {
+      assert.equal(path, 'app-data/pipeline-state.json');
+      return true;
+    };
+    const app = new mod.App(createDependencies(calls));
+    assert.equal(await app.hasSavedPipelineState(), true);
+    window.electronAPI.fileExists = async () => false;
+    assert.equal(await app.hasSavedPipelineState(), false);
+    window.electronAPI.fileExists = async () => { throw new Error('unavailable'); };
+    assert.equal(await app.hasSavedPipelineState(), true);
+    assert.ok(calls.some(call => call[0] === 'console.warn' &&
+      call[1].includes('saved pipeline state')));
+  });
 });
 
 test('startup stays private until localization settles and also reveals initialization failures', async () => {

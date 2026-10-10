@@ -677,10 +677,11 @@ class GroupDelayPEQPlugin extends PluginBase {
         for (let index = 0; index < GroupDelayPEQPlugin.BANDS.length; index += 1) {
             controls.appendChild(this._createBandControls(index));
         }
+        container.appendChild(MobileBandSelector.create(this, controls, markers));
         container.appendChild(controls);
 
         const statusLine = document.createElement('div');
-        statusLine.className = 'group-delay-peq-status-line';
+        statusLine.className = 'group-delay-peq-status-line local-audio-only';
         const status = document.createElement('div');
         status.className = 'group-delay-peq-status';
         status.setAttribute('role', 'status');

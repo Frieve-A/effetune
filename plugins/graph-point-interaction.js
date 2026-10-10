@@ -95,8 +95,44 @@ class PeqMarkerWheel {
     }
 }
 
+// Keep the desktop band grid while showing one selected band on mobile.
+class MobileBandSelector {
+    static create(owner, controls, markers) {
+        const panels = Array.from(controls.children);
+        controls.classList.add('mobile-band-controls');
+        const tabs = document.createElement('div');
+        tabs.className = 'mobile-band-tabs';
+        const buttons = panels.map((panel, index) => {
+            panel.classList.add('mobile-band-panel');
+            if (!panel.id) panel.id = `${owner.id}-mobile-band-${index}`;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'mobile-band-tab';
+            button.textContent = String(index + 1);
+            button.setAttribute('aria-label', `Band ${index + 1}`);
+            button.setAttribute('aria-controls', panel.id);
+            button.addEventListener('click', () => selectBand(index));
+            markers[index].addEventListener('pointerdown', () => selectBand(index));
+            tabs.appendChild(button);
+            return button;
+        });
+        const selectBand = index => {
+            owner._mobileSelectedBandIndex = index;
+            panels.forEach((panel, band) => {
+                const selected = band === index;
+                panel.classList.toggle('mobile-band-selected', selected);
+                buttons[band].classList.toggle('active', selected);
+                buttons[band].setAttribute('aria-pressed', String(selected));
+            });
+        };
+        selectBand(owner._mobileSelectedBandIndex ?? 0);
+        return tabs;
+    }
+}
+
 if (typeof window !== 'undefined') {
     window.GraphDragAxisLock = GraphDragAxisLock;
     window.GraphPlotArea = GraphPlotArea;
     window.PeqMarkerWheel = PeqMarkerWheel;
+    window.MobileBandSelector = MobileBandSelector;
 }

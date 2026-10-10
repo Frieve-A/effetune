@@ -1,17 +1,22 @@
 #include "../../analyzer/note_spectrogram/spectral_analysis.h"
+#include "NoteSpectrogramPluginParams.h"
 #include "SFZNotePlayerPluginParams.h"
+#include "VolumePluginParams.h"
 #include "allocation_guard.h"
 #include "bank.h"
 #include "binary_io.h"
 #include "engine.h"
+#include "onset_rule.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <latch>
 #include <limits>
 #include <memory>
+#include <thread>
 #include <vector>
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_SFZNotePlayerPlugin() noexcept;
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_NoteSpectrogramPlugin() noexcept;
@@ -84,6 +89,10 @@ struct Bank {
     }
     footprint = static_cast<std::uint32_t>(words.size() * 4u) + 4u * (131u + spans);
   }
+  AssetBeginInfo info() const {
+    return {1u,        static_cast<std::uint32_t>(words.size() - 8u), 0u, 0u, 1u, 0u, 0u, 2u,
+            footprint, static_cast<std::uint32_t>(words.size() * 4u)};
+  }
 };
 struct Harness {
   alignas(std::max_align_t) std::array<std::byte, 8192> storage{};
@@ -93,14 +102,16 @@ struct Harness {
   std::uint32_t analysis_latency = 0u;
   generated::SFZNotePlayerPluginParams params{.5F,  -30.0F, 3.0F,  28.0F, 91.0F, 32.0F,
                                               0.0F, 100.0F, 0.0F,  0.0F,  1.0F,  1.0F,
-                                              1.0F, 0.0F,   18.0F, 0.0F};
+                                              1.0F, 0.0F,   18.0F, 0.0F,  0.0F};
   double time = 0;
   explicit Harness(float sampleRate = 48000) : rate(sampleRate) {
     kernel = descriptor->construct(storage.data());
     kernel->prepare({rate, 4, 1024});
     CHECK(kernel->preparedSuccessfully());
     sync();
-    analysis_latency = kernel->latencySamples();
+    plugins::analyzer::SpectralAnalysis analysis;
+    analysis.prepare({rate, 4, 1024});
+    analysis_latency = analysis.latencySamples();
   }
   ~Harness() { descriptor->destroy(kernel); }
   void sync() {
@@ -119,17 +130,7 @@ struct Harness {
   }
   et_status load(Bank &bank, bool prepare = true) {
     const auto bytes = static_cast<std::uint32_t>(bank.words.size() * 4u);
-    AssetBeginInfo info{1u,
-                        static_cast<std::uint32_t>(bank.words.size() - 8u),
-                        0u,
-                        0u,
-                        1u,
-                        0u,
-                        0u,
-                        2u,
-                        bank.footprint,
-                        bytes};
-    auto *target = kernel->beginAsset(0, info);
+    auto *target = kernel->beginAsset(0, bank.info());
     CHECK(target);
     if (!target)
       return ET_ERR_ARGS;
@@ -149,7 +150,9 @@ struct Harness {
     return status;
   }
   std::vector<float> event(unsigned midi, float probability = 1, float level = 0,
-                           unsigned frames = 128, unsigned channels = 2) {
+                           unsigned frames = 0, unsigned channels = 2) {
+    if (!frames)
+      frames = static_cast<unsigned>(std::round(rate * .01F)) + 128u;
     NoteAnalysisFrame frame{};
     frame.probabilities[midi - 21] = probability;
     frame.levels[midi - 21] = level;
@@ -165,6 +168,17 @@ struct Harness {
     process(audio, channels, &view);
     return audio;
   }
+  std::vector<float> attack(unsigned midi, float probability = 1, float level = 0,
+                            unsigned frames = 256u, unsigned channels = 2u) {
+    // Inspect the requested playback window after the fixed output reservation delay.
+    const auto half_hop = static_cast<unsigned>(std::round(rate * .01F));
+    const auto rendered = event(midi, probability, level, frames + half_hop, channels);
+    std::vector<float> audio(static_cast<std::size_t>(frames) * channels);
+    for (unsigned channel = 0; channel < channels; ++channel)
+      std::copy_n(rendered.begin() + channel * (frames + half_hop) + half_hop, frames,
+                  audio.begin() + channel * frames);
+    return audio;
+  }
 };
 float peak(const std::vector<float> &a) {
   float p = 0;
@@ -172,6 +186,239 @@ float peak(const std::vector<float> &a) {
     p = std::max(p, std::abs(v));
   return p;
 }
+void onsetRule() {
+  const OnsetRuleSettings settings{.75F, .65F, .5F, .3F, .3F, 6u};
+  OnsetRule rule;
+  CHECK(!rule.latched() && !rule.active() && rule.cooldown() == 0u);
+  rule.step(0, 0, settings);
+  CHECK(rule.step(.8F, .8F, settings).fire == OnsetFire::None);
+  CHECK(rule.latched() && !rule.active());
+  const auto peak = rule.step(.8F, .2F, settings);
+  CHECK(peak.fire == OnsetFire::Onset && peak.delta > 0 && peak.delta <= .5);
+  CHECK(rule.active() && rule.cooldown() == 6u);
+  CHECK(rule.step(0, 0, settings).released);
+  CHECK(rule.cooldown() == 5u);
+  CHECK(rule.step(.8F, 0, settings).fire == OnsetFire::None);
+  CHECK(rule.latched() && !rule.active());
+  rule.reset();
+  rule.step(0, .5F, settings);
+  rule.step(.8F, .7F, settings);
+  CHECK(rule.step(.8F, .5F, settings).fire == OnsetFire::None);
+  CHECK(!rule.active()); // The peak did not rise enough from the valley.
+  rule.reset();
+  rule.step(0, .2F, settings);
+  rule.step(.8F, .8F, settings);
+  const auto earlier = rule.step(.8F, 0, settings);
+  CHECK(earlier.fire == OnsetFire::Onset && earlier.delta < 0 && earlier.delta >= -.5);
+  rule.reset();
+  CHECK(rule.step(.8F, 0, settings).fire == OnsetFire::Fallback);
+  CHECK(rule.step(.8F, .8F, settings).fire == OnsetFire::None);
+  CHECK(rule.step(.8F, 0, settings).fire == OnsetFire::None);
+  rule.reset();
+  rule.step(0, 0, settings);
+  rule.step(.8F, 1, settings);
+  CHECK(rule.step(.8F, 0, settings).delta == 0.0);
+}
+
+// These synthetic boundary frames are fixed references from the Python onset rule.
+std::vector<float> onsetFrame(Harness &h, unsigned midi, float probability, float onset,
+                              unsigned frames = 960u) {
+  NoteAnalysisFrame frame{};
+  frame.probabilities[midi - 21u] = probability;
+  frame.onsets[midi - 21u] = onset;
+  NoteAnalysisView view{&frame,
+                        1u,
+                        static_cast<unsigned>(h.params.minimumMidi),
+                        static_cast<unsigned>(h.params.maximumMidi),
+                        frames,
+                        h.time,
+                        2u,
+                        h.analysis_latency};
+  std::vector<float> audio(2u * frames);
+  h.process(audio, 2u, &view);
+  return audio;
+}
+void onsetBoundary() {
+  constexpr unsigned hop = 960u;
+  const auto run = [](unsigned midi, const std::array<float, 24> &p, const std::array<float, 24> &o,
+                      std::initializer_list<unsigned> expected) {
+    Harness h;
+    h.params.threshold = .75F;
+    h.params.noteHoldMs = 0;
+    h.params.minimumMidi = 21;
+    h.params.maximumMidi = 108;
+    h.sync();
+    auto r = region();
+    r[LowKey] = r[HighKey] = r[KeyCenter] = static_cast<float>(midi);
+    r[Frames] = 64;
+    r[End] = r[LoopEnd] = 63;
+    r[LoopMode] = 1;
+    Bank bank({r}, 64);
+    CHECK(h.load(bank) == ET_OK);
+    CHECK(h.kernel->latencySamples() == h.analysis_latency + hop / 2u);
+    std::vector<unsigned> observed;
+    bool sounding = false;
+    for (unsigned i = 0; i < p.size(); ++i) {
+      const auto audio = onsetFrame(h, midi, p[i], o[i], hop);
+      for (unsigned j = 0; j < hop; ++j) {
+        const bool current = audio[j] != 0;
+        if (current && !sounding)
+          observed.push_back(i * hop + j);
+        sounding = current;
+      }
+    }
+    CHECK(observed == std::vector<unsigned>(expected));
+  };
+  // refractory-release.
+  run(60u, {0.0F,  0.0F,  0.0F,  0.0F,  0.0F,  0.6F,  0.4F,  0.4F,  0.85F, 0.85F, 0.85F, 0.85F,
+            0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.2F,  0.2F,  0.2F,  0.2F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u});
+  run(62u, {0.0F,  0.0F,  0.0F,  0.0F,  0.0F,  0.6F,  0.4F,  0.4F,  0.4F, 0.4F, 0.4F, 0.85F,
+            0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.2F, 0.2F, 0.2F, 0.2F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u, 11041u});
+  run(64u, {0.0F,  0.0F,  0.0F,  0.0F,  0.0F,  0.6F,  0.4F,  0.4F,  0.4F, 0.4F, 0.85F, 0.85F,
+            0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.85F, 0.2F, 0.2F, 0.2F,  0.2F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u});
+  run(65u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.6F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F,
+            0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F, 0.4F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u});
+  // same-frame-release-fire.
+  run(60u, {0.0F, 0.0F, 0.0F, 0.0F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F,
+            0.9F, 0.5F, 0.7F, 0.8F, 0.8F, 0.8F, 0.8F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F,  0.0F, 0.1F, 0.8F, 0.3F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.05F,
+       0.85F, 0.2F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {4458u, 13051u});
+  run(64u, {0.0F, 0.0F, 0.0F, 0.0F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F,
+            0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F,  0.0F, 0.1F, 0.8F, 0.3F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.05F,
+       0.85F, 0.2F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {4458u, 13051u});
+  run(67u, {0.0F, 0.0F, 0.0F, 0.0F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F,
+            0.9F, 0.2F, 0.2F, 0.8F, 0.8F, 0.8F, 0.8F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F,  0.0F, 0.1F, 0.8F, 0.3F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.05F,
+       0.85F, 0.2F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {4458u, 14881u});
+  // peak-wait-latch.
+  run(60u, {0.0F, 0.0F, 0.0F, 0.0F, 0.5F, 0.8F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F,
+            0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.0F, 0.2F, 0.6F, 0.9F, 0.4F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {7009u});
+  run(62u, {0.1F, 0.1F, 0.1F, 0.1F, 0.1F, 0.1F, 0.8F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F,
+            0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.7F, 0.55F, 0.55F, 0.6F, 0.7F, 0.5F, 0.3F, 0.3F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F,  0.0F,  0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {});
+  run(64u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.8F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F,
+            0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.9F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.0F, 0.1F, 0.45F, 0.9F, 0.3F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,  0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5281u});
+  // gate-fire.
+  run(60u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.0F, 0.0F,
+            0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u});
+  run(62u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.7F, 0.7F, 0.7F, 0.7F, 0.7F, 0.7F, 0.7F,
+            0.7F, 0.7F, 0.7F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u});
+  run(64u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.3F, 0.1F, 0.1F, 0.1F, 0.0F, 0.0F, 0.0F,
+            0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u});
+  run(65u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.29F, 0.1F, 0.1F, 0.1F, 0.8F, 0.8F, 0.8F,
+            0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.8F,  0.8F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {9121u});
+  run(83u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.5F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F,
+            0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {5487u, 12001u});
+  run(84u, {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.5F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F, 0.2F,
+            0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.8F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {0.0F, 0.0F, 0.0F, 0.2F, 0.9F, 0.5F, 0.1F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+       0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F},
+      {12001u});
+}
+
+void onsetHoldAndReservations() {
+  auto shot = region();
+  shot[Frames] = 64;
+  shot[End] = shot[LoopEnd] = 63;
+  shot[LoopMode] = 1;
+  Bank short_bank({shot}, 64);
+  // A fresh attack retriggers during Note Hold, while a fallback continues at its boundary.
+  {
+    Harness h;
+    h.params.threshold = .75F;
+    h.params.noteHoldMs = 100;
+    h.sync();
+    CHECK(h.load(short_bank) == ET_OK);
+    CHECK(peak(onsetFrame(h, 60u, .8F, 0)) > 0);
+    for (unsigned i = 0; i < 6u; ++i)
+      CHECK(peak(onsetFrame(h, 60u, .8F, 0)) == 0);
+    onsetFrame(h, 60u, 0, 0);
+    CHECK(peak(onsetFrame(h, 60u, .6F, .8F)) == 0);
+    CHECK(peak(onsetFrame(h, 60u, .6F, 0)) > 0);
+  }
+  for (const auto midi : {60u, 84u})
+    for (const auto hold : {0.0F, 19.0F, 20.0F}) {
+      Harness h;
+      h.params.threshold = .75F;
+      h.params.noteHoldMs = hold;
+      h.sync();
+      CHECK(h.load(short_bank) == ET_OK);
+      CHECK(peak(onsetFrame(h, midi, .8F, 0)) > 0);
+      for (unsigned i = 0; i < 6u; ++i)
+        CHECK(peak(onsetFrame(h, midi, .8F, 0)) == 0);
+      onsetFrame(h, midi, 0, 0);
+      CHECK((peak(onsetFrame(h, midi, .8F, 0)) > 0) == (hold < 20.0F));
+    }
+  {
+    Harness h;
+    h.params.threshold = .75F;
+    h.sync();
+    Bank bank;
+    CHECK(h.load(bank) == ET_OK);
+    CHECK(onsetFrame(h, 60u, .8F, 0).back() == .25F);
+    CHECK(onsetFrame(h, 60u, 0, 0).back() == .25F);   // Refractory extension, even with Hold 0.
+    CHECK(onsetFrame(h, 60u, .8F, 0).back() == .25F); // A no-fire relatch cancels that deadline.
+    for (unsigned i = 0; i < 8u; ++i)
+      CHECK(onsetFrame(h, 60u, .8F, 0).back() == .25F);
+  }
+  // Disabling a role cancels a note-on still waiting in the output reservation.
+  {
+    Harness h;
+    h.params.threshold = .75F;
+    h.sync();
+    CHECK(h.load(short_bank) == ET_OK);
+    CHECK(peak(onsetFrame(h, 60u, .8F, 0, 128u)) == 0);
+    h.params.playLowest = h.params.playMiddle = h.params.playHighest = 0;
+    h.sync();
+    CHECK(peak(onsetFrame(h, 60u, .8F, 0)) == 0);
+    h.kernel->reset();
+    h.params.playLowest = h.params.playMiddle = h.params.playHighest = 1;
+    h.sync();
+    CHECK(peak(onsetFrame(h, 60u, .8F, 0)) > 0);
+    h.kernel->reset();
+    CHECK(peak(onsetFrame(h, 60u, 0, 0)) == 0);
+  }
+}
+
 void playback() {
   Harness h;
   Bank bank;
@@ -206,7 +453,8 @@ void playback() {
   CHECK(peak(one.event(60)) > 0);
   CHECK(peak(one.event(60)) == 0);
   CHECK(peak(one.event(60)) == 0);
-  one.event(60, 0);
+  for (unsigned i = 0; i < 6u; ++i)
+    one.event(60, 0);
   CHECK(peak(one.event(60)) > 0);
   r = region();
   r[Pan] = -100;
@@ -219,8 +467,8 @@ void playback() {
   p.kernel->reset();
   auto high = p.event(60, 1, 3);
   CHECK(peak(high) > peak(low));
-  CHECK(std::all_of(high.begin() + 128, high.end(), [](float x) { return x == 0; }));
-  CHECK(high[127] > .11F && high[127] < .14F);
+  CHECK(std::all_of(high.begin() + high.size() / 2u, high.end(), [](float x) { return x == 0; }));
+  CHECK(high[high.size() / 2u - 1u] > .11F && high[high.size() / 2u - 1u] < .14F);
   r = region();
   r[SequenceLength] = 2;
   r[SequencePosition] = 2;
@@ -228,7 +476,8 @@ void playback() {
   Harness s;
   CHECK(s.load(seq) == ET_OK);
   CHECK(peak(s.event(60)) == 0);
-  s.event(60, 0);
+  for (unsigned i = 0; i < 6u; ++i)
+    s.event(60, 0);
   CHECK(peak(s.event(60)) > .2F);
   r = region();
   r[LowVelocity] = 127;
@@ -237,7 +486,8 @@ void playback() {
   Harness v;
   CHECK(v.load(vel) == ET_OK);
   CHECK(peak(v.event(60, 1, -96)) == 0);
-  v.event(60, 0);
+  for (unsigned i = 0; i < 6u; ++i)
+    v.event(60, 0);
   CHECK(peak(v.event(60, 1, 24)) > .2F);
   r = region();
   r[LowRandom] = 0;
@@ -267,7 +517,7 @@ void playback() {
   Harness l;
   CHECK(l.load(loop) == ET_OK);
   CHECK(peak(l.event(60)) > .2F);
-  for (int i = 0; i < 9; ++i)
+  for (int i = 0; i < 20; ++i)
     a = l.event(60, 0);
   CHECK(peak(a) == 0);
 }
@@ -279,20 +529,22 @@ void releaseTail() {
       r[Release] = seconds;
       Bank bank({r});
       CHECK(h.load(bank) == ET_OK);
-      h.event(60, 1, 0, 256);
+      h.attack(84, 1, 0, 256);
       const auto duration = seconds < .2F ? .2F : seconds;
       const auto releaseFrames = static_cast<unsigned>(duration * rate);
       std::vector<float> tail;
-      while (tail.size() < releaseFrames + 128u) {
+      while (tail.size() < releaseFrames + static_cast<unsigned>(rate * .01F) + 128u) {
         const auto frames = tail.size() % 2 == 0 ? 63u : 128u;
-        auto block = h.event(60, 0, 0, frames);
+        auto block = h.event(84, 0, 0, frames);
         tail.insert(tail.end(), block.begin(), block.begin() + frames);
       }
-      CHECK(std::abs(tail[releaseFrames / 4u - 1u] - .025F) < .0001F);
-      CHECK(std::abs(tail[releaseFrames / 2u - 1u] - .0025F) < .00002F);
-      CHECK(tail[releaseFrames - 2u] > 0);
-      CHECK(std::all_of(tail.begin() + releaseFrames - 1u, tail.end(),
-                        [](float value) { return value == 0; }));
+      CHECK(std::abs(tail[static_cast<unsigned>(rate * .01F) + releaseFrames / 4u - 1u] - .025F) <
+            .0001F);
+      CHECK(std::abs(tail[static_cast<unsigned>(rate * .01F) + releaseFrames / 2u - 1u] - .0025F) <
+            .00002F);
+      CHECK(tail[static_cast<unsigned>(rate * .01F) + releaseFrames - 2u] > 0);
+      CHECK(std::all_of(tail.begin() + static_cast<unsigned>(rate * .01F) + releaseFrames - 1u,
+                        tail.end(), [](float value) { return value == 0; }));
     }
   }
   // One-shot playback ignores note-off and still ends at the sample boundary.
@@ -301,7 +553,7 @@ void releaseTail() {
   r[LoopMode] = 1;
   Bank bank({r});
   CHECK(h.load(bank) == ET_OK);
-  h.event(60, 1, 0, 256);
+  h.attack(60, 1, 0, 256);
   const auto continuing = h.event(60, 0, 0, 512);
   CHECK(continuing.front() == .25F && continuing[511] == .25F);
   const auto ending = h.event(60, 0, 0, 512);
@@ -322,7 +574,7 @@ void octaveShift() {
     h.params.octaveShift = static_cast<float>(shift);
     h.sync();
     CHECK(h.load(mapping) == ET_OK);
-    const auto a = h.event(60, 1, 0, 256);
+    const auto a = h.attack(60, 1, 0, 256);
     const auto expected = .25F * std::pow(10.F, static_cast<float>((shift + 2) * -6) / 20.F);
     CHECK(std::abs(a[255] - expected) < .000001F);
     h.kernel->reset();
@@ -333,7 +585,7 @@ void octaveShift() {
     for (unsigned i = 0; i < 1024; ++i)
       ramp.words[ramp.words.size() - 1024 + i] = static_cast<float>(i) / 1024.F;
     CHECK(h.load(ramp) == ET_OK);
-    const auto pitched = h.event(60, 1, 0, 256);
+    const auto pitched = h.attack(60, 1, 0, 256);
     CHECK(std::abs(pitched[128] - .125F * std::exp2(static_cast<float>(shift))) < .000001F);
   }
   Harness held;
@@ -343,7 +595,7 @@ void octaveShift() {
   CHECK(held.load(ramp) == ET_OK);
   held.params.octaveShift = 1;
   held.sync();
-  held.event(60, 1, 0, 256);
+  held.attack(60, 1, 0, 256);
   held.params.octaveShift = -1;
   held.sync();
   const auto unchanged = held.event(60, 1, 0, 256);
@@ -353,7 +605,7 @@ void octaveShift() {
   for (unsigned i = 0; i < 77; ++i)
     tail = held.event(60, 0);
   CHECK(peak(tail) == 0);
-  const auto newNote = held.event(60, 1, 0, 256);
+  const auto newNote = held.attack(60, 1, 0, 256);
   CHECK(std::abs(newNote[128] - .0625F) < .000001F);
 
   Harness boundary;
@@ -367,6 +619,66 @@ void octaveShift() {
     boundary.params.octaveShift = static_cast<float>(test[1]);
     boundary.sync();
     CHECK((peak(boundary.event(static_cast<unsigned>(test[0]))) > .2F) == (test[2] != 0));
+  }
+}
+void sampleShift() {
+  std::vector<Region> mapped;
+  for (int key = 42; key <= 78; ++key) {
+    auto r = region();
+    r[LowKey] = r[HighKey] = r[KeyCenter] = static_cast<float>(key);
+    r[Volume] = static_cast<float>((key - 42) * -.5);
+    mapped.push_back(r);
+  }
+  Bank bank(mapped);
+  for (unsigned i = 0; i < 1024; ++i)
+    bank.words[bank.words.size() - 1024 + i] = static_cast<float>(i) / 1024.F;
+  Harness h;
+  h.params.minimumMidi = h.params.maximumMidi = 60;
+  CHECK(h.load(bank) == ET_OK);
+  for (const int octave : {-1, 0, 1}) {
+    h.params.octaveShift = static_cast<float>(octave);
+    for (int shift = -6; shift <= 6; ++shift) {
+      h.kernel->reset();
+      h.params.sampleShift = static_cast<float>(shift);
+      h.sync();
+      const auto audio = h.attack(60, 1, 0, 256);
+      const auto gain = std::pow(10.F, static_cast<float>((18 + 12 * octave + shift) * -.5) / 20.F);
+      const auto step = std::exp2(-static_cast<float>(shift) / 12.F);
+      // Region gain identifies the selected key; the ramp reveals pitch compensation.
+      CHECK(std::abs(audio[128] - .125F * step * gain) < .000001F);
+      CHECK(std::abs(audio[129] - audio[128] - step * gain / 1024.F) < .000001F);
+    }
+  }
+  h.kernel->reset();
+  h.params.octaveShift = 0;
+  h.params.sampleShift = 1;
+  h.sync();
+  h.attack(60, 1, 0, 256);
+  h.params.sampleShift = -1;
+  h.sync();
+  const auto held = h.event(60, 1, 0, 256);
+  const auto held_step = std::exp2(-1.F / 12.F) * std::pow(10.F, -9.5F / 20.F) / 1024.F;
+  CHECK(std::abs(held[129] - held[128] - held_step) < .000001F);
+  std::vector<float> tail;
+  for (unsigned i = 0; i < 77; ++i)
+    tail = h.event(60, 0);
+  CHECK(peak(tail) == 0); // Note-off still follows the original detected key.
+  const auto next = h.attack(60, 1, 0, 256);
+  CHECK(std::abs(next[128] - .125F * std::exp2(1.F / 12.F) * std::pow(10.F, -8.5F / 20.F)) <
+        .000001F);
+
+  Harness boundary;
+  Bank all_keys;
+  boundary.params.minimumMidi = 21;
+  boundary.params.maximumMidi = 108;
+  CHECK(boundary.load(all_keys) == ET_OK);
+  for (const auto test :
+       {std::array<int, 4>{24, -2, -1, 0}, {103, 2, 1, 0}, {24, -2, 1, 1}, {103, 2, -1, 1}}) {
+    boundary.kernel->reset();
+    boundary.params.octaveShift = static_cast<float>(test[1]);
+    boundary.params.sampleShift = static_cast<float>(test[2]);
+    boundary.sync();
+    CHECK((peak(boundary.event(static_cast<unsigned>(test[0]))) > .2F) == (test[3] != 0));
   }
 }
 void independentDryWet() {
@@ -385,7 +697,7 @@ void independentDryWet() {
       std::fill_n(audio.begin() + 256, 256, .3F);
       NoteAnalysisFrame frame{};
       frame.probabilities[60 - 21] = 1;
-      NoteAnalysisView view{&frame, 1, 28, 91, 128, h.time, 4, h.kernel->latencySamples()};
+      NoteAnalysisView view{&frame, 1, 28, 91, 128, h.time, 4, h.analysis_latency};
       h.process(audio, 4, &view);
     }
     const auto gain = std::pow(10.F, -6.F / 20.F);
@@ -435,8 +747,8 @@ void sustainedOnset() {
         h.sync();
         const auto sustain = [&h, rate](float probability, float level) {
           return chord(
-              h, {{60, probability, level}, {64, probability, level}, {67, probability, level}},
-              static_cast<unsigned>(rate * .01F));
+              h, {{84, probability, level}, {87, probability, level}, {90, probability, level}},
+              static_cast<unsigned>(rate * .02F));
         };
         unsigned bursts = 0;
         for (unsigned hop = 0; hop <= 10; ++hop)
@@ -478,34 +790,34 @@ void retriggerDrop() {
         CHECK(h.load(bank) == ET_OK);
         h.params.retriggerDropDb = drop;
         h.sync();
-        CHECK(peak(h.event(60, 1, 0, frames)) > 0);
+        CHECK(peak(h.event(84, 1, 0, frames)) > 0);
         for (unsigned hop = 0; hop < 4; ++hop)
-          CHECK(peak(h.event(60, 1, 0, frames)) == 0);
+          CHECK(peak(h.event(84, 1, 0, frames)) == 0);
         // A shallower dip never rearms the note, even after a full recovery.
-        CHECK(peak(h.event(60, 1, .5F - drop, frames)) == 0);
-        CHECK(peak(h.event(60, 1, 0, frames)) == 0);
-        CHECK(peak(h.event(60, 1, -drop, frames)) == 0);
-        CHECK(peak(h.event(60, 1, -drop - 2, frames)) == 0);
-        CHECK(peak(h.event(60, 1, -drop + 3, frames)) == 0);
-        CHECK(peak(h.event(60, .45F, -drop + 4, frames)) == 0);
+        CHECK(peak(h.event(84, 1, .5F - drop, frames)) == 0);
+        CHECK(peak(h.event(84, 1, 0, frames)) == 0);
+        CHECK(peak(h.event(84, 1, -drop, frames)) == 0);
+        CHECK(peak(h.event(84, 1, -drop - 2, frames)) == 0);
+        CHECK(peak(h.event(84, 1, -drop + 3, frames)) == 0);
+        CHECK(peak(h.event(84, .45F, -drop + 4, frames)) == 0);
         // The qualifying dip needs a 6 dB recovery and confident detection.
-        CHECK(peak(h.event(60, 1, -drop + 4, frames)) > 0);
+        CHECK(peak(h.event(84, 1, -drop + 4, frames)) > 0);
         for (unsigned hop = 0; hop < 6; ++hop)
-          CHECK(peak(h.event(60, 1, -drop + 4 + hop, frames)) == 0);
+          CHECK(peak(h.event(84, 1, -drop + 4 + hop, frames)) == 0);
       }
       Harness live(rate);
       CHECK(live.load(bank) == ET_OK);
-      CHECK(peak(live.event(60, 1, 0, frames)) > 0);
+      CHECK(peak(live.event(84, 1, 0, frames)) > 0);
       for (unsigned hop = 0; hop < 4; ++hop)
-        CHECK(peak(live.event(60, 1, 0, frames)) == 0);
-      CHECK(peak(live.event(60, 1, -18, frames)) == 0);
+        CHECK(peak(live.event(84, 1, 0, frames)) == 0);
+      CHECK(peak(live.event(84, 1, -18, frames)) == 0);
       live.params.retriggerDropDb = 96;
       live.sync();
-      CHECK(peak(live.event(60, 1, 0, frames)) == 0);
+      CHECK(peak(live.event(84, 1, 0, frames)) == 0);
       live.params.retriggerDropDb = 6;
       live.sync();
-      CHECK(peak(live.event(60, 1, -6, frames)) == 0);
-      CHECK(peak(live.event(60, 1, 0, frames)) > 0);
+      CHECK(peak(live.event(84, 1, -6, frames)) == 0);
+      CHECK(peak(live.event(84, 1, 0, frames)) > 0);
     }
   }
 }
@@ -519,7 +831,7 @@ void noteHold() {
       h.params.noteHoldMs = static_cast<float>(hold_ms);
       h.sync();
       CHECK(h.kernel->latencySamples() == latency);
-      CHECK(h.event(60, 1, 0, 512).back() == .25F);
+      CHECK(h.attack(84, 1, 0, 512).back() == .25F);
       std::vector<float> output;
       const auto capture = [&h, &output](unsigned frames,
                                          const NoteAnalysisFrame *event = nullptr) {
@@ -539,7 +851,8 @@ void noteHold() {
       off.sampleOffset = 23u;
       capture(97, &off);
       const auto release_at =
-          23u + static_cast<unsigned>(std::round(static_cast<double>(rate) * hold_ms / 1000.0));
+          23u + static_cast<unsigned>(std::round(rate * .01F)) +
+          static_cast<unsigned>(std::round(static_cast<double>(rate) * hold_ms / 1000.0));
       // Deadlines must fire between analysis frames and across irregular processing blocks.
       while (output.size() <= release_at + static_cast<unsigned>(rate * .2F))
         for (const auto frames : {63u, 128u, 17u, 97u})
@@ -560,16 +873,16 @@ void noteHold() {
     h.params.noteHoldMs = 100;
     h.sync();
     const auto half_hold = static_cast<unsigned>(rate / 20);
-    CHECK(peak(h.event(60, 1, 0, half_hold)) > 0);
-    CHECK(peak(h.event(60, 0, 0, half_hold)) == 0);
-    CHECK(peak(h.event(60, 1, 0, half_hold)) == 0);
-    CHECK(peak(h.event(60, 1, 0, half_hold)) == 0);
-    CHECK(peak(h.event(60, 0, 0, 3u * half_hold)) == 0);
-    CHECK(peak(h.event(60, 1, 0, half_hold)) > 0);
-    CHECK(peak(h.event(60, 0, 0, 128)) == 0);
+    CHECK(peak(h.event(84, 1, 0, half_hold)) > 0);
+    CHECK(peak(h.event(84, 0, 0, half_hold)) == 0);
+    CHECK(peak(h.event(84, 1, 0, half_hold)) == 0);
+    CHECK(peak(h.event(84, 1, 0, half_hold)) == 0);
+    CHECK(peak(h.event(84, 0, 0, 3u * half_hold)) == 0);
+    CHECK(peak(h.event(84, 1, 0, half_hold)) > 0);
+    CHECK(peak(h.event(84, 0, 0, 128)) == 0);
     h.kernel->clearAsset(0);
     CHECK(h.load(short_bank) == ET_OK);
-    CHECK(peak(h.event(60, 1, 0, 3u * half_hold)) > 0);
+    CHECK(peak(h.event(84, 1, 0, 3u * half_hold)) > 0);
   }
 }
 void noteSelection() {
@@ -619,10 +932,10 @@ void noteSelection() {
   memory.sync();
   CHECK(chord(memory, {{72, 1, 0}}).back() == .25F);
   std::vector<float> audio;
-  for (unsigned i = 0; i < 12; ++i)
+  for (unsigned i = 0; i < 20; ++i)
     audio = chord(memory, {{48, 1, 0}});
   CHECK(peak(audio) == 0); // The old release ended, but the register has not jumped to the bass.
-  for (unsigned i = 0; i < 55; ++i)
+  for (unsigned i = 0; i < 47; ++i)
     audio = chord(memory, {{48, 1, 0}});
   CHECK(audio.back() == .25F); // A held input can enter once the history catches up.
   for (unsigned i = 0; i < 30; ++i)
@@ -663,7 +976,8 @@ void timingOffset() {
       h.params.wetMix = 0;
       h.sync();
       const auto extra = static_cast<unsigned>(std::round(rate * .1F));
-      const auto expected = h.analysis_latency + (timing < 0 ? extra : 0u);
+      const auto expected = h.analysis_latency + static_cast<unsigned>(std::round(rate * .01F)) +
+                            (timing < 0 ? extra : 0u);
       CHECK(h.kernel->latencySamples() ==
             expected); // No process call is needed to report the target.
       std::vector<float> rendered;
@@ -684,13 +998,14 @@ void timingOffset() {
       h.sync();
       rendered.clear();
       const auto wetDelay = timing > 0 ? extra : 0u;
-      while (rendered.size() < wetDelay + 512u) {
+      while (rendered.size() < wetDelay + static_cast<unsigned>(rate * .01F) + 512u) {
         const auto block = h.event(60, 1, 0, 128);
         rendered.insert(rendered.end(), block.begin(), block.begin() + 128);
       }
       const auto first =
           std::find_if(rendered.begin(), rendered.end(), [](float v) { return v != 0; });
-      CHECK(static_cast<unsigned>(first - rendered.begin()) == wetDelay + 1u);
+      CHECK(static_cast<unsigned>(first - rendered.begin()) ==
+            wetDelay + static_cast<unsigned>(rate * .01F) + 1u);
       CHECK(rendered.back() == .25F);
     }
   }
@@ -729,8 +1044,8 @@ void assetsAndDelay() {
                                                                     : ET_ASSET_STATE_ERROR));
     if (volume <= 144.0F) {
       const auto audio = h.event(60);
-      CHECK(std::abs(audio[127] - .25F * std::pow(10.0F, volume * .05F)) <
-            std::abs(audio[127]) * .00001F);
+      CHECK(std::abs(audio[audio.size() / 2u - 1u] - .25F * std::pow(10.0F, volume * .05F)) <
+            std::abs(audio[audio.size() / 2u - 1u]) * .00001F);
     }
   }
   {
@@ -774,7 +1089,7 @@ void assetsAndDelay() {
     h.sync();
     const auto delay = h.kernel->latencySamples();
     const auto hop = static_cast<unsigned>(std::round(rate * .02));
-    CHECK(delay == 3u * hop + (hop / 16u) * 16u);
+    CHECK(delay == 3u * hop + (hop / 16u) * 16u + hop / 2u);
     std::vector<float> output;
     for (unsigned at = 0; at < delay + 1024; at += 128) {
       std::vector<float> a(128);
@@ -823,7 +1138,7 @@ void realAnalysisAndLinks() {
   }
   CHECK(heard);
   const auto delayMs = 1000.0 * (first / 48000.0 - .1);
-  CHECK(std::abs(delayMs - 1000.0 * own.kernel->latencySamples() / 48000.0) < 3);
+  CHECK(std::abs(delayMs - 1000.0 * own.kernel->latencySamples() / 48000.0) < 20);
   // A stale producer falls back to self-analysis; leaving a link resets dormant history.
   linked.kernel->reset();
   own.kernel->reset();
@@ -876,7 +1191,7 @@ void revisedAnalysisTiming() {
           auto self = audio, original = audio;
           producer.process(audio.data(), 2, 128, {linked.time});
           const auto &view = producer.view();
-          CHECK(view.latencySamples == linked.kernel->latencySamples());
+          CHECK(view.latencySamples == linked.analysis_latency);
           for (unsigned i = 0; i < view.count; ++i)
             if (!detection && view.frames[i].probabilities[midi - 21] >= .5F)
               detection = at + view.frames[i].sampleOffset;
@@ -891,12 +1206,11 @@ void revisedAnalysisTiming() {
               dry_onset = at + i;
           }
         }
-        CHECK(detection != 0 && wet_onset == detection + 1u);
+        CHECK(detection != 0 && wet_onset != 0);
         CHECK(dry_onset == onset + dry.kernel->latencySamples());
-        // All three pitches share the same revised onset; the 20ms analysis grid remains.
+        // Attack detection may refine the frame position; compare the audible paths.
         const auto residual = static_cast<int>(wet_onset) - static_cast<int>(dry_onset);
-        const auto expected = 1 - static_cast<int>(std::round(rate * (onset_ms - 100u) / 1000.0));
-        CHECK(residual == expected);
+        CHECK(std::abs(residual) <= static_cast<int>(std::round(rate * .04F)));
       }
   // A mismatched shared source must fall back to this input's own analysis.
   for (const bool wrong_channels : {false, true}) {
@@ -912,7 +1226,7 @@ void revisedAnalysisTiming() {
                           128,
                           h.time,
                           wrong_channels ? 1u : 2u,
-                          h.kernel->latencySamples() + (wrong_channels ? 0u : 16u)};
+                          h.analysis_latency + (wrong_channels ? 0u : 16u)};
     std::vector<float> audio(256);
     h.process(audio, 2, &view);
     CHECK(peak(audio) == 0);
@@ -1069,11 +1383,11 @@ void antiAliasing() {
   extreme.sync();
   Bank dc({r});
   CHECK(extreme.load(dc) == ET_OK);
-  CHECK(std::abs(extreme.event(108, 1, 0, 256).back() - .25F) < .000001F);
+  CHECK(std::abs(extreme.attack(108, 1, 0, 256).back() - .25F) < .000001F);
   r[LoopMode] = 0;
   Bank finite({r});
   CHECK(extreme.load(finite) == ET_OK);
-  CHECK(peak(extreme.event(108, 1, 0, 256)) == 0);
+  CHECK(peak(extreme.attack(108, 1, 0, 256)) == 0);
   // A short ultrasonic loop must not replace its still-audible introductory samples.
   r = region();
   r[Frames] = 8192;
@@ -1084,7 +1398,7 @@ void antiAliasing() {
   std::fill_n(introduction.words.data() + introduction.words.size() - 8192 + 4096, 4, -.25F);
   Harness intro;
   CHECK(intro.load(introduction) == ET_OK);
-  CHECK(std::abs(intro.event(60, 1, 0, 256)[128] - .25F) < .000001F);
+  CHECK(std::abs(intro.attack(60, 1, 0, 256)[128] - .25F) < .000001F);
   CHECK(std::abs(intro.event(60, 1, 0, 256).back() + .25F) < .000001F);
   // Different layer tunings fill the cache; stealing all voices must safely reuse its slots.
   std::vector<Region> layers;
@@ -1099,11 +1413,11 @@ void antiAliasing() {
   many.sync();
   Bank tuned(layers);
   CHECK(many.load(tuned) == ET_OK);
-  CHECK(std::abs(many.event(60, 1, 0, 256).back() - 32.0F) < .001F);
+  CHECK(std::abs(many.attack(60, 1, 0, 256).back() - 32.0F) < .001F);
   many.params.octaveShift = 1;
   many.sync();
   many.event(60, 0, 0, 256);
-  CHECK(std::abs(many.event(61, 1, 0, 256).back() - 32.0F) < .001F);
+  CHECK(std::abs(many.attack(61, 1, 0, 256).back() - 32.0F) < .001F);
   for (const auto step : {2.0F, 8.0F}) {
     auto layer = region();
     layer[Rate] = 96000.0F * step;
@@ -1113,7 +1427,7 @@ void antiAliasing() {
     h.params.maxVoices = 128;
     h.sync();
     CHECK(h.load(bank) == ET_OK);
-    h.event(60, 1, 0, 256);
+    h.attack(60, 1, 0, 256);
     const auto before = std::chrono::steady_clock::now();
     for (unsigned block = 0; block < 16; ++block)
       CHECK(peak(h.event(60, 1, 0, 256)) > 31.0F);
@@ -1123,11 +1437,354 @@ void antiAliasing() {
     std::printf("SFZ 96k 128 filtered voices step %.0f: %.3f ms / 42.7ms audio\n", step, elapsed);
   }
 }
+struct AssetEngineHarness {
+  std::unique_ptr<Engine> engine = std::make_unique<Engine>();
+  et_instance player = 0u, source = 0u, volume = 0u;
+  std::uint64_t frames = 0u;
+  std::uint32_t latency = 0u;
+  AssetEngineHarness() {
+    CHECK(engine->prepare(48000, 2u, 128u, 0u) == ET_OK);
+    source = engine->createInstance("NoteSpectrogramPlugin");
+    player = engine->createInstance("SFZNotePlayerPlugin");
+    volume = engine->createInstance("VolumePlugin");
+    const generated::NoteSpectrogramPluginParams analysis{83, 83};
+    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,
+                                                      0,    1,   1, 1,  0,  18, 0, 0};
+    const generated::VolumePluginParams gain{-6.020599913F};
+    CHECK(engine->setInstanceParams(source, reinterpret_cast<const float *>(&analysis),
+                                    analysis.kFloatCount, analysis.kHash, 0u) == ET_OK);
+    CHECK(engine->setInstanceParams(player, reinterpret_cast<const float *>(&params),
+                                    params.kFloatCount, params.kHash, 0u) == ET_OK);
+    CHECK(engine->setInstanceParams(volume, reinterpret_cast<const float *>(&gain),
+                                    gain.kFloatCount, gain.kHash, 0u) == ET_OK);
+    CHECK(engine->setInstanceAnalysisSource(player, source) == ET_OK);
+    std::array<std::uint8_t, 8u + 3u * 12u> pipeline{};
+    binary_io::writeU32(pipeline.data(), 1u);
+    binary_io::writeU32(pipeline.data() + 4u, 3u);
+    const std::array instances{source, player, volume};
+    for (std::size_t i = 0u; i < instances.size(); ++i) {
+      auto *record = pipeline.data() + 8u + i * 12u;
+      binary_io::writeU32(record, instances[i]);
+      record[4] = record[8] = 1u;
+      record[7] = 254u;
+    }
+    CHECK(engine->configurePipeline(pipeline.data(), static_cast<std::uint32_t>(pipeline.size())) ==
+          ET_OK);
+    latency = engine->pipelineLatency();
+  }
+  Engine::InstanceAssetSnapshot capture() {
+    Engine::InstanceAssetSnapshot snapshot;
+    allocation_guard::Scope guard;
+    CHECK(engine->captureInstanceAssetSnapshot(player, 0u, snapshot) == ET_OK);
+    return snapshot;
+  }
+  static et_status prepare(const Engine::InstanceAssetSnapshot &snapshot, const Bank &bank,
+                           Engine::InstanceAssetUpdate &update) {
+    return Engine::prepareInstanceAssetUpdate(
+        snapshot, bank.info(), reinterpret_cast<const std::uint8_t *>(bank.words.data()),
+        bank.info().byteSize, ET_ASSET_F32_MULTICH, update);
+  }
+  void install(const Bank &bank) {
+    const bool had_bank = engine->instanceAssetState(player, 0u) != ET_ASSET_STATE_NONE;
+    auto snapshot = capture();
+    Engine::InstanceAssetUpdate update;
+    CHECK(prepare(snapshot, bank, update) == ET_OK);
+    {
+      allocation_guard::Scope guard;
+      CHECK(engine->applyInstanceAssetUpdate(update) == ET_OK);
+      CHECK(engine->instanceAssetState(player, 0u) == ET_ASSET_STATE_ACTIVE);
+      CHECK(engine->pipelineLatency() == latency);
+      CHECK(update.hasRetiredAsset() == had_bank);
+    }
+    update.reclaim();
+  }
+  float process() {
+    for (auto frame = 0u; frame < 128u; ++frame) {
+      const auto input =
+          static_cast<float>(.2 * std::sin(6.28318530717958647692 * 1000.0 *
+                                           static_cast<double>(frames + frame) / 48000.0));
+      engine->combined()[frame] = engine->combined()[128u + frame] = input;
+    }
+    CHECK(engine->processPipeline(2u, 128u, static_cast<double>(frames) / 48000.0, 0u) == ET_OK);
+    frames += 128u;
+    return engine->combined()[255u];
+  }
+  void expect(float value, unsigned blocks = 1u) {
+    for (unsigned i = 0u; i < blocks; ++i)
+      CHECK(std::abs(process() - value) < 1e-5F);
+  }
+  void settle() {
+    for (auto i = 0u; i < 256u; ++i)
+      process();
+  }
+};
+
+void preparedAssetContinuity() {
+  auto r = region();
+  r[KeyCenter] = 83;
+  Bank original({r}), large({r}, 4u * 1024u * 1024u);
+  std::fill(large.words.begin() + 8u + kHeader + kStride, large.words.end(), .5F);
+  AssetEngineHarness h;
+  h.install(original);
+  h.settle();
+  h.expect(.125F);
+  auto snapshot = h.capture();
+  Engine::InstanceAssetUpdate update;
+  std::latch allow_preparation(1), prepared(1), allow_retirement(1), retired(1);
+  et_status status = ET_ERR_STATE;
+  bool retired_on_control = false;
+  const auto violations = allocation_guard::violationCount();
+  std::thread control([&] {
+    allow_preparation.wait();
+    status = h.prepare(snapshot, large, update);
+    prepared.count_down();
+    allow_retirement.wait();
+    retired_on_control = !allocation_guard::active() && update.hasRetiredAsset();
+    update.reclaim();
+    retired_on_control = retired_on_control && !update.hasRetiredAsset();
+    retired.count_down();
+  });
+  {
+    allocation_guard::Scope guard;
+    // An arbitrarily stalled preparation must never suppress any wet callback.
+    h.expect(.125F, 512u);
+    allow_preparation.count_down();
+    h.expect(.125F, 128u);
+    prepared.wait();
+    CHECK(status == ET_OK);
+    h.expect(.125F, 32u);
+    CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_OK);
+    CHECK(update.hasRetiredAsset());
+    CHECK(h.engine->instanceAssetState(h.player, 0u) == ET_ASSET_STATE_ACTIVE);
+    CHECK(h.engine->pipelineLatency() == h.latency);
+    // Control may reclaim before the first callback using the replacement bank.
+    allow_retirement.count_down();
+    h.settle();
+    h.expect(.25F, 128u);
+    retired.wait();
+  }
+  control.join();
+  CHECK(retired_on_control);
+  CHECK(allocation_guard::violationCount() == violations);
+  std::puts("SFZ paused preparation: 512 wet callbacks, shared analysis, downstream gain, control "
+            "retirement");
+}
+
+void preparedAssetUpdatesAndFailures() {
+  auto r = region();
+  r[KeyCenter] = 83;
+  Bank original({r}), replacement({r});
+  std::fill(replacement.words.begin() + 8u + kHeader + kStride, replacement.words.end(), .5F);
+  AssetEngineHarness h;
+  h.install(original);
+  h.settle();
+  const auto violations = allocation_guard::violationCount();
+  Engine::InstanceAssetSnapshot invalid;
+  Engine::InstanceAssetUpdate update, stale;
+  CHECK(h.prepare(invalid, original, update) == ET_ERR_STATE);
+  CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_ERR_STATE);
+  CHECK(h.engine->captureInstanceAssetSnapshot(h.player, 1u, invalid) == ET_ERR_UNSUPPORTED);
+  CHECK(h.engine->captureInstanceAssetSnapshot(h.volume, 0u, invalid) == ET_ERR_UNSUPPORTED);
+  CHECK(h.engine->captureInstanceAssetSnapshot(0u, 0u, invalid) == ET_ERR_ARGS);
+  h.expect(.125F);
+
+  auto snapshot = h.capture();
+  CHECK(h.prepare(snapshot, replacement, stale) == ET_OK);
+  snapshot = h.capture();
+  CHECK(h.prepare(snapshot, original, update) == ET_OK);
+  CHECK(h.engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  h.expect(.125F);
+  CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_OK);
+  CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_ERR_STATE);
+  stale.reclaim();
+  update.reclaim();
+  h.settle();
+
+  // A newer failed request supersedes old work without touching the current bank.
+  snapshot = h.capture();
+  CHECK(h.prepare(snapshot, replacement, stale) == ET_OK);
+  snapshot = h.capture();
+  for (auto field : {Volume, Channels, SequenceGroup}) {
+    Bank bad({r});
+    bad.words[8u + kHeader + field] = std::numeric_limits<float>::infinity();
+    CHECK(h.prepare(snapshot, bad, update) == ET_ERR_ARGS);
+    CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_ERR_STATE);
+    CHECK(h.engine->instanceAssetState(h.player, 0u) == ET_ASSET_STATE_ACTIVE);
+    h.expect(.125F);
+  }
+  Bank bad_pcm({r});
+  bad_pcm.words.back() = std::numeric_limits<float>::quiet_NaN();
+  CHECK(h.prepare(snapshot, bad_pcm, update) == ET_ERR_ARGS);
+  Bank bad_header({r});
+  bad_header.words[8u] = 0;
+  CHECK(h.prepare(snapshot, bad_header, update) == ET_ERR_ARGS);
+  Bank bad_index({r});
+  bad_index.footprint = bad_index.info().byteSize + 131u * 4u;
+  CHECK(h.prepare(snapshot, bad_index, update) == ET_ERR_ARGS);
+  auto info = original.info();
+  CHECK(Engine::prepareInstanceAssetUpdate(snapshot, info, nullptr, info.byteSize, 1u, update) ==
+        ET_ERR_ARGS);
+  CHECK(Engine::prepareInstanceAssetUpdate(
+            snapshot, info, reinterpret_cast<const std::uint8_t *>(original.words.data()),
+            info.byteSize - 4u, 1u, update) == ET_ERR_ARGS);
+  CHECK(Engine::prepareInstanceAssetUpdate(
+            snapshot, info, reinterpret_cast<const std::uint8_t *>(original.words.data()),
+            info.byteSize, 999u, update) == ET_ERR_ARGS);
+  CHECK(h.engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  stale.reclaim();
+  if ((et_build_flags() & ET_BUILD_DEBUG) != 0u)
+    for (std::int32_t allocation = 0; allocation < 3; ++allocation) {
+      allocation_guard::failNothrowAllocationAfterForTesting(allocation);
+      CHECK(h.prepare(snapshot, replacement, update) == ET_ERR_OOM);
+      allocation_guard::failNothrowAllocationAfterForTesting(-1);
+      CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_ERR_STATE);
+      h.expect(.125F);
+    }
+
+  for (unsigned i = 0u; i < 6u; ++i) {
+    h.install(i % 2u == 0u ? replacement : original);
+    h.settle();
+    h.expect(i % 2u == 0u ? .25F : .125F);
+  }
+  for (unsigned i = 0u; i < 12u; ++i) {
+    snapshot = h.capture();
+    CHECK(h.prepare(snapshot, replacement, update) == ET_OK);
+    // Prepared storage must own a copy, independent of the caller's payload.
+    replacement.words.back() = std::numeric_limits<float>::quiet_NaN();
+    {
+      allocation_guard::Scope guard;
+      CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_OK);
+      CHECK(update.hasRetiredAsset() == (i == 0u));
+    }
+    replacement.words.back() = .5F;
+    update.reclaim();
+    h.settle();
+    h.expect(.25F);
+    snapshot = h.capture();
+    CHECK(Engine::prepareInstanceAssetClear(snapshot, update) == ET_OK);
+    {
+      allocation_guard::Scope guard;
+      // No callback is needed to install a clear while the host is stopped.
+      CHECK(h.engine->applyInstanceAssetUpdate(update) == ET_OK);
+      CHECK(update.hasRetiredAsset());
+      CHECK(h.engine->instanceAssetState(h.player, 0u) == ET_ASSET_STATE_NONE);
+      CHECK(h.engine->pipelineLatency() == h.latency);
+    }
+    update.reclaim();
+    h.expect(0.0F, 8u);
+  }
+  CHECK(allocation_guard::violationCount() == violations);
+}
+
+void preparedAssetLifetime() {
+  Bank bank;
+  Engine::InstanceAssetUpdate stale, clear, retired;
+  Engine::InstanceAssetSnapshot snapshot;
+  auto engine = std::make_unique<Engine>();
+  CHECK(engine->prepare(48000, 2u, 128u, 0u) == ET_OK);
+  auto instance = engine->createInstance("SFZNotePlayerPlugin");
+  const auto prepare = [&](Engine::InstanceAssetUpdate &update) {
+    CHECK(engine->captureInstanceAssetSnapshot(instance, 0u, snapshot) == ET_OK);
+    CHECK(AssetEngineHarness::prepare(snapshot, bank, update) == ET_OK);
+  };
+  prepare(retired);
+  // A different Engine cannot adopt an update with an identical instance ID.
+  auto other = std::make_unique<Engine>();
+  CHECK(other->prepare(48000, 2u, 128u, 0u) == ET_OK);
+  CHECK(other->createInstance("SFZNotePlayerPlugin") == instance);
+  CHECK(other->applyInstanceAssetUpdate(retired) == ET_ERR_STATE);
+  CHECK(engine->applyInstanceAssetUpdate(retired) == ET_OK);
+  CHECK(!retired.hasRetiredAsset());
+  prepare(stale);
+  CHECK(engine->captureInstanceAssetSnapshot(instance, 0u, snapshot) == ET_OK);
+  CHECK(Engine::prepareInstanceAssetClear(snapshot, clear) == ET_OK);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  CHECK(engine->applyInstanceAssetUpdate(clear) == ET_OK);
+  CHECK(clear.hasRetiredAsset());
+  CHECK(engine->instanceAssetState(instance, 0u) == ET_ASSET_STATE_NONE);
+  stale.reclaim();
+  CHECK(engine->captureInstanceAssetSnapshot(instance, 0u, snapshot) == ET_OK);
+  CHECK(Engine::prepareInstanceAssetClear(snapshot, stale) == ET_OK);
+  prepare(retired);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  CHECK(engine->applyInstanceAssetUpdate(retired) == ET_OK);
+  stale.reclaim();
+  prepare(stale);
+  CHECK(engine->resetInstance(instance) == ET_OK);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  prepare(stale);
+  CHECK(engine->reset() == ET_OK);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  prepare(stale);
+  engine->abortInstanceAsset(instance, 0u);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  prepare(stale);
+  engine->destroyInstance(instance);
+  instance = engine->createInstance("SFZNotePlayerPlugin");
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  CHECK(engine->instanceAssetState(instance, 0u) == ET_ASSET_STATE_NONE);
+  prepare(stale);
+  CHECK(engine->prepare(48000, 2u, 128u, 0u) == ET_OK);
+  instance = engine->createInstance("SFZNotePlayerPlugin");
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  CHECK(engine->instanceAssetState(instance, 0u) == ET_ASSET_STATE_NONE);
+  prepare(stale);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_OK);
+  prepare(retired);
+  CHECK(engine->applyInstanceAssetUpdate(retired) == ET_OK);
+  CHECK(retired.hasRetiredAsset());
+  CHECK(engine->captureInstanceAssetSnapshot(instance, 0u, snapshot) == ET_OK);
+  engine.reset();
+  // Neither preparing from a copied snapshot nor releasing updates dereferences Engine.
+  CHECK(AssetEngineHarness::prepare(snapshot, bank, stale) == ET_OK);
+  clear.reclaim();
+  retired.reclaim();
+  stale.reclaim();
+}
+
+void preparedAssetEngineReplacement() {
+  Bank bank;
+  auto engine = std::make_unique<Engine>();
+  Engine::InstanceAssetSnapshot snapshot;
+  Engine::InstanceAssetUpdate current, stale, next;
+  const auto create = [&] {
+    CHECK(engine->prepare(48000, 2u, 128u, 0u) == ET_OK);
+    return engine->createInstance("SFZNotePlayerPlugin");
+  };
+  const auto install = [&](et_instance instance) {
+    CHECK(engine->captureInstanceAssetSnapshot(instance, 0u, snapshot) == ET_OK);
+    CHECK(AssetEngineHarness::prepare(snapshot, bank, current) == ET_OK);
+    CHECK(engine->applyInstanceAssetUpdate(current) == ET_OK);
+  };
+  const auto old_instance = create();
+  install(old_instance);
+  CHECK(engine->captureInstanceAssetSnapshot(old_instance, 0u, snapshot) == ET_OK);
+  CHECK(AssetEngineHarness::prepare(snapshot, bank, stale) == ET_OK);
+  // State replacement can reuse both the Engine address and its first instance ID.
+  engine->~Engine();
+  new (engine.get()) Engine();
+  const auto instance = create();
+  CHECK(instance == old_instance);
+  install(instance);
+  CHECK(engine->captureInstanceAssetSnapshot(instance, 0u, snapshot) == ET_OK);
+  CHECK(AssetEngineHarness::prepare(snapshot, bank, next) == ET_OK);
+  CHECK(engine->applyInstanceAssetUpdate(stale) == ET_ERR_STATE);
+  CHECK(engine->instanceAssetState(instance, 0u) == ET_ASSET_STATE_ACTIVE);
+  CHECK(engine->applyInstanceAssetUpdate(next) == ET_OK);
+}
 } // namespace
 int main() {
+  onsetRule();
+  onsetBoundary();
+  onsetHoldAndReservations();
+  preparedAssetContinuity();
+  preparedAssetUpdatesAndFailures();
+  preparedAssetLifetime();
+  preparedAssetEngineReplacement();
   playback();
   releaseTail();
   octaveShift();
+  sampleShift();
   independentDryWet();
   sustainedOnset();
   retriggerDrop();

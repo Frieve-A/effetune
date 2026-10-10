@@ -67,11 +67,13 @@ export class VisualizerRenderer {
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
                 item.palette, item.style, item.effects, item.color, text, editing]);
-            const changed = state.signature !== signature || state.frame !== frame || state.image !== image ||
+            let changed = state.signature !== signature || state.frame !== frame || state.image !== image ||
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
                 state.display ||= createAnalyzerDisplay(item, state.canvas, sources);
-                state.display?.draw(item, time, width / graphScale, layout.background.themeColors, stageScale);
+                const rendered = state.display?.draw(item, time, width / graphScale, layout.background.themeColors, stageScale);
+                changed = state.signature !== signature || state.image !== image || rendered !== false;
+                state.signature = signature; state.frame = frame; state.image = image;
             } else if (changed) {
                 this.drawItem(state, item, metadata, image, time, editing);
                 state.signature = signature; state.frame = frame; state.image = image;
@@ -79,7 +81,7 @@ export class VisualizerRenderer {
             const signal = state.display?.signalCanvas;
             const flipCanvas = !ANALYZER_TYPES.has(item.type);
             const output = this.effects.apply(item.id, signal || state.canvas, item.effects, time, modulators, this.quality,
-                changed || !flipCanvas, flipCanvas && item.flipX, flipCanvas && item.flipY, stageScale,
+                changed, flipCanvas && item.flipX, flipCanvas && item.flipY, stageScale,
                 { width: stage.width, height: stage.height,
                     centerX: (item.rect.x + item.rect.w / 2) * stage.width,
                     centerY: (item.rect.y + item.rect.h / 2) * stage.height });

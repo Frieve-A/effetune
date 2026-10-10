@@ -451,6 +451,52 @@ test('a change nobody made with a gesture is replaced by the host value', async 
     assertConverged(host, [a], 'ungestured');
 });
 
+test('drag boundaries keep one operation id and flush the final value before the next drag', async () => {
+    const clock = new Clock();
+    const requests = [];
+    const adapter = new FakeAdapter();
+    const engine = new SyncEngine({
+        adapter,
+        send: message => { requests.push(message); return new Promise(() => {}); },
+        now: () => clock.t,
+        setTimer: (fn, ms) => clock.at(ms, fn),
+        clearTimer: handle => clock.cancel(handle)
+    });
+    engine.onConnected();
+    engine.onState({ op: 'state', rev: 1, epoch: 'e1', slot: 'A', ids: ['h.1'], pipeline: [{ nm: 'Volume', en: true, vl: 0 }] });
+    const firstToken = {};
+    engine.beginOperation(firstToken);
+    adapter.model.pipeline[0].vl = -3;
+    engine.markDirty('h.1');
+    await clock.run(100);
+    await clock.run(1600);
+    engine.noteGesture();
+    adapter.model.pipeline[0].vl = -6;
+    engine.markDirty('h.1');
+    engine.endOperation(firstToken);
+    assert.deepEqual(requests.map(request => request.ops), [
+        [{ t: 'set', id: 'h.1', p: { vl: -3 } }],
+        [{ t: 'set', id: 'h.1', p: { vl: -6 } }], []
+    ]);
+    assert.match(requests[0].operation, /^[0-9a-f]{32}$/);
+    assert.ok(requests.every(request => request.operation === requests[0].operation));
+    assert.equal(requests[2].operationEnd, true);
+
+    const secondToken = {};
+    engine.beginOperation(secondToken);
+    adapter.model.pipeline[0].vl = -9;
+    engine.markDirty('h.1');
+    engine.endOperation(firstToken);
+    assert.equal(requests.length, 3, 'a previous token cannot close the current drag');
+    engine.endOperation(secondToken);
+    assert.notEqual(requests[3].operation, requests[0].operation);
+    assert.deepEqual(requests[3].ops, [{ t: 'set', id: 'h.1', p: { vl: -9 } }]);
+    assert.equal(requests[4].operationEnd, true);
+    await clock.run(1700);
+    assert.equal(requests.length, 5, 'the scheduled flush cannot resend a completed drag');
+    engine.onDisconnected();
+});
+
 test('a batch without an ack is dropped after the timeout and the state is requested again', async () => {
     const clock = new Clock();
     const requests = [];

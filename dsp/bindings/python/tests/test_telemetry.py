@@ -17,6 +17,26 @@ HQ_MIN_FREQUENCY = 20.0
 HQ_MAX_FREQUENCY = 40_000.0
 
 
+class OscilloscopeEnvelopeTest(unittest.TestCase):
+    def test_ten_second_rolling_envelope_with_64_bit_clock(self) -> None:
+        payload_bytes = 28 + 4096 * 8
+        packet = bytearray(16 + payload_bytes)
+        struct.pack_into("<HHIIH", packet, 0, 3, 3, 7, 0, payload_bytes)
+        struct.pack_into("<fIIHBBIQ", packet, 16, 384000, 3840000, 0, 4096, 2, 2, 938, 0x1_0000_0001)
+        struct.pack_into("<ff", packet, 44, -0.75, 0.5)
+        nodes = {7: ("Oscilloscope", "scope", 0)}
+        frames, _ = _decode_telemetry_packet(packet, nodes, 0)
+        self.assertEqual(len(frames), 1)
+        frame = frames[0]
+        self.assertEqual(frame.encoding, "envelope")
+        self.assertTrue(frame.rolling)
+        self.assertEqual(frame.end_sample, 0x1_0000_0001)
+        self.assertEqual(frame.capture_sample_count, 3840000)
+        self.assertEqual(frame.extrema[:2], (-0.75, 0.5))
+        struct.pack_into("<f", packet, 44, 1)
+        self.assertEqual(_decode_telemetry_packet(packet, nodes, 0)[0], [])
+
+
 def _valid_range(
     frame_type: int, cell_count: int, sample_rate: float
 ) -> tuple[int, int]:

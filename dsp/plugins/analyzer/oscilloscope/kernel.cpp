@@ -19,8 +19,17 @@ constexpr std::uint32_t kPayloadHeaderBytes = 16u;
 constexpr std::uint32_t kM4BucketBytes = 18u;
 constexpr std::uint8_t kRawEncoding = 0u;
 constexpr std::uint8_t kM4Encoding = 1u;
+constexpr std::uint8_t kEnvelopeEncoding = 2u;
 constexpr std::uint8_t kTriggeredFlag = 1u << 0u;
-constexpr std::uint32_t kMaxPayloadBytes = kPayloadHeaderBytes + kM4BucketCount * kM4BucketBytes;
+constexpr std::uint8_t kRollingFlag = 1u << 1u;
+constexpr std::uint32_t kEnvelopeBuckets = 4096u;
+constexpr std::uint32_t kEnvelopeRingBuckets = 8192u;
+constexpr std::uint32_t kEnvelopeRingMask = kEnvelopeRingBuckets - 1u;
+constexpr std::uint32_t kMaxEnvelopeBuckets = 8188u;
+constexpr std::uint32_t kEnvelopeHeaderBytes = 28u;
+constexpr std::uint32_t kMaxPayloadBytes = kEnvelopeHeaderBytes + kMaxEnvelopeBuckets * 8u;
+
+static_assert(kMaxPayloadBytes <= UINT16_MAX);
 
 static_assert((kRingSamples + kM4BucketCount - 1u) / kM4BucketCount <= 256u);
 
@@ -37,6 +46,7 @@ public:
   void prepare(const PrepareInfo &info) override {
     sample_rate_ = info.sampleRate;
     ring_.resize(kRingSamples);
+    envelope_.resize(kEnvelopeRingBuckets * 2u);
     payload_.resize(kMaxPayloadBytes);
     building_payload_.resize(kMaxPayloadBytes);
     reset();
@@ -53,6 +63,10 @@ public:
       byte = 0u;
     }
     buffer_position_ = 0u;
+    rolling_samples_ = 0u;
+    rolling_bucket_samples_ = 1u;
+    rolling_bucket_index_ = 0u;
+    rolling_bucket_fill_ = 0u;
     trigger_index_ = 0u;
     last_trigger_time_ = 0.0;
     last_auto_sweep_time_ = 0.0;
@@ -81,11 +95,39 @@ public:
 
     synchronizeParameters();
 
+    if (active_free_run_ && displaySampleCount() > kMaxRawSamples) {
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        const float left = audio[frame];
+        const float right = channel_count > 1u ? audio[frame_count + frame] : left;
+        const float sample = (left + right) * 0.5F;
+        float *extrema = envelope_.data() + rolling_bucket_index_ * 2u;
+        if (rolling_bucket_fill_ == 0u) {
+          extrema[0] = sample;
+          extrema[1] = sample;
+        } else {
+          if (sample < extrema[0]) {
+            extrema[0] = sample;
+          }
+          if (sample > extrema[1]) {
+            extrema[1] = sample;
+          }
+        }
+        if (++rolling_bucket_fill_ == rolling_bucket_samples_) {
+          rolling_bucket_fill_ = 0u;
+          rolling_bucket_index_ = (rolling_bucket_index_ + 1u) & kEnvelopeRingMask;
+        }
+      }
+      rolling_samples_ += frame_count;
+      return;
+    }
+
     std::uint32_t current_position = buffer_position_;
     for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
       const float left = audio[frame];
       const float right = channel_count > 1u ? audio[frame_count + frame] : left;
-      ring_[current_position] = (left + right) * 0.5F;
+      const float sample = (left + right) * 0.5F;
+      ring_[current_position] = sample;
+      ++rolling_samples_;
       current_position = (current_position + 1u) & kRingMask;
     }
     buffer_position_ = current_position;
@@ -101,7 +143,7 @@ public:
 
   void writeTelemetry(TelemetryWriter &writer) noexcept override {
     telemetry_write_phase_ ^= 1u;
-    if (telemetry_write_phase_ != 0u) {
+    if (telemetry_write_phase_ != 0u && !active_free_run_) {
       return;
     }
     if (active_free_run_) {
@@ -110,7 +152,8 @@ public:
     if (!has_snapshot_) {
       return;
     }
-    writer.write(kTapScopeSnapshot, kTelemetryVersion, payload_.data(), payload_bytes_);
+    writer.write(kTapScopeSnapshot, payload_[14u] == kEnvelopeEncoding ? 3u : kTelemetryVersion,
+                 payload_.data(), payload_bytes_);
   }
 
 private:
@@ -121,8 +164,8 @@ private:
     float display_time = params_.displayTime;
     if (display_time < 0.001F) {
       display_time = 0.001F;
-    } else if (display_time > 0.1F) {
-      display_time = 0.1F;
+    } else if (display_time > 10.0F) {
+      display_time = 10.0F;
     }
     float holdoff = params_.holdoff;
     if (holdoff < 0.0001F) {
@@ -136,16 +179,25 @@ private:
          free_run != active_free_run_ || rising_edge != active_rising_edge_)) {
       clearDisplayCapture();
     }
+    const bool reset_rolling = !parameter_state_initialized_ ||
+                               display_time != active_display_time_ || free_run != active_free_run_;
     active_display_time_ = display_time;
     active_auto_mode_ = auto_mode;
     active_free_run_ = free_run;
     active_trigger_level_ = params_.triggerLevel;
     active_rising_edge_ = rising_edge;
     active_holdoff_ = holdoff;
+    if (reset_rolling) {
+      rolling_samples_ = 0u;
+      rolling_bucket_samples_ = (displaySampleCount() + kEnvelopeBuckets - 1u) / kEnvelopeBuckets;
+      rolling_bucket_index_ = 0u;
+      rolling_bucket_fill_ = 0u;
+    }
     parameter_state_initialized_ = true;
   }
 
   void clearDisplayCapture() noexcept {
+    has_snapshot_ = false;
     has_processed_trigger_ = false;
     capture_active_ = false;
     capture_target_samples_ = 0u;
@@ -193,9 +245,6 @@ private:
 
   std::uint32_t displaySampleCount() const noexcept {
     const double desired = static_cast<double>(sample_rate_) * active_display_time_;
-    if (desired >= static_cast<double>(kRingSamples)) {
-      return kRingSamples;
-    }
     const std::uint32_t samples = static_cast<std::uint32_t>(desired);
     return samples == 0u ? 1u : samples;
   }
@@ -211,6 +260,10 @@ private:
   }
 
   void captureLatestWindow() noexcept {
+    if (displaySampleCount() > kMaxRawSamples) {
+      publishRollingEnvelope();
+      return;
+    }
     beginCapture((buffer_position_ - displaySampleCount()) & kRingMask, false);
     while (capture_samples_ < capture_target_samples_) {
       appendCaptureSample(ring_[(capture_buffer_position_ + capture_samples_) & kRingMask]);
@@ -227,6 +280,14 @@ private:
     capture_bucket_ = 0u;
     capture_bucket_initialized_ = false;
     capture_triggered_ = triggered;
+    capture_bucket_begin_ = 0u;
+    capture_bucket_end_ =
+        capture_target_samples_ /
+        (capture_target_samples_ > kRingSamples ? kEnvelopeBuckets : kM4BucketCount);
+    if (capture_target_samples_ > kRingSamples) {
+      writeEnvelopeHeader(building_payload_, kEnvelopeBuckets, 0u, 0u, 0u);
+      return;
+    }
     writePayloadHeader(
         building_payload_,
         capture_target_samples_ <= kMaxRawSamples ? 0u : static_cast<std::uint16_t>(kM4BucketCount),
@@ -238,11 +299,6 @@ private:
     if (capture_target_samples_ <= kMaxRawSamples) {
       writeF32(building_payload_.data() + kPayloadHeaderBytes + capture_index * 4u, sample);
     } else {
-      const std::uint32_t bucket_begin = static_cast<std::uint32_t>(
-          (static_cast<std::uint64_t>(capture_bucket_) * capture_target_samples_) / kM4BucketCount);
-      const std::uint32_t bucket_end = static_cast<std::uint32_t>(
-          (static_cast<std::uint64_t>(capture_bucket_ + 1u) * capture_target_samples_) /
-          kM4BucketCount);
       if (!capture_bucket_initialized_) {
         capture_bucket_first_ = sample;
         capture_bucket_minimum_ = sample;
@@ -251,7 +307,7 @@ private:
         capture_bucket_maximum_index_ = 0u;
         capture_bucket_initialized_ = true;
       } else {
-        const std::uint32_t bucket_index = capture_index - bucket_begin;
+        const std::uint32_t bucket_index = capture_index - capture_bucket_begin_;
         if (sample < capture_bucket_minimum_) {
           capture_bucket_minimum_ = sample;
           capture_bucket_minimum_index_ = static_cast<std::uint8_t>(bucket_index);
@@ -262,15 +318,26 @@ private:
         }
       }
       capture_bucket_last_ = sample;
-      if (capture_index + 1u == bucket_end) {
-        const std::uint32_t offset = kPayloadHeaderBytes + capture_bucket_ * kM4BucketBytes;
-        writeF32(building_payload_.data() + offset, capture_bucket_first_);
-        writeF32(building_payload_.data() + offset + 4u, capture_bucket_minimum_);
-        writeF32(building_payload_.data() + offset + 8u, capture_bucket_maximum_);
-        writeF32(building_payload_.data() + offset + 12u, capture_bucket_last_);
-        building_payload_[offset + 16u] = capture_bucket_minimum_index_;
-        building_payload_[offset + 17u] = capture_bucket_maximum_index_;
+      if (capture_index + 1u == capture_bucket_end_) {
+        const bool envelope = capture_target_samples_ > kRingSamples;
+        if (envelope) {
+          const std::uint32_t offset = kEnvelopeHeaderBytes + capture_bucket_ * 8u;
+          writeF32(building_payload_.data() + offset, capture_bucket_minimum_);
+          writeF32(building_payload_.data() + offset + 4u, capture_bucket_maximum_);
+        } else {
+          const std::uint32_t offset = kPayloadHeaderBytes + capture_bucket_ * kM4BucketBytes;
+          writeF32(building_payload_.data() + offset, capture_bucket_first_);
+          writeF32(building_payload_.data() + offset + 4u, capture_bucket_minimum_);
+          writeF32(building_payload_.data() + offset + 8u, capture_bucket_maximum_);
+          writeF32(building_payload_.data() + offset + 12u, capture_bucket_last_);
+          building_payload_[offset + 16u] = capture_bucket_minimum_index_;
+          building_payload_[offset + 17u] = capture_bucket_maximum_index_;
+        }
         ++capture_bucket_;
+        capture_bucket_begin_ = capture_bucket_end_;
+        capture_bucket_end_ = static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(capture_bucket_ + 1u) * capture_target_samples_) /
+            (envelope ? kEnvelopeBuckets : kM4BucketCount));
         capture_bucket_initialized_ = false;
       }
     }
@@ -315,15 +382,57 @@ private:
     if (capture_target_samples_ <= kMaxRawSamples) {
       payload_bytes_ =
           static_cast<std::uint16_t>(kPayloadHeaderBytes + capture_target_samples_ * 4u);
-    } else {
+    } else if (capture_target_samples_ <= kRingSamples) {
       payload_bytes_ =
           static_cast<std::uint16_t>(kPayloadHeaderBytes + kM4BucketCount * kM4BucketBytes);
+    } else {
+      payload_bytes_ = static_cast<std::uint16_t>(kEnvelopeHeaderBytes + kEnvelopeBuckets * 8u);
     }
     payload_.swap(building_payload_);
     has_snapshot_ = true;
   }
 
+  void writeEnvelopeHeader(std::vector<std::uint8_t> &payload, std::uint32_t bucket_count,
+                           std::uint32_t bucket_samples, std::uint64_t end_sample,
+                           std::uint8_t flags) noexcept {
+    writePayloadHeader(payload, static_cast<std::uint16_t>(bucket_count), kEnvelopeEncoding);
+    payload[15u] = flags | (capture_triggered_ ? kTriggeredFlag : 0u);
+    writeU32(payload.data() + 16u, bucket_samples);
+    writeU32(payload.data() + 20u, static_cast<std::uint32_t>(end_sample));
+    writeU32(payload.data() + 24u, static_cast<std::uint32_t>(end_sample >> 32u));
+  }
+
+  void publishRollingEnvelope() noexcept {
+    if (rolling_samples_ == 0u) {
+      return;
+    }
+    capture_target_samples_ = displaySampleCount();
+    capture_triggered_ = false;
+    // Keep a short overlap for render-time interpolation between telemetry updates.
+    std::uint32_t overlap = static_cast<std::uint32_t>(sample_rate_ * 0.1F);
+    const std::uint32_t max_overlap =
+        rolling_bucket_samples_ * (kMaxEnvelopeBuckets - kEnvelopeBuckets - 2u);
+    if (overlap > max_overlap) {
+      overlap = max_overlap;
+    }
+    const std::uint64_t history = static_cast<std::uint64_t>(capture_target_samples_) + overlap;
+    const std::uint64_t first =
+        (rolling_samples_ > history ? rolling_samples_ - history : 0u) / rolling_bucket_samples_;
+    const std::uint64_t last = (rolling_samples_ - 1u) / rolling_bucket_samples_;
+    const auto count = static_cast<std::uint32_t>(last - first + 1u);
+    writeEnvelopeHeader(payload_, count, rolling_bucket_samples_, rolling_samples_, kRollingFlag);
+    for (std::uint32_t bucket = 0u; bucket < count; ++bucket) {
+      const std::uint32_t index = static_cast<std::uint32_t>((first + bucket) & kEnvelopeRingMask);
+      writeF32(payload_.data() + kEnvelopeHeaderBytes + bucket * 8u, envelope_[index * 2u]);
+      writeF32(payload_.data() + kEnvelopeHeaderBytes + bucket * 8u + 4u,
+               envelope_[index * 2u + 1u]);
+    }
+    payload_bytes_ = static_cast<std::uint16_t>(kEnvelopeHeaderBytes + count * 8u);
+    has_snapshot_ = true;
+  }
+
   std::vector<float> ring_;
+  std::vector<float> envelope_;
   std::vector<std::uint8_t> payload_;
   std::vector<std::uint8_t> building_payload_;
   float sample_rate_ = 0.0F;
@@ -337,6 +446,12 @@ private:
   std::uint32_t capture_samples_ = 0u;
   std::uint32_t capture_buffer_position_ = 0u;
   std::uint32_t capture_bucket_ = 0u;
+  std::uint32_t capture_bucket_begin_ = 0u;
+  std::uint32_t capture_bucket_end_ = 0u;
+  std::uint32_t rolling_bucket_samples_ = 1u;
+  std::uint32_t rolling_bucket_index_ = 0u;
+  std::uint32_t rolling_bucket_fill_ = 0u;
+  std::uint64_t rolling_samples_ = 0u;
   float capture_bucket_first_ = 0.0F;
   float capture_bucket_minimum_ = 0.0F;
   float capture_bucket_maximum_ = 0.0F;

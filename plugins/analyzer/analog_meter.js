@@ -549,6 +549,7 @@ class AnalogMeterPlugin extends PluginBase {
         container.appendChild(parameters);
 
         const graph = this.createResponsiveGraph({
+            className: 'local-audio-only',
             maxWidth: 1024,
             aspectRatio: analogMeterAspect(analogMeterGrid(this.cellCount())),
             mobileAspectRatio: analogMeterAspect(analogMeterGrid(this.cellCount(), ANALOG_METER_MOBILE_COLUMNS)),
@@ -573,7 +574,7 @@ class AnalogMeterPlugin extends PluginBase {
         // instead of floating over the common effect header like the shared Analyzer
         // reset button class does.
         const resetButton = document.createElement('button');
-        resetButton.className = 'analog-meter-reset-button';
+        resetButton.className = 'analog-meter-reset-button local-audio-only';
         resetButton.textContent = 'Reset';
         resetButton.title = 'Restart the Integrated, LRA, and maximum True Peak measurement';
         resetButton.addEventListener('click', () => this.resetMeasurement());

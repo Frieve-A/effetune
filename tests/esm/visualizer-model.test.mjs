@@ -350,13 +350,13 @@ test('Oscilloscope preserves its trigger and display settings in layouts', () =>
     assert.deepEqual(scope.params, { dt: 0.01, tm: 'Auto', tl: 0, te: 'Rising', ho: 0.0001,
         dl: 0, vo: 0, showAxes: false, showAxisNumbers: false });
     assert.deepEqual(paletteModesForType('oscilloscope'), ['solid', 'gradient']);
-    scope.params = { dt: 0.1, tm: 'Normal', tl: -0.5, te: 'Falling', ho: 0.01,
+    scope.params = { dt: 10, tm: 'Normal', tl: -0.5, te: 'Falling', ho: 0.01,
         dl: -24, vo: 0.25, showAxes: true, showAxisNumbers: true };
     assert.deepEqual(normalizeLayout({ ...createDefaultLayout(), items: [scope] }).items[0].params, scope.params);
     assert.equal(validateLayout({ ...createDefaultLayout(), items: [scope] }), true);
-    assert.deepEqual(normalizeParams('oscilloscope', { dt: 1, tm: 'invalid', tl: -2,
+    assert.deepEqual(normalizeParams('oscilloscope', { dt: 20, tm: 'invalid', tl: -2,
         te: 'invalid', ho: 0, dl: -200, vo: 2 }),
-        { dt: 0.1, tm: 'Auto', tl: -1, te: 'Rising', ho: 0.0001, dl: -96, vo: 1,
+        { dt: 10, tm: 'Auto', tl: -1, te: 'Rising', ho: 0.0001, dl: -96, vo: 1,
             showAxes: false, showAxisNumbers: false });
 });
 

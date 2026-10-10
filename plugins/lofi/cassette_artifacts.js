@@ -3280,7 +3280,9 @@ class CassetteArtifactsPlugin extends PluginBase {
                     : `${this._effectiveHissDbFs(quieting).toFixed(1)} dBFS`)
                 + `, ${typeKey}, ${nrLabel}`;
         const modeLabel = this.md === 'All' ? '' : `Mode ${this.md} · `;
-        return `${modeLabel}${recordLevel} · ${wowFlutter} · ${hiss}`;
+        const displayedHiss = this.hasLocalAudio !== false ? hiss
+            : `Hiss Base ${this.hs.toFixed(1)} dB re 250 nWb/m, ${typeKey}, ${nrLabel}`;
+        return `${modeLabel}${recordLevel} · ${wowFlutter} · ${displayedHiss}`;
     }
 
     _refreshEffectiveValues() {
@@ -3307,6 +3309,7 @@ class CassetteArtifactsPlugin extends PluginBase {
             clearTimeout(this._nrQuietingTimer);
             this._nrQuietingTimer = null;
         }
+        if (this.hasLocalAudio === false) return;
         if (this.md !== 'All' && this.md !== 'Artifacts + Decode') return;
         const calibration = CASSETTE_ARTIFACTS_CALIBRATION;
         const typeKey = calibration.TYPES[this.tp] ? this.tp : 'Type II';

@@ -1,11 +1,11 @@
 // Effect Pipeline toolbar icon for the LAN remote control (Electron only).
-// Shows off / listening / N devices connected and opens the Remote Control window.
+// Shows off / listening / N devices connected and opens the Remote Control dialog.
 
 export function describeRemoteState(status) {
     const s = status && typeof status === 'object' ? status : {};
     const clients = Number.isFinite(s.clients) ? Math.max(0, Math.floor(s.clients)) : 0;
     if (s.error && !s.enabled) {
-        return { state: 'error', clients: 0, title: `Remote Control: ${s.error}` };
+        return { state: 'error', clients: 0, title: 'Remote Control: unavailable' };
     }
     if (!s.enabled) {
         return { state: 'off', clients: 0, title: 'Remote Control' };

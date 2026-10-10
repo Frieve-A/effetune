@@ -297,6 +297,7 @@ class RoomEqAdditionalEqEditor {
             controlsContainer.appendChild(this._createBandControls(index));
         }
 
+        container.appendChild(MobileBandSelector.create(this.host, controlsContainer, markers));
         container.appendChild(controlsContainer);
         this.graphContainer = graph;
         this.markers = markers;
@@ -1779,7 +1780,7 @@ class RoomEqPlugin extends PluginBase {
     }
 
     _scheduleDesign(delay = 150) {
-        if (this._disposed) return;
+        if (this._disposed || this.hasLocalAudio === false) return;
         if (this._designTimer !== null) clearTimeout(this._designTimer);
         const generation = ++this._designGeneration;
         this._designPending = true;
@@ -2257,7 +2258,7 @@ class RoomEqPlugin extends PluginBase {
     }
 
     async _refreshMeasurements(scheduleDesign = false) {
-        if (this._disposed) return;
+        if (this._disposed || this.hasLocalAudio === false) return;
         const store = await this._getMeasurementStore(true);
         if (this._disposed) return;
         await this._renderMeasurement();
@@ -2308,6 +2309,7 @@ class RoomEqPlugin extends PluginBase {
     }
 
     async _renderMeasurement() {
+        if (this.hasLocalAudio === false) return;
         const row = this._measurementRow;
         if (this._disposed || !row) return;
         const store = await this._getMeasurementStore();
@@ -2354,7 +2356,7 @@ class RoomEqPlugin extends PluginBase {
     }
 
     async _renderChannelMeasurements(measurements = null) {
-        if (this._disposed) return;
+        if (this._disposed || this.hasLocalAudio === false) return;
         // Resolved before the container check so the cached channel count the
         // synchronous consumers read stays fresh even without an open editor.
         const channelCount = await this._resolveIrChannelCount();
@@ -2489,7 +2491,7 @@ class RoomEqPlugin extends PluginBase {
             this._responseView,
             value => this._setResponseView(value), '_responseView'
         );
-        controls.classList.add('room-eq-response-view-controls');
+        controls.classList.add('room-eq-response-view-controls', 'local-audio-only');
         controls.setAttribute('role', 'radiogroup');
         controls.setAttribute(
             'aria-label',
@@ -2575,6 +2577,7 @@ class RoomEqPlugin extends PluginBase {
     }
 
     _responseSeries(view) {
+        if (this.hasLocalAudio === false) return [];
         return ROOM_EQ_RESPONSE_SERIES[
             this._isGroupDelayView(view) ? 'groupDelay' : view
         ];
@@ -3134,7 +3137,7 @@ class RoomEqPlugin extends PluginBase {
         return [
             { id: 'measurement', label: this._t('roomEq.tab.measurement', 'Measurement'), create: content => {
                 const measurementRow = document.createElement('div');
-                measurementRow.className = 'parameter-row room-eq-measurement-row';
+                measurementRow.className = 'parameter-row room-eq-measurement-row local-audio-only';
                 const measurementLabel = document.createElement('label');
                 const measurementSelect = document.createElement('select');
                 measurementSelect.id = `room-eq-measurement-${this.id}`;
@@ -3149,7 +3152,7 @@ class RoomEqPlugin extends PluginBase {
                     });
                 });
                 const measurementStatus = document.createElement('span');
-                measurementStatus.className = 'room-eq-measurement-status';
+                measurementStatus.className = 'room-eq-measurement-status local-audio-only';
                 const refresh = document.createElement('button');
                 refresh.type = 'button';
                 refresh.className = 'room-eq-refresh';
@@ -3160,14 +3163,14 @@ class RoomEqPlugin extends PluginBase {
                 content.appendChild(measurementRow);
 
                 const channelMeasurements = document.createElement('div');
-                channelMeasurements.className = 'room-eq-channel-measurements';
+                channelMeasurements.className = 'room-eq-channel-measurements local-audio-only';
                 content.appendChild(channelMeasurements);
                 this._channelMeasurementContainer = channelMeasurements;
                 this._channelMeasurementRows = [];
                 this._channelMeasurementStartIndex = -1;
 
                 const referencePointRow = document.createElement('div');
-                referencePointRow.className = 'parameter-row';
+                referencePointRow.className = 'parameter-row local-audio-only';
                 const referencePointLabel = document.createElement('label');
                 const referencePointSelect = document.createElement('select');
                 referencePointSelect.id = `room-eq-reference-point-${this.id}`;
@@ -3307,7 +3310,7 @@ class RoomEqPlugin extends PluginBase {
         container.append(responseViewControls, additionalEqUi);
 
         const statusLine = document.createElement('div');
-        statusLine.className = 'room-eq-status-line';
+        statusLine.className = 'room-eq-status-line local-audio-only';
         const status = document.createElement('div');
         status.className = 'room-eq-status';
         status.setAttribute('role', 'status');

@@ -406,6 +406,9 @@ function createAudioPlayer(calls, options = {}) {
     togglePlayPause() {
       calls.push(['togglePlayPause']);
     },
+    async pause() {
+      calls.push(['pause']);
+    },
     stop() {
       calls.push(['stop']);
     },
@@ -533,7 +536,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
     ui.speedButton.dispatchEvent('click');
     assert.equal(ui.playerPopup?.getAttribute('data-kind'), 'speed');
     ui.closePlayerPopup();
-    ui.closeButton.dispatchEvent('click');
+    await Promise.all(ui.closeButton.dispatchEvent('click'));
 
     assert.deepEqual(calls.filter(call => [
       'togglePlayPause',
@@ -542,6 +545,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'playNext',
       'toggleRepeatMode',
       'toggleShuffleMode',
+      'pause',
       'close'
     ].includes(call[0])), [
       ['togglePlayPause'],
@@ -550,6 +554,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       ['playNext'],
       ['toggleRepeatMode'],
       ['toggleShuffleMode'],
+      ['pause'],
       ['close']
     ]);
 
@@ -584,6 +589,55 @@ test('creates translated controls, inserts before the double blind panel, and wi
     assert.match(ui.playPauseButton.innerHTML, /M8 5\.14/);
   });
 });
+
+test('close button waits for playback to fade before removing the player', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createAudioPlayer(calls, { state: { isPlaying: true } });
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    let finishFade;
+    const fading = new Promise(resolve => { finishFade = resolve; });
+    player.pause = () => {
+      calls.push(['pause']);
+      return fading;
+    };
+    player.close = () => {
+      calls.push(['close']);
+      ui.removeUI();
+    };
+
+    const closing = ui.closeButton.dispatchEvent('click')[0];
+    try {
+      assert.equal(ui.closeButton.disabled, true);
+      assert.ok(container.parentNode);
+      assert.equal(calls.some(call => call[0] === 'close'), false);
+      await Promise.all(ui.closeButton.dispatchEvent('click'));
+      assert.equal(calls.filter(call => call[0] === 'pause').length, 1);
+    } finally {
+      finishFade();
+      await closing;
+    }
+
+    assert.equal(calls.filter(call => call[0] === 'close').length, 1);
+    assert.equal(container.parentNode, null);
+    assert.equal(ui.container, null);
+  });
+});
+
+for (const isPaused of [false, true]) {
+  test(`close button removes a ${isPaused ? 'paused' : 'stopped'} player without a fade delay`, async () => {
+    await withAudioPlayerGlobals({}, async ({ calls }) => {
+      const player = createAudioPlayer(calls, {
+        state: { isPlaying: false, isPaused, isStopped: !isPaused }
+      });
+      const ui = new AudioPlayerUI(player);
+      ui.createPlayerUI();
+      await Promise.all(ui.closeButton.dispatchEvent('click'));
+      assert.equal(calls.filter(call => call[0] === 'close').length, 1);
+      ui.removeUI();
+    });
+  });
+}
 
 test('createPlayerUI uses fallback text and handles alternate insertion targets', async () => {
   await withAudioPlayerGlobals({

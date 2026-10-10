@@ -846,7 +846,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
         },
         {
           id: 'menu.help',
-          submenu: ['help.help', 'help.discord', 'help.support', 'separator', 'help.about']
+          submenu: ['help.help', 'help.tour', 'help.discord', 'help.support', 'separator', 'help.about']
         }
       ]
     );
@@ -883,7 +883,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
       'settings.config', 'settings.remoteControl', 'settings.audioDevices', 'settings.performanceBenchmark',
       'settings.frequencyResponseMeasurement',
       'menu.help',
-      'help.help', 'help.discord', 'help.support', 'help.about'
+      'help.help', 'help.tour', 'help.discord', 'help.support', 'help.about'
     ]);
     clickMenu(translatedMenu);
     await Promise.resolve();
@@ -894,6 +894,10 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.deepEqual(
       calls.find(call => call[0] === 'webContents.send' && call[1] === 'backup-restore'),
       ['webContents.send', 'backup-restore']
+    );
+    assert.deepEqual(
+      calls.find(call => call[0] === 'webContents.send' && call[1] === 'start-onboarding-tour'),
+      ['webContents.send', 'start-onboarding-tour']
     );
 
     assert.deepEqual(handlers.get('hide-application-menu')(), { success: true });

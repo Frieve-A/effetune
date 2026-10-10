@@ -157,10 +157,9 @@ export class UIEventHandler {
         const operation = this.parameterOperation;
         if (!operation || operation.token !== token) return;
         operation.ending = true;
-        const schedule = typeof queueMicrotask === 'function'
-            ? queueMicrotask
-            : callback => Promise.resolve().then(callback);
-        schedule(() => {
+        // Native events can run microtasks between capture and target listeners.
+        // Include the target's final parameter update before closing the operation.
+        setTimeout(() => {
             const current = this.parameterOperation;
             if (!current || current.token !== token) return;
             if (!force && (current.pointerActive || current.keyboardActive || current.focusActive)) {
@@ -168,7 +167,7 @@ export class UIEventHandler {
                 return;
             }
             this.finishParameterOperation(token);
-        });
+        }, 0);
     }
 
     setupParameterOperationEvents() {
@@ -246,7 +245,10 @@ export class UIEventHandler {
                 return;
             }
 
-            if (current?.plugin === plugin && current.target === event.target &&
+            // Focusing a new control can commit the previously focused number
+            // field after pointerdown. Keep that trailing change from replacing
+            // the operation of the pointer or key that is still held.
+            if (current?.mode === 'continuous' &&
                 (current.pointerActive || current.keyboardActive)) return;
             const token = current?.plugin === plugin && current.target === event.target
                 ? current.token

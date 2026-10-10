@@ -110,6 +110,14 @@ test('frequency graphs use the saved sound while pitch graphs and keyboards keep
   h.preview.stop();
 });
 
+test('remote graphs retain editing without attaching an unavailable frequency audition', () => {
+  const h = harness();
+  h.plugin.hasLocalAudio = false;
+  assert.equal(h.preview.attach(h.plugin, { querySelector() { assert.fail('remote audition must not inspect the graph'); } }), null);
+  assert.equal(h.mount.children.includes(h.instance.canvas), false);
+  assert.deepEqual(h.posts, []);
+});
+
 test('preview excludes existing controls and consumed pointer gestures', () => {
   const h = harness();
   h.event('pointerdown', { defaultPrevented: true });

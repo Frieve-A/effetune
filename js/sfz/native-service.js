@@ -1,9 +1,10 @@
 import { getSfzMaxBytes, requireSfzMaxBytes } from './limits.js';
 import { normalizeSfzPath, parseSfz, sfzError } from './parser.js';
 import { prepareSfzSamples, selectSfzRegionsForBudget, mergeSfzWarnings } from './service.js';
+import { decodeSfzText, readSfzBankDefines } from './source.js';
+import { isSfzGenerator, sfzGeneratorMetadata } from './generators.js';
 
 const VALID_ID = /^[a-f0-9]{24}$/;
-const decoder = new TextDecoder('utf-8', { fatal: true });
 
 function responseData(response, failureCode = 'storage') {
   if (response?.ok === true) return response.data;
@@ -16,7 +17,10 @@ function entriesFromResponse(response) {
   if (!Array.isArray(entries) || entries.length > 10000 || entries.some(entry =>
     !VALID_ID.test(entry?.id) || typeof entry.name !== 'string' ||
     typeof entry.selectedPath !== 'string' || !/\.sfz$/i.test(entry.selectedPath) ||
-    normalizeSfzPath(entry.selectedPath) !== entry.selectedPath)) {
+    normalizeSfzPath(entry.selectedPath) !== entry.selectedPath ||
+    (entry.bankPaths !== undefined && (!Array.isArray(entry.bankPaths) || entry.bankPaths.length > 10000 ||
+      entry.bankPaths.some(path => typeof path !== 'string' || !/\.bank\.xml$/i.test(path) ||
+        normalizeSfzPath(path) !== path))))) {
     throw sfzError('storage', 'The SFZ file list could not be read.');
   }
   return entries;
@@ -32,15 +36,24 @@ export class NativeSfzLibraryService {
   }
 
   async selectFolder({ isCurrent } = {}) {
+    return this._select('folder', isCurrent);
+  }
+
+  async selectFiles({ isCurrent } = {}) {
+    return this._select('files', isCurrent);
+  }
+
+  async _select(mode, isCurrent) {
     if (isCurrent?.() === false) return null;
-    const selected = responseData(await this.bridge.select());
+    const selected = responseData(await this.bridge.select({ mode }));
     if (isCurrent?.() === false || !selected) return null;
     return entriesFromResponse({ ok: true, data: selected.banks })
-      .map(({ id, name }) => ({ id, name }));
+      .map(({ id, name, importedAt }) => ({ id, name, ...(importedAt && { importedAt }) }));
   }
 
   async list() {
-    return entriesFromResponse(await this.bridge.list()).map(({ id, name }) => ({ id, name }));
+    return entriesFromResponse(await this.bridge.list())
+      .map(({ id, name, importedAt }) => ({ id, name, ...(importedAt && { importedAt }) }));
   }
 
   async remove(id) {
@@ -48,8 +61,7 @@ export class NativeSfzLibraryService {
     responseData(await this.bridge.remove({ id }));
   }
 
-  async prepare(id, { decode } = {}) {
-    const maxBytes = requireSfzMaxBytes(this.getMaxBytes());
+  async _readBank(id, maxBytes, onDiagnostic) {
     if (!VALID_ID.test(id)) return null;
     const entry = entriesFromResponse(await this.bridge.list()).find(item => item.id === id);
     if (!entry) return null;
@@ -74,13 +86,19 @@ export class NativeSfzLibraryService {
       const bytes = await read(path);
       if (!bytes) return null;
       definitions.set(path, bytes);
-      return decoder.decode(bytes);
+      return decodeSfzText(bytes);
     };
-    const first = await parseSfz({ selectedPath: entry.selectedPath, readText, maxBytes,
+    const { defines } = await readSfzBankDefines(entry.selectedPath, entry.bankPaths || [], readText);
+    const first = await parseSfz({ selectedPath: entry.selectedPath, readText, maxBytes, defines,
       hasSample: () => true, onDiagnostic: null });
     const present = new Set();
     const metadata = new Map();
     for (const path of [...new Set(first.regions.map(region => region.sample))].sort()) {
+      if (isSfzGenerator(path)) {
+        metadata.set(path, sfzGeneratorMetadata(path));
+        present.add(path);
+        continue;
+      }
       const stats = responseData(await this.bridge.statRelative({ id, relativePath: path }), 'prepare');
       if (!stats) continue;
       if (!Number.isSafeInteger(stats.size) || stats.size < 0) {
@@ -90,9 +108,25 @@ export class NativeSfzLibraryService {
       present.add(path);
     }
     // Reuse the parser's missing-sample filtering without enumerating the source folder.
-    const parsed = await parseSfz({ selectedPath: entry.selectedPath, readText, maxBytes,
-      hasSample: path => present.has(path), onDiagnostic: this.onDiagnostic });
+    const parsed = await parseSfz({ selectedPath: entry.selectedPath, readText, maxBytes, defines,
+      hasSample: path => present.has(path), onDiagnostic });
     if (!parsed.regions.length) throw sfzError('no-regions', 'The SFZ has no playable regions.');
+    return { entry, parsed, metadata, read, rawBytes, definitionCount: definitions.size };
+  }
+
+  async readMetadata(id) {
+    const bank = await this._readBank(id, requireSfzMaxBytes(this.getMaxBytes()), null);
+    if (!bank) return null;
+    const samples = [...bank.metadata.values()].filter(info => info.size > 0);
+    return { size: bank.rawBytes + samples.reduce((sum, info) => sum + info.size, 0),
+      fileCount: bank.definitionCount + samples.length, regionCount: bank.parsed.regions.length };
+  }
+
+  async prepare(id, { decode } = {}) {
+    const maxBytes = requireSfzMaxBytes(this.getMaxBytes());
+    const bank = await this._readBank(id, maxBytes, this.onDiagnostic);
+    if (!bank) return null;
+    const { entry, parsed, metadata, read, rawBytes } = bank;
     const selection = selectSfzRegionsForBudget(parsed.regions, metadata, maxBytes, rawBytes);
     if (selection.reduced) this.onDiagnostic?.({ reducedBank: {
       originalRegions: parsed.regions.length, selectedRegions: selection.regions.length,

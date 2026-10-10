@@ -22,7 +22,7 @@ const ports = [
     hash: 0xe0b1f34d,
     floatCount: 7,
     caseCount: 9,
-    jsEngineHash: 'ecf9832a5a0d54a23b5964158cce44e70a68aaebf5e855f531130c500ff0903b'
+    jsEngineHash: 'f66a0810fe78d9a67890dda1383c2bdecbafada5b7d2e0091964672fe3c6f227'
   },
   {
     type: 'BrickwallLimiterPlugin',
@@ -38,7 +38,7 @@ const ports = [
     hash: 0xe2344ceb,
     floatCount: 7,
     caseCount: 8,
-    jsEngineHash: '4803b4bb3ae51a9090815ca45a32c7f74ad6c28097daa7ccbbad26321b68900e'
+    jsEngineHash: 'ad1dd5fcddf060ab1b76c7e57f09556868d07bfdcc8467c340f2db426e3ca0a3'
   }
 ];
 

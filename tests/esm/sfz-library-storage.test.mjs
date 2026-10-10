@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SfzLibraryService, enumerateSfzDirectory, listSfzFolderFiles } from '../../js/sfz/service.js';
 import { decodeSfzBank, encodeSfzBank } from '../../js/sfz/bank.js';
+import { SFZ_REGION_FIELDS } from '../../js/sfz/asset.js';
 import { SFZ_MAX_SUPPORTED_BYTES, getSfzMaxBytes, normalizeSfzSizeLimitMiB } from '../../js/sfz/limits.js';
 import { maxIrLibraryBytesForName } from '../../js/ir-library/ir-library-limits.js';
 import { openIrLibraryBackend } from '../../js/ir-library/ir-library-factory.js';
@@ -29,6 +30,10 @@ test('SFZ library persists dependencies only, reopens, prepares native-rate bank
   assert.deepEqual(listSfzFolderFiles(files), ['a.sfz', 'inc.sfz']);
   const entry = await service.importFolderFiles(files, 'a.sfz', { decode: pcm });
   assert.equal(entry.regionCount, 1);
+  assert.equal(entry.size, backend.files.get(`${entry.id}.sfzbank`).byteLength);
+  assert.equal(entry.fileCount, 3);
+  assert.match(entry.importedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(await service.readMetadata(entry.id), entry);
   assert.deepEqual([...decodeSfzBank(backend.files.get(`${entry.id}.sfzbank`)).files.keys()], ['a.sfz', 'inc.sfz', 'one.wav']);
   const reopened = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
   assert.deepEqual(await reopened.list(), [entry]);
@@ -55,6 +60,19 @@ test('SFZ import rejects raw and decoded capacity before persisting and excludes
   assert.equal(backend.files.size, 0);
 });
 
+test('SFZ library reads capacity metadata for an existing index without decoding or changing its bank', async () => {
+  const backend = new MemoryBackend();
+  const service = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  const entry = await service.importFolderFiles([file('a.sfz', encode('<region> sample=*sine key=60'))], 'a.sfz');
+  const bank = backend.files.get(`${entry.id}.sfzbank`).slice();
+  const legacy = { id: entry.id, name: entry.name, regionCount: entry.regionCount };
+  await backend.writeAtomic('index.json', encode(JSON.stringify({ version: 1, entries: [legacy] })));
+  const reopened = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  assert.deepEqual(await reopened.readMetadata(entry.id), { ...legacy, size: bank.length, fileCount: 1 });
+  assert.deepEqual(backend.files.get(`${entry.id}.sfzbank`), bank);
+  assert.equal(reopened.prepared, null);
+});
+
 test('folder enumeration retains relative paths, includes text files, and observes cancellation', async () => {
   const sfz = file('a.sfz', encode('<region> sample=one.wav'));
   const wav = file('one.wav', new Uint8Array([1]));
@@ -63,6 +81,69 @@ test('folder enumeration retains relative paths, includes text files, and observ
   const files = await enumerateSfzDirectory(root);
   assert.deepEqual(listSfzFolderFiles(files), ['a.sfz']);
   await assert.rejects(enumerateSfzDirectory(root, { isCurrent: () => false }), error => error.code === 'cancelled');
+});
+
+test('large folders discover instruments without retrieving unrelated files', async () => {
+  const reads = [];
+  const definition = file('a.sfz', encode('<region> sample=samples/one.wav key=60'));
+  const sample = file('one.wav', new Uint8Array([1]));
+  const handle = (name, value) => ({ name, kind: 'file', async getFile() { reads.push(name); return value; } });
+  const root = { async *entries() {
+    yield ['a.sfz', handle('a.sfz', definition)];
+    yield ['samples', { kind: 'directory', async *entries() { yield ['one.wav', handle('one.wav', sample)]; } }];
+    yield ['unrelated', { kind: 'directory', async *entries() {
+      for (let i = 0; i < 10001; i++) yield [`${i}.dat`, { kind: 'file', getFile() { assert.fail('Unrelated file retrieved'); } }];
+    } }];
+  } };
+  const files = await enumerateSfzDirectory(root);
+  assert.deepEqual(listSfzFolderFiles(files), ['a.sfz']);
+  assert.deepEqual(reads, []);
+  const service = await new SfzLibraryService(new MemoryBackend(), { onDiagnostic: null }).open();
+  assert.equal((await service.importFolderFiles(files, 'a.sfz', { decode: pcm })).regionCount, 1);
+  assert.deepEqual(reads.sort(), ['a.sfz', 'one.wav']);
+  const fallback = Array.from({ length: 10001 }, (_, i) => file(`unrelated/${i}.dat`, new Uint8Array(1)));
+  fallback.push(definition, file('samples/one.wav', new Uint8Array([1])));
+  assert.equal((await service.importFolderFiles(fallback, 'a.sfz', { decode: pcm })).regionCount, 1);
+});
+
+test('ARIA banks supply sample paths, extensions and controller defines through import and reopening', async () => {
+  const backend = new MemoryBackend();
+  const definition = encode('// Legacy copyright: ').slice();
+  const text = encode('\n<control> default_path=$sample_dir/Keys/\n<global> sustain_sw=$sustain_sw\n' +
+    '<region> sample=tone$GEXT2 key=60 locc$legato_cc=0 hicc$legato_cc=64');
+  const legacy = new Uint8Array(definition.length + 1 + text.length);
+  legacy.set(definition); legacy[definition.length] = 0xa9; legacy.set(text, definition.length + 1);
+  const bank = '<AriaBank><Define name="$sample_dir" value="$Banks/Example/sample_dir"/>' +
+    '<Define name="$GEXT2" value=".flac"/><Define name="$sustain_sw" value="off"/>' +
+    '<Define name="$legato_cc" value="64"/>' +
+    '<AriaProgram><AriaElement path="Programs/Keys/another.sfz"/></AriaProgram></AriaBank>';
+  const files = [file('Example.bank.xml', encode(bank)), file('Programs/Keys/piano.sfz', legacy),
+    file('Samples/Keys/tone.flac', new Uint8Array([1]))];
+  const service = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  const entry = await service.importFolderFiles(files, 'Programs/Keys/piano.sfz', { decode: pcm });
+  assert.equal(entry.regionCount, 1);
+  assert.deepEqual([...decodeSfzBank(backend.files.get(`${entry.id}.sfzbank`)).files.keys()],
+    ['Example.bank.xml', 'Programs/Keys/piano.sfz', 'Samples/Keys/tone.flac']);
+  const reopened = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  assert.equal((await reopened.prepare(entry.id, { decode: pcm })).regionCount, 1);
+});
+
+test('built-in SFZ waveforms import and reopen with playable cycles without missing file or decoding errors', async () => {
+  const backend = new MemoryBackend();
+  const service = await new SfzLibraryService(backend, { onDiagnostic: null }).open();
+  const waves = ['*sine', '*saw', '*square', '*triangle', '*tri', '*noise', '*silence'];
+  const definition = '<control> default_path=unneeded/\n' + waves.map((wave, i) =>
+    `<region> sample=${wave} key=${60 + i}`).join('\n');
+  const entry = await service.importFolderFiles([file('synth.sfz', encode(definition))], 'synth.sfz');
+  const first = await service.prepare(entry.id);
+  const second = await (await new SfzLibraryService(backend, { onDiagnostic: null }).open()).prepare(entry.id);
+  assert.equal(first.regionCount, waves.length);
+  assert.equal(first.warnings, undefined);
+  assert.deepEqual(first.descriptor.payload, second.descriptor.payload);
+  assert.deepEqual([...decodeSfzBank(backend.files.get(`${entry.id}.sfzbank`)).files.keys()], ['synth.sfz']);
+  const parsed = new Float32Array(first.descriptor.payload, 64);
+  assert.equal(parsed[SFZ_REGION_FIELDS.indexOf('pitch_keycenter')], 60, 'Generated cycles use their middle-C reference');
+  assert.equal(parsed[SFZ_REGION_FIELDS.indexOf('loop_mode')], 2, 'Generated waveforms sustain as loops');
 });
 
 test('SFZ preparation honors declared original rates and rejects huge decoded headers before decode', async () => {

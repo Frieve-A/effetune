@@ -36,6 +36,7 @@ class FakeControl {
     this.releasedPointerId = null;
     this.focused = false;
     this.vertical = vertical;
+    this.inPlugin = true;
     this.classList = {
       contains: className => className === 'vertical-slider' && this.vertical
     };
@@ -44,6 +45,10 @@ class FakeControl {
   matches(selector) {
     return selector === 'input[type="range"]' &&
       this.type === 'range';
+  }
+
+  closest(selector) {
+    return selector === '.plugin-parameter-ui' && this.inPlugin ? {} : null;
   }
 
   getBoundingClientRect() {
@@ -84,6 +89,8 @@ class FakeDocument {
     this.defaultView = { Event: FakeEvent };
     this.listeners = new Map();
     this.elementsById = new Map();
+    this.mobile = false;
+    this.body = { classList: { contains: name => name === 'layout-mobile' && this.mobile } };
   }
 
   addEventListener(type, listener) {
@@ -109,6 +116,7 @@ class FakeDocument {
     const event = {
       target: overrides.target,
       pointerId: overrides.pointerId ?? 1,
+      pointerType: overrides.pointerType ?? 'mouse',
       clientX: overrides.clientX ?? 0,
       clientY: overrides.clientY ?? 0,
       button: overrides.button ?? 0,
@@ -279,4 +287,85 @@ test('installs only one delegated controller per document', () => {
 
   firstDispose();
   assert.equal(documentRef.listeners.get('pointerdown').length, 0);
+});
+
+test('mobile touch changes an effect slider only after horizontal dragging begins', () => {
+  const documentRef = new FakeDocument();
+  documentRef.mobile = true;
+  const slider = documentRef.add(new FakeControl(documentRef, { max: '10', step: '0.1', value: '1' }));
+  const dispose = installRangePrecisionControl(documentRef);
+  const pointer = { target: slider, pointerType: 'touch', clientX: 150, clientY: 50 };
+
+  assert.equal(documentRef.dispatchPointer('pointerdown', pointer).prevented, 1);
+  assert.equal(slider.value, '1');
+  assert.deepEqual(slider.events, []);
+  documentRef.dispatchPointer('pointermove', { ...pointer, clientX: 153 });
+  assert.equal(slider.value, '1');
+  documentRef.dispatchPointer('pointerup', pointer);
+  assert.deepEqual(slider.events, []);
+
+  documentRef.dispatchPointer('pointerdown', pointer);
+  documentRef.dispatchPointer('pointermove', { ...pointer, clientX: 190 });
+  assert.equal(slider.value, '3');
+  documentRef.dispatchPointer('pointermove', { ...pointer, clientX: 450 });
+  assert.equal(slider.value, '10');
+  documentRef.dispatchPointer('pointerup', pointer);
+  assert.deepEqual(slider.events, ['input', 'input', 'change']);
+  assert.equal(slider.dataset.rangeFineActive, undefined);
+  dispose();
+});
+
+test('mobile vertical swipes leave the effect value unchanged and allow scrolling', () => {
+  const documentRef = new FakeDocument();
+  documentRef.mobile = true;
+  const slider = documentRef.add(new FakeControl(documentRef, { value: '50' }));
+  const dispose = installRangePrecisionControl(documentRef);
+  const pointer = { target: slider, pointerType: 'touch', clientX: 100, clientY: 100 };
+  documentRef.dispatchPointer('pointerdown', pointer);
+  const move = documentRef.dispatchPointer('pointermove', { ...pointer, clientX: 103, clientY: 130 });
+  documentRef.dispatchPointer('pointermove', { ...pointer, clientX: 150, clientY: 140 });
+  documentRef.dispatchPointer('pointercancel', pointer);
+  assert.equal(move.prevented, 0);
+  assert.equal(slider.value, '50');
+  assert.deepEqual(slider.events, []);
+  assert.equal(slider.dataset.rangeFineActive, undefined);
+  dispose();
+});
+
+test('mobile touch uses slider coordinates and the existing logarithmic input handler', () => {
+  const documentRef = new FakeDocument();
+  documentRef.mobile = true;
+  const slider = documentRef.add(new FakeControl(documentRef, { value: '50', step: '0.1' }));
+  const number = documentRef.add(new FakeControl(documentRef, { id: 'frequency', type: 'number', min: '1', max: '100', value: '10' }));
+  slider.dataset.rangeFineTarget = number.id;
+  slider.dataset.rangeFineMin = '1';
+  slider.dataset.rangeFineMax = '100';
+  slider.dataset.rangeFineStep = '1';
+  slider.addEventListener('input', () => { number.value = String(10 ** (Number(slider.value) / 50)); });
+  const dispose = installRangePrecisionControl(documentRef);
+  const pointer = { target: slider, pointerType: 'touch', clientX: 100 };
+  documentRef.dispatchPointer('pointerdown', pointer);
+  documentRef.dispatchPointer('pointermove', { ...pointer, clientX: 120 });
+  documentRef.dispatchPointer('pointerup', pointer);
+  assert.equal(slider.value, '60');
+  assert.equal(number.value, String(10 ** 1.2));
+  assert.deepEqual(slider.events, ['input', 'change']);
+  assert.deepEqual(number.events, []);
+  dispose();
+});
+
+test('touch interception applies only to horizontal effect sliders in mobile layout', () => {
+  const documentRef = new FakeDocument();
+  const slider = documentRef.add(new FakeControl(documentRef, { value: '50' }));
+  const dispose = installRangePrecisionControl(documentRef);
+  const pointer = { target: slider, pointerType: 'touch' };
+  assert.equal(documentRef.dispatchPointer('pointerdown', pointer).prevented, 0);
+  documentRef.mobile = true;
+  assert.equal(documentRef.dispatchPointer('pointerdown', { ...pointer, pointerType: 'mouse' }).prevented, 0);
+  slider.inPlugin = false;
+  assert.equal(documentRef.dispatchPointer('pointerdown', pointer).prevented, 0);
+  slider.inPlugin = true;
+  slider.vertical = true;
+  assert.equal(documentRef.dispatchPointer('pointerdown', pointer).prevented, 0);
+  dispose();
 });

@@ -15,6 +15,8 @@ Press the spectrum icon on a compatible graph to cycle through After, Before + A
 
 On the draggable point graphs in 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ, and Room EQ's Additional EQ, drag a point normally to change both axes. Hold Shift while dragging to lock the movement: start mostly sideways to change only Frequency, or mostly vertically to change only Level (Delay in Group Delay PEQ). Release Shift to return to free movement. Place the pointer over a point and scroll up to increase Q or down to decrease it.
 
+On mobile, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ's Additional EQ, and Tonal Balance EQ's Target Adjust show one band's settings at a time. Tap a numbered band button to switch bands. All band settings are retained.
+
 ## Plugin List
 
 - [15Band GEQ](#15band-geq) - Detailed sound adjustment with 15 precise controls

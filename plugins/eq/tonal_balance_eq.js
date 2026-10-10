@@ -592,7 +592,7 @@ class TonalBalanceEQPlugin extends PluginBase {
             mount: graph.container,
             surface: this.canvas,
             read: x => this._readGraph(x),
-            legend: this._graphSeries()
+            legend: this.hasLocalAudio !== false ? this._graphSeries() : [this._graphSeries()[1]]
         }) ?? null;
 
         // Target adjust handles on the graph (the editor's plot maps the canvas axes, in percent)
@@ -634,7 +634,7 @@ class TonalBalanceEQPlugin extends PluginBase {
             '(available once the graph shows an EQ curve)';
         copyPeqButton.addEventListener('click', () => this.copyAsPeq());
         const buttons = document.createElement('div');
-        buttons.className = 'tonal-balance-eq-buttons';
+        buttons.className = 'tonal-balance-eq-buttons local-audio-only';
         buttons.append(resetButton, copyPeqButton);
         container.appendChild(buttons);
 
@@ -762,7 +762,7 @@ class TonalBalanceEQPlugin extends PluginBase {
         if (!width || !height) return;
         const dpr = this.graphCssWidth > 0 ? width / this.graphCssWidth : 1;
         const color = role => window.ThemePalette?.get(role) ?? '';
-        const view = this.reading ? computeTonalBalanceEqView(this.reading, this.rg, this.am / 100) : null;
+        const view = this.hasLocalAudio !== false && this.reading ? computeTonalBalanceEqView(this.reading, this.rg, this.am / 100) : null;
         const adjust = this._adjustEditor ? this._adjustCurve() : null;
         // A refit during a drag would move the plot under the pointer; the release redraws.
         if (adjust && !this.isGraphPointerActive()) this._fitDbRange(view, adjust);

@@ -61,6 +61,7 @@ public:
     projected_.fill(0.0F);
     pitch_features_.fill(0.0F);
     logits_.fill(0.0F);
+    onset_logits_.fill(0.0F);
   }
   void begin() noexcept {
     for (auto &conv : conv_)
@@ -169,12 +170,18 @@ public:
           value += w[j] * hp[j];
         logits_[p * kHeads + d] = value;
       }
+      const auto *onset_weights = weights(kOnsetWeight) + p * kHidden;
+      auto onset = weights(kOnsetBias)[p];
+      for (auto j = 0u; j < kHidden; ++j)
+        onset += onset_weights[j] * hp[j];
+      onset_logits_[p] = onset;
     }
   }
   float probability(std::uint32_t pitch, std::uint32_t head) const noexcept {
     return sigmoid(logits_[pitch * kHeads + head] + harmnet_weights::kCalibration[head]);
   }
   const auto &logits() const noexcept { return logits_; }
+  float onset(std::uint32_t pitch) const noexcept { return sigmoid(onset_logits_[pitch]); }
 
 private:
   static float sigmoid(float x) noexcept { return 1.0F / (1.0F + std::exp(-x)); }
@@ -196,6 +203,7 @@ private:
   std::array<float, kChannels * kStride> convolved_{};
   std::array<float, kPitches * kHidden> projected_{}, pitch_features_{}, hidden_{};
   std::array<float, kPitches * kHeads> logits_{};
+  std::array<float, kPitches> onset_logits_{};
 };
 } // namespace effetune::plugins::analyzer
 #endif

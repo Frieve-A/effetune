@@ -333,6 +333,8 @@ export class VisualizerView {
     }
     metadata() {
         const player = this.uiManager.audioPlayer;
+        // OpenHome can retain the player and its last track after the UI closes.
+        if (!player?.ui?.container) return null;
         const snapshot = player?.stateManager?.getStateSnapshot();
         return snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;
     }

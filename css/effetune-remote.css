@@ -4,6 +4,18 @@ body.remote-client {
     margin: 0;
 }
 
+/* The remote editor has neither a bottom navigation bar nor a mini player. */
+body.remote-client.layout-mobile {
+    --et-bottom-nav-height: 0px;
+    --et-mini-player-height: 0px;
+}
+
+/* These views need local measurements or asset state, which are not synchronized. */
+body.remote-client .local-audio-only,
+body.remote-client .plugin-execution-status {
+    display: none !important;
+}
+
 .remote-bar {
     position: sticky;
     top: 0;

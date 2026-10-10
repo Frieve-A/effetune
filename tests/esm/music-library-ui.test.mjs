@@ -645,6 +645,7 @@ test('initOpenLibraryButton wires the view switch buttons and Electron IPC callb
   assert.deepEqual(calls, [
     ['onIPC', 'open-library-view'],
     ['onIPC', 'open-effect-pipeline-view'],
+    ['onIPC', 'start-onboarding-tour'],
     ['onIPC', 'open-visualizer-view'],
     ['onIPC', 'add-music-folder'],
     ['onIPC', 'rescan-library'],

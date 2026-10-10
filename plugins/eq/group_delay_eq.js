@@ -619,7 +619,7 @@ class GroupDelayEqPlugin extends PluginBase {
         container.append(slidersContainer, graphContainer);
 
         const statusLine = document.createElement('div');
-        statusLine.className = 'group-delay-eq-status-line';
+        statusLine.className = 'group-delay-eq-status-line local-audio-only';
         const status = document.createElement('div');
         status.className = 'group-delay-eq-status';
         status.setAttribute('role', 'status');

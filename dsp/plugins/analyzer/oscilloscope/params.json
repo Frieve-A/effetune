@@ -10,7 +10,7 @@
       "key": "dt",
       "kind": "float",
       "min": 0.001,
-      "max": 0.1,
+      "max": 10,
       "default": 0.01,
       "unit": "s"
     },

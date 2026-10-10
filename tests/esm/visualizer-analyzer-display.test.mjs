@@ -14,6 +14,7 @@ function canvas() {
     const calls = [];
     const context = new Proxy({
         calls,
+        getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
         createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
         measureText: text => ({ width: text.length * 7, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 2 }),
         createLinearGradient: () => ({ addColorStop() {} }),
@@ -622,22 +623,23 @@ test('Oscilloscope displays telemetry through the native trace with Visualizer p
         target.context.calls.length = 0;
         display.draw(item, 1, 400);
         assert.equal(display.plugin.scopeSnapshot.values.length, 4);
-        assert.ok(target.context.calls.some(call => call[0] === 'strokeStyle' && call[1] === item.palette.color));
+        assert.equal(display.plugin.scopePaint.context.fillStyle, item.palette.color);
         assert.equal(target.context.calls.filter(call => call[0] === 'fillText').length, 0);
         assert.ok(target.context.calls.some(call => call[0] === 'clearRect'));
         item.params.showAxes = item.params.showAxisNumbers = true;
         target.context.calls.length = 0;
         display.draw(item, 1, 400);
-        assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === 'Time (ms)'));
+        assert.ok(display.plugin.scopeGrid.canvas.context.calls.some(call => call[0] === 'fillText' && call[1] === 'Time (ms)'));
         item.params.showAxes = false;
         target.context.calls.length = 0;
         display.draw(item, 1, 400);
-        assert.ok(target.context.calls.some(call => call[0] === 'fillText' && call[1] === 'Time (ms)'),
+        assert.ok(display.plugin.scopeGrid.canvas.context.calls.some(call => call[0] === 'fillText' && call[1] === 'Time (ms)'),
             'Axis labels remain visible without grid lines');
-        assert.equal(target.context.calls.filter(call => call[0] === 'stroke').length, 1,
-            'Only the waveform is stroked when axes and grid are hidden');
+        const trace = display.plugin.scopeRaster;
+        assert.equal(trace.canvas.context.calls.filter(call => call[0] === 'stroke').length, 1,
+            'The waveform is rasterized once when axes and grid are hidden');
         const gradients = [];
-        target.context.createLinearGradient = (...coordinates) => {
+        display.plugin.scopePaint.context.createLinearGradient = (...coordinates) => {
             assert.ok(coordinates.every(Number.isFinite), 'Gradient coordinates must be finite');
             const gradient = { coordinates, stops: [], addColorStop(position, color) { this.stops.push([position, color]); } };
             gradients.push(gradient);
@@ -646,7 +648,11 @@ test('Oscilloscope displays telemetry through the native trace with Visualizer p
         item.palette.color = '#ff0000';
         target.context.calls.length = 0;
         display.draw(item, 2, 400);
-        assert.ok(target.context.calls.some(call => call[0] === 'strokeStyle' && call[1] === '#ff0000'));
+        assert.equal(display.plugin.scopePaint.context.fillStyle, '#ff0000');
+        assert.equal(display.plugin.scopeRaster, trace, 'Palette changes reuse the waveform geometry');
+        target.context.calls.length = 0;
+        assert.equal(display.draw(item, 2.1, 400), false);
+        assert.equal(target.context.calls.length, 0, 'A held waveform keeps its annotation and signal layers');
         item.palette.mode = 'gradient';
         item.palette.stops = [{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }];
         item.palette.motion = { mode: 'hue', speed: 0.5 };
@@ -659,6 +665,25 @@ test('Oscilloscope displays telemetry through the native trace with Visualizer p
         env.subscribers.get('scope')({ frameType: 3, formatVersion: 2, payload, source: {} }, {});
         assert.notEqual(display.plugin.scopeSnapshot, oldSnapshot);
         display.dispose();
+    });
+});
+
+test('Visualizer reuses Oscilloscope effect output until its waveform or appearance changes', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const stage = canvas(), renderer = new VisualizerRenderer(stage), item = createItem('oscilloscope', 'scope');
+        const layout = createDefaultLayout(); layout.items = [item];
+        const changes = [];
+        renderer.effects.apply = (id, input, _effects, _time, _modulators, _quality, changed) => {
+            if (id === 'scope') changes.push(changed);
+            return { canvas: input, opacity: 1 };
+        };
+        renderer.draw(layout, env.sources, {}, 1);
+        renderer.draw(layout, env.sources, {}, 1.016);
+        item.params.dl = -12;
+        renderer.draw(layout, env.sources, {}, 1.032);
+        assert.deepEqual(changes, [true, false, true]);
+        renderer.dispose();
     });
 });
 

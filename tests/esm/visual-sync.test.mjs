@@ -53,6 +53,22 @@ test('visual sync output delay uses the greatest enabled capture deficit and cla
   assert.equal(requiredOutputDelayFrames({ ...options, taps: {} }), 0);
 });
 
+test('Oscilloscope sync follows full triggered captures and the buffered rolling right edge', () => {
+  for (const rate of [44100, 48000, 96000, 192000]) {
+    for (const dt of [.001, .04, .045, 1, 10]) {
+      const samples = Math.floor(rate * dt);
+      for (const tm of ['Auto', 'Normal']) {
+        assert.equal(rules.OscilloscopePlugin.generationFrames({ dt, tm }, rate), samples / 2);
+      }
+      assert.equal(rules.OscilloscopePlugin.generationFrames({ dt, tm: 'Off' }, rate),
+        samples > 2048 ? rate / 30 : samples / 2);
+    }
+  }
+  const generationFrames = rules.OscilloscopePlugin.generationFrames({ dt: 10, tm: 'Off' }, 48000);
+  assert.equal(requiredOutputDelayFrames({ targets: [{ id: 7, ruleKey: 'OscilloscopePlugin', generationFrames }],
+    taps: { 7: { output: 0 } }, maxFrames: 24000 }), 1600);
+});
+
 test('visual sync deadlines stay on the sample timeline while delivery follows the output clock', () => {
   const options = { endFrame: 48000, sampleRate: 48000, generationFrames: 480,
     tapFrames: 960, outputDelayFrames: 480,

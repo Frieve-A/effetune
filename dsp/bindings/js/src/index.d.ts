@@ -490,9 +490,17 @@ export interface OscilloscopeTelemetryFrame extends TelemetryFrameBase {
   readonly captureSampleCount: number;
   readonly triggerOffset: number;
   readonly triggered: boolean;
-  readonly encoding: 'samples' | 'minMax';
+  readonly encoding: 'samples' | 'minMax' | 'envelope';
   readonly sampleIndices: Uint32Array;
   readonly values: Float32Array;
+  /** Envelope frames carry interleaved minimum/maximum pairs instead of point values. */
+  readonly extrema?: Float32Array;
+  readonly bucketCount?: number;
+  /** Zero for triggered captures; rolling buckets have this fixed sample width. */
+  readonly bucketSamples?: number;
+  /** Exclusive sample counter at the right edge of a rolling snapshot. */
+  readonly endSample?: number;
+  readonly rolling?: boolean;
 }
 
 export interface SpectrumTelemetryFrame extends TelemetryFrameBase {

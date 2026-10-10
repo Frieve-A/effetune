@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <new>
 
 namespace effetune {
@@ -90,6 +91,17 @@ struct AssetBeginInfo {
   std::uint32_t byteSize;
 };
 
+// Opaque, exclusively owned storage. Prepare and destroy off the audio thread.
+class PreparedAsset {
+public:
+  virtual ~PreparedAsset() = default;
+};
+
+// Copies and fully prepares the payload without accessing a live kernel.
+using AssetPreparer = et_status (*)(const AssetBeginInfo &info, const std::uint8_t *payload,
+                                    std::uint32_t format_tag,
+                                    std::unique_ptr<PreparedAsset> &asset) noexcept;
+
 struct LatencyRange {
   std::uint32_t minimum;
   std::uint32_t maximum;
@@ -144,6 +156,15 @@ public:
   virtual void clearAsset(std::uint32_t) noexcept {}
   [[nodiscard]] virtual std::uint32_t assetState(std::uint32_t) const noexcept {
     return ET_ASSET_STATE_NONE;
+  }
+  [[nodiscard]] virtual AssetPreparer assetPreparer(std::uint32_t) const noexcept {
+    return nullptr;
+  }
+  // Engine supplies only storage from this slot's preparer, or nullptr for clear.
+  // Swap ownership into asset; never allocate, free, or traverse the bank here.
+  virtual et_status exchangePreparedAsset(std::uint32_t,
+                                          std::unique_ptr<PreparedAsset> &) noexcept {
+    return ET_ERR_UNSUPPORTED;
   }
   virtual void applyPendingParameters() noexcept = 0;
 };

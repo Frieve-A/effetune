@@ -73,6 +73,7 @@ function createDocument(calls) {
     'installAppElement',
     'installAppButton',
     'configSettingsButton',
+    'tourSettingsButton',
     'audioConfigSettingsButton',
     'benchmarkSettingsButton',
     'measurementSettingsButton',
@@ -358,7 +359,7 @@ test('settings menu opens Web audio config when integration is available', async
   });
 });
 
-test('settings menu dispatches config, audio, feature links, and explicit audio reset', async () => {
+test('settings menu dispatches config, tour, audio, feature links, and explicit audio reset', async () => {
   await withStateGlobals({
     electronIntegration: {
       isElectronEnvironment: () => false,
@@ -373,6 +374,7 @@ test('settings menu dispatches config, audio, feature links, and explicit audio 
   }, async ({ calls, documentRef, windowRef }) => {
     windowRef.electronIntegration.showAudioConfigDialog = () => calls.push(['showAudioConfigDialog']);
     windowRef.electronIntegration.showConfigDialog = () => calls.push(['showConfigDialog']);
+    windowRef.uiManager.startOnboardingTour = () => calls.push(['startOnboardingTour']);
     windowRef.location.href = '';
     const audioManager = {
       reset: async value => calls.push(['audio.reset', value])
@@ -385,6 +387,7 @@ test('settings menu dispatches config, audio, feature links, and explicit audio 
     assert.equal(documentRef.elements.get('settingsMenu').classList.contains('show'), true);
 
     manager.configSettingsButton.click();
+    manager.tourSettingsButton.click();
     manager.audioConfigSettingsButton.click();
     manager.benchmarkSettingsButton.click();
     assert.equal(windowRef.location.href, 'features/effetune_bench.html');
@@ -393,6 +396,8 @@ test('settings menu dispatches config, audio, feature links, and explicit audio 
     await manager.resetAudioSettingsButton.click();
 
     assert.deepEqual(calls.filter(call => call[0] === 'showConfigDialog'), [['showConfigDialog']]);
+    assert.deepEqual(calls.filter(call => call[0] === 'startOnboardingTour'), [['startOnboardingTour']]);
+    assert.equal(documentRef.elements.get('settingsMenu').classList.contains('show'), false);
     assert.deepEqual(calls.filter(call => call[0] === 'showAudioConfigDialog'), [['showAudioConfigDialog']]);
     assert.deepEqual(calls.filter(call => call[0] === 'audio.reset'), [['audio.reset', null]]);
   });
@@ -423,6 +428,7 @@ test('settings labels update from localization keys with fallbacks', async () =>
           'ui.configAudioButton': 'Translated Config Audio',
           'menu.settings': 'Translated Settings',
           'dialog.config.title': 'Translated Config',
+          'tour.menu': 'Translated Tour',
           'dialog.audioConfig.title': 'Translated Audio',
           'menu.settings.performanceBenchmark': 'Translated Benchmark',
           'menu.settings.frequencyResponseMeasurement': 'Translated Measurement',
@@ -436,6 +442,7 @@ test('settings labels update from localization keys with fallbacks', async () =>
     assert.equal(manager.settingsMenuButton.title, 'Translated Settings');
     assert.equal(manager.settingsMenuButton.getAttribute('aria-label'), 'Translated Settings');
     assert.equal(manager.configSettingsButton.textContent, 'Translated Config');
+    assert.equal(manager.tourSettingsButton.textContent, 'Translated Tour');
     assert.equal(manager.audioConfigSettingsButton.textContent, 'Translated Audio');
     assert.equal(manager.benchmarkSettingsButton.textContent, 'Translated Benchmark');
     assert.equal(manager.measurementSettingsButton.textContent, 'Translated Measurement');
@@ -445,6 +452,7 @@ test('settings labels update from localization keys with fallbacks', async () =>
     manager.updateLabels();
     assert.equal(documentRef.elements.get('settingsMenuButton').title, 'Settings');
     assert.equal(documentRef.elements.get('resetAudioSettingsButton').textContent, 'Reset Audio');
+    assert.equal(documentRef.elements.get('tourSettingsButton').textContent, 'Take the tour');
   });
 
   await withStateGlobals({

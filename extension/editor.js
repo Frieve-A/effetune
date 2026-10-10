@@ -8,6 +8,7 @@ import { LayoutModeManager } from '../js/ui/layout-mode-manager.js';
 import { MobileNumberKeypad } from '../js/ui/mobile-number-keypad.js';
 import { TelemetryHub } from '../js/audio/telemetry-hub.js';
 import { installRangeFillStyling } from '../js/ui/range-fill.js';
+import { installRangePrecisionControl } from '../js/ui/range-precision-controller.js';
 import { applySerializedState, getSerializablePluginStateShort, convertShortToLongFormat } from '../js/utils/serialization-utils.js';
 import dataStorage, { MeasurementImportError } from '../features/measurement/dataStorage.js';
 import { ExtensionMobileShell } from './mobile-shell.js';
@@ -472,6 +473,7 @@ export class ExtensionEditor {
     this.uiManager.pipelineManager = this.pipelineManager;
     window.pipelineManager = this.pipelineManager;
     this.rangeFillController = installRangeFillStyling(this.document);
+    installRangePrecisionControl(this.document);
 
     this.bindEvents();
     this.restoreSnapshot(snapshot, true);

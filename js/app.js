@@ -13,6 +13,7 @@ import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { MIC_DENIED_PREFIX } from './audio/audio-io-manager.js';
 import { installSpaceKeyGuard } from './utils/space-key-guard.js';
 import { loadStylesheet, waitForStylesheets } from './utils/classic-script-loader.js';
+import { shouldAutoStart } from './ui/onboarding-tour.js';
 
 const TRANSIENT_PIPELINE_RESTORE_PARAM = 'restorePipeline';
 const TRANSIENT_PIPELINE_RESTORE_VALUE = 'transient';
@@ -465,6 +466,7 @@ class App {
             displayAppVersion()
         ]);
         try {
+            this.hadSavedPipelineState = await this.hasSavedPipelineState();
             this.uiManager.updateLoadingProgress(0);
 
             // Open the configured startup view before the effect pipeline can paint.
@@ -593,6 +595,34 @@ class App {
 
         // Device permission prompts and bulk storage migration start after presentation.
         this.scheduleDeferredStartupTasks();
+        await this.maybeStartOnboardingTour();
+    }
+
+    async hasSavedPipelineState() {
+        try {
+            if (window.electronIntegration?.isElectronEnvironment?.() || window.electronIntegration?.isElectron) {
+                const appPath = await window.electronAPI.getPath('userData');
+                const filePath = await window.electronAPI.joinPaths(appPath, 'pipeline-state.json');
+                return await window.electronAPI.fileExists(filePath);
+            }
+            return window.localStorage.getItem('effetune_pipeline_state') !== null;
+        } catch (error) {
+            console.warn('Could not check saved pipeline state for the onboarding tour:', error);
+            return true;
+        }
+    }
+
+    async maybeStartOnboardingTour() {
+        await this.uiManager.localizationReady;
+        if (!shouldAutoStart({
+            config: this.startupConfig || window.appConfig || {},
+            startupSearch: captureInitialStartupSearch(window),
+            bodyClasses: Array.from(document.body.classList),
+            miniPlayerTargetMode: this.uiManager.miniPlayerTargetMode,
+            hasSavedPipelineState: this.hadSavedPipelineState,
+            initialized: this.initialized
+        })) return false;
+        return this.uiManager.startOnboardingTour();
     }
 
     scheduleDeferredStartupTasks() {

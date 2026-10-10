@@ -187,23 +187,28 @@ lang: hi
 सुनते समय sound wave का shape real time में दिखाता है, ताकि beats, sharp hits और loudness में बदलाव देख सकें। waveform दोहराने पर trigger settings display को स्थिर कर सकती हैं।
 
 ### विज़ुअलाइज़ेशन गाइड
-- horizontal axis समय दिखाता है (milliseconds)
+- क्षैतिज अक्ष समय को मिलीसेकंड या सेकंड में दिखाता है
 - vertical axis normalized amplitude दिखाता है; दिखने वाली range Display Level और Vertical Offset से बदलती है
-- green line actual waveform trace करती है
+- कम समय सीमा में रेखा तरंग का बारीक आकार दिखाती है; लंबी समय सीमा में भरी हुई पट्टी हर अंतराल का न्यूनतम और अधिकतम आयाम दिखाती है
 - grid lines time और amplitude values मापने में मदद करती हैं
 - trigger settings तय करती हैं कि waveform capture कहां से शुरू होगा; कोई अलग marker नहीं दिखता
 
 ### दृश्य प्रदर्शन
 - ग्राफ़ पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
+### उपयोग के सुझाव
+- बार-बार दोहरने वाली तरंग का आकार देखने के लिए Display Time को 1–20 ms और Trigger Mode को Auto पर रखें।
+- ताल और आवाज़ के स्तर में बदलाव देखने के लिए Display Time को 1,000–10,000 ms और Trigger Mode को Off पर रखें। सबसे नया ऑडियो दाएँ किनारे पर आता है और तरंग सहज रूप से बाईं ओर खिसकती है।
+- Auto और Normal में, Display Time में तय पूरी अवधि का ऑडियो इकट्ठा होने पर नई तरंग दिखाई देती है।
+
 ### पैरामीटर
-- **Display Time** - कितना समय दिखाना है (1 से 100 ms)
+- **Display Time** - दिखाई जाने वाली अवधि (1 से 10,000 ms, अधिकतम 10 सेकंड)
   - कम मान: छोटी घटनाओं में अधिक detail देखें
   - अधिक मान: लंबे patterns देखें
 - **Trigger Mode**
   - Auto: trigger के बिना भी continuous updates
   - Normal: अगले trigger तक display freeze रहता है
-  - Off: trigger के बिना, आने वाली सबसे नई waveform लगातार दिखाता है। Trigger Level, Trigger Edge और Holdoff का कोई असर नहीं होता
+  - Off: ट्रिगर के बिना, सबसे नया ऑडियो दाएँ किनारे पर दिखाई देता है और तरंग बाईं ओर खिसकती है। Trigger Level, Trigger Edge और Holdoff का कोई असर नहीं होता
 - Trigger detection averaged left/right waveform का उपयोग करती है। Mono input सीधे उपयोग होता है।
 - **Trigger Level** - capture शुरू करने वाला amplitude level
   - Range: -1 से 1 (normalized amplitude)
@@ -215,7 +220,7 @@ lang: hi
 - **Vertical Offset** - waveform को ऊपर/नीचे shift करता है (-1 से 1)
 
 ### वेवफॉर्म डिस्प्ले पर नोट
-displayed waveform captured points को time order में जोड़ता है। लंबे Display Time पर हर interval अपने पहले और आखिरी sample के साथ minimum और maximum samples तथा उनकी original positions भी सुरक्षित रखता है। इससे display resolution की सीमा में continuity और छोटे peaks बने रहते हैं। इसे exact measurement tool के बजाय visual guide की तरह इस्तेमाल करें।
+लंबी समय सीमा में भरी हुई पट्टी हर अंतराल का न्यूनतम और अधिकतम आयाम बनाए रखती है। इसलिए कई नमूने स्क्रीन की एक ही जगह पर होने पर भी छोटे शिखर दिखाई देते हैं। कर्सर उस अंतराल के लिए Minimum और Maximum दिखाता है; कम समय सीमा में वह तरंग पर Amplitude दिखाता है। इसे दृश्य संदर्भ के रूप में इस्तेमाल करें, सटीक मापन उपकरण के रूप में नहीं।
 
 ## Pitch Meter
 

@@ -1847,7 +1847,7 @@ class TVAudioSimulatorPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '5 / 1',
             mobileAspectRatio: '2.2 / 1',
-            className: 'tv-audio-simulator-hud',
+            className: 'tv-audio-simulator-hud local-audio-only',
             onResize: () => this.drawHud()
         });
         this.hudGraphDispose = graph.dispose;
@@ -1857,7 +1857,7 @@ class TVAudioSimulatorPlugin extends PluginBase {
         graph.resize();
 
         const status = document.createElement('div');
-        status.className = 'tv-audio-simulator-status-note';
+        status.className = 'tv-audio-simulator-status-note local-audio-only';
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
         status.setAttribute('aria-atomic', 'true');

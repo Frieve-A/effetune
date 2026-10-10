@@ -118,6 +118,23 @@ const processor = new Function('context', 'data', 'parameters', 'time',
 const CAL = JSON.parse(prototypeInstance.processorString.match(/const CAL = (\{.*\});/)[1]);
 
 const PUBLIC_KEYS = ['dg', 'tp', 'nr', 'md', 'bs', 'rl', 'wf', 'hs', 'dp', 'az', 'dl', 'og', 'mx'];
+
+test('remote Cassette controls retain settings without scheduling the local status measurement', () => {
+    const plugin = new Plugin();
+    plugin.hasLocalAudio = false;
+    plugin.updateParameters = () => {};
+    plugin.statusElement = new FakeElement('div');
+    try {
+        plugin.setParameters({ nr: 'Dolby C', hs: -61.7, dl: 2.9 });
+        assert.equal(plugin._nrQuietingTimer, null);
+        assert.equal(plugin.nr, 'Dolby C');
+        assert.equal(plugin.dl, 2.9);
+        assert.match(plugin.statusElement.textContent, /Hiss Base -61\.7/);
+        assert.doesNotMatch(plugin.statusElement.textContent.split(' · ').at(-1), /measuring|dBFS/);
+    } finally {
+        plugin.cleanup();
+    }
+});
 const MODES = ['Encode Only', 'Encode + Artifacts', 'All', 'Artifacts + Decode', 'Decode Only'];
 const GRADES = Object.keys(CAL.GRADES);
 const HISS_OFF = -92; // dB re 250 nWb/m, the bottom of the control

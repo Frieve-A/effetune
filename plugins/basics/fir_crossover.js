@@ -701,7 +701,7 @@ class FIRCrossoverPlugin extends PluginBase {
     });
 
     const statusLine = document.createElement('div');
-    statusLine.className = 'fir-crossover-status-line';
+    statusLine.className = 'fir-crossover-status-line local-audio-only';
     const status = document.createElement('div');
     status.className = 'fir-crossover-status';
     status.setAttribute('role', 'status');

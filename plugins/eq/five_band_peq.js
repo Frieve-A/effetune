@@ -624,7 +624,9 @@ class FiveBandPEQPlugin extends PluginBase {
       controlsContainer.appendChild(bandControls);
     }
 
-    container.appendChild(graphContainer); container.appendChild(controlsContainer);
+    container.appendChild(graphContainer);
+    container.appendChild(MobileBandSelector.create(this, controlsContainer, markers));
+    container.appendChild(controlsContainer);
     this.graphContainer = graphContainer; this.responseSvg = responseSvg; this.markers = markers;
     this.uiContainer = container;
     this.observeGraphResize(graphContainer);

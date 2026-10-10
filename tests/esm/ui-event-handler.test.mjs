@@ -445,6 +445,12 @@ test('constructor and keyboard/paste listeners handle missing and active documen
 
 test('delegated parameter boundaries keep one token through gestures and isolate discrete routing changes', async () => {
   const timers = [];
+  const finishEvents = () => {
+    for (const timer of timers.filter(timer => timer.delay === 0 && !timer.cleared)) {
+      timer.cleared = true;
+      timer.callback();
+    }
+  };
   const historyCalls = [];
   const historyManager = {
     activeToken: null,
@@ -502,6 +508,8 @@ test('delegated parameter boundaries keep one token through gestures and isolate
     historyManager.saveState({ operationToken: handler.getParameterOperationToken(harness.plugins[0]) });
     assert.equal(historyCalls.some(call => call[0] === 'end' && call[1] === rebasedGestureToken), false);
     await flushMicrotasks();
+    assert.equal(historyCalls.some(call => call[0] === 'end' && call[1] === rebasedGestureToken), false);
+    finishEvents();
     assert.ok(historyCalls.some(call => call[0] === 'end' && call[1] === rebasedGestureToken));
 
     const dialog = harness.documentRef.createElement('div');
@@ -515,13 +523,13 @@ test('delegated parameter boundaries keep one token through gestures and isolate
     assert.ok(routingToken);
     assert.notEqual(routingToken, gestureToken);
     historyManager.saveState({ operationToken: routingToken });
-    await flushMicrotasks();
+    finishEvents();
     assert.ok(historyCalls.some(call => call[0] === 'end' && call[1] === routingToken));
 
     harness.documentRef.dispatch('change', { target: select });
     const nextRoutingToken = handler.getParameterOperationToken(harness.plugins[0]);
     assert.notEqual(nextRoutingToken, routingToken);
-    await flushMicrotasks();
+    finishEvents();
 
     const range = harness.documentRef.createElement('input');
     range.type = 'range';
@@ -532,7 +540,7 @@ test('delegated parameter boundaries keep one token through gestures and isolate
     historyManager.saveState({ operationToken: keyboardToken });
     harness.documentRef.dispatch('keyup', { target: range, key: 'ArrowRight' });
     historyManager.saveState({ operationToken: handler.getParameterOperationToken(harness.plugins[0]) });
-    await flushMicrotasks();
+    finishEvents();
     assert.ok(historyCalls.some(call => call[0] === 'end' && call[1] === keyboardToken));
   });
 });

@@ -465,6 +465,15 @@ class AnalyzerDisplay {
         const separate = Boolean(this.spatialPalette) || item.effects.some(isLayerEffect);
         if (options.separateAnnotations !== separate) this.plugin.volumeHistoryDirty = true;
         options.separateAnnotations = separate;
+        if (this.type === 'oscilloscope') {
+            this.update(item, time, cssWidth);
+            const snapshot = this.plugin.scopeSnapshot;
+            const end = snapshot?.rolling ? this.plugin.scopeDisplayEnd(time * 1000) : 0;
+            const key = JSON.stringify([item.params, item.palette, this.phase, this.flipX, this.flipY,
+                cssWidth, this.plugin.canvas.width, this.plugin.canvas.height, themeSignature, separate]);
+            if (this.scopeFrame?.key === key && this.scopeFrame.snapshot === snapshot && this.scopeFrame.end === end) return false;
+            this.scopeFrame = { key, snapshot, end };
+        }
         this.signalCanvas = null;
         this.underlayCanvas = null;
         this.overflowLevelValues = [];
@@ -491,7 +500,7 @@ class AnalyzerDisplay {
         const plugin = this.plugin;
         let measurements = null;
         try {
-            this.update(item, time, cssWidth);
+            if (this.type !== 'oscilloscope') this.update(item, time, cssWidth);
             const dt = this.lastTime === undefined || time < this.lastTime ? 0 : time - this.lastTime;
             this.lastTime = time;
             if (this.type === 'spectrum') this.stepSpectrum(item, dt);
@@ -507,6 +516,7 @@ class AnalyzerDisplay {
             context.restore();
         }
         this.flushPalette();
+        return true;
     }
 
     // Replace the DSP's fixed 20 dB/s peak decay with the item's smoothing and ballistics.

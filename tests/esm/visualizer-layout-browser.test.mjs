@@ -103,6 +103,56 @@ test('Visualizer language updates translate the toolbar and open editor while pr
     }
 });
 
+test('Shift and Ctrl handle dragging preserves geometry and stays one edit when the keys are released', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer"><div id="visualizerView"><div class="visualizer-stage-host" style="position:relative;width:800px;height:500px;overflow:clip"><div class="visualizer-stage" style="position:absolute"><canvas style="display:block;width:100%;height:100%"></canvas></div></div></div></body>');
+        await page.addStyleTag({ content: css });
+        for (const source of [modelSource, palettePresetsSource, editorSource]) await page.addScriptTag({ content: source });
+        await page.evaluate(() => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            const root = document.querySelector('#visualizerView'), stage = root.querySelector('.visualizer-stage');
+            const item = createItem('shape', 'panel'), layout = createDefaultLayout();
+            item.rect = { x: .2, y: .25, w: .4, h: .2 }; layout.items = [item];
+            const view = { root, stage, stageHost: root.querySelector('.visualizer-stage-host'),
+                canvas: stage.querySelector('canvas'), layout, updateEditButtons() {},
+                t: (_, fallback) => fallback, commits: 0,
+                changed() { this.pending = true; },
+                commitPending() { if (this.pending) { this.commits++; this.pending = false; } } };
+            window.editor = new VisualizerEditor(view);
+            editor.setOpen(true);
+            editor.selection.add(item.id); editor.refresh();
+        });
+        const handle = await page.locator('.visualizer-handle.se').boundingBox();
+        const start = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+        await page.keyboard.down('Shift'); await page.keyboard.down('Control');
+        await page.mouse.move(start.x, start.y); await page.mouse.down();
+        await page.mouse.move(start.x + 60, start.y + 20);
+        const centered = await page.evaluate(() => ({ rect: editor.view.layout.items[0].rect,
+            selection: [...editor.selection], commits: editor.view.commits }));
+        assert.deepEqual(centered.selection, ['panel']);
+        assert.ok(centered.rect.w > .4);
+        assert.ok(Math.abs(centered.rect.w / centered.rect.h - 2) < 1e-9);
+        assert.ok(Math.abs(centered.rect.x + centered.rect.w / 2 - .4) < 1e-9);
+        assert.ok(Math.abs(centered.rect.y + centered.rect.h / 2 - .35) < 1e-9);
+        assert.equal(centered.commits, 0);
+        await page.keyboard.up('Control'); await page.keyboard.up('Shift');
+        assert.equal(await page.evaluate(() => editor.view.commits), 0);
+        await page.mouse.move(start.x + 80, start.y + 30);
+        const free = await page.evaluate(() => editor.view.layout.items[0].rect);
+        assert.equal(free.x, .2); assert.equal(free.y, .25);
+        await page.mouse.up();
+        assert.equal(await page.evaluate(() => editor.view.commits), 1);
+        assert.equal(await page.evaluate(() => editor.dragging), null);
+    } finally {
+        await browser.close();
+    }
+});
+
 test('Ctrl+wheel over the editing canvas zooms its artboard without changing page zoom', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -1983,6 +2033,9 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
             view.stepHistory('redo'); const redone = view.layout.items[0].style.fillOpacity;
             const stereo = select('stereo'); type(number('Window'), '150');
             const scope = select('oscilloscope'); type(number('Holdoff'), '1.5');
+            const displayTime = number('Display Time'); type(displayTime, '10000');
+            const scopeTime = [scope.params.dt, displayTime.max, displayTime.previousElementSibling.max,
+                snapshotLayout(layoutSnapshot(view.layout)).items[0].params.dt];
             const spectrum = select('spectrum'), frequency = number('Max Frequency'); type(frequency, '15');
             const converted = [stereo.params.wt, scope.params.ho, spectrum.params.mf];
             const range = number('DB Range'), initial = spectrum.params.dr;
@@ -2006,16 +2059,18 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
             const mobileItem = select('spectrum'); document.body.classList.add('layout-mobile');
             const keypad = new MobileNumberKeypad(), mobileInput = number('Max Frequency');
             mobileInput.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+            mobileInput.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
             const inspectorKeypad = keypad.target === mobileInput;
             keypad.edit('clear'); keypad.edit('2'); keypad.edit('4'); keypad.commit();
             const scale = editor.navigation.querySelector('input[type=number]');
             scale.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+            scale.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
             const navigationKeypad = keypad.target === scale;
             keypad.edit('clear'); keypad.edit('2'); keypad.commit();
             const mobile = [inspectorKeypad, mobileItem.params.mf, navigationKeypad, view.layout.graphScale,
                 scale.previousElementSibling.style.getPropertyValue('--et-range-fill')];
             keypad.dispose();
-            return { violations, counts, typing, committed, originalOpacity, undone, redone, converted,
+            return { violations, counts, typing, committed, originalOpacity, undone, redone, converted, scopeTime,
                 invalidUnapplied, clamped, restored, initialDisabled, enabled, disabled, noteRange, peerRestored, bpmRange, mobile };
         });
         assert.deepEqual(result.violations, []);
@@ -2025,6 +2080,7 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
         assert.deepEqual(result.committed, [1, '33%']);
         assert.equal(result.undone, result.originalOpacity); assert.equal(result.redone, .33);
         assert.deepEqual(result.converted, [.15, .0015, 15000]);
+        assert.deepEqual(result.scopeTime, [10, '10000', '10', 10]);
         assert.equal(result.invalidUnapplied, true);
         assert.deepEqual(result.clamped, [-144, '-144', '-144']); assert.equal(result.restored, '-144');
         assert.equal(result.initialDisabled && result.enabled && result.disabled, true);

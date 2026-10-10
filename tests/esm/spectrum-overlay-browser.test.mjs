@@ -36,6 +36,100 @@ const graphAxisTitled = new Set([
   'EarphoneCableSimPlugin'
 ]);
 
+test('mobile EQ band selectors show one band and preserve edits across layout changes',
+  { timeout: 60_000 }, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+      await page.setContent('<main class="pipeline-item"><div class="plugin-ui expanded"></div></main>');
+      await loadCssInApplicationOrder(page);
+      await loadTargetScripts(page);
+      for (const path of ['eq/group_delay_peq', 'eq/tonal_balance_eq']) {
+        await page.addScriptTag({ content: await fs.readFile(`plugins/${path}.js`, 'utf8') });
+      }
+      for (const name of [
+        'FiveBandPEQPlugin', 'FiveBandFIRPEQPlugin', 'GroupDelayPEQPlugin',
+        'RoomEqPlugin', 'TonalBalanceEQPlugin'
+      ]) {
+        await page.evaluate(name => {
+          const plugin = window.bandPlugin = new window[name]();
+          plugin.id = 1;
+          plugin._scheduleDesign = () => {};
+          plugin._refreshMeasurements = async () => {};
+          document.querySelector('.plugin-ui').replaceChildren(plugin.createUI());
+        }, name);
+        const tabs = page.locator('.mobile-band-tabs');
+        const buttons = tabs.locator('button');
+        const panels = page.locator('.mobile-band-panel');
+        assert.equal(await buttons.count(), 5, name);
+        for (const width of [1280, 320, 390]) {
+          await page.setViewportSize({ width, height: 1000 });
+          await page.evaluate(mobile => {
+            document.body.classList.toggle('layout-mobile', mobile);
+            document.documentElement.classList.toggle('layout-mobile', mobile);
+            window.uiManager = { layoutMode: { isMobile: mobile } };
+          }, width < 1159);
+          assert.equal(await tabs.isVisible(), width < 1159, `${name} ${width}px selector`);
+          assert.equal(await page.locator('.mobile-band-panel:visible').count(), width < 1159 ? 1 : 5,
+            `${name} ${width}px band count`);
+          if (width < 1159) {
+            const bounds = await tabs.boundingBox();
+            assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width,
+              `${name} ${width}px selector fits`);
+            for (const button of await buttons.all()) {
+              assert.equal((await button.boundingBox()).height, 40, `${name} touch target`);
+            }
+            const overflow = await panels.locator('input:visible, select:visible').evaluateAll(fields => {
+              return fields.filter(field => {
+                const bounds = field.getBoundingClientRect();
+                const panel = field.closest('.mobile-band-panel').getBoundingClientRect();
+                return bounds.left < panel.left || bounds.right > panel.right;
+              }).map(field => field.className);
+            });
+            assert.deepEqual(overflow, [], `${name} ${width}px fields fit the band panel`);
+          }
+        }
+        const parameters = await page.evaluate(() => JSON.stringify(window.bandPlugin.getParameters()));
+        await buttons.nth(1).click();
+        assert.equal(await panels.nth(1).isVisible(), true, `${name} selects band 2`);
+        assert.equal(await buttons.nth(1).getAttribute('aria-pressed'), 'true');
+        assert.equal(await page.evaluate(() => JSON.stringify(window.bandPlugin.getParameters())), parameters,
+          `${name} selecting a band preserves parameters`);
+        const frequencyField = panels.nth(1).locator('input[class$="-freq-text"]');
+        await frequencyField.fill('1234');
+        const enabled = panels.nth(1).locator('input[type="checkbox"]');
+        await enabled.uncheck();
+        await buttons.nth(4).focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await panels.nth(4).isVisible(), true, `${name} keyboard selection`);
+        await buttons.nth(1).click();
+        assert.equal(await frequencyField.inputValue(), '1234', `${name} retains the frequency`);
+        assert.equal(await enabled.isChecked(), false, `${name} retains the enable state`);
+        const edited = await page.evaluate(() => JSON.stringify(window.bandPlugin.getParameters()));
+        await page.evaluate(() => {
+          const marker = document.querySelectorAll('[data-band].five-band-peq-marker, ' +
+            '[data-band].five-band-fir-peq-marker, [data-band].group-delay-peq-marker, ' +
+            '[data-band].room-eq-additional-eq-marker')[3];
+          marker.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, pointerId: 1, pointerType: 'touch', button: 0
+          }));
+          marker.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
+        });
+        assert.equal(await panels.nth(3).isVisible(), true, `${name} graph selects its band`);
+        assert.equal(await page.evaluate(() => JSON.stringify(window.bandPlugin.getParameters())), edited,
+          `${name} graph selection preserves parameters`);
+        await page.evaluate(() => document.body.classList.remove('layout-mobile'));
+        assert.equal(await tabs.isVisible(), false, `${name} desktop hides the selector`);
+        assert.equal(await page.locator('.mobile-band-panel:visible').count(), 5, `${name} desktop restores all bands`);
+        await page.evaluate(() => document.body.classList.add('layout-mobile'));
+        assert.equal(await panels.nth(3).isVisible(), true, `${name} resize retains selection`);
+        await page.evaluate(() => window.bandPlugin.cleanup());
+      }
+    } finally {
+      await browser.close();
+    }
+  });
+
 const fontSizes = {
   ChannelDividerPlugin: { tick: 11, axis: 13 },
   FIRCrossoverPlugin: { tick: 11, axis: 13 },
@@ -601,6 +695,95 @@ const layoutTargets = [
   { name: 'TubeSimulatorPlugin', path: 'saturation/tube_simulator', prefix: 'tube-simulator-tab', button: '.tube-simulator-tab' },
   { name: 'RoomEqPlugin', path: 'eq/room_eq', prefix: 'room-eq-tab', button: '.room-eq-tab' }
 ];
+
+test('note range readouts match numeric field widths and stay at the right edge',
+  { timeout: 60_000 }, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const scripts = await Promise.all([
+        'plugins/plugin-base.js', 'plugins/analyzer/note_spectrogram.js',
+        'plugins/analyzer/pitch_meter.js', 'plugins/others/sfz_note_player.js'
+      ].map(path => fs.readFile(path, 'utf8')));
+
+      for (const width of [320, 390, 768, 1280]) {
+        const page = await browser.newPage({ viewport: { width, height: 1000 } });
+        try {
+          await page.setContent('<main class="pipeline-item"><div class="plugin-ui expanded"></div></main>');
+          await page.evaluate(mobile => {
+            document.body.classList.toggle('layout-mobile', mobile);
+            document.documentElement.classList.toggle('layout-mobile', mobile);
+          }, width < 1159);
+          await loadCssInApplicationOrder(page);
+          await page.addScriptTag({ content: (await fs.readFile('js/ui/range-fill.js', 'utf8')).replace(/^export /gm, '') });
+          for (const content of scripts) await page.addScriptTag({ content });
+
+          const results = await page.evaluate(() => {
+            return ['NoteSpectrogramPlugin', 'PitchMeterPlugin', 'SFZNotePlayerPlugin'].map(name => {
+              const plugin = new window[name]();
+              plugin.id = 1;
+              const sfz = name === 'SFZNotePlayerPlugin';
+              const container = document.createElement('div');
+              container.className = sfz
+                ? 'sfz-note-player-plugin-ui plugin-parameter-ui'
+                : 'plugin-parameter-ui';
+              const parameters = document.createElement('div');
+              parameters.className = sfz ? 'sfz-controls' : 'analyzer-parameters';
+              const numericRow = plugin.createParameterControl('Level', 0, 100, 1, 50, () => {});
+              parameters.append(numericRow);
+              const noteRows = [['mn', 'Lowest Note'], ['mx', 'Highest Note']].map(([key, label]) => {
+                const row = sfz
+                  ? plugin._noteControl(label, key)
+                  : plugin.createNoteRangeControl(label, plugin[key], () => {}, key);
+                parameters.append(row);
+                return row;
+              });
+              container.append(parameters);
+              const textRow = document.createElement('div');
+              textRow.className = 'parameter-row';
+              textRow.innerHTML = '<label>Name:</label><input type="text" value="Example">';
+              container.append(textRow);
+              document.querySelector('.plugin-ui').replaceChildren(container);
+              return {
+                name,
+                numericWidth: numericRow.querySelector('input[type="number"]').getBoundingClientRect().width,
+                editableWidth: textRow.querySelector('input').getBoundingClientRect().width,
+                rows: noteRows.map(row => {
+                  const field = row.querySelector('input[type="text"]');
+                  const bounds = field.getBoundingClientRect();
+                  const rowBounds = row.getBoundingClientRect();
+                  const slider = row.querySelector('input[type="range"]').getBoundingClientRect();
+                  return {
+                    label: row.querySelector('label').textContent,
+                    width: bounds.width,
+                    height: rowBounds.height,
+                    rightOffset: rowBounds.right - bounds.right,
+                    centerOffset: (bounds.top + bounds.bottom - slider.top - slider.bottom) / 2,
+                    readOnly: field.readOnly
+                  };
+                })
+              };
+            });
+          });
+          for (const { name, numericWidth, editableWidth, rows } of results) {
+            assert.equal(numericWidth, 80, `${width}px ${name} standard numeric width`);
+            assert.ok(editableWidth > numericWidth, `${width}px ${name} editable text still expands`);
+            for (const row of rows) {
+              const context = `${width}px ${name} ${row.label}`;
+              assert.equal(row.width, numericWidth, `${context} matches the numeric field width`);
+              assert.equal(row.height, width < 1159 ? 40 : 26, `${context} stays on one line`);
+              assert.ok(Math.abs(row.rightOffset) < 0.1, `${context} aligns to the row's right edge`);
+              assert.ok(Math.abs(row.centerOffset) < 0.1, `${context} aligns with its slider`);
+              assert.equal(row.readOnly, true, `${context} remains read-only`);
+            }
+          }
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await browser.close();
+    }
+  });
 
 test('effect rows keep equal heights with wrapped labels and tabs retain the largest default page',
   { timeout: 60_000 }, async () => {

@@ -6,10 +6,15 @@ lang: en
 
 # Version History
 
+### Version 2.14.0 (TBD, 2026)
+- Added a first-run screen tour that can be reopened with Take the tour
+- Various minor improvements
+
 ### Version 2.13.0 (Oct 9, 2026)
 - Added Adaptive Prediction and SFZ Note Player effects
 - Added Guitar to the Visualizer
 - Improved Note Spectrogram and Rhythm Analyzer accuracy
+- Added remote control functionality
 - Various minor improvements
 
 ### Version 2.12.0 (Oct 2, 2026)

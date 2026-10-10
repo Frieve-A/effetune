@@ -81,9 +81,14 @@ class OscilloscopeTelemetryFrame(TelemetryFrame):
     capture_sample_count: int
     trigger_offset: int
     triggered: bool
-    encoding: Literal["samples", "minMax"]
+    encoding: Literal["samples", "minMax", "envelope"]
     sample_indices: tuple[int, ...]
     values: tuple[float, ...]
+    extrema: tuple[float, ...] = ()
+    bucket_count: int = 0
+    bucket_samples: int = 0
+    end_sample: int = 0
+    rolling: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,7 +266,7 @@ _ANALYZER_FRAMES = {
     "ChromaSpiral": (4, (2,)),
     "LevelMeter": (1, (1,)),
     "NoteSpectrogram": (24, (5,)),
-    "Oscilloscope": (3, (2,)),
+    "Oscilloscope": (3, (2, 3)),
     "PitchMeter": (26, (1,)),
     "RhythmAnalyzer": (28, (1, 3, 4)),
     "SpectrumAnalyzer": (4, (1, 2)),
@@ -334,6 +339,7 @@ def _decode_oscilloscope(
     node: tuple[str, str | None, int],
     sequence: int,
     dropped: int,
+    version: int = 2,
 ) -> TelemetryFrame | None:
     if len(payload) < 20:
         return None
@@ -342,6 +348,50 @@ def _decode_oscilloscope(
     )
     encoding = payload[14]
     flags = payload[15]
+    if version == 3:
+        if (
+            encoding != 2
+            or not math.isfinite(sample_rate)
+            or sample_rate <= 0
+            or not 2048 < capture_count <= math.ceil(sample_rate * 10)
+            or trigger_offset >= capture_count
+            or not 1 <= bucket_count <= 8188
+            or flags & ~3
+            or len(payload) != 28 + bucket_count * 8
+        ):
+            return None
+        bucket_samples, end_sample = struct.unpack_from("<IQ", payload, 16)
+        rolling = bool(flags & 2)
+        if rolling:
+            if (
+                bucket_samples != (capture_count + 4095) // 4096
+                or not 1 <= end_sample <= 2**53 - 1
+                or bucket_count > (end_sample + bucket_samples - 1) // bucket_samples
+                or flags & 1
+            ):
+                return None
+        elif bucket_samples != 0 or end_sample != 0 or bucket_count != 4096:
+            return None
+        extrema = struct.unpack_from(f"<{bucket_count * 2}f", payload, 28)
+        if any(not math.isfinite(value) for value in extrema) or any(
+            extrema[index] > extrema[index + 1] for index in range(0, len(extrema), 2)
+        ):
+            return None
+        return OscilloscopeTelemetryFrame(
+            **_common("oscilloscope", node, sequence, dropped),
+            sample_rate=sample_rate,
+            capture_sample_count=capture_count,
+            trigger_offset=trigger_offset,
+            triggered=bool(flags & 1),
+            encoding="envelope",
+            sample_indices=(),
+            values=(),
+            extrema=extrema,
+            bucket_count=bucket_count,
+            bucket_samples=bucket_samples,
+            end_sample=end_sample,
+            rolling=rolling,
+        )
     if (
         not math.isfinite(sample_rate)
         or sample_rate <= 0
@@ -1120,6 +1170,8 @@ def _decode_telemetry_packet(
                 if version == 2 and frame_type in (4, 5)
                 else _decode_rhythm_analyzer(payload, node, sequence, pending_dropped, version)
                 if frame_type == 28
+                else _decode_oscilloscope(payload, node, sequence, pending_dropped, version)
+                if frame_type == 3
                 else _DECODERS[frame_type](
                     payload, node, sequence, pending_dropped
                 )

@@ -2,9 +2,62 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { decodeTelemetryPacket } from '../dist/telemetry.js';
+import { createChain, Oscilloscope } from '../dist/index.js';
 
 const HQ_MIN_FREQUENCY = 20;
 const HQ_MAX_FREQUENCY = 40_000;
+
+test('both shipped WASM variants preserve brief peaks in a ten-second rolling envelope', async () => {
+  for (const variant of ['baseline', 'simd']) {
+    const chain = await createChain([new Oscilloscope({ displayTime: 10, triggerMode: 'Off' })], { variant });
+    const input = new Float32Array(483200);
+    input[12000] = 1;
+    input[432000] = -0.75;
+    let latest;
+    try {
+      await chain.process([input], { sampleRate: 48000, blockSize: 127, onTelemetry: frame => { latest = frame; } });
+      assert.equal(latest.encoding, 'envelope');
+      assert.equal(latest.captureSampleCount, 480000);
+      assert.ok(latest.endSample >= 480000 && latest.endSample <= input.length);
+      assert.ok(latest.extrema.length <= 4226 * 2);
+      assert.ok(latest.bucketCount >= 3840 && latest.bucketSamples <= latest.captureSampleCount / 3840);
+      assert.equal(Math.max(...latest.extrema), 1);
+      assert.equal(Math.min(...latest.extrema), -0.75);
+    } finally {
+      chain.close();
+    }
+  }
+});
+
+test('Oscilloscope decodes a ten-second rolling envelope with a 64-bit sample clock', () => {
+  const payloadBytes = 28 + 4096 * 8;
+  const packet = new Uint8Array(16 + payloadBytes);
+  const view = new DataView(packet.buffer);
+  view.setUint16(0, 3, true);
+  view.setUint16(2, 3, true);
+  view.setUint32(4, 7, true);
+  view.setUint16(12, payloadBytes, true);
+  view.setFloat32(16, 384000, true);
+  view.setUint32(20, 3840000, true);
+  view.setUint16(28, 4096, true);
+  view.setUint8(30, 2);
+  view.setUint8(31, 2);
+  view.setUint32(32, 938, true);
+  view.setBigUint64(36, 0x1_0000_0001n, true);
+  view.setFloat32(44, -0.75, true);
+  view.setFloat32(48, 0.5, true);
+  const nodes = new Map([[7, { effectType: 'Oscilloscope', effectId: 'scope', effectIndex: 0 }]]);
+  const decoded = decodeTelemetryPacket(packet, packet.byteLength, nodes);
+  assert.equal(decoded.frames.length, 1);
+  const [frame] = decoded.frames;
+  assert.equal(frame.encoding, 'envelope');
+  assert.equal(frame.rolling, true);
+  assert.equal(frame.endSample, 0x1_0000_0001);
+  assert.equal(frame.captureSampleCount, 3840000);
+  assert.deepEqual(Array.from(frame.extrema.slice(0, 2)), [-0.75, 0.5]);
+  view.setFloat32(44, 1, true);
+  assert.equal(decodeTelemetryPacket(packet, packet.byteLength, nodes).frames.length, 0);
+});
 
 function validRange(frameType, cellCount, sampleRate) {
   let firstValidIndex = cellCount;

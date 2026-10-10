@@ -187,23 +187,28 @@ Mostra as frequências fundamentais (F0) estimadas de A0 a C8 em um piano roll q
 Mostra a forma da onda sonora em tempo real, para você ver batidas, ataques rápidos e mudanças de volume enquanto escuta. As configurações de trigger podem estabilizar a visualização quando a forma de onda se repete.
 
 ### Guia de Visualização
-- Eixo horizontal mostra o tempo (milissegundos)
+- O eixo horizontal mostra o tempo em milissegundos ou segundos
 - Eixo vertical mostra a amplitude normalizada; a faixa visível muda com Display Level e Vertical Offset
-- Linha verde traça a forma de onda real
+- Com tempos curtos, uma linha mostra os detalhes da onda; com tempos longos, uma faixa preenchida mostra as amplitudes mínima e máxima de cada intervalo
 - Linhas de grade ajudam a medir valores de tempo e amplitude
 - As configurações de trigger determinam onde a captura da forma de onda começa; não há um marcador separado
 
 ### Exibição Visual
 - Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
+### Guia de uso
+- Para examinar uma onda que se repete, ajuste Display Time para 1–20 ms e Trigger Mode para Auto.
+- Para acompanhar batidas e mudanças de volume, ajuste Display Time para 1.000–10.000 ms e Trigger Mode para Off. O áudio mais recente aparece na borda direita e a onda se desloca suavemente para a esquerda.
+- Nos modos Auto e Normal, uma nova captura aparece depois de coletar a duração definida em Display Time.
+
 ### Parâmetros
-- **Display Time** - Quanto tempo mostrar (1 a 100 ms)
+- **Display Time** - Tempo exibido (de 1 a 10.000 ms, até 10 segundos)
   - Valores menores: Veja mais detalhes em eventos curtos
   - Valores maiores: Visualize padrões mais longos
 - **Trigger Mode**
   - Auto: Atualizações contínuas mesmo sem trigger
   - Normal: Congela o display até o próximo trigger
-  - Off: Sem trigger; mostra continuamente a forma de onda mais recente. Trigger Level, Trigger Edge e Holdoff não têm efeito
+  - Off: Sem disparo; o áudio mais recente aparece na borda direita e a onda se desloca para a esquerda. Trigger Level, Trigger Edge e Holdoff não têm efeito
 - A detecção de trigger usa a média dos canais esquerdo e direito. A entrada mono é usada diretamente.
 - **Trigger Level** - Nível de amplitude que inicia a captura
   - Faixa: -1 a 1 (amplitude normalizada)
@@ -215,7 +220,7 @@ Mostra a forma da onda sonora em tempo real, para você ver batidas, ataques rá
 - **Vertical Offset** - Desloca a forma de onda para cima/baixo (-1 a 1)
 
 ### Nota sobre a Exibição da Forma de Onda
-A forma de onda conecta os pontos capturados em ordem temporal. Com tempos de exibição longos, cada intervalo preserva suas amostras inicial e final, além das amostras mínima e máxima em suas posições originais. Assim, a continuidade e os picos breves são mantidos dentro da resolução da tela. Use-a como guia visual, não como ferramenta de medição exata.
+Com tempos longos, a faixa preenchida preserva as amplitudes mínima e máxima de cada intervalo. Assim, picos breves continuam visíveis mesmo quando várias amostras ocupam a mesma posição na tela. O cursor mostra Minimum e Maximum desse intervalo; com tempos curtos, mostra Amplitude ao longo da onda. Use a visualização como referência, não como instrumento de medição exata.
 
 ## Pitch Meter
 

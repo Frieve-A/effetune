@@ -17,7 +17,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const pluginRoot = path.join(repoRoot, 'dsp', 'plugins', 'analyzer', 'oscilloscope');
 const schemaPath = path.join(pluginRoot, 'params.json');
 const goldenDir = path.join(pluginRoot, 'golden');
-const jsEngineHash = '3b53e86e75d127ff615505a4b7054b0d1669e207ebfc0c48ba2f44edd4de71af';
+const jsEngineHash = '8d127725eafc62a29c7af2b488e0233e071d3a95beb484f33a179c3711270423';
 
 async function directoryBytes(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -85,7 +85,7 @@ test('Oscilloscope schema freezes legacy parameter keys, enums, bounds, and defa
   );
   assert.deepEqual(raw.fields[1].values, ['Auto', 'Normal', 'Off']);
   assert.deepEqual(raw.fields[3].values, ['Rising', 'Falling']);
-  assert.deepEqual([raw.fields[0].min, raw.fields[0].max], [0.001, 0.1]);
+  assert.deepEqual([raw.fields[0].min, raw.fields[0].max], [0.001, 10]);
   assert.deepEqual([raw.fields[4].min, raw.fields[4].max], [0.0001, 0.01]);
 });
 
@@ -131,29 +131,29 @@ test('Oscilloscope legacy processor freezes average, trigger, holdoff, and auto-
   );
 
   const triggerState = {};
-  let measurements = executeLegacyBlock(
+  executeLegacyBlock(
     plugin,
     triggerState,
     [-1, 1, 1, 1],
     { time: 0, params: { tm: 'Normal', tl: 0, te: 'Rising', ho: 0.0001 } }
   );
-  assert.equal(measurements.triggerIndex, 0);
-  measurements = executeLegacyBlock(
+  assert.equal(triggerState.scope.trigger, 0);
+  executeLegacyBlock(
     plugin,
     triggerState,
     [-1, 1, 1, 1],
     { time: 0.01, params: { tm: 'Normal', tl: 0, te: 'Rising', ho: 0.0001 } }
   );
-  assert.equal(measurements.triggerIndex, 5);
+  assert.equal(triggerState.scope.trigger, 5);
 
   const averageState = {};
-  measurements = executeLegacyBlock(
+  executeLegacyBlock(
     plugin,
     averageState,
     [-1, -0.5, 0.5, 1, 1, 0.5, -0.5, -1],
     { time: 0, channelCount: 2, params: { tm: 'Normal' } }
   );
-  assert.deepEqual(Array.from(measurements.buffer.subarray(0, 4)), [0, 0, 0, 0]);
+  assert.deepEqual(Array.from(averageState.scope.ring.subarray(0, 4)), [0, 0, 0, 0]);
 
   const autoState = {};
   executeLegacyBlock(plugin, autoState, [0, 0, 0, 0], {
@@ -164,10 +164,10 @@ test('Oscilloscope legacy processor freezes average, trigger, holdoff, and auto-
     time: 0.05,
     params: { tm: 'Auto' }
   });
-  measurements = executeLegacyBlock(plugin, autoState, [0, 0, 0, 0], {
+  executeLegacyBlock(plugin, autoState, [0, 0, 0, 0], {
     time: 0.16,
     params: { tm: 'Auto' }
   });
-  assert.equal(measurements.currentPosition, 12);
-  assert.equal(measurements.triggerIndex, 12);
+  assert.equal(autoState.scope.position, 12);
+  assert.equal(autoState.scope.trigger, 12);
 });

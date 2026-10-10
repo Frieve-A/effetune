@@ -783,21 +783,23 @@ class FiveBandDynamicEQ extends PluginBase {
             });
         }
 
-        const currentGains = (this.latestSmoothedGains && this.latestSmoothedGains.length === this.numBands)
-            ? this.latestSmoothedGains
-            : this._zeroGains;
-        let totalResponse = 0;
-        for (let bandIdx = 0; bandIdx < this.numBands; bandIdx++) {
-            const b = this.bs[bandIdx];
-            if (!b.en) continue;
-            totalResponse += this._calculateBandResponse(freq, b.f, currentGains[bandIdx], b.q, b.ft);
+        if (this.hasLocalAudio !== false) {
+            const currentGains = (this.latestSmoothedGains && this.latestSmoothedGains.length === this.numBands)
+                ? this.latestSmoothedGains
+                : this._zeroGains;
+            let totalResponse = 0;
+            for (let bandIdx = 0; bandIdx < this.numBands; bandIdx++) {
+                const b = this.bs[bandIdx];
+                if (!b.en) continue;
+                totalResponse += this._calculateBandResponse(freq, b.f, currentGains[bandIdx], b.q, b.ft);
+            }
+            rows.push({
+                label: 'Dynamic',
+                color: (window.ThemePalette?.get('graph-trace') ?? ''),
+                value: format.db(totalResponse, { signed: true }),
+                y: toY(totalResponse)
+            });
         }
-        rows.push({
-            label: 'Dynamic',
-            color: (window.ThemePalette?.get('graph-trace') ?? ''),
-            value: format.db(totalResponse, { signed: true }),
-            y: toY(totalResponse)
-        });
 
         return {
             cursor: format.frequency(freq),
@@ -1146,35 +1148,35 @@ class FiveBandDynamicEQ extends PluginBase {
             }
         }
 
-        // --- Draw the Dynamic Combined Response Curve (Bright Green) ---
-        // Get the latest smoothed gains from the audio processor, or fall
-        // back to the cached zero array if not available yet.
-        const currentGains = (this.latestSmoothedGains && this.latestSmoothedGains.length === this.numBands)
-                        ? this.latestSmoothedGains
-                        : this._zeroGains;
+        if (this.hasLocalAudio !== false) {
+            // Get the latest smoothed gains from the audio processor, or fall
+            // back to the cached zero array if not available yet.
+            const currentGains = (this.latestSmoothedGains && this.latestSmoothedGains.length === this.numBands)
+                            ? this.latestSmoothedGains
+                            : this._zeroGains;
 
-        // Compute and stroke the curve in a single pass; the per-point
-        // response is no longer materialized into a temporary array.
-        ctx.beginPath();
-        ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? ''); // Bright green (like PEQ)
-        ctx.lineWidth = Math.max(1, 1.5 * dpr);
-        for (let i = 0; i < freqPoints.length; i++) {
-            const freq = freqPoints[i];
-            let totalResponse = 0;
-            for (let bandIdx = 0; bandIdx < this.numBands; bandIdx++) {
-                const band = this.bs[bandIdx];
-                if (!band.en) continue;
-                totalResponse += this._calculateBandResponse(freq, band.f, currentGains[bandIdx], band.q, band.ft);
+            // Compute and stroke the curve in a single pass.
+            ctx.beginPath();
+            ctx.strokeStyle = (window.ThemePalette?.get('graph-trace') ?? '');
+            ctx.lineWidth = Math.max(1, 1.5 * dpr);
+            for (let i = 0; i < freqPoints.length; i++) {
+                const freq = freqPoints[i];
+                let totalResponse = 0;
+                for (let bandIdx = 0; bandIdx < this.numBands; bandIdx++) {
+                    const band = this.bs[bandIdx];
+                    if (!band.en) continue;
+                    totalResponse += this._calculateBandResponse(freq, band.f, currentGains[bandIdx], band.q, band.ft);
+                }
+                const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
+                const y = height * (1 - (totalResponse - minGain) / gainRange);
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
             }
-            const x = width * (Math.log10(freq) - logMinFreq) / logFreqSpan;
-            const y = height * (1 - (totalResponse - minGain) / gainRange);
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
+            ctx.stroke();
         }
-        ctx.stroke();
 
         // --- Draw Axis Labels ---
         ctx.fillStyle = (window.ThemePalette?.get('text-primary') ?? ''); // Use white for axis labels for clarity

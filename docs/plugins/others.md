@@ -123,41 +123,48 @@ SFZ Note Player detects notes in the incoming audio and plays them with an SFZ i
 
 Playback automatically suppresses aliasing when shifting notes or converting sample rates.
 
-**Retrigger Drop** controls when a note can play again during continuous detection. After detection and any **Note Hold** period end, detecting the same pitch again starts a new note.
+For notes at B5 and below, a clear new attack starts a new note, including repeated strikes of the same pitch. Above B5, **Retrigger Drop** controls when a note can play again during continuous detection. **Note Hold** connects short gaps in detection, but a clear new attack at B5 or below still starts a new note during the hold.
 
 ### Sound Enhancement Guide
 
-In Electron, click **Select SFZ Folder…** and choose the instrument folder containing its SFZ files, samples and included files. If several SFZ files are found, choose an instrument and click **Select**. Files within this folder are read directly each time the instrument loads. **Remove** removes the entry from the list without deleting the original files.
+Click **SFZ Library…** to open the instrument list. Use **Import folder…** to add a folder containing SFZ definitions, samples and included files, then click **Load** beside the instrument you want. **Import files…** adds selected files; on the web, include their samples and other required files. Electron keeps references to the original files and reads them each time you load the instrument. The web version saves the instruments on this device.
 
-In the web version, click **Import Folder…** and choose a folder containing the SFZ file and its samples. If the folder contains several SFZ files, choose one and click **Import**. Select the saved instrument in **SFZ**; **Remove** deletes the selected bank from local storage.
+Each entry shows its capacity, file count and region count. Capacity includes samples: Electron totals the referenced files, while the web version shows the saved instrument size. Regions are sound mappings for note and velocity ranges. Search by filename and sort by **Filename** or **Recently imported**. **Select all** selects every entry currently shown; **Deselect all** clears the selection. Check several entries and use **Delete selected** to delete them together, or **Delete** for one entry. Instruments used by an effect pipeline cannot be deleted. Electron keeps the original files; web deletion removes the saved instrument. **Clear** in the effect controls deselects the instrument while keeping it in the library.
+
+Progress appears inside the library while files are added. For ARIA sound banks such as Plogue Free Sounds, choose the complete bank folder containing its `.bank.xml`, `Programs` and `Samples`.
+
+Basic waveform sources, including the bank's Virtual Analog programs, play through generated looping samples. Unsupported sound-shaping settings are ignored. Invalid sound fade times are adjusted to playable values; any problems are explained only when you explicitly select or import an instrument.
 
 Begin with **Dry** at 0% and **Wet** at 100% to hear the instrument alone, then raise **Dry** to add the original sound. Set **Octave** to -1 to add a lower layer, or +1 for a higher one. Raise **Threshold** to follow fewer, more confidently detected notes. Limit **Lowest Note** and **Highest Note** to the range you want to hear. Adjust **Velocity 1 Level** and **Velocity 127 Level** if the instrument is consistently too soft or too strong, and use **Output Gain** to balance its final level.
 
+Use **Sample Shift** to change the timbre while keeping the same pitch. Try +1: a detected C4 uses the sample assigned to C#4, played more slowly at C4 pitch.
+
 Use **Lowest** alone to follow a lower line, or **Highest** alone to follow an upper line.
 
-If a sustained note repeats unexpectedly, raise **Retrigger Drop** from its default of 40 dB; 96 dB strongly suppresses repeats caused by level changes. Lower it to follow repeated strikes of the same note.
+For notes above B5, if a sustained note repeats unexpectedly, raise **Retrigger Drop** from its default of 40 dB; 96 dB strongly suppresses repeats caused by level changes. Lower it to follow repeated strikes of the same note. At B5 and below, repeated notes follow detected attacks instead.
 
-Raise **Note Hold** to lengthen notes and connect short gaps in detection. At 100 ms, a note is held for an extra 100 ms before note-off.
+Raise **Note Hold** to lengthen notes and connect short gaps in detection. At 100 ms, a note is held for an extra 100 ms before note-off. At B5 and below, a clear new attack plays a new note even during this hold.
 
-A colored line in **Note Spectrogram** does not by itself guarantee playback: **Threshold** and **Lowest Note / Highest Note** still apply. For very low or high notes, check these limits, try a lower **Threshold**, and check that the SFZ instrument covers the note after **Octave** is applied.
+A colored line in **Note Spectrogram** does not by itself guarantee playback: **Threshold** and **Lowest Note / Highest Note** still apply. For very low or high notes, check these limits, try a lower **Threshold**, and check that the SFZ instrument covers the note selected by **Octave** and **Sample Shift**.
 
 ### Parameters
 
-- **SFZ**: Chooses an instrument by name. A dialog reports problems on the first loading attempt after manual selection or import; automatic reloads show no dialog.
-- **Threshold**: Minimum detection confidence (0.01–1, default 0.75). Higher values reduce unwanted notes but can miss quieter or less distinct notes.
-- **Retrigger Drop (dB)**: Required fall from the note's peak input level before it can play again (1–96 dB, default 40 dB). The level must then rise by at least 6 dB. Higher values reduce repeats during sustained notes; lower values make repeated strikes easier to follow.
-- **Note Hold (ms)**: Extra time to keep a note held after detection ends (0–100 ms, default 50 ms). If the same pitch returns within this period, the existing note continues. The instrument's envelope and sample length still apply.
+- **SFZ**: Open **SFZ Library…** to choose and manage instruments. **Clear** deselects the instrument without deleting it. Problems are explained in a dialog only on the first explicit load; automatic reloads stay quiet.
+- **Threshold**: Detection confidence threshold (0.01–1, default 0.75). Higher values reduce unwanted notes but can miss quieter or less distinct notes. At B5 and below, a clear attack can also start a note with confidence slightly below this value.
+- **Retrigger Drop (dB)**: For notes above B5, the required fall from the note's peak input level before it can play again (1–96 dB, default 40 dB). The level must then rise by at least 6 dB. Higher values reduce repeats during sustained notes; lower values make repeated strikes easier to follow. At B5 and below, this setting does not affect repeated-note detection; new notes follow detected attacks.
+- **Note Hold (ms)**: Extra time to keep a note held after detection ends (0–100 ms, default 50 ms). If the same pitch returns within this period, the existing note continues unless a clear new attack is detected at B5 or below. The instrument's envelope and sample length still apply.
 - **Velocity 1 Level / Velocity 127 Level (dB)**: Input note levels mapped to the softest and strongest playing velocities (defaults -60 dB / -10 dB). Lowering these levels produces stronger velocities from the same input. Their spacing controls how widely input levels spread across the velocity range.
 - **Lowest Note / Highest Note**: Lowest and highest input notes to detect (A0–C8, MIDI 21–108; defaults E1 and G6), displayed as note names. A narrower range ignores notes outside it.
 - **Highest / Middle / Lowest**: Selects the lower line, inner notes, and upper line before Octave is applied (all enabled by default). Middle selects notes strictly between the current lowest and highest detected notes. The outer lines follow pitches over time to reduce sudden switches; a single detected note belongs to both. Notes no longer selected fade out naturally. Turn all three off to stop new notes.
 - **Octave**: Shifts newly played SFZ notes by -2 to +2 octaves, in whole-octave steps (default 0). Negative values play lower notes; positive values play higher notes. The input detection range and notes already sounding remain unchanged.
+- **Sample Shift**: Selects samples assigned to notes -6 to +6 semitones away, in whole-semitone steps (default 0), while keeping the pitch set by Octave. Positive values choose higher-note samples and play them more slowly; negative values choose lower-note samples and play them faster. Changes apply to new notes; notes already sounding keep their sample and playback speed.
 - **Max Voices**: Limits simultaneous sample voices. A larger value preserves more overlapping notes and releases but uses more processing power; a smaller value replaces older voices sooner.
 - **Dry (%)**: Level of the original audio (0–100%, default 20%). 0% mutes it; 100% keeps its original level.
 - **Wet (%)**: Level of the SFZ instrument (0–100%, default 100%). 0% mutes it; 100% keeps its full level. Dry and Wet are independent.
 - **Timing (ms)**: Adjusts the timing between the original audio and the SFZ instrument (-100 to +100 ms, default 0). Negative values delay the original audio further; positive values delay the instrument. Adjust it while listening to bring their note attacks closer together.
 - **Output Gain (dB)**: Adjusts the final level of the blended output.
 
-At **Timing** 0 ms, the original audio is delayed by about **80 ms** to match note-detection processing and correction. The analysis cycle and the instrument’s attack can still cause small timing differences. An enabled **Note Spectrogram** placed upstream with the same note range, input bus, and channel selection can share its analysis and reduce processing load when the audio between them is unchanged.
+At **Timing** 0 ms, the original audio is delayed by about **90 ms** to match note-detection processing and correction. The analysis cycle and the instrument’s attack can still cause small timing differences. An enabled **Note Spectrogram** placed upstream with the same note range, input bus, and channel selection can share its analysis and reduce processing load when the audio between them is unchanged.
 
 Loading supports common SFZ selection, pitch, volume, pan, loop, and amplitude-envelope settings. Release fades last at least **0.2 seconds**, preserving longer SFZ settings; samples can stop sooner at their end. Controller range conditions use initial controller values, with the SFZ's `set_ccN` settings taking priority. For example, a piano with the pedal initially released uses its pedal-up samples without adding its pedal-down layer. An instrument’s default key-switch articulation is used when specified. Layers requiring note release, controller events, dynamic key switching or other unsupported playing conditions are omitted. Invalid regions are skipped while valid regions continue. Other unsupported sound-shaping settings are ignored.
 

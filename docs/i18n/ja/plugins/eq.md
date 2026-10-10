@@ -15,6 +15,8 @@ lang: ja
 
 5Band PEQ、15Band PEQ、5Band FIR PEQ、Group Delay PEQ、Room EQのAdditional EQにあるポイントグラフでは、通常どおりポイントをドラッグすると両軸の値が変わります。Shiftキーを押しながらドラッグすると移動方向を1軸に固定できます。横方向へ動かし始めるとFrequencyだけ、縦方向へ動かし始めるとLevelだけ（Group Delay PEQではDelayだけ）が変わります。Shiftキーを離すと自由移動に戻ります。ポイントにマウスポインターを合わせ、ホイールを上へ回すとQが上がり、下へ回すとQが下がります。
 
+モバイルでは、5Band PEQ、5Band FIR PEQ、Group Delay PEQ、Room EQのAdditional EQ、Tonal Balance EQのTarget Adjustは、選択した1バンドの設定だけを表示します。番号付きのバンドボタンをタップして、編集するバンドを切り替えてください。切り替えても、各バンドの設定は保持されます。
+
 ## プラグイン一覧
 
 - [15Band GEQ](#15band-geq) - 15個の精密なコントロールで細かく音を調整

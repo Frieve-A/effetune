@@ -2000,7 +2000,7 @@ class SWRadioSimulatorPlugin extends PluginBase {
             maxWidth: 1024,
             aspectRatio: '16 / 1',
             mobileAspectRatio: '3 / 1',
-            className: 'sw-radio-simulator-hud',
+            className: 'sw-radio-simulator-hud local-audio-only',
             onResize: () => this.drawHud()
         });
         this.hudGraphDispose = graph.dispose;

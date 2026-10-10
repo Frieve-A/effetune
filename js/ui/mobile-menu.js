@@ -67,6 +67,7 @@ export class MobileMenu {
             this.panel.appendChild(this.createLocalizedAction('ui.resetButton', 'Reset Audio', () => this.uiManager.stateManager?.resetAudio?.()));
             this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));
             this.panel.appendChild(this.createLocalizedAction('ui.whatsThisApp', "What's this app?", () => document.getElementById('whatsThisLink')?.click()));
+            this.panel.appendChild(this.createLocalizedAction('tour.menu', 'Take the tour', () => this.uiManager.startOnboardingTour()));
             this.moveInstallElementsToPanel();
             document.body.appendChild(this.panel);
             this.uiManager.powerStateView?.refreshActions?.();
