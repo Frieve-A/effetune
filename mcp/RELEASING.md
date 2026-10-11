@@ -15,12 +15,12 @@ registry. `.github/workflows/mcp.yml` publishes it when a tag `mcp-v<version>` i
    - Allow it to publish without a one-time password (*Bypass two-factor authentication*), since
      the workflow cannot type one.
    - Give it an expiry date and note it.
-3. **Repository secret.** On GitHub, `comoc/effetune` > Settings > Secrets and variables >
+3. **Repository secret.** On GitHub, the repository > Settings > Secrets and variables >
    Actions > New repository secret: name `NPM_TOKEN`, value the token.
-4. **Actions enabled.** A fork starts with Actions disabled: open the Actions tab and enable
+4. **Actions enabled.** In a fork, Actions start disabled: open the Actions tab and enable
    workflows.
 5. **Public repository.** `npm publish --provenance` only works from a public repository whose URL
-   matches `repository.url` in `mcp/package.json` (`https://github.com/comoc/effetune`).
+   matches `repository.url` in `mcp/package.json` (`https://github.com/Frieve-A/effetune`).
 
 ## Each release
 
@@ -32,7 +32,7 @@ registry. `.github/workflows/mcp.yml` publishes it when a tag `mcp-v<version>` i
 
    ```sh
    git tag mcp-v0.1.0
-   git push fork mcp-v0.1.0
+   git push origin mcp-v0.1.0
    ```
 
 4. Watch Actions > **MCP server**: the `Test` job runs, then `Publish to npm` checks the tag
@@ -50,7 +50,7 @@ app. Release the MCP server only when files in `mcp/` change.
 ## If a release went wrong
 
 - The tag and version disagree: the publish job stops before publishing. Delete the tag
-  (`git push fork :refs/tags/mcp-vX.Y.Z`, `git tag -d mcp-vX.Y.Z`), fix, and tag again.
+  (`git push origin :refs/tags/mcp-vX.Y.Z`, `git tag -d mcp-vX.Y.Z`), fix, and tag again.
 - A published version is broken: npm never accepts the same version twice. Publish a fixed
   version, then mark the broken one: `npm deprecate effetune-mcp@X.Y.Z "use X.Y.Z+1"`.
   `npm unpublish` is only allowed within 72 hours and blocks the version number for good.

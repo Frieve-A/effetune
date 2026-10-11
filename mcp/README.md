@@ -3,7 +3,7 @@
 An [MCP](https://modelcontextprotocol.io) server that lets an AI assistant drive a running
 [EffeTune](https://effetune.frieve.com) desktop app: read and edit the effect pipeline, change
 parameters, and load or save presets. It talks to the app over its LAN Remote Control API
-([remote-v1](https://github.com/comoc/effetune/blob/main/docs/remote-v1.md)); the audio stays in EffeTune.
+([remote-v1](https://github.com/Frieve-A/effetune/blob/main/docs/remote-v1.md)); the audio stays in EffeTune.
 
 The server knows no effect by name. It asks the connected app which effects it has and which
 parameters they take (`describeEffects`), so effects added in a later EffeTune release can be
@@ -116,4 +116,4 @@ cd mcp && npm ci && npm test
 ```
 
 Releases are published by `.github/workflows/mcp.yml` from a tag `mcp-v<version>` matching
-`package.json`; see [RELEASING.md](https://github.com/comoc/effetune/blob/main/mcp/RELEASING.md).
+`package.json`; see [RELEASING.md](https://github.com/Frieve-A/effetune/blob/main/mcp/RELEASING.md).
