@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.13.0-b8b0a34904d0acdd";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.13.0-c596e35d31fdb876";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/effetune-library.css",
@@ -197,6 +197,8 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/preset-manager.js",
   "./js/release-version.mjs",
   "./js/remote/client-csp-guards.js",
+  "./js/remote/effect-describe.js",
+  "./js/remote/parameter-hints.js",
   "./js/remote/pipeline-apply.js",
   "./js/remote/remote-audio-manager.js",
   "./js/remote/remote-client.js",

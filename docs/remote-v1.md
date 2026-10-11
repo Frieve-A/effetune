@@ -87,7 +87,7 @@ requests that also return data, the ack comes first and the data message carries
 
 | Request | Effect |
 |---|---|
-| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","sync1"]`, `"appName"` and `"effects"`. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client; they are shown in the Remote Control window (control characters removed, cut to 48 characters). Other extra fields are ignored. |
+| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","sync1","describe1"]`, `"appName"` and `"effects"`. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client; they are shown in the Remote Control window (control characters removed, cut to 48 characters). Other extra fields are ignored. |
 | `{"op":"get"}` | Replies with `state`. |
 | `{"op":"chain","pipeline":[...]}` | Replaces the whole pipeline (at most 256 items). If any `nm` is unknown, the request fails and nothing changes. Master bypass keeps its state. |
 | `{"op":"params","index":i,"params":{...}}` | Applies the keys to stage `i` (0-based) of the current pipeline. Keys that are not given stay as they are. |
@@ -334,6 +334,70 @@ Conflicts:
 | `ins`/`mov` after a deleted stage | Placed at the clamped `at`. |
 | Preset load, `chain` or undo racing an edit | New ids; later ops on old ids are skipped. |
 | App restart or window reload | New epoch; `pending` is dropped and the state adopted. |
+
+## Effect descriptions (describe1)
+
+Advertised as `"describe1"` in `features`. It tells a client which short keys each effect takes,
+so it can build a stage it has never seen in a pipeline.
+
+```
+→ {"op":"describeEffects","seq":7}
+← {"op":"ack","seq":7,"ok":true}
+← {"op":"effects","seq":7,"effects":[
+    {"nm":"Volume","category":"Basics","params":[
+      {"key":"vl","type":"number","default":0,"control":"number","label":"Volume",
+       "min":-60,"max":24,"step":0.1,"unit":"dB","scale":"linear","scaled":false}]},
+    ...]}
+```
+
+`effects` is sorted by `nm` and lists every effect the app can load. Each entry has:
+
+| Field | Meaning |
+|---|---|
+| `nm` | The effect name used in pipeline items. |
+| `category` | The category shown in the effect list, when the effect has one. |
+| `params` | One entry per key of the effect's short state except `nm` and `en`, in the order of that state. |
+| `uiError` | `true` when building the effect's controls failed; its `params` then carry only `key`, `type` and `default`. |
+| `error` | Present instead of usable `params` when the effect could not be created. |
+
+A `params` entry always has `key`, `type` (`number`, `string`, `boolean`, `array`, `object` or
+`null`) and `default` (the value of a newly added stage). `source` says where the rest of the entry
+comes from, in this order of preference:
+
+| `source` | Meaning |
+|---|---|
+| `ui` | The standard control the effect builds for the key. |
+| `catalog` | The generated DSP parameter catalog (`dsp/plugins/*/params.json`), for keys edited in a graph or a custom control. |
+| `hint` | The hand-written table `js/remote/parameter-hints.js` (by plugin class name), for keys that neither of the above knows. |
+
+A key without `source` is described by nothing but its `default`; keep its shape and change it
+with care. A described key has one of these:
+
+| Field | Extra fields |
+|---|---|
+| `control: "number"` | `label`, `min`, `max`, `step`, `unit`, `scale` (`linear` or `log`); `integer: true` for whole numbers; `scaled` for `ui` |
+| `control: "select"` | `label`, `options` (`[{"value","label"}]`; send `value`) |
+| `control: "checkbox"` | `label` |
+| `items` | An array key whose elements all share the description in `items`. |
+| `elements` | An array key with one description per element. |
+| `members` | An array of objects (for example `bands`): one description per member key, or an array of them when the elements differ. |
+| `format` | A value with no range, with `label` and a `description` of the expected content: `text`, `routing` (Matrix), `ir-id` (IR library id), `sfz-id`, `measurement-id`, `measurement-channel-id`, or `internal` (computed by the effect; values sent are ignored). |
+
+`scaled: true` means the control shows a converted view of the stored value (for example a 0..1
+value shown as -100..100 %): `min`, `max`, `step` and `unit` then describe the control, not the key.
+When the catalog knows the stored range too, it is given as `value: {"min","max"}`.
+A number may carry `minKey`: its lower end is then also the current value of that key (for example
+Multiband Compressor's `f4` stays at or above `f3`). Any `hint` entry may carry a `description` with constraints a range cannot express (for example a
+frequency that must stay above the previous band's).
+A `hint` whose `description` says "not clamped by the effect" gives the range of the app's
+control; the effect itself accepts other values. The routing keys `ch`, `ib` and `ob` appear only when
+an effect sets them by default; any stage accepts them as in the pipeline format.
+
+The app builds the descriptions once per window load (each effect builds its controls once,
+off screen), so the first request can take a moment. They follow the effect set of the app: a new
+effect is described as soon as the app ships it. A test starts the app and fails when any key of any
+effect is left without `source`, so a new effect must either use the standard controls, have a DSP
+`params.json`, or get an entry in `js/remote/parameter-hints.js`.
 
 ## Limitations
 

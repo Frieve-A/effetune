@@ -73,7 +73,7 @@ const STATE_DRAIN_BYTES = 64 * 1024;
 const STATE_DIRTY_CHECK_MS = 250;
 const IR_ID_PATTERN = /^[a-f0-9]{24}$/;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{4,64}$/;
-const FEATURES = Object.freeze(['origin', 'savePreset', 'irSync', 'sync1']);
+const FEATURES = Object.freeze(['origin', 'savePreset', 'irSync', 'sync1', 'describe1']);
 const APP_NAME = 'EffeTune';
 const CLIENT_INFO_MAX = 48;
 
@@ -99,7 +99,9 @@ const CLIENT_OPS = new Set([
   'hello', 'get', 'chain', 'params', 'bypass', 'listPresets', 'getPreset',
   'savePreset', 'listIRs', 'getIR', 'putIR',
   // sync1
-  'edit', 'history', 'slot', 'copySlot', 'presets', 'loadPreset', 'deletePreset'
+  'edit', 'history', 'slot', 'copySlot', 'presets', 'loadPreset', 'deletePreset',
+  // describe1
+  'describeEffects'
 ]);
 // Ops whose ack carries `rev` (the host revision that contains the command).
 const MUTATING_OPS = new Set([
@@ -990,6 +992,9 @@ class RemoteControlHost {
         break;
       case 'presets':
         this.send(ws, { op: 'presets', presets: result.presets || {}, ...seqField });
+        break;
+      case 'describeEffects':
+        this.send(ws, { op: 'effects', effects: Array.isArray(result.effects) ? result.effects : [], ...seqField });
         break;
       default:
         break;

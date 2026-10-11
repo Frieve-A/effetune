@@ -11,6 +11,7 @@ import { identifySingleIr } from '../ir-library/ir-library-id.js';
 import { isSupportedIrFileName } from '../ir-library/audio-header-metadata.js';
 import { subscribeIrLibraryChanges } from '../ir-library/ir-library-store.js';
 import { initRemoteControlButton } from './remote-control-button.js';
+import { describeEffects } from './effect-describe.js';
 import {
     applyMasterBypass,
     applyOpsToPipeline,
@@ -262,6 +263,8 @@ class RemoteControl {
                 return this.opGetIR(msg);
             case 'putIR':
                 return this.opPutIR(msg);
+            case 'describeEffects':
+                return this.opDescribeEffects();
             default:
                 throw new Error('unknown-op: ' + msg.op);
         }
@@ -311,6 +314,14 @@ class RemoteControl {
         if (typeof msg.on !== 'boolean') throw new Error('on must be boolean');
         this.setBypass(msg.on);
         return {};
+    }
+
+    // The effect set only changes when the renderer reloads, which also starts a new
+    // controller, so the descriptions are built once.
+    opDescribeEffects() {
+        const { pluginManager } = this.requireApp();
+        if (!this.effectDescriptions) this.effectDescriptions = describeEffects(pluginManager);
+        return { effects: this.effectDescriptions };
     }
 
     opParams(msg) {
