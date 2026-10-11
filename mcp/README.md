@@ -116,4 +116,4 @@ cd mcp && npm ci && npm test
 ```
 
 Releases are published by `.github/workflows/mcp.yml` from a tag `mcp-v<version>` matching
-`package.json` (repository secret `NPM_TOKEN`).
+`package.json`; see [RELEASING.md](https://github.com/comoc/effetune/blob/main/mcp/RELEASING.md).
