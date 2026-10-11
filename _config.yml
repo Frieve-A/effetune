@@ -66,6 +66,7 @@ exclude:
   - experiments/
   - extension/
   - eslint.config.mjs
+  - mcp/
   - native/
   - node_modules/
   - out/
