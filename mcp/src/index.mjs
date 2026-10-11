@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // stdio entry point: `npx -y effetune-mcp` with EFFETUNE_URL set to the pairing link.
-// EFFETUNE_MCP_ALLOW_RAW=1 also offers raw_request.
+// EFFETUNE_MCP_ALLOW_RAW=1 also offers raw_request. `effetune-mcp setup` registers the server
+// in MCP clients (src/setup.mjs).
 
 import { createRequire } from 'node:module';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -8,6 +9,11 @@ import { EffeTuneClient } from './client.mjs';
 import { createServer } from './server.mjs';
 
 const { name, version } = createRequire(import.meta.url)('../package.json');
+
+if (process.argv[2] === 'setup') {
+    const { runSetup } = await import('./setup.mjs');
+    process.exit(await runSetup({ argv: process.argv.slice(3) }));
+}
 
 // The environment comes first: a link on the command line is visible to other local users.
 const url = process.env.EFFETUNE_URL || process.argv[2];

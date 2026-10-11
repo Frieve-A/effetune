@@ -19,12 +19,41 @@ used without updating this package.
 ## Setup
 
 Copy the pairing link from the Remote Control window (**Copy link**), for example
-`http://192.168.1.10:47300/?t=0123abcd...`, and pass it as `EFFETUNE_URL`.
+`http://192.168.1.10:47300/?t=0123abcd...`, then run:
+
+```sh
+npx -y effetune-mcp setup
+```
+
+It asks for the link, checks it against the running app (version and features are shown), and
+registers the `effetune` server in the clients it finds: **Claude Code** (`claude mcp add -s user`),
+**Codex** (`codex mcp add`) and **Claude Desktop** (`mcpServers` in `claude_desktop_config.json`;
+other entries are kept and the previous file is saved as `.bak`). An existing `effetune` entry is
+replaced only after you confirm. Rerun it after **New token** or when the port changes.
+
+| Option | Meaning |
+|---|---|
+| `--url <link>` | The pairing link, instead of being asked (or set `EFFETUNE_URL`) |
+| `--client <list>` | Comma-separated `claude-code`, `codex`, `claude-desktop` |
+| `--yes` | Register in every client found and replace existing entries without asking |
+
+ChatGPT is not supported: it only connects to remote HTTPS MCP servers, and exposing EffeTune's
+control to the internet is not something this package does.
+
+### Manual setup
+
+Pass the link as `EFFETUNE_URL`. On Windows, use `cmd /c npx -y effetune-mcp` as the command.
 
 Claude Code:
 
 ```sh
 claude mcp add effetune --env EFFETUNE_URL="http://192.168.1.10:47300/?t=<token>" -- npx -y effetune-mcp
+```
+
+Codex:
+
+```sh
+codex mcp add effetune --env EFFETUNE_URL="http://192.168.1.10:47300/?t=<token>" -- npx -y effetune-mcp
 ```
 
 Claude Desktop and other clients (`mcpServers` in the client's config file):
