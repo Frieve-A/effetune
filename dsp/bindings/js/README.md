@@ -299,6 +299,10 @@ caller. Raw DSP telemetry and AudioWorklet messages are not public APIs.
 Note Spectrogram's `revisions` contains updates for observations 2, 4, and 8
 analysis hops earlier (40, 80, and 160 ms). Each entry has `age` and `levels`.
 `revisionAge` and `revisedLevels` describe the final 160 ms update.
+`pitchCents` contains 88 current-frame estimated cent offsets, without rounding
+to the confidence grid. Index `n` corresponds to MIDI `21 + n`; its estimated
+pitch is MIDI `21 + n + pitchCents[n] / 100`. Confidence revisions do not change
+these offsets.
 
 `EffeTuneNode.create()` waits until the package-owned worklet processor has
 instantiated the selected baseline or SIMD artifact and committed every

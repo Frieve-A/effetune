@@ -1,5 +1,5 @@
 ---
-title: "Plugins espaciales - EffeTune"
+title: "Plugins espaciales - Crossfeed, cancelación de diafonía, ancho estéreo y upmix - EffeTune"
 description: "Plugins de audio espacial como Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Spatial Mapper y Stereo Blend."
 lang: es
 ---
@@ -320,13 +320,13 @@ Estos rangos de fase son tendencias habituales, no posiciones fijas de las fuent
 - **Band 1-5 / casilla** (Off/On): Selecciona un Band para editarlo y lo activa o desactiva sin cambiar sus ajustes.
 - **Gain** (0% a 200%): Define el multiplicador de nivel dentro del Core. 100% no cambia el nivel, 0% elimina el componente seleccionado y 200% duplica su amplitud.
 - **Solo** (Off/On): Permite escuchar solo lo que seleccionan los Band con Solo activado. Mientras algún Band activo tenga Solo en On, Gain no se aplica y todo lo que queda fuera de esos Band se silencia, con el mismo desvanecimiento suave del Transition en los bordes. Si activas Solo en varios Band, se escucha la combinación de sus zonas. Al desactivar todos los Solo se vuelve al procesado normal.
-- **Core Low Frequency / Core High Frequency** (20 Hz a 40 kHz, con el límite del muestreo actual): Definen el intervalo de frecuencias procesado al 100%.
+- **Core Low Freq / Core High Freq** (20 Hz a 40 kHz, con el límite del muestreo actual): Definen el intervalo de frecuencias procesado al 100%.
 - **Core Low Phase / Core High Phase** (0° a 180°): Definen el intervalo absoluto de diferencia de fase L/R procesado al 100%.
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% a +100%): Definen directamente los cuatro límites de Balance. El par Core establece el intervalo de balance entre izquierda y derecha que se procesa por completo; el par Outer establece dónde la Transition llega a no aplicar procesamiento. Los valores negativos seleccionan hacia la izquierda y los positivos hacia la derecha.
-- **Low Frequency Transition / High Frequency Transition**: Definen cuánto se desvanece el efecto por debajo y por encima del Core de frecuencia.
-- **Low Phase Transition / High Phase Transition**: Definen cuánto se desvanece el efecto hacia 0° y 180°.
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% a +100%): Definen directamente los cuatro límites de Balance. El par Core establece el intervalo de balance entre izquierda y derecha que se procesa por completo; el par Outer establece dónde la Transition llega a no aplicar procesamiento. Los valores negativos seleccionan hacia la izquierda y los positivos hacia la derecha.
+- **Low Freq Trans / High Freq Trans**: Definen cuánto se desvanece el efecto por debajo y por encima del Core de frecuencia.
+- **Low Phase Trans / High Phase Trans**: Definen cuánto se desvanece el efecto hacia 0° y 180°.
 
-Los tiradores del mapa, los deslizadores y los campos numéricos modifican los mismos valores. Con ratón o toque, arrastra dentro del marco exterior del Band seleccionado para mover todo el Band, los bordes o las esquinas del Core para cambiar su tamaño y los tiradores del borde exterior para ajustar cada Transition por separado. Un tirador del límite inferior de Phase se detiene en el centro: Core Low Phase termina en 0° y Low Phase Transition en su anchura máxima. Si Core Low Phase está exactamente en 0°, el tirador central puede empezar hacia cualquier lado; después del primer movimiento queda fijado a ese lado hasta terminar el arrastre.
+Los tiradores del mapa, los deslizadores y los campos numéricos modifican los mismos valores. Con ratón o toque, arrastra dentro del marco exterior del Band seleccionado para mover todo el Band, los bordes o las esquinas del Core para cambiar su tamaño y los tiradores del borde exterior para ajustar cada Transition por separado. Un tirador del límite inferior de Phase se detiene en el centro: Core Low Phase termina en 0° y Low Phase Trans en su anchura máxima. Si Core Low Phase está exactamente en 0°, el tirador central puede empezar hacia cualquier lado; después del primer movimiento queda fijado a ese lado hasta terminar el arrastre.
 
 ## Spatial Mapper
 

@@ -564,7 +564,7 @@ class GroupDelayEqPlugin extends PluginBase {
 
             const freqLabel = document.createElement('label');
             freqLabel.className = 'freq-label';
-            freqLabel.textContent = band.name;
+            freqLabel.textContent = `${band.name}:`;
             const sliderId = `${this.id}-${this.name}-band-${index}-slider`;
             freqLabel.htmlFor = sliderId;
 

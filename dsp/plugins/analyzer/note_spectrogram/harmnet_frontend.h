@@ -24,7 +24,9 @@ enum class NoteSpectrogramStage : std::uint8_t {
   Recurrent,
   Fine,
   Publish,
-  Commit
+  Commit,
+  Event,
+  Rule
 };
 
 class HarmNetFrontend final {
@@ -159,25 +161,32 @@ public:
   }
   template <class Schedule>
   void appendStages(Schedule &schedule, std::uint32_t lane, std::uint32_t slots) const {
-    const auto add = [&](Stage kind, auto count, auto chunks, auto weight) {
+    const auto weight = [](double value) {
+      return static_cast<std::uint32_t>(std::max(1.0, std::round(value)));
+    };
+    const auto add = [&](Stage kind, auto count, auto chunks, double alpha, double beta = 0.0) {
       for (auto i = 0u; i < chunks; ++i) {
         const auto begin =
             static_cast<std::uint32_t>(static_cast<std::uint64_t>(count) * i / chunks);
         const auto end =
             static_cast<std::uint32_t>(static_cast<std::uint64_t>(count) * (i + 1u) / chunks);
         schedule.addStage(static_cast<std::uint8_t>(kind), lane, begin, end,
-                          weight * (end - begin));
+                          weight(alpha * (end - begin) + beta));
       }
     };
-    add(Stage::Pack, window_length_, std::min(slots, 64u), 15u);
+    add(Stage::Pack, window_length_, std::min(slots, 64u), lane ? .373676 : .494268);
     for (auto i = 0; i < transform_->stepCount(); ++i)
-      schedule.addStage(static_cast<std::uint8_t>(Stage::Transform), lane, 0u, 0u, 4096u);
+      schedule.addStage(static_cast<std::uint8_t>(Stage::Transform), lane, 0u, 0u,
+                        weight(lane ? 372.621 : 325.508));
     const auto bins = static_cast<std::uint32_t>(magnitude_.size());
-    add(Stage::Spectrum, bins, std::min(slots, 128u), 48u);
-    add(Stage::Features, kBins, std::min(slots, kBins), 300u);
+    add(Stage::Spectrum, bins, std::min(slots, 128u), lane ? .677753 : 1.36961);
+    add(Stage::Features, kBins, std::min(slots, kBins), lane ? 15.965 : 10.025,
+        lane ? 9.25264 : 9.51375);
     if (lane == 0u)
-      schedule.addStage(static_cast<std::uint8_t>(Stage::Prefix), lane, 0u, bins, bins * 12u);
+      schedule.addStage(static_cast<std::uint8_t>(Stage::Prefix), lane, 0u, bins,
+                        weight(bins * .382854));
   }
+
   bool run(Stage kind, std::uint32_t begin, std::uint32_t end, float *features) noexcept {
     switch (kind) {
     case Stage::Pack:
@@ -214,8 +223,8 @@ public:
     }
     return true;
   }
-  // The long-window peaks determine shape only; the network supplies its probability.
-  void fineShape(std::uint32_t pitch, float *shape) const noexcept {
+  // Return the estimated cents and shape; the network supplies its probability.
+  float fineShape(std::uint32_t pitch, float *shape) const noexcept {
     const auto fundamental = midiHz(21.0 + pitch), df = binHz();
     double weighted = 0.0, weight = 0.0;
     for (auto h = 1u; h <= 4u; ++h) {
@@ -253,7 +262,7 @@ public:
     if (!(weight > 0.0)) {
       for (auto i = 0u; i < 5u; ++i)
         shape[i] = i == 2u ? 1.0F : 0.0F;
-      return;
+      return 0.0F;
     }
     const auto cents = weighted / weight;
     const auto nearest = std::clamp(static_cast<int>(std::floor((cents + 50.0) / 20.0)), 0, 4);
@@ -264,6 +273,7 @@ public:
       shape[i] =
           static_cast<float>(std::exp(-.5 * (delta * delta - peak_delta * peak_delta) / 400.0));
     }
+    return static_cast<float>(cents);
   }
   bool belowFloor() const noexcept { return below_floor_; }
   double binHz() const noexcept { return rate_ / fft_size_; }

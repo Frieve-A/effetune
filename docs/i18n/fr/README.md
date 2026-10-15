@@ -296,6 +296,21 @@ Pour examiner la fréquence, la phase, le retard de groupe minimal, le retard de
 
 **Lecture sans interruption** est activée par défaut et peut être modifiée dans **Configuration audio**. Lorsqu’elle est activée, les morceaux locaux compatibles s’enchaînent sans silence ; la prise en charge dépend du format du fichier et du navigateur ou de l’application utilisés. Les formats non pris en charge et certains environnements mobiles passent automatiquement à un mode de secours économe en mémoire, si bien qu’un bref silence peut tout de même se produire. La désactiver privilégie une consommation de mémoire réduite et la stabilité, avec un bref silence possible entre les morceaux. Ce changement n’interrompt pas le morceau en cours. La lecture sans interruption est indisponible lorsque la vitesse n’est pas réglée sur 1x. Si vous changez la vitesse pendant un morceau lu sans interruption, la lecture reprend à la même position après une brève coupure.
 
+### Piloter EffeTune avec un assistant IA (MCP)
+
+Vous pouvez confier la configuration de MCP à Codex ou Claude Code, puis lui demander d'ajouter des effets, de modifier leurs réglages et de charger ou d'enregistrer des préréglages dans EffeTune pour ordinateur. Utilisez un agent capable d'exécuter des commandes sur votre ordinateur.
+
+1. Dans EffeTune pour ordinateur, ouvrez **Paramètres > Remote Control...**, activez **Allow remote control**, puis cliquez sur **Copy link**.
+2. Envoyez le texte suivant à votre agent IA en remplaçant le champ prévu par le lien copié :
+
+```text
+Configure EffeTune MCP en suivant le guide officiel :
+https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
+Lien de connexion : <coller ici le lien copié>
+```
+
+Une fois la configuration terminée, redémarrez le client si cela vous est demandé, puis essayez : « Affiche mes effets actuels ». Gardez le lien de connexion confidentiel ; si vous cliquez sur **New token** ou changez de port, refaites la configuration avec le nouveau lien.
+
 ## Combinaisons d'effets courantes
 
 Voici quelques combinaisons d'effets populaires pour améliorer votre expérience d'écoute :

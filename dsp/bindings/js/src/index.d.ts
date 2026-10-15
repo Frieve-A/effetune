@@ -463,7 +463,7 @@ export interface CreateChainOptions extends ArtifactOptions {
 }
 
 export interface TelemetryFrameBase {
-  readonly kind: 'analogMeter' | 'level' | 'noteSpectrogram' | 'oscilloscope' | 'pitch' |
+  readonly kind: 'analogMeter' | 'level' | 'noteSpectrogram' | 'noteTimbre' | 'oscilloscope' | 'pitch' |
     'rhythmAnalyzer' | 'spectrum' | 'spectrumHq' | 'spectrogram' | 'spectrogramHq' | 'stereo' | 'tonalBalance';
   readonly effectType: EffectType;
   readonly effectId: string | null;
@@ -540,12 +540,30 @@ export type NoteSpectrogramTelemetryFrame = TelemetryFrameBase & {
   readonly generation: number;
   readonly levels: Float32Array;
   readonly volumeDb: Float32Array;
+  /** Current-frame estimated cents for MIDI notes 21 through 108, without pitch-bin rounding. */
+  readonly pitchCents: Float32Array;
   /** Updates for the observations 2, 4 and 8 analysis hops earlier, in that order. */
   readonly revisions: ReadonlyArray<{ readonly age: 2 | 4 | 8; readonly levels: Float32Array }>;
 } & (
   | { readonly revisionAge: 0; readonly revisedLevels: null }
   | { readonly revisionAge: 8; readonly revisedLevels: Float32Array }
 );
+
+/** Probabilities use Bass, Guitar, Piano, Strings, Wind, Synth, Organ, Other, Vocal order. */
+export interface NoteTimbreTelemetryFrame extends TelemetryFrameBase {
+  readonly kind: 'noteTimbre';
+  readonly sampleRate: number;
+  readonly timeSeconds: number;
+  readonly hopSeconds: number;
+  readonly generation: number;
+  readonly frameIndex: number;
+  readonly noteId: number;
+  readonly midi: number;
+  readonly event: 'start' | 'result' | 'end';
+  readonly startFrameIndex: number;
+  readonly endFrameIndex: number | null;
+  readonly probabilities: Float32Array | null;
+}
 
 export interface PitchMeterTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'pitch';
@@ -582,7 +600,7 @@ export interface AnalogMeterTelemetryProgram {
 
 export interface AnalogMeterTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'analogMeter';
-  /** 0 VU, 1 PPM, 2 RMS, 3 Sample Peak, 4 True Peak, 5 Loudness. */
+  /** 0 VU, 1 PPM, 2 RMS, 3 Sample Peak, 4 True Peak, 5 Loudness, 6 Custom. */
   readonly mode: number;
   readonly channelCount: number;
   readonly integratedValid: boolean;
@@ -716,6 +734,7 @@ export type TelemetryFrame =
   | SpectrogramTelemetryFrame
   | SpectrogramHqTelemetryFrame
   | NoteSpectrogramTelemetryFrame
+  | NoteTimbreTelemetryFrame
   | PitchMeterTelemetryFrame
   | RhythmAnalyzerTelemetryFrame
   | StereoTelemetryFrame

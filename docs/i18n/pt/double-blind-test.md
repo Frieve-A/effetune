@@ -1,5 +1,5 @@
 ---
-title: "Guia do Double Blind Test - EffeTune"
+title: "Guia do Double Blind Test - Testes de audição às cegas ABX e A/B - EffeTune"
 description: "Aprenda a fazer testes cegos ABX e de preferência A/B entre dois pipelines de efeitos no EffeTune e a verificar os resultados com significância estatística."
 lang: pt
 ---

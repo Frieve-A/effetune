@@ -1,6 +1,6 @@
 ---
-title: "새츄레이션 플러그인 - EffeTune"
-description: "Saturation, Exciter, Hard Clipping 등을 포함한 새츄레이션 및 디스토션 플러그인입니다."
+title: "새츄레이션 플러그인 - 저음 확장, 익사이터, 진공관 앰프 시뮬레이터 - EffeTune"
+description: "진공관 앰프 시뮬레이션과 Saturation, Exciter, Harmonic Distortion을 제공합니다. Bandwidth Extender와 Bass Extender는 각각 새로운 고역과 저역 성분을 생성합니다."
 lang: ko
 ---
 

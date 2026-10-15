@@ -1,5 +1,5 @@
 ---
-title: "Plugins Delay - EffeTune"
+title: "Plugins Delay - Écho et alignement temporel des enceintes - EffeTune"
 description: "Plugins d'effet de delay incluant Delay et Time Alignment pour ajuster précisément le timing audio."
 lang: fr
 ---

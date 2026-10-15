@@ -27,7 +27,8 @@ export const TelemetryFrameType = Object.freeze({
     TAP_PITCH_METER: 26,
     TAP_ANALOG_METER: 27,
     TAP_RHYTHM_ANALYZER: 28,
-    TAP_TONAL_BALANCE_EQ: 29
+    TAP_TONAL_BALANCE_EQ: 29,
+    TAP_SFZ_VOICES: 30
 });
 
 function defaultWarning(message) {

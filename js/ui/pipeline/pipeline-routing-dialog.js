@@ -101,6 +101,7 @@ export class PipelineRoutingDialog {
         channelContainer.appendChild(channelLabel);
 
         const channelSelect = enableStandardSelect(document.createElement('select'));
+        channelSelect.dataset.routingKey = 'channel';
 
         // Define channel options - changed for multi-channel support
         const channelOptions = [
@@ -160,6 +161,7 @@ export class PipelineRoutingDialog {
         inputBusContainer.appendChild(inputBusLabel);
         
         const inputBusSelect = enableStandardSelect(document.createElement('select'));
+        inputBusSelect.dataset.routingKey = 'inputBus';
         // Add Main bus option (index 0)
         const inputMainOption = document.createElement('option');
         inputMainOption.value = 0;
@@ -201,6 +203,7 @@ export class PipelineRoutingDialog {
         outputBusContainer.appendChild(outputBusLabel);
         
         const outputBusSelect = enableStandardSelect(document.createElement('select'));
+        outputBusSelect.dataset.routingKey = 'outputBus';
         // Add Main bus option (index 0)
         const outputMainOption = document.createElement('option');
         outputMainOption.value = 0;
@@ -344,7 +347,14 @@ export class PipelineRoutingDialog {
      * Update the bus info display for a plugin
      * @param {Object} plugin - The plugin to update bus info for
      */
-    updateBusInfo(plugin) {
+    updateBusInfo(plugin, { saveHistory = true } = {}) {
+        const dialog = document.querySelector('.routing-dialog');
+        if (dialog?.dataset.pluginId === String(plugin.id)) {
+            for (const select of dialog.querySelectorAll('select[data-routing-key]')) {
+                const key = select.dataset.routingKey;
+                select.value = String(plugin[key] ?? (key === 'channel' ? '' : 0));
+            }
+        }
         const pipelineList = this.pipelineCore.pipelineList;
         
         // Find the plugin's pipeline item using its data-plugin-id
@@ -425,7 +435,7 @@ export class PipelineRoutingDialog {
         }
         
         // Save state for undo/redo
-        if (this.pipelineCore.pipelineManager && this.pipelineCore.pipelineManager.historyManager) {
+        if (saveHistory && this.pipelineCore.pipelineManager && this.pipelineCore.pipelineManager.historyManager) {
             this.pipelineCore.pipelineManager.historyManager.saveState();
         }
     }

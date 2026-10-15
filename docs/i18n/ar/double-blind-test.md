@@ -1,5 +1,5 @@
 ---
-title: "دليل Double Blind Test - EffeTune"
+title: "دليل Double Blind Test - اختبارات ABX وA/B للاستماع الأعمى - EffeTune"
 description: "كيفية تشغيل اختبارات استماع عمياء ABX وA/B preference بين مساري تأثيرات في EffeTune وقراءة النتائج مع الدلالة الإحصائية."
 lang: ar
 ---

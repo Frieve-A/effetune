@@ -1,6 +1,6 @@
 ---
-title: "EQ प्लगइन - EffeTune"
-description: "Parametric EQ, Graphic EQ, Dynamic EQ, 5Band FIR PEQ, Room EQ, Earphone Cable Sim, filters और Tone Control सहित equalizer प्लगइन।"
+title: "EQ प्लगइन - पैरामीट्रिक, ग्राफ़िक, लीनियर-फ़ेज़ EQ और रूम करेक्शन - EffeTune"
+description: "पैरामीट्रिक EQ (AutoEQ इम्पोर्ट), ग्राफ़िक, डायनामिक व लीनियर-फ़ेज़ EQ, EffeTune में अपने कमरे के मापों से Room EQ, Tonal Balance EQ, Loudness Equalizer व फ़िल्टर।"
 lang: hi
 ---
 
@@ -692,7 +692,7 @@ Measurement एक device-local reference है। URL या preset में 
 ### पैरामीटर
 
 - **Measurement** - उस साझा सेव की गई frequency-response measurement को चुनता है जिसे कोई भी channel उपयोग करता है जिसके लिए per-channel override सेट नहीं है। सूची में नाम, points की संख्या और impulse-response data होने पर `IR` दिखता है। Measurement जोड़ने या बदलने के बाद **Refresh measurements** उपयोग करें।
-- **Measurement Ch N** - instance की bus selection द्वारा handle किए जाने वाले हर channel के लिए एक वैकल्पिक override selector। इसे default **(साझा)** पर छोड़ने पर ऊपर वाली Measurement उपयोग होती है; कोई अलग सेव की गई measurement assign करने पर उस channel को अपना खुद का filter मिलता है। सभी channels को **(साझा)** पर छोड़ने से बिल्कुल वही व्यवहार मिलता है जो एक ही साझा filter से मिलता।
+- **Measurement ChN** - instance की bus selection द्वारा handle किए जाने वाले हर channel के लिए एक वैकल्पिक override selector। इसे default **(Shared)** पर छोड़ने पर ऊपर वाली Measurement उपयोग होती है; कोई अलग सेव की गई measurement assign करने पर उस channel को अपना खुद का filter मिलता है। सभी channels को **(Shared)** पर छोड़ने से बिल्कुल वही व्यवहार मिलता है जो एक ही साझा filter से मिलता।
 - **Delay** - सभी processed channels में 0 से 20 ms manual delay जोड़ता है। यह plugin की दिखाई गई processing latency में शामिल नहीं होता।
 - **Phase** - FIR filter का phase व्यवहार चुनता है।
   - **Minimum** - सबसे कम अतिरिक्त latency वाला minimum-phase magnitude correction।
@@ -724,7 +724,7 @@ Measurement एक device-local reference है। URL या preset में 
 - **Min Group Delay** magnitude response के minimum-phase हिस्से से बनने वाला delay दिखाता है। **Excess Group Delay** उस हिस्से को हटाने के बाद बचा delay अलग से दिखाता है, जिससे reflections और अन्य non-minimum-phase timing को समझना आसान होता है। दोनों views में horizontal axis logarithmic frequency और vertical axis milliseconds दिखाता है। हर line measured onset को हटाने के बाद उसके सापेक्ष absolute group delay दिखाती है; corrected result से FIR का known fixed delay भी हटाया जाता है। इन्हें 1kHz पर दोबारा reference नहीं किया जाता, इसलिए वहाँ value का 0 ms होना जरूरी नहीं है। धूसर line correction से पहले की और हरी line वास्तविक FIR लगाने के बाद की calculated स्थिति है। Group-delay analysis दिखाए गए points की spacing से स्वतंत्र है और phase unwrapping पर निर्भर नहीं करता। Smoothing एक fixed logarithmic-frequency analysis grid पर लागू होता है, इसलिए कम Smoothing अधिक detail दिखाता है। **Min Group Delay** का vertical range दिखाई गई curves के अनुसार अपने आप बदलता है। **Excess Group Delay** का range -100 से +100 ms पर fixed रहता है, लेकिन curve के इससे बाहर जाने पर readout unclipped value ही दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
 - **Impulse** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms, Direct Window और Reverb Correction 0% से अधिक होने पर 50 ms तक सीमित Reverb Window में से जो सबसे अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और हरी line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Low-frequency Phase Extension और Reverb Correction इस view की सीमा से बाद की response का भी analysis कर सकती हैं। केवल display के लिए, 20 kHz और उससे ऊपर के components हटा दिए जाते हैं; इससे correction filter या audio processing प्रभावित नहीं होती। Impulse-response data न होने पर unavailable message दिखाई देता है।
 - **Frequency** view में horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
-- **Preview channel** selector तभी Graph के बाहर दिखता है जब एक से अधिक channels के लिए filters design हुए हों; यह चुनता है कि graph और अतिरिक्त EQ की base response किस channel की दिखाई जाए, और यह audio को प्रभावित नहीं करता।
+- **Graph Preview Ch** selector तभी Graph के बाहर दिखता है जब एक से अधिक channels के लिए filters design हुए हों; यह चुनता है कि graph और अतिरिक्त EQ की base response किस channel की दिखाई जाए, और यह audio को प्रभावित नहीं करता।
 - Graph पर माउस घुमाएं या टच करके ड्रैग करें; उस बिंदु पर हर curve पर एक dot दिखेगा और उसका value legend में नाम के दाईं ओर दिखेगा, और उनके ऊपर frequency (Impulse view में समय) दिखेगी।
 - दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
 - Markers से हर band की frequency और gain बदली जा सकती है।

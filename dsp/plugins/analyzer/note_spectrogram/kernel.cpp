@@ -50,6 +50,7 @@ private:
     };
     const auto minimum = bounded(params_.minimumMidi, 28);
     const auto maximum = std::max(minimum, bounded(params_.maximumMidi, 91));
+    analysis_->setTimbreEnabled(params_.timbreEnabled != 0.0F);
     if (!analysis_->configure(static_cast<std::uint32_t>(minimum),
                               static_cast<std::uint32_t>(maximum))) {
       if (initial)

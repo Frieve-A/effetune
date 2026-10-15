@@ -1,5 +1,5 @@
 const MULTI_F0_TAP_FRAME = 24;
-const MULTI_F0_TELEMETRY_VERSION = 5;
+const MULTI_F0_TELEMETRY_VERSION = 6;
 const MULTI_F0_PAYLOAD_HEADER_BYTES = 32;
 // A frame may carry the revised confidences of the frame this many hops earlier.
 const MULTI_F0_REVISION_AGE = 8;
@@ -16,7 +16,8 @@ const MULTI_F0_REVISED_OFFSET = MULTI_F0_LEVEL_OFFSET + MULTI_F0_PITCH_COUNT * 4
 const MULTI_F0_INTERMEDIATE_OFFSET = MULTI_F0_REVISED_OFFSET + MULTI_F0_PITCH_COUNT * 4;
 const MULTI_F0_REVISION_BYTES = 4 + MULTI_F0_PITCH_COUNT * 4;
 const MULTI_F0_INTERMEDIATE_AGES = [2, 4];
-const MULTI_F0_PAYLOAD_BYTES = MULTI_F0_INTERMEDIATE_OFFSET + 2 * MULTI_F0_REVISION_BYTES;
+const MULTI_F0_CENTS_OFFSET = MULTI_F0_INTERMEDIATE_OFFSET + 2 * MULTI_F0_REVISION_BYTES;
+const MULTI_F0_PAYLOAD_BYTES = MULTI_F0_CENTS_OFFSET + MULTI_F0_NOTE_COUNT * 4;
 const MULTI_F0_REVISION_PLANES = MULTI_F0_INTERMEDIATE_AGES.map((age, index) => {
     const offset = MULTI_F0_INTERMEDIATE_OFFSET + index * MULTI_F0_REVISION_BYTES;
     return [age, offset, offset + 4];
@@ -29,11 +30,59 @@ const MULTI_F0_METER_RELEASE_DB_PER_SECOND = 20;
 const MULTI_F0_RANGE_HOLD_SECONDS = 1;
 const MULTI_F0_COLORS = [
     { value: 'Normal', label: 'Normal' },
-    { value: 'Rainbow', label: 'Note Colors' }
+    { value: 'Rainbow', label: 'Note Colors' },
+    { value: 'Instrument3', label: 'Instrument (3)' },
+    { value: 'Instrument9', label: 'Instrument (9)' }
 ];
+const MULTI_F0_TIMBRE_FRAME = 31;
+const MULTI_F0_TIMBRE_CLASSES = ['Bass', 'Guitar', 'Piano', 'Strings', 'Wind', 'Synth', 'Organ', 'Other', 'Vocal'];
+const MULTI_F0_TIMBRE_COLORS = [
+    [76, 120, 184], [201, 154, 59], [143, 114, 199], [76, 155, 115], [70, 158, 168],
+    [189, 111, 162], [166, 125, 96], [156, 156, 156], [214, 107, 94]
+];
+const MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR = [116, 116, 116];
+const MULTI_F0_TIMBRE_FADE_FRAMES = 3;
+const MULTI_F0_HIGHLIGHTS = [
+    { value: 'None', label: 'None' }, { value: 'Vocal', label: 'Vocal' },
+    { value: 'Bass', label: 'Bass' }, { value: 'Other3', label: 'Other (3)' },
+    ...MULTI_F0_TIMBRE_CLASSES.slice(1, 7).map(value => ({ value, label: value })),
+    { value: 'Other9', label: 'Other (9)' }
+];
+
+function multiF0TimbreLabel(probabilities, colorMode) {
+    if (!probabilities) return null;
+    if (colorMode === 'Instrument3') {
+        let other = 0;
+        for (let i = 1; i < 8; i++) other += probabilities[i];
+        if (probabilities[8] >= probabilities[0] && probabilities[8] >= other) return 'Vocal';
+        return probabilities[0] >= other ? 'Bass' : 'Other';
+    }
+    let best = 0;
+    for (let i = 1; i < 9; i++) if (probabilities[i] > probabilities[best]) best = i;
+    return MULTI_F0_TIMBRE_CLASSES[best];
+}
+
+function multiF0HighlightProbability(probabilities, target) {
+    if (!probabilities) return 0;
+    if (target === 'Other3') {
+        let other = 0;
+        for (let i = 1; i < 8; i++) other += probabilities[i];
+        return other;
+    }
+    return probabilities[MULTI_F0_TIMBRE_CLASSES.indexOf(target === 'Other9' ? 'Other' : target)] ?? 0;
+}
+
+function multiF0TimbreColor(probabilities, colorMode) {
+    const color = [0, 0, 0];
+    for (let category = 0; category < 9; category++) {
+        const rgb = MULTI_F0_TIMBRE_COLORS[colorMode === 'Instrument3' && category > 0 && category < 8 ? 7 : category];
+        for (let channel = 0; channel < 3; channel++) color[channel] += probabilities[category] * rgb[channel];
+    }
+    return color;
+}
 const MULTI_F0_RESOLUTIONS = [
     { value: 'Semitone', label: '1/12 Octave' },
-    { value: 'High', label: 'High (1/60 Octave)' }
+    { value: 'High', label: 'High' }
 ];
 const MULTI_F0_LAYOUTS = ['Vertical', 'Horizontal'];
 const MULTI_F0_HISTORY_WIDTH = 1024;
@@ -48,6 +97,8 @@ const MULTI_F0_NOTE_NAMES = [
     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
 ];
 const MULTI_F0_BLACK_KEY_BACKGROUND = 8;
+// Smaller alpha values round to zero on the 8-bit history canvas.
+const MULTI_F0_MIN_VISIBLE_ALPHA = 0.5 / 255;
 const MULTI_F0_NOTE_COLORS = [
     [170, 98, 86],     // C
     [161, 105, 57],    // C#
@@ -75,11 +126,6 @@ function multiF0NoteColor(midi) {
     ];
 }
 
-function multiF0InterpolatedNoteColor(pitch) {
-    return multiF0NoteColor(MULTI_F0_FIRST_MIDI +
-        (pitch - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS);
-}
-
 function isNewerMultiF0Counter(candidate, current) {
     const delta = (candidate - current) >>> 0;
     return delta !== 0 && delta < 0x80000000;
@@ -90,6 +136,8 @@ function multiF0NoteName(midi) {
 }
 
 class NoteSpectrogramPlugin extends PluginBase {
+    // Switch to 'Winner' here to restore the strongest-class color without changing saved settings.
+    static timbreColorMode = 'Probability';
     static noteColors = MULTI_F0_NOTE_COLORS;
     static noteColor = multiF0NoteColor;
     static levelFloor = MULTI_F0_LEVEL_FLOOR;
@@ -129,13 +177,16 @@ class NoteSpectrogramPlugin extends PluginBase {
 
     initializeDisplayState() {
         this.cl = 'Normal';
+        this.hl = 'None';
         this.pr = 'Semitone';
         this.ly = 'Horizontal';
         this.vl = true;
+        this.os = false;
         this.ts = 2;
         this.mn = MULTI_F0_DEFAULT_MIN_MIDI;
         this.mx = MULTI_F0_DEFAULT_MAX_MIDI;
         this.history = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_PITCH_COUNT);
+        this.pitchCentsHistory = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_NOTE_COUNT);
         this.levelHistory = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_PITCH_COUNT);
         // Preserve measured dB independently of the normalized bar thickness.
         this.volumeLevelHistory = new Float32Array(MULTI_F0_HISTORY_WIDTH * MULTI_F0_PITCH_COUNT).fill(NaN);
@@ -145,6 +196,10 @@ class NoteSpectrogramPlugin extends PluginBase {
         // Recent frames and the absolute history columns they own, kept so a
         // later revision can rewrite exactly those columns (see handleTelemetry).
         this.frameRecords = [];
+        this.columnFrames = new Uint32Array(MULTI_F0_HISTORY_WIDTH).fill(0xffffffff);
+        this.timbreNotes = new Map();
+        this.timbreByPitch = Array.from({ length: MULTI_F0_NOTE_COUNT }, () => []);
+        this.timbreDirtyRanges = [];
         this.columnSerial = 0;
         this.writeColumn = 0;
         this.columnPhase = 0;
@@ -171,6 +226,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this._dspTelemetryTapId = null;
         this._dspTelemetryUnsubscribe = null;
         this._boundTelemetry = frame => this.handleTelemetry(frame);
+        this._boundTimbreTelemetry = frame => this.handleTimbreTelemetry(frame);
 
         this.imageData = null;
         this.tempCanvas = null;
@@ -186,13 +242,24 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.graphCssWidth = 1024;
         this.isVisible = false;
         this.animationFrameId = null;
+        this._legendCanvas = null;
+        this._legendRects = [];
+        this._legendHighlight = null;
+        this._timbreColorsDirty = false;
+        this._legendDrawFrame = null;
+        this._boundLegendMove = event => this._handleLegendPointer(event);
+        this._boundLegendLeave = () => this._setLegendHighlight(null);
     }
 
     reset() {
+        this._setLegendHighlight(null);
+        this._legendRects = [];
         this.cl = 'Normal';
+        this.hl = 'None';
         this.pr = 'Semitone';
         this.ly = 'Horizontal';
         this.vl = true;
+        this.os = false;
         this.ts = 2;
         this.mn = MULTI_F0_DEFAULT_MIN_MIDI;
         this.mx = MULTI_F0_DEFAULT_MAX_MIDI;
@@ -208,9 +275,11 @@ class NoteSpectrogramPlugin extends PluginBase {
             type: this.constructor.name,
             enabled: this.enabled,
             cl: this.cl,
+            hl: this.hl,
             pr: this.pr,
             ly: this.ly,
             vl: this.vl,
+            os: this.os,
             ts: this.ts,
             mn: this.mn,
             mx: this.mx
@@ -218,13 +287,33 @@ class NoteSpectrogramPlugin extends PluginBase {
     }
 
     setParameters(params = {}) {
+        const wereNoteEventsEnabled = this.noteEventsEnabled();
         if (params.enabled !== undefined) this.enabled = params.enabled !== false;
         const color = params.cl ?? (params.rb === undefined ? this.cl : (params.rb ? 'Rainbow' : 'Normal'));
         if (MULTI_F0_COLORS.some(option => option.value === color) && color !== this.cl) {
+            this._setLegendHighlight(null);
+            this._legendRects = [];
             this.cl = color;
             this.paintHistoryImage();
             this.volumeHistoryDirty = true;
             this.drawGraph();
+        }
+        if (MULTI_F0_HIGHLIGHTS.some(option => option.value === params.hl) && params.hl !== this.hl) {
+            this.hl = params.hl;
+            this.paintHistoryImage();
+            this.volumeHistoryDirty = true;
+            this.drawGraph();
+        }
+        if (params.os !== undefined && (params.os === true) !== this.os) {
+            this.os = params.os === true;
+            this.drawGraph();
+        }
+        if (wereNoteEventsEnabled && !this.noteEventsEnabled()) {
+            for (const note of this.timbreNotes.values()) {
+                if (note.endFrameIndex === 0xffffffff) {
+                    note.endFrameIndex = ((this.lastFrameIndex ?? note.startFrameIndex) + 1) >>> 0;
+                }
+            }
         }
         if (MULTI_F0_RESOLUTIONS.some(option => option.value === params.pr) &&
             params.pr !== this.pr) {
@@ -235,12 +324,15 @@ class NoteSpectrogramPlugin extends PluginBase {
             this.drawGraph();
         }
         if (MULTI_F0_LAYOUTS.includes(params.ly) && params.ly !== this.ly) {
+            this._setLegendHighlight(null);
+            this._legendRects = [];
             this.ly = params.ly;
             this._graphReadout?.clear();
             this.drawGraph();
         }
         if (params.vl !== undefined && (params.vl === true) !== this.vl) {
             this.vl = params.vl === true;
+            if (!this.vl) this.paintHistoryImage();
             this.volumeHistoryDirty = true;
             this._graphReadout?.clear();
             this.drawGraph();
@@ -250,7 +342,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             if (nextTimeSpan !== this.ts) {
                 this.ts = nextTimeSpan;
                 this.columnPeriod = this.ts / MULTI_F0_HISTORY_WIDTH;
-                this.clearHistory();
+                this.clearHistory(true);
             }
         }
         const previousMinMidi = this.mn;
@@ -272,6 +364,250 @@ class NoteSpectrogramPlugin extends PluginBase {
             this.drawGraph();
         }
         this.updateParameters();
+    }
+
+    timbreEnabled() {
+        return this.cl === 'Instrument3' || this.cl === 'Instrument9' || this.hl !== 'None';
+    }
+
+    noteEventsEnabled() {
+        return this.os || this.timbreEnabled();
+    }
+
+    _effectiveHighlight() {
+        return this._legendHighlight ?? this.hl;
+    }
+
+    _setLegendHighlight(target) {
+        if (target === this._legendHighlight) return;
+        this._legendHighlight = target;
+        this._timbreColorsDirty = true;
+        // Active analyzers consume this on their existing animation frame. Paused
+        // graphs need only one frame for a changed hover target, never per move.
+        if (this.animationFrameId === null && this._legendDrawFrame === null &&
+            typeof requestAnimationFrame === 'function') {
+            this._legendDrawFrame = requestAnimationFrame(() => {
+                this._legendDrawFrame = null;
+                this.drawGraph();
+            });
+        }
+    }
+
+    _handleLegendPointer(event) {
+        if (event.pointerType && event.pointerType !== 'mouse') return;
+        const { x, y } = this.getGraphCoords(this._legendCanvas, event);
+        const item = this._legendRects.find(rect => x >= rect.x && x < rect.x + rect.width &&
+            y >= rect.y && y < rect.y + rect.height);
+        this._setLegendHighlight(item?.target ?? null);
+    }
+
+    _bindLegendCanvas(canvas) {
+        this._legendCanvas?.removeEventListener('pointermove', this._boundLegendMove);
+        this._legendCanvas?.removeEventListener('pointerleave', this._boundLegendLeave);
+        this._legendCanvas = canvas;
+        canvas?.addEventListener('pointermove', this._boundLegendMove, { passive: true });
+        canvas?.addEventListener('pointerleave', this._boundLegendLeave, { passive: true });
+    }
+
+    _drawTimbreLegend(context, width, height) {
+        this._legendRects = [];
+        const labels = this.cl === 'Instrument3' ? ['Vocal', 'Bass', 'Other']
+            : this.cl === 'Instrument9' ? [...MULTI_F0_TIMBRE_CLASSES] : [];
+        const highlight = this._effectiveHighlight();
+        if (highlight !== 'None') {
+            labels.push(`Highlight: ${MULTI_F0_HIGHLIGHTS.find(option => option.value === highlight).label}`);
+        }
+        if (!labels.length || width <= 0 || height <= 0) return;
+        const dpr = this.graphDpr || 1, padding = 6 * dpr, lineHeight = 20 * dpr;
+        const theme = this.displayOptions?.themePalette ?? window.ThemePalette;
+        context.save();
+        context.beginPath();
+        context.rect(0, 0, width, height);
+        context.clip();
+        context.font = `${12 * dpr}px Arial`;
+        context.textAlign = 'left';
+        context.textBaseline = 'middle';
+        let x = padding, y = padding;
+        for (const label of labels) {
+            const color = MULTI_F0_TIMBRE_COLORS[MULTI_F0_TIMBRE_CLASSES.indexOf(label)];
+            const swatch = color ? 14 * dpr : 0;
+            const itemWidth = context.measureText(label).width + swatch + 2 * padding;
+            if (x > padding && x + itemWidth > width - padding) { x = padding; y += lineHeight; }
+            if (y + lineHeight > height) break;
+            context.fillStyle = theme?.get('graph-bg-deep') ?? '';
+            context.fillRect(x, y, itemWidth, lineHeight);
+            if (color) {
+                const target = label === 'Other' ? (this.cl === 'Instrument3' ? 'Other3' : 'Other9') : label;
+                this._legendRects.push({ x, y, width: Math.min(itemWidth, width - x), height: lineHeight,
+                    target });
+                if (target === highlight) {
+                    context.fillStyle = theme?.get('graph-label') ?? '';
+                    context.fillRect(x, y, itemWidth, dpr);
+                    context.fillRect(x, y + lineHeight - dpr, itemWidth, dpr);
+                    context.fillRect(x, y, dpr, lineHeight);
+                    context.fillRect(x + itemWidth - dpr, y, dpr, lineHeight);
+                }
+                context.fillStyle = `rgb(${color.join(', ')})`; // theme-allow: Fixed instrument colormap.
+                context.fillRect(x + padding, y + 5 * dpr, 10 * dpr, 10 * dpr);
+            }
+            context.fillStyle = theme?.get('graph-label') ?? '';
+            context.fillText(label, x + padding + swatch, y + lineHeight / 2);
+            x += itemWidth;
+        }
+        context.restore();
+    }
+
+    _timbreForColumn(column, midi) {
+        const frameIndex = this.columnFrames[column];
+        if (frameIndex === 0xffffffff) return null;
+        const notes = this.timbreByPitch[Math.round(midi) - MULTI_F0_FIRST_MIDI];
+        if (!notes) return null;
+        for (let i = notes.length - 1; i >= 0; i--) {
+            const note = notes[i];
+            const age = (frameIndex - note.startFrameIndex) >>> 0;
+            if (age < 0x80000000 && (note.endFrameIndex === 0xffffffff ||
+                age < ((note.endFrameIndex - note.startFrameIndex) >>> 0))) return note;
+        }
+        return null;
+    }
+
+    _noteDisplayColor(column, midi, value, palette, externalColor = null, applyHighlight = true, noteMidi = midi, fadeHistory = false) {
+        const note = this.timbreEnabled() ? this._timbreForColumn(column, noteMidi) : null;
+        const probabilities = note?.probabilities;
+        const customColor = externalColor ?? this.displayOptions?.noteColor?.(midi, value);
+        let color = customColor ??
+            (this.cl === 'Rainbow' ? multiF0NoteColor(midi)
+                : this.cl === 'Instrument3' || this.cl === 'Instrument9'
+                    ? (probabilities ? (this.constructor.timbreColorMode === 'Probability' ? note.colors[this.cl]
+                        : MULTI_F0_TIMBRE_COLORS[MULTI_F0_TIMBRE_CLASSES.indexOf(multiF0TimbreLabel(probabilities, this.cl))])
+                        : MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR) : palette.trace);
+        const highlight = this._effectiveHighlight();
+        const highlighted = highlight !== 'None' && applyHighlight;
+        if (highlighted) {
+            const probability = multiF0HighlightProbability(probabilities, highlight);
+            color = color.map((channel, i) => probability * channel +
+                (1 - probability) * MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR[i]);
+        }
+        if (fadeHistory && note?.fadeFrame < MULTI_F0_TIMBRE_FADE_FRAMES) {
+            const initial = highlighted ? MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR
+                : customColor ?? (this.cl === 'Instrument3' || this.cl === 'Instrument9'
+                    ? MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR : color);
+            const progress = note.fadeFrame / MULTI_F0_TIMBRE_FADE_FRAMES;
+            return color.map((channel, i) => initial[i] + (channel - initial[i]) * progress);
+        }
+        return color;
+    }
+
+    handleTimbreTelemetry(frame) {
+        if (!this.enabled || !this._sectionEnabled || !this.noteEventsEnabled() ||
+            frame?.frameType !== MULTI_F0_TIMBRE_FRAME || frame.formatVersion !== 1 ||
+            frame.payload?.byteLength !== 80 || (frame.source && frame.source !== this.telemetrySource)) return;
+        const payload = frame.payload;
+        const generation = payload.getUint32(12, true);
+        if (generation !== this.activeGeneration) return;
+        const sampleRate = payload.getFloat32(0, true);
+        const timeSeconds = payload.getFloat32(4, true);
+        const hopSeconds = payload.getFloat32(8, true);
+        const frameIndex = payload.getUint32(16, true);
+        const noteId = payload.getUint32(20, true);
+        const midi = payload.getUint32(24, true);
+        const event = payload.getUint32(28, true);
+        const startFrameIndex = payload.getUint32(32, true);
+        const endFrameIndex = payload.getUint32(36, true);
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Number.isFinite(timeSeconds) ||
+            timeSeconds < 0 || !Number.isFinite(hopSeconds) || hopSeconds <= 0 || !noteId ||
+            midi < 21 || midi > 108 || event < 1 || event > 3 || payload.getUint32(76, true) !== 0 ||
+            ((frameIndex - startFrameIndex) >>> 0) >= 0x80000000) return;
+        let probabilities = null;
+        if (event === 2) {
+            probabilities = new Float32Array(9);
+            let sum = 0;
+            for (let i = 0; i < 9; i++) {
+                const value = payload.getFloat32(40 + i * 4, true);
+                if (!Number.isFinite(value) || value < 0 || value > 1) return;
+                probabilities[i] = value;
+                sum += value;
+            }
+            if (Math.abs(sum - 1) > .001) return;
+        }
+        let note = this.timbreNotes.get(noteId);
+        if (!note) {
+            note = { noteId, midi, startFrameIndex, endFrameIndex, probabilities: null };
+            this.timbreNotes.set(noteId, note);
+            const notes = this.timbreByPitch[midi - MULTI_F0_FIRST_MIDI];
+            // Retriggers end the previous note even if its end event was dropped.
+            for (const previous of notes) {
+                if (previous.endFrameIndex === 0xffffffff && isNewerMultiF0Counter(startFrameIndex, previous.startFrameIndex)) {
+                    if (previous.probabilities) this.timbreDirtyRanges.push([startFrameIndex, 0xffffffff]);
+                    previous.endFrameIndex = startFrameIndex;
+                }
+            }
+            notes.push(note);
+            notes.sort((a, b) => a.startFrameIndex - b.startFrameIndex);
+        } else if (note.midi !== midi || note.startFrameIndex !== startFrameIndex) return;
+        if (endFrameIndex !== 0xffffffff && note.endFrameIndex !== endFrameIndex) {
+            // Closing a classified note only changes columns beyond its new end.
+            if (note.probabilities) this.timbreDirtyRanges.push([endFrameIndex, note.endFrameIndex]);
+            note.endFrameIndex = endFrameIndex;
+        }
+        if (probabilities) {
+            if (!note.probabilities) note.fadeFrame = 0;
+            note.probabilities = probabilities;
+            note.colors = {
+                Instrument3: multiF0TimbreColor(probabilities, 'Instrument3'),
+                Instrument9: multiF0TimbreColor(probabilities, 'Instrument9')
+            };
+            this.timbreDirtyRanges.push([startFrameIndex, note.endFrameIndex]);
+        }
+    }
+
+    flushTimbreHistory() {
+        for (const note of this.timbreNotes.values()) {
+            if (note.fadeFrame < MULTI_F0_TIMBRE_FADE_FRAMES) {
+                note.fadeFrame++;
+                this.timbreDirtyRanges.push([note.startFrameIndex, note.endFrameIndex]);
+            }
+        }
+        if (!this.timbreDirtyRanges.length) return;
+        const ranges = this.timbreDirtyRanges.splice(0);
+        const oldest = Math.max(0, this.columnSerial - MULTI_F0_HISTORY_WIDTH);
+        const dirty = new Uint8Array(this.columnSerial - oldest);
+        for (let serial = oldest; serial < this.columnSerial; serial++) {
+            const column = serial % MULTI_F0_HISTORY_WIDTH;
+            const frame = this.columnFrames[column];
+            if (frame === 0xffffffff) continue;
+            for (const [start, end] of ranges) {
+                const age = (frame - start) >>> 0;
+                if (age < 0x80000000 && (end === 0xffffffff || age < ((end - start) >>> 0))) {
+                    dirty[serial - oldest] = 1;
+                    break;
+                }
+            }
+        }
+        if (this._usesBarHistory()) {
+            // The next frame's gradient also uses the changed frame's color.
+            let next = false;
+            for (let i = 0; i < dirty.length; i++) {
+                if (dirty[i]) next = true;
+                else if (next) {
+                    dirty[i] = 1;
+                    if (this.volumeFrameEnds[(oldest + i) % MULTI_F0_HISTORY_WIDTH]) next = false;
+                }
+            }
+        }
+        for (let i = 0; i < dirty.length;) {
+            if (!dirty[i]) { i++; continue; }
+            const start = i++;
+            while (i < dirty.length && dirty[i]) i++;
+            const column = (oldest + start) % MULTI_F0_HISTORY_WIDTH;
+            if (this._usesBarHistory()) this._paintVolumeColumns(column, i - start);
+            else this.paintColumns(column, i - start);
+        }
+        this._graphReadout?.clear();
+    }
+
+    getWorkletPluginData(parameters = this.getParameters()) {
+        return super.getWorkletPluginData({ ...parameters, te: this.noteEventsEnabled() });
     }
 
     _setupMessageHandler() {
@@ -319,7 +655,25 @@ class NoteSpectrogramPlugin extends PluginBase {
             }
             this._dspTelemetryHub = hub;
             this._dspTelemetryTapId = tapId;
-            this._dspTelemetryUnsubscribe = unsubscribe;
+            let unsubscribeTimbre;
+            try {
+                unsubscribeTimbre = hub.subscribe(tapId, MULTI_F0_TIMBRE_FRAME, this._boundTimbreTelemetry);
+            } catch (error) {
+                unsubscribe();
+                this._dspTelemetryHub = null;
+                this._dspTelemetryTapId = null;
+                return false;
+            }
+            if (typeof unsubscribeTimbre !== 'function') {
+                hub.unsubscribe?.(tapId, MULTI_F0_TIMBRE_FRAME, this._boundTimbreTelemetry);
+                unsubscribe();
+                this._dspTelemetryHub = null;
+                this._dspTelemetryTapId = null;
+                return false;
+            }
+            this._dspTelemetryUnsubscribe = () => {
+                try { unsubscribe(); } finally { unsubscribeTimbre(); }
+            };
             return true;
         } catch (error) {
             return false;
@@ -383,6 +737,12 @@ class NoteSpectrogramPlugin extends PluginBase {
             if (!Number.isFinite(volumeLevel)) return null;
             volumeLevels[pitch] = volumeLevel;
         }
+        const pitchCents = new Float32Array(MULTI_F0_NOTE_COUNT);
+        for (let note = 0; note < MULTI_F0_NOTE_COUNT; note++) {
+            const cents = payload.getFloat32(MULTI_F0_CENTS_OFFSET + note * 4, true);
+            if (!Number.isFinite(cents)) return null;
+            pitchCents[note] = cents;
+        }
         const revisions = [];
         for (const [expectedAge, ageOffset, levelsOffset] of MULTI_F0_REVISION_PLANES) {
             const age = payload.getUint32(ageOffset, true);
@@ -406,6 +766,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             generation,
             levels,
             volumeLevels,
+            pitchCents,
             revisionAge,
             revisedLevels,
             revisions
@@ -424,12 +785,28 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.clearHistory();
     }
 
-    clearHistory() {
+    clearHistory(preserveActiveTimbre = false) {
         this.history?.fill(0);
+        this.pitchCentsHistory?.fill(0);
         this.levelHistory?.fill(0);
         this.volumeLevelHistory?.fill(NaN);
         this.volumeFrameEnds?.fill(1);
         this.frameRecords = [];
+        this.columnFrames?.fill(0xffffffff);
+        if (preserveActiveTimbre) {
+            // Rebuilding the display does not restart the DSP or resend completed results.
+            for (const notes of this.timbreByPitch ?? []) {
+                for (let i = notes.length - 1; i >= 0; i--) {
+                    if (notes[i].endFrameIndex === 0xffffffff) continue;
+                    this.timbreNotes.delete(notes[i].noteId);
+                    notes.splice(i, 1);
+                }
+            }
+        } else {
+            this.timbreNotes?.clear();
+            this.timbreByPitch?.forEach(notes => { notes.length = 0; });
+        }
+        this.timbreDirtyRanges.length = 0;
         this.columnSerial = 0;
         this.writeColumn = 0;
         this.columnPhase = 0;
@@ -524,9 +901,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                 continue;
             }
             const midi = MULTI_F0_FIRST_MIDI + (this.pr === 'High' ? (pitch - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS : pitch);
-            const color = this.displayOptions?.noteColor?.(midi, value) ?? (this.cl === 'Rainbow'
-                ? (this.pr === 'High' ? multiF0InterpolatedNoteColor(pitch) : MULTI_F0_NOTE_COLORS[pitchClass])
-                : palette.trace);
+            const color = this._noteDisplayColor(column, midi, value, palette, null, true, midi, true);
             pixels[pixelOffset] = this.displayOptions?.transparent ? color[0] : Math.round(background[0] + (color[0] - background[0]) * value);
             pixels[pixelOffset + 1] = this.displayOptions?.transparent ? color[1] : Math.round(background[1] + (color[1] - background[1]) * value);
             pixels[pixelOffset + 2] = this.displayOptions?.transparent ? color[2] : Math.round(background[2] + (color[2] - background[2]) * value);
@@ -653,7 +1028,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         }
 
         if (advance >= MULTI_F0_HISTORY_WIDTH) {
-            this.clearHistory();
+            this.clearHistory(true);
             advance = 1;
         }
 
@@ -665,10 +1040,9 @@ class NoteSpectrogramPlugin extends PluginBase {
             const column = (this.writeColumn + MULTI_F0_HISTORY_WIDTH - 1) %
                 MULTI_F0_HISTORY_WIDTH;
             const historyOffset = column * MULTI_F0_PITCH_COUNT;
+            this.columnFrames[column] = snapshot.frameIndex;
+            this._mergeFramePitches(column, snapshot.levels, snapshot.pitchCents);
             for (let pitch = 0; pitch < MULTI_F0_PITCH_COUNT; pitch++) {
-                if (this.intensity[pitch] > this.history[historyOffset + pitch]) {
-                    this.history[historyOffset + pitch] = this.intensity[pitch];
-                }
                 if (this.levelIntensity[pitch] > this.levelHistory[historyOffset + pitch]) {
                     this.levelHistory[historyOffset + pitch] = this.levelIntensity[pitch];
                 }
@@ -693,6 +1067,12 @@ class NoteSpectrogramPlugin extends PluginBase {
                 if (delta === 1) {
                     const source = (destination + MULTI_F0_HISTORY_WIDTH - 1) %
                         MULTI_F0_HISTORY_WIDTH;
+                    this.columnFrames[destination] = this.columnFrames[source];
+                    this.pitchCentsHistory.copyWithin(
+                        destination * MULTI_F0_NOTE_COUNT,
+                        source * MULTI_F0_NOTE_COUNT,
+                        (source + 1) * MULTI_F0_NOTE_COUNT
+                    );
                     this.history.copyWithin(
                         destination * MULTI_F0_PITCH_COUNT,
                         source * MULTI_F0_PITCH_COUNT,
@@ -709,6 +1089,9 @@ class NoteSpectrogramPlugin extends PluginBase {
                         (source + 1) * MULTI_F0_PITCH_COUNT
                     );
                 } else {
+                    this.columnFrames[destination] = 0xffffffff;
+                    this.pitchCentsHistory.fill(0, destination * MULTI_F0_NOTE_COUNT,
+                        (destination + 1) * MULTI_F0_NOTE_COUNT);
                     this.history.fill(
                         0,
                         destination * MULTI_F0_PITCH_COUNT,
@@ -727,7 +1110,9 @@ class NoteSpectrogramPlugin extends PluginBase {
                 }
             }
             const latestColumn = (startColumn + advance - 1) % MULTI_F0_HISTORY_WIDTH;
+            this.columnFrames[latestColumn] = snapshot.frameIndex;
             this.history.set(this.intensity, latestColumn * MULTI_F0_PITCH_COUNT);
+            this.pitchCentsHistory.set(snapshot.pitchCents, latestColumn * MULTI_F0_NOTE_COUNT);
             this.levelHistory.set(this.levelIntensity, latestColumn * MULTI_F0_PITCH_COUNT);
             this.volumeLevelHistory.set(snapshot.volumeLevels, latestColumn * MULTI_F0_PITCH_COUNT);
             this.volumeFrameEnds[latestColumn] = 1;
@@ -738,7 +1123,8 @@ class NoteSpectrogramPlugin extends PluginBase {
         }
         // The frame owns the newest column, alone or merged with earlier frames.
         const serial = this.columnSerial - 1;
-        this.frameRecords.push({ frameIndex: snapshot.frameIndex, levels: snapshot.levels, start: serial, end: serial });
+        this.frameRecords.push({ frameIndex: snapshot.frameIndex, levels: snapshot.levels,
+            pitchCents: snapshot.pitchCents, start: serial, end: serial });
         for (const revision of snapshot.revisions) {
             this._applyFrameRevision((snapshot.frameIndex - revision.age) >>> 0, revision.levels);
         }
@@ -751,6 +1137,33 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.latestHopSeconds = snapshot.hopSeconds;
         this.latestFrameTimeSeconds = snapshot.timeSeconds;
         this.updateScrollTime(snapshot.timeSeconds);
+        const oldestFrame = this.columnFrames[this.writeColumn];
+        if (oldestFrame !== 0xffffffff) {
+            for (const notes of this.timbreByPitch) {
+                while (notes.length && notes[0].endFrameIndex !== 0xffffffff &&
+                    ((oldestFrame - notes[0].endFrameIndex) >>> 0) < 0x80000000) {
+                    this.timbreNotes.delete(notes.shift().noteId);
+                }
+            }
+        }
+    }
+
+    // Keep each note's unrounded estimate with the strongest frame in a merged column.
+    _mergeFramePitches(column, levels, pitchCents) {
+        const offset = column * MULTI_F0_PITCH_COUNT;
+        for (let note = 0; note < MULTI_F0_NOTE_COUNT; note++) {
+            const first = note * MULTI_F0_FINE_DIVISIONS;
+            let previous = 0;
+            let incoming = 0;
+            for (let division = 0; division < MULTI_F0_FINE_DIVISIONS; division++) {
+                const pitch = first + division;
+                const value = this.history[offset + pitch];
+                if (value > previous) previous = value;
+                if (levels[pitch] > incoming) incoming = levels[pitch];
+                if (levels[pitch] > value) this.history[offset + pitch] = levels[pitch];
+            }
+            if (incoming > previous) this.pitchCentsHistory[column * MULTI_F0_NOTE_COUNT + note] = pitchCents[note];
+        }
     }
 
     // Rewrites the columns of a recorded frame with its revised confidences.
@@ -764,13 +1177,11 @@ class NoteSpectrogramPlugin extends PluginBase {
         for (let serial = record.start; serial <= record.end; serial++) {
             const offset = (serial % MULTI_F0_HISTORY_WIDTH) * MULTI_F0_PITCH_COUNT;
             this.history.fill(0, offset, offset + MULTI_F0_PITCH_COUNT);
+            const column = serial % MULTI_F0_HISTORY_WIDTH;
+            this.pitchCentsHistory.fill(0, column * MULTI_F0_NOTE_COUNT, (column + 1) * MULTI_F0_NOTE_COUNT);
             for (const entry of this.frameRecords) {
                 if (serial < entry.start || serial > entry.end) continue;
-                for (let pitch = 0; pitch < MULTI_F0_PITCH_COUNT; pitch++) {
-                    if (entry.levels[pitch] > this.history[offset + pitch]) {
-                        this.history[offset + pitch] = entry.levels[pitch];
-                    }
-                }
+                this._mergeFramePitches(column, entry.levels, entry.pitchCents);
             }
         }
         const startColumn = record.start % MULTI_F0_HISTORY_WIDTH;
@@ -852,6 +1263,10 @@ class NoteSpectrogramPlugin extends PluginBase {
             'Color', MULTI_F0_COLORS, this.cl,
             value => this.setParameters({ cl: value }), 'cl'
         );
+        const highlightRow = this.createSelectControl(
+            'Highlight', MULTI_F0_HIGHLIGHTS, this.hl,
+            value => this.setParameters({ hl: value }), 'hl'
+        );
         const resolutionRow = this.createRadioGroup(
             'Pitch Resolution', MULTI_F0_RESOLUTIONS, this.pr,
             value => this.setParameters({ pr: value }), 'pr'
@@ -862,6 +1277,9 @@ class NoteSpectrogramPlugin extends PluginBase {
         );
         const volumeRow = this.createCheckboxControl(
             'Volume', this.vl, value => this.setParameters({ vl: value }), 'vl'
+        );
+        const onsetsRow = this.createCheckboxControl(
+            'Onsets', this.os, value => this.setParameters({ os: value }), 'os'
         );
         const timeSpanRow = this.createParameterControl(
             'Time Span', 1, 10, 1, this.ts,
@@ -885,9 +1303,11 @@ class NoteSpectrogramPlugin extends PluginBase {
         const parameters = document.createElement('div');
         parameters.className = 'analyzer-parameters';
         parameters.appendChild(colorRow);
+        parameters.appendChild(highlightRow);
         parameters.appendChild(resolutionRow);
         parameters.appendChild(layoutRow);
         parameters.appendChild(volumeRow);
+        parameters.appendChild(onsetsRow);
         parameters.appendChild(timeSpanRow);
         parameters.appendChild(minNoteRow);
         parameters.appendChild(maxNoteRow);
@@ -942,6 +1362,7 @@ class NoteSpectrogramPlugin extends PluginBase {
     }
 
     initializeDisplayCanvas(canvas) {
+        this._bindLegendCanvas(canvas);
         this.canvas = canvas;
         this.canvasCtx = canvas.getContext('2d', { alpha: this.displayOptions?.transparent === true });
         this.tempCanvas = document.createElement('canvas');
@@ -1010,17 +1431,12 @@ class NoteSpectrogramPlugin extends PluginBase {
         return best;
     }
 
-    // Parabolic interpolation over the neighboring fine bins places the peak
-    // between bins, in fine-bin units within [-0.5, 0.5].
-    _peakOffset(historyOffset, best) {
-        if (best <= 0 || best >= MULTI_F0_PITCH_COUNT - 1) return 0;
-        const below = this.history[historyOffset + best - 1];
-        const peak = this.history[historyOffset + best];
-        const above = this.history[historyOffset + best + 1];
-        const curvature = below - 2 * peak + above;
-        if (curvature >= 0) return 0;
-        const offset = 0.5 * (below - above) / curvature;
-        return offset < -0.5 ? -0.5 : offset > 0.5 ? 0.5 : offset;
+    _usesBarHistory() {
+        return this.vl || this.pr === 'High';
+    }
+
+    _estimatedMidi(column, midi) {
+        return midi + this.pitchCentsHistory[column * MULTI_F0_NOTE_COUNT + midi - MULTI_F0_FIRST_MIDI] / 100;
     }
 
     _volumeBarsForColumn(historyOffset) {
@@ -1035,42 +1451,36 @@ class NoteSpectrogramPlugin extends PluginBase {
 
     _volumeBarShape(historyOffset, bar, rowHeight, palette) {
         const { midi, best, confidence } = bar;
-        const pitchClass = midi % 12;
-        const background = MULTI_F0_BLACK_KEY_CLASSES.has(pitchClass)
-            ? palette.blackBand
-            : palette.whiteBand;
-        const pitch = MULTI_F0_FIRST_MIDI + (best - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS;
+        const column = Math.floor(historyOffset / MULTI_F0_PITCH_COUNT);
+        const pitch = this.pr === 'High' ? this._estimatedMidi(column, midi)
+            : MULTI_F0_FIRST_MIDI + (best - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS;
         const signalColor = this.displayOptions?.signalColor?.(pitch, confidence);
+        const alpha = signalColor ? signalColor.alpha : confidence;
+        if (alpha < MULTI_F0_MIN_VISIBLE_ALPHA) return null;
         const normalized = this.levelHistory[historyOffset + best];
-        const color = signalColor?.rgb ?? this.displayOptions?.noteColor?.(pitch, normalized) ?? (this.cl === 'Rainbow'
-            ? multiF0InterpolatedNoteColor(best)
-            : palette.trace);
-        const red = this.displayOptions?.transparent ? color[0] : Math.round(background[0] + (color[0] - background[0]) * confidence);
-        const green = this.displayOptions?.transparent ? color[1] : Math.round(background[1] + (color[1] - background[1]) * confidence);
-        const blue = this.displayOptions?.transparent ? color[2] : Math.round(background[2] + (color[2] - background[2]) * confidence);
+        const color = this._noteDisplayColor(column, pitch, this.vl ? normalized : confidence,
+            palette, signalColor?.rgb, true, midi, true);
+        const red = Math.round(color[0]);
+        const green = Math.round(color[1]);
+        const blue = Math.round(color[2]);
         const nominalMinimum = rowHeight / MULTI_F0_FINE_DIVISIONS;
         const minimum = nominalMinimum > 1 ? nominalMinimum : 1;
         const nominalMaximum = rowHeight - 1;
         const maximum = nominalMaximum > minimum ? nominalMaximum : minimum;
-        const thickness = minimum + (maximum - minimum) * normalized;
-        const rowTop = (this.mx - midi) * rowHeight;
-        const division = best % MULTI_F0_FINE_DIVISIONS;
-        const center = this.pr === 'High'
-            ? rowTop + (MULTI_F0_FINE_DIVISIONS - 1 - division + 0.5 -
-                this._peakOffset(historyOffset, best)) * rowHeight / MULTI_F0_FINE_DIVISIONS
-            : rowTop + rowHeight / 2;
-        const alpha = signalColor ? signalColor.alpha : this.displayOptions?.transparent ? confidence : 1;
+        const thickness = this.vl ? minimum + (maximum - minimum) * normalized : minimum;
+        const center = (this.mx - (this.pr === 'High' ? pitch : midi) + 0.5) * rowHeight;
         return {
+            midi,
             center,
             half: thickness / 2,
-            fill: `rgba(${red}, ${green}, ${blue}, ${alpha})` // theme-allow: RGB channels blend the active theme background and trace colors.
+            fill: `rgba(${red}, ${green}, ${blue}, ${alpha})` // theme-allow: Foreground colors use the active theme or selected colormap; alpha carries confidence.
         };
     }
 
     _volumeShapesForColumn(column, rowHeight, palette) {
         const historyOffset = column * MULTI_F0_PITCH_COUNT;
         return this._volumeBarsForColumn(historyOffset).map(bar =>
-            this._volumeBarShape(historyOffset, bar, rowHeight, palette));
+            this._volumeBarShape(historyOffset, bar, rowHeight, palette)).filter(Boolean);
     }
 
     _paintVolumeBackground(context, x, width, height, rowHeight, palette) {
@@ -1086,8 +1496,8 @@ class NoteSpectrogramPlugin extends PluginBase {
     }
 
     // Paints the columns of the telemetry frame ending at `end` as one span.
-    // Each bar continues a vertically overlapping bar of the previous frame
-    // with a tapered band; unmatched bars start or end with a rounded cap.
+    // Continue the same note before matching remaining overlapping bars across
+    // semitone boundaries. Each previous bar can continue only once.
     _paintVolumeFrame(context, end, height, rowHeight, palette, withBackground) {
         const newest = (this.writeColumn + MULTI_F0_HISTORY_WIDTH - 1) % MULTI_F0_HISTORY_WIDTH;
         let start = end;
@@ -1104,10 +1514,14 @@ class NoteSpectrogramPlugin extends PluginBase {
         const current = this._volumeShapesForColumn(end, rowHeight, palette);
         const before = previous === null ? [] : this._volumeShapesForColumn(previous, rowHeight, palette);
         if (!withBackground && current.length === 0 && before.length === 0) return;
-        const links = current.map(shape => {
+        const links = current.map(shape => before.find(candidate => candidate.midi === shape.midi) ?? null);
+        const used = new Set(links.filter(Boolean));
+        current.forEach((shape, index) => {
+            if (links[index]) return;
             let link = null;
             let linkDistance = Infinity;
             for (const candidate of before) {
+                if (used.has(candidate)) continue;
                 const distance = candidate.center > shape.center
                     ? candidate.center - shape.center
                     : shape.center - candidate.center;
@@ -1116,7 +1530,10 @@ class NoteSpectrogramPlugin extends PluginBase {
                     linkDistance = distance;
                 }
             }
-            return link;
+            if (link) {
+                links[index] = link;
+                used.add(link);
+            }
         });
         const count = (end - start + MULTI_F0_HISTORY_WIDTH) % MULTI_F0_HISTORY_WIDTH + 1;
         const right = start + count;
@@ -1148,7 +1565,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                 context.fill();
             });
             for (const shape of before) {
-                if (links.includes(shape)) continue;
+                if (used.has(shape)) continue;
                 context.fillStyle = shape.fill;
                 context.beginPath();
                 context.ellipse(start, shape.center, count, shape.half, 0, 0, Math.PI * 2);
@@ -1195,7 +1612,7 @@ class NoteSpectrogramPlugin extends PluginBase {
     }
 
     _paintVolumeColumns(startColumn, count) {
-        if (!this.vl || this.volumeHistoryDirty || !this.volumeHistoryCanvas) {
+        if (!this._usesBarHistory() || this.volumeHistoryDirty || !this.volumeHistoryCanvas) {
             this.volumeHistoryDirty = true;
             return;
         }
@@ -1220,9 +1637,8 @@ class NoteSpectrogramPlugin extends PluginBase {
             const centerY = (this.mx - midi + 0.5) * rowHeight;
             const normalized = this._normalizedLevel(this.meterCurrent[note]);
             const signalColor = this.displayOptions?.signalColor?.(midi, normalized);
-            const color = signalColor?.rgb ?? this.displayOptions?.noteColor?.(midi, normalized) ?? (this.cl === 'Rainbow'
-                ? MULTI_F0_NOTE_COLORS[midi % 12]
-                : palette.trace);
+            const color = this._noteDisplayColor((this.writeColumn + MULTI_F0_HISTORY_WIDTH - 1) % MULTI_F0_HISTORY_WIDTH,
+                midi, normalized, palette, signalColor?.rgb);
             const currentRadius = rowHeight * normalized;
             if (currentRadius > 0) {
                 const gradient = context.createRadialGradient(
@@ -1257,8 +1673,50 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.paintHistoryImage();
     }
 
+    _drawOnsets(context, rollWidth, rowHeight, columnWidth, scrollPhase, palette) {
+        if (!this.os || !this.timbreNotes.size) return;
+        const theme = this.displayOptions?.themePalette ?? window.ThemePalette;
+        const dpr = this.graphDpr || 1;
+        const markerHeight = Math.min(rowHeight * .75, 10 * dpr);
+        context.save();
+        context.beginPath();
+        context.rect(0, 0, rollWidth, rowHeight * (this.mx - this.mn + 1));
+        context.clip();
+        context.strokeStyle = theme?.get('graph-bg-deep') ?? '';
+        context.lineWidth = dpr;
+        for (const note of this.timbreNotes.values()) {
+            if (note.midi < this.mn || note.midi > this.mx) continue;
+            // Search in display order so a frame spanning the ring boundary has one marker.
+            let column = this.columnFrames.indexOf(note.startFrameIndex, this.writeColumn);
+            if (column < 0) column = this.columnFrames.indexOf(note.startFrameIndex);
+            if (column < 0) continue;
+            const x = ((column - this.writeColumn + MULTI_F0_HISTORY_WIDTH) %
+                MULTI_F0_HISTORY_WIDTH - scrollPhase) * columnWidth;
+            const pitch = this.pr === 'High' ? this._estimatedMidi(column, note.midi) : note.midi;
+            const y = (this.mx - pitch + .5) * rowHeight;
+            const color = this._noteDisplayColor(column, note.midi, undefined, palette);
+            // The horizontal layout rotates this right-pointing triangle downward.
+            context.beginPath();
+            context.moveTo(x, y - markerHeight / 2);
+            context.lineTo(x, y + markerHeight / 2);
+            context.lineTo(x + markerHeight, y);
+            context.closePath();
+            context.stroke();
+            context.fillStyle = `rgb(${color.join(', ')})`; // theme-allow: Same Color and Highlight mapping as the note.
+            context.fill();
+        }
+        context.restore();
+    }
+
     drawGraph(now = performance.now()) {
         if (this.displayOptions?.deferDraw) return;
+        if (this._timbreColorsDirty) {
+            this._timbreColorsDirty = false;
+            if (this._usesBarHistory()) this.volumeHistoryDirty = true;
+            else this.paintHistoryImage();
+            this._graphReadout?.clear();
+        }
+        this.flushTimbreHistory();
         const frame = (this._readoutFrame ??= {});
         frame.valid = false;
         if (!this.canvasCtx || !this.imageData || !this.tempCtx || !this.tempCanvas ||
@@ -1328,7 +1786,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         }
         if (this.displayOptions?.transparent) scaledContext.clearRect(0, 0, this.scaledHistoryCanvas.width, height);
         scaledContext.imageSmoothingEnabled = false;
-        if (this.vl) {
+        if (this._usesBarHistory()) {
             this._paintVolumeHistory(height, palette);
             scaledContext.drawImage(this.volumeHistoryCanvas, 0, 0);
         } else {
@@ -1356,7 +1814,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                     secondCount * columnWidth, height);
             }
             context.imageSmoothingEnabled = false;
-            if (this.vl) {
+            if (this._usesBarHistory()) {
                 context.drawImage(
                     this.volumeHistoryCanvas,
                     latestColumn,
@@ -1384,15 +1842,17 @@ class NoteSpectrogramPlugin extends PluginBase {
         };
         if (this.displayOptions?.drawSignal) this.displayOptions.drawSignal(context, drawHistory, { width: rollWidth, height });
         else drawHistory(context);
+        this._drawOnsets(context, rollWidth, rowHeight, columnWidth, scrollPhase, palette);
 
         Object.assign(frame, {
             valid: true, horizontal, canvasWidth: this.canvas.width, rollWidth, height, rowHeight,
             gutter, blackKeyDepth, scrollPhase, columnWidth, phaseOffset, split, palette
         });
-        if (this.vl && this.displayOptions?.separateAnnotations) this._paintVolumeGrid(context, 0, rollWidth, rowHeight);
+        if (this._usesBarHistory() && this.displayOptions?.separateAnnotations) this._paintVolumeGrid(context, 0, rollWidth, rowHeight);
         context.lineWidth = dpr;
         if (showKeyboard) {
             drawKeyboard(() => {
+                const applyHighlight = this.cl === 'Instrument3' || this.cl === 'Instrument9';
                 const latestOffset = ((this.writeColumn + MULTI_F0_HISTORY_WIDTH - 1) %
                     MULTI_F0_HISTORY_WIDTH) * MULTI_F0_PITCH_COUNT;
                 const whiteKeyHeight = 12 * rowHeight / 7;
@@ -1409,9 +1869,8 @@ class NoteSpectrogramPlugin extends PluginBase {
                     const clippedEnd = end > height ? height : end;
                     if (clippedStart >= clippedEnd) continue;
                     const confidence = this._bagConfidence(latestOffset, midi);
-                    const color = this.displayOptions?.noteColor?.(midi) ?? (this.cl === 'Rainbow'
-                        ? MULTI_F0_NOTE_COLORS[pitchClass]
-                        : palette.trace);
+                    const color = this._noteDisplayColor(latestOffset / MULTI_F0_PITCH_COUNT,
+                        midi, undefined, palette, null, applyHighlight);
                     const red = Math.round(palette.whiteKey + (color[0] - palette.whiteKey) * confidence);
                     const green = Math.round(palette.whiteKey + (color[1] - palette.whiteKey) * confidence);
                     const blue = Math.round(palette.whiteKey + (color[2] - palette.whiteKey) * confidence);
@@ -1444,9 +1903,8 @@ class NoteSpectrogramPlugin extends PluginBase {
                     if (!MULTI_F0_BLACK_KEY_CLASSES.has(pitchClass)) continue;
                     const row = this.mx - midi;
                     const confidence = this._bagConfidence(latestOffset, midi);
-                    const color = this.displayOptions?.noteColor?.(midi) ?? (this.cl === 'Rainbow'
-                        ? MULTI_F0_NOTE_COLORS[pitchClass]
-                        : palette.trace);
+                    const color = this._noteDisplayColor(latestOffset / MULTI_F0_PITCH_COUNT,
+                        midi, undefined, palette, null, applyHighlight);
                     const red = Math.round(palette.blackKey + (color[0] - palette.blackKey) * confidence);
                     const green = Math.round(palette.blackKey + (color[1] - palette.blackKey) * confidence);
                     const blue = Math.round(palette.blackKey + (color[2] - palette.blackKey) * confidence);
@@ -1519,7 +1977,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             if (midi < this.mn || midi > this.mx) continue;
             const row = this.mx - midi;
             const boundaryY = (row + 1) * rowHeight;
-            if (!this.vl && this.displayOptions?.showAxes !== false) {
+            if (!this._usesBarHistory() && this.displayOptions?.showAxes !== false) {
                 context.strokeStyle = isC ? ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-grid-strong') ?? '') : ((this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-grid-subtle') ?? '');
                 context.beginPath();
                 context.moveTo(0, boundaryY);
@@ -1567,6 +2025,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             }
         }
         if (horizontal) context.restore();
+        this._drawTimbreLegend(context, horizontal ? height : rollWidth, horizontal ? rollWidth : height);
         this._graphReadout?.refresh();
     }
 
@@ -1590,27 +2049,31 @@ class NoteSpectrogramPlugin extends PluginBase {
             ? (frame.split + MULTI_F0_HISTORY_WIDTH - 1) % MULTI_F0_HISTORY_WIDTH
             : (frame.split + Math.floor((u + frame.phaseOffset) / columnWidth)) % MULTI_F0_HISTORY_WIDTH;
         const rowIndex = Math.floor(v / rowHeight);
-        const midi = this.mx - (rowIndex < 0 ? 0 : rowIndex);
+        let midi = this.mx - (rowIndex < 0 ? 0 : rowIndex);
         if (midi < this.mn) return null;
         const historyOffset = column * MULTI_F0_PITCH_COUNT;
         const high = this.pr === 'High';
-        const rowTop = (this.mx - midi) * rowHeight;
-        const subRow = Math.floor((v - rowTop) / (rowHeight / MULTI_F0_FINE_DIVISIONS));
-        const division = MULTI_F0_FINE_DIVISIONS - 1 -
-            (subRow < 0 ? 0 : subRow > MULTI_F0_FINE_DIVISIONS - 1 ? MULTI_F0_FINE_DIVISIONS - 1 : subRow);
-        // Snap to the center of the display row under the pointer: a 1/60-octave sub-row in High,
-        // otherwise the semitone row (its center division), whether or not anything sounds there.
-        const pitch = (midi - MULTI_F0_FIRST_MIDI) * MULTI_F0_FINE_DIVISIONS +
-            (high ? division : MULTI_F0_FINE_CENTER);
-        const cellMidi = MULTI_F0_FIRST_MIDI + (pitch - MULTI_F0_FINE_CENTER) / MULTI_F0_FINE_DIVISIONS;
-        const center = rowTop + (MULTI_F0_FINE_DIVISIONS - 1 - pitch % MULTI_F0_FINE_DIVISIONS + 0.5) *
-            rowHeight / MULTI_F0_FINE_DIVISIONS;
-        // High without Volume paints every sub-row cell; otherwise each semitone row shows its strongest cell.
-        const levelPitch = high && !this.vl ? pitch : this._bestBagPitch(historyOffset, midi);
-        const salience = this.history[historyOffset + levelPitch];
-        const color = this.cl === 'Rainbow'
-            ? (high ? multiF0InterpolatedNoteColor(pitch) : MULTI_F0_NOTE_COLORS[midi % 12])
-            : frame.palette.trace;
+        let cellMidi = midi;
+        let matched = !high;
+        if (high) {
+            cellMidi = this.mx + 0.5 - v / rowHeight;
+            let nearest = 0.5;
+            for (let note = this.mn; note <= this.mx; note++) {
+                if (this._bagConfidence(historyOffset, note) <= 0) continue;
+                const estimate = this._estimatedMidi(column, note);
+                const distance = Math.abs(estimate - (this.mx + 0.5 - v / rowHeight));
+                if (distance < nearest) {
+                    nearest = distance;
+                    midi = note;
+                    cellMidi = estimate;
+                    matched = true;
+                }
+            }
+        }
+        const center = (this.mx - cellMidi + 0.5) * rowHeight;
+        const levelPitch = this._bestBagPitch(historyOffset, midi);
+        const salience = matched ? this.history[historyOffset + levelPitch] : 0;
+        const color = this._noteDisplayColor(column, cellMidi, salience, frame.palette, null, true, matched ? midi : NaN);
         const row = {
             label: 'Salience',
             color: `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`, // theme-allow: Same note or theme trace color as the drawn cell.
@@ -1620,15 +2083,44 @@ class NoteSpectrogramPlugin extends PluginBase {
         const levelRow = {
             ...row,
             label: 'Level',
-            value: format.db(this.volumeLevelHistory[historyOffset + levelPitch])
+            value: format.db(matched ? this.volumeLevelHistory[historyOffset + levelPitch] : NaN)
         };
         const cursor = `${format.note(frequency(cellMidi), 440)} · ${
             format.time(-(rollWidth - u) / columnWidth * this.columnPeriod * 1000)}`;
-        return { cursor, rows: [row, levelRow], at: horizontal ? { x: canvasWidth - center, y: u } : { x: u, y: center } };
+        const rows = [row, levelRow];
+        const probabilities = matched && this.timbreEnabled() ? this._timbreForColumn(column, midi)?.probabilities : null;
+        if (this.timbreEnabled() && !probabilities) {
+            rows.push({ label: 'Instrument', color: `rgb(${MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR.join(', ')})`, // theme-allow: Fixed neutral instrument color.
+                value: 'Not classified' });
+        } else if (probabilities) {
+            if (this.cl === 'Instrument3' || this.cl === 'Instrument9') {
+                rows.push({ ...row, label: 'Instrument', value: multiF0TimbreLabel(probabilities, this.cl) });
+            }
+            const targets = this.cl === 'Instrument3' ? ['Vocal', 'Bass', 'Other3']
+                : MULTI_F0_TIMBRE_CLASSES.map(label => label === 'Other' ? 'Other9' : label);
+            for (const target of targets) {
+                const label = target === 'Other3' || target === 'Other9' ? 'Other' : target;
+                const color = MULTI_F0_TIMBRE_COLORS[MULTI_F0_TIMBRE_CLASSES.indexOf(label)];
+                rows.push({ label, color: `rgb(${color.join(', ')})`, // theme-allow: Fixed instrument colormap.
+                    value: format.percent(multiF0HighlightProbability(probabilities, target)) });
+            }
+            const highlight = this._effectiveHighlight();
+            if (highlight !== 'None' && !targets.includes(highlight)) {
+                rows.push({ ...row, label: MULTI_F0_HIGHLIGHTS.find(option => option.value === highlight).label,
+                    value: format.percent(multiF0HighlightProbability(probabilities, highlight)) });
+            }
+        }
+        return { cursor, rows, at: horizontal ? { x: canvasWidth - center, y: u } : { x: u, y: center } };
     }
 
     cleanup() {
         this.stopAnimation();
+        this._bindLegendCanvas(null);
+        if (this._legendDrawFrame !== null) cancelAnimationFrame(this._legendDrawFrame);
+        this._legendDrawFrame = null;
+        this._legendHighlight = null;
+        this._legendRects = [];
+        this._timbreColorsDirty = false;
         this.disposeDspTelemetrySubscription();
         if (this.observer) {
             if (this.canvas) this.observer.unobserve(this.canvas);
@@ -1645,11 +2137,16 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.canvasCtx = null;
         this.observer = null;
         this.history = null;
+        this.pitchCentsHistory = null;
         this.intensity = null;
         this.levelHistory = null;
         this.volumeLevelHistory = null;
         this.volumeFrameEnds = null;
         this.frameRecords = null;
+        this.columnFrames = null;
+        this.timbreNotes?.clear();
+        this.timbreByPitch = null;
+        this.timbreDirtyRanges = null;
         this.levelIntensity = null;
         this.meterCurrent = null;
         super.cleanup();

@@ -1,6 +1,6 @@
 ---
-title: "Plugins Saturation - EffeTune"
-description: "Plugins de saturation et de distorsion incluant Saturation, Exciter, Hard Clipping et plus encore."
+title: "Plugins Saturation - Extension des graves, exciter et ampli à lampes simulé - EffeTune"
+description: "Simulation d'ampli à lampes, Saturation, Exciter et Harmonic Distortion ; Bandwidth Extender et Bass Extender génèrent de nouveaux aigus et graves."
 lang: fr
 ---
 

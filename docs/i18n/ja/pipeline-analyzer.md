@@ -1,3 +1,9 @@
+---
+title: "Pipeline Analyzer - エフェクトチェーンの周波数特性と位相特性 - EffeTune"
+description: "Pipeline Analyzerは、再生中の音を変えずに、現在のEffect Pipeline全体の周波数特性、位相、群遅延、インパルス応答を測定します。"
+lang: ja
+---
+
 # Pipeline Analyzer
 
 Pipeline Analyzerは、再生中の音を変えずに、現在のEffect Pipeline全体の特性を測定します。広い画面ではパイプラインの横、狭い画面ではヘッダーの直下に表示されるため、エフェクトを操作しながら結果を確認できます。

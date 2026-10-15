@@ -324,7 +324,7 @@ def _prepare_legacy_parameters_v1(
             )
     if effect_type == "NoteSpectrogram":
         # These app settings only control the piano-roll display.
-        for key in ("cl", "pr", "ly", "vl", "ts"):
+        for key in ("cl", "hl", "pr", "ly", "vl", "os", "ts"):
             parameters.pop(key, None)
     if effect_type == "PitchMeter" and "ly" in parameters:
         layout = parameters.pop("ly")
@@ -357,6 +357,7 @@ def _prepare_legacy_parameters_v1(
             ("ln", 0, 1, True),
             ("tg", -36, -10, False),
             ("ls", 0, 1, True),
+            ("dc", 0, 4, True),
         ):
             if key not in parameters:
                 continue

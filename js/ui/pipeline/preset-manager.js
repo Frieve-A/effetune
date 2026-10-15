@@ -415,6 +415,7 @@ export class PresetManager {
             if (masterToggle) {
                 masterToggle.classList.remove('off');
             }
+            this.pipelineManager.core.updateAllPluginDisplayState();
             });
 
             historyManager.saveState();

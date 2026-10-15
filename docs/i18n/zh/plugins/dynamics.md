@@ -1,6 +1,6 @@
 ---
-title: "Dynamics 插件 - EffeTune"
-description: "动态处理插件,包括 Attack Tonal Balance、Compressor、Limiter、Gate、Multiband Compressor 和 Transient Shaper。"
+title: "Dynamics 插件 - 自动音量调节、压缩器与限幅器 - EffeTune"
+description: "Auto Leveler 使聆听音量更一致；Brickwall Limiter、Compressor、Expander、Gate、Transient Shaper 及多频段处理器等用于调整动态。"
 lang: zh
 ---
 

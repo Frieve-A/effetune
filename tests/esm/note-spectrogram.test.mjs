@@ -20,7 +20,8 @@ const volumeOffset = confidenceOffset + pitchCount * 4;
 const revisedOffset = volumeOffset + pitchCount * 4;
 const intermediateOffset = revisedOffset + pitchCount * 4;
 const revisionBytes = 4 + pitchCount * 4;
-const payloadBytes = intermediateOffset + 2 * revisionBytes;
+const centsOffset = intermediateOffset + 2 * revisionBytes;
+const payloadBytes = centsOffset + noteCount * 4;
 const historyWidth = 1024;
 
 // Canvas calls used only by the shaded piano keys.
@@ -101,12 +102,20 @@ class FakeElement {
         return child;
     }
 
+    replaceChildren() {
+        this.children = [];
+    }
+
     setAttribute(name, value) {
         this.attributes.set(name, String(value));
     }
 
     addEventListener(type, listener) {
         this.listeners.set(type, listener);
+    }
+
+    removeEventListener(type, listener) {
+        if (this.listeners.get(type) === listener) this.listeners.delete(type);
     }
 
     dispatchEvent(type, event = {}) {
@@ -150,6 +159,15 @@ function createPluginBase() {
             this.updateCount = (this.updateCount || 0) + 1;
         }
 
+        getWorkletPluginData(parameters = this.getParameters()) {
+            return { parameters };
+        }
+
+        createSelectControl(label, options, value, setter, modelKey) {
+            if (this.createRadioGroup) return this.createRadioGroup(label, options, value, setter, modelKey);
+            return new FakeElement('div');
+        }
+
         cleanup() {
             this.cleanedUp = true;
         }
@@ -173,7 +191,8 @@ const FrequencyAxis = (() => {
 })();
 
 async function loadPlugin({ telemetryHub = null, audioContext = null, nullCanvasContext = false,
-    now = 0, background = [0, 0, 0], soft = [34, 34, 34], trace = [0, 255, 0], graphReadout = null } = {}) {
+    now = 0, background = [0, 0, 0], soft = [34, 34, 34], trace = [0, 255, 0], graphReadout = null,
+    requestAnimationFrame, cancelAnimationFrame } = {}) {
     const source = await fs.readFile(path.join(repoRoot, pluginPath), 'utf8');
     const window = { dspTelemetryHub: telemetryHub, audioContext, GraphReadout: graphReadout };
     const document = {
@@ -183,6 +202,8 @@ async function loadPlugin({ telemetryHub = null, audioContext = null, nullCanvas
         PluginBase: createPluginBase(),
         document,
         window,
+        requestAnimationFrame,
+        cancelAnimationFrame,
         performance: { now: () => typeof now === 'function' ? now() : now }
     });
     const palette = installThemePaletteStub(context.window);
@@ -212,7 +233,8 @@ function createTelemetryFrame({
     volumeLevels = [],
     revisionAge = 0,
     revisedLevels = [],
-    revisions = []
+    revisions = [],
+    pitchCents = []
 } = {}) {
     const modeCode = mode === 'Fine Presence' ? fineDivisions :
         (mode === 'F0 Presence' ? 0 : (mode === 'Classic' ? 1 : mode));
@@ -239,7 +261,10 @@ function createTelemetryFrame({
             payload.setFloat32(offset + 4 + pitch * 4, revision.levels[pitch] ?? 0, true);
         }
     }
-    return { frameType: 24, formatVersion: 5, payload };
+    for (let note = 0; note < noteCount; note++) {
+        payload.setFloat32(centsOffset + note * 4, pitchCents[note] ?? 0, true);
+    }
+    return { frameType: 24, formatVersion: 6, payload };
 }
 
 function firstPitchByColumn(plugin, start, count) {
@@ -250,9 +275,115 @@ function firstPitchByColumn(plugin, start, count) {
     return values;
 }
 
+function createTimbreFrame({ event = 2, noteId = 1, midi = 21, startFrameIndex = 10,
+    frameIndex = 14, endFrameIndex = 0xffffffff, generation = 1, probabilities = [1, 0, 0, 0, 0, 0, 0, 0, 0] } = {}) {
+    const payload = new DataView(new ArrayBuffer(80));
+    payload.setFloat32(0, 48000, true);
+    payload.setFloat32(4, 1 + frameIndex * .02, true);
+    payload.setFloat32(8, .02, true);
+    for (const [offset, value] of [[12, generation], [16, frameIndex], [20, noteId], [24, midi],
+        [28, event], [32, startFrameIndex], [36, endFrameIndex]]) payload.setUint32(offset, value, true);
+    if (event === 2) probabilities.forEach((value, i) => payload.setFloat32(40 + i * 4, value, true));
+    return { frameType: 31, formatVersion: 1, payload };
+}
+
 function firstPitchPresenceBytesByColumn(plugin, start, count) {
     return firstPitchByColumn(plugin, start, count).map(value => Math.round(value * 255));
 }
+
+test('timbre history fades over three display frames while keyboard colors are immediate', async () => {
+    for (const pr of ['Semitone', 'High']) {
+        for (const vl of [false, true]) {
+            const plugin = await loadPlugin();
+            plugin.setParameters({ cl: 'Instrument9', pr, vl, mn: 21, mx: 21 });
+            plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+            plugin.drawGraph = () => {};
+            plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [0, 0, 1],
+                volumeLevels: [-240, -240, -12] }));
+            const palette = plugin._displayPalette();
+            plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities: [1, 0, 0, 0, 0, 0, 0, 0, 0] }));
+            assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [76, 120, 184]);
+            for (const expected of [[103, 117, 139], [89, 119, 161], [76, 120, 184]]) {
+                plugin.flushTimbreHistory();
+                if (pr === 'High' || vl) {
+                    const shape = plugin._volumeShapesForColumn(0, 100, palette)[0];
+                    assert.equal(shape.fill, `rgba(${expected.join(', ')}, 1)`);
+                } else {
+                    const offset = 87 * historyWidth * 4;
+                    assert.deepEqual(Array.from(plugin.imageData.data.slice(offset, offset + 3)), expected);
+                }
+                assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [76, 120, 184]);
+            }
+            let repaints = 0;
+            plugin.paintColumns = plugin._paintVolumeColumns = () => { repaints++; };
+            plugin.flushTimbreHistory();
+            assert.equal(repaints, 0, 'completed fades stop repainting');
+        }
+    }
+});
+
+test('timbre notification batches repaint only changed history at the next graph frame', async () => {
+    const report = [];
+    for (const volume of [false, true]) {
+        const plugin = await loadPlugin();
+        plugin.cl = 'Instrument9';
+        plugin.vl = volume;
+        plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+        plugin.columnSerial = historyWidth;
+        plugin.columnFrames.set(Array.from({ length: historyWidth }, (_, i) => i));
+        plugin.history.fill(.8);
+        plugin.levelHistory.fill(.8);
+        plugin.volumeLevelHistory.fill(-12);
+        plugin.activeGeneration = 1;
+        plugin.lastFrameIndex = 1023;
+        plugin.latestFrameTimeSeconds = 1;
+        plugin._paintVolumeHistory(200, plugin._displayPalette());
+        const counts = { graph: 0, pixels: 0, volumeFrames: 0, volumeShapes: 0 };
+        for (const [method, key] of [['_writePixels', 'pixels'], ['_paintVolumeFrame', 'volumeFrames'],
+            ['_volumeShapesForColumn', 'volumeShapes']]) {
+            const original = plugin[method].bind(plugin);
+            plugin[method] = (...args) => { counts[key]++; return original(...args); };
+        }
+        plugin.drawGraph = () => {
+            counts.graph++;
+            plugin.flushTimbreHistory?.();
+            if (volume) plugin._paintVolumeHistory(200, plugin._displayPalette());
+        };
+        const measure = (kind, notify) => {
+            Object.keys(counts).forEach(key => { counts[key] = 0; });
+            const start = performance.now();
+            notify();
+            const notificationCounts = { ...counts };
+            plugin.drawGraph();
+            report.push({ volume, kind, notificationCounts, frameCounts: { ...counts },
+                milliseconds: performance.now() - start });
+        };
+        measure('pitch24', () => plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 1024,
+            timeSeconds: 1.01, levels: Array(pitchCount).fill(.8), volumeLevels: Array(pitchCount).fill(-12) })));
+        for (const [kind, event] of [['start31', 1], ['result31', 2], ['end31', 3]]) {
+            measure(kind, () => {
+                for (let note = 0; note < 8; note++) plugin.handleTimbreTelemetry(createTimbreFrame({
+                    event, noteId: note + 1, midi: 40 + note, startFrameIndex: 990, frameIndex: 1024,
+                    endFrameIndex: event === 3 ? 1020 : 0xffffffff }));
+            });
+        }
+    }
+    console.log('Timbre finite Canvas diagnostic:', JSON.stringify(report));
+    for (const item of report) {
+        assert.equal(item.notificationCounts.graph, 0, 'notifications never synchronously draw the graph');
+        assert.equal(item.frameCounts.graph, 1, 'one animation frame handles the whole batch');
+        if (item.kind.endsWith('31')) {
+            assert.equal(item.notificationCounts.pixels, 0);
+            assert.equal(item.notificationCounts.volumeFrames, 0);
+            assert.ok(item.frameCounts.volumeFrames < 50, 'only affected Volume frames are repainted');
+            assert.ok(item.frameCounts.pixels < 50, 'overlapping note ranges are painted once');
+        }
+        if (item.kind === 'start31') {
+            assert.equal(item.frameCounts.pixels, 0);
+            assert.equal(item.frameCounts.volumeFrames, 0);
+        }
+    }
+});
 
 test('Note Spectrogram restores display preferences and defaults to a horizontal green keyboard', async () => {
     const plugin = await loadPlugin({ nullCanvasContext: true });
@@ -260,11 +391,11 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.processor, 'return data;');
     assert.equal(plugin.constructor.executionCapabilities.requiresWasm, true);
     assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
-        type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', pr: 'Semitone', ly: 'Horizontal', vl: true, ts: 2,
+        type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', hl: 'None', pr: 'Semitone', ly: 'Horizontal', vl: true, os: false, ts: 2,
         mn: 28, mx: 91
     });
     plugin.setParameters({
-        cl: 'Rainbow', pr: 'High', ly: 'Horizontal', vl: false, ts: 100,
+        cl: 'Rainbow', pr: 'High', ly: 'Horizontal', vl: false, os: true, ts: 100,
         md: 'Classic', cf: 1, dr: -48
     });
     assert.equal(plugin.ts, 10);
@@ -274,6 +405,7 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(restored.pr, 'High');
     assert.equal(restored.ly, 'Horizontal');
     assert.equal(restored.vl, false);
+    assert.equal(restored.os, true);
     assert.equal(restored.md, undefined);
     assert.equal(restored.cf, undefined);
     assert.equal(restored.dr, undefined);
@@ -287,6 +419,7 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(legacy.cl, 'Rainbow');
     assert.equal(legacy.pr, 'Semitone');
     assert.equal(legacy.vl, true);
+    assert.equal(legacy.os, false);
     legacy.setParameters({ cl: 'Normal', rb: true });
     assert.equal(legacy.cl, 'Normal');
     plugin.reset();
@@ -294,9 +427,556 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.pr, 'Semitone');
     assert.equal(plugin.ly, 'Horizontal');
     assert.equal(plugin.vl, true);
+    assert.equal(plugin.os, false);
     assert.equal(plugin.ts, 2);
     assert.equal(plugin.mn, 28);
     assert.equal(plugin.mx, 91);
+});
+
+test('onset, instrument and highlight settings derive DSP enablement while presets store only display choices', async () => {
+    const plugin = await loadPlugin();
+    assert.equal(plugin.getWorkletPluginData().parameters.te, false);
+    assert.equal(plugin.timbreEnabled(), false);
+    plugin.setParameters({ os: true });
+    assert.equal(plugin.getWorkletPluginData().parameters.te, true);
+    plugin.setParameters({ os: false });
+    assert.equal(plugin.getWorkletPluginData().parameters.te, false);
+    plugin.setParameters({ cl: 'Instrument3', hl: 'Vocal' });
+    const saved = JSON.parse(JSON.stringify(plugin.getParameters()));
+    assert.equal(saved.te, undefined);
+    assert.equal(saved.hl, 'Vocal');
+    assert.equal(saved.os, false);
+    const restored = await loadPlugin();
+    restored.setParameters(saved);
+    assert.equal(restored.cl, 'Instrument3');
+    assert.equal(restored.getWorkletPluginData().parameters.te, true);
+    restored.setParameters({ cl: 'Rainbow' });
+    assert.equal(restored.getWorkletPluginData().parameters.te, true);
+    restored.setParameters({ hl: 'None', te: true });
+    assert.equal(restored.getWorkletPluginData().parameters.te, false);
+    restored.setParameters({ os: true });
+    assert.equal(restored.getWorkletPluginData().parameters.te, true);
+    assert.equal(restored.timbreEnabled(), false);
+    restored.reset();
+    assert.equal(restored.hl, 'None');
+    assert.equal(restored.os, false);
+    assert.equal(restored.getWorkletPluginData().parameters.te, false);
+});
+
+test('onset marks retain separate same-pitch starts in Normal colors and clear with the analysis epoch', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ mn: 21, mx: 40, os: true });
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, startFrameIndex: 10, frameIndex: 12 }));
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 12, timeSeconds: 1.04, levels: [1] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 3, frameIndex: 12, endFrameIndex: 12 }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, noteId: 2, startFrameIndex: 12, frameIndex: 14 }));
+    const context = createVolumeContext();
+    context.stroke = () => {};
+    const draw = () => {
+        context.events.length = 0;
+        plugin._drawOnsets(context, historyWidth, 10, 1, 0, plugin._displayPalette());
+        return context.events.filter(mark => mark.type === 'shape');
+    };
+    assert.equal(plugin.timbreEnabled(), false, 'Normal colors still receive note-start events');
+    const starts = draw();
+    assert.equal(starts.length, 2);
+    const expectedPositions = [10, 12].map(frameIndex =>
+        (plugin.columnFrames.indexOf(frameIndex) - plugin.writeColumn + historyWidth) % historyWidth);
+    assert.deepEqual(starts.map(mark => (mark.path[0][1] + mark.path[1][1]) / 2), expectedPositions,
+        'same-pitch retriggers are placed at their separate start frames');
+    assert.equal(starts[0].path[0][2], starts[1].path[0][2], 'the two starts share the same pitch');
+    for (const [cl, color] of [['Normal', 'rgb(0, 255, 0)'], ['Rainbow', 'rgb(129, 107, 168)'],
+        ['Instrument3', 'rgb(156, 156, 156)'], ['Instrument9', 'rgb(143, 114, 199)']]) {
+        plugin.setParameters({ cl });
+        plugin.handleTimbreTelemetry(createTimbreFrame({ noteId: 2, startFrameIndex: 12,
+            probabilities: [0, 0, 1, 0, 0, 0, 0, 0, 0] }));
+        assert.equal(draw().at(-1).color, color, `${cl} uses the selected display color`);
+    }
+    plugin.setParameters({ cl: 'Normal' });
+    plugin.setParameters({ os: false });
+    assert.equal(draw().length, 0);
+    plugin.setParameters({ os: true });
+    plugin.handleTelemetry(createTelemetryFrame({ generation: 2, frameIndex: 0, timeSeconds: 2, levels: [1] }));
+    assert.equal(draw().length, 0, 'a fresh analysis generation clears the preceding note starts');
+    plugin.handleTimbreTelemetry(createTimbreFrame({ generation: 2, event: 1, startFrameIndex: 0, frameIndex: 2 }));
+    assert.equal(draw().length, 1);
+    plugin.reset();
+    assert.equal(draw().length, 0, 'reset clears onset marks');
+});
+
+test('onset marks draw over history in both layouts with Volume on or off', async () => {
+    for (const background of [[0, 0, 0], [250, 250, 250]]) {
+        const plugin = await loadPlugin({ background });
+        plugin.setParameters({ mn: 21, mx: 40, os: true });
+        plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+        plugin.canvas.width = 200;
+        plugin.canvas.height = 100;
+        plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1] }));
+        plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, startFrameIndex: 10, frameIndex: 12 }));
+        for (const ly of ['Vertical', 'Horizontal']) {
+            for (const vl of [false, true]) {
+                plugin.ly = ly;
+                plugin.vl = vl;
+                plugin.volumeHistoryDirty = true;
+                const events = [];
+                const stack = [];
+                let angle = 0;
+                let markerPath = [];
+                plugin.canvasCtx = {
+                    ...keyShadingStubs, ...volumePathStubs,
+                    save() { stack.push(angle); },
+                    restore() { angle = stack.pop(); },
+                    rotate(radians) { angle += radians; },
+                    beginPath() { markerPath = []; },
+                    moveTo(x, y) { markerPath.push([x, y]); },
+                    lineTo(x, y) { markerPath.push([x, y]); },
+                    fill() {
+                        if (markerPath.length === 3 && this.fillStyle === 'rgb(0, 255, 0)') {
+                            events.push({ type: 'mark', angle, path: markerPath });
+                        }
+                    },
+                    fillRect() {},
+                    drawImage() { events.push('history'); },
+                    arc() {}, stroke() {
+                        if (markerPath.length === 3 && this.strokeStyle === `rgba(${background.join(', ')}, 1)`) {
+                            events.push('border');
+                        }
+                    }, fillText() {}, measureText: () => ({ width: 10 }),
+                    createRadialGradient: (...coordinates) => createGradient('radial', coordinates)
+                };
+                plugin.drawGraph();
+                const mark = events.find(event => event?.type === 'mark');
+                assert.ok(mark, `${ly}, Volume ${vl} draws a start marker`);
+                assert.equal(mark.angle, ly === 'Horizontal' ? Math.PI / 2 : 0);
+                const [baseA, baseB, tip] = mark.path;
+                const baseCenter = [(baseA[0] + baseB[0]) / 2, (baseA[1] + baseB[1]) / 2];
+                const frame = plugin._readoutFrame;
+                const column = plugin.columnFrames.indexOf(10);
+                assert.deepEqual(baseCenter, [((column - plugin.writeColumn + historyWidth) % historyWidth -
+                    frame.scrollPhase) * frame.columnWidth, (plugin.mx - 21 + .5) * frame.rowHeight],
+                'the base midpoint remains at the onset time and pitch');
+                const dx = tip[0] - baseCenter[0];
+                const dy = tip[1] - baseCenter[1];
+                const screenDx = dx * Math.cos(mark.angle) - dy * Math.sin(mark.angle);
+                const screenDy = dx * Math.sin(mark.angle) + dy * Math.cos(mark.angle);
+                assert.ok(ly === 'Horizontal' ? Math.abs(screenDx) < 1e-10 && screenDy > 0
+                    : screenDx > 0 && Math.abs(screenDy) < 1e-10,
+                `${ly} points ${ly === 'Horizontal' ? 'down' : 'right'} after the layout transform`);
+                assert.ok(events.indexOf('history') < events.indexOf(mark), 'the marker is visible above the history');
+                assert.ok(events.includes('border'), 'the marker has a theme background border');
+                plugin.setParameters({ os: false });
+                events.length = 0;
+                plugin.drawGraph();
+                assert.equal(events.some(event => event?.type === 'mark'), false);
+                plugin.setParameters({ os: true });
+            }
+        }
+    }
+});
+
+test('instrument legends draw upright inside the plot and wrap at mobile widths in either theme', async () => {
+    for (const background of [[0, 0, 0], [250, 250, 250]]) {
+        const plugin = await loadPlugin({ background });
+        plugin.cl = 'Instrument9';
+        plugin.hl = 'Vocal';
+        for (const horizontal of [false, true]) {
+            for (const width of [300, 900]) {
+                const labels = [], rectangles = [];
+                let rotation = 0;
+                const context = {
+                    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+                    rotate(angle) { rotation += angle; },
+                    measureText(text) { return { width: text.length * 7 }; },
+                    fillRect(x, y, w, h) { rectangles.push({ x, y, w, h, color: this.fillStyle }); },
+                    fillText(text, x, y) { labels.push({ text, x, y, rotation, color: this.fillStyle }); }
+                };
+                const height = horizontal ? 160 : 240;
+                plugin._drawTimbreLegend(context, width, height);
+                assert.deepEqual(labels.map(label => label.text),
+                    ['Bass', 'Guitar', 'Piano', 'Strings', 'Wind', 'Synth', 'Organ', 'Other', 'Vocal', 'Highlight: Vocal']);
+                for (const label of labels) {
+                    assert.equal(label.rotation, 0, 'legend text stays upright');
+                    assert.ok(label.x >= 0 && label.x + label.text.length * 7 <= width);
+                    assert.ok(label.y > 0 && label.y < height, 'legend stays out of the keyboard gutter');
+                    assert.ok(label.color, 'labels use the active theme');
+                }
+                if (width === 300) assert.ok(new Set(labels.map(label => label.y)).size > 1, 'mobile legend wraps');
+                assert.ok(rectangles.some(rectangle => rectangle.color === `rgba(${background.join(', ')}, 1)`));
+                const selected = plugin._legendRects.find(rect => rect.target === 'Vocal');
+                const border = rectangles.filter(rectangle => rectangle.h === 1);
+                assert.equal(border.length, 2, 'only the selected item has a top and bottom border');
+                assert.equal(border[0].x, selected.x);
+                assert.equal(border[0].y, selected.y);
+                assert.equal(border[0].color, labels[0].color, 'the frame follows the active theme text color');
+            }
+        }
+        plugin.cl = 'Instrument3';
+        plugin.hl = 'None';
+        const labels = [], rectangles = [];
+        const context = { save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+            measureText: text => ({ width: text.length * 7 }),
+            fillRect(x, y, width, height) { rectangles.push({ x, y, width, height }); },
+            fillText: label => labels.push(label) };
+        const draw = () => { labels.length = 0; rectangles.length = 0; plugin._drawTimbreLegend(context, 300, 160); };
+        draw();
+        assert.deepEqual(labels, ['Vocal', 'Bass', 'Other']);
+        const bounds = JSON.stringify(plugin._legendRects);
+        const framedTarget = () => {
+            const top = rectangles.find(rectangle => rectangle.height === 1);
+            return plugin._legendRects.find(rect => rect.x === top?.x && rect.y === top?.y)?.target ?? null;
+        };
+        assert.equal(framedTarget(), null);
+        plugin.setParameters({ hl: 'Bass' });
+        draw();
+        assert.equal(framedTarget(), 'Bass', 'changing saved Highlight marks its legend item');
+        plugin._setLegendHighlight('Vocal');
+        draw();
+        assert.equal(framedTarget(), 'Vocal', 'hover takes visual priority');
+        assert.equal(plugin.hl, 'Bass');
+        plugin._boundLegendLeave();
+        draw();
+        assert.equal(framedTarget(), 'Bass', 'leaving restores the saved selection frame');
+        plugin.setParameters({ hl: 'Other9' });
+        draw();
+        assert.equal(framedTarget(), null, 'Other (9) does not incorrectly mark Other (3)');
+        plugin.setParameters({ hl: 'Other3' });
+        draw();
+        assert.equal(framedTarget(), 'Other3');
+        assert.equal(JSON.stringify(plugin._legendRects), bounds, 'frames leave hit bounds and layout unchanged');
+    }
+});
+
+test('timbre results recolor their note history and distinguish same-pitch retriggers', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ cl: 'Instrument3', pr: 'Semitone', vl: false });
+    plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+    plugin.drawGraph = () => {};
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1, 1, 1, 1, 1] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, frameIndex: 12 }));
+    assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, plugin._displayPalette())), [116, 116, 116]);
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 14, timeSeconds: 1.04, levels: [1, 1, 1, 1, 1] }));
+    // The seven Other probabilities sum to .6, exceeding Bass .4, although Bass wins among nine classes.
+    plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities: [.4, .35, .25, 0, 0, 0, 0, 0, 0] }));
+    for (let frame = 0; frame < 3; frame++) plugin.flushTimbreHistory();
+    const pixel = column => Array.from(plugin.imageData.data.subarray((87 * historyWidth + column) * 4,
+        (87 * historyWidth + column) * 4 + 3));
+    assert.deepEqual(pixel(0), [124, 142, 167]);
+    plugin.setParameters({ cl: 'Instrument9' });
+    assert.deepEqual(pixel(0), [136, 130, 144]);
+    plugin.constructor.timbreColorMode = 'Winner';
+    plugin.paintHistoryImage();
+    assert.deepEqual(pixel(0), [76, 120, 184], 'the internal switch restores the nine-class winner color');
+    plugin.setParameters({ cl: 'Instrument3' });
+    assert.deepEqual(pixel(0), [156, 156, 156], 'the winner switch uses the three-class aggregate');
+    plugin.constructor.timbreColorMode = 'Probability';
+    plugin.setParameters({ cl: 'Instrument9' });
+    assert.deepEqual(pixel(0), [136, 130, 144]);
+    assert.equal(plugin.timbreNotes.size, 1);
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 3, frameIndex: 15, endFrameIndex: 15 }));
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 15, timeSeconds: 1.05, levels: [1, 1, 1, 1, 1] }));
+    const latestColumn = plugin.writeColumn - 1;
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, noteId: 2, startFrameIndex: 15, frameIndex: 17 }));
+    assert.equal(plugin._timbreForColumn(latestColumn, 21).probabilities, null);
+    plugin.handleTimbreTelemetry(createTimbreFrame({ noteId: 2, startFrameIndex: 15, frameIndex: 19,
+        probabilities: [0, 0, 0, 0, 0, 0, 0, 0, 1] }));
+    for (let frame = 0; frame < 3; frame++) plugin.flushTimbreHistory();
+    assert.deepEqual(pixel(latestColumn), [214, 107, 94]);
+    assert.deepEqual(pixel(0), [136, 130, 144]);
+    for (let division = 0; division < 5; division++) {
+        assert.deepEqual(Array.from(plugin._noteDisplayColor(latestColumn, 20.6 + division / 5, 1, plugin._displayPalette())),
+            [214, 107, 94]);
+    }
+    plugin.setParameters({ cl: 'Normal', os: false });
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 20, timeSeconds: 1.1, levels: [1] }));
+    const offColumn = plugin.writeColumn - 1;
+    plugin.setParameters({ cl: 'Instrument3' });
+    assert.equal(plugin._timbreForColumn(offColumn, 21), null);
+    plugin.clearHistory();
+    assert.equal(plugin.timbreNotes.size, 0);
+    assert.equal(plugin.timbreDirtyRanges.length, 0);
+});
+
+test('instrument colors keep unclassified history, volume and meters neutral in both themes', async () => {
+    for (const background of [[0, 0, 0], [250, 250, 250]]) {
+        for (const cl of ['Instrument3', 'Instrument9']) {
+            const plugin = await loadPlugin({ background });
+            plugin.setParameters({ cl, pr: 'High', vl: false, mn: 21, mx: 21 });
+            plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+            plugin.drawGraph = () => {};
+            const palette = plugin._displayPalette();
+            const neutral = column => {
+                for (const confidence of [.2, 1]) {
+                    assert.deepEqual(Array.from(plugin._noteDisplayColor(column, 21, confidence, palette)),
+                        [116, 116, 116]);
+                }
+                plugin._writePixels(column, palette);
+                assert.deepEqual(Array.from(plugin.imageData.data.subarray((439 * historyWidth + column) * 4,
+                    (439 * historyWidth + column) * 4 + 3)), [116, 116, 116]);
+                assert.equal(plugin._volumeBarShape(column * pitchCount,
+                    { midi: 21, best: 2, confidence: 1 }, 100, palette).fill, 'rgba(116, 116, 116, 1)');
+                const gradients = [];
+                plugin._drawVolumeMeters({ createRadialGradient: (...coordinates) => {
+                    const gradient = createGradient('radial', coordinates);
+                    gradients.push(gradient);
+                    return gradient;
+                }, ...volumePathStubs, arc() {} }, 200, 100, palette);
+                if (plugin.vl) assert.equal(gradients[0]?.stops[0].color, 'rgba(116, 116, 116, 0.5)');
+            };
+            assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [116, 116, 116],
+                'missing source history is neutral');
+            plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1, 1, 1, 1, 1],
+                volumeLevels: [-12, -12, -12, -12, -12] }));
+            neutral(0); // Also represents weak candidates and notes sounding before timbre was enabled.
+            plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, frameIndex: 18 }));
+            plugin.vl = true;
+            neutral(0); // A known note still awaiting its result.
+            plugin.hl = 'Vocal';
+            assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [116, 116, 116]);
+            plugin.hl = 'None';
+            plugin.handleTimbreTelemetry(createTimbreFrame({ event: 3, frameIndex: 19, endFrameIndex: 11 }));
+            plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 20, timeSeconds: 1.1,
+                levels: [1, 1, 1, 1, 1], volumeLevels: [-12, -12, -12, -12, -12] }));
+            neutral(plugin.writeColumn - 1); // The current column is outside every classified interval.
+            plugin.displayOptions = { noteColor: () => [20, 120, 180] };
+            assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [20, 120, 180]);
+            assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette, [30, 140, 190])), [30, 140, 190]);
+        }
+    }
+});
+
+test('instrument category colors stay distinct and agree between three and nine classes', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ cl: 'Instrument9' });
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1] }));
+    const colors = ['4C78B8', 'C99A3B', '8F72C7', '4C9B73', '469EA8', 'BD6FA2', 'A67D60', '9C9C9C', 'D66B5E']
+        .map(hex => hex.match(/../g).map(channel => parseInt(channel, 16)));
+    for (let category = 0; category < colors.length; category++) {
+        const probabilities = Array(9).fill(0);
+        probabilities[category] = 1;
+        plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities }));
+        plugin.cl = 'Instrument9';
+        assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, plugin._displayPalette())), colors[category]);
+        plugin.cl = 'Instrument3';
+        assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, plugin._displayPalette())),
+            colors[category === 0 || category === 8 ? category : 7]);
+    }
+});
+
+test('highlight preserves color overrides and volume geometry, dims uncertain notes, and reads target probability', async () => {
+    const readoutWindow = {};
+    vm.runInNewContext(await fs.readFile(path.join(repoRoot, 'plugins/graph-readout.js'), 'utf8'), { window: readoutWindow });
+    for (const background of [[0, 0, 0], [250, 250, 250]]) {
+        const plugin = await loadPlugin({ background, graphReadout: readoutWindow.GraphReadout });
+        plugin.setParameters({ cl: 'Rainbow', hl: 'Vocal', mn: 21, mx: 21 });
+        plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [0, 0, 1], volumeLevels: [-240, -240, -12] }));
+        plugin.displayOptions = { noteColor: () => [20, 120, 180], signalColor: () => ({ rgb: [30, 140, 190], alpha: .75 }) };
+        const palette = plugin._displayPalette();
+        const pending = plugin._volumeBarShape(0, { midi: 21, best: 2, confidence: 1 }, 100, palette);
+        plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities: [0, 0, 0, 0, 0, 0, 0, 0, 1] }));
+        for (let frame = 0; frame < 3; frame++) plugin.flushTimbreHistory();
+        const certain = plugin._volumeBarShape(0, { midi: 21, best: 2, confidence: 1 }, 100, palette);
+        assert.equal(pending.half, certain.half);
+        assert.equal(pending.center, certain.center);
+        assert.notEqual(pending.fill, certain.fill);
+        assert.ok(certain.fill.startsWith('rgba(30, 140, 190,'), 'external signal color wins');
+        assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [20, 120, 180]);
+        for (const horizontal of [true, false]) {
+            plugin._readoutFrame = { valid: true, horizontal, canvasWidth: horizontal ? 100 : historyWidth,
+                rollWidth: historyWidth, rowHeight: 100, columnWidth: 1, scrollPhase: 0,
+                phaseOffset: 0, split: plugin.writeColumn, palette };
+            const readout = plugin._readNote(horizontal ? 50 : historyWidth - .5, horizontal ? historyWidth - .5 : 50);
+            assert.equal(readout.rows.at(-1).label, 'Vocal');
+            assert.equal(readout.rows.at(-1).value, '100%');
+        }
+    }
+});
+
+test('highlight keeps strong black-key notes visible in neutral gray without brightening weak notes', async () => {
+    for (const [band, strong, weak] of [[8, 94, 19], [241, 141, 228]]) {
+        const plugin = await loadPlugin();
+        plugin.setParameters({ cl: 'Rainbow', hl: 'Vocal', vl: false, mn: 30, mx: 30 });
+        plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+        const palette = plugin._displayPalette();
+        palette.blackBand = [band, band, band];
+        const pitch = (30 - 21) * fineDivisions + fineCenter;
+        const pixel = () => Array.from(plugin.imageData.data.subarray((87 - (30 - 21)) * historyWidth * 4,
+            (87 - (30 - 21)) * historyWidth * 4 + 3));
+        assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 30, .8, palette)), [116, 116, 116]);
+        plugin.history[pitch] = .8;
+        plugin._writePixels(0, palette);
+        assert.deepEqual(pixel(), [strong, strong, strong]);
+        assert.equal(plugin._volumeBarShape(0, { midi: 30, best: pitch, confidence: .8 }, 100, palette).fill,
+            'rgba(116, 116, 116, 0.8)');
+        plugin.history[pitch] = .1;
+        plugin._writePixels(0, palette);
+        assert.deepEqual(pixel(), [weak, weak, weak]);
+    }
+});
+
+test('note readout shows probabilities for the hovered pitch and history interval only', async () => {
+    const window = {};
+    vm.runInNewContext(await fs.readFile(path.join(repoRoot, 'plugins/graph-readout.js'), 'utf8'), { window });
+    const plugin = await loadPlugin({ graphReadout: window.GraphReadout });
+    plugin.setParameters({ cl: 'Instrument3', mn: 21, mx: 22, vl: false });
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [0, 0, .7, 0, 0, 0, 0, .8] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ frameIndex: 22, endFrameIndex: 15,
+        probabilities: [.2, .2, 0, 0, 0, 0, 0, 0, .6] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ noteId: 2, midi: 22, frameIndex: 22 }));
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 15, timeSeconds: 1.05,
+        levels: [0, 0, .7, 0, 0, 0, 0, .8] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ noteId: 3, startFrameIndex: 15, frameIndex: 27,
+        probabilities: [0, 1, 0, 0, 0, 0, 0, 0, 0] }));
+    const latest = plugin.writeColumn - 1;
+    const values = result => Object.fromEntries(result.rows.map(row => [row.label, row.value]));
+    for (const horizontal of [false, true]) {
+        plugin._readoutFrame = { valid: true, horizontal, canvasWidth: horizontal ? 200 : historyWidth,
+            rollWidth: historyWidth, rowHeight: 100, columnWidth: 1, scrollPhase: 0,
+            phaseOffset: 0, split: plugin.writeColumn, palette: plugin._displayPalette() };
+        const read = (column, midi) => {
+            const u = (column - plugin.writeColumn + historyWidth) % historyWidth + .5;
+            const v = (22 - midi + .5) * 100;
+            return plugin._readNote(horizontal ? 200 - v : u, horizontal ? u : v);
+        };
+        plugin.cl = 'Instrument3';
+        const past = read(0, 21), present = read(latest, 21);
+        assert.deepEqual(Array.from(past.rows.slice(3), row => row.label), ['Vocal', 'Bass', 'Other']);
+        assert.deepEqual(Array.from(past.rows.slice(3), row => row.value), ['60%', '20%', '20%']);
+        assert.equal(values(past).Instrument, 'Vocal');
+        assert.equal(values(present).Other, '100%');
+        assert.equal(values(read(0, 22)).Bass, '100%', 'another pitch keeps its own result');
+        assert.notEqual(past.cursor, present.cursor, 'the cursor preserves the hovered history time');
+        assert.ok(past.cursor.startsWith('A0'));
+        assert.equal(past.rows[0].label, 'Salience');
+        assert.equal(past.rows[1].label, 'Level');
+        for (const [cl, hl] of [['Instrument9', 'None'], ['Normal', 'Bass'], ['Rainbow', 'Vocal']]) {
+            plugin.cl = cl;
+            plugin.hl = hl;
+            const result = read(0, 21);
+            const groups = result.rows.filter(row => !['Salience', 'Level', 'Instrument'].includes(row.label));
+            assert.deepEqual(Array.from(groups, row => row.label),
+                ['Bass', 'Guitar', 'Piano', 'Strings', 'Wind', 'Synth', 'Organ', 'Other', 'Vocal']);
+            assert.deepEqual(Array.from(groups, row => row.value), ['20%', '20%', '0%', '0%', '0%', '0%', '0%', '0%', '60%']);
+            assert.equal(values(read(latest, 21)).Guitar, '100%', 'a same-pitch retrigger uses its own interval');
+        }
+        plugin.hl = 'Other3';
+        assert.equal(values(read(0, 21))['Other (3)'], '20%', 'the extra aggregate target remains readable');
+        plugin.columnFrames[0] = 0xffffffff;
+        const missing = read(0, 21);
+        assert.equal(missing.rows.length, 3);
+        assert.equal(values(missing).Instrument, 'Not classified');
+        plugin.columnFrames[0] = 10;
+        plugin.cl = 'Normal';
+        plugin.hl = 'None';
+        assert.equal(read(0, 21).rows.length, 2, 'classification OFF keeps the original readout');
+    }
+});
+
+test('legend hover temporarily highlights its group once per change and restores saved settings', async () => {
+    for (const cl of ['Instrument3', 'Instrument9']) {
+        for (const ly of ['Vertical', 'Horizontal']) {
+            const pending = new Map();
+            let nextFrame = 0;
+            const plugin = await loadPlugin({
+                requestAnimationFrame: callback => { pending.set(++nextFrame, callback); return nextFrame; },
+                cancelAnimationFrame: id => pending.delete(id)
+            });
+            plugin.setParameters({ cl, ly, hl: 'Vocal', vl: ly === 'Horizontal' });
+            const canvas = new FakeElement('canvas');
+            plugin.initializeDisplayCanvas(canvas);
+            plugin.canvasCtx = null;
+            plugin.graphDpr = 2;
+            // The common graph-coordinate helper converts CSS pixels to canvas pixels.
+            plugin.getGraphCoords = (surface, event) => {
+                assert.equal(surface, canvas);
+                return { x: event.clientX * 2, y: event.clientY * 2 };
+            };
+            plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1] }));
+            plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities: [.3, .5, 0, 0, 0, 0, 0, 0, .2] }));
+            const saved = JSON.stringify(plugin.getParameters());
+            plugin._drawTimbreLegend({ ...volumePathStubs, measureText: text => ({ width: text.length * 14 }),
+                fillRect() {}, fillText() {} }, 600, 320);
+            const other = plugin._legendRects.find(rect => rect.target === (cl === 'Instrument3' ? 'Other3' : 'Other9'));
+            const move = rect => canvas.dispatchEvent('pointermove', {
+                pointerType: 'mouse', clientX: (rect.x + 2) / 2, clientY: (rect.y + 2) / 2
+            });
+            let paints = 0;
+            const paint = plugin.paintHistoryImage.bind(plugin);
+            plugin.paintHistoryImage = () => { paints++; paint(); };
+            plugin.volumeHistoryDirty = false;
+            move(other);
+            for (let i = 0; i < 5; i++) move(other);
+            assert.equal(nextFrame, 1, 'repeated moves do not schedule or redraw again');
+            assert.equal(paints, 0, 'hover does not synchronously repaint history');
+            assert.equal(plugin.volumeHistoryDirty, false);
+            assert.equal(plugin._effectiveHighlight(), cl === 'Instrument3' ? 'Other3' : 'Other9');
+            const color = Array.from(plugin._noteDisplayColor(0, 21, 1, plugin._displayPalette()));
+            const hover = plugin._legendHighlight;
+            plugin._legendHighlight = null;
+            plugin.hl = hover;
+            assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, plugin._displayPalette())), color,
+                'hover follows exactly the selected Highlight calculation');
+            plugin.hl = 'Vocal';
+            plugin._legendHighlight = hover;
+            if (cl === 'Instrument9') assert.deepEqual(color, [116, 116, 116], 'Other (9) uses only Other probability');
+            else assert.ok(color.some(channel => channel !== 116), 'Other (3) includes Guitar probability');
+            assert.equal(JSON.stringify(plugin.getParameters()), saved, 'hover does not alter saved settings');
+            const bass = plugin._legendRects.find(rect => rect.target === 'Bass');
+            move(bass);
+            assert.equal(nextFrame, 1, 'a second target shares the pending frame');
+            const callback = pending.values().next().value;
+            pending.clear();
+            callback();
+            assert.equal(paints, plugin.vl ? 0 : 1);
+            assert.equal(plugin.volumeHistoryDirty, plugin.vl);
+            canvas.dispatchEvent('pointerleave');
+            assert.equal(plugin._effectiveHighlight(), 'Vocal');
+            assert.equal(JSON.stringify(plugin.getParameters()), saved);
+            move(other);
+            plugin.setParameters({ cl: 'Normal' });
+            assert.equal(plugin._effectiveHighlight(), 'Vocal', 'Color changes clear the transient override');
+            assert.equal(plugin._legendRects.length, 0);
+            plugin.cleanup();
+            assert.equal(pending.size, 0, 'cleanup cancels the pending hover frame');
+            assert.equal(canvas.listeners.has('pointermove'), false);
+            assert.equal(canvas.listeners.has('pointerleave'), false);
+        }
+    }
+});
+
+test('display history rebuilds retain ongoing timbre results without another result notification', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ cl: 'Instrument9', hl: 'Vocal', mn: 21, mx: 21, vl: false });
+    plugin.initializeDisplayCanvas(new FakeElement('canvas'));
+    plugin.drawGraph = () => {};
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [1] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities: [0, 0, 0, 0, 0, 0, 0, 0, 1] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ noteId: 2, startFrameIndex: 6, endFrameIndex: 9 }));
+    for (let frame = 0; frame < 3; frame++) plugin.flushTimbreHistory();
+    plugin.setParameters({ ts: 3 });
+    assert.equal(plugin.columnSerial, 0, 'Time Span rebuilds the displayed history');
+    assert.equal(plugin.timbreNotes.size, 1, 'only ongoing notes are retained');
+    assert.equal(plugin.timbreNotes.get(1)?.probabilities[8], 1);
+    for (const frameIndex of [15, 1016]) {
+        // The long second gap also rebuilds the history, without a DSP generation reset.
+        plugin.handleTelemetry(createTelemetryFrame({ frameIndex, timeSeconds: 1 + frameIndex * .01, levels: [1] }));
+        const column = (plugin.writeColumn + historyWidth - 1) % historyWidth;
+        assert.equal(plugin._timbreForColumn(column, 21)?.noteId, 1);
+        assert.deepEqual(Array.from(plugin._noteDisplayColor(column, 21, 1, plugin._displayPalette())), [214, 107, 94]);
+        assert.deepEqual(Array.from(plugin.imageData.data.subarray((87 * historyWidth + column) * 4,
+            (87 * historyWidth + column) * 4 + 3)), [214, 107, 94]);
+    }
+    plugin.setParameters({ ts: 4 });
+    plugin.setParameters({ cl: 'Normal', hl: 'None', os: false });
+    plugin.setParameters({ cl: 'Instrument9', hl: 'Vocal' });
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 1017, timeSeconds: 11.17, levels: [1] }));
+    assert.equal(plugin._timbreForColumn(plugin.writeColumn - 1, 21), null,
+        'timbre OFF closes the retained note even before fresh pitch telemetry arrives');
+    plugin.handleTelemetry(createTelemetryFrame({ generation: 2, frameIndex: 0, timeSeconds: 12, levels: [1] }));
+    assert.equal(plugin.timbreNotes.size, 0, 'a DSP generation change discards old identities');
+    plugin.handleTimbreTelemetry(createTimbreFrame({ generation: 2, startFrameIndex: 0, frameIndex: 4 }));
+    plugin.reset();
+    assert.equal(plugin.timbreNotes.size, 0, 'a real reset discards timbre state');
 });
 
 test('Note Spectrogram exposes display and note range controls', async () => {
@@ -329,19 +1009,23 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     plugin.drawGraph = () => {};
     plugin.createUI();
     assert.deepEqual(rows.map(row => row.label), [
-        'Color', 'Pitch Resolution', 'Layout', 'Volume', 'Time Span',
+        'Color', 'Highlight', 'Pitch Resolution', 'Layout', 'Volume', 'Onsets', 'Time Span',
         'Lowest Note', 'Highest Note'
     ]);
-    const [color, resolution, layout, volume, timeSpan, lowestNote, highestNote] = rows;
+    const [color, highlight, resolution, layout, volume, onsets, timeSpan, lowestNote, highestNote] = rows;
     assert.deepEqual(JSON.parse(JSON.stringify(color.options)), [
         { value: 'Normal', label: 'Normal' },
-        { value: 'Rainbow', label: 'Note Colors' }
+        { value: 'Rainbow', label: 'Note Colors' },
+        { value: 'Instrument3', label: 'Instrument (3)' },
+        { value: 'Instrument9', label: 'Instrument (9)' }
     ]);
     assert.equal(color.value, 'Rainbow');
     assert.equal(color.modelKey, 'cl');
+    assert.equal(highlight.value, 'None');
+    assert.equal(highlight.modelKey, 'hl');
     assert.deepEqual(JSON.parse(JSON.stringify(resolution.options)), [
         { value: 'Semitone', label: '1/12 Octave' },
-        { value: 'High', label: 'High (1/60 Octave)' }
+        { value: 'High', label: 'High' }
     ]);
     assert.equal(resolution.value, 'Semitone');
     assert.equal(resolution.modelKey, 'pr');
@@ -360,6 +1044,10 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     assert.equal(volume.modelKey, 'vl');
     volume.setter(false);
     assert.equal(plugin.vl, false);
+    assert.equal(onsets.value, false);
+    assert.equal(onsets.modelKey, 'os');
+    onsets.setter(true);
+    assert.equal(plugin.os, true);
     assert.deepEqual([timeSpan.minimum, timeSpan.maximum, timeSpan.step, timeSpan.value], [1, 10, 1, 8]);
     color.setter('Normal');
     assert.equal(plugin.cl, 'Normal');
@@ -452,12 +1140,13 @@ test('Note Spectrogram note range controls use sliders with read-only note names
     assert.equal(noteName.value, 'C8');
 });
 
-test('Note Spectrogram validates its version 4 telemetry payload', async () => {
+test('Note Spectrogram validates its version 6 telemetry payload', async () => {
     const plugin = await loadPlugin();
     const levels = Array.from({ length: pitchCount }, (_, pitch) => pitch / (pitchCount - 1));
     const volumeLevels = Array.from({ length: pitchCount }, (_, pitch) => -120 + pitch / 10);
     const frame = createTelemetryFrame({
-        frameIndex: 42, hopSeconds: 0.0125, generation: 7, levels, volumeLevels
+        frameIndex: 42, hopSeconds: 0.0125, generation: 7, levels, volumeLevels,
+        pitchCents: [7.375, -33.625, 53.875]
     });
     const snapshot = plugin.parseTelemetryFrame(frame);
 
@@ -467,6 +1156,9 @@ test('Note Spectrogram validates its version 4 telemetry payload', async () => {
     assert.equal(snapshot.frameIndex, 42);
     assert.equal(snapshot.modeCode, fineDivisions);
     assert.equal(snapshot.generation, 7);
+    assert.deepEqual(Array.from(snapshot.pitchCents.slice(0, 3)), [7.375, -33.625, 53.875]);
+    frame.payload.setFloat32(centsOffset, 0, true);
+    assert.equal(snapshot.pitchCents[0], 7.375, 'parsed estimates own their storage');
     for (let pitch = 0; pitch < pitchCount; pitch++) {
         assert.ok(Math.abs(snapshot.levels[pitch] - levels[pitch]) < 1e-6);
         assert.ok(Math.abs(snapshot.volumeLevels[pitch] - volumeLevels[pitch]) < 1e-5);
@@ -490,6 +1182,8 @@ test('Note Spectrogram validates its version 4 telemetry payload', async () => {
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ generation: 0 })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ levels: [1.01] })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ volumeLevels: [Infinity] })), null);
+    assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ pitchCents: [NaN] })), null);
+    assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ pitchCents: [Infinity] })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({ revisionAge: 7 })), null);
     assert.equal(plugin.parseTelemetryFrame(createTelemetryFrame({
         revisionAge: 8, revisedLevels: [1.01]
@@ -567,11 +1261,10 @@ test('history readout includes measured dB for the displayed pitch in both layou
                 };
                 const readout = plugin._readNote(horizontal ? 50 : historyWidth - 0.5,
                     horizontal ? historyWidth - 0.5 : 50);
-                const fineCell = pr === 'High' && !vl;
                 assert.ok(readout.cursor.startsWith('A0 +0¢ · '));
                 assert.deepEqual(Array.from(readout.rows, row => [row.label, row.value]), [
-                    ['Salience', fineCell ? '20%' : '80%'],
-                    ['Level', fineCell ? '−42.5 dB' : '−9.0 dB']
+                    ['Salience', '80%'],
+                    ['Level', '−9.0 dB']
                 ]);
                 assert.equal(readout.rows[1].color, readout.rows[0].color);
             }
@@ -580,6 +1273,57 @@ test('history readout includes measured dB for the displayed pitch in both layou
     assert.equal(plugin._readNote(0.5, 50).rows[1].value, '—', 'unwritten history has no level');
     plugin.clearHistory();
     assert.equal(plugin._readNote(historyWidth - 0.5, 50).rows[1].value, '—');
+});
+
+test('High draws and reads unrounded pitch estimates with Volume on and off in both layouts', async () => {
+    const window = {};
+    vm.runInNewContext(await fs.readFile(path.join(repoRoot, 'plugins/graph-readout.js'), 'utf8'), { window });
+    const plugin = await loadPlugin({ graphReadout: window.GraphReadout });
+    plugin.setParameters({ mn: 21, mx: 23, pr: 'High', cl: 'Instrument9' });
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 10, levels: [0, 0, 1],
+        pitchCents: [53.875], volumeLevels: [-240, -240, -12] }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ event: 1, frameIndex: 12 }));
+    plugin.handleTimbreTelemetry(createTimbreFrame({ probabilities: [1, 0, 0, 0, 0, 0, 0, 0, 0] }));
+    for (const vl of [true, false]) {
+        for (let frame = 0; frame < 3; frame++) plugin.flushTimbreHistory();
+        plugin.setParameters({ vl });
+        const shape = plugin._volumeShapesForColumn(0, 100, plugin._displayPalette())[0];
+        assert.ok(Math.abs(shape.center - 196.125) < 1e-8);
+        assert.equal(shape.fill, 'rgba(76, 120, 184, 1)', 'classification belongs to A0 even above +50 cents');
+        if (!vl) assert.equal(shape.half, 10, 'Volume off retains fixed thickness at the exact pitch');
+        for (const horizontal of [true, false]) {
+            plugin._readoutFrame = { valid: true, horizontal, canvasWidth: horizontal ? 300 : historyWidth,
+                rollWidth: historyWidth, rowHeight: 100, columnWidth: 1, scrollPhase: 0,
+                phaseOffset: 0, split: plugin.writeColumn, palette: plugin._displayPalette() };
+            const readout = plugin._readNote(horizontal ? 300 - shape.center : historyWidth - .5,
+                horizontal ? historyWidth - .5 : shape.center);
+            assert.ok(readout.cursor.startsWith('A#0 −46¢ · '), readout.cursor);
+            assert.equal(readout.rows.find(row => row.label === 'Instrument').value, 'Bass');
+            assert.ok(Math.abs((horizontal ? 300 - readout.at.x : readout.at.y) - shape.center) < 1e-8);
+            const empty = plugin._readNote(horizontal ? 50 : historyWidth - .5,
+                horizontal ? historyWidth - .5 : 250);
+            assert.deepEqual(Array.from(empty.rows.slice(0, 2), row => row.value), ['0%', '—']);
+            assert.equal(empty.rows.find(row => row.label === 'Instrument').value, 'Not classified');
+        }
+    }
+});
+
+test('merged and revised history retains the winning frame\'s original cent estimate', async () => {
+    const plugin = await loadPlugin();
+    plugin.setParameters({ ts: 10, pr: 'High' });
+    for (const [frameIndex, confidence, cents] of [[0, .8, 7.375], [1, .9, -33.625], [2, .4, 53.875]]) {
+        plugin.handleTelemetry(createTelemetryFrame({ frameIndex, hopSeconds: .004,
+            timeSeconds: 1 + frameIndex * .004, levels: [confidence], pitchCents: [cents] }));
+    }
+    assert.equal(plugin.writeColumn, 1);
+    assert.equal(plugin.pitchCentsHistory[0], -33.625);
+    plugin.handleTelemetry(createTelemetryFrame({ frameIndex: 8, hopSeconds: .004, timeSeconds: 1.032,
+        levels: [.5], pitchCents: [22.125], revisionAge: 8, revisedLevels: [1] }));
+    assert.equal(plugin.pitchCentsHistory[0], 7.375, 'revised confidence selects the original estimate');
+    assert.equal(plugin.pitchCentsHistory[noteCount], 0, 'missing hops remain blank');
+    assert.equal(plugin.pitchCentsHistory[(plugin.writeColumn - 1) * noteCount], 22.125);
+    plugin.clearHistory();
+    assert.ok(plugin.pitchCentsHistory.every(cents => cents === 0));
 });
 
 test('frames merged into one history column retain their peak measured dB', async () => {
@@ -598,23 +1342,25 @@ test('frames merged into one history column retain their peak measured dB', asyn
 test('Volume bars map level to thickness and pitch resolution to center position', async () => {
     const plugin = await loadPlugin();
     const context = createVolumeContext();
-    const shapes = () => context.events.filter(event => event.type === 'shape').map(event => event.path);
+    const shapes = () => context.events.filter(event => event.type === 'shape').map(event =>
+        event.path.map(([kind, ...values]) => [kind, ...values.map(value => Math.round(value * 1e8) / 1e8)]));
     plugin.volumeHistoryCanvas = { width: historyWidth, height: 100, getContext: () => context };
     plugin.mn = 21;
     plugin.mx = 21;
     plugin.pr = 'High';
     plugin.writeColumn = 1;
     plugin.history[0] = 1;
+    plugin.pitchCentsHistory[0] = -33.75;
     plugin.levelHistory[0] = 0;
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(100, plugin._displayPalette());
-    assert.deepEqual(shapes(), [[['ellipse', 1, 90, 1, 10]]]);
+    assert.deepEqual(shapes(), [[['ellipse', 1, 83.75, 1, 10]]]);
 
     context.events.length = 0;
     plugin.levelHistory[0] = 1;
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(100, plugin._displayPalette());
-    assert.deepEqual(shapes(), [[['ellipse', 1, 90, 1, 49.5]]]);
+    assert.deepEqual(shapes(), [[['ellipse', 1, 83.75, 1, 49.5]]]);
 
     context.events.length = 0;
     plugin.pr = 'Semitone';
@@ -641,20 +1387,72 @@ test('Volume frames join overlapping bars across held columns and round off the 
     const current = 3 * pitchCount;
     plugin.history[current + 2] = 0.5;
     plugin.history[current + 3] = 1;
+    plugin.pitchCentsHistory[3 * noteCount] = 16.75;
 
     plugin.volumeHistoryDirty = true;
     plugin._paintVolumeHistory(100, plugin._displayPalette());
     const [onset, band] = shapes();
     assert.deepEqual(onset.path, [['ellipse', 1, 50, 1, 10]]);
-    // The parabolic peak sits a sixth of a fine bin below the strongest bin.
+    // The center follows the reported estimate, independently of the fine-bin peak.
     assert.deepEqual(round(band.path),
-        [['point', 1, 40], ['point', 4, 23.33], ['point', 4, 43.33], ['point', 1, 60]]);
+        [['point', 1, 40], ['point', 4, 23.25], ['point', 4, 43.25], ['point', 1, 60]]);
     assert.deepEqual(JSON.parse(band.color).coordinates, [1, 0, 4, 0]);
 
     plugin.history.fill(0, current, current + pitchCount);
     context.events.length = 0;
     plugin._paintVolumeColumns(3, 1);
     assert.deepEqual(shapes().map(shape => shape.path), [[['ellipse', 1, 50, 3, 10]]]);
+});
+
+test('High pitch traces stay connected within a semitone even when their widths do not overlap', async () => {
+    for (const volume of [false, true]) {
+        const plugin = await loadPlugin();
+        const context = createVolumeContext();
+        plugin.mn = plugin.mx = 21;
+        plugin.pr = 'High';
+        plugin.vl = volume;
+        plugin.writeColumn = 2;
+        plugin.history[2] = plugin.history[pitchCount + 2] = 1;
+        plugin.pitchCentsHistory[0] = -40;
+        plugin.pitchCentsHistory[noteCount] = 40;
+        plugin._paintVolumeFrame(context, 1, 100, 100, plugin._displayPalette(), true);
+        const shapes = context.events.filter(event => event.type === 'shape');
+        assert.equal(shapes.length, 1);
+        assert.deepEqual(shapes[0].path.map(([kind, ...values]) =>
+            [kind, ...values.map(value => Math.round(value))]),
+        [['point', 1, 80], ['point', 2, 0], ['point', 2, 20], ['point', 1, 100]]);
+    }
+});
+
+test('overlapping neighboring traces preserve their own continuations without duplicate links', async () => {
+    const plugin = await loadPlugin();
+    const context = createVolumeContext();
+    plugin.mn = 21;
+    plugin.mx = 22;
+    plugin.pr = 'High';
+    plugin.vl = true;
+    plugin.writeColumn = 2;
+    plugin.history[2] = plugin.history[7] = 1;
+    plugin.history[pitchCount + 2] = plugin.history[pitchCount + 7] = 1;
+    plugin.levelHistory.fill(1);
+    plugin.pitchCentsHistory[0] = 49;
+    plugin.pitchCentsHistory[1] = -49;
+    plugin.pitchCentsHistory[noteCount] = 49;
+    plugin.pitchCentsHistory[noteCount + 1] = -40;
+    plugin._paintVolumeFrame(context, 1, 200, 100, plugin._displayPalette(), true);
+    let shapes = context.events.filter(event => event.type === 'shape');
+    assert.equal(shapes.length, 2);
+    assert.ok(shapes.every(shape => shape.path.every(([kind]) => kind === 'point')));
+    assert.notEqual(shapes[0].path[0][2], shapes[1].path[0][2]);
+
+    // A new adjacent note must not also reuse the continuing note's old bar.
+    plugin.history[7] = 0;
+    context.events.length = 0;
+    plugin._paintVolumeFrame(context, 1, 200, 100, plugin._displayPalette(), true);
+    shapes = context.events.filter(event => event.type === 'shape');
+    assert.equal(shapes.length, 2);
+    assert.equal(shapes[0].path[0][0], 'point');
+    assert.equal(shapes[1].path[0][0], 'ellipse');
 });
 
 test('incremental Volume redraw matches the full redraw of the latest frame', async () => {
@@ -854,7 +1652,7 @@ test('Note Spectrogram subscribes once and releases its telemetry callback', asy
     plugin._setupMessageHandler();
     plugin.getParameters();
 
-    assert.equal(subscriptions.length, 1);
+    assert.equal(subscriptions.length, 2);
     assert.deepEqual(
         { tapId: subscriptions[0].tapId, frameType: subscriptions[0].frameType },
         { tapId: 31, frameType: 24 }
@@ -865,7 +1663,7 @@ test('Note Spectrogram subscribes once and releases its telemetry callback', asy
 
     plugin.cleanup();
     assert.equal(plugin.volumeLevelHistory, null);
-    assert.equal(unsubscribeCount, 1);
+    assert.equal(unsubscribeCount, 2);
     assert.equal(plugin.cleanedUp, true);
 });
 
@@ -895,7 +1693,7 @@ test('a replacement AudioWorklet starts a fresh telemetry epoch without resubscr
     audioContext.currentTime = 10;
     plugin._nextMessageHandlerWorkletNode = replacementWorkletNode;
     plugin._setupMessageHandler();
-    assert.equal(subscriptions.length, 1);
+    assert.equal(subscriptions.length, 2);
     assert.equal(plugin.activeGeneration, null);
     assert.equal(plugin.lastFrameIndex, null);
     assert.equal(plugin.writeColumn, 0);
@@ -1050,30 +1848,66 @@ test('a revision of a merged column keeps the max of its other frames', async ()
     assert.equal(plugin.history[0], 1);
 });
 
-test('low-confidence Volume bars retain their level and thickness after a 160 ms revision', async () => {
+test('Volume rendering skips invisible candidates before color and path creation', async () => {
     const plugin = await loadPlugin();
-    plugin.mn = plugin.mx = 21;
-    plugin.handleTelemetry(createTelemetryFrame({
-        frameIndex: 0, hopSeconds: 0.02, levels: [0.1], volumeLevels: [-48]
-    }));
-    const palette = plugin._displayPalette();
-    const originalBar = plugin._volumeBarsForColumn(0)[0];
-    const originalShape = plugin._volumeBarShape(0, originalBar, 100, palette);
-    assert.ok(Math.abs(originalBar.confidence - 0.1) < 1e-6);
-    assert.equal(plugin.levelHistory[0], 0.5);
-    assert.equal(originalShape.half, 29.75);
-
-    for (let frameIndex = 1; frameIndex <= 8; frameIndex++) {
-        plugin.handleTelemetry(createTelemetryFrame({
-            frameIndex, timeSeconds: 1 + frameIndex * 0.02, hopSeconds: 0.02,
-            volumeLevels: [-12], revisionAge: frameIndex === 8 ? 8 : 0,
-            revisedLevels: [0.9]
-        }));
+    const context = createVolumeContext();
+    plugin.mn = 21;
+    plugin.mx = 22;
+    plugin.writeColumn = 2;
+    let colors = 0;
+    plugin._noteDisplayColor = () => { colors++; return [255, 128, 64]; };
+    const draw = () => {
+        context.events.length = 0;
+        colors = 0;
+        plugin._paintVolumeFrame(context, 1, 100, 50, plugin._displayPalette(), true);
+        return context.events.filter(event => event.type === 'shape');
+    };
+    for (const pr of ['Semitone', 'High']) {
+        plugin.pr = pr;
+        for (const confidence of [0, 0.000001, 0.49 / 255]) {
+            plugin.history.fill(confidence);
+            assert.equal(draw().length, 0);
+            assert.equal(colors, 0, 'invisible candidates do not need color lookup or shape construction');
+            assert.equal(plugin.history[0], Math.fround(confidence), 'analysis history stays intact');
+        }
+        plugin.history.fill(0.51 / 255);
+        assert.equal(draw().length, 2, 'the first representable alpha still draws both notes');
     }
-    const revisedBar = plugin._volumeBarsForColumn(0)[0];
-    assert.ok(Math.abs(revisedBar.confidence - 0.9) < 1e-6);
-    assert.equal(plugin.levelHistory[0], 0.5);
-    assert.equal(plugin._volumeBarShape(0, revisedBar, 100, palette).half, originalShape.half);
+    plugin.history.fill(1);
+    plugin.displayOptions = { signalColor: () => ({ rgb: [255, 128, 64], alpha: 0.000001 }) };
+    assert.equal(draw().length, 0, 'custom signal opacity also determines visibility');
+    assert.equal(colors, 0);
+    plugin.history.fill(0.000001);
+    plugin.displayOptions.signalColor = () => ({ rgb: [255, 128, 64], alpha: .5 });
+    assert.equal(draw().length, 2, 'custom signal opacity already includes its intensity mapping');
+});
+
+test('Volume revisions recover invisible candidates without changing stored level or thickness', async () => {
+    for (const confidence of [0.1, 0.000001]) {
+        const plugin = await loadPlugin();
+        plugin.mn = plugin.mx = 21;
+        plugin.handleTelemetry(createTelemetryFrame({
+            frameIndex: 0, hopSeconds: 0.02, levels: [confidence], volumeLevels: [-48]
+        }));
+        const palette = plugin._displayPalette();
+        const originalBar = plugin._volumeBarsForColumn(0)[0];
+        const originalShape = plugin._volumeBarShape(0, originalBar, 100, palette);
+        assert.ok(Math.abs(originalBar.confidence - confidence) < 1e-6);
+        assert.equal(plugin.levelHistory[0], 0.5);
+        assert.equal(originalShape?.half ?? null, confidence === 0.1 ? 29.75 : null);
+
+        for (let frameIndex = 1; frameIndex <= 8; frameIndex++) {
+            plugin.handleTelemetry(createTelemetryFrame({
+                frameIndex, timeSeconds: 1 + frameIndex * 0.02, hopSeconds: 0.02,
+                volumeLevels: [-12], revisionAge: frameIndex === 8 ? 8 : 0,
+                revisedLevels: [0.9]
+            }));
+        }
+        const revisedBar = plugin._volumeBarsForColumn(0)[0];
+        assert.ok(Math.abs(revisedBar.confidence - 0.9) < 1e-6);
+        assert.equal(plugin.levelHistory[0], 0.5);
+        assert.equal(plugin._volumeBarShape(0, revisedBar, 100, palette).half, 29.75);
+    }
 });
 
 test('revisions of dropped or cleared frames are ignored', async () => {
@@ -1161,6 +1995,7 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     plugin.setParameters({ cl: 'Rainbow', pr: 'High', ly: 'Vertical', vl: false, mn: 21, mx: 108 });
     const fills = [];
     const lines = [];
+    plugin.displayOptions = { separateAnnotations: true };
     plugin.canvas = { width: 1024, height: 440 };
     plugin.imageData = { data: new Uint8ClampedArray(historyWidth * pitchCount * 4) };
     plugin.tempCtx = { putImageData() {} };
@@ -1169,8 +2004,10 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     plugin.tempCanvas.height = pitchCount;
     plugin.canvasCtx = {
         ...keyShadingStubs,
+        ...volumePathStubs,
         fillRect(x, y, width, height) {
             if (x > 0) fills.push({ x, y, width, height, color: this.fillStyle });
+            else if (height === 1) lines.push({ y: y + .5, color: this.fillStyle });
         },
         drawImage() {}, beginPath() {},
         moveTo(x, y) { this.lineStart = { x, y }; },
@@ -1204,6 +2041,15 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     assert.equal(keyColor(2), 'rgb(220, 203, 208)');
     assert.equal(keyColor(3), 'rgb(238, 238, 238)');
     assert.equal(keyColor(4), 'rgb(17, 17, 17)');
+    plugin.hl = 'Vocal';
+    draw();
+    assert.equal(keyColor(0), 'rgb(129, 107, 168)', 'Note Colors keeps the full-confidence key color with Highlight');
+    assert.equal(keyColor(1), 'rgb(85, 58, 83)', 'Note Colors keeps the half-confidence black key color with Highlight');
+    assert.equal(keyColor(2), 'rgb(220, 203, 208)', 'Note Colors keeps the quarter-confidence white key color with Highlight');
+    assert.notDeepEqual(Array.from(plugin._noteDisplayColor(historyWidth - 1, 21, 1, plugin._displayPalette())),
+        [129, 107, 168], 'the graph still applies Highlight');
+    plugin.hl = 'None';
+    draw();
     assert.deepEqual(lines.filter(line => line.color === 'stub:graph-grid-strong').map(line => line.y),
         [425, 365, 305, 245, 185, 125, 65, 5]);
     assert.deepEqual(lines.filter(line => line.color === 'stub:graph-grid-subtle').map(line => line.y),
@@ -1240,9 +2086,23 @@ test('piano roll draws note boundaries and applies pitch colors to presence hist
     assert.equal(plugin.history[(historyWidth - 1) * pitchCount], 1);
     assert.equal(keyColor(0), 'rgb(0, 255, 0)');
     assert.equal(keyColor(1), 'rgb(0, 255, 0)');
+    plugin.hl = 'Vocal';
+    draw();
+    assert.equal(keyColor(0), 'rgb(0, 255, 0)', 'Normal preserves the white key color with Highlight');
+    assert.equal(keyColor(1), 'rgb(0, 255, 0)', 'Normal preserves the black key color with Highlight');
+    assert.notDeepEqual(Array.from(plugin._noteDisplayColor(historyWidth - 1, 21, 1, plugin._displayPalette())),
+        [0, 255, 0], 'Normal graph Highlight is still active');
+    plugin.hl = 'None';
+    draw();
     const latestPixel = ((pitchCount - 1 - fineCenter) * historyWidth + historyWidth - 1) * 4;
     assert.deepEqual(Array.from(plugin.imageData.data.slice(latestPixel, latestPixel + 4)),
         [0, 255, 0, 255]);
+    for (const cl of ['Instrument3', 'Instrument9']) {
+        plugin.setParameters({ cl });
+        draw();
+        assert.equal(keyColor(0), 'rgb(116, 116, 116)');
+        assert.equal(keyColor(1), 'rgb(116, 116, 116)');
+    }
     plugin.setParameters({ cl: 'Rainbow' });
     assert.deepEqual(Array.from(plugin.imageData.data.slice(latestPixel, latestPixel + 4)),
         [129, 107, 168, 255]);
@@ -1504,8 +2364,8 @@ test('piano roll scrolls by monotonic fractional time and freezes across pauses'
     assert.equal(drawCalls[0][8], plugin.canvas.height);
     const initialLatestCall = drawCalls.at(-1);
     assert.equal(initialLatestCall[1], (plugin.writeColumn + historyWidth - 1) % historyWidth);
-    assert.equal(initialLatestCall[2], 85);
-    assert.equal(initialLatestCall[4], 320);
+    assert.equal(initialLatestCall[2], 0);
+    assert.equal(initialLatestCall[4], plugin.canvas.height);
     assert.equal(initialLatestCall[5] + initialLatestCall[7], rollWidth);
     now += plugin.columnPeriod * 500;
     drawCalls.length = 0;

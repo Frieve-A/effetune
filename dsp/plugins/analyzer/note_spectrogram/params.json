@@ -18,6 +18,12 @@
       "min": 21,
       "max": 108,
       "default": 91
+    },
+    {
+      "name": "timbreEnabled",
+      "key": "te",
+      "kind": "bool",
+      "default": false
     }
   ]
 }

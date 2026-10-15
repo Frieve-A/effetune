@@ -1,5 +1,5 @@
 ---
-title: "공간 오디오 플러그인 - EffeTune"
+title: "공간 오디오 플러그인 - 크로스피드, 크로스토크 캔슬레이션, 스테레오 폭 조절, 업믹스 - EffeTune"
 description: "Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Spatial Mapper, Stereo Blend를 포함한 공간 오디오 플러그인입니다."
 lang: ko
 ---
@@ -319,13 +319,13 @@ Balance 그리드는 왼쪽:오른쪽 비율을 표시합니다. Balance 0%, ±1
 - **Band 1-5 / 체크박스** (Off/On): 편집할 Band를 선택하고 설정을 바꾸지 않은 채 켜거나 끕니다.
 - **Gain** (0%~200%): Core 안의 레벨 배율을 설정합니다. 100%는 레벨을 바꾸지 않고, 0%는 선택한 성분을 제거하며, 200%는 진폭을 두 배로 만듭니다.
 - **Solo** (Off/On): Solo를 켠 Band가 선택한 소리만 확인할 수 있습니다. 켜져 있는 Band 중 하나라도 Solo가 On이면 Gain은 적용되지 않고, 해당 Band 바깥은 음소거됩니다. 경계에서는 Transition에 따른 부드러운 감쇠가 그대로 적용됩니다. 여러 Band를 Solo로 지정하면 각 선택 범위를 합친 소리가 출력됩니다. 모든 Solo를 끄면 원래 처리로 돌아갑니다.
-- **Core Low Frequency / Core High Frequency** (20 Hz~40 kHz, 현재 샘플 레이트의 상한 적용): 100% 처리할 주파수 범위를 설정합니다.
+- **Core Low Freq / Core High Freq** (20 Hz~40 kHz, 현재 샘플 레이트의 상한 적용): 100% 처리할 주파수 범위를 설정합니다.
 - **Core Low Phase / Core High Phase** (0°~180°): 100% 처리할 L/R 절대 위상차 범위를 설정합니다.
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100%~+100%): Balance의 네 경계를 직접 설정합니다. Core 쌍은 100% 처리할 좌우 진폭 밸런스 범위를, Outer 쌍은 Transition이 처리되지 않는 상태에 도달하는 위치를 정합니다. 음수는 왼쪽, 양수는 오른쪽을 선택합니다.
-- **Low Frequency Transition / High Frequency Transition**: 주파수 Core의 아래와 위에서 효과가 줄어드는 범위를 설정합니다.
-- **Low Phase Transition / High Phase Transition**: 0° 쪽과 180° 쪽에서 효과가 줄어드는 범위를 설정합니다.
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100%~+100%): Balance의 네 경계를 직접 설정합니다. Core 쌍은 100% 처리할 좌우 진폭 밸런스 범위를, Outer 쌍은 Transition이 처리되지 않는 상태에 도달하는 위치를 정합니다. 음수는 왼쪽, 양수는 오른쪽을 선택합니다.
+- **Low Freq Trans / High Freq Trans**: 주파수 Core의 아래와 위에서 효과가 줄어드는 범위를 설정합니다.
+- **Low Phase Trans / High Phase Trans**: 0° 쪽과 180° 쪽에서 효과가 줄어드는 범위를 설정합니다.
 
-맵의 핸들, 슬라이더, 숫자 입력은 같은 값을 편집합니다. 마우스나 터치로 선택한 Band의 바깥 프레임 안을 드래그하면 Band 전체가 이동하고, Core의 변이나 모서리를 드래그하면 크기가 바뀌며, 바깥 프레임의 핸들로 각 Transition을 따로 조절할 수 있습니다. 낮은 Phase 쪽 핸들은 중앙을 넘지 않습니다. Core Low Phase는 0°에서, Low Phase Transition은 최대 폭에서 멈춥니다. Core Low Phase가 정확히 0°이면 중앙 핸들을 처음에는 어느 쪽으로도 움직일 수 있지만, 한쪽으로 움직인 뒤에는 드래그가 끝날 때까지 그쪽에 고정됩니다.
+맵의 핸들, 슬라이더, 숫자 입력은 같은 값을 편집합니다. 마우스나 터치로 선택한 Band의 바깥 프레임 안을 드래그하면 Band 전체가 이동하고, Core의 변이나 모서리를 드래그하면 크기가 바뀌며, 바깥 프레임의 핸들로 각 Transition을 따로 조절할 수 있습니다. 낮은 Phase 쪽 핸들은 중앙을 넘지 않습니다. Core Low Phase는 0°에서, Low Phase Trans은 최대 폭에서 멈춥니다. Core Low Phase가 정확히 0°이면 중앙 핸들을 처음에는 어느 쪽으로도 움직일 수 있지만, 한쪽으로 움직인 뒤에는 드래그가 끝날 때까지 그쪽에 고정됩니다.
 
 ## Spatial Mapper
 

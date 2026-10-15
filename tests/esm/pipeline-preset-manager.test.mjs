@@ -222,6 +222,7 @@ function createPipelineManager(options = {}) {
       this.pipeline = plugins;
     },
     setMasterBypass(value) {
+      this.masterBypass = value;
       calls.push(['setMasterBypass', value]);
     }
   };
@@ -265,6 +266,10 @@ function createPipelineManager(options = {}) {
       },
       updatePipelineUI(force) {
         calls.push(['updatePipelineUI', force]);
+      },
+      updateAllPluginDisplayState() {
+        assert.equal(audioManager.masterBypass, false);
+        calls.push(['updateAllPluginDisplayState']);
       },
       updateWorkletPlugins() {
         calls.push(['updateWorkletPlugins']);
@@ -1089,6 +1094,7 @@ test('loadPreset suppresses reconstruction history before allowing one explicit 
     };
 
     assert.equal(await manager.loadPreset('Named'), true);
+    assert.ok(pipelineManager.calls.some(call => call[0] === 'updateAllPluginDisplayState'));
     assert.deepEqual(observations, [
       ['ui', true],
       ['save', false]

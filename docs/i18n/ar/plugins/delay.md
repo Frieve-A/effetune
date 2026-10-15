@@ -1,5 +1,5 @@
 ---
-title: "إضافات التأخير - EffeTune"
+title: "إضافات التأخير - الصدى والمحاذاة الزمنية للسماعات - EffeTune"
 description: "إضافات تأثيرات التأخير، وتشمل Delay وTime Alignment لضبط توقيت الصوت بدقة."
 lang: ar
 ---

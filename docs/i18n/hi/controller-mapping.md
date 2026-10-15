@@ -1,5 +1,5 @@
 ---
-title: "कंट्रोलर मैपिंग - EffeTune"
+title: "कंट्रोलर मैपिंग - MIDI, गेमपैड और कीबोर्ड से नियंत्रण - EffeTune"
 description: "MIDI, गेमपैड या कीबोर्ड से EffeTune के पैरामीटर नियंत्रित करें।"
 lang: hi
 ---

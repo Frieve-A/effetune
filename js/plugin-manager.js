@@ -16,14 +16,23 @@ export class PluginManager {
         return name && typeof name === 'string' && Object.prototype.hasOwnProperty.call(this.pluginClasses, name);
     }
 
-    createPlugin(name) {
+    createPlugin(name, { audioHostActive = true } = {}) {
         if (!this.isPluginAvailable(name)) {
             console.error(`Plugin '${name}' is not available`);
             throw new Error(`Plugin '${name}' is not available`);
         }
-        const plugin = new this.pluginClasses[name]();
+        const PluginClass = this.pluginClasses[name];
+        let constructionTarget = PluginClass;
+        if (!audioHostActive) {
+            // Make the host gate visible before any constructor runs, without
+            // changing the registered class or its constructor-based DSP identity.
+            constructionTarget = function DetachedPlugin() {};
+            constructionTarget.prototype = Object.create(PluginClass.prototype);
+            constructionTarget.prototype.audioHostActive = false;
+        }
+        const plugin = Reflect.construct(PluginClass, [], constructionTarget);
         plugin.id = this.nextPluginId++;
-        const currentPowerUiGate = typeof window !== 'undefined'
+        const currentPowerUiGate = !audioHostActive ? false : typeof window !== 'undefined'
             ? window.audioManager?.powerPolicyController?.getDspUiActivityAllowed?.()
             : undefined;
         if (typeof currentPowerUiGate === 'boolean') {

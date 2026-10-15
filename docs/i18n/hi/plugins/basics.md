@@ -1,6 +1,6 @@
 ---
-title: "बेसिक प्लगइन - EffeTune"
-description: "Bass Management, Volume, Mute, Stereo Balance, FIR Crossover, Matrix routing आदि सहित बुनियादी ऑडियो प्लगइन।"
+title: "बेसिक प्लगइन - बेस मैनेजमेंट, चैनल रूटिंग और क्रॉसओवर - EffeTune"
+description: "वॉल्यूम, बैलेंस, पोलैरिटी और रूटिंग के टूल, सबवूफ़र के लिए Bass Management और मल्टी-एम्प स्पीकर सिस्टम के लिए FIR Crossover और Channel Divider शामिल हैं।"
 lang: hi
 ---
 

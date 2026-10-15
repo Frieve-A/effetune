@@ -102,7 +102,8 @@ const expectedTargetPresetIds = new Map([
         'studio-vu', 'smpte-vu', 'hot-vu', 'loud-master-vu',
         'din-ppm', 'bbc-ppm', 'nagra-modulometer',
         'k-20', 'k-14', 'k-12', 'digital-peak', 'true-peak-clip-watch',
-        'ebu-r128', 'ebu-r128-wide', 'tv-24-lkfs', 'streaming-14-lufs', 'streaming-16-lufs'
+        'ebu-r128', 'ebu-r128-wide', 'tv-24-lkfs', 'streaming-14-lufs', 'streaming-16-lufs',
+        'bouncy-vu', 'slow-rms', 'fast-peak'
     ]]
 ]);
 
@@ -189,7 +190,7 @@ test('plugin system presets have complete, valid, round-trippable parameter reco
     assert.equal(presetProviders.length, 30, 'system preset provider count');
     const targetPresetCount = [...expectedTargetPresetIds.values()]
         .reduce((count, ids) => count + ids.length, 0);
-    assert.equal(targetPresetCount, 132);
+    assert.equal(targetPresetCount, 135);
 
     const providersByClass = new Map(presetProviders.map(provider => [provider.className, provider]));
     for (const [className, expectedIds] of expectedTargetPresetIds) {

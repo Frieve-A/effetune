@@ -32,7 +32,8 @@ function canvas() {
             return true;
         }
     });
-    return { width: 800, height: 400, getContext: () => context, context };
+    return { width: 800, height: 400, getContext: () => context, context,
+        addEventListener() {}, removeEventListener() {} };
 }
 
 function runtime() {
@@ -64,7 +65,7 @@ function runtime() {
 }
 
 function noteFrame(index = 1) {
-    const payload = new DataView(new ArrayBuffer(8840));
+    const payload = new DataView(new ArrayBuffer(9192));
     payload.setFloat32(0, 48000, true);
     payload.setFloat32(4, index * .01, true);
     payload.setUint16(8, 440, true);
@@ -77,7 +78,7 @@ function noteFrame(index = 1) {
         payload.setFloat32(32 + pitch * 4, pitch === 197 ? .8 : 0, true);
         payload.setFloat32(32 + 440 * 4 + pitch * 4, pitch === 197 ? -42 : -240, true);
     }
-    return { frameType: 24, formatVersion: 5, payload };
+    return { frameType: 24, formatVersion: 6, payload };
 }
 
 test('Notes and HQ Spectrum accept the first frame after returning to Visualizer', async () => {

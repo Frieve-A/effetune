@@ -67,6 +67,7 @@ try {
     "  await notes.process([new Float32Array(16384)], {sampleRate: 48000, onTelemetry: frame => observations.push(frame)});",
     "  notes.close();",
     "  if (!observations.some(frame => frame.kind === 'noteSpectrogram' && frame.levels.length === 440)) throw new Error('note observations missing');",
+    "  if (!observations.every(frame => frame.pitchCents.length === 88 && frame.pitchCents.every(Number.isFinite))) throw new Error('estimated cents missing');",
     "  if (!observations.some(frame => frame.revisionAge === 0 && frame.revisedLevels === null)) throw new Error('initial note observations missing');",
     "  if (!observations.some(frame => frame.revisionAge === 8 && frame.revisedLevels.length === 440)) throw new Error('revised note observations missing');",
     "  if (!observations.some(frame => frame.revisions.map(revision => revision.age).join(',') === '2,4,8')) throw new Error('intermediate note observations missing');",

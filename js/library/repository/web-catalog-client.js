@@ -119,6 +119,7 @@ export class WebCatalogRepositoryClient {
   async getProvisionalEntry(operationId) { return this.request('getProvisionalEntry', operationId); }
   async readSequencePage(options) { return this.request('readSequencePage', options); }
   async resolveSequenceEntrySource(options) { return this.request('resolveSequenceEntrySource', options); }
+  async resolveTrackSiblingFile(options) { return this.request('resolveTrackSiblingFile', options); }
   async createContext(options) { return this.request('createContext', options); }
   async releaseContext(contextToken) { return this.request('releaseContext', contextToken); }
   async queryTracks(options) { return this.request('queryTracks', options); }

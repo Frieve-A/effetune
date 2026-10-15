@@ -25,6 +25,7 @@ import { OnboardingTour } from './ui/onboarding-tour.js';
 import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
+import { attachLyricsFiles } from './ui/audio-player/lyrics-file-links.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
 import { installRangeFillStyling, updateRangeFill } from './ui/range-fill.js';
 import { enableStandardSelects } from './ui/standard-select.js';
@@ -45,11 +46,11 @@ function usesIOSFilePicker(windowRef = window) {
 const MESSAGE_DISPLAY_DURATION_MS = 5000;
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
-const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png';
+const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.lrc,.jpg,.png';
 const WEB_MUSIC_PICKER_TYPES = [{
     accept: {
         'audio/*': ['.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'],
-        'text/plain': ['.cue'],
+        'text/plain': ['.cue', '.lrc'],
         'image/jpeg': ['.jpg', '.jpeg'],
         'image/png': ['.png']
     }
@@ -1710,6 +1711,10 @@ export class UIManager {
     }
 
     async openWebPlaybackSelection(files, gestureResume, { fileHandles = null } = {}) {
+        const selectedFiles = Array.from(files ?? []);
+        const lrcFiles = selectedFiles.filter(file => fileExtension(file?.name) === 'lrc');
+        files = selectedFiles.filter(file => fileExtension(file?.name) !== 'lrc');
+        if (!files.length) return false;
         this.playbackSelectionAbortController?.abort();
         const controller = new AbortController();
         const generation = ++this.playbackSelectionGeneration;
@@ -1739,6 +1744,8 @@ export class UIManager {
                 Promise.resolve(gestureResume).then(value => value !== false, () => false)
             ]);
             if (generation !== this.playbackSelectionGeneration || controller.signal.aborted) return false;
+
+            attachLyricsFiles(selection.tracks.map(track => track.file ?? track), lrcFiles);
 
             const player = await this.createAudioPlayer([], false);
             if (resumeReady) {

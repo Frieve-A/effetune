@@ -1,3 +1,9 @@
+---
+title: "Pipeline Analyzer - इफेक्ट चेन के फ़्रीक्वेंसी और फ़ेज़ रिस्पॉन्स - EffeTune"
+description: "Pipeline Analyzer सुनाई देने वाले ऑडियो को बदले बिना सक्रिय Effect Pipeline की frequency response, phase, group delay और impulse response मापता है।"
+lang: hi
+---
+
 # Pipeline Analyzer
 
 Pipeline Analyzer सुनाई देने वाले ऑडियो को बदले बिना सक्रिय Effect Pipeline की प्रतिक्रिया मापता है। चौड़ी विंडो में यह pipeline के पास और संकरी विंडो में उसके header के नीचे रहता है, इसलिए effect को बदलते समय परिणाम देखा जा सकता है।

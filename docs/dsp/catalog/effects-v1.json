@@ -44,7 +44,8 @@
             "RMS",
             "Sample Peak",
             "True Peak",
-            "Loudness"
+            "Loudness",
+            "Custom"
           ]
         },
         {
@@ -73,6 +74,36 @@
           "unit": "s",
           "minimum": 0.1,
           "maximum": 5
+        },
+        {
+          "name": "detector",
+          "type": "string",
+          "count": 1,
+          "default": "Average Rectified",
+          "values": [
+            "Average Rectified",
+            "RMS",
+            "Sample Peak",
+            "True Peak"
+          ]
+        },
+        {
+          "name": "needleResponse",
+          "type": "number",
+          "count": 1,
+          "default": 300,
+          "unit": "ms",
+          "minimum": 1,
+          "maximum": 3000
+        },
+        {
+          "name": "overshoot",
+          "type": "number",
+          "count": 1,
+          "default": 1.25,
+          "unit": "%",
+          "minimum": 0,
+          "maximum": 25
         }
       ],
       "seeded": false,
@@ -138,11 +169,18 @@
           "default": 91,
           "minimum": 21,
           "maximum": 108
+        },
+        {
+          "name": "timbreEnabled",
+          "type": "boolean",
+          "count": 1,
+          "default": false
         }
       ],
       "seeded": false,
       "telemetry": [
-        "noteSpectrogram"
+        "noteSpectrogram",
+        "noteTimbre"
       ],
       "latency": {
         "kind": "zero"
@@ -150,7 +188,7 @@
       "assets": [],
       "displayName": "Note Spectrogram",
       "category": "analyzer",
-      "summary": "Passes audio through while exposing detected pitch confidence across the 88-key piano range at five positions per semitone.",
+      "summary": "Passes audio through while exposing pitch confidence and unrounded estimated cent offsets across the 88-key piano range.",
       "sourceGenerating": false
     },
     {
@@ -9790,7 +9828,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "a1b55accc81a266df90786bbe9e96ea82cb2761b530c4f174dd61f18299701f8",
-    "privateLayoutSha256": "1670a41fce89dc7b4d1bbc79fa0f07fda23c81b184d48248b847401a4d5685ec"
+    "publicCatalogSha256": "1365edcc6f7957b55155a9426b034cb190579ca12bcaca3f0cc90899b158f677",
+    "privateLayoutSha256": "c304b1221b7ce4f1d2957412dcd30dfe46db2b7486e0d441bd04ba6a079441fa"
   }
 }

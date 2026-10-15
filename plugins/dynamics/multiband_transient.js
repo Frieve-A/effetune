@@ -959,7 +959,7 @@ class MultibandTransientPlugin extends PluginBase {
             const inputId = `${idPrefix}-freq${freqNum}-input`;
 
             const labelEl = document.createElement('label');
-            labelEl.textContent = label;
+            labelEl.textContent = `${label}:`;
             labelEl.htmlFor = sliderId;
 
             const numberInput = document.createElement('input');

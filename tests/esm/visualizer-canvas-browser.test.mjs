@@ -9,6 +9,498 @@ const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replac
 const frequencyAxisScript = read('../../plugins/frequency-axis.js');
 const { FrequencyAxis } = (() => { const window = {}; vm.runInNewContext(frequencyAxisScript, { window }); return window; })();
 
+test('Edge Fade uses independent rectangular widths, a true circle, and whole-mask Amount interpolation', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.addScriptTag({ content: moduleScript('../../js/visualizer/visualizer-effects.js') });
+        const result = await page.evaluate(() => {
+            const sample = (effect, amount, points) => {
+                const canvas = createLayer(200, 100), mask = createLayer(200, 100), ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 200, 100);
+                applyEdgeFade(ctx, mask, { shape: 'rectangle', top: 0, bottom: 0, left: 0, right: 0, circleWidth: .2, ...effect }, amount);
+                return points.map(([x, y]) => ctx.getImageData(x, y, 1, 1).data[3]);
+            };
+            const points = [[25, 25], [100, 50]];
+            return {
+                full: sample({ top: .5, left: .25 }, 1, points),
+                half: sample({ top: .5, left: .25 }, .5, points),
+                zero: sample({ top: .5, left: .25 }, 0, points),
+                right: sample({ right: .5 }, 1, [[175, 50], [25, 50]]),
+                circle: sample({ shape: 'circle' }, 1, [[20, 50], [100, 50], [145, 50], [100, 95]]),
+                sharp: sample({ shape: 'circle', circleWidth: 0 }, 1, [[20, 50], [100, 50], [140, 50]])
+            };
+        });
+        assert.ok(Math.abs(result.full[0] - 66) <= 3);
+        assert.equal(result.full[1], 255);
+        assert.ok(Math.abs(result.half[0] - (255 + result.full[0]) / 2) <= 2);
+        assert.deepEqual(result.zero, [255, 255]);
+        assert.ok(Math.abs(result.right[0] - 62) <= 3);
+        assert.equal(result.right[1], 255);
+        assert.deepEqual(result.circle.slice(0, 2), [0, 255]);
+        assert.ok(result.circle[2] > 90 && result.circle[2] < 140);
+        assert.ok(Math.abs(result.circle[2] - result.circle[3]) <= 2);
+        assert.deepEqual(result.sharp, [0, 255, 255]);
+    } finally { await browser.close(); }
+});
+
+test('Edge Fade composites every item including analyzer underlays, axes, labels, and backplates', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
+        const results = await page.evaluate(() => {
+            // Exercise the renderer's real split-layer analyzer contract without DSP or live audio.
+            window.createAnalyzerDisplay = (_item, canvas) => ({ signalCanvas: createLayer(canvas.width, canvas.height),
+                underlayCanvas: createLayer(canvas.width, canvas.height),
+                overflowLevelValues: [{ text: 'VALUE', x: canvas.width + 4, y: 30, font: '12px sans-serif',
+                    fillStyle: '#ffffff', strokeStyle: '#000000', lineWidth: 1, textAlign: 'left', textBaseline: 'top' }],
+                draw() {
+                    for (const [layer, color] of [[canvas, '#ffffff'], [this.signalCanvas, '#ffffff'], [this.underlayCanvas, '#008800']]) {
+                        const ctx = layer.getContext('2d'); ctx.fillStyle = color;
+                        ctx.fillRect(layer === canvas ? 0 : 15, 0, layer === canvas ? 5 : layer.width - 15, layer.height);
+                    }
+                    return true;
+                }, dispose() {} });
+            const cover = createLayer(10, 10); cover.naturalWidth = cover.naturalHeight = 10;
+            cover.getContext('2d').fillStyle = '#ffffff'; cover.getContext('2d').fillRect(0, 0, 10, 10);
+            const results = [], sources = { getModulators: () => ({}), getFrame: () => null };
+            const metadata = { title: 'MMMMMM', album: 'MMMMMM', artist: 'MMMMMM', artwork: [{ src: 'cover' }] };
+            const lyrics = { data: { synced: false, lines: [{ text: 'MMMMMM' }] }, time: 0, duration: 10 };
+            for (const type of ITEM_TYPES) {
+                const stage = createLayer(240, 200), renderer = new VisualizerRenderer(stage), item = createItem(type, type);
+                renderer.image = url => url ? cover : null;
+                item.rect = { x: .125, y: .1, w: .75, h: .8 };
+                Object.assign(item.style, { fontSize: 96, outlineWidth: 1, outlineColor: '#ffffff', shadowOpacity: .5, shadowBlur: 4 });
+                item.palette.mode = 'solid'; item.palette.color = '#ffffff';
+                if (type === 'text') item.params.text = 'MMMMMM';
+                if (type === 'lyrics') Object.assign(item.params, { lyricsFadeIn: 0, lyricsFadeOut: 0 });
+                item.effects = [normalizeEffect({ type: 'backplate', margin: 30, fill: '#004488', fillOpacity: 1 })];
+                const layout = { ...createDefaultLayout(), background: { color: '#000000', image: null, effects: [] }, items: [item] };
+                renderer.draw(layout, sources, metadata, 0, { lyrics });
+                const before = stage.getContext('2d').getImageData(0, 0, 240, 200).data;
+                item.effects.push(normalizeEffect({ type: 'edge-fade', top: 1, left: 1, bottom: 0, right: 0 }));
+                renderer.draw(layout, sources, metadata, 0, { lyrics });
+                const after = stage.getContext('2d').getImageData(0, 0, 240, 200).data;
+                let checked = 0, mismatches = 0, outside = 0;
+                for (let y = 0; y < 200; y++) for (let x = 0; x < 240; x++) {
+                    const index = (y * 240 + x) * 4;
+                    if (x < 30 || x >= 210 || y < 20 || y >= 180) {
+                        if (after[index] + after[index + 1] + after[index + 2] > 0) outside++;
+                        continue;
+                    }
+                    if (before[index] + before[index + 1] + before[index + 2] < 50) continue;
+                    checked++;
+                    const alpha = ((x - 30 + .5) / 180) * ((y - 20 + .5) / 160);
+                    if ([0, 1, 2].some(channel => Math.abs(after[index + channel] - before[index + channel] * alpha) > 4)) mismatches++;
+                }
+                results.push({ type, checked, mismatches, outside }); renderer.dispose();
+            }
+            return results;
+        });
+        assert.equal(results.length, 18);
+        for (const result of results) {
+            assert.ok(result.checked > 100, result.type);
+            assert.equal(result.mismatches, 0, JSON.stringify(result));
+            assert.equal(result.outside, 0, result.type);
+        }
+    } finally { await browser.close(); }
+});
+
+test('Edge Fade preserves inactive rendering and reuses static masks in normal and feed documents', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        const result = await page.evaluate(() => {
+            const stage = createLayer(200, 100), renderer = new VisualizerRenderer(stage), item = createItem('shape', 'shape');
+            item.rect = { x: 0, y: 0, w: 1, h: 1 }; item.palette.color = '#ffffff';
+            const fade = normalizeEffect({ type: 'edge-fade', top: 1, bottom: 0 });
+            item.effects = [fade];
+            const layout = { ...createDefaultLayout(), background: { color: '#000000', image: null, effects: [] }, items: [item] };
+            let level = .5;
+            const sources = { getModulators: () => ({ level }), getFrame: () => null };
+            const draw = () => renderer.draw(layout, sources, null, 0);
+            draw();
+            const state = renderer.layers.get('shape'), layer = state.fadeLayer, mask = state.fadeMask;
+            let clears = 0; const ctx = layer.getContext('2d'), clear = ctx.clearRect.bind(ctx);
+            ctx.clearRect = (...args) => { clears++; clear(...args); };
+            draw(); const staticClears = clears;
+            fade.left = 1; draw(); const updatedClears = clears;
+            Object.assign(fade.mod, { source: 'level', depth: 1 });
+            level = .2; draw(); const low = stage.getContext('2d').getImageData(50, 25, 1, 1).data[0];
+            level = .8; draw(); const high = stage.getContext('2d').getImageData(50, 25, 1, 1).data[0];
+            fade.mod.source = 'none'; fade.amount = 0; draw(); const zero = stage.getContext('2d').getImageData(50, 25, 1, 1).data[0];
+            fade.amount = 1; fade.enabled = false; draw(); const disabled = stage.getContext('2d').getImageData(50, 25, 1, 1).data[0];
+            fade.enabled = true;
+            const feedDocument = document.implementation.createHTMLDocument('Clean Feed');
+            const feed = feedDocument.createElement('canvas'); feed.width = 200; feed.height = 100;
+            const feedRenderer = new VisualizerRenderer(feed); feedRenderer.draw(layout, sources, null, 0);
+            draw();
+            const mainPixels = stage.getContext('2d').getImageData(0, 0, 200, 100).data;
+            const feedPixels = feed.getContext('2d').getImageData(0, 0, 200, 100).data;
+            return { staticClears, updatedClears, low, high, zero, disabled,
+                reused: state.fadeLayer === layer && state.fadeMask === mask,
+                feedMatches: mainPixels.every((value, index) => value === feedPixels[index]) };
+        });
+        assert.equal(result.staticClears, 0);
+        assert.equal(result.updatedClears, 1);
+        assert.ok(result.low > result.high + 80);
+        assert.equal(result.zero, 255);
+        assert.equal(result.disabled, 255);
+        assert.equal(result.reused, true);
+        assert.equal(result.feedMatches, true);
+    } finally { await browser.close(); }
+});
+
+test('Edge Fade repaints cached static items after horizontal and vertical flips', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        const results = await page.evaluate(() => {
+            const cover = createLayer(200, 100), coverCtx = cover.getContext('2d');
+            cover.naturalWidth = 200; cover.naturalHeight = 100;
+            for (const [color, x, y] of [['#ff0000', 0, 0], ['#0000ff', 100, 0], ['#00ff00', 0, 50], ['#ffffff', 100, 50]]) {
+                coverCtx.fillStyle = color; coverCtx.fillRect(x, y, 100, 50);
+            }
+            return ['text', 'title', 'artwork', 'shape'].map(type => {
+                const stage = createLayer(200, 100), renderer = new VisualizerRenderer(stage), item = createItem(type, type);
+                item.rect = { x: 0, y: 0, w: 1, h: 1 };
+                item.effects = [normalizeEffect({ type: 'edge-fade', top: 0, bottom: 0 })];
+                renderer.image = url => url ? cover : null;
+                const layout = { ...createDefaultLayout(), items: [item] };
+                const sources = { getModulators: () => ({}), getFrame: () => null };
+                const draw = () => renderer.draw(layout, sources, { title: 'Static', artwork: [{ src: 'cover' }] }, 0);
+                const pixel = () => Array.from(stage.getContext('2d').getImageData(25, 25, 1, 1).data.slice(0, 3));
+                draw(); const before = pixel();
+                const ctx = renderer.layers.get(type).fadeLayer.getContext('2d'), clear = ctx.clearRect.bind(ctx);
+                let clears = 0; ctx.clearRect = (...args) => { clears++; clear(...args); };
+                item.flipX = true; draw(); const horizontal = pixel(), afterX = clears;
+                item.flipY = true; draw(); const vertical = pixel(), afterY = clears;
+                draw(); const held = clears;
+                renderer.dispose();
+                return { type, before, horizontal, vertical, afterX, afterY, held };
+            });
+        });
+        for (const result of results) {
+            assert.equal(result.afterX, 1, result.type);
+            assert.equal(result.afterY, 2, result.type);
+            assert.equal(result.held, 2, result.type);
+        }
+        const artwork = results.find(result => result.type === 'artwork');
+        assert.deepEqual(artwork.before, [255, 0, 0]);
+        assert.deepEqual(artwork.horizontal, [0, 0, 255]);
+        assert.deepEqual(artwork.vertical, [255, 255, 255]);
+    } finally { await browser.close(); }
+});
+
+test('Lyrics temporal fades composite decorations and overflow and keep animating held rows in Clean Feed', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
+        const result = await page.evaluate(() => {
+            const stage = createLayer(300, 150), renderer = new VisualizerRenderer(stage), item = createItem('lyrics', 'lyrics');
+            Object.assign(item.params, { lyricsFadeIn: 0, lyricsFadeOut: 0 });
+            item.rect = { x: .2, y: .2, w: .6, h: .6 };
+            item.palette.color = '#ffffff';
+            Object.assign(item.style, { fontSize: 100, outlineWidth: 3, shadowOpacity: .8, shadowBlur: 8 });
+            item.effects = [normalizeEffect({ type: 'backplate', margin: 30, fill: '#ffffff', fillOpacity: 1 })];
+            const layout = { ...createDefaultLayout(), background: { color: '#000000', image: null, effects: [] }, items: [item] };
+            const data = { synced: false, lines: [{ text: 'MMMM' }] };
+            const sources = { getModulators: () => ({}), getFrame: () => null };
+            const lyrics = { data, time: 5, duration: 20, isStopped: false };
+            renderer.draw(layout, sources, null, 0, { lyrics });
+            const before = stage.getContext('2d').getImageData(0, 0, 300, 150).data;
+            item.params.lyricsFadeIn = item.params.lyricsFadeOut = 2;
+            const main = new VisualizerRenderer(stage);
+            const feedDocument = document.implementation.createHTMLDocument('Clean Feed');
+            const feed = feedDocument.createElement('canvas'); feed.width = 300; feed.height = 150;
+            const clean = new VisualizerRenderer(feed);
+            const draw = time => { main.draw(layout, sources, null, time, { lyrics }); clean.draw(layout, sources, null, time, { lyrics }); };
+            lyrics.time = 1; draw(100); draw(101);
+            const after = stage.getContext('2d').getImageData(0, 0, 300, 150).data;
+            let checked = 0, mismatches = 0;
+            for (let index = 0; index < before.length; index += 4) {
+                if (before[index] + before[index + 1] + before[index + 2] < 30) continue;
+                checked++;
+                if ([0, 1, 2].some(channel => Math.abs(after[index + channel] - before[index + channel] / 2) > 2)) mismatches++;
+            }
+            const halfOverflow = stage.getContext('2d').getImageData(57, 50, 1, 1).data[0];
+            const feedPixels = feed.getContext('2d').getImageData(0, 0, 300, 150).data;
+            const same = after.every((value, index) => value === feedPixels[index]);
+            lyrics.time = 5; draw(102); const full = stage.getContext('2d').getImageData(57, 50, 1, 1).data[0];
+            lyrics.time = 19; draw(103); const tail = stage.getContext('2d').getImageData(57, 50, 1, 1).data[0];
+            draw(108); const paused = stage.getContext('2d').getImageData(57, 50, 1, 1).data[0];
+            item.effects.push(normalizeEffect({ type: 'edge-fade', top: 0, bottom: 0 }));
+            draw(109); const clipped = stage.getContext('2d').getImageData(57, 50, 1, 1).data[0];
+            const inside = stage.getContext('2d').getImageData(65, 50, 1, 1).data[0];
+            lyrics.time = 20; draw(110);
+            const ended = stage.getContext('2d').getImageData(65, 50, 1, 1).data[0];
+            lyrics.data = null; draw(111);
+            const pendingPruned = !main.layers.has('lyrics');
+            lyrics.data = { synced: false, lines: [{ text: 'Next track' }] }; lyrics.time = 1;
+            draw(111); // Arrival immediately follows position without waiting for wall time.
+            const late = stage.getContext('2d').getImageData(65, 50, 1, 1).data[0];
+            lyrics.time = 5; draw(111);
+            const sought = stage.getContext('2d').getImageData(65, 50, 1, 1).data[0];
+            lyrics.data = { synced: false, lines: [{ text: 'Another track' }] }; lyrics.time = 1;
+            draw(111);
+            const switched = stage.getContext('2d').getImageData(65, 50, 1, 1).data[0];
+            return { checked, mismatches, halfOverflow, same, full, tail, paused, clipped, inside, ended, pendingPruned, late, sought, switched };
+        });
+        assert.ok(result.checked > 1000);
+        assert.equal(result.mismatches, 0);
+        assert.equal(result.halfOverflow, 128);
+        assert.equal(result.same, true);
+        assert.equal(result.full, 255);
+        assert.equal(result.tail, 128);
+        assert.equal(result.paused, 128);
+        assert.equal(result.clipped, 0);
+        assert.equal(result.inside, 128);
+        assert.equal(result.ended, 0);
+        assert.equal(result.pendingPruned, true);
+        assert.equal(result.late, 128);
+        assert.equal(result.sought, 255);
+        assert.equal(result.switched, 128);
+    } finally { await browser.close(); }
+});
+
+test('Horizontal Lyrics traverse natural text widths, fit steps, and preserve box gradients and word fill', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        await page.addScriptTag({ content: `{${moduleScript('../../js/library/metadata/lyrics.js')}; window.lyricsLineAt = lyricsLineAt;}` });
+        await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.drawLyrics = drawLyrics;}` });
+        const result = await page.evaluate(() => {
+            const w = 320, h = 100, canvas = createLayer(w, h), ctx = canvas.getContext('2d');
+            const item = createItem('lyrics', 'lyrics');
+            Object.assign(item.style, { fontSize: 32, fontFamily: 'sans-serif', textCase: 'upper', letterSpacing: 2 });
+            item.params.lyricsMotion = 'smooth-horizontal';
+            const data = { synced: true, lines: [{ time: 0, text: 'A long beginning with many words to read completely' },
+                { time: 4, text: 'Last long sentence must also pass completely' }] };
+            const cache = {}, calls = [];
+            let measured = 0;
+            const measure = ctx.measureText.bind(ctx), fillText = ctx.fillText.bind(ctx);
+            ctx.measureText = text => { measured++; return measure(text); };
+            ctx.fillText = (text, x, y, maxWidth) => { calls.push({ text, x, y, maxWidth }); fillText(text, x, y, maxWidth); };
+            const draw = time => {
+                calls.length = 0; ctx.clearRect(0, 0, w, h);
+                drawLyrics(ctx, item, lyricsFrame(item, { data, time, duration: 8 }, false), w, h, 1, '#ffffff', null, cache);
+                return calls.map(call => ({ ...call }));
+            };
+            const start = draw(0), count = measured, middle = draw(1), later = draw(2), finish = draw(8);
+            const cacheReuse = measured === count;
+            const natural = cache.widths[0];
+            const anchors = [0, 50, 100].map(position => {
+                item.params.lyricsPosition = position;
+                return draw(4).find(call => call.text.startsWith('LAST')).x;
+            });
+            item.params.lyricsPosition = 50;
+            const verticalAnchors = ['top', 'middle', 'bottom'].map(align => {
+                item.style.verticalAlign = align;
+                return draw(4).find(call => call.text.startsWith('LAST')).y;
+            });
+            item.style.verticalAlign = 'middle';
+            item.params.lyricsMotion = 'step-horizontal';
+            item.style.align = 'center';
+            const stepA = draw(.2), stepB = draw(3), stepStart = draw(4), stepMiddle = draw(4.09), stepNext = draw(4.2);
+            const firstX = list => list.find(call => call.text.startsWith('A LONG'))?.x;
+            const stepMoves = firstX(stepStart) > firstX(stepMiddle) &&
+                stepNext.find(call => call.text.startsWith('LAST')).x < stepMiddle.find(call => call.text.startsWith('LAST')).x;
+            const stepFits = stepA[0].maxWidth <= w && stepNext.find(call => call.text.startsWith('LAST')).maxWidth <= w;
+            const unsynced = { synced: false, lines: data.lines.map(({ text }) => ({ text })) };
+            calls.length = 0;
+            drawLyrics(ctx, item, lyricsFrame(item, { data: unsynced, time: 15, duration: 20 }, false), w, h, 1, '#ffffff');
+            const unsyncedLast = calls.some(call => call.text.startsWith('LAST') && call.x >= 0 && call.x <= w);
+            item.params.lyricsMotion = 'smooth-horizontal'; item.params.lyricsWordFill = true;
+            data.lines[0].words = [{ time: 0, text: data.lines[0].text }, { time: 4, text: '' }];
+            const solid = createLayer(w, h), gradient = createLayer(w, h), mask = createLayer(w, h), expected = createLayer(w, h);
+            const frame = lyricsFrame(item, { data, time: 1, duration: 8 }, false);
+            const gradientCtx = gradient.getContext('2d'), palette = normalizePalette({ mode: 'gradient', angle: 45 });
+            drawLyrics(solid.getContext('2d'), item, frame, w, h, 1, '#ffffff');
+            drawLyrics(gradientCtx, item, frame, w, h, 1, paletteGradient(gradientCtx, palette, w, 0, false, h), mask);
+            const expectedCtx = expected.getContext('2d'); expectedCtx.fillStyle = paletteGradient(expectedCtx, palette, w, 0, false, h);
+            expectedCtx.fillRect(0, 0, w, h);
+            const a = solid.getContext('2d').getImageData(0, 0, w, h).data;
+            const b = gradientCtx.getImageData(0, 0, w, h).data;
+            const c = expectedCtx.getImageData(0, 0, w, h).data;
+            let samples = 0, mismatches = 0;
+            for (let i = 0; i < a.length; i += 4) if (a[i + 3] > 230) {
+                samples++;
+                if ([0, 1, 2].some(channel => Math.abs(b[i + channel] - c[i + channel]) > 3) || Math.abs(a[i + 3] - b[i + 3]) > 2) mismatches++;
+            }
+            const clears = { synced: true, lines: [...data.lines, { time: 8, text: '' }] };
+            calls.length = 0;
+            drawLyrics(ctx, item, lyricsFrame(item, { data: clears, time: 8, duration: 8 }, false), w, h, 1, '#ffffff');
+            return { start, middle, later, finish, natural, cacheReuse, stepFits, unsyncedLast, anchors, verticalAnchors, stepMoves,
+                stepHeld: JSON.stringify(stepA) === JSON.stringify(stepB), samples, mismatches,
+                clearHasText: calls.some(call => call.text.length > 0) };
+        });
+        assert.ok(result.natural > 320, JSON.stringify(result));
+        assert.equal(result.start[0].x, 160);
+        assert.deepEqual(result.anchors, [0, 160, 320]);
+        assert.ok(result.verticalAnchors[0] < result.verticalAnchors[1] && result.verticalAnchors[1] < result.verticalAnchors[2]);
+        assert.ok(result.middle[0].x < result.start[0].x && result.later[0].x < result.middle[0].x);
+        assert.ok(result.finish.every(call => call.x + call.maxWidth <= 0));
+        assert.equal(result.cacheReuse, true);
+        assert.equal(result.stepFits, true);
+        assert.equal(result.unsyncedLast, true);
+        assert.equal(result.stepHeld, true);
+        assert.equal(result.stepMoves, true);
+        assert.ok(result.samples > 20);
+        assert.equal(result.mismatches, 0);
+        assert.equal(result.clearHasText, false);
+    } finally { await browser.close(); }
+});
+
+test('Lyrics gradients use the full item box across rows, alignment, and word highlighting', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
+        const results = await page.evaluate(() => {
+            const results = [], w = 420, h = 280;
+            const canvas = () => { const value = document.createElement('canvas'); value.width = w; value.height = h; return value; };
+            const rows = [{ text: 'Short' }, { text: 'A very long lyric line that must be compressed horizontally to fit the item box' },
+                { text: 'Medium length' }];
+            for (const spacing of [.5, 1, 2]) for (const align of ['left', 'center', 'right']) for (const view of ['list', 'line', 'word']) {
+                for (const [direction, angle] of [['linear', 0], ['linear', 90], ['linear', 45], ['radial', 0]]) {
+                    const item = createItem('lyrics', 'lyrics');
+                    item.params.lyricsLineSpacing = spacing;
+                    Object.assign(item.style, { fontSize: 48, align, letterSpacing: 2, textCase: 'upper' });
+                    Object.assign(item.palette, { mode: 'gradient', direction, angle,
+                        stops: [{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }] });
+                    const frame = { rows, list: view !== 'line', next: true, synced: view !== 'list',
+                        current: 1, p: 1.2, fill: view === 'word' ? 32.5 : null };
+                    const actual = canvas(), mask = canvas(), expected = canvas();
+                    new VisualizerRenderer(actual).drawItem({ canvas: actual }, item, null, null, 0, false, frame);
+                    drawLyrics(mask.getContext('2d'), item, frame, w, h, w / REFERENCE_WIDTH, '#ffffff');
+                    const reference = expected.getContext('2d');
+                    reference.drawImage(mask, 0, 0);
+                    reference.globalCompositeOperation = 'source-in';
+                    reference.fillStyle = paletteGradient(reference, item.palette, w, 0, false, h);
+                    reference.fillRect(0, 0, w, h);
+                    const drawn = actual.getContext('2d').getImageData(0, 0, w, h).data;
+                    const wanted = reference.getImageData(0, 0, w, h).data;
+                    let checked = 0, mismatches = 0;
+                    for (let index = 0; index < drawn.length; index += 4) {
+                        // Read colors inside opaque glyphs, away from antialiasing and word-clip edges.
+                        if (wanted[index + 3] < 240) continue;
+                        checked++;
+                        if ([0, 1, 2].some(channel => Math.abs(drawn[index + channel] - wanted[index + channel]) > 5)) mismatches++;
+                    }
+                    results.push({ spacing, align, view, direction, angle, checked, mismatches });
+                }
+            }
+            return results;
+        });
+        for (const result of results) {
+            const detail = `${result.align} ${result.view} ${result.direction} ${result.angle}° ${JSON.stringify(result)}`;
+            assert.ok(result.checked > 50, detail);
+            assert.equal(result.mismatches, 0, detail);
+        }
+    } finally { await browser.close(); }
+});
+
+test('Gradient Lyrics preserve decoration colors and reuse their glyph mask when resized', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
+        const result = await page.evaluate(() => {
+            const canvas = document.createElement('canvas'); canvas.width = 420; canvas.height = 280;
+            const state = { canvas }, renderer = new VisualizerRenderer(canvas), item = createItem('lyrics');
+            Object.assign(item.style, { fontSize: 96, outlineColor: '#ff00ff', shadowColor: '#00ff00',
+                shadowOpacity: .8, shadowBlur: 6, shadowX: 5, shadowY: 5 });
+            Object.assign(item.palette, { mode: 'gradient', angle: 90,
+                stops: [{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }] });
+            const frame = { rows: [{ text: 'First' }, { text: 'Current lyric' }, { text: 'Next' }], list: true,
+                next: true, synced: false, current: 1, p: 1, fill: null };
+            const decorations = [];
+            for (const outlineWidth of [0, 2]) {
+                item.style.outlineWidth = outlineWidth;
+                renderer.drawItem(state, item, null, null, 0, false, frame);
+                const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                let greenShadow = 0, magentaOutline = 0;
+                for (let index = 0; index < pixels.length; index += 4) {
+                    if (pixels[index + 3] < 20) continue;
+                    if (pixels[index + 1] > pixels[index] + 40 && pixels[index + 1] > pixels[index + 2] + 40) greenShadow++;
+                    if (pixels[index] + pixels[index + 2] > 400 && pixels[index + 1] < 30) magentaOutline++;
+                }
+                decorations.push({ outlineWidth, greenShadow, magentaOutline });
+            }
+            const mask = state.glyphMask;
+            renderer.drawItem(state, item, null, null, .1, false, frame);
+            const reused = state.glyphMask === mask;
+            canvas.width = 440; canvas.height = 300;
+            renderer.drawItem(state, item, null, null, .2, false, frame);
+            return { decorations, reused, resizedInPlace: state.glyphMask === mask,
+                maskWidth: mask.width, maskHeight: mask.height };
+        });
+        assert.ok(result.decorations.every(row => row.greenShadow > 50));
+        assert.ok(result.decorations[1].magentaOutline > 50);
+        assert.equal(result.reused, true);
+        assert.equal(result.resizedInPlace, true);
+        assert.deepEqual([result.maskWidth, result.maskHeight], [440, 300]);
+    } finally { await browser.close(); }
+});
+
+test('Styled text row offsets preserve glyphs, alignment, outlines, and shadows', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-text']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        const results = await page.evaluate(() => {
+            const results = [], w = 300, h = 180;
+            for (const align of ['left', 'center', 'right']) for (const verticalAlign of ['top', 'middle', 'bottom']) {
+                const canvas = () => { const value = document.createElement('canvas'); value.width = w; value.height = h; return value; };
+                const shifted = canvas(), translated = canvas(), implicit = canvas(), explicit = canvas();
+                const style = { ...createItem('lyrics').style, align, verticalAlign, fontSize: 30, bold: true, italic: true,
+                    textCase: 'upper', letterSpacing: 2, outlineWidth: 1.5, shadowOpacity: .5, shadowBlur: 4, shadowY: 3 };
+                const text = 'Long mixed-case text that is compressed to fit';
+                drawStyledText(shifted.getContext('2d'), text, style, w, 50, 1, '#ffffff', undefined, undefined, 65.25);
+                const reference = translated.getContext('2d');
+                reference.translate(0, 65.25);
+                drawStyledText(reference, text, style, w, 50, 1, '#ffffff');
+                drawStyledText(implicit.getContext('2d'), text, style, w, h, 1, '#ffffff');
+                drawStyledText(explicit.getContext('2d'), text, style, w, h, 1, '#ffffff', undefined, undefined, 0);
+                const pixels = value => value.getContext('2d').getImageData(0, 0, w, h).data;
+                const original = pixels(translated), actual = pixels(shifted), defaultPixels = pixels(implicit), zeroPixels = pixels(explicit);
+                results.push({ align, verticalAlign, offsetMatches: actual.every((value, index) => value === original[index]),
+                    defaultMatches: defaultPixels.every((value, index) => value === zeroPixels[index]) });
+            }
+            return results;
+        });
+        for (const result of results) {
+            assert.equal(result.offsetMatches, true, `${result.align} ${result.verticalAlign}`);
+            assert.equal(result.defaultMatches, true, `${result.align} ${result.verticalAlign}`);
+        }
+    } finally { await browser.close(); }
+});
+
 test('Spectrum gradient directions follow frequency and level after rotating the graph', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -627,7 +1119,7 @@ test('Analyzer layers preserve the scene below them and reflect labels without m
                 'Metadata keeps its existing whole-item flip');
         }
         assert.deepEqual(results.find(row => row.type === 'effect-flips').calls,
-            [[false, false], [true, false], [false, true], [true, true]].map(([flipX, flipY], index) => ({ changed: index === 0, flipX, flipY })),
+            [[false, false], [true, false], [false, true], [true, true]].map(([flipX, flipY]) => ({ changed: true, flipX, flipY })),
             'Whole-item flips update the effects input and keep movement directions in scene coordinates');
         for (const row of results.filter(row => row.type === 'separation')) {
             assert.equal(row.hasSignal, true, `${row.analyzer} supplies its signal to effects`);
@@ -995,6 +1487,62 @@ test('Spectrum Note Colors bars and peaks use one center-frequency color through
     } finally {
         await browser.close();
     }
+});
+
+test('Note Spectrogram bars fade into both key backgrounds without adding the background twice', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.addScriptTag({ content: 'class PluginBase {}' });
+        await page.addScriptTag({ content: read('../../plugins/analyzer/note_spectrogram.js') });
+        const samples = await page.evaluate(() => {
+            const results = [];
+            for (const background of [[0, 0, 0], [7, 11, 20], [255, 255, 255]]) {
+                window.ThemePalette = { get: name => ({
+                    'graph-bg-deep': `rgb(${background.join(',')})`,
+                    'graph-base-soft': 'rgb(241,241,241)',
+                    'graph-trace': 'rgb(128,64,32)'
+                })[name] };
+                const plugin = Object.create(NoteSpectrogramPlugin.prototype);
+                plugin.initializeDisplayState();
+                Object.assign(plugin, { mn: 21, mx: 22, writeColumn: 4,
+                    displayOptions: { showAxes: false } });
+                plugin.volumeFrameEnds[1] = plugin.volumeFrameEnds[2] = 0;
+                plugin.levelHistory.fill(1);
+                const palette = plugin._displayPalette();
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024; canvas.height = 80;
+                const context = canvas.getContext('2d');
+                for (const [pr, vl] of [['Semitone', true], ['High', true], ['High', false]]) {
+                    Object.assign(plugin, { pr, vl });
+                    for (const confidence of [0, 0.000001, 0.49 / 255, 0.51 / 255, .1, .5, 1]) {
+                        plugin.history.fill(confidence);
+                        plugin._paintVolumeFrame(context, 3, 80, 40, palette, true);
+                        results.push({ pr, vl, confidence, composite: palette.volumeCompositeOperation,
+                            backgrounds: [palette.whiteBand, palette.blackBand],
+                            pixels: [60, 20].map(y => [...context.getImageData(2, y, 1, 1).data]) });
+                    }
+                }
+            }
+            return results;
+        });
+        for (const sample of samples) {
+            sample.pixels.forEach((pixel, key) => {
+                const background = sample.backgrounds[key];
+                if (sample.confidence < 0.5 / 255) {
+                    assert.deepEqual(pixel, [...background, 255], JSON.stringify(sample));
+                } else {
+                    const alpha = Math.round(sample.confidence * 255) / 255;
+                    const expected = background.map((channel, index) => sample.composite === 'lighter'
+                        ? Math.min(255, channel + [128, 64, 32][index] * alpha)
+                        : channel + (Math.min(channel, [128, 64, 32][index]) - channel) * alpha);
+                    assert.ok(expected.every((channel, index) => Math.abs(pixel[index] - channel) <= 1),
+                        JSON.stringify(sample));
+                    assert.equal(pixel[3], 255);
+                }
+            });
+        }
+    } finally { await browser.close(); }
 });
 
 test('Heatmap keeps native colors on black while its dark values reveal the scene and Opacity still applies', async () => {

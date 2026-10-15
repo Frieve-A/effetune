@@ -1,5 +1,5 @@
 ---
-title: "Spatial Plugins - EffeTune"
+title: "Spatial Plugins - Crossfeed, Crosstalk Cancellation, Stereo Width & Upmix - EffeTune"
 description: "Spatial audio plugins including Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Spatial Mapper, and Stereo Blend."
 lang: en
 ---
@@ -327,12 +327,12 @@ These phase ranges describe typical tendencies, not fixed sound-source locations
 - **Band 1-5 / checkbox** (Off/On): Selects a Band for editing and enables or disables it without changing its settings.
 - **Gain** (0% to 200%): Sets the level multiplier inside the Core. 100% leaves the level unchanged, 0% removes the selected component, and 200% doubles its amplitude.
 - **Solo** (Off/On): Lets you hear only what the soloed Bands select. While any enabled Band has Solo on, Gain is ignored and everything outside the soloed Bands is muted, with the same smooth Transition fade at the edges. Soloing several Bands at once passes the combination of their regions. Turning every Solo off restores normal processing.
-- **Core Low Frequency / Core High Frequency** (20 Hz to 40 kHz, limited by the current sample rate): Set the fully processed frequency range.
+- **Core Low Freq / Core High Freq** (20 Hz to 40 kHz, limited by the current sample rate): Set the fully processed frequency range.
 - **Core Low Phase / Core High Phase** (0° to 180°): Set the fully processed absolute L/R phase-difference range.
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% to +100%): Set the four Balance boundaries directly. The Core pair sets the fully processed left/right amplitude-balance range; the Outer pair sets where the Transition reaches no processing. Negative values select toward the left; positive values select toward the right.
-- **Low Frequency Transition / High Frequency Transition**: Set how far below and above the frequency Core the gain fades between 0% and 100%.
-- **Low Phase Transition / High Phase Transition**: Set how far toward 0° and 180° the gain fades between 0% and 100%.
-The map handles edit the same values as the sliders and numeric inputs: drag anywhere inside the selected Band's outer frame to move the whole Band, drag Core edges or corners to resize it, and drag the outer edge handles to change one transition at a time. These gestures work with a mouse or touch. A low-phase handle stops at the center instead of crossing it: Core Low Phase stops at 0°, and Low Phase Transition stops at its maximum width. When Core Low Phase is exactly 0°, the center handle can initially move either left or right; after the pointer moves to one side, it stays locked to that side for the rest of the drag.
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% to +100%): Set the four Balance boundaries directly. The Core pair sets the fully processed left/right amplitude-balance range; the Outer pair sets where the Transition reaches no processing. Negative values select toward the left; positive values select toward the right.
+- **Low Freq Trans / High Freq Trans**: Set how far below and above the frequency Core the gain fades between 0% and 100%.
+- **Low Phase Trans / High Phase Trans**: Set how far toward 0° and 180° the gain fades between 0% and 100%.
+The map handles edit the same values as the sliders and numeric inputs: drag anywhere inside the selected Band's outer frame to move the whole Band, drag Core edges or corners to resize it, and drag the outer edge handles to change one transition at a time. These gestures work with a mouse or touch. A low-phase handle stops at the center instead of crossing it: Core Low Phase stops at 0°, and Low Phase Trans stops at its maximum width. When Core Low Phase is exactly 0°, the center handle can initially move either left or right; after the pointer moves to one side, it stays locked to that side for the rest of the drag.
 
 ## Spatial Mapper
 

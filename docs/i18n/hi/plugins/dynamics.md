@@ -1,6 +1,6 @@
 ---
-title: "डायनामिक्स प्लगइन - EffeTune"
-description: "Attack Tonal Balance, Compressor, Limiter, Gate, Multiband Compressor और Transient Shaper सहित dynamics processing प्लगइन।"
+title: "डायनामिक्स प्लगइन - ऑटो वॉल्यूम लेवलर, कंप्रेसर और लिमिटर - EffeTune"
+description: "Auto Leveler वॉल्यूम स्थिर रखने में मदद करता है; Brickwall Limiter, Compressor, Expander, Gate, Transient Shaper, मल्टीबैंड प्रोसेसर आदि डायनामिक्स बदलते हैं।"
 lang: hi
 ---
 

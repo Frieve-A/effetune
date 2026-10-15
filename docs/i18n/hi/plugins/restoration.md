@@ -1,5 +1,5 @@
 ---
-title: "Restoration Plugins - EffeTune"
+title: "Restoration Plugins - क्लिक और इलेक्ट्रिकल हम हटाना, नॉइज़ घटाना - EffeTune"
 description: "क्लिक, क्लिप हुए पीक, इलेक्ट्रिकल हम और स्थिर बैकग्राउंड शोर के लिए Restoration plugins।"
 lang: hi
 ---

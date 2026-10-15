@@ -510,6 +510,10 @@
           "ln": 0,
           "tg": -14,
           "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 1.25,
+          "dc": 0,
           "dialCurvature": 1,
           "dialSweep": 100,
           "pivotOffset": 0,
@@ -1777,6 +1781,10 @@
           "ln": 0,
           "tg": -23,
           "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 1.25,
+          "dc": 0,
           "dialCurvature": 1,
           "dialSweep": 100,
           "pivotOffset": 0,
@@ -1873,6 +1881,10 @@
           "ln": 0,
           "tg": -23,
           "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 1.25,
+          "dc": 0,
           "dialCurvature": 1,
           "dialSweep": 100,
           "pivotOffset": 0,
@@ -3720,6 +3732,10 @@
           "ln": 0,
           "tg": -23,
           "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 1.25,
+          "dc": 0,
           "dialCurvature": 0.8,
           "dialSweep": 112,
           "pivotOffset": 0,
@@ -3810,6 +3826,10 @@
           "ln": 0,
           "tg": -23,
           "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 1.25,
+          "dc": 0,
           "dialCurvature": 0.8,
           "dialSweep": 112,
           "pivotOffset": 0,
@@ -4118,7 +4138,7 @@
         "id": "shape-10",
         "type": "shape",
         "rect": {
-          "x": 0.476,
+          "x": 0.47600000000000003,
           "y": 0.036,
           "w": 0.048,
           "h": 0.112
@@ -4201,6 +4221,1085 @@
           "radius": 0
         },
         "effects": []
+      }
+    ]
+  },
+  "Cinema Strip": {
+    "aspect": "21:9",
+    "graphScale": 1,
+    "background": {
+      "color": "#04040b",
+      "image": null,
+      "effects": [],
+      "themeColors": {
+        "graph-bg-deep": "#04040b",
+        "graph-base-soft": "#0c0e1a",
+        "graph-grid-subtle": "#141729",
+        "graph-grid-soft": "#1c2038",
+        "graph-grid-strong": "#2a2f50",
+        "graph-label": "#8a90b8",
+        "text-primary": "#eef0ff",
+        "graph-trace-tertiary": "#6a70a0"
+      }
+    },
+    "items": [
+      {
+        "id": "title-1",
+        "type": "title",
+        "rect": {
+          "x": 0.023809523809523808,
+          "y": 0.05555555555555555,
+          "w": 0.5,
+          "h": 0.05129999999999999
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#f2f4ff"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 20.845714285714283,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "bottom",
+          "shadowColor": "#000000",
+          "shadowOpacity": 0.85,
+          "shadowBlur": 7,
+          "shadowX": 0,
+          "shadowY": 1
+        },
+        "effects": []
+      },
+      {
+        "id": "artist-2",
+        "type": "artist",
+        "rect": {
+          "x": 0.023809523809523808,
+          "y": 0.10875555555555555,
+          "w": 0.5,
+          "h": 0.034199999999999994
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#7fd8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#b28cff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#7fd8ff",
+          "angle": 0
+        },
+        "params": {},
+        "style": {
+          "fontSize": 11.673600000000002,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "top",
+          "textCase": "upper",
+          "letterSpacing": 3
+        },
+        "effects": []
+      },
+      {
+        "id": "spectrogram-3",
+        "type": "spectrogram",
+        "rect": {
+          "x": 0,
+          "y": 0.15435555555555555,
+          "w": 1,
+          "h": 0.4211111111111111
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#05040c"
+            },
+            {
+              "pos": 0.2,
+              "color": "#2a1a7a"
+            },
+            {
+              "pos": 0.45,
+              "color": "#6a3cff"
+            },
+            {
+              "pos": 0.7,
+              "color": "#29b6ff"
+            },
+            {
+              "pos": 1,
+              "color": "#e8fbff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#05040c",
+          "direction": "intensity"
+        },
+        "params": {
+          "dr": -84,
+          "pt": 12,
+          "sc": "log-hq",
+          "kb": false,
+          "kl": 100,
+          "mf": 40000,
+          "gainDb": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "edge-fade",
+            "enabled": true,
+            "amount": 1,
+            "shape": "rectangle",
+            "top": 0.12,
+            "bottom": 0.18,
+            "left": 0.4,
+            "right": 0.03,
+            "circleWidth": 0.2,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "oscilloscope-4",
+        "type": "oscilloscope",
+        "rect": {
+          "x": 0,
+          "y": 0.5754666666666666,
+          "w": 1,
+          "h": 0.2367555555555556
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#29b6ff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#b28cff"
+            },
+            {
+              "pos": 1,
+              "color": "#29b6ff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#29b6ff",
+          "angle": 90
+        },
+        "params": {
+          "dt": 10,
+          "tm": "Off",
+          "tl": 0,
+          "te": "Rising",
+          "ho": 0.0001,
+          "dl": -6,
+          "vo": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "glow",
+            "enabled": true,
+            "amount": 0.3,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#6a3cff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          },
+          {
+            "type": "edge-fade",
+            "enabled": true,
+            "amount": 1,
+            "shape": "rectangle",
+            "top": 0,
+            "bottom": 0,
+            "left": 0.4,
+            "right": 0.03,
+            "circleWidth": 0.2,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "lyrics-5",
+        "type": "lyrics",
+        "rect": {
+          "x": 0,
+          "y": 0.8122222222222222,
+          "w": 1,
+          "h": 0.16
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffffff"
+        },
+        "params": {
+          "lyricsView": "list",
+          "lyricsNext": true,
+          "lyricsMotion": "smooth-horizontal",
+          "lyricsStepDuration": 0.18,
+          "lyricsPosition": 50,
+          "lyricsLineSpacing": 2,
+          "lyricsWordFill": true,
+          "lyricsOffset": 0,
+          "lyricsFadeIn": 1,
+          "lyricsFadeOut": 3
+        },
+        "style": {
+          "fontSize": 34.011428571428574,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "shadowColor": "#0a0620",
+          "shadowOpacity": 0.95,
+          "shadowBlur": 10,
+          "shadowX": 0,
+          "shadowY": 2
+        },
+        "effects": [
+          {
+            "type": "edge-fade",
+            "enabled": true,
+            "amount": 1,
+            "shape": "rectangle",
+            "top": 0,
+            "bottom": 0,
+            "left": 0.22,
+            "right": 0.22,
+            "circleWidth": 0.2,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "Meter Bridge": {
+    "aspect": "21:9",
+    "graphScale": 1,
+    "background": {
+      "color": "#050607",
+      "image": null,
+      "effects": [],
+      "themeColors": {
+        "graph-bg-deep": "#101318",
+        "graph-base-soft": "#161a20",
+        "graph-grid-subtle": "#232830",
+        "graph-grid-soft": "#aeb7c4",
+        "graph-grid-strong": "#e6ebf2",
+        "graph-label": "#c3cbd7",
+        "text-primary": "#eef1f6",
+        "graph-trace-tertiary": "#6b7685"
+      }
+    },
+    "items": [
+      {
+        "id": "title-1",
+        "type": "title",
+        "rect": {
+          "x": 0.02142857142857143,
+          "y": 0.05,
+          "w": 0.6,
+          "h": 0.048600000000000004
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#eef1f6"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 19.74857142857143,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "bottom"
+        },
+        "effects": []
+      },
+      {
+        "id": "artist-2",
+        "type": "artist",
+        "rect": {
+          "x": 0.02142857142857143,
+          "y": 0.10039999999999999,
+          "w": 0.6,
+          "h": 0.0324
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#8a95a6"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 11.454171428571428,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "top",
+          "textCase": "upper",
+          "letterSpacing": 2
+        },
+        "effects": []
+      },
+      {
+        "id": "analog-meter-3",
+        "type": "analog-meter",
+        "rect": {
+          "x": 0.02142857142857143,
+          "y": 0.17,
+          "w": 0.23476190476190475,
+          "h": 0.49
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ff5a5a"
+        },
+        "params": {
+          "md": "Custom",
+          "it": 0.3,
+          "at": 5,
+          "rt": 0.5,
+          "rl": -14,
+          "rg": 40,
+          "sc": 0,
+          "ph": 1,
+          "ln": 0,
+          "tg": -23,
+          "ls": 0,
+          "de": "True Peak",
+          "nr": 10,
+          "os": 0,
+          "dc": 4,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 2.5,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 5,
+          "showReadout": true,
+          "showChannel": false,
+          "showMode": false,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": false,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#16191f",
+          "faceOpacity": 1,
+          "faceBorderColor": "#2c323b",
+          "faceBorderWidth": 1.5,
+          "vignette": 0.5,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "text-4",
+        "type": "text",
+        "rect": {
+          "x": 0.02142857142857143,
+          "y": 0.66,
+          "w": 0.23476190476190475,
+          "h": 0.05
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ff5a5a"
+        },
+        "params": {
+          "text": "True Peak"
+        },
+        "style": {
+          "fontSize": 14.262857142857143,
+          "fontFamily": "sans-serif",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "verticalAlign": "middle",
+          "textCase": "upper",
+          "letterSpacing": 4
+        },
+        "effects": []
+      },
+      {
+        "id": "analog-meter-5",
+        "type": "analog-meter",
+        "rect": {
+          "x": 0.26904761904761904,
+          "y": 0.17,
+          "w": 0.23476190476190475,
+          "h": 0.49
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffb547"
+        },
+        "params": {
+          "md": "Custom",
+          "it": 0.3,
+          "at": 5,
+          "rt": 1.5,
+          "rl": -14,
+          "rg": 40,
+          "sc": 0,
+          "ph": 1,
+          "ln": 0,
+          "tg": -23,
+          "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 15,
+          "dc": 0,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 2.5,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 5,
+          "showReadout": true,
+          "showChannel": false,
+          "showMode": false,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": true,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#16191f",
+          "faceOpacity": 1,
+          "faceBorderColor": "#2c323b",
+          "faceBorderWidth": 1.5,
+          "vignette": 0.5,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "text-6",
+        "type": "text",
+        "rect": {
+          "x": 0.26904761904761904,
+          "y": 0.66,
+          "w": 0.23476190476190475,
+          "h": 0.05
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#ffb547"
+        },
+        "params": {
+          "text": "VU"
+        },
+        "style": {
+          "fontSize": 14.262857142857143,
+          "fontFamily": "sans-serif",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "verticalAlign": "middle",
+          "textCase": "upper",
+          "letterSpacing": 4
+        },
+        "effects": []
+      },
+      {
+        "id": "analog-meter-7",
+        "type": "analog-meter",
+        "rect": {
+          "x": 0.5166666666666667,
+          "y": 0.17,
+          "w": 0.23476190476190475,
+          "h": 0.49
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#7fd8ff"
+        },
+        "params": {
+          "md": "Custom",
+          "it": 3,
+          "at": 5,
+          "rt": 1.5,
+          "rl": -18,
+          "rg": 42,
+          "sc": 0,
+          "ph": 1,
+          "ln": 0,
+          "tg": -23,
+          "ls": 0,
+          "de": "RMS",
+          "nr": 1000,
+          "os": 0,
+          "dc": 3,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 2.5,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 5,
+          "showReadout": true,
+          "showChannel": false,
+          "showMode": false,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": false,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#16191f",
+          "faceOpacity": 1,
+          "faceBorderColor": "#2c323b",
+          "faceBorderWidth": 1.5,
+          "vignette": 0.5,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "text-8",
+        "type": "text",
+        "rect": {
+          "x": 0.5166666666666667,
+          "y": 0.66,
+          "w": 0.23476190476190475,
+          "h": 0.05
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#7fd8ff"
+        },
+        "params": {
+          "text": "Slow RMS"
+        },
+        "style": {
+          "fontSize": 14.262857142857143,
+          "fontFamily": "sans-serif",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "verticalAlign": "middle",
+          "textCase": "upper",
+          "letterSpacing": 4
+        },
+        "effects": []
+      },
+      {
+        "id": "analog-meter-9",
+        "type": "analog-meter",
+        "rect": {
+          "x": 0.7642857142857142,
+          "y": 0.17,
+          "w": 0.21428571428571427,
+          "h": 0.73
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#9dffb0"
+        },
+        "params": {
+          "md": "Loudness",
+          "it": 0.3,
+          "at": 5,
+          "rt": 1.5,
+          "rl": -14,
+          "rg": 40,
+          "sc": 0,
+          "ph": 1,
+          "ln": 0,
+          "tg": -14,
+          "ls": 0,
+          "de": "Average Rectified",
+          "nr": 300,
+          "os": 1.25,
+          "dc": 0,
+          "dialCurvature": 1,
+          "dialSweep": 100,
+          "pivotOffset": 0,
+          "needleStart": 0,
+          "needleLength": 102,
+          "needleWidth": 2.5,
+          "needleTip": "taper",
+          "arrowAspect": 1,
+          "hubSize": 5,
+          "showReadout": true,
+          "showChannel": false,
+          "showMode": false,
+          "showSigns": false,
+          "positiveLabels": false,
+          "showPercent": false,
+          "readoutUnit": "scale",
+          "showRedZone": true,
+          "faceShape": "rectangle",
+          "faceColor": "#16191f",
+          "faceOpacity": 1,
+          "faceBorderColor": "#2c323b",
+          "faceBorderWidth": 1.5,
+          "vignette": 0.5,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "text-10",
+        "type": "text",
+        "rect": {
+          "x": 0.7642857142857142,
+          "y": 0.9,
+          "w": 0.21428571428571427,
+          "h": 0.05
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#9dffb0"
+        },
+        "params": {
+          "text": "Loudness"
+        },
+        "style": {
+          "fontSize": 14.262857142857143,
+          "fontFamily": "sans-serif",
+          "bold": true,
+          "italic": false,
+          "align": "center",
+          "verticalAlign": "middle",
+          "textCase": "upper",
+          "letterSpacing": 4
+        },
+        "effects": []
+      },
+      {
+        "id": "level-meter-11",
+        "type": "level-meter",
+        "rect": {
+          "x": 0.02142857142857143,
+          "y": 0.755,
+          "w": 0.73,
+          "h": 0.09
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#1f6fff"
+            },
+            {
+              "pos": 0.7,
+              "color": "#34d1ff"
+            },
+            {
+              "pos": 0.84,
+              "color": "#9dffb0"
+            },
+            {
+              "pos": 0.93,
+              "color": "#ffd24a"
+            },
+            {
+              "pos": 1,
+              "color": "#ff4a4a"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#1f6fff"
+        },
+        "params": {
+          "dr": -60,
+          "orientation": "horizontal",
+          "showLevelValues": true,
+          "ds": 1,
+          "cf": 1,
+          "pk": true,
+          "ph": 2,
+          "pf": 1,
+          "showAxes": true,
+          "showAxisNumbers": true
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "backplate",
+            "enabled": true,
+            "amount": 1,
+            "fill": "#101318",
+            "fillOpacity": 1,
+            "border": "#2c323b",
+            "borderWidth": 1,
+            "radius": 6,
+            "margin": 6,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "oscilloscope-12",
+        "type": "oscilloscope",
+        "rect": {
+          "x": 0.02142857142857143,
+          "y": 0.86,
+          "w": 0.73,
+          "h": 0.09
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#7fd8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#ffb547"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#7fd8ff",
+          "angle": 90
+        },
+        "params": {
+          "dt": 10,
+          "tm": "Off",
+          "tl": 0,
+          "te": "Rising",
+          "ho": 0.0001,
+          "dl": -6,
+          "vo": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "backplate",
+            "enabled": true,
+            "amount": 1,
+            "fill": "#101318",
+            "fillOpacity": 1,
+            "border": "#2c323b",
+            "borderWidth": 1,
+            "radius": 6,
+            "margin": 6,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
       }
     ]
   }

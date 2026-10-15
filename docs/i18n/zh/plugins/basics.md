@@ -1,6 +1,6 @@
 ---
-title: "基础音频插件 - EffeTune"
-description: "包含 Bass Management、Volume、Mute、Stereo Balance、FIR Crossover、Matrix 路由等基础音频插件。"
+title: "基础音频插件 - 低音管理、声道路由与分频器 - EffeTune"
+description: "音量、左右平衡、极性与声道路由工具，以及用于低音炮的 Bass Management 和用于多功放扬声器系统的 FIR Crossover 与 Channel Divider。"
 lang: zh
 ---
 

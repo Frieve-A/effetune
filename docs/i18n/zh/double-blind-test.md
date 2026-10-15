@@ -1,5 +1,5 @@
 ---
-title: "Double Blind Test 使用方法 - EffeTune"
+title: "Double Blind Test 使用方法 - ABX 与 A/B 盲听测试 - EffeTune"
 description: "说明如何在 EffeTune 中对两个效果 Pipeline 进行 ABX Test 和 A/B Preference Test 盲听，并结合统计显著性确认结果。"
 lang: zh
 ---

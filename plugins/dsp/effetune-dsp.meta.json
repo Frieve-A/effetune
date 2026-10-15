@@ -1,6 +1,6 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:eff8c6eb1a98ab17efde5d180873e1a9bf54da5ed2ca119faed2266a36b31a1a",
+  "sourceDigest": "sha256:f0de667763acd1f7ed6ca95feb3abba69d857f31767fbf3a3c0afa089ec6596b",
   "emsdkVersion": "6.0.11",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
@@ -393,7 +393,7 @@
   "kernels": [
     {
       "name": "AnalogMeterPlugin",
-      "hash": 3236050637,
+      "hash": 2906474012,
       "byteCapacity": 0,
       "assets": []
     },
@@ -411,7 +411,7 @@
     },
     {
       "name": "NoteSpectrogramPlugin",
-      "hash": 2641392907,
+      "hash": 2948988679,
       "byteCapacity": 0,
       "assets": []
     },
@@ -927,7 +927,7 @@
     },
     {
       "name": "SFZNotePlayerPlugin",
-      "hash": 1301391717,
+      "hash": 932085547,
       "byteCapacity": 0,
       "assets": [
         {
@@ -1128,7 +1128,7 @@
     }
   ],
   "sizes": {
-    "baseline": 2230526,
-    "simd": 2398097
+    "baseline": 2693208,
+    "simd": 2864390
   }
 }

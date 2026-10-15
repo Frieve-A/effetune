@@ -1,6 +1,6 @@
 ---
-title: "Плагины сатурации - EffeTune"
-description: "Плагины сатурации и искажений: Saturation, Exciter, Hard Clipping и другие."
+title: "Плагины сатурации - Усиление баса, эксайтер и симулятор лампового усилителя - EffeTune"
+description: "Имитация лампового усилителя, Saturation, Exciter, Harmonic Distortion. Bandwidth Extender и Bass Extender создают новые высокочастотные и басовые компоненты."
 lang: ru
 ---
 

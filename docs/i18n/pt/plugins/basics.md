@@ -1,6 +1,6 @@
 ---
-title: "Plugins Básicos - EffeTune"
-description: "Plugins essenciais de áudio, incluindo Bass Management, Volume, Mute, Stereo Balance, FIR Crossover, roteamento Matrix e outros."
+title: "Plugins Básicos - Gerenciamento de graves, roteamento de canais e crossover - EffeTune"
+description: "Volume, equilíbrio, polaridade e roteamento; Bass Management para subwoofers; FIR Crossover e Channel Divider para sistemas de alto-falantes multiamplificados."
 lang: pt
 ---
 

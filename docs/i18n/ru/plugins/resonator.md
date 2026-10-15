@@ -1,6 +1,6 @@
 ---
 title: "Плагины резонаторов - EffeTune"
-description: "Плагины резонаторов: Adaptive Prediction, Horn Resonator и Modal Resonator."
+description: "Adaptive Prediction создаёт резонанс, обучаясь на звуке; Horn Resonator и Horn Resonator Plus — рупорная окраска; Modal Resonator — настроенные резонансы."
 lang: ru
 ---
 

@@ -1,6 +1,6 @@
 ---
-title: "Plugins Lo-Fi - EffeTune"
-description: "Plugins d'effets lo-fi incluant AM Radio Simulator, Bit Crusher, Noise Blender, Vinyl Artifacts et plus encore."
+title: "Plugins Lo-Fi - Simulation de cassette, MiniDisc, MP3, radio et vinyle - EffeTune"
+description: "Simulez cassette, bande à bobines, vinyle, MiniDisc (ATRAC), MP3, Bluetooth SBC, radio AM/FM/ondes courtes et son TV, ou ajoutez bit crushing, ronflement et bruit."
 lang: fr
 ---
 

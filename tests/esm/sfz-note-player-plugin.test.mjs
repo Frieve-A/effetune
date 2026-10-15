@@ -6,8 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import { PluginManager } from '../../js/plugin-manager.js';
 import { SFZ_DEFAULT_MAX_BYTES } from '../../js/sfz/limits.js';
+import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 
 const source = fs.readFileSync(new URL('../../plugins/others/sfz_note_player.js', import.meta.url), 'utf8');
+const axisSource = fs.readFileSync(new URL('../../plugins/frequency-axis.js', import.meta.url), 'utf8');
+const noteSource = fs.readFileSync(new URL('../../plugins/analyzer/note_spectrogram.js', import.meta.url), 'utf8');
 
 function createPlugin(service = {}, document, windowOptions = {}) {
   document ??= createDocument();
@@ -19,7 +22,24 @@ function createPlugin(service = {}, document, windowOptions = {}) {
       return Number.isFinite(Number(value)) ? Math.max(min, Math.min(max, Number(value))) : fallback;
     }
     getParameters() { return { type: this.constructor.name, enabled: this.enabled }; }
+    getWorkletPluginData(parameters = this.getParameters()) {
+      const packer = DSP_PARAM_PACKERS.get(this.constructor.name);
+      return { parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash };
+    }
     updateParameters() {}
+    onMessage() {}
+    canRunAnimation() { return this.enabled && this._sectionEnabled !== false && this._powerUiEnabled !== false; }
+    requestPowerAnimationFrame(callback) { return this.canRunAnimation() ? windowOptions.requestAnimationFrame?.(callback) ?? null : null; }
+    renderPowerUiOnce(callback) { if (!this.canRunAnimation()) callback(); }
+    createResponsiveGraph(options) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 880;
+      canvas.height = 176;
+      canvas.resize = dpr => options.onResize({ canvas, dpr });
+      const container = document.createElement('div');
+      container.appendChild(canvas);
+      return { canvas, container, dispose: () => { canvas.disposed = true; } };
+    }
     _registerUIControl() {}
     createParameterControl(label, min, max, step, value, setter, unit, key) {
       const row = document.createElement('div');
@@ -33,13 +53,25 @@ function createPlugin(service = {}, document, windowOptions = {}) {
       row.control = { label, checked, setter };
       return row;
     }
+    createRadioGroup(label, options, value, setter, key) {
+      const row = document.createElement('div');
+      row.controlKey = key;
+      row.control = { label, options, value, setter };
+      return row;
+    }
     clearWasmAsset(slot) { this.assets.delete(slot); }
     setWasmAsset(slot, descriptor) { this.assets.set(slot, descriptor); }
     getWasmAssets() { return this.assets; }
     cleanup() {}
   }
-  const window = { sfzLibraryService: service, ...windowOptions };
-  vm.runInNewContext(source, { PluginBase, window, document, console: { error() {} } }, {
+  const window = { sfzLibraryService: service, addEventListener() {}, removeEventListener() {}, ...windowOptions };
+  const sandbox = vm.createContext({ PluginBase, window, document, console: { error() {} },
+    performance: windowOptions.performance || performance,
+    cancelAnimationFrame: windowOptions.cancelAnimationFrame,
+    IntersectionObserver: windowOptions.IntersectionObserver });
+  vm.runInContext(axisSource, sandbox);
+  vm.runInContext(noteSource, sandbox);
+  vm.runInContext(source, sandbox, {
     filename: fileURLToPath(new URL('../../plugins/others/sfz_note_player.js', import.meta.url)),
     importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER
   });
@@ -354,7 +386,7 @@ test('SFZ controls open the library and clear the selection without deleting an 
   assert.equal(disposed, true);
 });
 
-function createDocument() {
+function createDocument(canvasContext = null) {
   const document = createFakeDocument();
   const createElement = document.createElement.bind(document);
   document.createElement = tag => {
@@ -366,10 +398,424 @@ function createDocument() {
       element.children = [];
       element.append(...children);
     };
+    element.removeEventListener = (type, listener) => {
+      element.eventListeners.set(type, (element.eventListeners.get(type) || []).filter(entry => entry !== listener));
+    };
+    if (tag === 'canvas') {
+      const pointers = new Set();
+      element.getContext = () => canvasContext;
+      element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 880, height: 176 });
+      element.setPointerCapture = id => pointers.add(id);
+      element.hasPointerCapture = id => pointers.has(id);
+      element.releasePointerCapture = id => pointers.delete(id);
+    }
     return element;
   };
   return document;
 }
+
+test('SFZ pointer preview holds a key, switches notes only on key changes, and uses the entry velocity', async () => {
+  const messages = [];
+  const leases = [];
+  let released = 0;
+  const plugin = createPlugin({ list: async () => [] }, createDocument(), {
+    workletNode: { port: { postMessage() { assert.fail('Use the power-aware update path'); } } },
+    audioManager: {
+      commitPowerTopologyMutation(message, options) { messages.push(message); assert.equal(options.reason, 'sfz-note-preview'); },
+      powerPolicyController: { started: true, acquireLease(reason, options) {
+        leases.push([reason, options.mode]);
+        return () => released++;
+      } }
+    }
+  });
+  plugin.mn = 60;
+  plugin.mx = 71;
+  plugin.setWasmAsset(0, prepared.descriptor);
+  plugin.createUI();
+  const canvas = plugin.canvas;
+  const rect = { left: 50, top: 20, width: 440, height: 88 };
+  canvas.getBoundingClientRect = () => rect;
+  const { keys, edge, gutter, blackDepth } = plugin._graphLayout();
+  const xAt = midi => {
+    const key = keys.find(key => key.midi === midi);
+    return (key.start + key.end) / 2;
+  };
+  const eventAt = (x, y, extras = {}) => ({ pointerId: 1, pointerType: 'touch', button: 0,
+    clientX: rect.left + x * rect.width / canvas.width,
+    clientY: rect.top + y * rect.height / canvas.height, preventDefault() {}, ...extras });
+  const play = (type, midi, y, extras) => canvas.dispatchEvent(type, eventAt(xAt(midi), y, extras));
+  await play('pointerdown', 60, edge + gutter * .9, { button: 2 });
+  assert.equal(messages.length, 0);
+  await play('pointerdown', 60, edge + gutter * .9);
+  assert.equal(canvas.hasPointerCapture(1), true);
+  assert.equal(messages.at(-1).plugin.parameters.pm, 60);
+  assert.equal(messages.at(-1).plugin.parameters.pv, 100);
+  await play('pointerdown', 64, edge / 2, { pointerId: 2 });
+  await play('pointermove', 60, edge / 2);
+  assert.equal(messages.length, 1, 'Moving vertically within one note retains its attack and velocity');
+  await play('pointermove', 61, edge + blackDepth / 2);
+  assert.equal(messages.at(-1).plugin.parameters.pm, 61, 'The black-key shape must match its drawing');
+  assert.equal(messages.at(-1).plugin.parameters.pv, 100);
+  await play('pointermove', 61, edge * .3);
+  assert.equal(messages.length, 2, 'Crossing into the graph on the same note must not retrigger');
+  await play('pointermove', 62, edge * (1 - 64 / 127));
+  assert.equal(messages.at(-1).plugin.parameters.pm, 62);
+  assert.equal(messages.at(-1).plugin.parameters.pv, 64);
+  await play('pointermove', 62, edge * .1);
+  assert.equal(messages.length, 3);
+  await canvas.dispatchEvent('pointermove', eventAt(canvas.width, 0));
+  assert.equal(messages.at(-1).plugin.parameters.pm, 71);
+  assert.equal(messages.at(-1).plugin.parameters.pv, 127);
+  assert.equal('pm' in plugin.getParameters(), false, 'Preview state must not be saved in presets');
+  assert.deepEqual(Array.from(messages.at(-1).plugin.wasmParams.slice(17)), [71, 127]);
+  await canvas.dispatchEvent('pointerup', eventAt(-100, -100));
+  assert.equal(messages.at(-1).plugin.parameters.pm, -1);
+  assert.equal(canvas.hasPointerCapture(1), false);
+  assert.deepEqual(leases, [['sfz-note-preview', 'force-active']]);
+  assert.equal(released, 1);
+  const white = keys.find(key => key.midi === 60);
+  await canvas.dispatchEvent('pointerdown', eventAt(white.whiteEnd - 1, edge + gutter * .9));
+  assert.equal(messages.at(-1).plugin.parameters.pm, 60, 'The white key continues beneath its neighboring black key');
+  assert.equal(messages.at(-1).plugin.parameters.pv, 100);
+  await canvas.dispatchEvent('pointercancel', { pointerId: 1 });
+  assert.equal(messages.at(-1).plugin.parameters.pm, -1);
+  plugin.cleanup();
+});
+
+test('SFZ preview releases on capture loss, blur, bank changes, disable, UI replacement and cleanup', async () => {
+  for (const end of ['capture', 'blur', 'bank', 'disable', 'replace', 'cleanup']) {
+    const messages = [];
+    const listeners = new Map();
+    const plugin = createPlugin({ list: async () => [] }, createDocument(), {
+      workletNode: { port: { postMessage: message => messages.push(message) } },
+      addEventListener: (type, listener) => listeners.set(type, listener),
+      removeEventListener: type => listeners.delete(type)
+    });
+    plugin.createUI();
+    const canvas = plugin.canvas;
+    plugin.sf = 'a'.repeat(24);
+    plugin.setWasmAsset(0, prepared.descriptor);
+    const { edge } = plugin._graphLayout();
+    await canvas.dispatchEvent('pointerdown', { pointerId: 5, button: 0, clientX: 200,
+      clientY: edge - .01, preventDefault() {} });
+    assert.equal(messages.at(-1).plugin.parameters.pv, 1);
+    if (end === 'capture') await canvas.dispatchEvent('lostpointercapture', { pointerId: 5 });
+    if (end === 'blur') listeners.get('blur')();
+    if (end === 'bank') plugin.setParameters({ sf: '' });
+    if (end === 'disable') plugin.setParameters({ enabled: false });
+    if (end === 'replace') plugin.createUI();
+    if (end === 'cleanup') plugin.cleanup();
+    assert.equal(messages.at(-1).plugin.parameters.pm, -1, end);
+    assert.equal(canvas.hasPointerCapture(5), false, end);
+    if (end === 'replace' || end === 'cleanup') {
+      const count = messages.length;
+      await canvas.dispatchEvent('pointerdown', { pointerId: 6, button: 0, clientX: 200,
+        clientY: 40, preventDefault() {} });
+      assert.equal(messages.length, count, 'Disposed canvases must not start new previews');
+    }
+    plugin.cleanup();
+  }
+});
+
+function voiceFrame(notes = [], limit = 32) {
+  const payload = new DataView(new ArrayBuffer(1028));
+  payload.setUint16(0, notes.reduce((sum, note) => sum + note.count, 0), true);
+  payload.setUint16(2, limit, true);
+  for (const { midi, count, velocity } of notes) {
+    payload.setUint16(4 + midi * 8, count, true);
+    payload.setFloat32(8 + midi * 8, velocity, true);
+  }
+  return { frameType: 30, formatVersion: 1, payload };
+}
+
+test('SFZ Color uses the Note Spectrogram palette for sounding keys and decaying bars without resetting them', () => {
+  const fills = [];
+  const context = {
+    fillRect(x, y, width, height) { fills.push({ color: this.fillStyle, x, y, width, height }); },
+    measureText: text => ({ width: text.length * 6 }),
+    createLinearGradient: () => ({ addColorStop() {} })
+  };
+  for (const method of ['strokeRect', 'strokeText', 'fillText', 'save', 'restore', 'translate',
+    'rotate', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'rect', 'clip', 'fill']) context[method] = () => {};
+  const palette = { 'graph-bg-deep': 'rgb(16,16,16)', 'graph-trace': 'rgb(30,180,120)',
+    'graph-label': 'rgb(200,200,200)', 'graph-grid-subtle': 'rgb(40,40,40)', 'text-primary': 'rgb(240,240,240)' };
+  const plugin = createPlugin({ list: async () => [] }, createDocument(context), {
+    performance: { now: () => 0 }, ThemePalette: { get: key => palette[key] }
+  });
+  const ui = plugin.createUI();
+  const controls = ui.children[0];
+  const color = controls.children.find(row => row.controlKey === 'cl').control;
+  assert.equal(color.label, 'Color');
+  assert.equal(color.value, 'Normal');
+  assert.deepEqual(Array.from(color.options, option => [option.value, option.label]),
+    [['Normal', 'Normal'], ['Rainbow', 'Note Colors']]);
+  plugin.handleTelemetry(voiceFrame([{ midi: 60, count: 1, velocity: .75 },
+    { midi: 61, count: 1, velocity: .5 }, { midi: 72, count: 1, velocity: .25 }]));
+  const { keys, edge } = plugin._graphLayout();
+  const bar = midi => {
+    const start = keys.find(key => key.midi === midi).start;
+    return fills.find(fill => fill.y < edge && fill.x === start + .5 && fill.width < plugin.canvas.width);
+  };
+  fills.length = 0;
+  plugin.drawGraph(0);
+  const initialHeight = bar(60).height;
+  assert.equal(bar(60).color, palette['graph-trace']);
+  fills.length = 0;
+  color.setter('Rainbow');
+  assert.equal(plugin.getParameters().cl, 'Rainbow');
+  assert.equal(bar(60).color, 'rgb(170,98,86)');
+  assert.equal(bar(61).color, 'rgb(161,105,57)');
+  assert.equal(bar(72).color, bar(60).color, 'The same note color repeats across octaves');
+  assert.equal(bar(60).height, initialHeight, 'Changing Color must preserve the velocity decay');
+  assert.ok(fills.some(fill => fill.y === edge && fill.color === 'rgb(170,98,86)'), 'The sounding white key uses its note color');
+  assert.ok(fills.some(fill => fill.y === edge && fill.color === 'rgb(161,105,57)'), 'The sounding black key uses its note color');
+  const restored = createPlugin();
+  restored.setParameters(plugin.getParameters());
+  assert.equal(restored.cl, 'Rainbow');
+  restored.setParameters({ cl: 'invalid' });
+  assert.equal(restored.cl, 'Rainbow');
+  assert.equal(createPlugin().getParameters().cl, 'Normal');
+  plugin.handleTelemetry(voiceFrame());
+  fills.length = 0;
+  plugin.drawGraph(1000);
+  assert.equal(bar(60).color, 'rgb(170,98,86)');
+  assert.ok(Math.abs(bar(60).height / initialHeight - Math.exp(-1)) < 1e-8);
+  fills.length = 0;
+  color.setter('Normal');
+  assert.equal(bar(60).color, palette['graph-trace']);
+  assert.equal(plugin._activeVoices, 0);
+  plugin.cleanup();
+});
+
+test('SFZ keyboard highlights sounding keys and its velocity bars decay independently of voice counts', () => {
+  const fills = [];
+  const lines = [];
+  const rotations = [];
+  const context = {
+    fillRect(x, y, width, height) { fills.push({ color: this.fillStyle, x, y, width, height }); },
+    strokeRect() {}, strokeText() {}, fillText(text, x, y) {
+      this.labels ??= [];
+      this.labels.push({ text, x, y, color: this.fillStyle, font: this.font,
+        align: this.textAlign, rotation: this.rotation || 0 });
+    },
+    measureText(text) {
+      return { width: Array.from(text, character => character === ' ' ? 3 : character === '1' ? 4 : 7)
+        .reduce((sum, width) => sum + width, 0) * parseFloat(this.font) / 12 };
+    },
+    save() { rotations.push(this.rotation || 0); }, restore() { this.rotation = rotations.pop(); },
+    translate() {}, rotate(angle) { this.rotation = (this.rotation || 0) + angle; },
+    beginPath() { this.path = []; }, moveTo(x, y) { this.path.push([x, y]); },
+    lineTo(x, y) { this.path.push([x, y]); },
+    stroke() { lines.push({ points: this.path, color: this.strokeStyle, width: this.lineWidth }); },
+    rect() {}, clip() {}, fill() {},
+    createLinearGradient: () => ({ addColorStop() {} })
+  };
+  let now = 0;
+  const colors = { 'graph-bg-deep': 'rgb(16,16,16)', 'graph-trace': 'rgb(30,180,120)',
+    'graph-label': 'rgb(200,200,200)', 'graph-grid-subtle': 'rgb(40,40,40)', 'text-primary': 'rgb(240,240,240)' };
+  const plugin = createPlugin({ list: async () => [] }, createDocument(context), {
+    performance: { now: () => now }, ThemePalette: { get: key => colors[key] }
+  });
+  plugin.createUI();
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Sounding SFZ notes/);
+  const edge = () => plugin.canvas.height - Math.min(12 * plugin.canvas.width / (plugin.mx - plugin.mn + 1) * (150 / (7 * 23.5) / 2), plugin.canvas.height / 2);
+  const draw = () => {
+    fills.length = 0;
+    lines.length = 0;
+    context.labels = [];
+    plugin.drawGraph(now);
+    return fills.filter(fill => fill.color === colors['graph-trace'] && fill.y < edge() - 1e-8 && fill.width < plugin.canvas.width);
+  };
+  plugin.handleTelemetry(voiceFrame([{ midi: 60, count: 2, velocity: 1 }, { midi: 61, count: 1, velocity: .5 }]));
+  const bars = draw();
+  assert.equal(bars[0].y, 0, 'Velocity 127 reaches the canvas top without reserving space for Voices');
+  assert.equal(bars[0].height, edge());
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Voices: 3 \/ 32/);
+  assert.ok(context.labels.some(label => label.text === 'Voices:' && label.x < 876 && label.y === 16));
+  assert.ok(context.labels.some(label => label.text === '3 / 32' && label.x === 876 && label.y === 16));
+  const title = context.labels.find(label => label.text === 'Velocity');
+  assert.equal(title.rotation, -Math.PI / 2);
+  assert.equal(title.font, '14px Arial');
+  assert.equal(title.color, colors['text-primary']);
+  for (const [index, velocity] of [32, 64, 96].entries()) {
+    const line = lines[index];
+    assert.equal(line.color, colors['graph-grid-subtle']);
+    assert.equal(line.width, 1);
+    assert.deepEqual(line.points.map(point => point[0]), [0, plugin.canvas.width]);
+    assert.ok(Math.abs(line.points[0][1] - (edge() - bars[0].height * velocity / 127)) < 1e-8);
+    assert.equal(line.points[0][1], line.points[1][1]);
+    const label = context.labels.find(label => label.text === `${velocity}`);
+    assert.equal(label.color, colors['graph-label']);
+    assert.equal(label.font, '12px Arial');
+    assert.equal(label.rotation, 0);
+    assert.ok(Math.abs(label.y - line.points[0][1] - 6) < 1e-8);
+  }
+  assert.equal(bars.length, 2);
+  assert.equal(bars[0].x, 440.5);
+  assert.equal(bars[1].x, 454.25);
+  assert.equal(bars[1].height, bars[0].height / 2);
+  assert.ok(fills.some(fill => fill.color === colors['graph-trace'] && Math.abs(fill.y - edge()) < 1e-8 && Math.abs(fill.height - (plugin.canvas.height - edge())) < 1e-8));
+  assert.ok(fills.some(fill => fill.color === colors['graph-trace'] && Math.abs(fill.y - edge()) < 1e-8 && fill.height < plugin.canvas.height - edge()));
+  now = 1000;
+  const decayed = draw();
+  assert.ok(Math.abs(decayed[0].height / bars[0].height - Math.exp(-1)) < 1e-8);
+  assert.equal(plugin._voiceCounts[60], 2, 'Sustaining and release voices stay lit while velocity decays');
+  plugin.handleTelemetry(voiceFrame([{ midi: 60, count: 1, velocity: .75 }]));
+  assert.ok(Math.abs(draw()[0].height - bars[0].height * .75) < 1e-8, 'A new attack refreshes the velocity bar');
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Voices: 1 \/ 32/);
+  colors['graph-bg-deep'] = 'rgb(255,255,255)';
+  draw();
+  assert.ok(fills.some(fill => fill.color === 'rgb(255,255,255)' && Math.abs(fill.y - edge()) < 1e-8));
+  plugin.setParameters({ mn: 60, mx: 72 });
+  plugin._clearVoiceDisplay();
+  plugin.handleTelemetry(voiceFrame([{ midi: 59, count: 1, velocity: .75 }, { midi: 73, count: 1, velocity: .5 }]));
+  assert.equal(draw().length, 0, 'Lowest Note and Highest Note limit the visible range');
+  plugin.handleTelemetry(voiceFrame([{ midi: 60, count: 1, velocity: .75 }, { midi: 72, count: 1, velocity: .5 }]));
+  const ranged = draw();
+  assert.equal(ranged.length, 2);
+  assert.equal(ranged[0].x, .5);
+  assert.ok(Math.abs(ranged[1].x - (880 * 12 / 13 + .5)) < 1e-8);
+  assert.equal(edge(), plugin.canvas.height / 2, 'The keyboard depth uses the same cross-axis limit as Note Spectrogram');
+  now += 250;
+  plugin.handleTelemetry(voiceFrame());
+  const tails = draw();
+  assert.equal(tails.length, 2, 'Velocity bars remain when the last sample voices finish');
+  assert.ok(Math.abs(tails[0].height - ranged[0].height * Math.exp(-.25)) < 1e-5);
+  assert.equal(plugin._voiceCounts[60], 0);
+  assert.equal(plugin._activeVoices, 0);
+  assert.ok(!fills.some(fill => fill.color === colors['graph-trace'] && fill.y >= edge()), 'Released keys are no longer lit');
+  now += 250;
+  plugin.handleTelemetry(voiceFrame());
+  assert.ok(Math.abs(draw()[0].height - ranged[0].height * Math.exp(-.5)) < 1e-5, 'Silent snapshots keep the same time decay');
+  now += 10000;
+  assert.equal(draw().length, 0);
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Voices: 0 \/ 32/);
+  plugin.handleTelemetry(voiceFrame([{ midi: 60, count: 1, velocity: .4 }]));
+  assert.ok(Math.abs(draw()[0].height - edge() * .4) < 1e-5, 'A new note starts at its own velocity');
+  plugin.setParameters({ mn: 61 });
+  assert.equal(draw().length, 0, 'A partially visible white key outside the note range cannot add a velocity bar');
+  plugin.handleTelemetry(voiceFrame());
+  plugin.setParameters({ pl: 64 });
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Voices: 0 \/ 64/);
+  plugin.canvas.width = 780;
+  plugin.canvas.height = 260;
+  plugin.canvas.resize(2);
+  draw();
+  assert.equal(context.labels.find(label => label.text === 'Velocity').font, '26px Arial');
+  assert.equal(context.labels.find(label => label.text === '64').font, '22px Arial');
+  assert.equal(lines[0].width, 2);
+  for (const dpr of [1, 2]) {
+    plugin.canvas.width = 390 * dpr;
+    plugin.canvas.height = 130 * dpr;
+    plugin.canvas.resize(dpr);
+    for (const [limit, counts] of [[9, [0, 1, 8, 9]], [32, [0, 1, 9, 10, 32]], [128, [0, 9, 10, 99, 100, 128]]]) {
+      plugin.setParameters({ pl: limit });
+      let labelX;
+      for (const count of counts) {
+        plugin.handleTelemetry(voiceFrame(count ? [{ midi: 60, count, velocity: .4 }] : [], limit));
+        draw();
+        const label = context.labels.find(label => label.text === 'Voices:');
+        const value = context.labels.find(label => label.text === `${count} / ${limit}`);
+        labelX ??= label.x;
+        assert.equal(label.x, labelX, `Voices label must stay fixed at ${count} / ${limit}`);
+        assert.equal(value.x, plugin.canvas.width - 4 * dpr);
+        assert.equal(label.y, 16 * dpr);
+        assert.equal(value.y, label.y);
+        assert.equal(label.align, 'right');
+        assert.equal(value.align, 'right');
+        assert.equal(label.font, `${11 * dpr}px Arial`);
+        assert.equal(value.font, label.font);
+        assert.equal(label.color, colors['graph-label']);
+        assert.equal(value.color, label.color);
+        assert.ok(label.x <= value.x - context.measureText(` ${value.text}`).width,
+          'The reserved space must fit the full count and keep a gap after the label');
+        assert.match(plugin.canvas.getAttribute('aria-label'), new RegExp(`Voices: ${count} / ${limit}`));
+      }
+    }
+  }
+  plugin.cleanup();
+});
+
+test('SFZ voice display rejects malformed snapshots and clears when the instrument or effect is disabled', () => {
+  const plugin = createPlugin({ list: async () => [] });
+  plugin.createUI();
+  const valid = voiceFrame([{ midi: 72, count: 1, velocity: .6 }]);
+  plugin.handleTelemetry(valid);
+  const invalid = [
+    { ...valid, frameType: 24 }, { ...valid, formatVersion: 2 },
+    { ...valid, payload: new DataView(new ArrayBuffer(4)) },
+    voiceFrame([{ midi: 60, count: 1, velocity: NaN }]),
+    voiceFrame([{ midi: 60, count: 1, velocity: 1.1 }]),
+    voiceFrame([{ midi: 60, count: 1, velocity: .5 }], 0)
+  ];
+  const inconsistent = voiceFrame([{ midi: 60, count: 1, velocity: .5 }]);
+  inconsistent.payload.setUint16(0, 2, true);
+  invalid.push(inconsistent);
+  for (const frame of invalid) {
+    plugin.handleTelemetry(frame);
+    assert.equal(plugin._voiceCounts[72], 1);
+    assert.equal(plugin._voiceCounts[60], 0);
+  }
+  plugin.sf = 'a'.repeat(24);
+  plugin.setParameters({ sf: '' });
+  assert.equal(plugin._activeVoices, 0);
+  plugin.handleTelemetry(valid);
+  plugin.setParameters({ enabled: false });
+  plugin.handleTelemetry(valid);
+  assert.equal(plugin._activeVoices, 0);
+  assert.match(plugin.canvas.getAttribute('aria-label'), /Voices: 0 \/ 32/);
+  plugin.cleanup();
+});
+
+test('SFZ display redraw and telemetry subscriptions follow visibility, power state, UI replacement and cleanup', () => {
+  const subscriptions = [];
+  const observers = [];
+  const callbacks = new Map();
+  let nextFrame = 0;
+  const plugin = createPlugin({ list: async () => [] }, createDocument(), {
+    dspTelemetryHub: { subscribe: (id, type, callback) => {
+      const entry = { id, type, callback, disposed: false };
+      subscriptions.push(entry);
+      return () => { entry.disposed = true; };
+    } },
+    IntersectionObserver: class {
+      constructor(callback) { this.callback = callback; observers.push(this); }
+      observe() {}
+      disconnect() { this.disconnected = true; }
+    },
+    requestAnimationFrame: callback => { callbacks.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame: id => callbacks.delete(id)
+  });
+  plugin.id = 17;
+  plugin.createUI();
+  assert.equal(callbacks.size, 0);
+  assert.equal(subscriptions.length, 1);
+  assert.equal(subscriptions[0].type, 30);
+  observers[0].callback([{ isIntersecting: true }]);
+  assert.equal(callbacks.size, 1);
+  observers[0].callback([{ isIntersecting: false }]);
+  assert.equal(callbacks.size, 0);
+  plugin._powerUiEnabled = false;
+  observers[0].callback([{ isIntersecting: true }]);
+  assert.equal(callbacks.size, 0);
+  plugin._powerUiEnabled = true;
+  const oldCanvas = plugin.canvas;
+  plugin.createUI();
+  assert.equal(oldCanvas.disposed, true);
+  assert.equal(observers[0].disconnected, true);
+  assert.equal(subscriptions.length, 1);
+  plugin.id = 18;
+  plugin.onMessage({});
+  assert.equal(subscriptions[0].disposed, true);
+  assert.equal(subscriptions[1].id, 18);
+  observers[1].callback([{ isIntersecting: true }]);
+  const canvas = plugin.canvas;
+  plugin.cleanup();
+  assert.equal(callbacks.size, 0);
+  assert.equal(observers[1].disconnected, true);
+  assert.equal(canvas.disposed, true);
+  assert.equal(subscriptions[1].disposed, true);
+});
 
 test('SFZ UI uses independent Dry/Wet controls and standard-width readable note names', async () => {
   const document = createDocument();
@@ -377,14 +823,14 @@ test('SFZ UI uses independent Dry/Wet controls and standard-width readable note 
   const ui = plugin.createUI();
   assert.match(ui.className, /plugin-parameter-ui/);
   assert.equal(plugin._status.getAttribute('role'), 'status');
-  const controls = ui.children.at(-1);
+  const controls = ui.children.find(child => child.className === 'sfz-controls analyzer-parameters');
   assert.equal(controls.className, 'sfz-controls analyzer-parameters');
-  assert.equal(controls.children.length, 19);
+  assert.equal(controls.children.length, 20);
   assert.equal(controls.children[0].className, 'parameter-row sfz-bank-row local-audio-only');
   assert.deepEqual(controls.children.filter(row => row.controlKey).map(row => row.controlKey),
-    ['hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'ss', 'og', 'tm']);
+    ['cl', 'hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'ss', 'og', 'tm']);
   for (const [index, key, label] of [[0, 'hi', 'Highest'], [1, 'md', 'Middle'], [2, 'lo', 'Lowest']]) {
-    const control = controls.children[index + 2].control;
+    const control = controls.children[index + 3].control;
     assert.equal(control.label, label);
     assert.equal(control.checked, true);
     control.setter(false);

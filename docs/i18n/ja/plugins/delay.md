@@ -1,5 +1,5 @@
 ---
-title: "ディレイプラグイン - EffeTune"
+title: "ディレイプラグイン - エコーとスピーカーのタイムアライメント - EffeTune"
 description: "標準的な Delay と、正確なタイミング調整用の Time Alignment を含むディレイエフェクトプラグイン。"
 lang: ja
 ---

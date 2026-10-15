@@ -1,6 +1,6 @@
 ---
-title: "Dynamics Plugins - EffeTune"
-description: "Dynamics processing plugins including Attack Tonal Balance, Compressor, Limiter, Gate, Multiband Compressor, and Transient Shaper."
+title: "Dynamics Plugins - Auto Volume Leveler, Compressor & Limiter - EffeTune"
+description: "Auto Leveler keeps a consistent listening level, while Brickwall Limiter, Compressor, Expander, Gate, Transient Shaper, multiband processors, and more shape dynamics."
 lang: en
 ---
 

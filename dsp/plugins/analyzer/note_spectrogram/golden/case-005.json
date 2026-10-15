@@ -13,7 +13,8 @@
   "seed": "0xeffe7a5a",
   "params": {
     "mn": 28,
-    "mx": 91
+    "mx": 91,
+    "te": false
   },
   "events": [],
   "tolerance": {
@@ -21,7 +22,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:a5730c974b819c81b0d2b4ec1c9c7ad3f6cb685c18a1c58ca2b9a12913195c5f",
+  "referenceHash": "sha256:ca6f93eeab6deeaee7d769b93f6e48f0e90a5c440dd7262749d69927e0262082",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type NoteSpectrogramPlugin --promote-production-native",
   "outputFloats": 1602,
   "byteLength": 6408,

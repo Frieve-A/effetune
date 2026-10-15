@@ -326,6 +326,12 @@ if((BUILD_TESTING AND NOT EMSCRIPTEN) OR ET_NATIVE_TEST_WARNING_CHECK)
     SOURCES plugins/analyzer/note_spectrogram/native_test.cpp
     INCLUDE_DIRS core
     WRAP_MALLOC)
+  if(NOT ET_NATIVE_TEST_WARNING_CHECK)
+    add_test(
+      NAME effetune_dsp_note_model_fixture
+      COMMAND effetune_dsp_note_spectrogram_tests --model-fixture
+              "${CMAKE_CURRENT_SOURCE_DIR}/plugins/analyzer/note_spectrogram/fixtures")
+  endif()
   et_add_dsp_test(
     effetune_dsp_sfz_note_player_tests
     SOURCES plugins/others/sfz_note_player/native_test.cpp

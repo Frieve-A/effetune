@@ -16,6 +16,11 @@ parentPort?.on('message', async message => {
     metadataModulePromise ??= import('music-metadata');
     metadataSupportPromise ??= loadMetadataSupport();
     const [metadata, support] = await Promise.all([metadataModulePromise, metadataSupportPromise]);
+    if (message.lyrics !== null) {
+      const result = await readTrackLyrics(message, metadata, support);
+      parentPort.postMessage({ type: 'result', requestId: message.requestId, result });
+      return;
+    }
     const candidate = createCandidate(message);
     const riffInfoTagsPromise = candidate.ext === 'wav'
       ? readRiffInfoTagsFromFile(message.filePath, support.readRiffInfoTagsFromReader).catch(() => [])
@@ -40,7 +45,7 @@ parentPort?.on('message', async message => {
 });
 
 function validateParseMessage(message) {
-  const expected = ['filePath', 'languageHints', 'relativePath', 'requestId', 'skipCovers', 'type'];
+  const expected = ['filePath', 'languageHints', 'lyrics', 'relativePath', 'requestId', 'skipCovers', 'type'];
   const actual = Object.keys(message).sort();
   if (actual.length !== expected.length || actual.some((field, index) => field !== expected[index])) {
     throw typedError('invalidMetadataRequest', 'Metadata parse request fields are invalid');
@@ -53,6 +58,22 @@ function validateParseMessage(message) {
   }
   if (typeof message.relativePath !== 'string' || !message.relativePath || message.relativePath.length > 32_768) {
     throw typedError('invalidMetadataRequest', 'Metadata relative path is invalid');
+  }
+  if (message.lyrics !== null) {
+    const lyrics = message.lyrics;
+    if (!lyrics || typeof lyrics !== 'object' || Array.isArray(lyrics) ||
+        Object.keys(lyrics).sort().join(',') !== 'names,region' ||
+        !Array.isArray(lyrics.names) || lyrics.names.length === 0 || lyrics.names.length > 8 ||
+        lyrics.names.some(name => typeof name !== 'string' || !name || name.length > 32_768)) {
+      throw typedError('invalidMetadataRequest', 'Metadata lyrics request is invalid');
+    }
+    const region = lyrics.region;
+    if (region !== null && (!region || typeof region !== 'object' || Array.isArray(region) ||
+        Object.keys(region).sort().join(',') !== 'end,start' ||
+        !Number.isFinite(region.start) || region.start < 0 ||
+        !(region.end === null || (Number.isFinite(region.end) && region.end > region.start)))) {
+      throw typedError('invalidMetadataRequest', 'Metadata lyrics region is invalid');
+    }
   }
   let encoded;
   try {
@@ -68,12 +89,43 @@ function validateParseMessage(message) {
 async function loadMetadataSupport() {
   const mapperPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/metadata-mapper.js')).href;
   const riffInfoPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/riff-info.js')).href;
-  const [mapper, riffInfo] = await Promise.all([import(mapperPath), import(riffInfoPath)]);
+  const lyricsPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/lyrics.js')).href;
+  const textEncodingPath = pathToFileURL(path.join(__dirname, '../js/library/metadata/text-encoding.js')).href;
+  const [mapper, riffInfo, lyrics, textEncoding] = await Promise.all([
+    import(mapperPath), import(riffInfoPath), import(lyricsPath), import(textEncodingPath)
+  ]);
   return {
+    ...lyrics,
+    TEXT_FILE_MAX_BYTES: textEncoding.TEXT_FILE_MAX_BYTES,
     createTrackFromMetadata: mapper.createTrackFromMetadata,
     shouldRetryDuration: mapper.shouldRetryDuration,
     readRiffInfoTagsFromReader: riffInfo.readRiffInfoTagsFromReader
   };
+}
+
+async function readTrackLyrics(message, metadata, support) {
+  const { names, region } = message.lyrics;
+  const embeddedPromise = metadata.parseFile(message.filePath, { duration: false, skipCovers: true })
+    .then(parsed => support.lyricsFromMetadata(parsed)).catch(() => null);
+  const sidecarPromise = (async () => {
+    const directory = path.dirname(message.filePath);
+    const match = support.findLyricsFileName(await fs.readdir(directory), names);
+    if (!match) return null;
+    const handle = await fs.open(path.join(directory, match.fileName), 'r');
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > support.TEXT_FILE_MAX_BYTES) return null;
+      const bytes = await readFileBytes(handle, 0, Number(stat.size));
+      return { data: support.lyricsFromLrcBytes(bytes), index: match.index };
+    } finally {
+      await handle.close();
+    }
+  })().catch(() => null);
+  const [embedded, sidecar] = await Promise.all([embeddedPromise, sidecarPromise]);
+  return { lyrics: support.selectLyrics({
+    embedded, sidecar: sidecar?.data ?? null,
+    perTrack: sidecar ? sidecar.index < names.length - 1 : false, region
+  }) };
 }
 
 function createCandidate(message) {

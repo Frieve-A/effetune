@@ -1463,7 +1463,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       activeCalls = calls;
       await manager.openMusicButton.click();
       const fileInput = [...document.allElements].find(element => element.type === 'file' && element.parentNode);
-      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.jpg,.png');
+      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.lrc,.jpg,.png');
       fileInput.files = [{ name: 'song.wav', async arrayBuffer() { return new ArrayBuffer(0); } }];
       await fileInput.dispatch('change', { target: fileInput });
       await flushMicrotasks();

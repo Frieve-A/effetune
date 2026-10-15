@@ -1,5 +1,5 @@
 ---
-title: "Delay Plugins - EffeTune"
+title: "Delay Plugins - Echo & Speaker Time Alignment - EffeTune"
 description: "Delay effect plugins including standard Delay and Time Alignment for precise audio timing."
 lang: en
 ---

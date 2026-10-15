@@ -1,3 +1,9 @@
+---
+title: "Pipeline Analyzer - 이펙트 체인의 주파수 응답과 위상 응답 - EffeTune"
+description: "Pipeline Analyzer는 실제로 들리는 소리를 바꾸지 않고 현재 Effect Pipeline의 주파수 응답, 위상, 군지연, 임펄스 응답을 측정합니다."
+lang: ko
+---
+
 # Pipeline Analyzer
 
 Pipeline Analyzer는 실제로 들리는 소리를 바꾸지 않고 현재 Effect Pipeline의 응답을 측정합니다. 넓은 창에서는 파이프라인 옆에, 좁은 창에서는 헤더 아래에 표시되므로 이펙트를 조정하면서 결과가 바뀌는 모습을 확인할 수 있습니다.

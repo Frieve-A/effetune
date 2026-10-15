@@ -12,6 +12,47 @@
 <meta name="description" content="{{ meta_description | strip_html | strip | escape }}">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="{{ page.url | absolute_url }}">
+{%- comment %}
+  Translations share their path below docs/ (English) and docs/i18n/<code>/; the English
+  overview at the site root pairs with each docs/i18n/<code>/index.md. Every scan of
+  site.pages converts all pages to Liquid, so the exact lookups search one prefiltered list.
+{% endcomment %}
+{%- assign translation_key = '' -%}
+{%- assign path_head = page.path | slice: 0, 5 -%}
+{%- if page.path == 'index.md' -%}
+  {%- assign translation_key = 'index.md' -%}
+{%- elsif page.path contains 'docs/i18n/' -%}
+  {%- assign locale_prefix = 'docs/i18n/' | append: page_lang | append: '/' -%}
+  {%- assign translation_key = page.path | remove_first: locale_prefix -%}
+{%- elsif path_head == 'docs/' -%}
+  {%- assign translation_key = page.path | remove_first: 'docs/' -%}
+{%- endif -%}
+{%- if translation_key != '' -%}
+  {%- assign translation_candidates = site.pages | where_exp: "item", "item.path contains translation_key" -%}
+  {%- assign translation_count = 0 -%}
+  {%- capture translation_links -%}
+    {%- for language in site.data.languages -%}
+      {%- if language.code == 'en' -%}
+        {%- if translation_key == 'index.md' -%}
+          {%- assign translation_path = 'index.md' -%}
+        {%- else -%}
+          {%- assign translation_path = 'docs/' | append: translation_key -%}
+        {%- endif -%}
+      {%- else -%}
+        {%- assign translation_path = 'docs/i18n/' | append: language.code | append: '/' | append: translation_key -%}
+      {%- endif -%}
+      {%- assign translation = translation_candidates | where: "path", translation_path | first -%}
+      {%- if translation -%}
+        {%- assign translation_count = translation_count | plus: 1 %}
+<link rel="alternate" hreflang="{{ language.code }}" href="{{ translation.url | absolute_url }}">
+        {%- if language.code == 'en' %}
+<link rel="alternate" hreflang="x-default" href="{{ translation.url | absolute_url }}">
+        {%- endif -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endcapture -%}
+  {%- if translation_count > 1 %}{{ translation_links }}{% endif -%}
+{%- endif %}
 <meta name="theme-color" content="#0b0f0e">
 
 <meta property="og:type" content="website">

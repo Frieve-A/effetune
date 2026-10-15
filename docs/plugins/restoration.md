@@ -1,5 +1,5 @@
 ---
-title: "Restoration Plugins - EffeTune"
+title: "Restoration Plugins - Click & Hum Removal, Noise Reduction - EffeTune"
 description: "Restoration effect plugins for clicks, clipped peaks, electrical hum, and steady background noise."
 lang: en
 ---

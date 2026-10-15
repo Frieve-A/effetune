@@ -55,7 +55,7 @@ Measurements are device-local references. A URL or preset stores the selected me
 ### Parameters
 
 - **Measurement** - Selects the shared saved frequency-response measurement used by any channel that has no per-channel override. The list shows its name, number of points, and `IR` when impulse-response data is available. Use **Refresh measurements** after adding or changing measurements.
-- **Measurement Ch N** - One optional override selector per channel handled by the instance's bus selection. Leave it at **(Shared)**, the default, to use Measurement above; assign a different saved measurement to give that channel its own filter. Leaving every channel at **(Shared)** reproduces the single shared-filter behavior exactly.
+- **Measurement ChN** - One optional override selector per channel handled by the instance's bus selection. Leave it at **(Shared)**, the default, to use Measurement above; assign a different saved measurement to give that channel its own filter. Leaving every channel at **(Shared)** reproduces the single shared-filter behavior exactly.
 - **Delay** - Adds 0 to 20 ms of manual delay to every channel routed through the instance. It is not included in the plugin's reported processing latency.
 - **Phase** - Selects how the FIR filter handles phase.
   - **Minimum** - Minimum-phase magnitude correction with the lowest added latency.

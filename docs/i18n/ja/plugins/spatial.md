@@ -1,5 +1,5 @@
 ---
-title: "空間オーディオプラグイン - EffeTune"
+title: "空間オーディオプラグイン - クロスフィード・クロストークキャンセル・ステレオ幅調整・アップミックス - EffeTune"
 description: "Crossfeed Filter、Crosstalk Cancellation、MS Matrix、Multiband Balance、Phase Select EQ、Spatial Mapper、Stereo Blendなどの空間オーディオプラグイン。"
 lang: ja
 ---
@@ -343,12 +343,12 @@ Balanceのグリッドは左右の比率で表示されます。レベル差と�
 - **Band 1～5 / チェックボックス** (Off/On): 編集するBandを選択し、設定を変えずに有効・無効を切り替えます。
 - **Gain** (0%～200%): Core内のレベル倍率を設定します。100%ではレベルを変更せず、0%では選択した成分を除去し、200%では振幅を2倍にします。
 - **Solo** (Off/On): SoloをOnにしたBandが選んでいる音だけを確認できます。有効なBandのいずれかでSoloがOnの間はGainが適用されず、SoloにしたBandの外側は無音になります。境界ではTransitionによる滑らかな減衰がそのまま働きます。複数のBandをSoloにすると、それぞれの選択範囲を合わせた音が出力されます。すべてのSoloをOffにすると、通常の処理に戻ります。
-- **Core Low Frequency / Core High Frequency** (20 Hz～40 kHz、現在のサンプルレートによる上限あり): 効果を100%適用する周波数範囲を設定します。
+- **Core Low Freq / Core High Freq** (20 Hz～40 kHz、現在のサンプルレートによる上限あり): 効果を100%適用する周波数範囲を設定します。
 - **Core Low Phase / Core High Phase** (0°～180°): 効果を100%適用するL/R絶対位相差の範囲を設定します。
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100%～+100%): Balanceの4つの境界を直接設定します。Coreの2値は効果を100%適用する左右の振幅バランス範囲、Outerの2値はTransitionが無処理に達する位置を決めます。負は左寄り、正は右寄りです。
-- **Low Frequency Transition / High Frequency Transition**: 周波数Coreの下側と上側で、効果が0～100%の間を移行する範囲を設定します。
-- **Low Phase Transition / High Phase Transition**: 0°側と180°側で、効果が0～100%の間を移行する範囲を設定します。
-マップ上のハンドル、スライダー、数値入力は同じ値を編集します。マウスでもタッチ操作でも、選択中のBandは外枠内のドラッグでBand全体が移動し、Coreの辺または隅のドラッグでサイズが変わり、外側の辺のハンドルで各Transitionを変更できます。低位相側のハンドルは中央を越えず、Core Low Phaseは0°、Low Phase Transitionは最大幅で停止します。Core Low Phaseがちょうど0°のときは中央のハンドルを最初に左右どちらへも動かせますが、いったん片側へ動かすと、そのドラッグが終わるまで同じ側に固定されます。
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100%～+100%): Balanceの4つの境界を直接設定します。Coreの2値は効果を100%適用する左右の振幅バランス範囲、Outerの2値はTransitionが無処理に達する位置を決めます。負は左寄り、正は右寄りです。
+- **Low Freq Trans / High Freq Trans**: 周波数Coreの下側と上側で、効果が0～100%の間を移行する範囲を設定します。
+- **Low Phase Trans / High Phase Trans**: 0°側と180°側で、効果が0～100%の間を移行する範囲を設定します。
+マップ上のハンドル、スライダー、数値入力は同じ値を編集します。マウスでもタッチ操作でも、選択中のBandは外枠内のドラッグでBand全体が移動し、Coreの辺または隅のドラッグでサイズが変わり、外側の辺のハンドルで各Transitionを変更できます。低位相側のハンドルは中央を越えず、Core Low Phaseは0°、Low Phase Transは最大幅で停止します。Core Low Phaseがちょうど0°のときは中央のハンドルを最初に左右どちらへも動かせますが、いったん片側へ動かすと、そのドラッグが終わるまで同じ側に固定されます。
 
 ## Spatial Mapper
 

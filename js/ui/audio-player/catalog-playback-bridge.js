@@ -15,6 +15,10 @@ const MAX_SAVE_QUEUE_SEGMENTS = 256;
 const PLAYBACK_START_TIMEOUT_MS = 45_000;
 
 export class CatalogPlaybackBridge {
+  resolveTrackSiblingFile(request) {
+    return this.sequenceClient.resolveTrackSiblingFile?.(request) ?? null;
+  }
+
   constructor({ uiManager, service, sequenceClient = service, runtime = 'web', requestFolderAccess = null } = {}) {
     if (!uiManager || typeof service?.start !== 'function') {
       throw new TypeError('Catalog playback bridge dependencies are invalid');

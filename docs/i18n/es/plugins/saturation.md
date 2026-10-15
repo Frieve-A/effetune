@@ -1,6 +1,6 @@
 ---
-title: "Plugins de saturación - EffeTune"
-description: "Plugins de saturación y distorsión como Saturation, Exciter, Hard Clipping y otros."
+title: "Plugins de saturación - Extensor de graves, excitador y simulador de válvulas - EffeTune"
+description: "Simulación de amplificador a válvulas, Saturation, Exciter y Harmonic Distortion; Bandwidth Extender y Bass Extender generan contenido nuevo en agudos y graves."
 lang: es
 ---
 

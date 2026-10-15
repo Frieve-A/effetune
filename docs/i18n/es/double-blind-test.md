@@ -1,5 +1,5 @@
 ---
-title: "Guía de Double Blind Test - EffeTune"
+title: "Guía de Double Blind Test - Pruebas de escucha a ciegas ABX y A/B - EffeTune"
 description: "Ejecuta pruebas de escucha a ciegas ABX y de preferencia A/B entre dos pipelines de efectos en EffeTune y revisa los resultados con significación estadística."
 lang: es
 ---

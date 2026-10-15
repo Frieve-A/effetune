@@ -1,7 +1,8 @@
 import { sha256Hex } from '../repository/sha256.js';
+import { decodeTextFileBytes, TEXT_FILE_MAX_BYTES } from './text-encoding.js';
 
 export const CUE_FRAMES_PER_SECOND = 75;
-export const CUE_MAX_BYTES = 1024 * 1024;
+export const CUE_MAX_BYTES = TEXT_FILE_MAX_BYTES;
 export const CUE_MAX_TEXT_CHARACTERS = 4096;
 export const CUE_MAX_RELATIVE_PATH_CHARACTERS = 32768;
 
@@ -15,7 +16,7 @@ export function decodeCueBytes(value) {
   if (bytes.byteLength > CUE_MAX_BYTES) return invalid('cue-too-large');
   if (bytes.byteLength === 0) return invalid('cue-empty');
   try {
-    return Object.freeze({ ok: true, text: decodeCueText(bytes) });
+    return Object.freeze({ ok: true, text: decodeTextFileBytes(bytes) });
   } catch {
     return invalid('cue-decode-failed');
   }
@@ -279,39 +280,6 @@ function parseText(value, { ellipsize = false } = {}) {
     return `${result.slice(0, prefixLength - (endsWithHighSurrogate ? 1 : 0))}...`;
   }
   return result;
-}
-
-function decodeCueText(bytes) {
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeUtf16(bytes.subarray(2), true);
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeUtf16(bytes.subarray(2), false);
-  const utf8Bytes = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? bytes.subarray(3) : bytes;
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(utf8Bytes);
-  } catch {
-    for (const encoding of ['shift_jis', 'windows-31j']) {
-      try {
-        return new TextDecoder(encoding, { fatal: true }).decode(bytes);
-      } catch {
-        // Try the next CP932-compatible label.
-      }
-    }
-    throw new TypeError('CUE text encoding is unsupported');
-  }
-}
-
-function decodeUtf16(bytes, littleEndian) {
-  if (bytes.byteLength % 2 !== 0) throw new TypeError('Invalid UTF-16 byte length');
-  const characters = new Uint16Array(bytes.byteLength / 2);
-  for (let offset = 0; offset < bytes.byteLength; offset += 2) {
-    characters[offset / 2] = littleEndian
-      ? bytes[offset] | (bytes[offset + 1] << 8)
-      : (bytes[offset] << 8) | bytes[offset + 1];
-  }
-  const chunks = [];
-  for (let offset = 0; offset < characters.length; offset += 0x8000) {
-    chunks.push(String.fromCharCode(...characters.subarray(offset, offset + 0x8000)));
-  }
-  return chunks.join('');
 }
 
 function isSafeCueFileReference(reference) {

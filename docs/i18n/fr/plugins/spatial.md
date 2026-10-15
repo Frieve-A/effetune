@@ -1,5 +1,5 @@
 ---
-title: "Plugins Spatial - EffeTune"
+title: "Plugins Spatial - Crossfeed, annulation de diaphonie, largeur stéréo et upmix - EffeTune"
 description: "Plugins audio spatiaux incluant Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Spatial Mapper et Stereo Blend."
 lang: fr
 ---
@@ -319,13 +319,13 @@ Ces plages de phase indiquent des tendances courantes, pas des positions fixes d
 - **Band 1-5 / case à cocher** (Off/On) : Sélectionne un Band à modifier et l'active ou le désactive sans changer ses réglages.
 - **Gain** (0 % à 200 %) : Définit le multiplicateur de niveau dans le Core. 100 % ne change pas le niveau, 0 % supprime la composante sélectionnée et 200 % double son amplitude.
 - **Solo** (Off/On) : Permet d'écouter uniquement ce que sélectionnent les Band en Solo. Tant qu'un Band actif a Solo sur On, Gain n'est pas appliqué et tout ce qui se trouve hors de ces Band est coupé, avec le même fondu progressif du Transition sur les bords. Mettre plusieurs Band en Solo laisse entendre la combinaison de leurs zones. Désactiver tous les Solo rétablit le traitement normal.
-- **Core Low Frequency / Core High Frequency** (20 Hz à 40 kHz, selon la limite de la fréquence d'échantillonnage) : Définissent la plage de fréquences traitée à 100 %.
+- **Core Low Freq / Core High Freq** (20 Hz à 40 kHz, selon la limite de la fréquence d'échantillonnage) : Définissent la plage de fréquences traitée à 100 %.
 - **Core Low Phase / Core High Phase** (0° à 180°) : Définissent la plage absolue de différence de phase G/D traitée à 100 %.
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% à +100%) : Définissent directement les quatre limites de Balance. La paire Core fixe la plage d'équilibre gauche/droite traitée à 100% ; la paire Outer fixe l'endroit où la Transition n'applique plus aucun traitement. Les valeurs négatives favorisent la gauche et les positives la droite.
-- **Low Frequency Transition / High Frequency Transition** : Définissent l'étendue du fondu sous et au-dessus du Core fréquentiel.
-- **Low Phase Transition / High Phase Transition** : Définissent l'étendue du fondu vers 0° et 180°.
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% à +100%) : Définissent directement les quatre limites de Balance. La paire Core fixe la plage d'équilibre gauche/droite traitée à 100% ; la paire Outer fixe l'endroit où la Transition n'applique plus aucun traitement. Les valeurs négatives favorisent la gauche et les positives la droite.
+- **Low Freq Trans / High Freq Trans** : Définissent l'étendue du fondu sous et au-dessus du Core fréquentiel.
+- **Low Phase Trans / High Phase Trans** : Définissent l'étendue du fondu vers 0° et 180°.
 
-Les poignées de la carte, les curseurs et les champs numériques modifient les mêmes valeurs. À la souris ou au toucher, faites glisser l'intérieur du cadre extérieur du Band sélectionné pour déplacer tout le Band, les bords ou les coins du Core pour le redimensionner, et les poignées du bord extérieur pour régler chaque Transition séparément. Une poignée de phase basse s'arrête au centre : Core Low Phase s'arrête à 0° et Low Phase Transition à sa largeur maximale. Si Core Low Phase vaut exactement 0°, la poignée centrale peut d'abord partir d'un côté ou de l'autre ; après le premier mouvement, elle reste verrouillée de ce côté jusqu'à la fin du glissement.
+Les poignées de la carte, les curseurs et les champs numériques modifient les mêmes valeurs. À la souris ou au toucher, faites glisser l'intérieur du cadre extérieur du Band sélectionné pour déplacer tout le Band, les bords ou les coins du Core pour le redimensionner, et les poignées du bord extérieur pour régler chaque Transition séparément. Une poignée de phase basse s'arrête au centre : Core Low Phase s'arrête à 0° et Low Phase Trans à sa largeur maximale. Si Core Low Phase vaut exactement 0°, la poignée centrale peut d'abord partir d'un côté ou de l'autre ; après le premier mouvement, elle reste verrouillée de ce côté jusqu'à la fin du glissement.
 
 ## Spatial Mapper
 

@@ -5,6 +5,7 @@ const SPECTRUM_FRAME = 4;
 const SPECTROGRAM_FRAME = 5;
 const STEREO_FRAME = 6;
 const NOTE_SPECTROGRAM_FRAME = 24;
+const NOTE_TIMBRE_FRAME = 31;
 const NOTE_SPECTROGRAM_REVISION_PLANES = [[2, 5312, 5316], [4, 7076, 7080], [8, 28, 3552]];
 const PITCH_METER_FRAME = 26;
 const ANALOG_METER_FRAME = 27;
@@ -17,6 +18,7 @@ const TONAL_BALANCE_PAYLOAD_BYTES = 1564;
 const TONAL_BALANCE_BANDS = 41;
 const TONAL_BALANCE_GRID_POINTS = 128;
 const ANALOG_METER_LOUDNESS_MODE = 5;
+const ANALOG_METER_MODE_COUNT = 7;
 const ANALOG_METER_MIN_DB = -240;
 const PITCH_METER_MIN_DETECTED_MIDI = 20.5;
 const PITCH_METER_MAX_DETECTED_MIDI = 108.5;
@@ -30,7 +32,7 @@ const ANALYZER_FRAMES = Object.freeze({
   AnalogMeter: [ANALOG_METER_FRAME, [1]],
   ChromaSpiral: [SPECTRUM_FRAME, [2]],
   LevelMeter: [LEVEL_FRAME, [1]],
-  NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, [5]],
+  NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, [6]],
   Oscilloscope: [SCOPE_FRAME, [2, 3]],
   PitchMeter: [PITCH_METER_FRAME, [1]],
   RhythmAnalyzer: [RHYTHM_ANALYZER_FRAME, [1, 3, 4]],
@@ -347,8 +349,39 @@ function decodeMultiresHq(payload, node, sequence, dropped, frameType) {
   };
 }
 
+function decodeNoteTimbre(payload, node, sequence, dropped) {
+  if (payload.byteLength !== 80) return null;
+  const sampleRate = payload.getFloat32(0, true);
+  const timeSeconds = payload.getFloat32(4, true);
+  const hopSeconds = payload.getFloat32(8, true);
+  const generation = payload.getUint32(12, true);
+  const frameIndex = payload.getUint32(16, true);
+  const noteId = payload.getUint32(20, true);
+  const midi = payload.getUint32(24, true);
+  const eventCode = payload.getUint32(28, true);
+  const startFrameIndex = payload.getUint32(32, true);
+  const endFrameIndex = payload.getUint32(36, true);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Number.isFinite(timeSeconds) ||
+      timeSeconds < 0 || !Number.isFinite(hopSeconds) || hopSeconds <= 0 || generation === 0 ||
+      noteId === 0 || midi < 21 || midi > 108 || eventCode < 1 || eventCode > 3 ||
+      payload.getUint32(76, true) !== 0 || ((frameIndex - startFrameIndex) >>> 0) >= 0x80000000) return null;
+  const probabilities = new Float32Array(9);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    const value = payload.getFloat32(40 + i * 4, true);
+    if (!Number.isFinite(value) || value < 0 || value > 1) return null;
+    probabilities[i] = value;
+    sum += value;
+  }
+  if (eventCode === 2 && Math.abs(sum - 1) > .001) return null;
+  return { ...common(node, 'noteTimbre', sequence, dropped), sampleRate, timeSeconds, hopSeconds,
+    generation, frameIndex, noteId, midi, event: ['start', 'result', 'end'][eventCode - 1],
+    startFrameIndex, endFrameIndex: endFrameIndex === 0xffffffff ? null : endFrameIndex,
+    probabilities: eventCode === 2 ? probabilities : null };
+}
+
 function decodeNoteSpectrogram(payload, node, sequence, dropped) {
-  if (payload.byteLength !== 8840) return null;
+  if (payload.byteLength !== 9192) return null;
   const sampleRate = payload.getFloat32(0, true);
   const timeSeconds = payload.getFloat32(4, true);
   const pitchCount = payload.getUint16(8, true);
@@ -376,6 +409,12 @@ function decodeNoteSpectrogram(payload, node, sequence, dropped) {
     if (!Number.isFinite(volume)) return null;
     volumeDb[pitch] = volume;
   }
+  const pitchCents = new Float32Array(88);
+  for (let note = 0; note < pitchCents.length; note++) {
+    const cents = payload.getFloat32(8840 + note * 4, true);
+    if (!Number.isFinite(cents)) return null;
+    pitchCents[note] = cents;
+  }
   const revisions = [];
   for (const [expectedAge, ageOffset, levelsOffset] of NOTE_SPECTROGRAM_REVISION_PLANES) {
     const age = payload.getUint32(ageOffset, true);
@@ -402,6 +441,7 @@ function decodeNoteSpectrogram(payload, node, sequence, dropped) {
     revisionAge,
     levels,
     volumeDb,
+    pitchCents,
     revisedLevels,
     revisions
   };
@@ -458,7 +498,7 @@ function decodeAnalogMeter(payload, node, sequence, dropped) {
   const flags = payload.getUint16(2, true);
   const loudness = mode === ANALOG_METER_LOUDNESS_MODE;
   const programOffset = 4 + channelCount * 8;
-  if (mode > ANALOG_METER_LOUDNESS_MODE || channelCount < 1 || channelCount > 16 ||
+  if (mode >= ANALOG_METER_MODE_COUNT || channelCount < 1 || channelCount > 16 ||
       (flags & ~(loudness ? 3 : 0)) !== 0 ||
       payload.byteLength !== programOffset + (loudness ? 24 : 0)) {
     return null;
@@ -745,6 +785,8 @@ function decodePayload(frameType, formatVersion, payload, node, sequence, droppe
       return decodeStereo(payload, node, sequence, dropped);
     case NOTE_SPECTROGRAM_FRAME:
       return decodeNoteSpectrogram(payload, node, sequence, dropped);
+    case NOTE_TIMBRE_FRAME:
+      return decodeNoteTimbre(payload, node, sequence, dropped);
     case PITCH_METER_FRAME:
       return decodePitchMeter(payload, node, sequence, dropped);
     case ANALOG_METER_FRAME:
@@ -778,7 +820,8 @@ export function decodeTelemetryPacket(packet, bytes, nodesByTap, initialDropped 
     if (frameBytes > bytes - offset) break;
     const node = nodesByTap.get(tapId);
     const expected = node ? ANALYZER_FRAMES[node.effectType] : null;
-    if (expected?.[0] === frameType && expected[1].includes(formatVersion)) {
+    if ((expected?.[0] === frameType && expected[1].includes(formatVersion)) ||
+        (node?.effectType === 'NoteSpectrogram' && frameType === NOTE_TIMBRE_FRAME && formatVersion === 1)) {
       const payload = new DataView(
         packet.buffer,
         packet.byteOffset + offset + HEADER_BYTES,

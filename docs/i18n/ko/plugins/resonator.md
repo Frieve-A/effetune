@@ -1,6 +1,6 @@
 ---
 title: "레조네이터 플러그인 - EffeTune"
-description: "Adaptive Prediction, Horn Resonator, Modal Resonator를 포함한 공명 이펙트입니다."
+description: "Adaptive Prediction은 오디오를 학습해 변화하는 공명음을 만듭니다. Horn Resonator와 Horn Resonator Plus는 혼 스피커 특성을, Modal Resonator는 조율된 공명을 더합니다."
 lang: ko
 ---
 

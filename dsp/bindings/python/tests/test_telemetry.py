@@ -174,13 +174,15 @@ def _pitch_packet(midi: float) -> bytes:
 
 
 def _note_packet(revision_age: int = 8) -> bytearray:
-    packet = bytearray(16 + 8840)
-    struct.pack_into("<HHIIH", packet, 0, 24, 5, 2, 17, 8840)
+    packet = bytearray(16 + 9192)
+    struct.pack_into("<HHIIH", packet, 0, 24, 6, 2, 17, 9192)
     struct.pack_into(
         "<ffHHfIIII", packet, 16, 48_000.0, 1.0, 440, 21, 0.02, 50, 5, 3, revision_age
     )
     for offset, value in ((32, 0.75), (1788, 0.25), (1792, -12.0), (3548, -240.0)):
         struct.pack_into("<f", packet, 16 + offset, value)
+    struct.pack_into("<f", packet, 16 + 8840, -13.375)
+    struct.pack_into("<f", packet, 16 + 9188, 27.125)
     if revision_age != 0:
         struct.pack_into("<f", packet, 16 + 3552, 0.5)
         struct.pack_into("<f", packet, 16 + 5308, 1.0)
@@ -205,7 +207,35 @@ def _analog_meter_packet(
 
 
 class TelemetryDecoderTests(unittest.TestCase):
-    def test_note_spectrogram_v5_decodes_owned_revised_confidences(self) -> None:
+    def test_note_timbre_identity_and_probabilities(self) -> None:
+        for event in (1, 2, 3):
+            packet = bytearray(96)
+            struct.pack_into("<HHIIH", packet, 0, 31, 1, 2, 0, 80)
+            struct.pack_into("<fff7I", packet, 16, 96000, 1.08, .02, 7, 54, 12, 60, event,
+                             50, 54 if event == 3 else 0xffffffff)
+            if event == 2:
+                struct.pack_into("<9f", packet, 56, .2, 0, 0, 0, 0, 0, 0, 0, .8)
+            frames, pending = _decode_telemetry_packet(packet, {2: ("NoteSpectrogram", "notes", 0)}, 2)
+            self.assertEqual(pending, 0)
+            self.assertEqual(len(frames), 1)
+            frame = frames[0]
+            self.assertIsInstance(frame, effetune.NoteTimbreTelemetryFrame)
+            self.assertEqual((frame.generation, frame.note_id, frame.midi, frame.start_frame_index), (7, 12, 60, 50))
+            self.assertEqual(frame.event, ("start", "result", "end")[event - 1])
+            self.assertEqual(frame.end_frame_index, 54 if event == 3 else None)
+            if event == 2:
+                self.assertAlmostEqual(frame.probabilities[8], .8)
+                packet[:] = bytes(len(packet))
+                self.assertAlmostEqual(frame.probabilities[8], .8)
+            else:
+                self.assertIsNone(frame.probabilities)
+
+        struct.pack_into("<HHIIH", packet, 0, 31, 1, 2, 0, 80)
+        struct.pack_into("<fff7I", packet, 16, 96000, 1.08, .02, 7, 54, 12, 60, 2, 50, 0xffffffff)
+        struct.pack_into("<9f", packet, 56, .2, 0, 0, 0, 0, 0, 0, 0, .3)
+        self.assertEqual(_decode_telemetry_packet(packet, {2: ("NoteSpectrogram", "notes", 0)}, 2), ([], 2))
+
+    def test_note_spectrogram_v6_preserves_owned_estimated_cents_and_revisions(self) -> None:
         packet = _note_packet()
         frames, pending = _decode_telemetry_packet(
             packet, {2: ("NoteSpectrogram", "notes", 0)}, 2
@@ -220,13 +250,15 @@ class TelemetryDecoderTests(unittest.TestCase):
         self.assertEqual(frame.revision_age, 8)
         self.assertEqual((len(frame.levels), frame.levels[0], frame.levels[-1]), (440, 0.75, 0.25))
         self.assertEqual((len(frame.volume_db), frame.volume_db[0], frame.volume_db[-1]), (440, -12, -240))
+        self.assertEqual((len(frame.pitch_cents), frame.pitch_cents[0], frame.pitch_cents[-1]), (88, -13.375, 27.125))
         self.assertEqual((len(frame.revised_levels), frame.revised_levels[0], frame.revised_levels[-1]), (440, 0.5, 1))
         self.assertEqual([(revision.age, revision.levels[0]) for revision in frame.revisions], [(2, 0.25), (4, 0.75), (8, 0.5)])
         packet[:] = bytes(len(packet))
         self.assertEqual((frame.levels[0], frame.volume_db[0], frame.revised_levels[0]), (0.75, -12, 0.5))
+        self.assertEqual(frame.pitch_cents[0], -13.375)
         self.assertEqual((frame.revisions[0].levels[0], frame.revisions[1].levels[0]), (0.25, 0.75))
 
-    def test_note_spectrogram_v5_has_no_revision_during_warmup(self) -> None:
+    def test_note_spectrogram_v6_exposes_estimated_cents_before_revisions(self) -> None:
         frames, _ = _decode_telemetry_packet(
             _note_packet(0), {2: ("NoteSpectrogram", "notes", 0)}, 0
         )
@@ -234,8 +266,9 @@ class TelemetryDecoderTests(unittest.TestCase):
         self.assertEqual(frames[0].revision_age, 0)
         self.assertIsNone(frames[0].revised_levels)
         self.assertEqual(frames[0].revisions, ())
+        self.assertEqual(frames[0].pitch_cents[-1], 27.125)
 
-    def test_note_spectrogram_rejects_invalid_revisions_and_obsolete_frames(self) -> None:
+    def test_note_spectrogram_rejects_invalid_revisions_cents_and_obsolete_frames(self) -> None:
         for format_string, offset, value in (
             ("<I", 44, 7),
             ("<f", 3568, math.nan),
@@ -245,7 +278,11 @@ class TelemetryDecoderTests(unittest.TestCase):
             ("<f", 5332, math.nan),
             ("<I", 7092, 2),
             ("<f", 7096, 1.1),
+            ("<f", 8856, math.nan),
+            ("<f", 9204, math.inf),
             ("<H", 2, 3),
+            ("<H", 2, 5),
+            ("<H", 12, 8840),
             ("<H", 12, 3548),
         ):
             with self.subTest(offset=offset, value=value):
@@ -280,6 +317,11 @@ class TelemetryDecoderTests(unittest.TestCase):
         self.assertIsNone(peak.program)
         self.assertEqual(peak.dropped, 2)
 
+        (custom,) = decode(_analog_meter_packet(6, [(-18.0, -17.5)]))
+        self.assertEqual(custom.mode, 6)
+        self.assertEqual(custom.channels, (AnalogMeterTelemetryChannel(-18.0, -17.5),))
+        self.assertIsNone(custom.program)
+
         (loudness,) = decode(
             _analog_meter_packet(
                 5, [(-23.0, -24.0)], 3, (-23.0, -23.5, -23.0, 7.0, -1.5, 12.0)
@@ -306,7 +348,7 @@ class TelemetryDecoderTests(unittest.TestCase):
 
         program = (-23.0, -23.0, 0.0, 0.0, -1.0, 0.0)
         for name, packet in (
-            ("unknown mode", _analog_meter_packet(6, [(-6.0, -6.0)])),
+            ("unknown mode", _analog_meter_packet(7, [(-6.0, -6.0)])),
             ("no channels", _analog_meter_packet(0, [])),
             ("17 channels", _analog_meter_packet(0, [(-6.0, -6.0)] * 17)),
             ("loudness flags outside Loudness", _analog_meter_packet(0, [(-6.0, -6.0)], 1)),

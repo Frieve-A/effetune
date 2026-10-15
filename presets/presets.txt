@@ -29,6 +29,7 @@ spatial/live: Live | Spatial | Reverberation at live venues and deterioration of
 spkr_sim/vintage_full_range: Vintage Full Range | Spkr. Sim. | Narrowband, split-frequency and Doppler distortion in vintage full-range speakers
 utils/bgm: BGM | Utils | Reduce the volume by 24dB from 85dB SPL and compensate for the bass
 visualize/all_analyzers: All Analyzers | Visualize | Visualize every corner of your music with all the analyzers
+visualize/instrument_colors: Instrument Colors | Visualize | Follow estimated vocal, bass, and other instrument groups in a piano roll
 4ch/matrix: Matrix | 4ch | Rear speakers play back center-cancelled, band-limited and delayed signals
 4ch/rear_reverb: Rear Reverb | 4ch | Stereo sources are played directly from the front speakers, while the reverberation is output from the rear speakers
 others/dsd_noise_listening : DSD Noise Listening | Others | Shifts high-frequency noise above 20kHz down 4 octaves to the audible range

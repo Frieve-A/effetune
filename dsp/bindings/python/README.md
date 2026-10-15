@@ -187,6 +187,10 @@ not a public API.
 Note Spectrogram's `revisions` contains updates for observations 2, 4, and 8
 analysis hops earlier (40, 80, and 160 ms). Each entry has `age` and `levels`.
 `revision_age` and `revised_levels` describe the final 160 ms update.
+`pitch_cents` contains 88 current-frame estimated cent offsets, without rounding
+to the confidence grid. Index `n` corresponds to MIDI `21 + n`; its estimated
+pitch is MIDI `21 + n + pitch_cents[n] / 100`. Confidence revisions do not change
+these offsets.
 
 Effects whose catalog marks `impulseResponse` as required need an asset
 reference and an asset resolver. FIR filter effects use prepared coefficient

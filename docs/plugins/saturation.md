@@ -1,6 +1,6 @@
 ---
-title: "Saturation Plugins - EffeTune"
-description: "Saturation and restoration plugins including Bandwidth Extender, Saturation, Exciter, Hard Clipping, and more."
+title: "Saturation Plugins - Bass Extender, Exciter & Tube Amp Simulator - EffeTune"
+description: "Tube amplifier simulation, Saturation, Exciter, and Harmonic Distortion, plus Bandwidth Extender and Bass Extender, which generate new high-frequency and bass content."
 lang: en
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "브라우저 확장 프로그램 - EffeTune"
+title: "브라우저 확장 프로그램 - Chrome·Edge용 이퀄라이저와 오디오 이펙트 - EffeTune"
 description: "브라우저 확장 프로그램은 최대 네 개 탭의 오디오를 각각 독립된 스테레오 Effect Pipeline으로 동시에 처리합니다."
 lang: ko
 ---

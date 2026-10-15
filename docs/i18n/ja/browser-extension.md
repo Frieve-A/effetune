@@ -1,5 +1,5 @@
 ---
-title: "ブラウザ拡張版 - EffeTune"
+title: "ブラウザ拡張版 - ChromeとEdgeで使えるイコライザーとオーディオエフェクト - EffeTune"
 description: "EffeTune ブラウザ拡張版で最大4つのタブの音声を加工し、URL別プリセットとサンプリング周波数を設定する方法。"
 lang: ja
 ---

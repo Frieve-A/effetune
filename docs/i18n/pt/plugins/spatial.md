@@ -1,5 +1,5 @@
 ---
-title: "Plugins de Áudio Espacial - EffeTune"
+title: "Plugins de Áudio Espacial - Crossfeed, cancelamento de diafonia, largura estéreo e upmix - EffeTune"
 description: "Plugins de áudio espacial, incluindo Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Spatial Mapper e Stereo Blend."
 lang: pt
 ---
@@ -319,13 +319,13 @@ Essas faixas de fase representam tendências comuns, não posições fixas das f
 - **Band 1-5 / caixa de seleção** (Off/On): Seleciona um Band para edição e o ativa ou desativa sem alterar seus ajustes.
 - **Gain** (0% a 200%): Define o multiplicador de nível dentro do Core. 100% não altera o nível, 0% remove o componente selecionado e 200% duplica sua amplitude.
 - **Solo** (Off/On): Permite ouvir apenas o que os Band em Solo selecionam. Enquanto algum Band ativo estiver com Solo em On, o Gain não é aplicado e tudo o que fica fora desses Band é silenciado, com o mesmo desvanecimento suave do Transition nas bordas. Ativar o Solo em vários Band deixa passar a combinação de suas regiões. Desligar todos os Solo restaura o processamento normal.
-- **Core Low Frequency / Core High Frequency** (20 Hz a 40 kHz, respeitando o limite da taxa de amostragem atual): Definem a faixa de frequência processada a 100%.
+- **Core Low Freq / Core High Freq** (20 Hz a 40 kHz, respeitando o limite da taxa de amostragem atual): Definem a faixa de frequência processada a 100%.
 - **Core Low Phase / Core High Phase** (0° a 180°): Definem a faixa absoluta de diferença de fase L/R processada a 100%.
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% a +100%): Definem diretamente os quatro limites de Balance. O par Core define a faixa de balanço entre esquerda e direita processada a 100%; o par Outer define onde a Transition chega a não aplicar processamento. Valores negativos selecionam à esquerda e positivos à direita.
-- **Low Frequency Transition / High Frequency Transition**: Definem quanto o efeito diminui abaixo e acima do Core de frequência.
-- **Low Phase Transition / High Phase Transition**: Definem quanto o efeito diminui em direção a 0° e 180°.
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% a +100%): Definem diretamente os quatro limites de Balance. O par Core define a faixa de balanço entre esquerda e direita processada a 100%; o par Outer define onde a Transition chega a não aplicar processamento. Valores negativos selecionam à esquerda e positivos à direita.
+- **Low Freq Trans / High Freq Trans**: Definem quanto o efeito diminui abaixo e acima do Core de frequência.
+- **Low Phase Trans / High Phase Trans**: Definem quanto o efeito diminui em direção a 0° e 180°.
 
-As alças do mapa, os controles deslizantes e os campos numéricos editam os mesmos valores. Com mouse ou toque, arraste dentro do quadro externo do Band selecionado para mover o Band inteiro, as bordas ou os cantos do Core para redimensioná-lo e as alças da borda externa para ajustar cada Transition separadamente. Uma alça de fase baixa para no centro: Core Low Phase para em 0° e Low Phase Transition na largura máxima. Quando Core Low Phase está exatamente em 0°, a alça central pode começar para qualquer lado; após o primeiro movimento, permanece travada nesse lado até o fim do arraste.
+As alças do mapa, os controles deslizantes e os campos numéricos editam os mesmos valores. Com mouse ou toque, arraste dentro do quadro externo do Band selecionado para mover o Band inteiro, as bordas ou os cantos do Core para redimensioná-lo e as alças da borda externa para ajustar cada Transition separadamente. Uma alça de fase baixa para no centro: Core Low Phase para em 0° e Low Phase Trans na largura máxima. Quando Core Low Phase está exatamente em 0°, a alça central pode começar para qualquer lado; após o primeiro movimento, permanece travada nesse lado até o fim do arraste.
 
 ## Spatial Mapper
 

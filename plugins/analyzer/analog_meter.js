@@ -1,10 +1,12 @@
 const ANALOG_METER_FRAME_TYPE = 27;
 const ANALOG_METER_TELEMETRY_VERSION = 1;
 const ANALOG_METER_MODES = Object.freeze([
-    'VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness'
+    'VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness', 'Custom'
 ]);
 const ANALOG_METER_LOUDNESS_MODE = 5;
 const ANALOG_METER_PPM_SCALES = Object.freeze(['DIN', 'BBC', 'dB']);
+const ANALOG_METER_DETECTORS = Object.freeze(['Average Rectified', 'RMS', 'Sample Peak', 'True Peak']);
+const ANALOG_METER_DIALS = Object.freeze(['VU', 'DIN', 'BBC', 'dB', 'dBFS']);
 const ANALOG_METER_PPM_BBC = 1;
 const ANALOG_METER_MAX_CHANNELS = 16;
 const ANALOG_METER_MAX_COLUMNS = 4;
@@ -13,7 +15,8 @@ const ANALOG_METER_SILENCE_DB = -200;
 const ANALOG_METER_ARC_DEGREES = 50;
 const ANALOG_METER_DANGER_COLOR = '#b91c1c'; // theme-allow: Fallback before the theme stylesheet resolves.
 const ANALOG_METER_DEFAULTS = Object.freeze({
-    md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1, ln: 0, tg: -23, ls: 0
+    md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1, ln: 0, tg: -23, ls: 0,
+    de: 'Average Rectified', nr: 300, os: 1.25, dc: 0
 });
 // Each system preset is a complete record: keys it does not name keep their defaults.
 const analogMeterPreset = (id, label, params) =>
@@ -36,26 +39,42 @@ const ANALOG_METER_SYSTEM_PRESETS = Object.freeze([
     analogMeterPreset('ebu-r128-wide', 'EBU R128 +18 Scale', { md: 'Loudness', ls: 1 }),
     analogMeterPreset('tv-24-lkfs', 'TV (-24 LKFS)', { md: 'Loudness', tg: -24 }),
     analogMeterPreset('streaming-14-lufs', 'Streaming (-14 LUFS)', { md: 'Loudness', tg: -14, ln: 1 }),
-    analogMeterPreset('streaming-16-lufs', 'Streaming (-16 LUFS)', { md: 'Loudness', tg: -16, ln: 1 })
+    analogMeterPreset('streaming-16-lufs', 'Streaming (-16 LUFS)', { md: 'Loudness', tg: -16, ln: 1 }),
+    analogMeterPreset('bouncy-vu', 'Bouncy VU', { md: 'Custom', os: 15 }),
+    analogMeterPreset('slow-rms', 'Slow RMS', { md: 'Custom', de: 'RMS', it: 3, nr: 1000, os: 0, dc: 3, rl: -18, rg: 42 }),
+    analogMeterPreset('fast-peak', 'Fast Peak', { md: 'Custom', de: 'True Peak', rt: 0.5, nr: 10, os: 0, dc: 4, rg: 40 })
 ]);
-// Modes in which each parameter changes the reading or the display.
+// Modes in which each parameter can change the reading or the display.
 const ANALOG_METER_ACTIVE_MODES = Object.freeze({
-    it: ['RMS'],
+    it: ['RMS', 'Custom'],
     at: ['PPM'],
-    rt: ['PPM', 'Sample Peak', 'True Peak'],
-    rl: ['VU', 'PPM', 'RMS'],
-    rg: ['PPM', 'RMS', 'Sample Peak', 'True Peak'],
+    rt: ['PPM', 'Sample Peak', 'True Peak', 'Custom'],
+    rl: ['VU', 'PPM', 'RMS', 'Custom'],
+    rg: ['PPM', 'RMS', 'Sample Peak', 'True Peak', 'Custom'],
     sc: ['PPM'],
-    ph: ['PPM', 'RMS', 'Sample Peak', 'True Peak'],
+    ph: ['PPM', 'RMS', 'Sample Peak', 'True Peak', 'Custom'],
     ln: ['Loudness'],
     tg: ['Loudness'],
-    ls: ['Loudness']
+    ls: ['Loudness'],
+    de: ['Custom'], nr: ['Custom'], os: ['Custom'], dc: ['Custom']
 });
 
 function isAnalogMeterParameterActive(key, params) {
+    if (params.md === 'Custom') {
+        if (key === 'it') return params.de === 'RMS';
+        if (key === 'rt') return params.de === 'Sample Peak' || params.de === 'True Peak';
+        if (key === 'rl') return params.dc !== 4;
+        if (key === 'rg') return params.dc === 1 || params.dc === 3 || params.dc === 4;
+    }
     // The BBC dial has fixed marks 1 to 7, so Range has nothing to set there.
     if (key === 'rg' && params.md === 'PPM' && params.sc === ANALOG_METER_PPM_BBC) return false;
     return ANALOG_METER_ACTIVE_MODES[key].includes(params.md);
+}
+
+function isAnalogMeterParameterVisible(key, params) {
+    // Custom keeps every applicable control in place while detector and dial choices disable it.
+    return params.md === 'Custom' ? ANALOG_METER_ACTIVE_MODES[key].includes('Custom')
+        : isAnalogMeterParameterActive(key, params);
 }
 
 function analogMeterLinearTicks(min, max, step, extra = [], unlabeled = []) {
@@ -72,11 +91,16 @@ function analogMeterSigned(value) {
 
 // Maps detector dB readings onto the dial of each mode (plan section 2.4).
 function analogMeterScale(mode, params = ANALOG_METER_DEFAULTS) {
+    let style = mode === 'PPM' ? `PPM ${ANALOG_METER_PPM_SCALES[params.sc]}` : mode;
+    if (mode === 'Custom') {
+        style = ['VU', 'PPM DIN', 'PPM BBC', 'RMS',
+            params.de === 'True Peak' ? 'True Peak' : 'Sample Peak'][params.dc];
+    }
     const rl = params.rl;
     const rg = params.rg;
     const base = { reference: null, redFrom: null, toLabel: db => db, position: null };
     let scale;
-    if (mode === 'VU') {
+    if (style === 'VU') {
         const full = 10 ** (3 / 20);
         scale = {
             ...base, unit: 'VU', min: -20, max: 3, reference: 0, redFrom: 0,
@@ -87,21 +111,21 @@ function analogMeterScale(mode, params = ANALOG_METER_DEFAULTS) {
                 .map(value => ({ value, label: value === -1 || value === 1 ? '' : String(value) })),
             format: vu => `${analogMeterSigned(vu)} VU`
         };
-    } else if (mode === 'PPM' && params.sc === 2) {
+    } else if (style === 'PPM dB') {
         scale = {
             ...base, unit: 'dB', min: -rg, max: 5, reference: 0, redFrom: 0,
             toLabel: db => db - rl,
             ticks: analogMeterLinearTicks(-rg, 5, rg > 30 ? 10 : 5, [0, 5]),
             format: value => `${analogMeterSigned(value)} dB`
         };
-    } else if (mode === 'PPM' && params.sc !== ANALOG_METER_PPM_BBC) {
+    } else if (style === 'PPM DIN') {
         scale = {
             ...base, unit: 'dB', min: -rg, max: 5, reference: -9, redFrom: 0,
             toLabel: db => db - (rl + 9),
             ticks: analogMeterLinearTicks(-rg, 5, 10, [-9, -5, 0, 5], [-10]),
             format: value => `${analogMeterSigned(value)} dB`
         };
-    } else if (mode === 'PPM') {
+    } else if (style === 'PPM BBC') {
         scale = {
             ...base, unit: '', min: 1, max: 7, reference: 4, redFrom: 6,
             // Marks 2 to 7 are 4 dB apart and mark 1 is 6 dB below mark 2.
@@ -112,15 +136,15 @@ function analogMeterScale(mode, params = ANALOG_METER_DEFAULTS) {
             ticks: [1, 2, 3, 4, 5, 6, 7].map(value => ({ value, label: String(value) })),
             format: mark => `Mark ${mark < 0 ? '0.0' : mark.toFixed(1)}`
         };
-    } else if (mode === 'RMS') {
+    } else if (style === 'RMS') {
         scale = {
             ...base, unit: 'dB', min: -rg, max: -rl, reference: 0,
             toLabel: db => db - rl,
             ticks: analogMeterLinearTicks(-rg, -rl, 10, [0]),
             format: value => `${analogMeterSigned(value)} dB`
         };
-    } else if (mode === 'Sample Peak' || mode === 'True Peak') {
-        const unit = mode === 'True Peak' ? 'dBTP' : 'dBFS';
+    } else if (style === 'Sample Peak' || style === 'True Peak') {
+        const unit = style === 'True Peak' ? 'dBTP' : 'dBFS';
         scale = {
             ...base, unit, min: -rg, max: 0,
             ticks: analogMeterLinearTicks(-rg, 0, rg > 30 ? 10 : 5),
@@ -276,6 +300,8 @@ class AnalogMeterPlugin extends PluginBase {
     static updateHold = updateAnalogMeterHold;
     static isOverLit = isAnalogMeterOverLit;
     static isParameterActive = isAnalogMeterParameterActive;
+    static isParameterVisible = isAnalogMeterParameterVisible;
+    static usesVuDial = params => analogMeterScale(params.md, params).unit === 'VU';
 
     static getSystemPresetGroups() {
         return [{ label: '', presets: ANALOG_METER_SYSTEM_PRESETS.map(preset => ({ ...preset })) }];
@@ -336,7 +362,11 @@ class AnalogMeterPlugin extends PluginBase {
             ph: this.ph,
             ln: this.ln,
             tg: this.tg,
-            ls: this.ls
+            ls: this.ls,
+            de: this.de,
+            nr: this.nr,
+            os: this.os,
+            dc: this.dc
         };
     }
 
@@ -355,6 +385,13 @@ class AnalogMeterPlugin extends PluginBase {
         if (params.rg !== undefined) this.rg = this.parseFiniteNumber(params.rg, 20, 60, this.rg);
         if (params.ph !== undefined) this.ph = this.parseFiniteNumber(params.ph, 0, 10, this.ph);
         if (params.tg !== undefined) this.tg = this.parseFiniteNumber(params.tg, -36, -10, this.tg);
+        if (params.nr !== undefined) this.nr = this.parseFiniteNumber(params.nr, 1, 3000, this.nr);
+        if (params.os !== undefined) this.os = this.parseFiniteNumber(params.os, 0, 25, this.os);
+        const detectorChanged = ANALOG_METER_DETECTORS.includes(params.de) && params.de !== this.de;
+        if (detectorChanged) {
+            this.de = params.de;
+            this.clearReading();
+        }
         for (const key of ['ln', 'ls']) {
             const value = params[key] === undefined ? null : Number(params[key]);
             if (value === 0 || value === 1) this[key] = value;
@@ -363,8 +400,12 @@ class AnalogMeterPlugin extends PluginBase {
         const scaleChanged = Number.isInteger(scaleValue) && scaleValue >= 0 &&
             scaleValue < ANALOG_METER_PPM_SCALES.length && scaleValue !== this.sc;
         if (scaleChanged) this.sc = scaleValue;
+        const dialValue = params.dc === undefined ? null : Number(params.dc);
+        const dialChanged = Number.isInteger(dialValue) && dialValue >= 0 &&
+            dialValue < ANALOG_METER_DIALS.length && dialValue !== this.dc;
+        if (dialChanged) this.dc = dialValue;
         if (modeChanged) this.updateGraphLayout();
-        if (modeChanged || scaleChanged) this.syncControlStates();
+        if (modeChanged || scaleChanged || detectorChanged || dialChanged) this.syncControlStates();
         this.drawGraph();
         this.updateParameters();
     }
@@ -502,9 +543,11 @@ class AnalogMeterPlugin extends PluginBase {
 
     syncControlStates() {
         if (this.resetButton) this.resetButton.style.display = this.md === 'Loudness' ? '' : 'none';
-        // Parameters that do nothing in the current mode are hidden, so the panel height follows the mode.
         for (const [key, row] of Object.entries(this.parameterRows)) {
-            row.style.display = isAnalogMeterParameterActive(key, this) ? '' : 'none';
+            const disabled = this.md === 'Custom' && !isAnalogMeterParameterActive(key, this);
+            row.style.display = isAnalogMeterParameterVisible(key, this) ? '' : 'none';
+            row.classList.toggle('parameter-disabled', disabled);
+            for (const input of row.querySelectorAll('input, select')) input.disabled = disabled;
         }
     }
 
@@ -522,12 +565,21 @@ class AnalogMeterPlugin extends PluginBase {
         parameters.appendChild(this.createSelectControl(
             'Mode', ANALOG_METER_MODES, this.md, value => this.setParameters({ md: value }), 'md'
         ));
+        rows.de = this.createRadioGroup('Detector', ANALOG_METER_DETECTORS,
+            this.de, value => this.setParameters({ de: value }), 'de');
         rows.it = this.createParameterControl(
             'Integration', 0.05, 3, 0.01, this.it, value => this.setParameters({ it: value }), 's', 'it');
         rows.at = this.createParameterControl(
             'Attack', 1, 20, 0.1, this.at, value => this.setParameters({ at: value }), 'ms', 'at');
         rows.rt = this.createParameterControl(
             'Release', 0.1, 5, 0.01, this.rt, value => this.setParameters({ rt: value }), 's', 'rt');
+        rows.nr = this.createParameterControl(
+            'Needle Response', 1, 3000, 1, this.nr, value => this.setParameters({ nr: value }), 'ms', 'nr', null, true);
+        rows.os = this.createParameterControl(
+            'Overshoot', 0, 25, 0.05, this.os, value => this.setParameters({ os: value }), '%', 'os');
+        rows.dc = this.createRadioGroup('Dial',
+            ANALOG_METER_DIALS.map((label, index) => ({ value: String(index), label })),
+            String(this.dc), value => this.setParameters({ dc: value }), 'dc');
         rows.rl = this.createParameterControl(
             'Reference', -30, 0, 1, this.rl, value => this.setParameters({ rl: value }), 'dBFS', 'rl');
         rows.rg = this.createParameterControl(
@@ -879,7 +931,7 @@ class AnalogMeterPlugin extends PluginBase {
             text.fillText(appearance.positiveLabels && tick.value > 0 ? `+${tick.label}` : tick.label, labelX, labelY);
         }
 
-        if (this.md === 'VU' && appearance.showPercent) {
+        if (scale.unit === 'VU' && appearance.showPercent) {
             context.font = `${fontSize * 0.75}px Arial`;
             context.textBaseline = 'top';
             for (const percent of [0, 20, 40, 60, 80, 100]) {
@@ -1011,7 +1063,7 @@ class AnalogMeterPlugin extends PluginBase {
         context.textAlign = 'center';
         context.textBaseline = 'top';
         context.font = `${fontSize}px monospace`;
-        const reading = db === null ? '---' : this.md === 'VU' && appearance.readoutUnit === 'percent'
+        const reading = db === null ? '---' : scale.unit === 'VU' && appearance.readoutUnit === 'percent'
             ? `${(db <= ANALOG_METER_SILENCE_DB ? 0 : 100 * 10 ** ((db - this.rl) / 20)).toFixed(1)}%`
             : scale.readout(db);
         if (appearance.showReadout !== false) text.fillText(reading, pivotX, baseY + fontSize * 0.8);

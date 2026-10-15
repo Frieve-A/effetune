@@ -30,7 +30,7 @@ class MetadataWorkerPool {
     this.closed = false;
   }
 
-  parse({ path: filePath, relativePath, skipCovers, signal, languageHints = null } = {}) {
+  parse({ path: filePath, relativePath, skipCovers, signal, languageHints = null, lyrics = null } = {}) {
     if (this.closed) return Promise.reject(createPoolError('metadataPoolClosed', 'Metadata worker pool is closed'));
     if (skipCovers !== true) return Promise.reject(createPoolError('metadataArtworkForbidden', 'Metadata scan must skip artwork'));
     try {
@@ -44,7 +44,7 @@ class MetadataWorkerPool {
     }
     return new Promise((resolve, reject) => {
       const job = {
-        requestId: this.nextRequestId++, filePath, relativePath, skipCovers, signal, languageHints, resolve, reject,
+        requestId: this.nextRequestId++, filePath, relativePath, skipCovers, signal, languageHints, lyrics, resolve, reject,
         abort: null, timer: null, worker: null
       };
       job.abort = () => {
@@ -80,7 +80,7 @@ class MetadataWorkerPool {
       worker.postMessage({
         type: 'parse', requestId: job.requestId, filePath: job.filePath,
         relativePath: job.relativePath, skipCovers: job.skipCovers,
-        languageHints: job.languageHints
+        languageHints: job.languageHints, lyrics: job.lyrics ?? null
       });
     }
   }

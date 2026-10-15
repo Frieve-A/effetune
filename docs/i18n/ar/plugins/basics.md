@@ -1,6 +1,6 @@
 ---
-title: "الإضافات الأساسية - EffeTune"
-description: "إضافات صوتية أساسية تشمل Bass Management وVolume وMute وStereo Balance وFIR Crossover وتوجيه Matrix وغيرها."
+title: "الإضافات الأساسية - إدارة الجهير وتوجيه القنوات ومقسِّم الترددات - EffeTune"
+description: "أدوات لضبط مستوى الصوت والتوازن والقطبية والتوجيه، مع Bass Management لمكبرات الجهير وFIR Crossover وChannel Divider لأنظمة سماعات متعددة المضخمات."
 lang: ar
 ---
 

@@ -1,6 +1,6 @@
 ---
-title: "다이내믹스 플러그인 - EffeTune"
-description: "Attack Tonal Balance, Compressor, Limiter, Gate, Multiband Compressor, Transient Shaper를 포함한 다이내믹스 처리 플러그인입니다."
+title: "다이내믹스 플러그인 - 자동 음량 조절, 컴프레서, 리미터 - EffeTune"
+description: "Auto Leveler로 체감 음량을 고르게 조절하고, Brickwall Limiter, Compressor, Expander, Gate, Transient Shaper, 멀티밴드 처리 등으로 다이내믹스를 다듬습니다."
 lang: ko
 ---
 

@@ -7,6 +7,7 @@ import { withGlobals } from '../helpers/global-test-utils.mjs';
 function createRuntime(options = {}) {
   const calls = [];
   const audioManager = {
+    masterBypass: true,
     pipelineA: options.pipelineA ?? [],
     pipelineB: options.pipelineB ?? null,
     pipeline: options.pipeline ?? options.pipelineA ?? [],
@@ -23,6 +24,7 @@ function createRuntime(options = {}) {
       calls.push(['dispatchEvent', name, detail]);
     },
     setMasterBypass(value) {
+      this.masterBypass = value;
       calls.push(['setMasterBypass', value]);
     }
   };
@@ -35,6 +37,10 @@ function createRuntime(options = {}) {
     },
     updatePipelineUI(force) {
       calls.push(['updatePipelineUI', force]);
+    },
+    updateAllPluginDisplayState() {
+      assert.equal(audioManager.masterBypass, false);
+      calls.push(['updateAllPluginDisplayState']);
     },
     updateWorkletPlugins() {
       calls.push(['updateWorkletPlugins']);
@@ -445,6 +451,7 @@ test('loadStateFromHistory restores dual pipeline state inside a synchronous sup
   assert.ok(runtime.calls.some(call => call[0] === 'rebuildPipeline'));
   assert.ok(runtime.calls.some(call => call[0] === 'updatePipelineToggleButton'));
   assert.ok(runtime.calls.some(call => call[0] === 'masterToggleRemove' && call[1] === 'off'));
+  assert.ok(runtime.calls.some(call => call[0] === 'updateAllPluginDisplayState'));
 });
 
 test('loadStateFromHistory handles null pipeline B and absent optional UI', async () => {

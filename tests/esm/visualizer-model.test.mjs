@@ -7,6 +7,61 @@ import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, METER_A
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('Lyrics parameters normalize and persist with text styling in layout shares', () => {
+    const item = createItem('lyrics', 'lyrics');
+    assert.deepEqual(item.params, { lyricsView: 'list', lyricsNext: true, lyricsMotion: 'step', lyricsStepDuration: 0.18,
+        lyricsPosition: 50, lyricsLineSpacing: 1, lyricsWordFill: true, lyricsOffset: 0, lyricsFadeIn: 1, lyricsFadeOut: 3 });
+    assert.equal(item.style.fontSize, 36);
+    assert.equal(item.style.align, 'center');
+    assert.equal(createItem('text', 'text').style.align, 'left');
+    item.style.align = 'left';
+    assert.equal(item.channel, null);
+    assert.deepEqual(normalizeParams('lyrics', { lyricsView: 'bad', lyricsMotion: 'bad', lyricsOffset: 30 }),
+        { ...item.params, lyricsOffset: 10 });
+    assert.equal(normalizeParams('lyrics', { lyricsOffset: -20 }).lyricsOffset, -10);
+    assert.equal(normalizeParams('lyrics', { lyricsPosition: -1 }).lyricsPosition, 0);
+    assert.equal(normalizeParams('lyrics', { lyricsPosition: 101 }).lyricsPosition, 100);
+    assert.equal(normalizeParams('lyrics', { lyricsPosition: 24.6 }).lyricsPosition, 25);
+    assert.equal(normalizeParams('lyrics', { lyricsLineSpacing: 0.1 }).lyricsLineSpacing, 0.5);
+    assert.equal(normalizeParams('lyrics', { lyricsLineSpacing: 4 }).lyricsLineSpacing, 3);
+    assert.equal(normalizeParams('lyrics', { lyricsStepDuration: -1 }).lyricsStepDuration, 0);
+    assert.equal(normalizeParams('lyrics', { lyricsStepDuration: 3 }).lyricsStepDuration, 2);
+    assert.equal(normalizeParams('lyrics', { lyricsFadeIn: -1 }).lyricsFadeIn, 0);
+    assert.equal(normalizeParams('lyrics', { lyricsFadeOut: 11 }).lyricsFadeOut, 10);
+    const disabledFades = normalizeParams('lyrics', { lyricsFadeIn: 0, lyricsFadeOut: 0 });
+    assert.deepEqual([disabledFades.lyricsFadeIn, disabledFades.lyricsFadeOut], [0, 0]);
+    item.params = normalizeParams('lyrics', { lyricsView: 'line', lyricsNext: false, lyricsMotion: 'smooth',
+        lyricsStepDuration: 0.526, lyricsPosition: 75, lyricsLineSpacing: 1.5, lyricsWordFill: false, lyricsOffset: 1.234,
+        lyricsFadeIn: 0.54, lyricsFadeOut: 1.26 });
+    assert.equal(item.params.lyricsOffset, 1.23);
+    assert.equal(item.params.lyricsStepDuration, 0.53);
+    assert.deepEqual([item.params.lyricsFadeIn, item.params.lyricsFadeOut], [0.5, 1.3]);
+    const layout = { ...createDefaultLayout(), items: [item] };
+    assert.equal(validateLayout(layout), true);
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0], item);
+    for (const motion of ['step-horizontal', 'smooth-horizontal']) {
+        const horizontal = structuredClone(layout);
+        horizontal.items[0].params.lyricsMotion = motion;
+        assert.equal(validateLayout(horizontal), true);
+        assert.equal(decodeLayoutShare(encodeLayoutShare(horizontal)).items[0].params.lyricsMotion, motion);
+    }
+    const invalid = structuredClone(layout);
+    invalid.items[0].params.lyricsOffset = 11;
+    assert.equal(validateLayout(invalid), false);
+    invalid.items[0].params.lyricsOffset = item.params.lyricsOffset;
+    invalid.items[0].params.lyricsPosition = 101;
+    assert.equal(validateLayout(invalid), false);
+    invalid.items[0].params.lyricsPosition = item.params.lyricsPosition;
+    invalid.items[0].params.lyricsLineSpacing = 4;
+    assert.equal(validateLayout(invalid), false);
+    invalid.items[0].params.lyricsLineSpacing = item.params.lyricsLineSpacing;
+    invalid.items[0].params.lyricsFadeOut = 11;
+    assert.equal(validateLayout(invalid), false);
+    invalid.items[0].params.lyricsFadeOut = item.params.lyricsFadeOut;
+    invalid.items[0].params.lyricsStepDuration = 3;
+    assert.equal(validateLayout(invalid), false);
+});
+
 test('layout share links round-trip without the background image and reject invalid payloads', async () => {
     const layout = createDefaultLayout();
     layout.background.image = 'data:image/png;base64,AAAA';
@@ -249,14 +304,17 @@ test('Phase Map defaults, steps, and palettes follow Phase Select EQ', () => {
 test('Analog Meter defaults, steps, and axes follow the Analog Meter effect', () => {
     const meter = createItem('analog-meter', 'meter');
     assert.deepEqual(meter.params, { md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1,
-        ln: 0, tg: -23, ls: 0, ...METER_APPEARANCE_DEFAULTS, showAxes: true, showAxisNumbers: true });
+        ln: 0, tg: -23, ls: 0, de: 'Average Rectified', nr: 300, os: 1.25, dc: 0,
+        ...METER_APPEARANCE_DEFAULTS, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('analog-meter', { md: 'Bar', it: 9, at: 0, rt: 2.345, rl: -14.6, rg: 90,
         sc: 3, ph: 0.26, ln: '1', tg: -50, ls: 2, showAxes: false }),
     { md: 'VU', it: 3, at: 1, rt: 2.35, rl: -15, rg: 60, sc: 0, ph: 0.3, ln: 0, tg: -36, ls: 0,
+        de: 'Average Rectified', nr: 300, os: 1.25, dc: 0,
         ...METER_APPEARANCE_DEFAULTS, showAxes: false, showAxisNumbers: true });
     assert.deepEqual(paletteModesForType('analog-meter'), ['solid', 'gradient']);
     meter.params = { md: 'Loudness', it: 1.25, at: 7.5, rt: 2.33, rl: -18, rg: 50, sc: 1, ph: 2.5,
-        ln: 1, tg: -16, ls: 1, ...METER_APPEARANCE_DEFAULTS, showAxes: true, showAxisNumbers: false };
+        ln: 1, tg: -16, ls: 1, de: 'Average Rectified', nr: 300, os: 1.25, dc: 0,
+        ...METER_APPEARANCE_DEFAULTS, showAxes: true, showAxisNumbers: false };
     meter.palette.mode = 'gradient';
     const layout = { ...createDefaultLayout(), items: [meter] };
     assert.equal(validateLayout(layout), true);
@@ -283,6 +341,23 @@ test('Meter appearance persists in shares, accepts older layouts, and rejects in
         invalid.items[0].params[key] = value;
         assert.equal(validateLayout(invalid), false, key);
         assert.equal(normalizeLayout(invalid).items[0].params[key], expected);
+    }
+});
+
+test('Custom Analog Meter parameters normalize and persist in layout shares', () => {
+    const params = normalizeParams('analog-meter', { md: 'Custom', de: 'RMS', nr: 1000.4, os: 3.12, dc: 3 });
+    assert.deepEqual([params.md, params.de, params.nr, params.os, params.dc], ['Custom', 'RMS', 1000, 3.1, 3]);
+    const item = createItem('analog-meter', 'custom');
+    item.params = params;
+    const layout = { ...createDefaultLayout(), items: [item] };
+    assert.equal(validateLayout(layout), true);
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params, params);
+    const invalid = normalizeParams('analog-meter', { de: 'bad', nr: 9000, os: -1, dc: 5 });
+    assert.deepEqual([invalid.de, invalid.nr, invalid.os, invalid.dc], ['Average Rectified', 3000, 0, 0]);
+    for (const [key, value] of [['de', 'bad'], ['nr', 0], ['os', 1.23], ['dc', 1.5]]) {
+        const edited = structuredClone(layout);
+        edited.items[0].params[key] = value;
+        assert.equal(validateLayout(edited), false, key);
     }
 });
 
@@ -507,6 +582,23 @@ test('Trail Feedback zoom, rotation, and flow persist without invalidating older
     assert.equal(normalizeLayout(layout).items[0].effects[0].flowY, -1);
 });
 
+test('Edge Fade widths default, clamp, preserve both shapes, and persist in layout shares', () => {
+    const effect = normalizeEffect({ type: 'edge-fade' });
+    const { amount, shape, top, bottom, left, right, circleWidth } = effect;
+    assert.deepEqual({ amount, shape, top, bottom, left, right, circleWidth },
+        { amount: 1, shape: 'rectangle', top: 0.1, bottom: 0.1, left: 0, right: 0, circleWidth: 0.2 });
+    assert.equal(normalizeEffect({ type: 'edge-fade' }, 'background'), null);
+    const clamped = normalizeEffect({ type: 'edge-fade', shape: 'ellipse', top: -1, bottom: 2, left: 3, right: -2, circleWidth: 2 });
+    assert.deepEqual([clamped.shape, clamped.top, clamped.bottom, clamped.left, clamped.right, clamped.circleWidth],
+        ['rectangle', 0, 1, 1, 0, 1]);
+    const layout = createDefaultLayout();
+    layout.items[0].effects = [normalizeEffect({ ...effect, shape: 'circle', top: 0.3, left: 0.4, circleWidth: 0.5 })];
+    assert.equal(validateLayout(layout), true);
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].effects, layout.items[0].effects);
+    layout.items[0].effects[0].circleWidth = 2;
+    assert.equal(validateLayout(layout), false);
+});
+
 test('Backplate settings default, clamp, and stay item-only', () => {
     const layout = createDefaultLayout();
     layout.items[0].effects = [normalizeEffect({ type: 'backplate' })];
@@ -585,8 +677,8 @@ test('system presets retain valid layouts for every aspect ratio', () => {
     const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope', 'Hi-Fi Deck', 'Vintage VU',
         'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala'];
     // Featured designs ship only in the aspect ratios they were composed for, after the shared set.
-    const featured = { '21:9': ['Fretboard', 'Power Amp'], '16:9': ['Power Amp', 'Beat Stage'], '4:3': [], '1:1': ['Round Dials'],
-        '9:16': ['Fretboard', 'Round Dials', 'Beat Stage'] };
+    const featured = { '21:9': ['Fretboard', 'Power Amp', 'Cinema Strip', 'Meter Bridge'], '16:9': ['Power Amp', 'Beat Stage', 'Lyric Stage'],
+        '4:3': ['Meter Bridge'], '1:1': ['Round Dials'], '9:16': ['Fretboard', 'Round Dials', 'Beat Stage', 'Lyric Stage'] };
     for (const aspect of ASPECTS) {
         const presets = JSON.parse(readFileSync(new URL(`../../presets/visualizer/${ASPECT_FILES[aspect]}`, import.meta.url)));
         assert.deepEqual(Object.keys(presets), [...names, ...featured[aspect]]);
@@ -617,7 +709,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 58);
-    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase', 'guitar', 'rhythm-analyzer'])
+    assert.equal(count, 63);
+    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase', 'guitar', 'rhythm-analyzer', 'oscilloscope', 'lyrics'])
         assert.equal(types.has(type), true);
 });

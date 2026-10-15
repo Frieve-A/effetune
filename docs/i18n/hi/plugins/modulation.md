@@ -1,6 +1,6 @@
 ---
-title: "मॉड्यूलेशन प्लगइन - EffeTune"
-description: "Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser और Rotary Speaker सहित modulation effects।"
+title: "मॉड्यूलेशन प्लगइन - कोरस, फ़ेज़र और पिच शिफ्टर - EffeTune"
+description: "मॉड्यूलेशन इफेक्ट्स: Auto Filter, Auto Pan, Chorus, Doppler Distortion, Frequency Shifter, Phaser, Pitch Shifter, Rotary Speaker, Tremolo और Wow Flutter।"
 lang: hi
 ---
 

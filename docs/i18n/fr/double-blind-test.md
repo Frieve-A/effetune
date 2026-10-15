@@ -1,5 +1,5 @@
 ---
-title: "Guide de Double Blind Test - EffeTune"
+title: "Guide de Double Blind Test - Tests d'écoute à l'aveugle ABX et A/B - EffeTune"
 description: "Lancez des tests d'écoute à l'aveugle ABX et de préférence A/B entre deux pipelines d'effets dans EffeTune, puis vérifiez les résultats avec leur significativité statistique."
 lang: fr
 ---

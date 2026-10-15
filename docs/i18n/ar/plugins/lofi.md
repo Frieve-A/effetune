@@ -1,6 +1,6 @@
 ---
-title: "إضافات Lo-Fi - EffeTune"
-description: "إضافات تأثيرات Lo-Fi تشمل AM Radio Simulator وBit Crusher وNoise Blender وVinyl Artifacts وغيرها."
+title: "إضافات Lo-Fi - محاكاة الكاسيت وMiniDisc وMP3 والراديو والفينيل - EffeTune"
+description: "حاكِ صوت الكاسيت وشريط البكرات والفينيل وMiniDisc (ATRAC) وMP3 وBluetooth SBC وراديو AM/FM والموجات القصيرة وصوت التلفاز، أو أضف Bit Crusher والطنين والضوضاء."
 lang: ar
 ---
 

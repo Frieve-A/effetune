@@ -460,7 +460,8 @@
                 "RMS",
                 "Sample Peak",
                 "True Peak",
-                "Loudness"
+                "Loudness",
+                "Custom"
               ],
               "default": "VU"
             },
@@ -484,6 +485,30 @@
               "maximum": 5,
               "x-effetune-unit": "s",
               "default": 1.5
+            },
+            "detector": {
+              "type": "string",
+              "enum": [
+                "Average Rectified",
+                "RMS",
+                "Sample Peak",
+                "True Peak"
+              ],
+              "default": "Average Rectified"
+            },
+            "needleResponse": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 3000,
+              "x-effetune-unit": "ms",
+              "default": 300
+            },
+            "overshoot": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 25,
+              "x-effetune-unit": "%",
+              "default": 1.25
             }
           }
         }
@@ -587,6 +612,10 @@
               "minimum": 21,
               "maximum": 108,
               "default": 91
+            },
+            "timbreEnabled": {
+              "type": "boolean",
+              "default": false
             }
           }
         }

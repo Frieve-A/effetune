@@ -7,6 +7,7 @@ import { PlaybackManager } from './audio-player/playback-manager.js';
 import { AudioPlayerUI } from './audio-player/audio-player-ui.js';
 import { AudioContextManager } from './audio-player/audio-context-manager.js';
 import { StateManager } from './audio-player/state-manager.js';
+import { TrackLyrics } from './audio-player/track-lyrics.js';
 import { MediaSessionManager } from './audio-player/media-session-manager.js';
 import { createMediaSessionAnchor } from './audio-player/media-session-anchor.js';
 import { OpenHomePlaybackAdapter } from './audio-player/openhome-playback-adapter.js';
@@ -48,6 +49,7 @@ export class AudioPlayer {
     this.playbackManager = new PlaybackManager(this);
     this.ui = new AudioPlayerUI(this);
     this.contextManager = new AudioContextManager(this, audioManager);
+    this.trackLyrics = new TrackLyrics(this);
     this.mediaSessionManager = new MediaSessionManager(this);
     this.openHomePlaybackAdapter = null;
     // Mobile browsers only surface mediaSession metadata, headset keys, and

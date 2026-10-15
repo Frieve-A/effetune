@@ -1,6 +1,6 @@
 ---
-title: "Плагины модуляции - EffeTune"
-description: "Эффекты модуляции, включая Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser и Rotary Speaker."
+title: "Плагины модуляции - Хорус, фейзер и питч-шифтер - EffeTune"
+description: "Эффекты модуляции, включая Auto Filter, Auto Pan, Chorus, Doppler Distortion, Frequency Shifter, Phaser, Pitch Shifter, Rotary Speaker, Tremolo и Wow Flutter."
 lang: ru
 ---
 

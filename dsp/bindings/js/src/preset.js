@@ -445,7 +445,7 @@ function prepareLegacyParametersV1(effectType, source) {
   }
   if (effectType === 'NoteSpectrogram') {
     // These app settings only control the piano-roll display.
-    for (const key of ['cl', 'pr', 'ly', 'vl', 'ts']) delete parameters[key];
+    for (const key of ['cl', 'hl', 'pr', 'ly', 'vl', 'os', 'ts']) delete parameters[key];
   }
   if (effectType === 'PitchMeter' && Object.hasOwn(parameters, 'ly')) {
     if (parameters.ly !== 'Vertical' && parameters.ly !== 'Horizontal') {
@@ -481,7 +481,8 @@ function prepareLegacyParametersV1(effectType, source) {
     // Reference, range, peak hold, PPM scale, needle, target and scale only control the meter face.
     for (const [key, minimum, maximum, integer] of [
       ['rl', -30, 0, false], ['rg', 20, 60, false], ['ph', 0, 10, false],
-      ['sc', 0, 2, true], ['ln', 0, 1, true], ['tg', -36, -10, false], ['ls', 0, 1, true]
+      ['sc', 0, 2, true], ['ln', 0, 1, true], ['tg', -36, -10, false], ['ls', 0, 1, true],
+      ['dc', 0, 4, true]
     ]) {
       if (!Object.hasOwn(parameters, key)) continue;
       const value = parameters[key];

@@ -62,7 +62,9 @@ function phaseSelectAge(params, sampleRate, execution) {
 const rules = {
     // Only windowed readings are aligned; VU, PPM, and peak ballistics are the meter definition.
     AnalogMeterPlugin: rule((p, rate) => {
-        if (p.md === 'RMS') return Math.ceil(rate * bounded(p.it, 0.3, 0.05, 3)) / 2;
+        if (p.md === 'RMS' || (p.md === 'Custom' && p.de === 'RMS')) {
+            return Math.ceil(rate * bounded(p.it, 0.3, 0.05, 3)) / 2;
+        }
         if (p.md === 'Loudness') return Math.ceil(rate * (p.ln === 1 ? 3 : 0.4)) / 2;
         return 0;
     }),
@@ -72,6 +74,7 @@ const rules = {
         return spectrumAge({ pt, sc: 'log-hq' }, rate, execution, true);
     }),
     LevelMeterPlugin: rule(),
+    SFZNotePlayerPlugin: rule((p, rate) => -Math.max(0, bounded(p.tm, 0, -100, 100)) * rate / 1000),
     PhaseSelectEqPlugin: rule(phaseSelectAge, 'input'),
     SpectrumAnalyzerPlugin: rule((p, rate, execution) => spectrumAge(p, rate, execution, true)),
     SpectrogramPlugin: rule((p, rate, execution) => spectrumAge(p, rate, execution, false)),
@@ -137,6 +140,9 @@ export function audibleContextTime({ outputTimestamp, currentTime, outputLatency
     return (currentTime - (outputLatency || baseLatency || 0)) * 1000;
 }
 
+export const audiblePlaybackPosition = ({ position, latencySeconds = 0, playbackSpeed = 1 }) =>
+    position - latencySeconds * playbackSpeed;
+
 // Frees room for one more entry of a stream in a due-sorted queue by dropping that
 // stream's earliest entry once it holds `limit` entries. A shared limit would let
 // many streams evict every entry before its deadline. Returns whether one dropped.
@@ -156,8 +162,8 @@ export function dropVisualSyncOverflow(queue, sameStream, limit = VISUAL_SYNC_QU
 // These payloads record capture-end time on the worklet processing timeline.
 export function telemetryCaptureTiming(frame, contextFrameOffset) {
     if (!Number.isFinite(contextFrameOffset)) return null;
-    // Note Spectrogram telemetry v5 (see plugins/analyzer/note_spectrogram.js).
-    const note = frame?.frameType === 24 && frame.formatVersion === 5 && frame.payload?.byteLength === 8840;
+    // Note Spectrogram telemetry v6 (see plugins/analyzer/note_spectrogram.js).
+    const note = frame?.frameType === 24 && frame.formatVersion === 6 && frame.payload?.byteLength === 9192;
     const spectrogram = frame?.frameType === 5 && frame.formatVersion === 1 && frame.payload?.byteLength === 268;
     if (!note && !spectrogram) return null;
     const sampleRate = frame.payload.getFloat32(0, true);

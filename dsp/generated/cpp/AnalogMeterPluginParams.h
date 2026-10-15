@@ -11,10 +11,13 @@ struct AnalogMeterPluginParams {
   float integration;
   float attack;
   float release;
-  static constexpr std::uint32_t kHash = 0xc0e236cdu;
-  static constexpr std::uint32_t kFloatCount = 4u;
+  float detector;
+  float needleResponse;
+  float overshoot;
+  static constexpr std::uint32_t kHash = 0xad3d461cu;
+  static constexpr std::uint32_t kFloatCount = 7u;
 };
-static_assert(4u == 0u || sizeof(AnalogMeterPluginParams) == sizeof(float) * 4u);
+static_assert(7u == 0u || sizeof(AnalogMeterPluginParams) == sizeof(float) * 7u);
 
 } // namespace effetune::generated
 

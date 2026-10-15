@@ -65,6 +65,8 @@ export class PipelineCore {
      */
     updatePipelineUI(forceRedraw = false) {
         this.pluginPresetDialog.closeIfPluginDetached();
+        const routingDialog = document.querySelector('.routing-dialog');
+        if (routingDialog) this.routingDialog.closeDialog(routingDialog, { immediate: true });
         this.selectionManager.pruneSelection();
         if (!this.pipelineList) {
             console.error("pipelineList element not found in PipelineCore");
@@ -310,6 +312,7 @@ export class PipelineCore {
         
         // Consider section effect ON/OFF state
         const sectionState = this.getPluginSectionState(plugin);
+        plugin._setSectionEnabled?.(!sectionState.insideSection || sectionState.sectionEnabled);
         if (sectionState.insideSection && !sectionState.sectionEnabled) {
             effectiveEnabled = false;
         }
@@ -339,6 +342,9 @@ export class PipelineCore {
             const pluginId = parseInt(item.dataset.pluginId);
             const plugin = this.audioManager.pipeline.find(p => p.id === pluginId);
             if (plugin) {
+                const toggle = item.querySelector('.pipeline-item-header .toggle-button');
+                toggle?.classList.toggle('off', !plugin.enabled);
+                this.routingDialog.updateBusInfo(plugin, { saveHistory: false });
                 const nameElement = item.querySelector('.plugin-name');
                 if (nameElement) {
                     this.updatePluginNameDisplayState(plugin, nameElement);

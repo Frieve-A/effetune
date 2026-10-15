@@ -18,7 +18,8 @@ import { TelemetryHub } from './audio/telemetry-hub.js';
 import { updateWasmExecutionNotice } from './ui/pipeline/wasm-execution-notice.js';
 import { DSP_PARAM_PACKERS } from './audio/dsp-params.generated.js';
 import { SpectrumTapContract, VISUAL_SYNC_RULES, VISUAL_SYNC_MAX_OUTPUT_DELAY_SECONDS, dropVisualSyncOverflow,
-    isVisualSyncEnabled, requiredOutputDelayFrames, audibleFrameTime, audibleContextTime, telemetryCaptureTiming } from './audio/visual-sync.js';
+    isVisualSyncEnabled, requiredOutputDelayFrames, audibleFrameTime, audibleContextTime,
+    audiblePlaybackPosition, telemetryCaptureTiming } from './audio/visual-sync.js';
 import { PowerPolicyController } from './audio/power-policy-controller.js';
 import { PowerDiagnostics } from './audio/power-diagnostics.js';
 import { AudioPowerState, mergePowerSavingSettings } from './audio/power-policy.js';
@@ -1963,6 +1964,13 @@ export class AudioManager {
             (this._appliedOutputDelayFrames?.get(this._getPrimaryWorkletNode()) || 0);
     }
 
+    getAudiblePlaybackPosition(position, playbackSpeed) {
+        const context = this.contextManager?.audioContext;
+        const latencySeconds = context ? (this.getTotalPipelineLatencySamples() +
+            this._getDeviceLatencyFrames(context)) / context.sampleRate : 0;
+        return audiblePlaybackPosition({ position, playbackSpeed, latencySeconds });
+    }
+
     _publishDspLatency(sampleRate = this.contextManager?.audioContext?.sampleRate, detail = {}) {
         this.dispatchEvent('dspLatency', {
             ...detail,
@@ -2180,14 +2188,19 @@ export class AudioManager {
         return this._updateVisualSyncDelay();
     }
 
-    _recomputeVisualSyncDelay() {
-        const context = this.contextManager?.audioContext;
-        // Reserve audio delay from a stable device estimate; the playback clock only controls delivery.
+    _getDeviceLatencyFrames(context) {
+        // Reuse one device estimate per context for visual sync and the lyrics clock.
         if (context !== this._visualSyncLatencyContext) {
             this._visualSyncLatencyContext = context;
             this._visualSyncDeviceLatencyFrames = context
                 ? (context.outputLatency || context.baseLatency || 0) * context.sampleRate : 0;
         }
+        return this._visualSyncDeviceLatencyFrames;
+    }
+
+    _recomputeVisualSyncDelay() {
+        const context = this.contextManager?.audioContext;
+        this._getDeviceLatencyFrames(context);
         const targets = [];
         if (this.visualSyncEnabled && context && !this.masterBypass) {
             let sectionEnabled = true;

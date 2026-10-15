@@ -1,6 +1,6 @@
 ---
-title: "모듈레이션 플러그인 - EffeTune"
-description: "Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser, Rotary Speaker를 포함한 모듈레이션 이펙트입니다."
+title: "모듈레이션 플러그인 - 코러스, 페이저, 피치 시프터 - EffeTune"
+description: "Auto Filter, Auto Pan, Chorus, Doppler Distortion, Frequency Shifter, Phaser, Pitch Shifter, Rotary Speaker, Tremolo, Wow Flutter 등의 모듈레이션 이펙트입니다."
 lang: ko
 ---
 

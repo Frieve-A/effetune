@@ -16,10 +16,13 @@ export interface IRReverbAssets {
 }
 
 export interface AnalogMeterOptions extends CommonEffectOptions {
-  readonly mode?: "VU" | "PPM" | "RMS" | "Sample Peak" | "True Peak" | "Loudness";
+  readonly mode?: "VU" | "PPM" | "RMS" | "Sample Peak" | "True Peak" | "Loudness" | "Custom";
   readonly integration?: number;
   readonly attack?: number;
   readonly release?: number;
+  readonly detector?: "Average Rectified" | "RMS" | "Sample Peak" | "True Peak";
+  readonly needleResponse?: number;
+  readonly overshoot?: number;
   readonly assets?: never;
 }
 
@@ -55,6 +58,7 @@ export declare function createLevelMeter(options?: LevelMeterOptions): LevelMete
 export interface NoteSpectrogramOptions extends CommonEffectOptions {
   readonly minimumMidi?: number;
   readonly maximumMidi?: number;
+  readonly timbreEnabled?: boolean;
   readonly assets?: never;
 }
 

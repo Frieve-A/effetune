@@ -1,6 +1,6 @@
 ---
 title: "共鸣器插件 - EffeTune"
-description: "共鸣效果插件，包括 Adaptive Prediction、Horn Resonator 和 Modal Resonator。"
+description: "Adaptive Prediction 从音频学习并生成变化的共鸣；Horn Resonator、Horn Resonator Plus 模拟号角扬声器共鸣；Modal Resonator 加入调谐共鸣。"
 lang: zh
 ---
 

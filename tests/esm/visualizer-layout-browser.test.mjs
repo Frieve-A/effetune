@@ -2074,7 +2074,7 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
                 invalidUnapplied, clamped, restored, initialDisabled, enabled, disabled, noteRange, peerRestored, bpmRange, mobile };
         });
         assert.deepEqual(result.violations, []);
-        assert.equal(Object.keys(result.counts).length, 17);
+        assert.equal(Object.keys(result.counts).length, 18);
         assert.ok(Object.values(result.counts).every(count => count > 0));
         assert.deepEqual(result.typing, [.33, '33', 0]);
         assert.deepEqual(result.committed, [1, '33%']);

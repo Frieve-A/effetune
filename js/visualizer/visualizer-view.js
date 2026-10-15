@@ -17,6 +17,7 @@ export class VisualizerView {
     constructor(uiManager) {
         this.uiManager = uiManager;
         this.layout = createDefaultLayout();
+        this.hasLyrics = false;
         this.store = new VisualizerPresetStore({ onError: () => this.notice('visualizer.saveFailed', 'Your layout could not be saved. Check that browser storage is available and try again.') });
         this.sources = new VisualizerSources(uiManager.audioManager);
         this.currentPresetName = '';
@@ -204,6 +205,7 @@ export class VisualizerView {
         else this.recordHistory();
     }
     applyLayout() {
+        this.hasLyrics = this.layout.items.some(item => item.type === 'lyrics');
         this.sources.setLayout(this.layout);
         this.store.saveCurrent(this.layout);
         this.stage.style.aspectRatio = this.layout.aspect.replace(':', '/');
@@ -338,6 +340,17 @@ export class VisualizerView {
         const snapshot = player?.stateManager?.getStateSnapshot();
         return snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;
     }
+    lyrics() {
+        const player = this.uiManager.audioPlayer;
+        if (!this.hasLyrics || !player?.ui?.container || !player.trackLyrics) return null;
+        const snapshot = player.stateManager.getStateSnapshot();
+        if (!snapshot.currentTrack) return null;
+        const data = player.trackLyrics.get(snapshot.currentTrack);
+        if (!data) return null;
+        const position = snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
+        return { data, time: this.uiManager.audioManager.getAudiblePlaybackPosition(position, snapshot.playbackSpeed),
+            duration: snapshot.currentTrackDuration, isStopped: snapshot.isStopped };
+    }
     frame(milliseconds) {
         this.frameRequest = null;
         if (!this.visible) return;
@@ -376,7 +389,7 @@ export class VisualizerView {
                 ctx.clearRect(0, 0, cw, ch);
                 ctx.drawImage(feed, 0, 0);
             } else {
-                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality });
+                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, lyrics: this.lyrics() });
             }
         } else {
             this.canvas.getContext('2d').clearRect(0, 0, cw, ch);

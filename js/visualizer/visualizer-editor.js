@@ -647,10 +647,10 @@ export class VisualizerEditor {
         if (item.type === 'text') this.field(properties, this.t('visualizer.textContent', 'Text'), 'textarea', item.params.text,
             value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
         this.styleToggles(properties, item);
-        if (VISUAL_TYPES.includes(item.type)) this.parameters(properties, item);
+        if (VISUAL_TYPES.includes(item.type) || item.type === 'lyrics') this.parameters(properties, item);
         if (item.type === 'artwork') this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
-        else if (TEXT_STYLE_TYPES.includes(item.type)) this.textStyle(properties, item.style, item.type);
+        else if (TEXT_STYLE_TYPES.includes(item.type)) this.textStyle(properties, item.style, item.type, item.params);
         else if (item.type === 'shape') this.shapeStyle(properties, item.style);
         if (item.type !== 'artwork') this.palette(this.root, item.palette, item.type);
         this.effects(this.root, item.effects, 'item', item.type);
@@ -675,7 +675,7 @@ export class VisualizerEditor {
             set('radius'), { min: 0, max: 200, step: 1, unit: 'px' });
     }
 
-    textStyle(parent, style, type = null) {
+    textStyle(parent, style, type = null, params = null) {
         const value = key => style[key] ?? TEXT_DECORATION_DEFAULTS[key] ?? RHYTHM_BEAT_STYLE_DEFAULTS[key];
         const set = key => next => { style[key] = next; this.changed(); };
         const label = (key, fallback) => this.t(`visualizer.style.${key}`, fallback);
@@ -701,8 +701,12 @@ export class VisualizerEditor {
         }
         select(parent, 'fontFamily', 'Font', FONT_FAMILIES);
         range(parent, 'fontSize', 'Text size', 8, 200, 1, 'px');
-        select(parent, 'align', 'Alignment', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]);
-        select(parent, 'verticalAlign', 'Vertical alignment', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]);
+        if (type !== 'lyrics' || params?.lyricsView !== 'list' || params?.lyricsMotion !== 'smooth-horizontal') {
+            select(parent, 'align', 'Alignment', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]);
+        }
+        if (type !== 'lyrics' || params?.lyricsView === 'line' || params?.lyricsMotion?.endsWith('-horizontal')) {
+            select(parent, 'verticalAlign', 'Vertical alignment', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]);
+        }
         range(parent, 'letterSpacing', 'Letter spacing', -20, 100, 1, 'px');
         select(parent, 'textCase', 'Case', [['none', 'None'],['upper', 'UPPERCASE'], ['lower', 'lowercase']]);
         const outline = this.group(parent, this.t('visualizer.style.outline', 'Outline'));
@@ -722,20 +726,46 @@ export class VisualizerEditor {
         const analogMeter = item.type === 'analog-meter';
         const rhythm = item.type === 'rhythm-analyzer';
         const guitar = item.type === 'guitar';
+        const lyrics = item.type === 'lyrics';
         const update = (key, value) => {
             params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
-                (analogMeter && ['sc', 'ln', 'ls'].includes(key)) || (rhythm && key === 'sp') || (guitar && key === 'ro') ? Number(value) : value;
-            // Mode and PPM Scale decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time;
+                (analogMeter && ['sc', 'ln', 'ls', 'dc'].includes(key)) || (rhythm && key === 'sp') || (guitar && key === 'ro') ? Number(value) : value;
+            // Mode, Detector, and dial choices decide which Analog Meter parameters apply; Peak toggles Peak Hold/Fall Time;
             // a fixed Root enables the Scale Guide.
-            this.changed((analogMeter && (key === 'md' || key === 'sc')) || key === 'pk' || (guitar && key === 'ro'));
+            this.changed((analogMeter && ['md', 'sc', 'de', 'dc'].includes(key)) || key === 'pk' || (guitar && key === 'ro') || key === 'lyricsView' || key === 'lyricsMotion');
         };
-        const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values });
+        const disabled = key => analogMeter && params.md === 'Custom' && key !== 'md' &&
+            !(window.AnalogMeterPlugin?.isParameterActive(key, params) ?? true);
+        const select = (key, label, values) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'select', params[key], value => update(key, value), { values, disabled: disabled(key) });
         const orientation = () => select('orientation', 'Orientation', [
             ['horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')],
             ['vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]
         ]);
-        const range = (key, label, min, max, step, unit = '', scale = 1, hint = null) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, unit, scale, hint });
+        const range = (key, label, min, max, step, unit = '', scale = 1, hint = null) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'range', params[key], value => update(key, value), { min, max, step, unit, scale, hint, disabled: disabled(key) });
         const check = (key, label) => this.field(parent, this.t(`visualizer.param.${key}`, label), 'checkbox', params[key], value => update(key, value));
+        if (lyrics) {
+            select('lyricsView', 'View', [['list', this.t('visualizer.paramChoice.lyricsList', 'List')],
+                ['line', this.t('visualizer.paramChoice.lyricsLine', 'Single line')]]);
+            if (params.lyricsView === 'line') check('lyricsNext', 'Show next line');
+            else {
+                select('lyricsMotion', 'Scroll', [['smooth', this.t('visualizer.paramChoice.lyricsSmooth', 'Scroll (vertical)')],
+                    ['step', this.t('visualizer.paramChoice.lyricsStep', 'Step (vertical)')],
+                    ['smooth-horizontal', this.t('visualizer.paramChoice.lyricsSmoothHorizontal', 'Scroll (horizontal)')],
+                    ['step-horizontal', this.t('visualizer.paramChoice.lyricsStepHorizontal', 'Step (horizontal)')]]);
+                if (params.lyricsMotion === 'step' || params.lyricsMotion === 'step-horizontal') {
+                    range('lyricsStepDuration', 'Step transition time', 0, 2, 0.01, 's');
+                }
+                range('lyricsPosition', 'Current line position', 0, 100, 1, '%', 1, () =>
+                    params.lyricsMotion.endsWith('-horizontal')
+                        ? this.t('visualizer.hint.lyricsPositionHorizontal', '0%: left; 50%: center; 100%: right. Sets the horizontal position of the current line.')
+                        : this.t('visualizer.hint.lyricsPosition', '0%: top; 50%: center; 100%: bottom. Move up to see more upcoming lines or down to see more previous lines.'));
+            }
+            range('lyricsLineSpacing', 'Line spacing', 0.5, 3, 0.05, '%', 100);
+            check('lyricsWordFill', 'Word highlight');
+            range('lyricsOffset', 'Offset', -10, 10, 0.05, 's');
+            range('lyricsFadeIn', 'Fade-in time', 0, 10, 0.1, 's');
+            range('lyricsFadeOut', 'Fade-out time', 0, 10, 0.1, 's');
+        }
         // Integer range endpoints; an endpoint dragged past its partner carries the partner along.
         const rangePair = (entries, unit = '') => {
             const sliders = {};
@@ -822,7 +852,7 @@ export class VisualizerEditor {
             range('cf', 'Fall Time', 0, 5, 0.05, 's');
             peakControls();
         } else if (item.type === 'notes') {
-            select('pr', 'Pitch Resolution', [['Semitone', this.t('visualizer.paramChoice.Semitone', '1/12 Octave')], ['High', this.t('visualizer.paramChoice.High', 'High (1/60 Octave)')]]);
+            select('pr', 'Pitch Resolution', [['Semitone', this.t('visualizer.paramChoice.Semitone', '1/12 Octave')], ['High', this.t('visualizer.paramChoice.High', 'High')]]);
             select('ly', 'Layout', [['Horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')], ['Vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]]);
             check('vl', 'Volume');
             range('ts', 'Time Span', 1, 10, 1, 's');
@@ -893,23 +923,28 @@ export class VisualizerEditor {
             range('ml', 'Reference Floor', -120, -24, 1, 'dB');
             range('pe', 'Persistence', 0.1, 2, 0.1, 's');
         } else if (analogMeter) {
-            // Before the effect script loads every parameter is shown; the next rebuild hides inactive ones.
-            const active = key => window.AnalogMeterPlugin?.isParameterActive(key, params) ?? true;
+            // Before the effect script loads every parameter is shown; the next rebuild applies its visibility rules.
+            const visible = key => window.AnalogMeterPlugin?.isParameterVisible(key, params) ?? true;
             const choices = labels => labels.map((label, index) => [String(index),
                 this.t(`visualizer.paramChoice.${label.replace(/ /g, '-').replace('+', '')}`, label)]);
-            select('md', 'Mode', ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness'].map(value =>
+            select('md', 'Mode', ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness', 'Custom'].map(value =>
                 [value, this.t(`visualizer.paramChoice.${value.replace(/ /g, '-')}`, value)]));
-            if (active('it')) range('it', 'Integration', 0.05, 3, 0.01, 's');
-            if (active('at')) range('at', 'Attack', 1, 20, 0.1, 'ms');
-            if (active('rt')) range('rt', 'Release', 0.1, 5, 0.01, 's');
-            if (active('rl')) range('rl', 'Reference', -30, 0, 1, 'dBFS');
-            if (active('rg')) range('rg', 'Range', 20, 60, 1, 'dB');
-            if (active('sc')) this.field(parent, this.t('visualizer.param.meterScale', 'PPM Scale'), 'select',
+            if (visible('de')) select('de', 'Detector', ['Average Rectified', 'RMS', 'Sample Peak', 'True Peak'].map(value =>
+                [value, this.t(`visualizer.paramChoice.${value.replace(/ /g, '-')}`, value)]));
+            if (visible('it')) range('it', 'Integration', 0.05, 3, 0.01, 's');
+            if (visible('at')) range('at', 'Attack', 1, 20, 0.1, 'ms');
+            if (visible('rt')) range('rt', 'Release', 0.1, 5, 0.01, 's');
+            if (visible('nr')) range('nr', 'Needle Response', 1, 3000, 1, 'ms');
+            if (visible('os')) range('os', 'Overshoot', 0, 25, 0.05, '%');
+            if (visible('dc')) select('dc', 'Dial', choices(['VU', 'DIN', 'BBC', 'dB', 'dBFS']));
+            if (visible('rl')) range('rl', 'Reference', -30, 0, 1, 'dBFS');
+            if (visible('rg')) range('rg', 'Range', 20, 60, 1, 'dB');
+            if (visible('sc')) this.field(parent, this.t('visualizer.param.meterScale', 'PPM Scale'), 'select',
                 params.sc, value => update('sc', value), { values: choices(['DIN', 'BBC', 'dB']) });
-            if (active('ph')) range('ph', 'Peak Hold', 0, 10, 0.1, 's');
-            if (active('ln')) select('ln', 'Needle', choices(['Momentary', 'Short-term']));
-            if (active('tg')) range('tg', 'Target', -36, -10, 1, 'LUFS');
-            if (active('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
+            if (visible('ph')) range('ph', 'Peak Hold', 0, 10, 0.1, 's');
+            if (visible('ln')) select('ln', 'Needle', choices(['Momentary', 'Short-term']));
+            if (visible('tg')) range('tg', 'Target', -36, -10, 1, 'LUFS');
+            if (visible('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
             this.meterAppearance(parent, item);
         } else if (rhythm) {
             rangePair([['mn', 'Min BPM', 40, 192, 'bpmMin'], ['mx', 'Max BPM', 50, 240, 'bpmMax']],
@@ -924,18 +959,21 @@ export class VisualizerEditor {
             this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value));
         }
         if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, 'dB');
-        if (guitar) return;
+        if (guitar || lyrics) return;
         check('showAxes', 'Axes and grid');
         check('showAxisNumbers', 'Axis labels and numbers');
     }
 
     meterAppearance(parent, item) {
         const params = item.params;
+        const custom = params.md === 'Custom';
+        const vuDial = window.AnalogMeterPlugin?.usesVuDial(params) ?? false;
         const group = (key, label) => this.group(parent, this.t(`visualizer.meter.${key}`, label));
         const field = (parent, key, label, type, options = {}) => this.field(parent,
             this.t(`visualizer.param.${key}`, label), type, params[key], value => {
                 params[key] = value; this.changed(key === 'needleTip');
-            }, options);
+            }, { ...options, disabled: custom && (key === 'arrowAspect' ? params.needleTip !== 'arrow'
+                : ['showPercent', 'readoutUnit'].includes(key) && !vuDial) });
         const range = (parent, key, label, min, max, step = 1, unit = '', scale = 1) =>
             field(parent, key, label, 'range', { min, max, step, unit, scale });
         const check = (parent, key, label) => field(parent, key, label, 'checkbox');
@@ -951,14 +989,14 @@ export class VisualizerEditor {
         range(needle, 'needleLength', 'Needle length', 50, 120, 1, '%');
         range(needle, 'needleWidth', 'Needle width', 0.5, 8, 0.5, 'px');
         select(needle, 'needleTip', 'Needle tip', [['line', 'Line'], ['taper', 'Tapered'], ['arrow', 'Arrow']]);
-        if (params.needleTip === 'arrow') range(needle, 'arrowAspect', 'Arrow tip aspect ratio', 0.25, 4, 0.05,
+        if (custom || params.needleTip === 'arrow') range(needle, 'arrowAspect', 'Arrow tip aspect ratio', 0.25, 4, 0.05,
             ':1');
         range(needle, 'hubSize', 'Pivot hub size', 0, 20, 0.5, 'px');
         const labels = group('labels', 'Dial labels');
         for (const [key, label] of [['showReadout', 'Numeric reading'], ['showChannel', 'Channel heading'],
             ['showMode', 'Mode heading'], ['showSigns', '− / + marks'], ['positiveLabels', 'Positive value signs'],
             ['showRedZone', 'Red zone']]) check(labels, key, label);
-        if (params.md === 'VU') {
+        if (custom || vuDial) {
             check(labels, 'showPercent', 'Secondary % scale');
             select(labels, 'readoutUnit', 'Reading unit', [['scale', 'Scale unit'], ['percent', 'Percent']]);
         }
@@ -1087,6 +1125,23 @@ export class VisualizerEditor {
             down.disabled = index === effects.length - 1;
             this.iconButton(actions, 'delete', this.t('visualizer.delete', 'Delete'), () => { effects.splice(index, 1); this.changed(true); });
             this.field(block, this.t('visualizer.amount', 'Amount'), 'range', effect.amount, value => { effect.amount = value; this.changed(); }, { min: 0, max: 1, step: .01, disabled: !effect.enabled });
+            if (effect.type === 'edge-fade') {
+                const note = document.createElement('p');
+                note.className = 'visualizer-bulk-note';
+                note.textContent = this.t('visualizer.edgeFadeNote', 'Applied last to the whole item, regardless of effect order. Clips anything outside the item area.');
+                block.appendChild(note);
+                this.field(block, this.t('visualizer.shape', 'Shape'), 'select', effect.shape, value => {
+                    effect.shape = value; this.changed(true);
+                }, { values: [['rectangle', this.t('visualizer.shape.rectangle', 'Rectangle')],
+                    ['circle', this.t('visualizer.shape.circle', 'Circle')]], disabled: !effect.enabled });
+                const widths = effect.shape === 'circle'
+                    ? [['circleWidth', this.t('visualizer.edgeFadeWidth', 'Fade width')]]
+                    : ['top', 'bottom', 'left', 'right'].map(key => [key, this.t(`visualizer.value.${key}`, key[0].toUpperCase() + key.slice(1))]);
+                for (const [key, label] of widths) {
+                    this.field(block, label, 'range', effect[key], value => { effect[key] = value; this.changed(); },
+                        { min: 0, max: 1, step: .01, unit: '%', scale: 100, disabled: !effect.enabled });
+                }
+            }
             if (effect.type === 'transform') {
                 for (const { key, label, min, max, unit } of TRANSFORM_PARAMETERS) {
                     this.field(block, this.t(`visualizer.transform.${key}`, label), 'range', effect[key],

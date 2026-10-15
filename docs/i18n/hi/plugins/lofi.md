@@ -1,6 +1,6 @@
 ---
-title: "Lo-Fi प्लगइन - EffeTune"
-description: "AM Radio Simulator, Bit Crusher, Noise Blender, Vinyl Artifacts आदि सहित lo-fi effect प्लगइन।"
+title: "Lo-Fi प्लगइन - कैसेट, MiniDisc, MP3, रेडियो और विनाइल सिम्युलेटर - EffeTune"
+description: "कैसेट, रील-टू-रील टेप, विनाइल, MiniDisc (ATRAC), MP3, Bluetooth SBC, AM/FM/शॉर्टवेव रेडियो और टीवी ऑडियो का अनुकरण करें; बिट क्रशिंग, हम और नॉइज़ भी जोड़ें।"
 lang: hi
 ---
 

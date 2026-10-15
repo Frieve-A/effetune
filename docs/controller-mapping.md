@@ -1,5 +1,5 @@
 ---
-title: "Controller Mapping - EffeTune"
+title: "Controller Mapping - MIDI, Gamepad & Keyboard Control - EffeTune"
 description: "Control EffeTune effect parameters from MIDI controllers, gamepads, and the keyboard."
 lang: en
 ---

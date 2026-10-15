@@ -18,7 +18,7 @@ import {
 } from '../../tools/verify-dsp-library-goldens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const GOLDEN_CASE_COUNT = 1051;
+const GOLDEN_CASE_COUNT = 1052;
 const EFFECT_COUNT = 111;
 const WORKLET_GOLDEN_CASE_COUNT = 113;
 const NON_IDENTITY_EFFECT_COUNT = 102;

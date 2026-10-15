@@ -12,12 +12,13 @@ class PluginBase {
         this.name = name;
         this.description = description;
         this.enabled = true;
+        this.audioHostActive = this.audioHostActive !== false;
         // Whether the section the plugin belongs to is enabled. The pipeline
         // updates this when the user toggles a Section's ON button; used
         // together with `enabled` to decide whether the plugin's redraw loop
         // (startAnimation/stopAnimation) should run.
         this._sectionEnabled = true;
-        this._powerUiEnabled = true;
+        this._powerUiEnabled = this.audioHostActive;
         // Unknown plugin state is conservatively reset across a skipped span.
         // Same-quantum Monitoring still requires an explicit static descriptor.
         this.temporalCapability = 'reset-on-resume';
@@ -115,18 +116,20 @@ class PluginBase {
         }
 
         // Observe mutations to detect when workletNode becomes available
-        this._messageHandlerObserver = new MutationObserver(() => {
-            if (window.workletNode && !this._hasMessageHandler) {
-                this._setupMessageHandler();
-                this._messageHandlerObserver?.disconnect();
-                this._messageHandlerObserver = null;
-            }
-        });
-        this._messageHandlerObserver.observe(document, {
-            attributes: true,
-            childList: true,
-            subtree: true
-        });
+        if (this.audioHostActive) {
+            this._messageHandlerObserver = new MutationObserver(() => {
+                if (window.workletNode && !this._hasMessageHandler) {
+                    this._setupMessageHandler();
+                    this._messageHandlerObserver?.disconnect();
+                    this._messageHandlerObserver = null;
+                }
+            });
+            this._messageHandlerObserver.observe(document, {
+                attributes: true,
+                childList: true,
+                subtree: true
+            });
+        }
     }
 
     _setupMessageHandler() {
@@ -1008,7 +1011,7 @@ class PluginBase {
         this.processorString = processorFunction.toString();
         this.compiledFunction = this._compileProcessor(this.processorString);
 
-        if (window.workletNode) {
+        if (this.audioHostActive !== false && window.workletNode) {
             this._setupMessageHandler();
             window.workletNode.port.postMessage({
                 type: 'registerProcessor',

@@ -980,6 +980,8 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         assert.ok(frame.levels.some(value => value > 0));
         assert.equal(frame.volumeDb.length, 440);
         assert.ok(frame.volumeDb.every(Number.isFinite));
+        assert.equal(frame.pitchCents.length, 88);
+        assert.ok(frame.pitchCents.every(Number.isFinite));
         assert.ok(frame.levels.some((value, cell) => value < 0.5 && frame.volumeDb[cell] > -240));
         // Cells outside the default MIDI 28-91 range stay at the floor.
         assert.ok(frame.volumeDb.slice(0, 35).every(value => value === -240));

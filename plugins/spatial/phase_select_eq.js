@@ -627,7 +627,7 @@ class PhaseSelectEqPlugin extends PluginBase {
         const id = `${this.id}-phase-select-eq-${key}`;
         const labelElement = document.createElement('label');
         labelElement.htmlFor = id;
-        labelElement.textContent = `${label}${unit ? ` (${unit})` : ''}`;
+        labelElement.textContent = `${label}${unit ? ` (${unit})` : ''}:`;
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.id = `${id}-slider`;
@@ -864,9 +864,9 @@ class PhaseSelectEqPlugin extends PluginBase {
         this._createNumberField(fields, 'gn', 'Gain', 0, 200, 1,
             () => selected().gn, value => this._setSelectedRegionValue('gn', value), '%');
         this._appendSoloField(fields);
-        this._createNumberField(fields, 'fl', 'Core Low Frequency', 20, 40000, 1,
+        this._createNumberField(fields, 'fl', 'Core Low Freq', 20, 40000, 1,
             () => selected().fl, value => this._setSelectedRegionValue('fl', value), 'Hz', 'log');
-        this._createNumberField(fields, 'fh', 'Core High Frequency', 20, 40000, 1,
+        this._createNumberField(fields, 'fh', 'Core High Freq', 20, 40000, 1,
             () => selected().fh, value => this._setSelectedRegionValue('fh', value), 'Hz', 'log');
         this._createNumberField(fields, 'pl', 'Core Low Phase', 0, 179, 1,
             () => selected().pl, value => this._setSelectedRegionValue('pl', value), '°',
@@ -874,28 +874,28 @@ class PhaseSelectEqPlugin extends PluginBase {
         this._createNumberField(fields, 'ph', 'Core High Phase', 1, 180, 1,
             () => selected().ph, value => this._setSelectedRegionValue('ph', value), '°',
             'linear', 'phase');
-        this._createNumberField(fields, 'lowFrequencyTransition', 'Low Frequency Transition', 0, 10, 0.01,
+        this._createNumberField(fields, 'lowFrequencyTransition', 'Low Freq Trans', 0, 10, 0.01,
             () => Math.log2(selected().fl / selected().ofl),
             value => this._setTransitionOctaves('low', value), 'oct');
-        this._createNumberField(fields, 'highFrequencyTransition', 'High Frequency Transition', 0, 10, 0.01,
+        this._createNumberField(fields, 'highFrequencyTransition', 'High Freq Trans', 0, 10, 0.01,
             () => Math.log2(selected().ofh / selected().fh),
             value => this._setTransitionOctaves('high', value), 'oct');
-        this._createNumberField(fields, 'lowPhaseTransition', 'Low Phase Transition', 0, 180, 1,
+        this._createNumberField(fields, 'lowPhaseTransition', 'Low Phase Trans', 0, 180, 1,
             () => selected().pl - selected().opl,
             value => this._setPhaseTransition('low', value), '°', 'linear', 'phase');
-        this._createNumberField(fields, 'highPhaseTransition', 'High Phase Transition', 0, 180, 1,
+        this._createNumberField(fields, 'highPhaseTransition', 'High Phase Trans', 0, 180, 1,
             () => selected().oph - selected().ph,
             value => this._setPhaseTransition('high', value), '°', 'linear', 'phase');
-        this._createNumberField(fields, 'bl', 'Core Low Balance', -100, 100, 0.1,
+        this._createNumberField(fields, 'bl', 'Core Low Bal', -100, 100, 0.1,
             () => selected().bl, value => this._setSelectedRegionValue('bl', value), '%',
             'linear', 'balance');
-        this._createNumberField(fields, 'bh', 'Core High Balance', -100, 100, 0.1,
+        this._createNumberField(fields, 'bh', 'Core High Bal', -100, 100, 0.1,
             () => selected().bh, value => this._setSelectedRegionValue('bh', value), '%',
             'linear', 'balance');
-        this._createNumberField(fields, 'obl', 'Outer Low Balance', -100, 100, 0.1,
+        this._createNumberField(fields, 'obl', 'Outer Low Bal', -100, 100, 0.1,
             () => selected().obl, value => this._setSelectedRegionValue('obl', value), '%',
             'linear', 'balance');
-        this._createNumberField(fields, 'obh', 'Outer High Balance', -100, 100, 0.1,
+        this._createNumberField(fields, 'obh', 'Outer High Bal', -100, 100, 0.1,
             () => selected().obh, value => this._setSelectedRegionValue('obh', value), '%',
             'linear', 'balance');
         this._editor.appendChild(fields);

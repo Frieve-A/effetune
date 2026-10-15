@@ -1,6 +1,6 @@
 ---
-title: "Lo-Fi 插件 - EffeTune"
-description: "Lo-Fi 效果插件,包括 AM Radio Simulator、Bit Crusher、Noise Blender、Vinyl Artifacts 等。"
+title: "Lo-Fi 插件 - 卡带、MD、MP3、收音机与黑胶唱片模拟 - EffeTune"
+description: "模拟卡带、开盘磁带、黑胶唱片、MD（ATRAC）、MP3、蓝牙 SBC、AM/FM/短波收音机和电视伴音，还可用 Bit Crusher 添加数字失真，或加入电气嗡声和噪声。"
 lang: zh
 ---
 

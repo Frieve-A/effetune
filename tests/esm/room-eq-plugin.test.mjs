@@ -816,7 +816,7 @@ test('Room EQ offers an external Graph radio row with separate group delay views
     assert.match(pluginSource,
         /this\._graphReadout = window\.GraphReadout\?\.attach\(\{\s*mount: graph,\s*surface: \(\) => this\._responseHoverContainer\(this\._responseView\),/);
     assert.match(pluginSource,
-        /container\.append\(responseViewControls, additionalEqUi\);/);
+        /container\.append\(responseViewControls, this\._previewChannelControl\.row, additionalEqUi\);/);
     assert.doesNotMatch(pluginCss,
         /\.room-eq-response-view-controls\s*\{[^}]*position:\s*absolute/);
     assert.match(pluginCss, /\.room-eq-phase-view \.room-eq-additional-eq-grid/);
@@ -2895,7 +2895,7 @@ test('Room EQ shows one measurement selector per selected IR channel', async () 
     assert.equal(container.children.length, 2);
     assert.deepEqual(
         Array.from(container.children, row => row.children[0].textContent),
-        ['Measurement Ch 1', 'Measurement Ch 2']
+        ['Measurement Ch1:', 'Measurement Ch2:']
     );
     assert.equal(container.children[0].className,
         'parameter-row room-eq-channel-measurement-row');
@@ -2941,7 +2941,7 @@ test('Room EQ shows one measurement selector per selected IR channel', async () 
 });
 
 test('Room EQ picks the previewed channel and hides the switch for one channel', () => {
-    // D-6 / D-7: the preview channel switch sits in the graph control row and only
+    // D-6 / D-7: the preview channel switch sits below the Graph row and only
     // appears once more than one channel was designed.
     const { Plugin, context } = loadPlugin();
     context.document.createElement = channelElementStub;
@@ -2969,7 +2969,10 @@ test('Room EQ picks the previewed channel and hides the switch for one channel',
     plugin._renderPreviewChannelSelect();
     assert.equal(plugin._previewChannel, 0);
     assert.equal(plugin._selectedPreview().id, 'ch0');
-    assert.match(pluginSource, /previewChannelRow\.className = 'room-eq-preview-channel'/);
+    assert.match(pluginSource,
+        /this\.createSelectControl\(\s*this\._t\('roomEq\.parameter\.previewChannel', 'Graph Preview Ch'\)/);
+    assert.match(pluginSource,
+        /previewChannelRow\.classList\.add\('room-eq-preview-channel', 'local-audio-only'\)/);
     assert.match(pluginCss, /\.room-eq-preview-channel\[hidden\] \{ display: none; \}/);
     plugin.cleanup();
 });
@@ -3289,7 +3292,7 @@ test('F-8: per-channel labels follow the selected host output channels', async (
     await plugin._renderChannelMeasurements([]);
     assert.deepEqual(
         Array.from(container.children, row => row.children[0].textContent),
-        ['Measurement Ch 3', 'Measurement Ch 4']
+        ['Measurement Ch3:', 'Measurement Ch4:']
     );
 
     const previewRow = channelElementStub('span');
@@ -3319,7 +3322,7 @@ test('F-8: per-channel labels follow the selected host output channels', async (
     await plugin._renderChannelMeasurements([]);
     assert.deepEqual(
         Array.from(container.children, row => row.children[0].textContent),
-        ['Measurement Ch 7', 'Measurement Ch 8']
+        ['Measurement Ch7:', 'Measurement Ch8:']
     );
     plugin.cleanup();
 });

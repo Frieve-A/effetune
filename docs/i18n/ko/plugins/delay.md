@@ -1,5 +1,5 @@
 ---
-title: "딜레이 플러그인 - EffeTune"
+title: "딜레이 플러그인 - 에코와 스피커 타임 얼라인먼트 - EffeTune"
 description: "표준 Delay와 정밀한 재생 타이밍 조정을 위한 Time Alignment를 포함한 딜레이 이펙트 플러그인입니다."
 lang: ko
 ---

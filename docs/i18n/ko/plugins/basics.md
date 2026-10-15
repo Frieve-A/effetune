@@ -1,6 +1,6 @@
 ---
-title: "기본 플러그인 - EffeTune"
-description: "Bass Management, Volume, Mute, Stereo Balance, FIR Crossover, Matrix 라우팅 등을 포함한 기본 오디오 플러그인입니다."
+title: "기본 플러그인 - 베이스 매니지먼트, 채널 라우팅, 크로스오버 - EffeTune"
+description: "볼륨, 밸런스, 극성, 라우팅을 조절하는 도구와 서브우퍼용 Bass Management, 멀티 앰프 스피커 시스템용 FIR Crossover와 Channel Divider를 제공합니다."
 lang: ko
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "Analyzer Plugins - EffeTune"
+title: "Analyzer Plugins - Spectrum Analyzer, Spectrogram, VU & LUFS Meters - EffeTune"
 description: "Audio analysis plugins including Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Rhythm Analyzer, Spectrogram, Spectrum Analyzer, and Stereo Meter."
 lang: en
 ---
@@ -23,17 +23,18 @@ A collection of plugins that let you see your music in fascinating ways. These v
 
 ## Analog Meter
 
-Shows the level of each channel on a classic needle meter without changing the sound. Use it to follow how loud your music is from moment to moment, or to see how your playback reads on the scales used in broadcasting and streaming: VU, PPM, peak, and loudness (LUFS).
+Shows the level of each channel on a classic needle meter without changing the sound. Use it to follow how loud your music is from moment to moment, or to see how your playback reads on the scales used in broadcasting and streaming: VU, PPM, peak, and loudness (LUFS). **Custom** lets you combine a detector, needle movement, and dial to make your own meter.
 
 ### Listening Guide
 
 - **Follow the average level with VU**: Watch the needle through a song. Quiet verses and loud choruses show a clear difference, while short drum hits barely move the needle.
 - **Check for clipping with True Peak**: Place Analog Meter after your EQ and gain effects and play the loudest part of a track. If the reading goes above 0 dBFS or the over lamp lights, the chain can clip; lower the gain until the peaks stay below 0 dBFS, with a little margin such as -1 dBFS.
 - **Compare songs with Loudness**: Set **Target** to a streaming reference such as -14 LUFS, press **Reset** at the start of a song or album, and play it through. The Integrated value shows its overall loudness and the maximum True Peak shows its highest peak, which gives a guide for matching volume across an album or playlist. LRA lets you compare how widely the loudness of each song varies.
+- **Make your own meter with Custom**: Start with **Bouncy VU** for a more lively needle, **Slow RMS** for a calm view of average level, or **Fast Peak** to follow brief peaks. Adjust **Needle Response** for speed and **Overshoot** for bounce. Custom can give a PPM-like rise and fall, but its peak detectors rise instantly; use **PPM** for the standard PPM response.
 
 ### System Presets
 
-Click **Effect Presets** in the effect header to set the meter to a well-known standard in one step. A preset that changes **Mode** starts the measurement over; switching between the Loudness presets keeps the measurement running.
+Click **Effect Presets** in the effect header to choose a standard or custom meter in one step. A preset that changes **Mode** starts the measurement over; switching between the Loudness presets keeps the measurement running.
 
 - **Studio VU (-18 dBFS)** - VU with 0 VU at -18 dBFS, the common studio alignment (EBU R68). Suits recordings with plenty of headroom.
 - **SMPTE VU (-20 dBFS)** - VU with 0 VU at -20 dBFS (SMPTE RP 155), the practice in North American studios and broadcasting.
@@ -52,19 +53,26 @@ Click **Effect Presets** in the effect header to set the meter to a well-known s
 - **TV (-24 LKFS)** - Loudness with the -24 LKFS target used for TV in the US (ATSC A/85) and Japan (ARIB TR-B32).
 - **Streaming (-14 LUFS)** - Loudness with a -14 LUFS target, close to the volume normalization of many music streaming services, and the calmer Short-term needle.
 - **Streaming (-16 LUFS)** - Loudness with the -16 LUFS target recommended for streaming and podcasts (AES TD1008), and the Short-term needle.
+- **Bouncy VU** - Custom with the VU detector and dial, and 15% overshoot for a needle that bounces more strongly.
+- **Slow RMS** - Custom with a 3 s RMS average, a 1000 ms needle response, and no overshoot. The dB dial has 0 at -18 dBFS and reaches down to -60 dBFS.
+- **Fast Peak** - Custom with True Peak detection, a 0.5 s detector release, a 10 ms needle response, and no overshoot. The dBFS dial covers the top 40 dB and reads in dBTP.
 
 ### Parameters
 
-Only the controls that apply to the selected **Mode** are shown.
+Only the controls that apply to the selected **Mode** are shown. In **Custom**, all of its controls remain visible; those that do not apply are disabled, keeping the settings panel the same height.
 
-- **Mode** - Selects the meter type: **VU** (default), **PPM**, **RMS**, **Sample Peak**, **True Peak**, or **Loudness**. Each mode moves the needle differently and uses its own scale (see the Visualization Guide). Changing the mode starts the measurement over.
-- **Integration** (RMS; 0.05 to 3 s; default 0.3 s) - Sets the averaging time. Longer values give a steadier, slower needle; shorter values follow changes more quickly.
+- **Mode** - Selects the meter type: **VU** (default), **PPM**, **RMS**, **Sample Peak**, **True Peak**, **Loudness**, or **Custom**. Each mode moves the needle differently and uses its own scale (see the Visualization Guide). Changing the mode starts the measurement over.
+- **Detector** (Custom; default Average Rectified) - Chooses the level the needle follows. **Average Rectified** uses the signal's absolute amplitude, averaged by the needle itself without a separate averaging window, as in VU. **RMS** measures average power over **Integration**. **Sample Peak** catches the highest sample value; **True Peak** also estimates peaks between samples. Both peak detectors rise instantly and fall according to **Release**. Changing the detector starts the measurement over.
+- **Integration** (RMS, Custom with RMS detector; 0.05 to 3 s; default 0.3 s) - Sets the averaging time. Longer values give a steadier, slower reading; shorter values follow changes more quickly. In Custom, the needle adds its own response after this average.
 - **Attack** (PPM; 1 to 20 ms; default 5 ms) - Sets how quickly the PPM needle rises, as the length of a tone burst that reads 2 dB below a steady tone. Shorter values show brief peaks closer to their full level; longer values let brief peaks read lower. 5 ms matches the DIN meter.
-- **Release** (PPM, Sample Peak, True Peak; 0.1 to 5 s; default 1.5 s) - Sets the time the needle takes to fall 20 dB after a peak. Longer values make peaks easier to read; shorter values follow the music more closely. 1.5 s matches the DIN meter and the standard digital peak meter.
-- **Reference** (VU, PPM, RMS; -30 to 0 dBFS; default -14 dBFS) - Sets the digital level that lands on the meter's reference mark. The default suits most finished commercial recordings; with the studio alignments of -18 or -20 dBFS (see System Presets), ordinary CDs often hold the needle near the top of the scale. Raise it when loud recordings push the needle to the top of the scale; lower it when quiet recordings barely move the needle.
-- **Range** (PPM with the DIN or dB scale, RMS, Sample Peak, True Peak; 20 to 60 dB; default 40 dB) - Sets how far down the scale reaches. Widen it to see quiet passages; narrow it to spread out the upper part of the scale.
+- **Release** (PPM, Sample Peak, True Peak, Custom with Sample Peak or True Peak detector; 0.1 to 5 s; default 1.5 s) - Sets the time to fall 20 dB after a peak. Longer values make peaks easier to read; shorter values follow the music more closely. In Custom this controls the detector's fall, followed by the needle's own response. 1.5 s matches the DIN meter and the standard digital peak meter.
+- **Needle Response** (Custom; 1 to 3000 ms; default 300 ms) - Sets how long the needle takes to first reach 99% of a new, steady detector level. Lower values give a faster needle; higher values make it move more slowly. RMS averaging and peak release also affect the overall movement.
+- **Overshoot** (Custom; 0 to 25%; default 1.25%) - Sets how far the needle goes past a new, steady detector level, as a percentage of the level change. Higher values give more bounce; 0 makes the needle approach without going past it.
+- **Dial** (Custom; default VU) - Chooses **VU**, **DIN**, **BBC**, **dB**, or **dBFS** independently of the detector and needle movement. VU, DIN, and BBC use the scales described below. With dB, the 0 mark is **Reference** and the upper end is 0 dBFS. With dBFS, the upper end is 0 dBFS and readings use dBTP when **Detector** is True Peak.
+- **Reference** (VU, PPM, RMS, Custom except dBFS dial; -30 to 0 dBFS; default -14 dBFS) - Sets the digital level that lands on the meter's reference mark. The default suits most finished commercial recordings; with the studio alignments of -18 or -20 dBFS (see System Presets), ordinary CDs often hold the needle near the top of the scale. Raise it when loud recordings push the needle to the top of the scale; lower it when quiet recordings barely move the needle.
+- **Range** (PPM with the DIN or dB scale, RMS, Sample Peak, True Peak, Custom with DIN, dB, or dBFS dial; 20 to 60 dB; default 40 dB) - Sets how far down the scale reaches. Widen it to see quiet passages; narrow it to spread out the upper part of the scale.
 - **PPM Scale** (PPM; default DIN) - Selects the PPM scale: **DIN**, **BBC**, or **dB** (see the Visualization Guide).
-- **Peak Hold** (PPM, RMS, Sample Peak, True Peak; 0 to 10 s; default 1 s) - Sets how long the peak mark stays at the highest recent reading, and how long the over lamp stays lit. 0 turns the mark off; the over lamp then stays lit for 1 s.
+- **Peak Hold** (PPM, RMS, Sample Peak, True Peak, Custom; 0 to 10 s; default 1 s) - Sets how long the peak mark stays at the highest recent reading, and how long the over lamp stays lit. 0 turns the mark off; the over lamp then stays lit for 1 s.
 - **Needle** (Loudness; default Momentary) - Selects what the needle shows. **Momentary** follows loudness over the last 0.4 s; **Short-term** shows the last 3 s and moves more calmly.
 - **Target** (Loudness; -36 to -10 LUFS; default -23 LUFS) - Sets the loudness marked on the scale and lays out the scale relative to it. -23 LUFS is the EBU R128 broadcast level; many streaming services use values around -14 LUFS.
 - **Scale** (Loudness; default EBU +9) - Selects the width of the loudness scale. **EBU +9** covers 18 LU below to 9 LU above **Target**; **EBU +18** covers 36 LU below to 18 LU above, which suits music with wide dynamics or very loud material.
@@ -83,6 +91,7 @@ Only the controls that apply to the selected **Mode** are shown.
 | Sample Peak | Jumps immediately to the highest sample value. | Top of the scale = 0 dBFS. |
 | True Peak | Like Sample Peak, but also estimates peaks between samples. It can read above 0 dBFS; such peaks can clip in a DAC or during conversion. | Top of the scale = 0 dBFS. |
 | Loudness | Shows loudness in LUFS as defined by ITU-R BS.1770 and EBU R128. | Set by **Target** and **Scale**; readings are shown in LUFS. |
+| Custom | Follows **Detector**, with speed set by **Needle Response** and bounce set by **Overshoot**. The defaults give the same needle movement as VU. | Selected by **Dial**, independently of the needle movement. |
 
 - The peak mark shows the highest recent reading for the **Peak Hold** time. The over lamp lights when the level exceeds 0 dBFS and stays lit for the **Peak Hold** time, or for 1 s when **Peak Hold** is 0.
 - In Loudness mode, the first meter shows the whole program. Its needle follows **Needle**, and it lists Momentary (M), Short-term (S), Integrated (I), Loudness Range (LRA), the maximum True Peak, and the elapsed measurement time, with a **Reset** button. Integrated and LRA appear once enough audio has been measured.
@@ -136,7 +145,7 @@ A visual display that shows your music's digital signal level in real time. It h
 
 ## Note Spectrogram
 
-Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves. The analyzer estimates the fundamental pitches of notes it detects in the selected range.
+Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves. Instrument colors and highlighting help you follow estimated voices and instrument groups within that display.
 
 ### Visualization Guide
 
@@ -145,35 +154,65 @@ Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in
 - New sound is shown with an immediate pitch estimate. About 40, 80, and 160 ms later, that part of the history is updated using the sounds that follow, so recent marks just behind the newest sound may change. This adds no display delay and leaves **Sync Visuals to Audio** alignment unchanged.
 - Lines at each C mark octave boundaries.
 - Pitch rows corresponding to black piano keys use a nearly black gray background so they remain distinguishable when no note is detected.
-- **Normal** uses the theme’s graph trace color; **Note Colors** uses a different color for each note, repeated across octaves. The guide lines between E and F remain visible in both modes.
-- **1/12 Octave** shows one row per semitone. **High (1/60 Octave)** divides each semitone into five rows so that small pitch movement is easier to follow; colors are blended between neighboring notes.
-- Color strength indicates confidence in each pitch estimate; weak candidates remain visible without a display threshold.
+- **Normal** uses the theme’s graph trace color; **Note Colors** uses a different color for each note, repeated across octaves. **Instrument (3)** and **Instrument (9)** mix group colors in proportion to their estimated probabilities; Instrument (3) first combines the probabilities into Vocal, Bass, and Other. The legend shows the selected groups and their colors. The guide lines between E and F remain visible in every mode.
+- Instrument colors appear after the estimate is ready and update the corresponding history. In Instrument views, notes awaiting an estimate, or without one, appear in neutral gray. Changing between the 3-group and 9-group views uses the available estimates.
+- Instrument estimation adds 20 ms before the result is shown; the pitch display continues to update immediately.
+- Instrument estimation uses earlier notes in the music as clues, so estimates are less reliable just after it is enabled or playback is moved to another position. Once an instrument estimate is ready, it is not revised.
+- Every completed instrument estimate supplies group probabilities, even when confidence is low. Weak pitch candidates and sounds already playing when instrument estimation is enabled may remain gray because they have no instrument estimate.
+- **Highlight** makes the selected group easier to follow by shifting other notes toward neutral gray. A higher estimated probability of the selected group preserves more of the original color. Notes awaiting an estimate, or without one, also appear in neutral gray; they remain visible. The selected target is shown beside the legend and marked within it. Hover over a group in the legend to highlight it temporarily; moving away restores your Highlight selection.
+- **1/12 Octave** shows one row per semitone. **High** places each pitch at its estimated cent value so that small pitch movements are easier to follow. Note Colors blends neighboring note colors according to pitch; instrument views use colors based on the instrument estimate.
+- Color strength indicates confidence in each pitch estimate; candidates fade into the background as confidence approaches zero.
+- With **Onsets** on, triangles in the selected **Color** mark estimated note starts: ▼ in Horizontal and ▶ in Vertical. The center of each triangle's base marks the start time and pitch. Separate marks help you see when the same pitch is played again, even when its sound continues between attacks.
 - With **Volume** on, each detected pitch becomes a bar whose opaque core thickness shows its frequency-corrected relative volume, from 1/60 octave at the bottom of the scale to 1/12 octave at the top. A fade extends 1/120 octave beyond each side of that core, adding 1/60 octave to the total footprint. **Pitch Resolution** changes the bar’s center position, not its core thickness.
 - At the keyboard edge, a soft-edged semicircle extends into the graph and shows the current volume. It responds immediately to increases and falls at 20 dB per second; there is no separate visible peak hold.
 - The volume scale covers 24 dB. Its top follows the louder of a recent reference used to stabilize the history scale (over about one second) and -36 dB, so quieter material remains readable without making louder passages fill the display continuously. This reference is separate from the current-volume semicircle.
 - Octave and E–F guide lines are drawn behind the volume bars so the pitch grid remains a visual reference.
-- The keys blend from their normal color toward the display color as confidence in the latest frame increases, reaching that color at 1.
+- The keys blend from their normal color toward the display color as confidence in the latest frame increases, reaching that color at 1. With Normal or Note Colors, Highlight affects the graph but leaves the keyboard colors unchanged.
 - Changing **Color** recolors the existing history.
 
 ### Visual Display
 - Hover over the history, or touch and drag on it, to read the note, time, **Salience** (pitch confidence), and **Level** (frequency-corrected volume in dB) at that point.
+- When instrument estimation is active, the readout also lists instrument probabilities for the note at that point in history: Vocal, Bass, and Other with **Instrument (3)**, and all nine groups with the other Color settings. Notes without an estimate show **Not classified**.
+- With **Highlight** selected, the readout also shows the estimated probability of that target when an estimate is available. This is separate from Salience.
 
 ### Listening Guide
 
 - Chords appear as several bright rows at the same time
 - Melodies and bass lines form paths that move between note rows
-- The display estimates pitch; it does not create MIDI or notation, identify instruments, or separate every simultaneous sound completely. Complex overlaps can leave parts of a melody or harmony blank, while percussion, noise, and unclear repeating patterns can produce an occasional incorrect pitch.
+- To follow vocals or bass, start with **Instrument (3)**, or keep **Note Colors** and choose **Vocal** or **Bass** in **Highlight**. Use **Instrument (9)** for a more detailed grouping.
+- Pitch and instrument estimates can be wrong, especially when sounds overlap. Instrument colors are a listening aid, not a reliable identification of every instrument. Drums are not classified. The display does not create MIDI or notation or fully separate simultaneous sounds; percussion, noise, and unclear repeating patterns can also produce incorrect pitches.
+
+### Instrument Groups
+
+**Instrument (3)** uses **Vocal**, **Bass**, and **Other**. Other combines all groups except Vocal and Bass; it is broader than Other in the 9-group view.
+
+**Instrument (9)** uses the following groups:
+
+- **Vocal**: recorded human singing, including solo voices and choirs.
+- **Bass**: acoustic, electric, and synth bass.
+- **Guitar**: acoustic, clean electric, and distorted guitars.
+- **Piano**: acoustic and electric pianos, harpsichord, and clavinet.
+- **Strings**: solo and ensemble strings, pizzicato, harp, and synth strings.
+- **Wind**: brass and woodwinds, including saxophones and flutes.
+- **Synth**: synth leads and pads.
+- **Organ**: organs, accordion, and harmonica.
+- **Other**: pitched percussion such as celesta and vibraphone, synthesized choir and voice patches, orchestral hits, synth effects, ethnic instruments, and sound effects.
 
 ### Parameters
 
 - **Color** - Selects the display colors without changing the pitch estimates.
   - **Normal** (default): the theme’s graph trace color.
   - **Note Colors**: a separate color for each note, repeated across octaves.
+  - **Instrument (3)**: colors for Vocal, Bass, and Other.
+  - **Instrument (9)**: colors for the nine instrument groups listed above.
+- **Highlight** - Emphasizes an estimated group with any Color setting while preserving volume thickness. **None** (default) leaves the display without highlighting. Choose **Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ**, or **Other (9)**. Other (3) covers everything except Vocal and Bass; Other (9) covers only the narrower Other group above. Highlighting changes the display, not the sound.
+- Onset and instrument analysis increases CPU use. To avoid that extra processing, turn off **Onsets**, choose Normal or Note Colors, and set Highlight to None.
 - **Pitch Resolution** - Selects the vertical pitch detail without clearing the existing history.
   - **1/12 Octave** (default): one row per semitone, using the strongest estimate within that note.
-  - **High (1/60 Octave)**: five rows per semitone for finer pitch movement.
+  - **High**: displays pitches at their estimated cent values, preserving fine pitch movement.
 - **Layout** - Selects **Horizontal** (default) or **Vertical**. Switching layout preserves the existing history.
-- **Volume** - Shows relative volume in bar thickness and semicircle meters. It is on by default; turning it off shows confidence as row intensity.
+- **Volume** - Shows relative volume in bar thickness and semicircle meters. It is on by default; turning it off keeps the thickness fixed and shows pitch confidence through color strength.
+- **Onsets** - Shows estimated note starts in either layout, with Volume on or off. It is off by default. Turning it off hides the marks; instrument analysis continues if an Instrument color mode or Highlight requires it.
 - **Time Span** (1 to 10 s) - Sets how much time the piano roll shows
   - Shorter values make timing changes easier to see
   - Longer values show a longer musical passage at once

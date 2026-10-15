@@ -170,6 +170,22 @@
       "default": 0,
       "automation": true,
       "step": 1
+    },
+    {
+      "name": "previewMidi",
+      "key": "pm",
+      "kind": "int",
+      "min": -1,
+      "max": 127,
+      "default": -1
+    },
+    {
+      "name": "previewVelocity",
+      "key": "pv",
+      "kind": "int",
+      "min": 1,
+      "max": 127,
+      "default": 100
     }
   ]
 }

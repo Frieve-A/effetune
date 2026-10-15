@@ -1,5 +1,5 @@
 ---
-title: "音乐库使用方法 - EffeTune"
+title: "音乐库使用方法 - 浏览并播放本地音乐文件 - EffeTune"
 description: "介绍如何在 EffeTune 中创建音乐库，通过子文件夹和元数据查找并播放音乐，以及管理播放列表。"
 lang: zh
 ---

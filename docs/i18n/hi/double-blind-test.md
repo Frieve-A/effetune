@@ -1,5 +1,5 @@
 ---
-title: "Double Blind Test गाइड - EffeTune"
+title: "Double Blind Test गाइड - ABX और A/B ब्लाइंड लिसनिंग टेस्ट - EffeTune"
 description: "EffeTune में दो effect pipelines के बीच ABX और A/B preference blind listening tests चलाने और परिणामों को statistical significance के साथ देखने का तरीका।"
 lang: hi
 ---

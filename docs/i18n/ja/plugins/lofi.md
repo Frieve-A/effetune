@@ -1,6 +1,6 @@
 ---
-title: "Lo-Fiプラグイン - EffeTune"
-description: "AM Radio Simulator、Bit Crusher、Noise Blender、Vinyl ArtifactsなどのLo-Fiエフェクトプラグイン。"
+title: "Lo-Fiプラグイン - カセット・MD・MP3・ラジオ・レコードの音を再現 - EffeTune"
+description: "カセットテープ、オープンリール、レコード、MD (ATRAC)、MP3、Bluetooth SBC、AM/FM/短波ラジオ、テレビ音声の音を再現するLo-Fiエフェクト。ビットクラッシュ、ハム、ノイズも加えられます。"
 lang: ja
 ---
 

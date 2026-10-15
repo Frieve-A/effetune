@@ -1,5 +1,5 @@
 ---
-title: "Plugins de restauration - EffeTune"
+title: "Plugins de restauration - Suppression des clics et du ronflement, réduction du bruit - EffeTune"
 description: "Plugins de restauration pour les clics, crêtes écrêtées, ronflement électrique et bruit de fond constant."
 lang: fr
 ---

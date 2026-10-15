@@ -1,5 +1,5 @@
 ---
-title: "Extension de navigateur - EffeTune"
+title: "Extension de navigateur - Égaliseur et effets audio pour Chrome et Edge - EffeTune"
 description: "L’extension traite simultanément le son de quatre onglets au maximum, chacun avec son propre Effect Pipeline stéréo."
 lang: fr
 ---

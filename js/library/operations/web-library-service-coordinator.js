@@ -358,6 +358,17 @@ export class WebLibraryServiceCoordinator {
     return this.repository.queryPlaybackSequence(request);
   }
 
+  async resolveTrackSiblingFile({ trackUid, names } = {}) {
+    assertRepositoryContract(
+      Array.isArray(names) && names.length <= 8 && names.every(name => typeof name === 'string'),
+      'invalidLyricsNames',
+      'Lyrics sibling file names are invalid'
+    );
+    const track = await this.repository.getTrackStorageIdentity(trackUid);
+    if (!track) return null;
+    return this.sourceProvider?.resolveTrackSiblingFile?.(track, names) ?? null;
+  }
+
   async resolveSequenceEntrySource({ sequenceId = null, ordinal = null, entryInstanceId = null, trackUid = null } = {}) {
     assertRepositoryContract(
       this.sourceProvider || this.handleStore,

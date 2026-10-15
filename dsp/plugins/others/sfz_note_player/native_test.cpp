@@ -100,9 +100,9 @@ struct Harness {
   PluginKernel *kernel = nullptr;
   float rate;
   std::uint32_t analysis_latency = 0u;
-  generated::SFZNotePlayerPluginParams params{.5F,  -30.0F, 3.0F,  28.0F, 91.0F, 32.0F,
-                                              0.0F, 100.0F, 0.0F,  0.0F,  1.0F,  1.0F,
-                                              1.0F, 0.0F,   18.0F, 0.0F,  0.0F};
+  generated::SFZNotePlayerPluginParams params{.5F,    -30.0F, 3.0F, 28.0F, 91.0F, 32.0F, 0.0F,
+                                              100.0F, 0.0F,   0.0F, 1.0F,  1.0F,  1.0F,  0.0F,
+                                              18.0F,  0.0F,   0.0F, -1.0F, 100.0F};
   double time = 0;
   explicit Harness(float sampleRate = 48000) : rate(sampleRate) {
     kernel = descriptor->construct(storage.data());
@@ -118,6 +118,23 @@ struct Harness {
     CHECK(kernel->stageParameters(reinterpret_cast<float *>(&params), descriptor->paramsFloatCount,
                                   descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
+  }
+  std::array<std::uint8_t, 1044> snapshot() {
+    std::array<std::uint8_t, 2048> telemetry_storage{};
+    std::array<std::uint8_t, 1044> frame{};
+    TelemetryRing ring;
+    ring.adopt(telemetry_storage.data(), static_cast<std::uint32_t>(telemetry_storage.size()));
+    std::uint32_t sequence = 0u;
+    TelemetryWriter writer(ring, 17u, sequence);
+    {
+      allocation_guard::Scope guard;
+      kernel->writeTelemetry(writer);
+    }
+    CHECK(ring.read(frame.data(), static_cast<std::uint32_t>(frame.size()), nullptr) ==
+          frame.size());
+    CHECK(frame[0] == 30u && frame[2] == 1u && frame[4] == 17u);
+    CHECK(frame[12] == 4u && frame[13] == 4u);
+    return frame;
   }
   void process(std::vector<float> &audio, unsigned channels = 2,
                const NoteAnalysisView *view = nullptr) {
@@ -521,6 +538,133 @@ void playback() {
     a = l.event(60, 0);
   CHECK(peak(a) == 0);
 }
+void voiceTelemetry() {
+  Harness h;
+  h.params.maxVoices = 2;
+  h.params.octaveShift = 1;
+  h.params.sampleShift = 1;
+  h.sync();
+  auto r = region();
+  Bank bank({r, r});
+  CHECK(h.load(bank) == ET_OK);
+  const auto snapshot = [&] { return h.snapshot(); };
+  const auto count = [](const auto &frame, unsigned midi) { return frame[20u + midi * 8u]; };
+  const auto velocity = [](const auto &frame, unsigned midi) {
+    float value = 0;
+    std::memcpy(&value, frame.data() + 24u + midi * 8u, sizeof(value));
+    return value;
+  };
+  CHECK(snapshot()[16] == 0u && snapshot()[18] == 2u);
+  h.attack(84, 1, -13.5F, 256);
+  const auto initial = snapshot();
+  CHECK(initial[16] == 2u && count(initial, 96u) == 2u);
+  CHECK(count(initial, 84u) == 0u && count(initial, 97u) == 0u);
+  CHECK(std::abs(velocity(initial, 96u) - 64.0F / 127.0F * std::exp(-256.0F / h.rate)) < 1e-6F);
+  h.event(84, 1, -13.5F, 480);
+  const auto sustained = snapshot();
+  CHECK(sustained[16] == 2u && count(sustained, 96u) == 2u);
+  CHECK(std::abs(velocity(sustained, 96u) / velocity(initial, 96u) - std::exp(-480.0F / h.rate)) <
+        1e-6F);
+  h.attack(85, 1, 0, 256);
+  const auto stolen = snapshot();
+  CHECK(stolen[16] == 2u && count(stolen, 97u) == 2u && count(stolen, 96u) == 0u);
+  h.event(85, 0, 0, 512);
+  CHECK(snapshot()[16] == 2u); // Release tails still occupy their sample voices.
+  for (unsigned i = 0; i < 10; ++i)
+    h.event(85, 0, 0, 1024);
+  CHECK(snapshot()[16] == 0u);
+  h.params.maxVoices = 1;
+  h.sync();
+  h.attack(84);
+  CHECK(snapshot()[16] == 1u && snapshot()[18] == 1u);
+  h.kernel->reset();
+  CHECK(snapshot()[16] == 0u);
+  h.attack(84);
+  h.kernel->clearAsset(0);
+  CHECK(snapshot()[16] == 0u);
+  h.attack(84);
+  CHECK(snapshot()[16] == 0u); // Detection without an instrument cannot light a key.
+}
+
+void manualPreview() {
+  Harness h;
+  h.params.octaveShift = 1;
+  h.params.playLowest = h.params.playMiddle = h.params.playHighest = 0;
+  h.sync();
+  auto low = region(), high = region();
+  low[LowKey] = high[LowKey] = 60;
+  low[HighKey] = high[HighKey] = 61;
+  low[HighVelocity] = 80;
+  high[LowVelocity] = 81;
+  high[Volume] = -6;
+  Bank bank({low, high});
+  CHECK(h.load(bank) == ET_OK);
+  std::vector<float> audio(512);
+  h.params.previewMidi = 60;
+  h.params.previewVelocity = 64;
+  h.sync();
+  h.process(audio);
+  CHECK(audio[255] == .25F); // Preview uses the displayed key and velocity, bypassing detection.
+  auto frame = h.snapshot();
+  CHECK(frame[16] == 1u && frame[20u + 60u * 8u] == 1u && frame[20u + 72u * 8u] == 0u);
+  h.params.previewVelocity = 127;
+  h.sync();
+  std::fill(audio.begin(), audio.end(), 0.0F);
+  h.process(audio);
+  CHECK(audio.front() == .25F && audio[255] == .25F);
+  frame = h.snapshot();
+  float velocity = 0;
+  std::memcpy(&velocity, frame.data() + 24u + 60u * 8u, sizeof(velocity));
+  CHECK(std::abs(velocity - 64.0F / 127.0F * std::exp(-512.0F / h.rate)) < 1e-6F);
+  h.params.previewMidi = 61;
+  h.sync();
+  std::fill(audio.begin(), audio.end(), 0.0F);
+  h.process(audio);
+  CHECK(std::abs(audio[255] - .25F * std::pow(10.F, -.3F)) < 1e-6F);
+  frame = h.snapshot();
+  CHECK(frame[16] == 1u && frame[20u + 60u * 8u] == 0u && frame[20u + 61u * 8u] == 1u);
+  h.params.previewMidi = -1;
+  h.sync();
+  std::fill(audio.begin(), audio.end(), 0.0F);
+  h.process(audio);
+  CHECK(audio[255] == 0 && h.snapshot()[16] == 0u);
+
+  // Releasing the pointer must also stop one-shot regions before their sample ends.
+  low[LoopMode] = 1;
+  Bank one_shot({low});
+  CHECK(h.load(one_shot) == ET_OK);
+  h.params.previewMidi = 60;
+  h.params.previewVelocity = 64;
+  h.sync();
+  std::fill(audio.begin(), audio.end(), 0.0F);
+  h.process(audio);
+  CHECK(audio[255] == .25F);
+  h.params.previewMidi = -1;
+  h.sync();
+  std::fill(audio.begin(), audio.end(), 0.0F);
+  h.process(audio);
+  CHECK(audio[255] == 0 && h.snapshot()[16] == 0u);
+
+  // Detected note-offs and preview note-offs own separate voices even at the same pitch.
+  Harness simultaneous;
+  Bank looping;
+  CHECK(simultaneous.load(looping) == ET_OK);
+  simultaneous.params.previewMidi = 60;
+  simultaneous.params.previewVelocity = 100;
+  simultaneous.sync();
+  simultaneous.attack(60);
+  CHECK(simultaneous.snapshot()[16] == 2u);
+  for (unsigned i = 0; i < 40; ++i)
+    simultaneous.event(60, 0, 0, 512);
+  CHECK(simultaneous.snapshot()[16] == 1u);
+  simultaneous.attack(60);
+  CHECK(simultaneous.snapshot()[16] == 2u);
+  simultaneous.params.previewMidi = -1;
+  simultaneous.sync();
+  simultaneous.event(60, 1, 0, 512);
+  CHECK(simultaneous.snapshot()[16] == 1u);
+}
+
 void releaseTail() {
   for (const float rate : {48000.F, 96000.F}) {
     for (const float seconds : {0.F, .001F, .005F, 1.1F}) {
@@ -1159,6 +1303,59 @@ void realAnalysisAndLinks() {
   engine->destroyInstance(source);
   CHECK(engine->setInstanceAnalysisSource(target, source) == ET_ERR_ARGS);
 }
+void realHighRegisterRetrigger() {
+  auto r = region();
+  r[Frames] = 240;
+  r[End] = r[LoopEnd] = 239;
+  r[LoopMode] = 0;
+  r[LowKey] = r[HighKey] = r[KeyCenter] = 84;
+  Bank bank({r}, 240);
+  Harness retrigger, held;
+  for (auto *h : {&retrigger, &held}) {
+    CHECK(h->load(bank) == ET_OK);
+    h->params.minimumMidi = h->params.maximumMidi = 84;
+    h->params.retriggerDropDb = h == &retrigger ? 6.0F : 96.0F;
+    h->sync();
+  }
+  auto producer = std::make_unique<plugins::analyzer::SpectralAnalysis>();
+  producer->prepare({48000, 2, 128});
+  producer->configure(84, 84);
+  unsigned attacks = 0, held_attacks = 0, dip_frames = 0;
+  bool sounded = false, held_sounded = false;
+  float dip_probability = 1;
+  for (unsigned at = 0; at < 57600; at += 128) {
+    std::vector<float> audio(256);
+    for (unsigned i = 0; i < 128; ++i) {
+      const double t = (at + i) / 48000.0;
+      const double amplitude = t < .1 || t >= 1.0 ? 0 : t >= .45 && t < .65 ? .0356 : .2;
+      double value = 0;
+      for (unsigned harmonic = 1; harmonic <= 8; ++harmonic)
+        value +=
+            amplitude / harmonic *
+            std::sin(6.283185307179586 * 1046.50226 * harmonic * t + .37 * harmonic * harmonic);
+      audio[i] = audio[i + 128] = static_cast<float>(value);
+    }
+    producer->process(audio.data(), 2, 128, {retrigger.time});
+    const auto &view = producer->view();
+    // The quieter interval must remain detected, so the recovery tests the level rule.
+    for (unsigned i = 0; i < view.count; ++i)
+      if (retrigger.time > .6 && retrigger.time < .69) {
+        ++dip_frames;
+        dip_probability = std::min(dip_probability, view.frames[i].probabilities[63]);
+      }
+    auto other = audio;
+    retrigger.process(audio, 2, &view);
+    held.process(other, 2, &view);
+    const bool sound = peak(audio) > 0, held_sound = peak(other) > 0;
+    attacks += sound && !sounded;
+    held_attacks += held_sound && !held_sounded;
+    sounded = sound;
+    held_sounded = held_sound;
+  }
+  CHECK(dip_frames > 0u && dip_probability >= .5F);
+  CHECK(attacks == 2u);
+  CHECK(held_attacks == 1u);
+}
 void revisedAnalysisTiming() {
   for (float rate : {48000.F, 96000.F})
     for (const unsigned onset_ms : {100u, 107u})
@@ -1447,9 +1644,9 @@ struct AssetEngineHarness {
     source = engine->createInstance("NoteSpectrogramPlugin");
     player = engine->createInstance("SFZNotePlayerPlugin");
     volume = engine->createInstance("VolumePlugin");
-    const generated::NoteSpectrogramPluginParams analysis{83, 83};
-    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,
-                                                      0,    1,   1, 1,  0,  18, 0, 0};
+    const generated::NoteSpectrogramPluginParams analysis{83, 83, 0};
+    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,  0,
+                                                      1,    1,   1, 0,  18, 0,  0, -1,  100};
     const generated::VolumePluginParams gain{-6.020599913F};
     CHECK(engine->setInstanceParams(source, reinterpret_cast<const float *>(&analysis),
                                     analysis.kFloatCount, analysis.kHash, 0u) == ET_OK);
@@ -1782,6 +1979,8 @@ int main() {
   preparedAssetLifetime();
   preparedAssetEngineReplacement();
   playback();
+  voiceTelemetry();
+  manualPreview();
   releaseTail();
   octaveShift();
   sampleShift();
@@ -1793,6 +1992,7 @@ int main() {
   timingOffset();
   assetsAndDelay();
   realAnalysisAndLinks();
+  realHighRegisterRetrigger();
   revisedAnalysisTiming();
   performance();
   antiAliasing();

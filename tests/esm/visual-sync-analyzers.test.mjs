@@ -79,7 +79,7 @@ function harness() {
 }
 
 function noteFrame(index, time, generation = 1, rate = 48000) {
-    const payload = new DataView(new ArrayBuffer(8840));
+    const payload = new DataView(new ArrayBuffer(9192));
     payload.setFloat32(0, rate, true);
     payload.setFloat32(4, time, true);
     payload.setUint16(8, 440, true);
@@ -92,7 +92,7 @@ function noteFrame(index, time, generation = 1, rate = 48000) {
         payload.setFloat32(32 + pitch * 4, 0.75, true);
         payload.setFloat32(1792 + pitch * 4, -12, true);
     }
-    return { tapId: 7, frameType: 24, formatVersion: 5, payload };
+    return { tapId: 7, frameType: 24, formatVersion: 6, payload };
 }
 
 function spectrogramFrame(time) {

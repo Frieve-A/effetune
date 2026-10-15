@@ -1,5 +1,5 @@
 ---
-title: "Mapeamento de controladores - EffeTune"
+title: "Mapeamento de controladores - Controle via MIDI, gamepad e teclado - EffeTune"
 description: "Controle parâmetros do EffeTune por MIDI, comando ou teclado."
 lang: pt
 ---

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { VISUAL_SYNC_RULES as rules, isVisualSyncEnabled, requiredOutputDelayFrames,
-  audibleFrameTime, audibleContextTime, telemetryCaptureTiming } from '../../js/audio/visual-sync.js';
+  audibleFrameTime, audibleContextTime, audiblePlaybackPosition, telemetryCaptureTiming } from '../../js/audio/visual-sync.js';
 
 test('visual sync capture ages follow FFT, staged slot, HQ and pitch window formulas', () => {
   for (const pt of [8, 12, 14]) {
@@ -25,16 +25,26 @@ test('visual sync capture ages follow FFT, staged slot, HQ and pitch window form
   for (const config of [undefined, {}, { visualSync: 'true' }]) assert.equal(isVisualSyncEnabled(config), false);
 });
 
+test('SFZ voice display follows its positive wet playback delay without adding analysis latency', () => {
+  const rule = rules.SFZNotePlayerPlugin;
+  assert.equal(rule.tap, 'output');
+  for (const [timing, frames] of [[-100, 0], [0, 0], [25, -1200], [100, -4800]]) {
+    assert.equal(rule.generationFrames({ tm: timing }, 48000), frames === 0 ? -0 : frames);
+  }
+  assert.equal(audibleFrameTime({ endFrame: 48000, generationFrames: -4800,
+    outputDelayFrames: 0, sampleRate: 48000 }), 1100);
+});
+
 test('Note Spectrogram sync follows the asymmetric long-window energy centroid at each rate', () => {
   // Reference centroids use raw double windows and count the newest sample at age one.
   for (const [rate, centroid] of [[16000, 1428.4148630939314], [44100, 3936.447441538596],
     [48000, 4284.474399459274], [96000, 8568.448798918569], [384000, 34272.29519567371]]) {
     const completion = Math.floor(Math.min(8192, Math.max(16, Math.round(rate * 0.02))) / 16) * 16;
     assert.ok(Math.abs(rules.NoteSpectrogramPlugin.generationFrames({}, rate, 'wasm') - centroid - completion) < 1e-7);
-    const payload = new DataView(new ArrayBuffer(8840));
+    const payload = new DataView(new ArrayBuffer(9192));
     payload.setFloat32(0, rate, true);
     payload.setFloat32(4, 1, true);
-    const timing = telemetryCaptureTiming({ frameType: 24, formatVersion: 5, payload }, rate);
+    const timing = telemetryCaptureTiming({ frameType: 24, formatVersion: 6, payload }, rate);
     assert.equal(timing.endFrame, rate * 2);
     assert.ok(Math.abs(timing.generationFrames - centroid) < 1e-7);
   }
@@ -79,6 +89,12 @@ test('visual sync deadlines stay on the sample timeline while delivery follows t
   assert.equal(audibleContextTime(options.fallback), 900);
 });
 
+test('audible playback position converts latency to content seconds and preserves pre-start time', () => {
+  assert.equal(audiblePlaybackPosition({ position: 3, latencySeconds: 0.25, playbackSpeed: 2 }), 2.5);
+  assert.equal(audiblePlaybackPosition({ position: 0.1, latencySeconds: 0.3 }), -0.19999999999999998);
+  assert.equal(audiblePlaybackPosition({ position: 3 }), 3);
+});
+
 
 test('Phase Select EQ sync follows the input window and staged completion before its delayed output', () => {
   const definition = rules.PhaseSelectEqPlugin;
@@ -101,6 +117,11 @@ test('Analog Meter aligns only its windowed RMS and Loudness readings', () => {
   const age = params => rules.AnalogMeterPlugin.generationFrames(params, 48000, 'wasm');
   for (const md of ['VU', 'PPM', 'Sample Peak', 'True Peak']) assert.equal(age({ md, it: 0.3 }), 0);
   assert.equal(age({ md: 'RMS', it: 0.3 }), 7200);
+  assert.equal(age({ md: 'Custom', de: 'RMS', it: 0.3 }), 7200);
+  assert.equal(age({ md: 'Custom', de: 'RMS', it: 3 }), 72000);
+  for (const de of ['Average Rectified', 'Sample Peak', 'True Peak']) {
+    assert.equal(age({ md: 'Custom', de, it: 3 }), 0);
+  }
   assert.equal(age({ md: 'Loudness', ln: 0 }), 9600);
   assert.equal(age({ md: 'Loudness', ln: 1 }), 72000);
 });

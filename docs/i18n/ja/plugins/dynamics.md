@@ -1,6 +1,6 @@
 ---
-title: "ダイナミクスプラグイン - EffeTune"
-description: "Attack Tonal Balance、Compressor、Limiter、Gate、Multiband Compressor、Transient Shaperなどのダイナミクス処理プラグイン。"
+title: "ダイナミクスプラグイン - 自動音量調整・コンプレッサー・リミッター - EffeTune"
+description: "Auto Levelerで聴きやすい一定の音量感に近づけ、Brickwall Limiter、Compressor、Expander、Gate、Transient Shaper、マルチバンド処理などでダイナミクスを整えます。"
 lang: ja
 ---
 

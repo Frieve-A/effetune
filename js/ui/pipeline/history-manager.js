@@ -338,6 +338,7 @@ export class HistoryManager {
             if (masterToggle) {
                 masterToggle.classList.remove('off');
             }
+            this.pipelineManager.core.updateAllPluginDisplayState();
         });
     }
 }

@@ -1,5 +1,5 @@
 ---
-title: "Affectation des contrôleurs - EffeTune"
+title: "Affectation des contrôleurs - Contrôle par MIDI, manette et clavier - EffeTune"
 description: "Contrôlez les paramètres d'EffeTune par MIDI, manette ou clavier."
 lang: fr
 ---

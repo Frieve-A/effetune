@@ -1,5 +1,5 @@
 ---
-title: "إضافات الصدى - EffeTune"
+title: "إضافات الصدى - الصدى الالتفافي واللوحي وصدى القاعات والغرف - EffeTune"
 description: "إضافات الصدى Dattorro Plate Reverb وFDN Reverb وIR Reverb وRS Reverb."
 lang: ar
 ---

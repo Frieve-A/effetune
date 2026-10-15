@@ -1,5 +1,5 @@
 ---
-title: "रिवर्ब प्लगइन - EffeTune"
+title: "रिवर्ब प्लगइन - कन्वोल्यूशन, हॉल, प्लेट और रूम रिवर्ब - EffeTune"
 description: "Dattorro Plate Reverb, FDN Reverb, IR Reverb और RS Reverb सहित reverb effect प्लगइन।"
 lang: hi
 ---

@@ -1,5 +1,5 @@
 ---
-title: "Music Libraryの使い方 - EffeTune"
+title: "Music Libraryの使い方 - 手元の音楽ファイルを探して再生 - EffeTune"
 description: "EffeTuneでMusic Libraryを作成し、サブフォルダやメタデータから音楽を探して再生し、プレイリストを管理する方法を解説します。"
 lang: ja
 ---

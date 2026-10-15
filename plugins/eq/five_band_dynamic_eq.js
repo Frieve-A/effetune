@@ -1248,8 +1248,9 @@ class FiveBandDynamicEQ extends PluginBase {
                 
                 // Update sliders and number inputs
                 const updateNamedControl = (name, sliderValue, displayValue) => {
-                    const slider = pane.querySelector(`#${this.instanceId}-band${bandIndex}-${name.replace(/[() ]/g, '')}-slider`);
-                    const numberInput = pane.querySelector(`#${this.instanceId}-band${bandIndex}-${name.replace(/[() ]/g, '')}-input`);
+                    const controlId = `${this.instanceId}-band${bandIndex}-${name.replace(/[() ]/g, '')}`;
+                    const slider = pane.querySelector(`[id="${controlId}-slider"]`);
+                    const numberInput = pane.querySelector(`[id="${controlId}-input"]`);
                     
                     if (slider) {
                         slider.value = sliderValue;

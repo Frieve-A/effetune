@@ -1,6 +1,6 @@
 ---
-title: "サチュレーションプラグイン - EffeTune"
-description: "Bandwidth Extender、Saturation、Exciter、Hard Clippingなど、倍音加工と帯域補完を行うプラグイン。"
+title: "サチュレーションプラグイン - 低音拡張・エキサイター・真空管アンプシミュレーター - EffeTune"
+description: "真空管アンプのシミュレーション、Saturation、Exciter、Harmonic Distortionに加え、新たな高域成分や低音成分を生成するBandwidth ExtenderとBass Extenderを収録しています。"
 lang: ja
 ---
 

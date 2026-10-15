@@ -32,6 +32,7 @@ const ALLOWED_METHODS = Object.freeze(new Set([
   'getProvisionalEntry',
   'readSequencePage',
   'resolveSequenceEntrySource',
+  'resolveTrackSiblingFile',
   'createContext',
   'releaseContext',
   'queryTracks',
@@ -78,7 +79,8 @@ const SERVICE_METHODS = new Map([
   ['cancelPlaylistImportPreview', 'cancelPlaylistImportPreview'],
   ['getProvisionalEntry', 'getProvisionalEntry'],
   ['readSequencePage', 'readSequencePage'],
-  ['resolveSequenceEntrySource', 'resolveSequenceEntrySource']
+  ['resolveSequenceEntrySource', 'resolveSequenceEntrySource'],
+  ['resolveTrackSiblingFile', 'resolveTrackSiblingFile']
 ]);
 
 function serializeError(error) {

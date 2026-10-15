@@ -2393,11 +2393,11 @@ class RoomEqPlugin extends PluginBase {
         const select = document.createElement('select');
         select.id = `room-eq-channel-measurement-${index}-${this.id}`;
         label.htmlFor = select.id;
-        label.textContent = this._t(
+        label.textContent = `${this._t(
             'roomEq.parameter.channelMeasurement',
-            'Measurement Ch {channel}',
+            'Measurement Ch{channel}',
             { channel: this._channelStartIndex() + index }
-        );
+        )}:`;
         select.addEventListener('change', () => {
             const option = select.selectedOptions?.[0];
             this.setParameters({
@@ -2501,23 +2501,16 @@ class RoomEqPlugin extends PluginBase {
             Array.from(controls.querySelectorAll('input'), input => [input.value, input])
         );
 
-        const previewChannelRow = document.createElement('span');
-        previewChannelRow.className = 'room-eq-preview-channel';
-        const previewChannelLabel = document.createElement('label');
-        const previewChannelSelect = document.createElement('select');
-        previewChannelSelect.id = `room-eq-preview-channel-${this.id}`;
-        previewChannelLabel.htmlFor = previewChannelSelect.id;
-        previewChannelLabel.textContent = this._t(
-            'roomEq.parameter.previewChannel',
-            'Preview channel'
+        const previewChannelRow = this.createSelectControl(
+            this._t('roomEq.parameter.previewChannel', 'Graph Preview Ch'),
+            [], String(this._previewChannel), value => {
+                this._previewChannel = Number(value) || 0;
+                this._syncCorrectionPreview();
+                this._additionalEqEditor?.updateResponse?.();
+            }
         );
-        previewChannelSelect.addEventListener('change', () => {
-            this._previewChannel = Number(previewChannelSelect.value) || 0;
-            this._syncCorrectionPreview();
-            this._additionalEqEditor?.updateResponse?.();
-        });
-        previewChannelRow.append(previewChannelLabel, previewChannelSelect);
-        controls.appendChild(previewChannelRow);
+        previewChannelRow.classList.add('room-eq-preview-channel', 'local-audio-only');
+        const previewChannelSelect = previewChannelRow.querySelector('select');
         this._previewChannelControl = {
             row: previewChannelRow,
             select: previewChannelSelect,
@@ -3142,7 +3135,7 @@ class RoomEqPlugin extends PluginBase {
                 const measurementSelect = document.createElement('select');
                 measurementSelect.id = `room-eq-measurement-${this.id}`;
                 measurementLabel.htmlFor = measurementSelect.id;
-                measurementLabel.textContent = this._t('roomEq.parameter.measurement', 'Measurement');
+                measurementLabel.textContent = `${this._t('roomEq.parameter.measurement', 'Measurement')}:`;
                 measurementSelect.addEventListener('change', () => {
                     const option = measurementSelect.selectedOptions[0];
                     this.setParameters({
@@ -3175,10 +3168,10 @@ class RoomEqPlugin extends PluginBase {
                 const referencePointSelect = document.createElement('select');
                 referencePointSelect.id = `room-eq-reference-point-${this.id}`;
                 referencePointLabel.htmlFor = referencePointSelect.id;
-                referencePointLabel.textContent = this._t(
+                referencePointLabel.textContent = `${this._t(
                     'roomEq.parameter.referencePoint',
                     'Reference Point'
-                );
+                )}:`;
                 referencePointSelect.addEventListener('change', () => {
                     this.setParameters({ rp: Number(referencePointSelect.value) });
                 });
@@ -3307,7 +3300,7 @@ class RoomEqPlugin extends PluginBase {
         const responseViewControls = this._createResponseViewControls(
             this._additionalEqEditor
         );
-        container.append(responseViewControls, additionalEqUi);
+        container.append(responseViewControls, this._previewChannelControl.row, additionalEqUi);
 
         const statusLine = document.createElement('div');
         statusLine.className = 'room-eq-status-line local-audio-only';

@@ -1,6 +1,6 @@
 ---
 title: "Plugins resonadores - EffeTune"
-description: "Plugins resonadores: Adaptive Prediction, Horn Resonator y Modal Resonator."
+description: "Resonancia cambiante con Adaptive Prediction; carácter de altavoz de bocina con Horn Resonator y Horn Resonator Plus; resonancias afinadas con Modal Resonator."
 lang: es
 ---
 

@@ -10,6 +10,7 @@ import { packSfzAsset } from '../../js/sfz/asset.js';
 import { prepareSfzSamples } from '../../js/sfz/service.js';
 import { SFZ_DEFAULT_MAX_BYTES } from '../../js/sfz/limits.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { parseTelemetryPacket } from '../../js/audio/telemetry-hub.js';
 
 const SAMPLE_RATE = 48000;
 const BLOCK_SIZE = 128;
@@ -36,12 +37,68 @@ class SFZNotePlayerPlugin {
 
 test('SFZ parameter packing preserves note controls and supplies defaults for older presets', () => {
   const { pack } = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
-  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0]);
-  assert.deepEqual(Array.from(pack(PARAMETERS).slice(-3)), [40, 50, 0]);
-  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 96, nh: 100 }).slice(-3)), [96, 100, 0]);
-  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 6, nh: 37, ss: 1 }).slice(-3)), [6, 37, 1]);
+  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0, -1, 100]);
+  assert.deepEqual(Array.from(pack(PARAMETERS).slice(14, 17)), [40, 50, 0]);
+  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 96, nh: 100 }).slice(14, 17)), [96, 100, 0]);
+  assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 6, nh: 37, ss: 1 }).slice(14, 17)), [6, 37, 1]);
   assert.equal(pack({ ss: -6 })[16], -6);
   assert.equal(pack({ ss: 6 })[16], 6);
+  assert.deepEqual(Array.from(pack({ pm: 60, pv: 64 }).slice(17)), [60, 64]);
+});
+
+test('SFZ manual preview plays without input, holds its velocity and releases when the key changes or stops', async t => {
+  const parsed = await parseSfz({ selectedPath: 'preview.sfz', onDiagnostic: null,
+    readText: async () => '<region> sample=tone.wav lokey=61 hikey=62 pitch_keycenter=60 pitch_keytrack=0 loop_mode=loop_continuous amp_veltrack=100',
+    hasSample: () => true });
+  const asset = packSfzAsset(parsed.regions, new Map([['tone.wav',
+    { channels: [new Float32Array(1024).fill(.25)], sampleRate: SAMPLE_RATE }]]));
+  for (const variant of ['baseline', 'simd']) {
+    await t.test(variant, async () => {
+      const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
+      const binding = await instantiateDspBinding(fs.readFileSync(
+        new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+      binding.createEngine();
+      assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
+      try {
+        const id = binding.createInstance('SFZNotePlayerPlugin');
+        const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
+        const params = { ...PARAMETERS, mn: 60, mx: 61, os: 1, ss: 1,
+          lo: false, md: false, hi: false, vf: 0, vc: 1, pm: -1, pv: 100 };
+        const update = changes => {
+          Object.assign(params, changes);
+          assert.equal(binding.instanceSetParams(id, packer.pack(params), packer.hash), 0);
+        };
+        update({});
+        assert.equal(binding.instanceSetAsset(id, 0, asset.payload,
+          { ...asset, frames: asset.samples, topology: 0 }), 0);
+        const { combined, offsets } = binding.getArenaViews();
+        let time = 0;
+        const process = () => {
+          combined.fill(0);
+          assert.equal(binding.instanceProcess(id, offsets.combined, 2, BLOCK_SIZE, time), 0);
+          time += BLOCK_SIZE / SAMPLE_RATE;
+          return combined.subarray(0, BLOCK_SIZE * 2);
+        };
+        for (let step = 0; step < 100 && (binding.instanceAssetState(id, 0) & 0xff) !== 3; step++) process();
+        assert.equal(binding.instanceAssetState(id, 0) & 0xff, 3);
+        assert.equal(binding.resetInstance(id), 0);
+        update({ pm: 60, pv: 64 });
+        assert.ok(Math.abs(process()[BLOCK_SIZE - 1] - .25 * (64 / 127) ** 2) < 1e-6,
+          'Preview uses the displayed note, Sample Shift and explicit velocity without note detection');
+        update({ pv: 127 });
+        for (let step = 0; step < 8; step++) {
+          assert.ok(Math.abs(process()[0] - .25 * (64 / 127) ** 2) < 1e-6,
+            'The same key must keep its voice and original velocity');
+        }
+        update({ pm: 61, pv: 100 });
+        assert.ok(Math.abs(process()[BLOCK_SIZE - 1] - .25 * (100 / 127) ** 2) < 1e-6,
+          'Switching keys must stop the old note and start the next one at its entry velocity');
+        update({ pm: -1 });
+        process();
+        assert.ok(process().every(value => value === 0), 'Releasing the pointer must stop playback');
+      } finally { binding.destroyEngine(); }
+    });
+  }
 });
 
 test('built-in SFZ sine cycles play the detected pitch through the WASM sample pipeline', async () => {
@@ -55,6 +112,8 @@ test('built-in SFZ sine cycles play the detected pitch through the WASM sample p
   assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
   try {
     const id = binding.createInstance('SFZNotePlayerPlugin');
+    assert.equal(binding.instanceSetTap(id, 7201), 0);
+    assert.equal(binding.setTelemetryRate(60), 0);
     const packer = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
     assert.equal(binding.instanceSetParams(id, packer.pack(PARAMETERS), packer.hash), 0);
     assert.equal(binding.instanceSetAsset(id, 0, descriptor.payload,
@@ -83,6 +142,19 @@ test('built-in SFZ sine cycles play the detected pitch through the WASM sample p
       }
     }
     assert.ok(Math.hypot(sine, cosine) / measured > .005, 'Generated samples must play the detected A4 pitch');
+    const packet = new Uint8Array(262144);
+    const bytes = binding.telemetryRead(packet);
+    let latest;
+    assert.equal(parseTelemetryPacket(packet, bytes, frame => {
+      if (frame.frameType === 30 && frame.tapId === 7201) latest = frame;
+    }).ok, true);
+    assert.ok(latest, 'The running SFZ must emit its actual sample voices');
+    assert.equal(latest.formatVersion, 1);
+    assert.equal(latest.payload.byteLength, 1028);
+    assert.ok(latest.payload.getUint16(0, true) > 0);
+    assert.equal(latest.payload.getUint16(2, true), 32);
+    assert.ok(latest.payload.getUint16(4 + 69 * 8, true) > 0);
+    assert.ok(latest.payload.getFloat32(8 + 69 * 8, true) > 0);
   } finally { binding.destroyEngine(); }
 });
 
@@ -214,9 +286,9 @@ test('synthetic SFZ bank produces detected notes through the offline WASM pipeli
           }
         }
         assert.ok(outputPower > 1, 'Detected notes must play the imported synthetic sample');
-        // The attack commits at sample 8640. Its triangular peak position is 0.464889
-        // hops later; the half-hop schedule rounds to 926 samples and the sample starts at zero.
-        assert.equal(firstOutputFrame, SAMPLE_RATE * 0.18 + 926 + 1,
+        // The fixed stem-As1-c production-native reference starts at sample 9576,
+        // including the bank sample's initial zero before its first nonzero output.
+        assert.equal(firstOutputFrame, 9576,
           'The detected attack must use its refined onset time and half-hop playback schedule');
         assert.ok(Math.hypot(sampleSine, sampleCosine) / measuredFrames > 0.005,
           'The output must contain the bank’s 500 Hz sample rather than the input’s 440 Hz pitch');

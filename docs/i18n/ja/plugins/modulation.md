@@ -1,6 +1,6 @@
 ---
-title: "モジュレーションプラグイン - EffeTune"
-description: "Auto Filter、Auto Pan、Chorus、Frequency Shifter、Phaser、Rotary Speakerなどのモジュレーションエフェクトプラグイン。"
+title: "モジュレーションプラグイン - コーラス・フェイザー・ピッチシフター - EffeTune"
+description: "Auto Filter、Auto Pan、Chorus、Doppler Distortion、Frequency Shifter、Phaser、Pitch Shifter、Rotary Speaker、Tremolo、Wow Flutterなどのモジュレーションエフェクト。"
 lang: ja
 ---
 

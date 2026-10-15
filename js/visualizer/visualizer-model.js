@@ -12,8 +12,8 @@ export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo'
 export const REFERENCE_WIDTH = 1280;
 export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'guitar', 'chroma', 'phase'];
 export const META_TYPES = ['artwork', 'title', 'album', 'artist'];
-export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'rhythm-analyzer'];
-export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'shape'];
+export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'rhythm-analyzer'];
+export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'shape'];
 export const SHAPES = ['rectangle', 'ellipse', 'triangle', 'line'];
 export const MAX_TEXT_LENGTH = 4096;
 export const MAX_ITEMS = 64;
@@ -75,7 +75,8 @@ export const EFFECT_CATALOG = Object.freeze({
     particles: { label: 'Particles', defaultAmount: 0.5, allowedOn: ['item'] },
     'ken-burns': { label: 'Ken Burns', defaultAmount: 0.4, allowedOn: ['item', 'background'] },
     flash: { label: 'Flash', defaultAmount: 0.5, allowedOn: ['background'] },
-    backplate: { label: 'Backplate', defaultAmount: 1, allowedOn: ['item'] }
+    backplate: { label: 'Backplate', defaultAmount: 1, allowedOn: ['item'] },
+    'edge-fade': { label: 'Edge Fade', defaultAmount: 1, allowedOn: ['item'] }
 });
 
 // Shared slider bounds and defaults keep imported layouts consistent with the editor.
@@ -147,6 +148,14 @@ export function normalizeEffect(value, target = 'item') {
         type: value.type,
         enabled: value.enabled !== false,
         amount: number(value.amount, EFFECT_CATALOG[value.type].defaultAmount, 0, 1),
+        ...(value.type === 'edge-fade' ? {
+            shape: choice(value.shape, ['rectangle', 'circle'], 'rectangle'),
+            top: number(value.top, 0.1, 0, 1),
+            bottom: number(value.bottom, 0.1, 0, 1),
+            left: number(value.left, 0, 0, 1),
+            right: number(value.right, 0, 0, 1),
+            circleWidth: number(value.circleWidth, 0.2, 0, 1)
+        } : {}),
         ...(value.type === 'transform' ? Object.fromEntries(TRANSFORM_PARAMETERS.map(({ key, initial, min, max }) =>
             [key, number(value[key], initial, min, max)])) : {}),
         ...(value.type === 'trail-feedback' && Object.hasOwn(value, 'angle')
@@ -220,7 +229,7 @@ function normalizeStyle(type, input) {
         fontFamily: choice(style.fontFamily, FONT_FAMILIES.map(([family]) => family), 'sans-serif'),
         bold: style.bold === true,
         italic: style.italic === true,
-        align: choice(style.align, ['left', 'center', 'right'], type === 'rhythm-analyzer' ? 'center' : 'left'),
+        align: choice(style.align, ['left', 'center', 'right'], type === 'rhythm-analyzer' || type === 'lyrics' ? 'center' : 'left'),
         ...(type === 'rhythm-analyzer' ? { outlineWidth: 2,
             ...Object.fromEntries(Object.entries(RHYTHM_BEAT_STYLE_RULES).map(([key, rule]) => [key, rule(style[key])])) } : {}),
         ...Object.fromEntries(Object.entries(TEXT_DECORATION_RULES)
@@ -239,6 +248,21 @@ function normalizeStyle(type, input) {
 }
 
 export function normalizeParams(type, input) {
+    if (type === 'lyrics') {
+        const params = isRecord(input) ? input : {};
+        return {
+            lyricsView: choice(params.lyricsView, ['list', 'line'], 'list'),
+            lyricsNext: params.lyricsNext !== false,
+            lyricsMotion: choice(params.lyricsMotion, ['step', 'smooth', 'step-horizontal', 'smooth-horizontal'], 'step'),
+            lyricsStepDuration: Math.round(number(params.lyricsStepDuration, 0.18, 0, 2) * 100) / 100,
+            lyricsPosition: Math.round(number(params.lyricsPosition, 50, 0, 100)),
+            lyricsLineSpacing: Math.round(number(params.lyricsLineSpacing, 1, 0.5, 3) * 100) / 100,
+            lyricsWordFill: params.lyricsWordFill !== false,
+            lyricsOffset: Math.round(number(params.lyricsOffset, 0, -10, 10) * 100) / 100,
+            lyricsFadeIn: Math.round(number(params.lyricsFadeIn, 1, 0, 10) * 10) / 10,
+            lyricsFadeOut: Math.round(number(params.lyricsFadeOut, 3, 0, 10) * 10) / 10
+        };
+    }
     const params = isRecord(input) ? input : {};
     if (type === 'text') return { text: typeof params.text === 'string' ? params.text.slice(0, MAX_TEXT_LENGTH) : 'Text' };
     const axes = {
@@ -352,7 +376,7 @@ export function normalizeParams(type, input) {
     // Same keys, ranges, and steps as the Analog Meter effect. A needle cannot be read
     // without its dial, so this type alone shows axes and numbers by default.
     if (type === 'analog-meter') return {
-        md: choice(params.md, ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness'], 'VU'),
+        md: choice(params.md, ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness', 'Custom'], 'VU'),
         it: Math.round(number(params.it, 0.3, 0.05, 3) * 100) / 100,
         at: Math.round(number(params.at, 5, 1, 20) * 10) / 10,
         rt: Math.round(number(params.rt, 1.5, 0.1, 5) * 100) / 100,
@@ -363,6 +387,10 @@ export function normalizeParams(type, input) {
         ln: choice(params.ln, [0, 1], 0),
         tg: Math.round(number(params.tg, -23, -36, -10)),
         ls: choice(params.ls, [0, 1], 0),
+        de: choice(params.de, ['Average Rectified', 'RMS', 'Sample Peak', 'True Peak'], 'Average Rectified'),
+        nr: Math.round(number(params.nr, 300, 1, 3000)),
+        os: Math.round(number(params.os, 1.25, 0, 25) * 20) / 20,
+        dc: choice(params.dc, [0, 1, 2, 3, 4], 0),
         ...Object.fromEntries(Object.entries(METER_APPEARANCE_RULES).map(([key, rule]) =>
             [key, rule(key === 'hubSize' && params[key] === undefined && params.showHub === false ? 0 : params[key])])),
         showAxes: params.showAxes !== false,
@@ -489,7 +517,7 @@ export function validateLayout(value) {
     const addedParams = {
         spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
         stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf'],
-        'analog-meter': Object.keys(METER_APPEARANCE_DEFAULTS),
+        'analog-meter': ['de', 'nr', 'os', 'dc', ...Object.keys(METER_APPEARANCE_DEFAULTS)],
         'rhythm-analyzer': ['showBeat', 'showBpm']
     };
     const comparable = {

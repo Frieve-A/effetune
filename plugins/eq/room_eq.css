@@ -4,9 +4,7 @@
 .room-eq-channel-measurement-row label { min-width: 120px; }
 .room-eq-measurement-row select,
 .room-eq-channel-measurement-row select { flex: 1; min-width: 0; }
-.room-eq-preview-channel { display: inline-flex; align-items: center; gap: 6px; }
 .room-eq-preview-channel[hidden] { display: none; }
-.room-eq-preview-channel label { min-width: auto; }
 .room-eq-measurement-status,
 .room-eq-refresh { flex: 0 0 auto; white-space: nowrap; }
 .room-eq-measurement-status[data-state='warning'],

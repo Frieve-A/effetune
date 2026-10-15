@@ -15,9 +15,9 @@ const DEFAULT_SUMMARY = path.join(
   'dsp-library-goldens-summary.json'
 );
 const EXPECTED_BACKENDS = Object.freeze({
-  'python-native': 1051,
-  'javascript-baseline': 1051,
-  'javascript-simd': 1051
+  'python-native': 1052,
+  'javascript-baseline': 1052,
+  'javascript-simd': 1052
 });
 const EXPECTED_WORKLET_GOLDEN = Object.freeze({
   'chromium-audioworklet-baseline': 113,
@@ -1452,7 +1452,7 @@ export async function runAcceptance(options = {}) {
     status: 'failed'
   };
   if (inventorySummary.effects !== 111 ||
-      inventorySummary.total !== 1051 ||
+      inventorySummary.total !== 1052 ||
       inventorySummary.assetCases !== 31 ||
       inventorySummary.eventCases !== 170) {
     throw new Error(

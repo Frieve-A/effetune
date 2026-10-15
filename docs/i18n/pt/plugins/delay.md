@@ -1,5 +1,5 @@
 ---
-title: "Plugins de Delay - EffeTune"
+title: "Plugins de Delay - Eco e alinhamento temporal de alto-falantes - EffeTune"
 description: "Plugins de delay, incluindo Delay padrão e Time Alignment para ajuste preciso de tempo."
 lang: pt
 ---

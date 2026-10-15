@@ -23,10 +23,13 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 | Semantic name | Python constructor keyword | Type / count | Default | Unit | Range or values |
 |---|---|---:|---|---|---|
-| `mode` | `mode` | string / 1 | `"VU"` | Not declared in catalog | `VU`, `PPM`, `RMS`, `Sample Peak`, `True Peak`, `Loudness` |
+| `mode` | `mode` | string / 1 | `"VU"` | Not declared in catalog | `VU`, `PPM`, `RMS`, `Sample Peak`, `True Peak`, `Loudness`, `Custom` |
 | `integration` | `integration` | number / 1 | `0.3` | s | 0.05 … 3 |
 | `attack` | `attack` | number / 1 | `5` | ms | 1 … 20 |
 | `release` | `release` | number / 1 | `1.5` | s | 0.1 … 5 |
+| `detector` | `detector` | string / 1 | `"Average Rectified"` | Not declared in catalog | `Average Rectified`, `RMS`, `Sample Peak`, `True Peak` |
+| `needleResponse` | `needle_response` | number / 1 | `300` | ms | 1 … 3000 |
+| `overshoot` | `overshoot` | number / 1 | `1.25` | % | 0 … 25 |
 
 
 
@@ -36,17 +39,18 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 ## Analog Meter
 
-Shows the level of each channel on a classic needle meter without changing the sound. Use it to follow how loud your music is from moment to moment, or to see how your playback reads on the scales used in broadcasting and streaming: VU, PPM, peak, and loudness (LUFS).
+Shows the level of each channel on a classic needle meter without changing the sound. Use it to follow how loud your music is from moment to moment, or to see how your playback reads on the scales used in broadcasting and streaming: VU, PPM, peak, and loudness (LUFS). **Custom** lets you combine a detector, needle movement, and dial to make your own meter.
 
 ### Listening Guide
 
 - **Follow the average level with VU**: Watch the needle through a song. Quiet verses and loud choruses show a clear difference, while short drum hits barely move the needle.
 - **Check for clipping with True Peak**: Place Analog Meter after your EQ and gain effects and play the loudest part of a track. If the reading goes above 0 dBFS or the over lamp lights, the chain can clip; lower the gain until the peaks stay below 0 dBFS, with a little margin such as -1 dBFS.
 - **Compare songs with Loudness**: Set **Target** to a streaming reference such as -14 LUFS, press **Reset** at the start of a song or album, and play it through. The Integrated value shows its overall loudness and the maximum True Peak shows its highest peak, which gives a guide for matching volume across an album or playlist. LRA lets you compare how widely the loudness of each song varies.
+- **Make your own meter with Custom**: Start with **Bouncy VU** for a more lively needle, **Slow RMS** for a calm view of average level, or **Fast Peak** to follow brief peaks. Adjust **Needle Response** for speed and **Overshoot** for bounce. Custom can give a PPM-like rise and fall, but its peak detectors rise instantly; use **PPM** for the standard PPM response.
 
 ### System Presets
 
-Click **Effect Presets** in the effect header to set the meter to a well-known standard in one step. A preset that changes **Mode** starts the measurement over; switching between the Loudness presets keeps the measurement running.
+Click **Effect Presets** in the effect header to choose a standard or custom meter in one step. A preset that changes **Mode** starts the measurement over; switching between the Loudness presets keeps the measurement running.
 
 - **Studio VU (-18 dBFS)** - VU with 0 VU at -18 dBFS, the common studio alignment (EBU R68). Suits recordings with plenty of headroom.
 - **SMPTE VU (-20 dBFS)** - VU with 0 VU at -20 dBFS (SMPTE RP 155), the practice in North American studios and broadcasting.
@@ -65,19 +69,26 @@ Click **Effect Presets** in the effect header to set the meter to a well-known s
 - **TV (-24 LKFS)** - Loudness with the -24 LKFS target used for TV in the US (ATSC A/85) and Japan (ARIB TR-B32).
 - **Streaming (-14 LUFS)** - Loudness with a -14 LUFS target, close to the volume normalization of many music streaming services, and the calmer Short-term needle.
 - **Streaming (-16 LUFS)** - Loudness with the -16 LUFS target recommended for streaming and podcasts (AES TD1008), and the Short-term needle.
+- **Bouncy VU** - Custom with the VU detector and dial, and 15% overshoot for a needle that bounces more strongly.
+- **Slow RMS** - Custom with a 3 s RMS average, a 1000 ms needle response, and no overshoot. The dB dial has 0 at -18 dBFS and reaches down to -60 dBFS.
+- **Fast Peak** - Custom with True Peak detection, a 0.5 s detector release, a 10 ms needle response, and no overshoot. The dBFS dial covers the top 40 dB and reads in dBTP.
 
 ### Parameters
 
-Only the controls that apply to the selected **Mode** are shown.
+Only the controls that apply to the selected **Mode** are shown. In **Custom**, all of its controls remain visible; those that do not apply are disabled, keeping the settings panel the same height.
 
-- **Mode** - Selects the meter type: **VU** (default), **PPM**, **RMS**, **Sample Peak**, **True Peak**, or **Loudness**. Each mode moves the needle differently and uses its own scale (see the Visualization Guide). Changing the mode starts the measurement over.
-- **Integration** (RMS; 0.05 to 3 s; default 0.3 s) - Sets the averaging time. Longer values give a steadier, slower needle; shorter values follow changes more quickly.
+- **Mode** - Selects the meter type: **VU** (default), **PPM**, **RMS**, **Sample Peak**, **True Peak**, **Loudness**, or **Custom**. Each mode moves the needle differently and uses its own scale (see the Visualization Guide). Changing the mode starts the measurement over.
+- **Detector** (Custom; default Average Rectified) - Chooses the level the needle follows. **Average Rectified** uses the signal's absolute amplitude, averaged by the needle itself without a separate averaging window, as in VU. **RMS** measures average power over **Integration**. **Sample Peak** catches the highest sample value; **True Peak** also estimates peaks between samples. Both peak detectors rise instantly and fall according to **Release**. Changing the detector starts the measurement over.
+- **Integration** (RMS, Custom with RMS detector; 0.05 to 3 s; default 0.3 s) - Sets the averaging time. Longer values give a steadier, slower reading; shorter values follow changes more quickly. In Custom, the needle adds its own response after this average.
 - **Attack** (PPM; 1 to 20 ms; default 5 ms) - Sets how quickly the PPM needle rises, as the length of a tone burst that reads 2 dB below a steady tone. Shorter values show brief peaks closer to their full level; longer values let brief peaks read lower. 5 ms matches the DIN meter.
-- **Release** (PPM, Sample Peak, True Peak; 0.1 to 5 s; default 1.5 s) - Sets the time the needle takes to fall 20 dB after a peak. Longer values make peaks easier to read; shorter values follow the music more closely. 1.5 s matches the DIN meter and the standard digital peak meter.
-- **Reference** (VU, PPM, RMS; -30 to 0 dBFS; default -14 dBFS) - Sets the digital level that lands on the meter's reference mark. The default suits most finished commercial recordings; with the studio alignments of -18 or -20 dBFS (see System Presets), ordinary CDs often hold the needle near the top of the scale. Raise it when loud recordings push the needle to the top of the scale; lower it when quiet recordings barely move the needle.
-- **Range** (PPM with the DIN or dB scale, RMS, Sample Peak, True Peak; 20 to 60 dB; default 40 dB) - Sets how far down the scale reaches. Widen it to see quiet passages; narrow it to spread out the upper part of the scale.
+- **Release** (PPM, Sample Peak, True Peak, Custom with Sample Peak or True Peak detector; 0.1 to 5 s; default 1.5 s) - Sets the time to fall 20 dB after a peak. Longer values make peaks easier to read; shorter values follow the music more closely. In Custom this controls the detector's fall, followed by the needle's own response. 1.5 s matches the DIN meter and the standard digital peak meter.
+- **Needle Response** (Custom; 1 to 3000 ms; default 300 ms) - Sets how long the needle takes to first reach 99% of a new, steady detector level. Lower values give a faster needle; higher values make it move more slowly. RMS averaging and peak release also affect the overall movement.
+- **Overshoot** (Custom; 0 to 25%; default 1.25%) - Sets how far the needle goes past a new, steady detector level, as a percentage of the level change. Higher values give more bounce; 0 makes the needle approach without going past it.
+- **Dial** (Custom; default VU) - Chooses **VU**, **DIN**, **BBC**, **dB**, or **dBFS** independently of the detector and needle movement. VU, DIN, and BBC use the scales described below. With dB, the 0 mark is **Reference** and the upper end is 0 dBFS. With dBFS, the upper end is 0 dBFS and readings use dBTP when **Detector** is True Peak.
+- **Reference** (VU, PPM, RMS, Custom except dBFS dial; -30 to 0 dBFS; default -14 dBFS) - Sets the digital level that lands on the meter's reference mark. The default suits most finished commercial recordings; with the studio alignments of -18 or -20 dBFS (see System Presets), ordinary CDs often hold the needle near the top of the scale. Raise it when loud recordings push the needle to the top of the scale; lower it when quiet recordings barely move the needle.
+- **Range** (PPM with the DIN or dB scale, RMS, Sample Peak, True Peak, Custom with DIN, dB, or dBFS dial; 20 to 60 dB; default 40 dB) - Sets how far down the scale reaches. Widen it to see quiet passages; narrow it to spread out the upper part of the scale.
 - **PPM Scale** (PPM; default DIN) - Selects the PPM scale: **DIN**, **BBC**, or **dB** (see the Visualization Guide).
-- **Peak Hold** (PPM, RMS, Sample Peak, True Peak; 0 to 10 s; default 1 s) - Sets how long the peak mark stays at the highest recent reading, and how long the over lamp stays lit. 0 turns the mark off; the over lamp then stays lit for 1 s.
+- **Peak Hold** (PPM, RMS, Sample Peak, True Peak, Custom; 0 to 10 s; default 1 s) - Sets how long the peak mark stays at the highest recent reading, and how long the over lamp stays lit. 0 turns the mark off; the over lamp then stays lit for 1 s.
 - **Needle** (Loudness; default Momentary) - Selects what the needle shows. **Momentary** follows loudness over the last 0.4 s; **Short-term** shows the last 3 s and moves more calmly.
 - **Target** (Loudness; -36 to -10 LUFS; default -23 LUFS) - Sets the loudness marked on the scale and lays out the scale relative to it. -23 LUFS is the EBU R128 broadcast level; many streaming services use values around -14 LUFS.
 - **Scale** (Loudness; default EBU +9) - Selects the width of the loudness scale. **EBU +9** covers 18 LU below to 9 LU above **Target**; **EBU +18** covers 36 LU below to 18 LU above, which suits music with wide dynamics or very loud material.
@@ -96,6 +107,7 @@ Only the controls that apply to the selected **Mode** are shown.
 | Sample Peak | Jumps immediately to the highest sample value. | Top of the scale = 0 dBFS. |
 | True Peak | Like Sample Peak, but also estimates peaks between samples. It can read above 0 dBFS; such peaks can clip in a DAC or during conversion. | Top of the scale = 0 dBFS. |
 | Loudness | Shows loudness in LUFS as defined by ITU-R BS.1770 and EBU R128. | Set by **Target** and **Scale**; readings are shown in LUFS. |
+| Custom | Follows **Detector**, with speed set by **Needle Response** and bounce set by **Overshoot**. The defaults give the same needle movement as VU. | Selected by **Dial**, independently of the needle movement. |
 
 - The peak mark shows the highest recent reading for the **Peak Hold** time. The over lamp lights when the level exceeds 0 dBFS and stays lit for the **Peak Hold** time, or for 1 s when **Peak Hold** is 0.
 - In Loudness mode, the first meter shows the whole program. Its needle follows **Needle**, and it lists Momentary (M), Short-term (S), Integrated (I), Loudness Range (LRA), the maximum True Peak, and the elapsed measurement time, with a **Reset** button. Integrated and LRA appear once enough audio has been measured.

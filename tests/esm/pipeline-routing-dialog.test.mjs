@@ -555,6 +555,30 @@ test('updateBusInfo handles fallback insertion, fallback titles, channel labels,
   assert.ok(calls.some(call => call[0] === 'headerInsertBefore' && call[2] === null));
 });
 
+test('remote routing refresh updates the summary and open selectors without recording history', async () => {
+  const calls = [];
+  const item = createPipelineItem(calls);
+  const selects = ['channel', 'inputBus', 'outputBus'].map(key => ({ dataset: { routingKey: key }, value: '' }));
+  const routingDialog = {
+    dataset: { pluginId: '10' },
+    querySelectorAll: () => selects
+  };
+  const handler = new PipelineRoutingDialog(createPipelineCore(calls, {
+    pipelineList: createPipelineListForItem(item),
+    pipelineManager: { historyManager: { saveState() { assert.fail('display refresh must not save history'); } } }
+  }));
+  await withRoutingGlobals(calls, { routingDialog }, async () => {
+    const plugin = createPlugin({ id: 10, inputBus: 1, outputBus: 2, channel: 'R' });
+    handler.updateBusInfo(plugin, { saveHistory: false });
+    assert.equal(item.busInfo.textContent, 'Bus 1\u2192Bus 2 Right');
+    assert.deepEqual(selects.map(select => select.value), ['R', '1', '2']);
+    plugin.inputBus = plugin.outputBus = plugin.channel = null;
+    handler.updateBusInfo(plugin, { saveHistory: false });
+    assert.deepEqual(selects.map(select => select.value), ['', '0', '0']);
+    assert.equal(item.busInfo.removed, true);
+  });
+});
+
 test('updateBusInfo exits when the pipeline item is missing', async () => {
   const calls = [];
   const handler = new PipelineRoutingDialog(createPipelineCore(calls, {

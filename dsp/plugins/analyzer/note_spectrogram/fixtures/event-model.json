@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "frames": 40,
+  "inputColumns": 600,
+  "outputColumns": 528,
+  "hiddenPitches": [
+    0,
+    15,
+    48,
+    87
+  ],
+  "hiddenColumns": 64,
+  "absoluteTolerance": 0.0001,
+  "hiddenTolerance": 0.001,
+  "model": "stem-As1-c/o1/ev-s2",
+  "rate": 96000,
+  "hop": 1920,
+  "timbreOrigins": [
+    8,
+    11,
+    14
+  ],
+  "timbrePitches": [
+    15,
+    39,
+    48
+  ],
+  "timbreColumns": 1337,
+  "inputGeneration": "Mathematical harmonic tones; no training audio",
+  "files": {
+    "event-model-expected.f32": "e2823a834cb7c88d57ce7b982df71b716221d927c7d8edea7abcd4dfad3d9b38",
+    "event-model-input.f32": "832bc4623f77edfd9367fc0713a653ff51ab246fe9607b8001a77d1511d94c0e",
+    "event-model-z.f32": "3d79b28378ac5d946138b54a476be1c872ca5e7206b4d8c8fe170478e0c3966b",
+    "timbre-audio.f32": "31d08730264b5ec3a3f64b45639fcc36997303038682dae09b3d79d6ea390d16",
+    "timbre-h-probabilities.f32": "a649617a6d1f86b7f7b90ab2cbbfb5c23a5cee76f67cdbd421599753c0eacf8d",
+    "timbre-h.f32": "a1bd315f81475a4db753c8a9006bb1f1940499284c9798063e59639e873f5536"
+  }
+}

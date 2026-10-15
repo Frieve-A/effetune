@@ -1,5 +1,5 @@
 ---
-title: "डिले प्लगइन - EffeTune"
+title: "डिले प्लगइन - इको और स्पीकर टाइम अलाइनमेंट - EffeTune"
 description: "मानक Delay और सटीक ऑडियो timing के लिए Time Alignment सहित delay effect प्लगइन।"
 lang: hi
 ---

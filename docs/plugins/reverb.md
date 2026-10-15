@@ -1,5 +1,5 @@
 ---
-title: "Reverb Plugins - EffeTune"
+title: "Reverb Plugins - Convolution, Hall, Plate & Room Reverb - EffeTune"
 description: "Reverb effect plugins including Dattorro Plate Reverb, FDN Reverb, IR Reverb, and RS Reverb."
 lang: en
 ---

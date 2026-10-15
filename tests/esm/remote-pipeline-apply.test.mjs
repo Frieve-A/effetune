@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PipelineCore } from '../../js/ui/pipeline/pipeline-core.js';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
 import {
     applyOpsToPipeline, applyParamsToPlugin, createIdRegistry, finishBatch, randomClientPrefix, validateEdit
 } from '../../js/remote/pipeline-apply.js';
@@ -65,6 +67,52 @@ function seed(win, registry, names) {
     }
     return win.audioManager.pipeline.map(plugin => registry.idOf(plugin));
 }
+
+test('remote enabled edits synchronize the header toggle independently of master and section bypass', async () => {
+    const { win, pipeline } = makeWin();
+    const registry = createIdRegistry('h');
+    const [id] = seed(win, registry, ['Volume']);
+    const core = win.pipelineManager.core;
+    core.routingDialog = { updateBusInfo() {} };
+    core.audioManager = win.audioManager;
+    core.updateAllPluginDisplayState = PipelineCore.prototype.updateAllPluginDisplayState;
+    core.updatePluginNameDisplayState = PipelineCore.prototype.updatePluginNameDisplayState;
+    let sectionEnabled = true;
+    pipeline[0]._setSectionEnabled = value => { pipeline[0].sectionEnabled = value; };
+    core.getPluginSectionState = () => ({ insideSection: true, sectionEnabled });
+    const classes = () => ({
+        values: new Set(),
+        toggle(name, on) { if (on) this.values.add(name); else this.values.delete(name); },
+        contains(name) { return this.values.has(name); }
+    });
+    const toggle = { classList: classes() };
+    const name = { classList: classes() };
+    const item = {
+        dataset: { pluginId: String(pipeline[0].id) },
+        querySelector(selector) {
+            if (selector === '.plugin-name') return name;
+            if (selector === '.pipeline-item-header .toggle-button') return toggle;
+            return null;
+        }
+    };
+    await withGlobals({ document: { querySelectorAll: () => [item] } }, async () => {
+        for (const enabled of [false, true]) {
+            const result = applyOpsToPipeline(win, [{ t: 'set', id, p: { en: enabled } }], { registry });
+            finishBatch(win, result);
+            assert.equal(pipeline[0].enabled, enabled);
+            assert.equal(toggle.classList.contains('off'), !enabled);
+            assert.equal(name.classList.contains('plugin-disabled'), !enabled);
+        }
+        for (const bypass of ['master', 'section']) {
+            win.audioManager.masterBypass = bypass === 'master';
+            sectionEnabled = bypass !== 'section';
+            core.updateAllPluginDisplayState();
+            assert.equal(toggle.classList.contains('off'), false);
+            assert.equal(name.classList.contains('plugin-disabled'), true);
+            assert.equal(pipeline[0].sectionEnabled, sectionEnabled);
+        }
+    });
+});
 
 test('ids are stable per instance and distinct between participants', () => {
     const a = createIdRegistry('h');

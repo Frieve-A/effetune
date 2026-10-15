@@ -1,5 +1,5 @@
 ---
-title: "控制器映射 - EffeTune"
+title: "控制器映射 - MIDI、游戏手柄与键盘控制 - EffeTune"
 description: "使用MIDI控制器、游戏手柄或键盘调节EffeTune参数。"
 lang: zh
 ---

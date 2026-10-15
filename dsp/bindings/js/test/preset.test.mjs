@@ -69,7 +69,7 @@ test('explicit legacy import converts long and short parameters and channels', (
 
 test('legacy Note Spectrogram discards display settings and preserves analysis settings', () => {
   const parameters = {
-    cl: 'Rainbow', pr: 'High', ly: 'Vertical', vl: false, ts: 5,
+    cl: 'Rainbow', hl: 'Vocal', pr: 'High', ly: 'Vertical', vl: false, os: true, ts: 5,
     mn: 36, mx: 84
   };
   for (const preset of [
@@ -79,7 +79,7 @@ test('legacy Note Spectrogram discards display settings and preserves analysis s
     const document = importLegacyPreset(preset);
     assert.equal(document.chain[0].type, 'NoteSpectrogram');
     assert.deepEqual(document.chain[0].parameters, {
-      minimumMidi: 36, maximumMidi: 84
+      minimumMidi: 36, maximumMidi: 84, timbreEnabled: false
     });
   }
   assert.equal(parameters.cl, 'Rainbow');
@@ -110,7 +110,7 @@ test('legacy Pitch Meter validates and discards its display layout', () => {
 });
 
 test('legacy Analog Meter validates and discards its meter-face settings', () => {
-  const display = { rl: -20, rg: 60, ph: 0, sc: 2, ln: 1, tg: -14, ls: 1 };
+  const display = { rl: -20, rg: 60, ph: 0, sc: 2, ln: 1, tg: -14, ls: 1, dc: 4 };
   const document = importLegacyPreset({
     pipeline: [{ name: 'Analog Meter', parameters: display }]
   });
@@ -119,7 +119,7 @@ test('legacy Analog Meter validates and discards its meter-face settings', () =>
     assert.equal(Object.hasOwn(document.chain[0].parameters, key), false, key);
   }
   for (const parameters of [
-    { rl: 1 }, { rg: 19 }, { ph: 11 }, { sc: 3 }, { sc: 1.5 }, { ln: 0.5 }, { ln: 2 }, { tg: -9 }, { ls: -1 }, { rl: '0' }
+    { rl: 1 }, { rg: 19 }, { ph: 11 }, { sc: 3 }, { sc: 1.5 }, { ln: 0.5 }, { ln: 2 }, { tg: -9 }, { ls: -1 }, { rl: '0' }, { dc: 5 }, { dc: 1.5 }
   ]) {
     assert.throws(() => importLegacyPreset({
       pipeline: [{ name: 'Analog Meter', parameters }]

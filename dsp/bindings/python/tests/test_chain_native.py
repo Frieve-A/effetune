@@ -373,6 +373,8 @@ class NativeChainTests(unittest.TestCase):
                         self.assertGreater(max(frame.levels), 0)
                         self.assertEqual(len(frame.volume_db), 440)
                         self.assertTrue(np.isfinite(frame.volume_db).all())
+                        self.assertEqual(len(frame.pitch_cents), 88)
+                        self.assertTrue(np.isfinite(frame.pitch_cents).all())
                         self.assertTrue(any(
                             confidence < 0.5 and volume > -240
                             for confidence, volume in zip(frame.levels, frame.volume_db)

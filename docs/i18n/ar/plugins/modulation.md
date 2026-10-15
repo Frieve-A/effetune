@@ -1,6 +1,6 @@
 ---
-title: "إضافات التضمين - EffeTune"
-description: "تأثيرات تضمين تشمل Auto Filter وAuto Pan وChorus وFrequency Shifter وPhaser وRotary Speaker."
+title: "إضافات التضمين - الكورس والفيزر ومغيّر طبقة الصوت - EffeTune"
+description: "تأثيرات تضمين تشمل Auto Filter وAuto Pan وChorus وDoppler Distortion وFrequency Shifter وPhaser وPitch Shifter وRotary Speaker وTremolo وWow Flutter."
 lang: ar
 ---
 

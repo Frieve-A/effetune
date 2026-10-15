@@ -1,6 +1,6 @@
 ---
 title: "Resonator Plugins - EffeTune"
-description: "Resonator effect plugins including Adaptive Prediction, Horn Resonator and Modal Resonator."
+description: "Adaptive Prediction adds evolving resonance learned from the audio, Horn Resonator and Horn Resonator Plus add horn-speaker character, and Modal Resonator adds tuned resonances."
 lang: en
 ---
 

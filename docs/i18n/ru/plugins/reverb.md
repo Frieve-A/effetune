@@ -1,5 +1,5 @@
 ---
-title: "Плагины реверберации - EffeTune"
+title: "Плагины реверберации - Свёрточный, зальный, пластинчатый и комнатный реверб - EffeTune"
 description: "Плагины реверберации Dattorro Plate Reverb, FDN Reverb, IR Reverb и RS Reverb."
 lang: ru
 ---

@@ -63,7 +63,8 @@ function analysisSettings(type, input = {}) {
     // The dial is calibrated in dBFS/LUFS, so no gain applies. Mode and ballistics keys
     // are always included, whatever the mode; ln also feeds the visual-sync delay rule.
     if (type === 'analog-meter') return { params: {
-        md: input.md ?? 'VU', it: input.it ?? 0.3, at: input.at ?? 5, rt: input.rt ?? 1.5, ln: input.ln ?? 0
+        md: input.md ?? 'VU', it: input.it ?? 0.3, at: input.at ?? 5, rt: input.rt ?? 1.5, ln: input.ln ?? 0,
+        de: input.de ?? 'Average Rectified', nr: input.nr ?? 300, os: input.os ?? 1.25
     }, gainDb: 0 };
     // Only the BPM range affects analysis; the display settings never restart the source.
     if (type === 'rhythm-analyzer') return { params: { mn: input.mn ?? 40, mx: input.mx ?? 240 }, gainDb: 0 };

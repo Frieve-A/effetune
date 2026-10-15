@@ -1,6 +1,6 @@
 ---
-title: "Outros Plugins - EffeTune"
-description: "Plugins utilitários adicionais, incluindo Oscillator para gerar tons e ruído de teste."
+title: "Outros Plugins - Gerador de tons de teste e ruído, SFZ Note Player - EffeTune"
+description: "Oscillator gera tons e ruído branco ou rosa para testar alto-falantes e fones. SFZ Note Player toca notas detectadas no áudio de entrada com um instrumento SFZ."
 lang: pt
 ---
 
@@ -147,9 +147,16 @@ Aumente **Note Hold** para prolongar as notas e unir pequenas interrupções na 
 
 Uma nota visível no **Note Spectrogram** não necessariamente será tocada: os ajustes de **Threshold** e **Lowest Note / Highest Note** também influenciam a reprodução. Se notas muito graves ou muito agudas não soarem, confira a faixa de notas e tente reduzir **Threshold**. Verifique também se o instrumento SFZ inclui a nota resultante da aplicação de **Octave** e **Sample Shift**.
 
+### Visualização das notas
+
+O teclado mostra o intervalo de **Lowest Note** até **Highest Note**. O teclado destaca as notas que o instrumento SFZ está a tocar, incluindo as que ainda se desvanecem após serem soltas. O destaque acompanha o desvio de **Octave**; **Sample Shift** muda o timbre sem deslocar a tecla apresentada. A barra acima de cada tecla começa com uma altura proporcional à velocidade de execução da nota (1–127) e diminui gradualmente com o tempo até desaparecer, mesmo depois de a nota terminar. **Voices** apresenta o número atual de vozes de amostras / **Max Voices**, incluindo as que se desvanecem. Um instrumento com várias camadas pode usar várias vozes para uma única nota. **Color** muda as cores das teclas que estão a tocar e das barras de velocidade sem reiniciar a sua descida.
+
+Toque ou arraste no teclado ou no gráfico de velocidade para ouvir o instrumento SFZ selecionado. O teclado toca com velocidade 100; o gráfico usa a altura a que entra na área de cada nota (1–127). Ao mover-se dentro da mesma nota, ela continua a tocar com a velocidade inicial. Ao passar para outra nota, a anterior para e a nova começa; levantar o dedo ou soltar o botão do rato termina a pré-escuta. A altura apresentada é tocada diretamente, independentemente de **Octave** ou das definições de deteção, enquanto **Sample Shift** continua a alterar o timbre.
+
 ### Parâmetros
 
 - **SFZ**: Abra **SFZ Library…** para escolher e gerenciar instrumentos. **Clear** desmarca o instrumento sem excluí-lo. Os problemas são explicados em uma caixa de diálogo apenas no primeiro carregamento explícito; recarregamentos automáticos não mostram avisos.
+- **Color**: **Normal** (padrão) usa a cor do gráfico definida pelo tema. **Note Colors** usa as mesmas cores do Note Spectrogram: cada nome de nota tem uma cor própria, que se repete em todas as oitavas.
 - **Threshold**: Limiar de confiança da detecção (0,01–1, padrão 0,75). Valores maiores reduzem notas indesejadas, mas podem perder sons fracos ou pouco definidos. Em B5 e notas mais baixas, um ataque claro também pode iniciar uma nota com confiança um pouco abaixo desse valor.
 - **Retrigger Drop (dB)**: Para notas acima de B5, queda necessária em relação ao nível máximo da nota de entrada para que ela possa tocar novamente (1–96 dB, padrão 40 dB). Depois, o nível precisa subir pelo menos 6 dB. Valores maiores reduzem repetições de notas sustentadas; valores menores facilitam acompanhar toques repetidos da mesma nota. Em B5 e notas mais baixas, esse ajuste não afeta a detecção de notas repetidas: as novas notas seguem os ataques detectados.
 - **Note Hold (ms)**: Tempo adicional de manutenção da nota após o fim da detecção, antes do comando de encerramento (0–100 ms, padrão 50 ms). Se a mesma nota voltar nesse período, ela continua sem reiniciar, a menos que seja detectado um novo ataque claro em B5 ou abaixo. A envoltória do instrumento e a duração da amostra continuam valendo.

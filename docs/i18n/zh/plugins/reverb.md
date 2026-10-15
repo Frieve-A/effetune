@@ -1,5 +1,5 @@
 ---
-title: "混响插件 - EffeTune"
+title: "混响插件 - 卷积、大厅、板式与房间混响 - EffeTune"
 description: "包含 Dattorro Plate Reverb、FDN Reverb、IR Reverb 和 RS Reverb 的空间与混响效果。"
 lang: zh
 ---

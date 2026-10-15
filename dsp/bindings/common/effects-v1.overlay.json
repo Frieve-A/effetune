@@ -26,7 +26,8 @@
       "type": "NoteSpectrogram",
       "internalType": "NoteSpectrogramPlugin",
       "telemetry": [
-        "noteSpectrogram"
+        "noteSpectrogram",
+        "noteTimbre"
       ]
     },
     {
@@ -1312,7 +1313,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "a1b55accc81a266df90786bbe9e96ea82cb2761b530c4f174dd61f18299701f8",
-    "privateLayoutSha256": "1670a41fce89dc7b4d1bbc79fa0f07fda23c81b184d48248b847401a4d5685ec"
+    "publicCatalogSha256": "1365edcc6f7957b55155a9426b034cb190579ca12bcaca3f0cc90899b158f677",
+    "privateLayoutSha256": "c304b1221b7ce4f1d2957412dcd30dfe46db2b7486e0d441bd04ba6a079441fa"
   }
 }

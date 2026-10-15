@@ -1,5 +1,5 @@
 ---
-title: "Plugins de análisis - EffeTune"
+title: "Plugins de análisis - Analizador de espectro, espectrograma, vúmetro y medidor LUFS - EffeTune"
 description: "Plugins de análisis de audio, incluidos Analog Meter, Chroma Spiral, Level Meter, Note Spectrogram, Oscilloscope, Pitch Meter, Rhythm Analyzer, Spectrogram, Spectrum Analyzer y Stereo Meter."
 lang: es
 ---
@@ -23,17 +23,18 @@ Una colección de plugins que te permiten ver tu música de formas fascinantes. 
 
 ## Analog Meter
 
-Muestra el nivel de cada canal en un medidor de aguja clásico, sin cambiar el sonido. Úsalo para seguir de un momento a otro cuánto suena tu música, o para ver cómo se lee tu reproducción en las escalas usadas en la radiodifusión y el streaming: VU, PPM, pico y sonoridad (LUFS).
+Muestra el nivel de cada canal en un medidor de aguja clásico, sin cambiar el sonido. Úsalo para seguir de un momento a otro cuánto suena tu música, o para ver cómo se lee tu reproducción en las escalas usadas en la radiodifusión y el streaming: VU, PPM, pico y sonoridad (LUFS). **Custom** permite combinar un detector, el movimiento de la aguja y una escala para crear tu propio medidor.
 
 ### Guía de uso
 
 - **Sigue el nivel medio con VU**: observa la aguja durante una canción. Las estrofas tranquilas y los estribillos intensos muestran una diferencia clara, mientras que los golpes cortos de batería apenas mueven la aguja.
 - **Comprueba el recorte con True Peak**: coloca Analog Meter después de tus efectos de EQ y ganancia, y reproduce la parte más intensa de una pista. Si la lectura supera 0 dBFS o se enciende el indicador over, la cadena puede recortar; baja la ganancia hasta que los picos se mantengan por debajo de 0 dBFS, con un pequeño margen como -1 dBFS.
 - **Compara canciones con Loudness**: ajusta **Target** a una referencia de streaming como -14 LUFS, pulsa **Reset** al empezar una canción o álbum y reprodúcelo entero. El valor Integrated muestra su sonoridad global y el máximo True Peak muestra su pico más alto, lo que sirve de guía para igualar el volumen entre las canciones de un álbum o lista. LRA te permite comparar cuánto varía la sonoridad de cada canción.
+- **Crea tu medidor con Custom**: empieza con **Bouncy VU** para una aguja más animada, **Slow RMS** para observar el nivel medio con calma o **Fast Peak** para seguir picos breves. Ajusta la velocidad con **Needle Response** y el rebote con **Overshoot**. Puedes conseguir una subida y una caída parecidas a PPM, pero los detectores de pico de Custom suben al instante; usa **PPM** para la respuesta PPM estándar.
 
 ### Preajustes del sistema
 
-Haz clic en **Preajustes de efecto** en la cabecera del efecto para ajustar el medidor a un estándar conocido en un solo paso. Un preajuste que cambia **Mode** reinicia la medición; al pasar de un preajuste de Loudness a otro, la medición continúa.
+Haz clic en **Preajustes de efecto** en la cabecera del efecto para elegir un medidor estándar o personalizado en un solo paso. Un preajuste que cambia **Mode** reinicia la medición; al pasar de un preajuste de Loudness a otro, la medición continúa.
 
 - **Studio VU (-18 dBFS)** - VU con 0 VU en -18 dBFS, la alineación de estudio habitual (EBU R68). Adecuado para grabaciones con mucho margen (headroom).
 - **SMPTE VU (-20 dBFS)** - VU con 0 VU en -20 dBFS (SMPTE RP 155), la práctica de los estudios y la radiodifusión de Norteamérica.
@@ -52,19 +53,26 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para ajustar el m
 - **TV (-24 LKFS)** - Loudness con el objetivo de -24 LKFS que se usa en la televisión de EE. UU. (ATSC A/85) y Japón (ARIB TR-B32).
 - **Streaming (-14 LUFS)** - Loudness con un objetivo de -14 LUFS, cercano a la normalización de volumen de muchos servicios de streaming musical, y la aguja Short-term, más tranquila.
 - **Streaming (-16 LUFS)** - Loudness con el objetivo de -16 LUFS recomendado para streaming y pódcasts (AES TD1008), y la aguja Short-term.
+- **Bouncy VU** - Custom con el detector y la escala de VU y un sobreimpulso del 15% para una aguja con más rebote.
+- **Slow RMS** - Custom con un promedio RMS de 3 s, una respuesta de aguja de 1000 ms y sin sobreimpulso. La escala dB sitúa el 0 en -18 dBFS y llega hasta -60 dBFS.
+- **Fast Peak** - Custom con detección True Peak, liberación del detector de 0,5 s, respuesta de aguja de 10 ms y sin sobreimpulso. La escala dBFS cubre los 40 dB superiores y muestra la lectura en dBTP.
 
 ### Parámetros
 
-Solo se muestran los controles que se aplican al **Mode** seleccionado.
+Solo se muestran los controles que se aplican al **Mode** seleccionado. En **Custom**, todos sus controles permanecen visibles; los que no se aplican quedan desactivados, por lo que el panel de ajustes mantiene la misma altura.
 
-- **Mode** - Selecciona el tipo de medidor: **VU** (predeterminado), **PPM**, **RMS**, **Sample Peak**, **True Peak** o **Loudness**. Cada modo mueve la aguja de forma distinta y usa su propia escala (consulta Cómo leer la visualización). Cambiar el modo reinicia la medición.
-- **Integration** (RMS; de 0,05 a 3 s; predeterminado: 0,3 s) - Define el tiempo de promediado. Los valores más largos dan una aguja más estable y lenta; los más cortos siguen los cambios con mayor rapidez.
+- **Mode** - Selecciona el tipo de medidor: **VU** (predeterminado), **PPM**, **RMS**, **Sample Peak**, **True Peak**, **Loudness** o **Custom**. Cada modo mueve la aguja de forma distinta y usa su propia escala (consulta Cómo leer la visualización). Cambiar el modo reinicia la medición.
+- **Detector** (Custom; predeterminado: Average Rectified) - Elige el nivel que sigue la aguja. **Average Rectified** usa la amplitud absoluta de la señal, promediada por la propia aguja sin una ventana de promedio adicional, como en VU. **RMS** mide la potencia media durante **Integration**. **Sample Peak** detecta el valor de muestra más alto; **True Peak** también estima los picos entre muestras. Ambos detectores de pico suben al instante y caen según **Release**. Cambiar el detector reinicia la medición.
+- **Integration** (RMS, Custom con detector RMS; de 0,05 a 3 s; predeterminado: 0,3 s) - Define el tiempo de promediado. Los valores más largos dan una aguja más estable y lenta; los más cortos siguen los cambios con mayor rapidez. En Custom, la aguja añade su propia respuesta después de este promedio.
 - **Attack** (PPM; de 1 a 20 ms; predeterminado: 5 ms) - Define la rapidez con la que sube la aguja en modo PPM, expresada como la duración de una ráfaga de tono que se lee 2 dB por debajo de un tono constante. Los valores más cortos muestran los picos breves más cerca de su nivel real; los más largos hacen que los picos breves se lean más bajos. 5 ms coincide con el medidor DIN.
-- **Release** (PPM, Sample Peak, True Peak; de 0,1 a 5 s; predeterminado: 1,5 s) - Define el tiempo que tarda la aguja en caer 20 dB tras un pico. Los valores más largos facilitan la lectura de los picos; los más cortos siguen la música con mayor precisión. 1,5 s coincide con el medidor DIN y con el medidor de pico digital estándar.
-- **Reference** (VU, PPM, RMS; de -30 a 0 dBFS; predeterminado: -14 dBFS) - Define el nivel digital que coincide con la marca de referencia del medidor. El valor predeterminado se adapta a la mayoría de las grabaciones comerciales terminadas; con las alineaciones de estudio de -18 o -20 dBFS (consulta Preajustes del sistema), un CD corriente suele mantener la aguja cerca del tope de la escala. Súbelo cuando las grabaciones intensas lleven la aguja al tope de la escala; bájalo cuando las grabaciones tranquilas apenas la muevan.
-- **Range** (PPM con la escala DIN o dB, RMS, Sample Peak, True Peak; de 20 a 60 dB; predeterminado: 40 dB) - Define hasta dónde llega la escala hacia abajo. Ámplialo para ver pasajes tranquilos; redúcelo para repartir mejor la parte superior de la escala.
+- **Release** (PPM, Sample Peak, True Peak, Custom con detector Sample Peak o True Peak; de 0,1 a 5 s; predeterminado: 1,5 s) - Define el tiempo de caída de 20 dB tras un pico. Los valores más largos facilitan la lectura de los picos; los más cortos siguen la música con mayor precisión. En Custom controla la caída del detector, seguida de la respuesta de la aguja. 1,5 s coincide con el medidor DIN y con el medidor de pico digital estándar.
+- **Needle Response** (Custom; de 1 a 3000 ms; predeterminado: 300 ms) - Define cuánto tarda la aguja en alcanzar por primera vez el 99% de un nuevo nivel constante del detector. Los valores más bajos dan una aguja más rápida; los más altos, más lenta. El promedio RMS y la liberación de los picos también afectan al movimiento global.
+- **Overshoot** (Custom; de 0 a 25%; predeterminado: 1,25%) - Define cuánto sobrepasa la aguja un nuevo nivel constante del detector, como porcentaje del cambio de nivel. Los valores más altos dan más rebote; con 0, la aguja se acerca sin sobrepasarlo.
+- **Dial** (Custom; predeterminado: VU) - Elige **VU**, **DIN**, **BBC**, **dB** o **dBFS** independientemente del detector y del movimiento de la aguja. VU, DIN y BBC usan las escalas descritas abajo. En dB, la marca 0 es **Reference** y el tope es 0 dBFS. En dBFS, el tope es 0 dBFS y las lecturas se muestran en dBTP si **Detector** es True Peak.
+- **Reference** (VU, PPM, RMS, Custom salvo con escala dBFS; de -30 a 0 dBFS; predeterminado: -14 dBFS) - Define el nivel digital que coincide con la marca de referencia del medidor. El valor predeterminado se adapta a la mayoría de las grabaciones comerciales terminadas; con las alineaciones de estudio de -18 o -20 dBFS (consulta Preajustes del sistema), un CD corriente suele mantener la aguja cerca del tope de la escala. Súbelo cuando las grabaciones intensas lleven la aguja al tope de la escala; bájalo cuando las grabaciones tranquilas apenas la muevan.
+- **Range** (PPM con la escala DIN o dB, RMS, Sample Peak, True Peak, Custom con escala DIN, dB o dBFS; de 20 a 60 dB; predeterminado: 40 dB) - Define hasta dónde llega la escala hacia abajo. Ámplialo para ver pasajes tranquilos; redúcelo para repartir mejor la parte superior de la escala.
 - **PPM Scale** (PPM; predeterminado: DIN) - Selecciona la escala del PPM: **DIN**, **BBC** o **dB** (consulta Cómo leer la visualización).
-- **Peak Hold** (PPM, RMS, Sample Peak, True Peak; de 0 a 10 s; predeterminado: 1 s) - Define cuánto tiempo permanece la marca de pico en la lectura más alta reciente y cuánto tiempo sigue encendido el indicador over. Con 0 se desactiva la marca y el indicador over permanece encendido 1 s.
+- **Peak Hold** (PPM, RMS, Sample Peak, True Peak, Custom; de 0 a 10 s; predeterminado: 1 s) - Define cuánto tiempo permanece la marca de pico en la lectura más alta reciente y cuánto tiempo sigue encendido el indicador over. Con 0 se desactiva la marca y el indicador over permanece encendido 1 s.
 - **Needle** (Loudness; predeterminado: Momentary) - Selecciona qué muestra la aguja. **Momentary** sigue la sonoridad de los últimos 0,4 s; **Short-term** muestra los últimos 3 s y se mueve con más calma.
 - **Target** (Loudness; de -36 a -10 LUFS; predeterminado: -23 LUFS) - Define la sonoridad marcada en la escala y dispone la escala tomando ese valor como referencia. -23 LUFS es el nivel de radiodifusión de EBU R128; muchos servicios de streaming usan valores cercanos a -14 LUFS.
 - **Scale** (Loudness; predeterminado: EBU +9) - Selecciona la amplitud de la escala de sonoridad. **EBU +9** cubre de 18 LU por debajo a 9 LU por encima de **Target**; **EBU +18** cubre de 36 LU por debajo a 18 LU por encima, lo que conviene a música con dinámica amplia o material muy intenso.
@@ -83,6 +91,7 @@ Solo se muestran los controles que se aplican al **Mode** seleccionado.
 | Sample Peak | Salta de inmediato al valor de muestra más alto. | El tope de la escala = 0 dBFS. |
 | True Peak | Como Sample Peak, pero también estima los picos entre muestras. Puede leer por encima de 0 dBFS; esos picos pueden recortar en un DAC o durante la conversión. | El tope de la escala = 0 dBFS. |
 | Loudness | Muestra la sonoridad en LUFS según ITU-R BS.1770 y EBU R128. | Definida por **Target** y **Scale**; las lecturas se muestran en LUFS. |
+| Custom | Sigue **Detector**, con velocidad definida por **Needle Response** y rebote por **Overshoot**. Los valores predeterminados dan el mismo movimiento que VU. | Se elige con **Dial**, independientemente del movimiento de la aguja. |
 
 - La marca de pico muestra la lectura más alta reciente durante el tiempo de **Peak Hold**. El indicador over se enciende cuando el nivel supera 0 dBFS y permanece encendido durante el tiempo de **Peak Hold**, o 1 s si **Peak Hold** es 0.
 - En el modo Loudness, el primer medidor muestra el programa completo. Su aguja sigue el ajuste de **Needle** y muestra Momentary (M), Short-term (S), Integrated (I), Loudness Range (LRA), el máximo True Peak y el tiempo de medición transcurrido, junto con un botón **Reset**. Integrated y LRA aparecen cuando se ha medido suficiente audio.
@@ -136,7 +145,7 @@ Una visualización que muestra en tiempo real el nivel de señal digital de tu m
 
 ## Note Spectrogram
 
-Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll que se desplaza sin modificar el audio. Úsalo para seguir las notas de un acorde, líneas vocales y melódicas cambiantes, la línea de bajo y las notas que se superponen en distintas octavas. El analizador estima las frecuencias fundamentales de las notas que detecta dentro del rango seleccionado.
+Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll que se desplaza sin modificar el audio. Úsalo para seguir las notas de un acorde, líneas vocales y melódicas cambiantes, la línea de bajo y las notas que se superponen en distintas octavas. El analizador estima las frecuencias fundamentales de las notas que detecta dentro del rango seleccionado. Los colores por instrumento y el resaltado ayudan a seguir las voces y los grupos de instrumentos estimados dentro de la visualización.
 
 ### Guía de Visualización
 
@@ -145,35 +154,63 @@ Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll
 - El sonido nuevo se muestra primero con una estimación inmediata de su altura. Unos 40, 80 y 160 ms después, se actualiza la estimación en ese mismo punto con ayuda de los sonidos que vienen a continuación, por lo que las marcas recientes justo detrás del sonido más nuevo pueden cambiar. Esta actualización no añade retraso a la visualización ni cambia la sincronización de **Sincronizar elementos visuales con el audio**.
 - Las líneas en cada C marcan los límites de las octavas.
 - Las filas correspondientes a las teclas negras usan un fondo gris casi negro para que puedan distinguirse aunque no se detecte ninguna nota.
-- **Normal** usa el color del trazado del gráfico del tema; **Note Colors** asigna un color a cada nota, que se repite en todas las octavas. Ambos muestran líneas de guía entre E y F más oscuras que los límites de octava.
-- **1/12 Octave** muestra una fila por semitono. **High (1/60 Octave)** divide cada semitono en cinco filas para seguir mejor los pequeños cambios de altura; los colores se mezclan entre notas vecinas.
-- La intensidad del color indica la confianza en cada estimación de altura; los candidatos débiles también se muestran, sin un umbral de visualización.
+- **Normal** usa el color del trazado del tema; **Note Colors** asigna un color a cada nota, igual en todas las octavas. **Instrument (3)** e **Instrument (9)** mezclan los colores de los grupos en proporción a sus probabilidades estimadas; Instrument (3) primero combina las probabilidades en Vocal, Bass y Other. La leyenda muestra los grupos y sus colores. Las guías entre E y F se muestran en todos los modos.
+- Los colores de instrumentos aparecen cuando la estimación está lista y actualizan el historial correspondiente. En las vistas Instrument, las notas pendientes o sin estimación aparecen en un gris neutro que no representa ningún grupo. El cambio entre 3 y 9 grupos utiliza las estimaciones disponibles.
+- La estimación de instrumentos añade 20 ms antes de mostrar el resultado; la visualización de la altura sigue actualizándose de inmediato.
+- La estimación de instrumentos usa como pistas las notas anteriores de la música, por lo que es menos precisa justo después de activarla o de cambiar la posición de reproducción. Una vez completada, la estimación de cada nota no se modifica.
+- Toda estimación de instrumento completada proporciona las probabilidades de los grupos, aunque la confianza sea baja. Los candidatos de altura débiles y los sonidos que ya estaban sonando al activar la estimación de instrumentos pueden permanecer grises porque no tienen una estimación de instrumento.
+- **Highlight** facilita seguir el grupo elegido acercando los colores de las demás notas a un gris neutro. Cuanto mayor es la probabilidad estimada del grupo, más se conserva el color original. Las notas pendientes o sin estimación también aparecen en gris neutro y siguen visibles. El objetivo elegido aparece junto a la leyenda y también se distingue dentro de ella. Pasa el cursor sobre un grupo de la leyenda para resaltarlo temporalmente; al retirarlo se recupera tu selección de Highlight.
+- **1/12 Octave** muestra una fila por semitono. **High** sitúa cada altura en su valor estimado en cents para facilitar el seguimiento de pequeños cambios. Note Colors mezcla los colores de notas vecinas según la altura; las vistas Instrument usan colores basados en la estimación del instrumento.
+- La intensidad del color indica la confianza en cada estimación de altura. A medida que la confianza se acerca a cero, la representación se atenúa hasta fundirse con el fondo.
 - Con **Volume** activado, cada altura detectada se convierte en una barra cuyo grosor del núcleo opaco representa su volumen relativo corregido según la frecuencia: de 1/60 de octava en la parte inferior de la escala a 1/12 de octava en la superior. En cada lado del núcleo se añade un desvanecido de 1/120 de octava, por lo que el ancho total dibujado aumenta en 1/60 de octava respecto al núcleo. **Pitch Resolution** cambia la posición central de la barra, no el grosor de su núcleo.
 - En el borde del teclado, un semicírculo de bordes suaves se extiende hacia el gráfico y muestra el volumen actual. Responde de inmediato a los aumentos y desciende a 20 dB por segundo; no hay una retención de pico visible independiente.
 - La escala de volumen abarca 24 dB. Su límite superior sigue el valor más alto entre una referencia reciente que estabiliza la escala del historial (durante aproximadamente un segundo) y -36 dB, de modo que el material más silencioso siga siendo legible sin que los pasajes más fuertes llenen continuamente la pantalla. Esta referencia es independiente del semicírculo del volumen actual.
 - Las líneas guía de las octavas y de E–F se dibujan detrás de las barras de volumen, para que la cuadrícula de alturas siga sirviendo de referencia visual.
-- Las teclas pasan gradualmente de su color habitual al color de visualización a medida que aumenta la confianza del último fotograma, hasta alcanzar ese color con un valor de 1.
+- Las teclas pasan gradualmente de su color habitual al color de visualización a medida que aumenta la confianza del último fotograma, hasta alcanzar ese color con un valor de 1. En Normal o Note Colors, Highlight se aplica al gráfico y mantiene los colores del teclado sin cambios.
 - Cambiar **Color** actualiza los colores del historial existente.
 
 ### Visualización
 - Pasa el cursor sobre el historial, o tócalo y desliza el dedo, para leer la nota, el tiempo, **Salience** (confianza en la estimación de la altura) y **Level** (volumen corregido según la frecuencia, en dB) en ese punto.
+- Cuando la estimación de instrumentos está activa, la lectura también muestra las probabilidades de los grupos para la nota en ese punto del historial: Vocal, Bass y Other con **Instrument (3)**, y los nueve grupos con los demás ajustes de Color. Las notas sin estimación muestran **Not classified**.
+- Con **Highlight** seleccionado, la lectura también muestra la probabilidad estimada del objetivo cuando hay una estimación disponible. Es un valor distinto de Salience.
 
 ### Qué Puedes Ver
 
 - Los acordes aparecen como varias filas brillantes al mismo tiempo
 - Las melodías y líneas de bajo forman recorridos entre las filas de notas
-- La pantalla no crea MIDI ni partitura, no identifica instrumentos ni puede separar por completo todos los sonidos simultáneos. Las superposiciones complejas pueden dejar partes de una melodía o armonía sin detectar, y la percusión, el ruido o los patrones repetidos poco claros pueden producir alguna altura incorrecta.
+- Para seguir la voz o el bajo, empieza con **Instrument (3)**, o conserva **Note Colors** y elige **Vocal** o **Bass** en **Highlight**. Usa **Instrument (9)** para una clasificación más detallada.
+- Las estimaciones de altura e instrumento pueden ser incorrectas, sobre todo cuando los sonidos se superponen. Los colores por instrumento son una ayuda para escuchar, no una identificación fiable de cada instrumento. La batería no se clasifica. La visualización no crea MIDI ni partituras ni separa por completo los sonidos simultáneos; la percusión, el ruido y las repeticiones poco claras también pueden producir alturas incorrectas.
+
+### Grupos de instrumentos
+
+**Instrument (3)** usa **Vocal**, **Bass** y **Other**. Other reúne todos los grupos salvo Vocal y Bass y abarca más que Other en la vista de 9 grupos.
+
+**Instrument (9)** usa estos grupos:
+
+- **Vocal**: canto humano grabado, tanto voces solistas como coros.
+- **Bass**: bajo acústico, eléctrico y de sintetizador.
+- **Guitar**: guitarras acústicas, eléctricas limpias y con distorsión.
+- **Piano**: pianos acústicos y eléctricos, clave y clavinet.
+- **Strings**: cuerdas solistas y de conjunto, pizzicato, arpa y cuerdas de sintetizador.
+- **Wind**: instrumentos de metal y de madera, incluidos saxofones y flautas.
+- **Synth**: sonidos solistas y pads de sintetizador.
+- **Organ**: órganos, acordeón y armónica.
+- **Other**: percusión afinada como celesta y vibráfono, sonidos sintéticos de coro y voz, golpes orquestales, efectos de sintetizador, instrumentos étnicos y efectos sonoros.
 
 ### Parámetros
 
 - **Color** - Selecciona los colores de visualización sin cambiar las estimaciones de notas.
   - **Normal** (predeterminado): el color del trazado del gráfico del tema.
   - **Note Colors**: un color distinto para cada nota, que se repite en todas las octavas.
+  - **Instrument (3)**: colores para Vocal, Bass y Other.
+  - **Instrument (9)**: colores para los nueve grupos anteriores.
+- **Highlight** - Resalta un grupo estimado con cualquier ajuste de Color, conservando el grosor que indica el volumen. **None** (predeterminado) desactiva el resaltado. Elige **Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ** u **Other (9)**. Other (3) incluye todo salvo Vocal y Bass; Other (9), solo el grupo Other más reducido descrito arriba. El resaltado cambia la imagen, no el sonido.
+- La estimación de instrumentos solo funciona con un modo de color Instrument o con Highlight distinto de None, y aumenta el uso de CPU. Para evitar ese procesamiento adicional, elige Normal o Note Colors y deja Highlight en None.
 - **Pitch Resolution** - Selecciona el detalle vertical de la altura sin borrar el historial existente.
   - **1/12 Octave** (predeterminado): una fila por semitono, usando la estimación más fuerte de esa nota.
-  - **High (1/60 Octave)**: cinco filas por semitono para mostrar cambios de altura más finos.
+  - **High**: muestra las alturas en sus valores estimados en cents, conservando las variaciones más pequeñas.
 - **Layout** - Selecciona **Horizontal** (predeterminado) o **Vertical**. El historial se conserva al cambiar la disposición.
-- **Volume** - Muestra el volumen relativo mediante el grosor de las barras y medidores semicirculares. Está activado por defecto; al desactivarlo, la intensidad de las filas indica la confianza.
+- **Volume** - Muestra el volumen relativo mediante el grosor de las barras y medidores semicirculares. Está activado por defecto; al desactivarlo, el grosor permanece fijo y la intensidad del color indica la confianza de la estimación de altura.
 - **Time Span** (de 1 a 10 s) - Define cuánto tiempo muestra el piano roll
   - Los valores cortos permiten ver mejor los cambios de ritmo
   - Los valores largos muestran un pasaje musical más extenso de una vez

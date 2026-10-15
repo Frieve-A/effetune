@@ -51,7 +51,7 @@ const ports = [
     telemetryKind: 2,
     measurement: 'gains',
     memberKeys: ['fa', 'fr', 'sa', 'sr', 'gt', 'gs', 'sm'],
-    jsEngineHash: '8e5f82a701546fb2c1d5d8851a64c60b5cb9921a1d7b8d4273569b22085215eb'
+    jsEngineHash: '55a1e900faafd21a918ad2c35cf2ac68e35d5a50aed90b8bcb0487bcc3497f3f'
   }
 ];
 

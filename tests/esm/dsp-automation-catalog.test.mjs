@@ -99,8 +99,8 @@ test('production schemas expose the audited automation population', async () => 
       TonalBalanceEQPlugin: ['measurementPaused']
     },
     analyzerOnly: {
-      AnalogMeterPlugin: ['mode', 'integration', 'attack', 'release'],
-      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi'],
+      AnalogMeterPlugin: ['mode', 'integration', 'attack', 'release', 'detector', 'needleResponse', 'overshoot'],
+      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi', 'timbreEnabled'],
       OscilloscopePlugin: [
         'displayTime', 'triggerMode', 'triggerLevel', 'triggerEdge', 'holdoff',
         'displayLevel', 'verticalOffset'
@@ -139,7 +139,7 @@ test('production schemas expose the audited automation population', async () => 
     },
     reconfiguresTemporalState: {
       PitchShifterPlugin: ['windowSize', 'crossfadeTime'],
-      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices']
+      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices', 'previewMidi', 'previewVelocity']
     },
     resetsLearningState: {
       AdaptivePredictionEffectPlugin: ['resetToken']

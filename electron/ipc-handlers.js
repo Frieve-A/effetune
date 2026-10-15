@@ -12,6 +12,7 @@ const { registerIrLibraryIpc } = require('./ir-library-ipc');
 const { registerSfzLibraryIpc } = require('./sfz-library-ipc');
 const { registerMeasurementBackupIpc } = require('./measurement-backup-ipc.cjs');
 const { readFileBytes } = require('./bounded-file-reader');
+const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 const { queueAutoRestart } = require('./relaunch');
 const {
   canPersistAudioPreferencesWithoutReload,
@@ -818,6 +819,23 @@ function registerIpcHandlers({ onConfigSaved } = {}) {
   });
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
+  ipcMain.handle('read-track-lyrics', async (event, request) => {
+    if (!request || typeof request !== 'object' || Array.isArray(request)) {
+      throw new TypeError('Track lyrics request is invalid');
+    }
+    const pool = new MetadataWorkerPool({ workerCount: 2 });
+    try {
+      const result = await pool.parse({
+        path: request.path,
+        relativePath: typeof request.path === 'string' ? path.basename(request.path) : '',
+        skipCovers: true,
+        lyrics: { names: request.names, region: request.region }
+      });
+      return result.lyrics ?? null;
+    } finally {
+      await pool.close();
+    }
+  });
   ipcMain.handle('read-file-bytes', async (event, filePath, expectedByteLength) => {
     if (expectedByteLength !== undefined &&
         (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0)) {

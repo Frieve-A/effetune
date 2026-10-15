@@ -1,5 +1,5 @@
 ---
-title: "컨트롤러 매핑 - EffeTune"
+title: "컨트롤러 매핑 - MIDI, 게임패드, 키보드로 조작 - EffeTune"
 description: "MIDI 컨트롤러, 게임패드, 키보드로 EffeTune 파라미터를 조작합니다."
 lang: ko
 ---

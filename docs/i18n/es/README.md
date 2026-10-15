@@ -296,6 +296,21 @@ Para consultar la frecuencia, fase, retardo de grupo mínimo, retardo de grupo e
 
 **Reproducción sin pausas** está activada de forma predeterminada y puede cambiarse en **Configuración de audio**. Cuando está activada, las pistas locales compatibles se enlazan sin pausa; la compatibilidad está limitada por el formato del archivo y el navegador o la aplicación actuales. Los formatos no compatibles y algunos entornos móviles usan automáticamente un modo alternativo que limita la memoria, por lo que aún puede haber una pausa breve. Al desactivarla se priorizan un menor uso de memoria y la estabilidad, y puede aparecer una pausa breve entre pistas. Cambiar esta opción no interrumpe la pista actual. La reproducción sin pausas no está disponible mientras la velocidad no sea 1x. Si cambias la velocidad durante una pista que se reproducía sin pausas, la reproducción se reanuda desde la misma posición tras una breve interrupción.
 
+### Controlar EffeTune con un asistente de IA (MCP)
+
+Puedes encargar a Codex o Claude Code la configuración de MCP y después pedirle que añada efectos, ajuste sus parámetros y cargue o guarde preajustes en EffeTune para escritorio. Utiliza un agente que pueda ejecutar comandos en tu ordenador.
+
+1. En EffeTune para escritorio, abre **Configuración > Remote Control...**, activa **Allow remote control** y pulsa **Copy link**.
+2. Envía el siguiente texto a tu agente de IA, sustituyendo el marcador por el enlace que has copiado:
+
+```text
+Configura EffeTune MCP siguiendo la guía oficial:
+https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
+Enlace de conexión: <pega aquí el enlace copiado>
+```
+
+Tras la configuración, reinicia el cliente si se te indica y prueba a pedir: «Muéstrame mis efectos actuales». Mantén el enlace de conexión en privado; si pulsas **New token** o cambias el puerto, repite la configuración con el nuevo enlace.
+
 ## Combinaciones Comunes de Efectos
 
 Aquí hay algunas combinaciones populares de efectos para mejorar tu experiencia de escucha:

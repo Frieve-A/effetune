@@ -24,10 +24,12 @@ struct SFZNotePlayerPluginParams {
   float retriggerDropDb;
   float noteHoldMs;
   float sampleShift;
-  static constexpr std::uint32_t kHash = 0x4d91a965u;
-  static constexpr std::uint32_t kFloatCount = 17u;
+  float previewMidi;
+  float previewVelocity;
+  static constexpr std::uint32_t kHash = 0x378e7f2bu;
+  static constexpr std::uint32_t kFloatCount = 19u;
 };
-static_assert(17u == 0u || sizeof(SFZNotePlayerPluginParams) == sizeof(float) * 17u);
+static_assert(19u == 0u || sizeof(SFZNotePlayerPluginParams) == sizeof(float) * 19u);
 
 } // namespace effetune::generated
 

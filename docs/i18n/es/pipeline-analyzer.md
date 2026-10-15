@@ -1,3 +1,9 @@
+---
+title: "Pipeline Analyzer - Respuesta en frecuencia y fase de la cadena de efectos - EffeTune"
+description: "Pipeline Analyzer mide la respuesta en frecuencia, la fase, el retardo de grupo y la respuesta al impulso del Effect Pipeline activo sin modificar el audio que escuchas."
+lang: es
+---
+
 # Pipeline Analyzer
 
 Pipeline Analyzer mide la respuesta del Effect Pipeline activo sin modificar el audio que escuchas. Permanece junto al pipeline en ventanas anchas y pasa debajo de su encabezado en ventanas estrechas, para que puedas ajustar un efecto mientras observas cómo cambia el resultado.

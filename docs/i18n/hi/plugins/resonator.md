@@ -1,6 +1,6 @@
 ---
 title: "रेज़ोनेटर प्लगइन - EffeTune"
-description: "अनुनाद प्लगइन: Adaptive Prediction, Horn Resonator और Modal Resonator।"
+description: "Adaptive Prediction ऑडियो से सीखकर बदलता अनुनाद, Horn Resonator और Horn Resonator Plus हॉर्न स्पीकर की रंगत और Modal Resonator ट्यून किए गए अनुनाद जोड़ते हैं।"
 lang: hi
 ---
 

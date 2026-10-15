@@ -1,5 +1,5 @@
 ---
-title: "Utiliser la Bibliothèque musicale - EffeTune"
+title: "Utiliser la Bibliothèque musicale - Parcourir et lire vos fichiers musicaux locaux - EffeTune"
 description: "Découvrez comment créer une Bibliothèque musicale dans EffeTune, rechercher et lire de la musique à partir de sous-dossiers ou de métadonnées, et gérer les listes de lecture."
 lang: fr
 ---

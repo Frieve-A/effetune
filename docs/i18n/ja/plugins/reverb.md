@@ -1,5 +1,5 @@
 ---
-title: "リバーブプラグイン - EffeTune"
+title: "リバーブプラグイン - コンボリューション・ホール・プレート・ルームリバーブ - EffeTune"
 description: "Dattorro Plate Reverb、FDN Reverb、IR Reverb、RS Reverbなどのリバーブエフェクトプラグイン。"
 lang: ja
 ---

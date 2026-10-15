@@ -1,5 +1,5 @@
 ---
-title: "إضافة المتصفح - EffeTune"
+title: "إضافة المتصفح - معادل الصوت وتأثيرات صوتية في Chrome وEdge - EffeTune"
 description: "تعالج الإضافة صوت ما يصل إلى أربع علامات تبويب في وقت واحد، ولكل منها Effect Pipeline استريو مستقل."
 lang: ar
 ---

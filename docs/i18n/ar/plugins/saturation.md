@@ -1,6 +1,6 @@
 ---
-title: "إضافات التشبع - EffeTune"
-description: "إضافات التشبع والتشويه، وتشمل Saturation وExciter وHard Clipping وغيرها."
+title: "إضافات التشبع - توسيع الجهير والمثير التوافقي ومحاكاة مضخم صمامي - EffeTune"
+description: "محاكاة مضخم صمامي وSaturation وExciter وHarmonic Distortion، مع Bandwidth Extender وBass Extender لتوليد محتوى صوتي جديد عالي ومنخفض التردد."
 lang: ar
 ---
 

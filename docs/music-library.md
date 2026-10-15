@@ -1,5 +1,5 @@
 ---
-title: "Music Library Guide - EffeTune"
+title: "Music Library Guide - Browse & Play Local Music Files - EffeTune"
 description: "Learn how to set up Music Library in EffeTune, find and play music by subfolder or metadata, and manage playlists."
 lang: en
 ---

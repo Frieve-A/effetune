@@ -1,5 +1,5 @@
 ---
-title: "Guia da Biblioteca de música - EffeTune"
+title: "Guia da Biblioteca de música - Navegação e reprodução de arquivos de música locais - EffeTune"
 description: "Aprenda a criar uma Biblioteca de música no EffeTune, navegar por subpastas e metadados, reproduzir faixas pelo Effect Pipeline e gerenciar playlists."
 lang: pt
 ---

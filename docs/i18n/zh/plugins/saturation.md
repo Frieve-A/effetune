@@ -1,6 +1,6 @@
 ---
-title: "Saturation 插件 - EffeTune"
-description: "饱和与失真插件,包括 Saturation、Exciter、Hard Clipping 等。"
+title: "Saturation 插件 - 低音扩展、激励器与电子管放大器模拟 - EffeTune"
+description: "电子管放大器模拟、Saturation、Exciter、Harmonic Distortion，以及分别生成新的高频和低音成分的 Bandwidth Extender 和 Bass Extender。"
 lang: zh
 ---
 

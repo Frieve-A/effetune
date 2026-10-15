@@ -10,6 +10,7 @@ import {
 import { assertDirectoryHandle, WebFolderHandleStore } from './web-folder-handle-store.js';
 import { WebMetadataParser } from './web-metadata-parser.js';
 import { WebSessionFileSource } from './web-session-file-source.js';
+import { findLyricsFileName } from '../metadata/lyrics.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 import {
   AutomaticPlaylistCollector,
@@ -453,6 +454,23 @@ export class WebCatalogScanRuntime {
         { folderId: track.folderId, lifecycleVersion: track.lifecycleVersion }
       );
     }
+  }
+
+  async resolveTrackSiblingFile(track, names) {
+    const sessionSource = this.sessionSources.get(track.folderId);
+    let filesystem;
+    if (sessionSource) filesystem = sessionSource.createAdapter();
+    else {
+      const handle = await this.handleStore.get(track.folderId);
+      if (!handle || await queryFolderPermission(handle) !== 'granted') return null;
+      filesystem = this.filesystemFactory(handle);
+    }
+    const separator = track.relativePath.lastIndexOf('/');
+    const directory = separator < 0 ? '' : track.relativePath.slice(0, separator);
+    const match = findLyricsFileName(await filesystem.listFileNames(directory), names);
+    if (!match) return null;
+    const relativePath = directory ? `${directory}/${match.fileName}` : match.fileName;
+    return { file: await filesystem.getFile(relativePath), index: match.index };
   }
 
   async #runFolder({ scanId, folder, source, scanReason, resume, languageHints }) {

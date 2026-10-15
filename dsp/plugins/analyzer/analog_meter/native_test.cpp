@@ -11,7 +11,8 @@
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_AnalogMeterPlugin() noexcept;
 namespace {
 constexpr double pi = 3.14159265358979323846;
-enum Mode { Vu, Ppm, Rms, SamplePeak, TruePeak, Loudness };
+enum Mode { Vu, Ppm, Rms, SamplePeak, TruePeak, Loudness, Custom };
+enum Detector { AverageRectified, RmsDetector, SamplePeakDetector, TruePeakDetector };
 int failures = 0;
 void check(bool ok, const char *text, int line) {
   if (!ok) {
@@ -55,20 +56,25 @@ struct Meter {
   std::uint64_t position = 0;
   double rate;
   Meter(double sample_rate, std::uint32_t channel_count, int mode, float integration = 0.3F,
-        float release = 1.5F, float attack = 5.0F)
+        float release = 1.5F, float attack = 5.0F, int detector = AverageRectified,
+        float needle_response = 300.0F, float overshoot = 1.25F)
       : channels(channel_count), rate(sample_rate) {
     CHECK(descriptor->objectSize <= storage.size());
-    CHECK(descriptor->paramsFloatCount == 4u);
+    CHECK(descriptor->paramsFloatCount == 7u);
     kernel = descriptor->construct(storage.data());
     kernel->prepare({static_cast<float>(rate), 16u, 1024u});
     CHECK(kernel->preparedSuccessfully());
-    set(mode, integration, release, attack);
+    set(mode, integration, release, attack, detector, needle_response, overshoot);
     ring.adopt(ring_bytes.data(), static_cast<std::uint32_t>(ring_bytes.size()));
   }
   ~Meter() { descriptor->destroy(kernel); }
-  void set(int mode, float integration = 0.3F, float release = 1.5F, float attack = 5.0F) {
-    const std::array<float, 4> params = {static_cast<float>(mode), integration, attack, release};
-    CHECK(kernel->stageParameters(params.data(), 4u, descriptor->paramsHash) == ET_OK);
+  void set(int mode, float integration = 0.3F, float release = 1.5F, float attack = 5.0F,
+           int detector = AverageRectified, float needle_response = 300.0F,
+           float overshoot = 1.25F) {
+    const std::array<float, 7> params = {
+        static_cast<float>(mode),     integration,     attack,   release,
+        static_cast<float>(detector), needle_response, overshoot};
+    CHECK(kernel->stageParameters(params.data(), 7u, descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
   }
   // Writes telemetry once and returns the latest frame, if any.
@@ -189,14 +195,14 @@ double releaseTime(double rate, int mode, float release, double drop = 20.0) {
   return crossed;
 }
 
-void testVu(double rate) {
-  Meter steady(rate, 2u, Vu);
+void testVu(double rate, int mode = Vu) {
+  Meter steady(rate, 2u, mode);
   const auto reading = steady.run(1.5, sine(rate, -18.0, 1000.0));
-  std::printf("%g Hz VU -18 dBFS reads %.4f dB\n", rate, reading.needle[0]);
+  std::printf("%g Hz mode=%d VU -18 dBFS reads %.4f dB\n", rate, mode, reading.needle[0]);
   NEAR(reading.needle[0], -18.0, -0.05, 0.05);
   NEAR(reading.needle[1], -18.0, -0.05, 0.05);
 
-  Meter step(rate, 1u, Vu);
+  Meter step(rate, 1u, mode);
   const double level = std::pow(10.0, -18.0 / 20.0);
   double reach = -1.0, highest = 0.0, final = 0.0;
   step.feed(2.0, sine(rate, -18.0, 1000.0),
@@ -211,9 +217,53 @@ void testVu(double rate) {
             },
             {static_cast<std::uint32_t>(rate / 1000.0)});
   const double overshoot = highest / final - 1.0;
-  std::printf("%g Hz VU 99%% at %.4f s, overshoot %.3f%%\n", rate, reach, overshoot * 100.0);
+  std::printf("%g Hz mode=%d VU 99%% at %.4f s, overshoot %.3f%%\n", rate, mode, reach,
+              overshoot * 100.0);
   NEAR(reach, 0.3, -0.03, 0.03);
   NEAR(overshoot, 0.0, 0.01, 0.015);
+}
+
+void testCustom(double rate) {
+  for (int detector = AverageRectified; detector <= TruePeakDetector; ++detector) {
+    Meter meter(rate, 2u, Custom, 0.3F, 1.5F, 5.0F, detector);
+    const auto reading = meter.run(2.0, sine(rate, -18.0, 1000.0));
+    CHECK(reading.mode == Custom && reading.flags == 0u);
+    NEAR(reading.needle[0], -18.0, -0.05, 0.05);
+    NEAR(reading.needle[1], -18.0, -0.05, 0.05);
+  }
+  // A constant sample peak is a flat detector output, isolating the needle step response.
+  for (const float response : {1.0F, 10.0F, 300.0F, 1000.0F}) {
+    for (const float overshoot : {0.0F, 1.25F, 15.0F, 25.0F}) {
+      Meter meter(rate, 1u, Custom, 0.3F, 1.5F, 5.0F, SamplePeakDetector, response, overshoot);
+      double reached = -1.0, highest = 0.0;
+      const double duration = response * 0.006;
+      const std::uint32_t block = response < 10.0F ? 1u : static_cast<std::uint32_t>(rate / 1000.0);
+      meter.feed(
+          duration, [](std::uint64_t, std::uint32_t) { return 0.125; },
+          [&](double time, Meter &m) {
+            const auto reading = m.take();
+            const double needle = std::pow(10.0, reading.needle[0] / 20.0) / 0.125;
+            if (reached < 0.0 && needle >= 0.99)
+              reached = time;
+            const double peak = std::pow(10.0, reading.peak[0] / 20.0) / 0.125;
+            highest = peak > highest ? peak : highest;
+          },
+          {block});
+      const double tolerance = static_cast<double>(block) / rate + 1.0 / rate;
+      NEAR(reached, response * 0.001, -tolerance, tolerance);
+      NEAR(highest - 1.0, overshoot * 0.01, -0.002, 0.002);
+      if (overshoot == 0.0F)
+        CHECK(highest <= 1.000001);
+      std::printf("%g Hz Custom nr=%g os=%g: 99%% %.6f s, overshoot %.3f%%\n", rate, response,
+                  overshoot, reached, (highest - 1.0) * 100.0);
+    }
+  }
+  Meter changing(rate, 1u, Custom);
+  const double before = changing.run(1.5, sine(rate, -18.0, 1000.0)).needle[0];
+  changing.set(Custom, 0.3F, 1.5F, 5.0F, AverageRectified, 1000.0F, 15.0F);
+  NEAR(changing.run(1.0 / rate, silence(), {1u}).needle[0], before, -0.01, 0.01);
+  changing.set(Custom, 0.3F, 1.5F, 5.0F, RmsDetector, 1000.0F, 15.0F);
+  CHECK(changing.run(1.0 / rate, silence(), {1u}).needle[0] == -240.0F);
 }
 
 // Highest PPM needle reading, relative to the steady tone, for a 5 kHz burst of `seconds`.
@@ -443,16 +493,20 @@ void testLoudnessDetails() {
 }
 
 void testBlockIndependence() {
-  for (int mode = Vu; mode <= Loudness; ++mode) {
-    const auto signal = [](std::uint64_t n, std::uint32_t channel) {
-      return 0.3 * std::sin(0.013 * n * (channel + 1)) + 0.2 * std::sin(0.71 * n);
-    };
-    Meter regular(44100.0, 3u, mode, 0.05F), irregular(44100.0, 3u, mode, 0.05F);
-    const auto a = regular.run(0.7, signal, {128u});
-    const auto b = irregular.run(0.7, signal, {97u, 31u, 64u, 1u, 127u});
-    CHECK(a.valid && a.mode == static_cast<std::uint32_t>(mode) && a.channels == 3u);
-    CHECK(a.needle == b.needle);
-    CHECK(a.program == b.program);
+  for (int mode = Vu; mode <= Custom; ++mode) {
+    for (int detector = AverageRectified;
+         detector <= (mode == Custom ? TruePeakDetector : AverageRectified); ++detector) {
+      const auto signal = [](std::uint64_t n, std::uint32_t channel) {
+        return 0.3 * std::sin(0.013 * n * (channel + 1)) + 0.2 * std::sin(0.71 * n);
+      };
+      Meter regular(44100.0, 3u, mode, 0.05F, 1.5F, 5.0F, detector),
+          irregular(44100.0, 3u, mode, 0.05F, 1.5F, 5.0F, detector);
+      const auto a = regular.run(0.7, signal, {128u});
+      const auto b = irregular.run(0.7, signal, {97u, 31u, 64u, 1u, 127u});
+      CHECK(a.valid && a.mode == static_cast<std::uint32_t>(mode) && a.channels == 3u);
+      CHECK(a.needle == b.needle);
+      CHECK(a.program == b.program);
+    }
   }
 }
 
@@ -481,6 +535,8 @@ void testRejectedWrite() {
 int main() {
   for (const double rate : {48000.0, 96000.0}) {
     testVu(rate);
+    testVu(rate, Custom);
+    testCustom(rate);
     testPpm(rate);
     testRms(rate);
   }

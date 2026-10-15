@@ -1,14 +1,19 @@
 #include "allocation_guard.h"
 #include "effetune/dsp/pffft_incremental.h"
 #include "effetune/kernel.h"
+#include "event_rule_reference.h"
 #include "pffft.h"
 #include "spectral_analysis.h"
+#include "timbre_reference.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 extern "C" const effetune::KernelDescriptor *et_kernel_descriptor_NoteSpectrogramPlugin() noexcept;
@@ -23,7 +28,8 @@ constexpr std::uint32_t kVolumeOffset = kConfidenceOffset + 4u * kFinePitchCount
 constexpr std::uint32_t kRevisedOffset = kVolumeOffset + 4u * kFinePitchCount;
 constexpr std::uint32_t kIntermediateOffset = kRevisedOffset + 4u * kFinePitchCount;
 constexpr std::uint32_t kRevisionBytes = 4u + 4u * kFinePitchCount;
-constexpr std::uint32_t kPayloadBytes = kIntermediateOffset + 2u * kRevisionBytes;
+constexpr std::uint32_t kPitchCentsOffset = kIntermediateOffset + 2u * kRevisionBytes;
+constexpr std::uint32_t kPayloadBytes = kPitchCentsOffset + 4u * kNoteCount;
 constexpr std::uint32_t kFrameBytes = 16u + kPayloadBytes;
 int failures = 0;
 void check(bool value, const char *expression, int line) {
@@ -56,13 +62,14 @@ struct Harness {
   std::vector<std::uint8_t> bytes = std::vector<std::uint8_t>(512u * 1024u);
   effetune::TelemetryRing ring;
   std::uint32_t sequence = 0;
-  explicit Harness(float rate, float minimum_midi = 21.0F, float maximum_midi = 108.0F) {
+  explicit Harness(float rate, float minimum_midi = 21.0F, float maximum_midi = 108.0F,
+                   bool timbre_enabled = false) {
     CHECK(descriptor->objectSize <= storage.size());
-    CHECK(descriptor->paramsFloatCount == 2u);
+    CHECK(descriptor->paramsFloatCount == 3u);
     kernel = descriptor->construct(storage.data());
     kernel->prepare({rate, 4u, 1024u});
     CHECK(kernel->preparedSuccessfully());
-    const std::array params = {minimum_midi, maximum_midi};
+    const std::array params = {minimum_midi, maximum_midi, timbre_enabled ? 1.0F : 0.0F};
     CHECK(kernel->stageParameters(params.data(), static_cast<std::uint32_t>(params.size()),
                                   descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -81,12 +88,14 @@ struct Harness {
     CHECK(size % kFrameBytes == 0u);
     for (auto offset = 0u; offset < size; offset += kFrameBytes) {
       CHECK(readU16(bytes.data() + offset) == 24u);
-      CHECK(readU16(bytes.data() + offset + 2u) == 5u);
+      CHECK(readU16(bytes.data() + offset + 2u) == 6u);
       CHECK(readU16(bytes.data() + offset + 12u) == kPayloadBytes);
       const auto *payload = bytes.data() + offset + 16u;
       const auto age = readU32(payload + kRevisionAgeOffset);
       CHECK(age == (readU32(payload + 16u) >= 8u ? 8u : 0u));
       CHECK(readU32(payload + 24u) != 0u);
+      for (auto pitch = 0u; pitch < kNoteCount; ++pitch)
+        CHECK(std::isfinite(readF32(payload + kPitchCentsOffset + pitch * 4u)));
       for (auto revision = 0u; revision < 2u; ++revision) {
         const auto expected_age = 2u << revision;
         const auto plane = kIntermediateOffset + revision * kRevisionBytes;
@@ -239,7 +248,7 @@ void checkPresence(const char *name, const std::vector<std::uint8_t> &frames,
   float maximum_false = 0.0F;
   for (std::size_t offset = 0u; offset < frames.size(); offset += kFrameBytes) {
     const auto frame = frames.data() + offset;
-    CHECK(readU16(frame) == 24u && readU16(frame + 2u) == 5u);
+    CHECK(readU16(frame) == 24u && readU16(frame + 2u) == 6u);
     CHECK(readU16(frame + 12u) == kPayloadBytes);
     const auto payload = frame + 16u;
     CHECK(readU32(payload + 20u) == kFineDivisions);
@@ -318,6 +327,22 @@ void testVolumeLevels() {
   for (auto h = 1u; h <= 16u; ++h)
     harmonic_power += .01 / h;
   CHECK(std::abs(a1 - 10.0 * std::log10(harmonic_power)) <= 1.0);
+}
+void testEstimatedPitchCents() {
+  constexpr auto rate = 48000.0F;
+  constexpr auto midi = 69u;
+  for (const auto cents : {-33.7, 7.3, 53.7}) {
+    Harness harness(rate);
+    const auto frequency = 440.0 * std::exp2(cents / 1200.0);
+    const auto frames = render(harness, rate, 0.4, [=](double time, std::uint32_t) {
+      return 0.1 * std::sin(2.0 * kPi * frequency * time);
+    });
+    const auto *payload = lastPayload(frames);
+    const auto estimate = readF32(payload + kPitchCentsOffset + (midi - 21u) * 4u);
+    std::printf("pitch cents expected %.3f estimated %.3f\n", cents, static_cast<double>(estimate));
+    // Preserve the peak interpolation, including estimates beyond a note's half-semitone.
+    CHECK(std::abs(estimate - cents) < 0.5);
+  }
 }
 void testPresenceQuality() {
   const std::vector<std::vector<Tone>> signals = {
@@ -427,9 +452,11 @@ void testPresenceMovingVoices() {
 void testLowOctaveDiscrimination() {
   for (const auto rate : {44100.0F, 48000.0F}) {
     for (auto midi = 24; midi < 36; ++midi) {
-      for (auto kind = 0; kind < 4; ++kind) {
+      // Fundamental-bearing tones retain their quality guard. Missing-fundamental
+      // tones are compared with the independent model reference separately.
+      for (const auto kind : {0, 1, 3}) {
         Harness harness(rate);
-        std::vector<Tone> tones = {{static_cast<double>(midi), 0.08, kind == 2 ? 3 : kind % 2}};
+        std::vector<Tone> tones = {{static_cast<double>(midi), 0.08, kind % 2}};
         if (kind == 3)
           tones.push_back({static_cast<double>(midi + 12), 0.04, 1});
         const auto frames =
@@ -464,6 +491,37 @@ void testLowOctaveDiscrimination() {
     }
   }
 }
+int testMissingFundamentalReference(const std::string &directory) {
+  std::array<std::array<std::array<float, 2>, 20>, 2> expected{};
+  std::ifstream input(directory + "/missing-fundamental.f32", std::ios::binary);
+  input.read(reinterpret_cast<char *>(expected.data()), sizeof(expected));
+  if (!input)
+    return 2;
+  auto condition = 0u;
+  float maximum = 0.0F;
+  for (const auto rate : {44100.0F, 48000.0F}) {
+    Harness harness(rate);
+    const auto frames = render(harness, rate, 1.0,
+                               [](double t, std::uint32_t) { return signal(t, {{35.0, .08, 3}}); });
+    auto measured = 0u;
+    for (std::size_t offset = 0u; offset < frames.size(); offset += kFrameBytes) {
+      const auto *payload = frames.data() + offset + 16u;
+      const auto frame = readU32(payload + 16u);
+      if (frame < 27u || frame >= 47u)
+        continue;
+      for (auto pitch = 0u; pitch < 2u; ++pitch) {
+        const auto actual = bagLevel(payload, (pitch ? 47u : 35u) - 21u, kRevisedOffset);
+        maximum = std::max(maximum, std::abs(actual - expected[condition][measured][pitch]));
+      }
+      ++measured;
+    }
+    CHECK(measured == 20u);
+    ++condition;
+  }
+  std::printf("missing-fundamental independent PyTorch reference max %.9g\n", maximum);
+  CHECK(maximum <= .0001F);
+  return failures == 0 ? 0 : 1;
+}
 void testConfiguredRecognitionRange() {
   Harness harness(48000.0F, 60.0F, 72.0F);
   Harness full_range(48000.0F);
@@ -478,6 +536,9 @@ void testConfiguredRecognitionRange() {
     const auto *payload = frames.data() + offset + 16u;
     const auto *full_payload = full_frames.data() + offset + 16u;
     for (auto midi = 21u; midi <= 108u; ++midi) {
+      const auto cents_offset = kPitchCentsOffset + (midi - 21u) * 4u;
+      CHECK(readF32(payload + cents_offset) ==
+            (midi >= 60u && midi <= 72u ? readF32(full_payload + cents_offset) : 0.0F));
       for (auto division = 0u; division < kFineDivisions; ++division) {
         const auto fine_pitch = (midi - 21u) * kFineDivisions + division;
         if (midi >= 60u && midi <= 72u) {
@@ -547,6 +608,8 @@ void testAnalysisFloor() {
     for (std::size_t offset = 0u; offset < frames.size(); offset += kFrameBytes) {
       const auto payload = frames.data() + offset + 16u;
       CHECK(readU32(payload + 20u) == kFineDivisions);
+      for (auto pitch = 0u; pitch < kNoteCount; ++pitch)
+        CHECK(readF32(payload + kPitchCentsOffset + pitch * 4u) == 0.0F);
       for (auto pitch = 0u; pitch < kFinePitchCount; ++pitch) {
         CHECK(readF32(payload + kConfidenceOffset + 4u * pitch) == 0.0F);
         CHECK(readF32(payload + kRevisedOffset + 4u * pitch) == 0.0F);
@@ -693,8 +756,706 @@ void testRevisionsRetainCapturedPitchShape() {
     CHECK(compared > 0u);
   }
 }
+void testTimbreHead() {
+  using effetune::plugins::analyzer::TimbreAnalysis;
+  using namespace timbre_reference;
+  auto observer = std::make_unique<TimbreAnalysis>();
+  observer->reset(kContextStartFrame);
+  float maximum_logits = 0.0F, maximum_probability = 0.0F;
+  float maximum_projection = 0.0F;
+  float maximum_ctx = 0.0F, maximum_link = 0.0F, maximum_inv = 0.0F;
+  const auto compare = [](const auto &actual, const auto &expected, float &maximum) {
+    for (auto i = 0u; i < actual.size(); ++i)
+      maximum = std::max(maximum, std::abs(actual[i] - expected[i]));
+  };
+  for (auto begin = 0u; begin < kNotes.size();) {
+    auto end = begin + 1u;
+    while (end < kNotes.size() && kNotes[end].confirmFrame == kNotes[begin].confirmFrame)
+      ++end;
+    std::array<TimbreAnalysis::Record, kNotes.size()> batch{};
+    std::array<TimbreAnalysis::Features, kNotes.size()> features{};
+    for (auto i = begin; i < end; ++i) {
+      const auto &reference = kNotes[i];
+      const TimbreAnalysis::Result boundary{
+          i + 1u, reference.midi, reference.confirmFrame - 4u, reference.endFrame, 0u, {}};
+      batch[i - begin] = TimbreAnalysis::makeRecord(boundary, reference.input.data());
+      batch[i - begin].cx = reference.cx;
+      compare(batch[i - begin].logits, reference.baseLogits, maximum_logits);
+      compare(batch[i - begin].p, reference.baseProbabilities, maximum_probability);
+      compare(batch[i - begin].z, reference.z, maximum_projection);
+    }
+    observer->evaluateBatch(batch.data(), end - begin, features.data());
+    for (auto i = begin; i < end; ++i) {
+      const auto &reference = kNotes[i];
+      const auto &actual = features[i - begin];
+      compare(actual.ctx, reference.ctx, maximum_ctx);
+      compare(actual.link, reference.link, maximum_link);
+      compare(actual.inv, reference.inv, maximum_inv);
+      compare(actual.logits, reference.logits, maximum_logits);
+      compare(actual.probabilities, reference.probabilities, maximum_probability);
+    }
+    begin = end;
+  }
+  std::printf(
+      "timbre sequence reference max ctx %.9g link %.9g inv %.9g logits %.9g z %.9g p %.9g\n",
+      maximum_ctx, maximum_link, maximum_inv, maximum_logits, maximum_projection,
+      maximum_probability);
+  CHECK(maximum_ctx < 2.0e-5F);
+  CHECK(maximum_link < 2.0e-5F);
+  CHECK(maximum_inv < 2.0e-5F);
+  CHECK(maximum_logits < 2.0e-4F);
+  CHECK(maximum_projection <= .001F);
+  CHECK(maximum_probability < 2.0e-5F);
+}
+void testTimbreObservations() {
+  using effetune::plugins::analyzer::TimbreAnalysis;
+  auto immediate = std::make_unique<TimbreAnalysis>();
+  auto delayed = std::make_unique<TimbreAnalysis>();
+  immediate->reset();
+  delayed->reset();
+  std::vector<TimbreAnalysis::Result> first, second;
+  const auto emit_first = [&](const auto &result) { first.push_back(result); };
+  const auto emit_second = [&](const auto &result) { second.push_back(result); };
+  for (auto index = 0u; index < 14u; ++index) {
+    for (auto *observer : {immediate.get(), delayed.get()}) {
+      auto &frame = observer->beginFrame(index);
+      frame.a.fill(.01F * static_cast<float>(index));
+      frame.c.fill(.02F * static_cast<float>(index));
+      std::array<float, 300> inputs{};
+      for (auto bin = 0u; bin < 300u; ++bin)
+        inputs[bin] = std::log1p((index + 1.0F) * (bin + 1.0F));
+      TimbreAnalysis::setInput(frame, inputs.data(), inputs.data());
+    }
+    if (index == 1u)
+      immediate->start(48u, 1u, emit_first);
+    if (index == 9u)
+      delayed->start(48u, 1u, emit_second);
+    immediate->advance(index, emit_first);
+    if (index >= 8u)
+      delayed->advance(index - 8u, emit_second);
+  }
+  CHECK(first.size() == 2u && second.size() == 2u);
+  CHECK(first.back().probabilities == second.back().probabilities);
+  CHECK(immediate->observations() == 3u && delayed->observations() == 3u);
+  CHECK(immediate->decisions() == 1u && delayed->decisions() == 1u);
+  // A short note reuses its last live observation, even when another note starts meanwhile.
+  delayed->reset();
+  second.clear();
+  std::array<float, 1337> expected{};
+  for (auto index = 0u; index < 7u; ++index) {
+    auto &frame = delayed->beginFrame(index);
+    frame.a.fill(.1F * index);
+    frame.c.fill(.2F * index);
+    frame.amplitudes.fill(.02F);
+    frame.envelope.fill(-33.9794F);
+    if (index == 1u) {
+      delayed->start(48u, 1u, emit_second);
+      std::fill_n(expected.data(), 216u, .1F);
+      TimbreAnalysis::descriptor(frame, 48u, frame.envelope.data(), expected.data() + 216u);
+      std::copy_n(expected.data(), 424u, expected.data() + 424u);
+      std::copy_n(expected.data(), 424u, expected.data() + 848u);
+      std::fill_n(expected.data() + 1272u, 64u, .2F);
+      expected[1336] = 48.0F / 87.0F;
+    }
+    if (index == 2u)
+      delayed->stop(48u, 2u, emit_second);
+    if (index == 3u)
+      delayed->start(48u, 3u, emit_second);
+    delayed->advance(index, emit_second);
+  }
+  auto reference = std::make_unique<TimbreAnalysis>();
+  reference->reset();
+  auto record = TimbreAnalysis::makeRecord({1u, 69u, 1u, 2u, 0u, {}}, expected.data());
+  record.cx = {0.0F, 1.0F, std::log1p(1.0F)};
+  reference->evaluateBatch(&record, 1u);
+  auto results = 0u;
+  for (const auto &event : second)
+    if (event.event == 2u) {
+      ++results;
+      CHECK(event.start == 1u && event.end == 2u);
+      CHECK(event.probabilities == record.boundary.probabilities);
+    }
+  CHECK(results == 1u);
+  delayed->reset();
+  CHECK(delayed->find(1u) == nullptr && delayed->decisions() == 0u);
+}
+void testTimbreHistory() {
+  using effetune::plugins::analyzer::TimbreAnalysis;
+  auto observer = std::make_unique<TimbreAnalysis>();
+  observer->reset();
+  auto seed = TimbreAnalysis::makeRecord({1u, 21u, 0u, 5u, 0u, {}},
+                                         timbre_reference::kNotes[0].input.data());
+  std::vector<TimbreAnalysis::Record> history;
+  float maximum_inv = 0.0F;
+  // Ten minutes of logical time exercise the infinite-window decay without rendering audio.
+  for (auto i = 0u; i <= 1000u; ++i) {
+    auto record = seed;
+    record.time = 4u + i * 30u;
+    record.boundary = {i + 1u, 21u + i % 88u, record.time - 4u, record.time + 1u, 0u, {}};
+    for (auto k = 0u; k < 9u; ++k)
+      record.p[k] = static_cast<float>((i + k) % 9u + 1u) / 45.0F;
+    TimbreAnalysis::Features features;
+    observer->evaluateBatch(&record, 1u, &features);
+    std::array<std::array<double, 10>, 2> exact{};
+    for (const auto &past : history) {
+      const auto decay = std::exp(-static_cast<double>(record.time - past.time) / 1000.0);
+      const auto distance = (static_cast<double>(record.boundary.midi) - past.boundary.midi) / 4.0;
+      const auto pitch_weight = std::exp(-.5 * distance * distance);
+      for (auto group = 0u; group < 2u; ++group) {
+        const auto weight = decay * (group ? pitch_weight : 1.0);
+        for (auto k = 0u; k < 9u; ++k)
+          exact[group][k] += weight * past.p[k];
+        exact[group][9] += weight;
+      }
+    }
+    for (auto group = 0u; group < 2u; ++group) {
+      for (auto k = 0u; k < 9u; ++k) {
+        const auto expected =
+            static_cast<float>((exact[group][k] + .5 / 9.0) / (exact[group][9] + .5));
+        maximum_inv = std::max(maximum_inv, std::abs(expected - features.inv[group * 10u + k]));
+      }
+      CHECK(std::abs(features.inv[group * 10u + 9u] -
+                     static_cast<float>(std::log1p(exact[group][9]))) < 1.0e-6F);
+    }
+    history.push_back(record);
+  }
+  std::printf("timbre 10-minute inventory max %.9g\n", maximum_inv);
+  CHECK(maximum_inv < 1.0e-6F);
+  observer->reset();
+  auto recent = std::make_unique<TimbreAnalysis>();
+  recent->reset();
+  std::array<TimbreAnalysis::Record, 88> batch{};
+  std::array<TimbreAnalysis::Features, 88> features{};
+  // Maximum simultaneous pitch count; overflow the ring while keeping the last 192 candidates.
+  for (auto frame = 4u; frame <= 54u; ++frame) {
+    for (auto pitch = 0u; pitch < 88u; ++pitch) {
+      batch[pitch] = seed;
+      batch[pitch].time = frame;
+      batch[pitch].boundary = {
+          (frame - 4u) * 88u + pitch + 1u, pitch + 21u, frame - 4u, frame + 1u, 0u, {}};
+    }
+    auto comparison = batch;
+    observer->evaluateBatch(batch.data(), 88u, features.data());
+    if (frame >= 51u)
+      recent->evaluateBatch(comparison.data(), 88u);
+    for (const auto &feature : features) {
+      CHECK(std::abs(feature.ctx[8] - std::log1p(88.0F)) < 1.0e-6F);
+      for (const auto probability : feature.probabilities)
+        CHECK(std::isfinite(probability));
+    }
+  }
+  CHECK(observer->latestFeatures(0u).link == recent->latestFeatures(0u).link);
+  observer->reset(54u);
+  recent->reset(54u);
+  auto first = seed, second = seed;
+  first.time = second.time = 58u;
+  first.boundary.start = second.boundary.start = 54u;
+  observer->evaluateBatch(&first, 1u);
+  recent->evaluateBatch(&second, 1u);
+  CHECK(first.boundary.probabilities == second.boundary.probabilities);
+  CHECK(observer->latestFeatures(0u).ctx[30] == 4.0F / 750.0F);
+}
+int testEventModel(const std::string &directory) {
+  using effetune::plugins::analyzer::HarmNetInference;
+  using Input = std::array<float, 600>;
+  using Output = std::array<float, 528>;
+  std::array<Input, 40> inputs{};
+  std::array<Output, 40> expected{}, reference{};
+  std::array<std::array<float, 4u * 64u>, 40> expected_hidden{};
+  std::ifstream input(directory + "/event-model-input.f32", std::ios::binary);
+  std::ifstream targets(directory + "/event-model-expected.f32", std::ios::binary);
+  std::ifstream hidden(directory + "/event-model-z.f32", std::ios::binary);
+  input.read(reinterpret_cast<char *>(inputs.data()), sizeof(inputs));
+  targets.read(reinterpret_cast<char *>(expected.data()), sizeof(expected));
+  hidden.read(reinterpret_cast<char *>(expected_hidden.data()), sizeof(expected_hidden));
+  if (!input || !targets || !hidden)
+    return 2;
+  const auto step = [](HarmNetInference &model, const Input &features, bool chunked) {
+    model.begin();
+    const auto bins = chunked ? 23u : 300u, pitches = chunked ? 7u : 88u;
+    for (auto channel = 0u; channel < 2u; ++channel)
+      for (auto begin = 0u; begin < 300u; begin += bins)
+        model.setInput(channel, features.data() + channel * 300u, begin,
+                       std::min(begin + bins, 300u));
+    for (auto layer = 0u; layer < 8u; ++layer)
+      for (auto begin = 0u; begin < 300u; begin += bins)
+        model.convolution(layer, begin, std::min(begin + bins, 300u));
+    for (auto begin = 0u; begin < 88u; begin += pitches)
+      model.gather(begin, std::min(begin + pitches, 88u));
+    for (auto begin = 0u; begin < 88u; begin += pitches)
+      model.pitchConvolution(begin, std::min(begin + pitches, 88u));
+    model.updateEventFlux(features.data());
+    for (auto begin = 0u; begin < 88u; begin += pitches)
+      model.recurrent(begin, std::min(begin + pitches, 88u));
+    for (auto begin = 0u; begin < 88u; begin += pitches)
+      model.inferEvents(begin, std::min(begin + pitches, 88u));
+    Output output{};
+    for (auto pitch = 0u; pitch < 88u; ++pitch) {
+      for (auto head = 0u; head < 4u; ++head)
+        output[pitch * 4u + head] = model.probability(pitch, head);
+      output[352u + pitch] = model.onset(pitch);
+      output[440u + pitch] = model.eventOnset(pitch);
+    }
+    return output;
+  };
+  auto model = std::make_unique<HarmNetInference>();
+  std::array<float, 3> maximum{};
+  float maximum_hidden = 0.0F;
+  for (auto pass = 0u; pass < 3u; ++pass) {
+    model->reset();
+    model->setEventEnabled(true);
+    for (auto frame = 0u; frame < inputs.size(); ++frame) {
+      const auto output = step(*model, inputs[frame], pass == 1u);
+      if (pass == 0u) {
+        reference[frame] = output;
+        for (auto column = 0u; column < output.size(); ++column) {
+          const auto group = column < 352u ? 0u : column < 440u ? 1u : 2u;
+          maximum[group] =
+              std::max(maximum[group], std::abs(output[column] - expected[frame][column]));
+        }
+        constexpr std::array<unsigned, 4> pitches = {0u, 15u, 48u, 87u};
+        for (auto p = 0u; p < pitches.size(); ++p)
+          for (auto c = 0u; c < 64u; ++c)
+            maximum_hidden =
+                std::max(maximum_hidden, std::abs(model->hidden()[pitches[p] * 64u + c] -
+                                                  expected_hidden[frame][p * 64u + c]));
+      } else {
+        CHECK(output == reference[frame]);
+      }
+    }
+  }
+  CHECK(*std::max_element(maximum.begin(), maximum.end()) <= .0001F);
+  CHECK(maximum_hidden <= .001F);
+  auto shadow = std::make_unique<HarmNetInference>();
+  model->reset();
+  shadow->reset();
+  model->setEventEnabled(true);
+  shadow->setEventEnabled(false);
+  for (auto frame = 0u; frame < inputs.size(); ++frame) {
+    if (frame == 16u) {
+      model->setEventEnabled(false);
+      model->resetEvent();
+    }
+    if (frame == 32u) {
+      model->resetEvent();
+      shadow->resetEvent();
+      model->setEventEnabled(true);
+      shadow->setEventEnabled(true);
+    }
+    if (frame == 16u || frame == 32u)
+      for (auto pitch = 0u; pitch < 88u; ++pitch)
+        CHECK(model->eventOnset(pitch) == 0.0F);
+    const auto actual = step(*model, inputs[frame], false);
+    const auto fresh = step(*shadow, inputs[frame], true);
+    for (auto column = 0u; column < (frame >= 32u ? 528u : 440u); ++column)
+      CHECK(actual[column] == fresh[column]);
+  }
+  effetune::plugins::analyzer::harmnet_detail::EventKernel event;
+  event.updateFlux(inputs[0].data());
+  CHECK(std::all_of(event.flux().begin(), event.flux().end(),
+                    [](float value) { return value == 0.0F; }));
+  event.updateFlux(inputs[1].data());
+  event.reset();
+  event.updateFlux(inputs[2].data());
+  CHECK(std::all_of(event.flux().begin(), event.flux().end(),
+                    [](float value) { return value == 0.0F; }));
+  std::printf("event model presence %.9g age1 %.9g event7 %.9g z %.9g; chunk/reset/toggle exact\n",
+              maximum[0], maximum[1], maximum[2], maximum_hidden);
+  return failures == 0 ? 0 : 1;
+}
+int testTimbreAudioFixture(const std::string &directory) {
+  using namespace effetune::plugins::analyzer;
+  std::array<float, 30720> audio{};
+  std::array<std::array<float, 600>, 40> expected_features{};
+  std::array<std::array<float, 1337>, 3> expected_h{};
+  std::array<std::array<float, 9>, 3> expected_probabilities{};
+  const auto read = [&](const char *name, auto &value) {
+    std::ifstream input(directory + "/" + name, std::ios::binary);
+    input.read(reinterpret_cast<char *>(value.data()), sizeof(value));
+    return static_cast<bool>(input);
+  };
+  if (!read("timbre-audio.f32", audio) || !read("event-model-input.f32", expected_features) ||
+      !read("timbre-h.f32", expected_h) ||
+      !read("timbre-h-probabilities.f32", expected_probabilities))
+    return 2;
+  std::array<std::unique_ptr<HarmNetFrontend>, 2> frontends;
+  auto schedule = std::make_unique<effetune::dsp::StageSchedule<2048u, 512u>>();
+  schedule->clear();
+  for (auto lane = 0u; lane < 2u; ++lane) {
+    frontends[lane] = std::make_unique<HarmNetFrontend>();
+    CHECK(frontends[lane]->prepare(96000.0F, lane == 1u));
+    frontends[lane]->appendStages(*schedule, lane, 120u);
+  }
+  CHECK(schedule->partition(120u));
+  auto model = std::make_unique<HarmNetInference>();
+  auto timbre = std::make_unique<TimbreAnalysis>();
+  model->reset();
+  timbre->reset();
+  constexpr std::array<unsigned, 3> origins = {8u, 11u, 14u}, pitches = {15u, 39u, 48u};
+  float maximum_features = 0.0F, maximum_h = 0.0F, maximum_p = 0.0F;
+  const auto emit = [](const auto &) {};
+  for (auto frame_index = 0u; frame_index < expected_features.size(); ++frame_index) {
+    for (auto sample = 0u; sample < 1920u; ++sample) {
+      const auto at = frame_index * 1920u + sample;
+      for (auto &frontend : frontends)
+        frontend->push(at < audio.size() ? audio[at] : 0.0F);
+    }
+    for (auto &frontend : frontends)
+      CHECK(frontend->begin());
+    std::array<std::array<float, 300>, 2> features{};
+    for (auto stage_index = 0u; stage_index < schedule->stageCount(); ++stage_index) {
+      const auto &stage = schedule->stage(stage_index);
+      CHECK(frontends[stage.channel]->run(static_cast<NoteSpectrogramStage>(stage.kind),
+                                          stage.begin, stage.end, features[stage.channel].data()));
+    }
+    model->begin();
+    for (auto lane = 0u; lane < 2u; ++lane) {
+      model->setInput(lane, features[lane].data(), 0u, 300u);
+      for (auto bin = 0u; bin < 300u; ++bin)
+        maximum_features =
+            std::max(maximum_features, std::abs(features[lane][bin] -
+                                                expected_features[frame_index][lane * 300u + bin]));
+    }
+    for (auto layer = 0u; layer < 8u; ++layer)
+      model->convolution(layer, 0u, 300u);
+    model->gather(0u, 88u);
+    model->pitchConvolution(0u, 88u);
+    model->recurrent(0u, 88u);
+    auto &frame = timbre->beginFrame(frame_index);
+    TimbreAnalysis::setInput(frame, features[0].data(), features[1].data());
+    for (const auto pitch : pitches)
+      model->copyTimbreFeatures(pitch, frame.a.data() + pitch * 216u, frame.c.data() + pitch * 64u);
+    for (auto i = 0u; i < origins.size(); ++i)
+      if (frame_index == origins[i])
+        timbre->start(pitches[i], origins[i], emit);
+    timbre->advance(frame_index, emit);
+    for (auto i = 0u; i < origins.size(); ++i) {
+      if (frame_index != origins[i] + 4u)
+        continue;
+      const auto *input = timbre->latestInput(pitches[i]);
+      CHECK(input != nullptr);
+      if (!input)
+        continue;
+      for (auto column = 0u; column < 1337u; ++column)
+        maximum_h = std::max(maximum_h, std::abs(input[column] - expected_h[i][column]));
+      std::array<float, 9> logits{}, probabilities{};
+      TimbreAnalysis::infer(input, logits.data(), probabilities.data());
+      for (auto column = 0u; column < 9u; ++column)
+        maximum_p = std::max(maximum_p,
+                             std::abs(probabilities[column] - expected_probabilities[i][column]));
+    }
+  }
+  std::printf("synthetic audio reference features %.9g H %.9g timbre p %.9g\n", maximum_features,
+              maximum_h, maximum_p);
+  CHECK(maximum_features <= .0001F);
+  CHECK(maximum_h <= .001F);
+  CHECK(maximum_p <= .0001F);
+  return failures == 0 ? 0 : 1;
+}
+void testTimbreTracking() {
+  using namespace effetune::plugins::analyzer::event_rule_reference;
+  effetune::plugins::analyzer::TimbreTracking rule;
+  for (std::size_t row = 0; row < kInput.size() / 3u; ++row) {
+    const auto offset = row * 3u;
+    if (kInput[offset + 2u] != 0.0F)
+      rule.reset();
+    const auto decision =
+        rule.step(kInput[offset], kInput[offset + 1u], kInput[offset + 2u] != 0.0F);
+    CHECK(decision.start == (kExpected[offset] != 0.0F));
+    CHECK(decision.end == (kExpected[offset + 1u] != 0.0F));
+    CHECK(rule.active() == (kExpected[offset + 2u] != 0.0F));
+  }
+}
+void testTimbreToggle() {
+  auto actual = std::make_unique<effetune::plugins::analyzer::SpectralAnalysis>();
+  auto baseline = std::make_unique<effetune::plugins::analyzer::SpectralAnalysis>();
+  for (auto *analysis : {actual.get(), baseline.get()}) {
+    analysis->prepare({48000, 2, 128});
+    analysis->configure(21, 108);
+  }
+  actual->setTimbreEnabled(true);
+  unsigned resets = 0;
+  for (unsigned at = 0; at < 72000; at += 128) {
+    if (at == 24064 || at == 48000) {
+      if (at == 24064)
+        CHECK(actual->timbreAnalysis()->decisions() > 0);
+      actual->setTimbreEnabled(at == 48000);
+      CHECK(actual->timbreAnalysis()->decisions() == 0);
+      CHECK(actual->timbreAnalysis()->observations() == 0);
+      for (unsigned frame = 0; frame < 80; ++frame)
+        CHECK(actual->timbreAnalysis()->find(frame) == nullptr);
+      ++resets;
+    }
+    std::array<float, 256> audio{};
+    for (unsigned i = 0; i < 128; ++i) {
+      const double time = (at + i) / 48000.0;
+      const double phase = std::fmod(time, .2);
+      double value = 0;
+      if (phase >= .02 && phase < .16)
+        for (unsigned harmonic = 1; harmonic <= 8; ++harmonic)
+          value += .1 / harmonic *
+                   std::sin(6.283185307179586 * 261.625565 * harmonic * time +
+                            .37 * harmonic * harmonic);
+      audio[i] = audio[i + 128] = static_cast<float>(value);
+    }
+    auto other = audio;
+    actual->process(audio.data(), 2, 128, {at / 48000.0});
+    baseline->process(other.data(), 2, 128, {at / 48000.0});
+    CHECK(audio == other);
+    const auto &a = actual->view(), &b = baseline->view();
+    CHECK(a.count == b.count);
+    for (unsigned frame = 0; frame < a.count; ++frame) {
+      CHECK(a.frames[frame].probabilities == b.frames[frame].probabilities);
+      CHECK(a.frames[frame].levels == b.frames[frame].levels);
+      CHECK(a.frames[frame].onsets == b.frames[frame].onsets);
+    }
+  }
+  CHECK(resets == 2);
+  CHECK(actual->timbreAnalysis()->decisions() > 0);
+  std::printf("spectral continuous ON/OFF/ON: history/stats cleared; shared SFZ frames exact\n");
+}
+
+void testTimbreIsolation() {
+  using effetune::plugins::analyzer::SpectralAnalysis;
+  auto off = std::make_unique<SpectralAnalysis>();
+  auto on = std::make_unique<SpectralAnalysis>();
+  off->prepare({96000.0F, 2u, 128u});
+  on->prepare({96000.0F, 2u, 128u});
+  off->configure(21u, 108u);
+  on->configure(21u, 108u);
+  on->setTimbreEnabled(true);
+  std::array<float, 256> a{}, b{};
+  std::array<std::uint8_t, 65536> off_bytes{}, on_bytes{};
+  effetune::TelemetryRing off_ring, on_ring;
+  off_ring.adopt(off_bytes.data(), static_cast<std::uint32_t>(off_bytes.size()));
+  on_ring.adopt(on_bytes.data(), static_cast<std::uint32_t>(on_bytes.size()));
+  std::uint32_t off_sequence = 0u, on_sequence = 0u;
+  std::array<std::uint8_t, 65536> off_read{}, on_read{};
+  auto result_count = 0u;
+  std::vector<std::array<std::uint32_t, 2>> main_pitches;
+  std::vector<effetune::plugins::analyzer::TimbreAnalysis::Result> intervals;
+  for (auto block = 0u; block < 4500u; ++block) {
+    for (auto i = 0u; i < 128u; ++i) {
+      const auto time = static_cast<double>(block * 128u + i) / 96000.0;
+      double value = 0.0;
+      if (time >= .24 && time < 5.04) {
+        const auto attack = static_cast<std::uint32_t>((time - .24) / .24);
+        const auto local = time - (.24 + attack * .24);
+        const auto duration = attack % 5u == 0u ? .06 : .19;
+        if (attack < 20u && local < duration) {
+          const auto chord = attack % 4u == 0u;
+          const std::array<std::uint32_t, 6> notes = {45u, 52u, 57u, 60u, 64u, 69u};
+          const auto count = chord ? 6u : 2u;
+          for (auto note = 0u; note < count; ++note) {
+            const auto midi = chord ? notes[note] : note == 0u ? 45u + attack % 5u * 5u : 69u;
+            const auto frequency = 440.0 * std::exp2((static_cast<double>(midi) - 69.0) / 12.0);
+            for (auto harmonic = 1u; harmonic <= 8u; ++harmonic)
+              value += std::sin(2.0 * kPi * frequency * harmonic * local) / harmonic;
+          }
+          value *= .07 * std::min({1.0, local / .003, (duration - local) / .015}) /
+                   std::sqrt(static_cast<double>(count));
+        }
+      }
+      a[i] = a[128u + i] = static_cast<float>(value);
+    }
+    b = a;
+    {
+      const effetune::allocation_guard::Scope guard;
+      off->process(a.data(), 2u, 128u, {static_cast<double>(block * 128u) / 96000.0});
+      on->process(b.data(), 2u, 128u, {static_cast<double>(block * 128u) / 96000.0});
+    }
+    CHECK(a == b);
+    const auto &off_view = off->view();
+    const auto &on_view = on->view();
+    CHECK(off_view.count == on_view.count);
+    for (auto frame = 0u; frame < off_view.count; ++frame)
+      CHECK(std::memcmp(&off_view.frames[frame], &on_view.frames[frame],
+                        sizeof(effetune::NoteAnalysisFrame)) == 0);
+    effetune::TelemetryWriter ow(off_ring, 1u, off_sequence), nw(on_ring, 1u, on_sequence);
+    off->writeTelemetry(ow);
+    on->writeTelemetry(nw);
+    std::uint32_t dropped = 0u;
+    const auto os =
+        off_ring.read(off_read.data(), static_cast<std::uint32_t>(off_read.size()), &dropped);
+    const auto ns =
+        on_ring.read(on_read.data(), static_cast<std::uint32_t>(on_read.size()), &dropped);
+    auto offset = 0u;
+    for (auto position = 0u; position < ns;) {
+      const auto type = readU16(on_read.data() + position);
+      const auto size = readU16(on_read.data() + position + 12u);
+      const auto *payload = on_read.data() + position + 16u;
+      if (type == 24u) {
+        CHECK(offset + kFrameBytes <= os);
+        if (offset + kFrameBytes <= os)
+          CHECK(std::memcmp(payload, off_read.data() + offset + 16u, kPayloadBytes) == 0);
+        if (readU32(payload + kRevisionAgeOffset) == 8u)
+          for (auto pitch = 0u; pitch < 88u; ++pitch) {
+            if (bagLevel(payload, pitch, kRevisedOffset) >= .5F)
+              main_pitches.push_back({readU32(payload + 16u) - 8u, pitch + 21u});
+          }
+        offset += kFrameBytes;
+      } else {
+        CHECK(type == 31u && size == 80u);
+        const auto identity = readU32(payload + 20u);
+        auto found = std::find_if(intervals.begin(), intervals.end(),
+                                  [identity](const auto &note) { return note.noteId == identity; });
+        if (found == intervals.end()) {
+          intervals.push_back({identity,
+                               readU32(payload + 24u),
+                               readU32(payload + 32u),
+                               readU32(payload + 36u),
+                               0u,
+                               {}});
+          found = intervals.end() - 1;
+        }
+        if (readU32(payload + 36u) != 0xffffffffu)
+          found->end = readU32(payload + 36u);
+        if (readU32(payload + 28u) == 2u) {
+          found->event = 2u;
+          ++result_count;
+          CHECK(readU32(payload + 16u) == readU32(payload + 32u) + 12u);
+        }
+      }
+      position += 16u + size;
+    }
+    CHECK(offset == os);
+  }
+  CHECK(result_count > 0u);
+  CHECK(main_pitches.size() > 500u);
+  for (const auto &cell : main_pitches)
+    CHECK(std::any_of(intervals.begin(), intervals.end(), [&](const auto &note) {
+      return note.event == 2u && note.midi == cell[1] && note.start <= cell[0] &&
+             cell[0] < note.end;
+    }));
+  CHECK(off->timbreAnalysis()->decisions() == 0u && off->timbreAnalysis()->observations() == 0u);
+  on->setTimbreEnabled(false);
+  CHECK(on->timbreAnalysis()->decisions() == 0u);
+}
+void testTimbreBlockSizes() {
+  using effetune::plugins::analyzer::SpectralAnalysis;
+  const auto render = [](std::uint32_t block_frames) {
+    auto analysis = std::make_unique<SpectralAnalysis>();
+    analysis->prepare({96000.0F, 1u, block_frames});
+    analysis->configure(21u, 108u);
+    analysis->setTimbreEnabled(true);
+    std::array<std::uint8_t, 65536> storage{}, bytes{};
+    effetune::TelemetryRing ring;
+    ring.adopt(storage.data(), static_cast<std::uint32_t>(storage.size()));
+    std::uint32_t sequence = 0u;
+    std::vector<std::array<std::uint8_t, 60>> results;
+    for (auto offset = 0u; offset < 96000u; offset += block_frames) {
+      std::array<float, 1024> audio{};
+      const auto count = std::min(block_frames, 96000u - offset);
+      for (auto i = 0u; i < count; ++i) {
+        const auto time = static_cast<double>(offset + i) / 96000.0;
+        if (time >= .24 && time < .75) {
+          const auto frequency = time < .5 ? 220.0 : 330.0;
+          audio[i] = static_cast<float>(.1 * std::sin(2.0 * kPi * frequency * time) +
+                                        .05 * std::sin(2.0 * kPi * frequency * 2.0 * time));
+        }
+      }
+      analysis->process(audio.data(), 1u, count, {static_cast<double>(offset) / 96000.0});
+      effetune::TelemetryWriter writer(ring, 1u, sequence);
+      analysis->writeTelemetry(writer);
+      std::uint32_t dropped = 0u;
+      const auto size = ring.read(bytes.data(), static_cast<std::uint32_t>(bytes.size()), &dropped);
+      CHECK(dropped == 0u);
+      for (auto position = 0u; position < size;) {
+        if (readU16(bytes.data() + position) == 31u) {
+          std::array<std::uint8_t, 60> result{};
+          // Source/emit frames, identity, boundaries, and all nine probabilities.
+          std::copy_n(bytes.data() + position + 32u, result.size(), result.data());
+          results.push_back(result);
+        }
+        position += 16u + readU16(bytes.data() + position + 12u);
+      }
+    }
+    CHECK(std::any_of(results.begin(), results.end(),
+                      [](const auto &result) { return readU32(result.data() + 12u) == 2u; }));
+    return results;
+  };
+  const auto expected = render(128u);
+  CHECK(expected == render(16u));
+  CHECK(expected == render(1024u));
+}
+int writeTelemetryFixture(const char *input_path, const char *output_path) {
+  std::ifstream input(input_path, std::ios::binary | std::ios::ate);
+  if (!input || input.tellg() <= 0 || input.tellg() % (128u * sizeof(float)) != 0)
+    return 2;
+  std::vector<float> samples(static_cast<std::size_t>(input.tellg()) / sizeof(float));
+  input.seekg(0);
+  input.read(reinterpret_cast<char *>(samples.data()),
+             static_cast<std::streamsize>(samples.size() * sizeof(float)));
+  std::ofstream output(output_path, std::ios::binary);
+  if (!input || !output)
+    return 2;
+  Harness harness(96000.0F, 21.0F, 108.0F, true);
+  // Engine::createInstance resets each kernel once after prepare.
+  harness.kernel->reset();
+  unsigned telemetry_frames = 0u, pitch_frames = 0u;
+  std::array<unsigned, 4> events{};
+  for (std::size_t offset = 0u; offset < samples.size(); offset += 128u) {
+    std::array<float, 128> audio{};
+    std::copy_n(samples.data() + offset, audio.size(), audio.data());
+    {
+      const effetune::allocation_guard::Scope guard;
+      harness.kernel->process(audio.data(), 1u, 128u, {static_cast<double>(offset) / 96000.0});
+    }
+    CHECK(std::equal(audio.begin(), audio.end(), samples.data() + offset));
+    // Match the public engine's 60 Hz telemetry cadence for this 96 kHz input.
+    telemetry_frames += 128u;
+    if (telemetry_frames < 1600u)
+      continue;
+    telemetry_frames %= 1600u;
+    effetune::TelemetryWriter writer(harness.ring, 206u, harness.sequence);
+    harness.kernel->writeTelemetry(writer);
+    std::uint32_t dropped = 0u;
+    const auto size = harness.ring.read(harness.bytes.data(),
+                                        static_cast<std::uint32_t>(harness.bytes.size()), &dropped);
+    CHECK(dropped == 0u);
+    for (auto at = 0u; at < size;) {
+      const auto *record = harness.bytes.data() + at;
+      const auto type = readU16(record);
+      CHECK(type == 24u || type == 31u);
+      if (type == 24u)
+        ++pitch_frames;
+      else if (type == 31u) {
+        const auto event = readU32(record + 44u);
+        CHECK(event > 0u && event < events.size());
+        if (event < events.size())
+          ++events[event];
+      }
+      at += (16u + readU16(record + 12u) + 3u) & ~3u;
+    }
+    output.write(reinterpret_cast<const char *>(harness.bytes.data()), size);
+  }
+  std::printf("native telemetry reference: pitch %u start %u decision %u stop %u\n", pitch_frames,
+              events[1], events[2], events[3]);
+  CHECK(pitch_frames > 50u);
+  CHECK(events[1] > 0u && events[2] > 0u && events[3] > 0u);
+  return output && failures == 0 ? 0 : 1;
+}
 } // namespace
 int main(int argc, char **argv) {
+  if (argc == 4 && std::strcmp(argv[1], "--write-telemetry-fixture") == 0)
+    return writeTelemetryFixture(argv[2], argv[3]);
+  if (argc == 3 && std::strcmp(argv[1], "--model-fixture") == 0) {
+    if (testEventModel(argv[2]) != 0)
+      return 1;
+    if (testTimbreAudioFixture(argv[2]) != 0)
+      return 1;
+    return testMissingFundamentalReference(argv[2]);
+  }
+  if (argc == 2 && std::strcmp(argv[1], "--timbre-only") == 0) {
+    testTimbreHead();
+    testTimbreObservations();
+    testTimbreHistory();
+    testTimbreTracking();
+    testTimbreIsolation();
+    testTimbreToggle();
+    testTimbreBlockSizes();
+    return failures == 0 ? 0 : 1;
+  }
   if (argc == 2 && std::strcmp(argv[1], "--quality-report") == 0) {
     testPresenceQuality();
     testPresenceMovingVoices();
@@ -704,6 +1465,13 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "usage: %s [--quality-report]\n", argv[0]);
     return 2;
   }
+  testTimbreHead();
+  testTimbreObservations();
+  testTimbreHistory();
+  testTimbreTracking();
+  testTimbreIsolation();
+  testTimbreToggle();
+  testTimbreBlockSizes();
   auto *setup = pffft_new_setup(16384, PFFFT_REAL);
   {
     effetune::dsp::PffftOrderedRealForward transform(setup, 64);
@@ -714,6 +1482,7 @@ int main(int argc, char **argv) {
   testAnalysisFloor();
   testAnalysisFloorAfterSignal();
   testVolumeLevels();
+  testEstimatedPitchCents();
   testPresenceRoutingAndLifecycle();
   testConfiguredRecognitionRange();
   testAnalysisOnsets();

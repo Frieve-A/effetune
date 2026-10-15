@@ -1,5 +1,5 @@
 ---
-title: "Cómo usar la Biblioteca musical - EffeTune"
+title: "Cómo usar la Biblioteca musical - Buscar y reproducir archivos de música locales - EffeTune"
 description: "Explica cómo crear una Biblioteca musical en EffeTune, buscar y reproducir música por subcarpetas o metadatos, y gestionar listas de reproducción."
 lang: es
 ---

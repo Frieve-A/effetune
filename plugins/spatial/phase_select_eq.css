@@ -84,6 +84,7 @@
 }
 
 .phase-select-eq-field label {
+    width: 100%;
     min-width: 0;
     line-height: 1.25;
 }

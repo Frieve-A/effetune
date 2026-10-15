@@ -6,7 +6,10 @@ lang: en
 
 # Version History
 
-### Version 2.14.0 (TBD, 2026)
+### Version 2.14.0 (Oct 16, 2026)
+- Added Lyrics and Edge Fade effect to the Visualizer
+- Added Custom mode to Analog Meter
+- Added MCP support for controlling effects and presets from compatible AI assistants
 - Added a first-run screen tour that can be reopened with Take the tour
 - Various minor improvements
 

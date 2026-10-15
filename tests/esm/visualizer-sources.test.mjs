@@ -144,14 +144,25 @@ test('Analog Meter sources carry only the detector parameters of the Analog Mete
         sources.setVisible(true);
         const source = published.at(-1)[0];
         assert.deepEqual([source.type, source.params, source.gainDb],
-            ['AnalogMeterPlugin', { md: 'PPM', it: 0.3, at: 5, rt: 1.5, ln: 0 }, 0]);
+            ['AnalogMeterPlugin', { md: 'PPM', it: 0.3, at: 5, rt: 1.5, ln: 0,
+                de: 'Average Rectified', nr: 300, os: 1.25 }, 0]);
         assert.equal(subscriptions.get(source.tapId).frameType, 27);
         sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null,
-            params: { ...params, rl: -18, rg: 60, sc: 2, ph: 3, tg: -16, ls: 1, dialCurvature: 0,
+            params: { ...params, rl: -18, rg: 60, sc: 2, dc: 4, ph: 3, tg: -16, ls: 1, dialCurvature: 0,
                 faceShape: 'circle', showPercent: true, needleTip: 'arrow', vignette: 0.8 } }] });
         assert.equal(published.at(-1)[0].tapId, source.tapId);
         sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null, params: { ...params, md: 'VU' } }] });
         assert.notEqual(published.at(-1)[0].tapId, source.tapId);
+        const custom = { ...params, md: 'Custom', de: 'RMS', nr: 1000, os: 0, dc: 3 };
+        sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null, params: custom }] });
+        assert.deepEqual(published.at(-1)[0].params,
+            { md: 'Custom', it: 0.3, at: 5, rt: 1.5, ln: 0, de: 'RMS', nr: 1000, os: 0 });
+        for (const [key, value] of [['de', 'True Peak'], ['nr', 10], ['os', 15]]) {
+            const previousTap = published.at(-1)[0].tapId;
+            custom[key] = value;
+            sources.setLayout({ items: [{ id: 'a', type: 'analog-meter', channel: null, params: custom }] });
+            assert.notEqual(published.at(-1)[0].tapId, previousTap, key);
+        }
         sources.dispose();
     } finally {
         globalThis.window = oldWindow; globalThis.document = oldDocument;

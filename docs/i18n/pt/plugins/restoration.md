@@ -1,5 +1,5 @@
 ---
-title: "Plugins de restauração - EffeTune"
+title: "Plugins de restauração - Remoção de cliques e zumbido, redução de ruído - EffeTune"
 description: "Plugins de restauração para cliques, picos clipados, zumbido elétrico e ruído de fundo constante."
 lang: pt
 ---

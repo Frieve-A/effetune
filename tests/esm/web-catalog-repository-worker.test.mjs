@@ -139,7 +139,8 @@ test('Worker exposes only the durable operation controls and bounded sequence ac
     ['commitPlaylistImportPreview', { playlistId: 'playlist-1', version: 1 }],
     ['cancelPlaylistImportPreview', { kind: 'cancelled' }],
     ['readSequencePage', { items: [], nextCursor: null }],
-    ['resolveSequenceEntrySource', { name: 'track.flac' }]
+    ['resolveSequenceEntrySource', { name: 'track.flac' }],
+    ['resolveTrackSiblingFile', { file: { name: 'track.lrc' }, index: 0 }]
   ].map(([method, result]) => [method, async (...args) => {
     calls.push([method, args]);
     return result;
@@ -155,7 +156,8 @@ test('Worker exposes only the durable operation controls and bounded sequence ac
     ['commitPlaylistImportPreview', [{ previewToken: 'preview-1', playlistId: 'playlist-1' }]],
     ['cancelPlaylistImportPreview', [{ previewToken: 'preview-2', playlistId: 'playlist-2' }]],
     ['readSequencePage', [{ sequenceId: 'sequence-1', limit: 25 }]],
-    ['resolveSequenceEntrySource', [{ sequenceId: 'sequence-1', ordinal: 0 }]]
+    ['resolveSequenceEntrySource', [{ sequenceId: 'sequence-1', ordinal: 0 }]],
+    ['resolveTrackSiblingFile', [{ trackUid: 'track-1', names: ['track'] }]]
   ];
   for (const [index, [method, args]] of requests.entries()) {
     scope.dispatch({
@@ -174,7 +176,8 @@ test('Worker exposes only the durable operation controls and bounded sequence ac
     'commitPlaylistImportPreview',
     'cancelPlaylistImportPreview',
     'readSequencePage',
-    'resolveSequenceEntrySource'
+    'resolveSequenceEntrySource',
+    'resolveTrackSiblingFile'
   ]);
   assert.equal(scope.messages.filter(message => message.ok).length, requests.length);
 
@@ -335,6 +338,7 @@ test('client maps its catalog, scan, operation, and playlist API to the versione
     ['getProvisionalEntry', ['operation-1'], 'getProvisionalEntry'],
     ['readSequencePage', [{ sequenceId: 'sequence-1', ordinal: 0 }], 'readSequencePage'],
     ['resolveSequenceEntrySource', [{ sequenceId: 'sequence-1', ordinal: 0 }], 'resolveSequenceEntrySource'],
+    ['resolveTrackSiblingFile', [{ trackUid: 'track-1', names: ['track'] }], 'resolveTrackSiblingFile'],
     ['createContext', [{ endpoint: 'tracks', query: '' }], 'createContext'],
     ['releaseContext', ['context-1'], 'releaseContext'],
     ['queryTracks', [{ query: '', limit: 20 }], 'queryTracks'],

@@ -87,8 +87,8 @@ function createPluginBase() {
             return row;
         }
 
-        createParameterControl(label, min, max, step, value, setter, unit, modelKey) {
-            return Object.assign(this.makeRow('input', label, modelKey), { min, max, unit, setter });
+        createParameterControl(label, min, max, step, value, setter, unit, modelKey, toDisplay, logarithmic) {
+            return Object.assign(this.makeRow('input', label, modelKey), { min, max, step, unit, setter, logarithmic });
         }
 
         createSelectControl(label, options, value, setter, modelKey) {
@@ -149,16 +149,18 @@ test('Analog Meter declares its parameter contract and execution requirements', 
     assert.equal(plugin.temporalCapability, 'stateless');
     assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
         type: 'AnalogMeterPlugin', enabled: true,
-        md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1, ln: 0, tg: -23, ls: 0
+        md: 'VU', it: 0.3, at: 5, rt: 1.5, rl: -14, rg: 40, sc: 0, ph: 1, ln: 0, tg: -23, ls: 0,
+        de: 'Average Rectified', nr: 300, os: 1.25, dc: 0
     });
-    assert.deepEqual([...Plugin.MODES], ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness']);
+    assert.deepEqual([...Plugin.MODES], ['VU', 'PPM', 'RMS', 'Sample Peak', 'True Peak', 'Loudness', 'Custom']);
 
     plugin.setParameters({
         md: 'Loudness', it: 9, at: 0, rt: -1, rl: -40, rg: 100, sc: '2', ph: 20, ln: '1', tg: 0, ls: 1
     });
     assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
         type: 'AnalogMeterPlugin', enabled: true,
-        md: 'Loudness', it: 3, at: 1, rt: 0.1, rl: -30, rg: 60, sc: 2, ph: 10, ln: 1, tg: -10, ls: 1
+        md: 'Loudness', it: 3, at: 1, rt: 0.1, rl: -30, rg: 60, sc: 2, ph: 10, ln: 1, tg: -10, ls: 1,
+        de: 'Average Rectified', nr: 300, os: 1.25, dc: 0
     });
     plugin.setParameters({ md: 'Bogus', sc: 3, ln: 2, ls: 'x', rl: 'bad' });
     assert.deepEqual([plugin.md, plugin.sc, plugin.ln, plugin.ls, plugin.rl], ['Loudness', 2, 1, 1, -30]);
@@ -208,6 +210,88 @@ test('Analog Meter scales place the reference marks from the plan', async () => 
     assert.deepEqual(Array.from(ebu9.ticks, tick => tick.value),Array.from({ length: 10 }, (_, i) => -41 + 3 * i));
     const ebu18 = Plugin.scale('Loudness', { tg: -14, ls: 1 });
     assert.deepEqual([ebu18.min, ebu18.max, ebu18.reference], [-50, 4, -14]);
+});
+
+test('Custom detector and dial settings validate, select controls, and preserve needle adjustments', async () => {
+    const { Plugin, plugin } = await loadPlugin();
+    const ui = plugin.createUI();
+    const parameters = ui.children.find(child => child.className === 'analyzer-parameters');
+    const visible = () => parameters.children.filter(row => row.modelKey !== 'md' && row.style.display !== 'none')
+        .map(row => row.modelKey);
+    const disabled = () => Object.entries(plugin.parameterRows)
+        .filter(([, row]) => row.style.display !== 'none' && row.querySelectorAll().every(input => input.disabled))
+        .map(([key]) => key);
+    const customRows = ['de', 'it', 'rt', 'nr', 'os', 'dc', 'rl', 'rg', 'ph'];
+    plugin.setParameters({ md: 'Custom' });
+    assert.deepEqual(visible(), customRows);
+    assert.deepEqual(disabled(), ['it', 'rt', 'rg']);
+    assert.ok(plugin.parameterRows.it.classList.contains('parameter-disabled'));
+    assert.equal(plugin.parameterRows.nr.logarithmic, true);
+    assert.equal(plugin.parameterRows.os.step, 0.05);
+    for (const de of ['RMS', 'Sample Peak', 'True Peak']) {
+        plugin.setParameters({ de, dc: 3 });
+        assert.deepEqual(visible(), customRows);
+        assert.deepEqual(disabled(), [de === 'RMS' ? 'rt' : 'it']);
+    }
+    plugin.handleTelemetry(frame(6, [[-18, -17]]));
+    assert.equal(plugin.reading.channels[0].needleDb, -18);
+    assert.equal(plugin.holds[0].db, -17);
+    const reading = plugin.reading;
+    plugin.setParameters({ nr: 9000, os: -1, dc: '4' });
+    assert.deepEqual([plugin.nr, plugin.os, plugin.dc], [3000, 0, 4]);
+    assert.equal(plugin.reading, reading);
+    assert.deepEqual(visible(), customRows);
+    assert.deepEqual(disabled(), ['it', 'rl']);
+    plugin.setParameters({ de: 'bad', dc: 1.5, nr: 'bad', os: Infinity });
+    assert.deepEqual([plugin.de, plugin.dc, plugin.nr, plugin.os], ['True Peak', 4, 3000, 0]);
+    plugin.setParameters({ nr: 0, os: 99, de: 'Average Rectified', dc: 2 });
+    assert.deepEqual([plugin.nr, plugin.os], [1, 25]);
+    assert.equal(plugin.reading, null);
+    assert.equal(plugin.holds.length, 0);
+    assert.deepEqual(visible(), customRows);
+    assert.deepEqual(disabled(), ['it', 'rt', 'rg']);
+    assert.equal(Plugin.isParameterActive('at', plugin), false);
+    plugin.setParameters({ it: 1.25, rt: 2.33, rl: -18, rg: 50 });
+    for (const de of ['Average Rectified', 'RMS', 'Sample Peak', 'True Peak']) {
+        for (const dc of [0, 1, 2, 3, 4]) {
+            plugin.setParameters({ de, dc });
+            assert.deepEqual(visible(), customRows, 'Detector and Dial preserve the control layout');
+            assert.deepEqual([plugin.it, plugin.rt, plugin.rl, plugin.rg], [1.25, 2.33, -18, 50]);
+        }
+    }
+    plugin.setParameters({ md: 'RMS' });
+    assert.deepEqual(visible(), ['it', 'rl', 'rg', 'ph']);
+    assert.deepEqual(disabled(), []);
+    assert.equal(plugin.parameterRows.it.classList.contains('parameter-disabled'), false);
+    plugin.cleanup();
+});
+
+test('Custom dials use the corresponding existing scales and VU percent appearance', async () => {
+    const { Plugin, plugin } = await loadPlugin();
+    const params = { ...plugin.getParameters(), md: 'Custom', rl: -18, rg: 42 };
+    for (const [dc, mode, sc] of [[0, 'VU', 0], [1, 'PPM', 0], [2, 'PPM', 1], [3, 'RMS', 0], [4, 'Sample Peak', 0]]) {
+        const custom = Plugin.scale('Custom', { ...params, dc });
+        const original = Plugin.scale(mode, { ...params, sc });
+        assert.deepEqual([custom.unit, custom.min, custom.max, custom.reference, custom.redFrom],
+            [original.unit, original.min, original.max, original.reference, original.redFrom]);
+        assert.deepEqual(custom.ticks, original.ticks);
+        for (const db of [-200, -60, -18, 0, 3]) {
+            assert.equal(custom.dbPosition(db), original.dbPosition(db));
+            assert.equal(custom.readout(db), original.readout(db));
+        }
+        assert.equal(Plugin.usesVuDial({ ...params, dc }), dc === 0);
+    }
+    assert.equal(Plugin.scale('Custom', { ...params, dc: 4, de: 'True Peak' }).unit, 'dBTP');
+    plugin.setParameters({ md: 'Custom', dc: 0, rl: -18 });
+    plugin.handleTelemetry(frame(6, [[-18, -18]]));
+    const text = [];
+    const context = createCanvasContext();
+    plugin.drawCellContent(context, { grid: '', label: '', text: '', danger: '' }, Plugin.scale('Custom', plugin),
+        0, 0, 400, 300, 0, 0, { textContext: { fillText: value => text.push(value) },
+            meterAppearance: { showPercent: true, readoutUnit: 'percent' } });
+    assert.ok(text.includes('Custom'));
+    assert.ok(text.includes('100%'));
+    assert.ok(text.includes('100.0%'));
 });
 
 test('Analog Meter thins crowded labels to every other one from the reference', async () => {
@@ -294,7 +378,8 @@ test('Analog Meter decodes type 27 frames and places the program meter first in 
     assert.equal(parsed.program.maxTruePeak, 0.5);
     assert.equal(Plugin.parseTelemetryFrame(frame(5, [[-23, -24]])), null);
     assert.equal(Plugin.parseTelemetryFrame(frame(0, [[-23, -24]], program)), null);
-    assert.equal(Plugin.parseTelemetryFrame(frame(6, [[-23, -24]])), null);
+    assert.equal(Plugin.parseTelemetryFrame(frame(6, [[-23, -24]])).mode, 6);
+    assert.equal(Plugin.parseTelemetryFrame(frame(7, [[-23, -24]])), null);
     assert.equal(Plugin.parseTelemetryFrame({ ...frame(0, [[0, 0]]), formatVersion: 2 }), null);
 
     // Frames from another mode are ignored until the kernel reports the selected mode.
@@ -344,22 +429,22 @@ test('Analog Meter Reset posts resetPluginState and parameters follow the mode',
     const ui = plugin.createUI();
     assert.equal(plugin.resetButton.style.display, 'none');
     const parameters = ui.children.find(child => child.className === 'analyzer-parameters');
-    assert.equal(parameters.children.length, 11);
+    assert.equal(parameters.children.length, 15);
     const hidden = () => Object.entries(plugin.parameterRows)
         .filter(([, row]) => row.style.display === 'none')
         .map(([key]) => key).sort();
-    assert.deepEqual(hidden(), ['at', 'it', 'ln', 'ls', 'ph', 'rg', 'rt', 'sc', 'tg']);
+    assert.deepEqual(hidden(), ['at', 'dc', 'de', 'it', 'ln', 'ls', 'nr', 'os', 'ph', 'rg', 'rt', 'sc', 'tg']);
 
     plugin.setParameters({ md: 'RMS' });
-    assert.deepEqual(hidden(), ['at', 'ln', 'ls', 'rt', 'sc', 'tg']);
+    assert.deepEqual(hidden(), ['at', 'dc', 'de', 'ln', 'ls', 'nr', 'os', 'rt', 'sc', 'tg']);
     plugin.setParameters({ md: 'True Peak' });
-    assert.deepEqual(hidden(), ['at', 'it', 'ln', 'ls', 'rl', 'sc', 'tg']);
+    assert.deepEqual(hidden(), ['at', 'dc', 'de', 'it', 'ln', 'ls', 'nr', 'os', 'rl', 'sc', 'tg']);
     plugin.setParameters({ md: 'PPM' });
-    assert.deepEqual(hidden(), ['it', 'ln', 'ls', 'tg']);
+    assert.deepEqual(hidden(), ['dc', 'de', 'it', 'ln', 'ls', 'nr', 'os', 'tg']);
     plugin.setParameters({ sc: 1 });
-    assert.deepEqual(hidden(), ['it', 'ln', 'ls', 'rg', 'tg']);
+    assert.deepEqual(hidden(), ['dc', 'de', 'it', 'ln', 'ls', 'nr', 'os', 'rg', 'tg']);
     plugin.setParameters({ md: 'Loudness' });
-    assert.deepEqual(hidden(), ['at', 'it', 'ph', 'rg', 'rl', 'rt', 'sc']);
+    assert.deepEqual(hidden(), ['at', 'dc', 'de', 'it', 'nr', 'os', 'ph', 'rg', 'rl', 'rt', 'sc']);
     assert.equal(plugin.resetButton.style.display, '');
     assert.equal(plugin.graphContainer.style.aspectRatio, '12 / 3');
 

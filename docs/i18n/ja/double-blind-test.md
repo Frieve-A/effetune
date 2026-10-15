@@ -1,5 +1,5 @@
 ---
-title: "ブラインドテストの使い方 - EffeTune"
+title: "ブラインドテストの使い方 - ABXテストとA/B比較試聴 - EffeTune"
 description: "EffeTuneの2つのエフェクトパイプラインをABXテスト・A/B比較テストでブラインド試聴し、結果を統計的有意性とあわせて確認する方法を解説します。"
 lang: ja
 ---

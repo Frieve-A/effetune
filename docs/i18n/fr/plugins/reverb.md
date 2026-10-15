@@ -1,5 +1,5 @@
 ---
-title: "Plugins Reverb - EffeTune"
+title: "Plugins Reverb - Réverbes à convolution, de salle, à plaque et de pièce - EffeTune"
 description: "Plugins de réverbération Dattorro Plate Reverb, FDN Reverb, IR Reverb et RS Reverb."
 lang: fr
 ---

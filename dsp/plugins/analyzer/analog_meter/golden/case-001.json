@@ -15,7 +15,10 @@
     "md": "VU",
     "it": 0.3,
     "at": 5,
-    "rt": 1.5
+    "rt": 1.5,
+    "de": "Average Rectified",
+    "nr": 300,
+    "os": 1.25
   },
   "events": [],
   "tolerance": {
@@ -23,7 +26,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:304c1621221c59095ece2201f82ad51589c5a7fb306628546fcd55c3c42f0722",
+  "referenceHash": "sha256:b3a45262db4bbcb6de0fd97b77273a9768ac7f1e5028a1abfd70ae2ee3afc0bf",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type AnalogMeterPlugin --promote-production-native",
   "outputFloats": 24000,
   "byteLength": 96000,

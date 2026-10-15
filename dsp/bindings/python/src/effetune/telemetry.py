@@ -16,6 +16,7 @@ class TelemetryFrame:
         "analogMeter",
         "level",
         "noteSpectrogram",
+        "noteTimbre",
         "oscilloscope",
         "pitch",
         "rhythmAnalyzer",
@@ -118,8 +119,26 @@ class NoteSpectrogramTelemetryFrame(TelemetryFrame):
     revision_age: Literal[0, 8]
     levels: tuple[float, ...]
     volume_db: tuple[float, ...]
+    pitch_cents: tuple[float, ...]
     revised_levels: tuple[float, ...] | None
     revisions: tuple[NoteSpectrogramRevision, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NoteTimbreTelemetryFrame(TelemetryFrame):
+    """Bass, Guitar, Piano, Strings, Wind, Synth, Organ, Other, Vocal probabilities."""
+
+    sample_rate: float
+    time_seconds: float
+    hop_seconds: float
+    generation: int
+    frame_index: int
+    note_id: int
+    midi: int
+    event: Literal["start", "result", "end"]
+    start_frame_index: int
+    end_frame_index: int | None
+    probabilities: tuple[float, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,7 +284,7 @@ _ANALYZER_FRAMES = {
     "AnalogMeter": (27, (1,)),
     "ChromaSpiral": (4, (2,)),
     "LevelMeter": (1, (1,)),
-    "NoteSpectrogram": (24, (5,)),
+    "NoteSpectrogram": (24, (6,)),
     "Oscilloscope": (3, (2, 3)),
     "PitchMeter": (26, (1,)),
     "RhythmAnalyzer": (28, (1, 3, 4)),
@@ -282,6 +301,7 @@ _MULTIRES_HQ_SPECTROGRAM_CELLS = 256
 _PITCH_METER_MIN_DETECTED_MIDI = 20.5
 _PITCH_METER_MAX_DETECTED_MIDI = 108.5
 _ANALOG_METER_LOUDNESS_MODE = 5
+_ANALOG_METER_MODE_COUNT = 7
 _ANALOG_METER_MIN_DB = -240.0
 _RHYTHM_ANALYZER_PAYLOAD_BYTES = 1344
 _RHYTHM_ANALYZER_TEMPOGRAM_BINS = 192
@@ -643,13 +663,45 @@ def _decode_multires_hq(
     )
 
 
+def _decode_note_timbre(
+    payload: memoryview,
+    node: tuple[str, str | None, int],
+    sequence: int,
+    dropped: int,
+) -> TelemetryFrame | None:
+    if len(payload) != 80:
+        return None
+    (sample_rate, time_seconds, hop_seconds, generation, frame_index,
+     note_id, midi, event, start_frame_index, end_frame_index) = struct.unpack_from("<fff7I", payload)
+    probabilities = struct.unpack_from("<9f", payload, 40)
+    if (
+        not math.isfinite(sample_rate) or sample_rate <= 0
+        or not math.isfinite(time_seconds) or time_seconds < 0
+        or not math.isfinite(hop_seconds) or hop_seconds <= 0
+        or generation == 0 or note_id == 0 or not 21 <= midi <= 108
+        or event not in (1, 2, 3) or struct.unpack_from("<I", payload, 76)[0] != 0
+        or ((frame_index - start_frame_index) & 0xffffffff) >= 0x80000000
+        or any(not math.isfinite(value) or not 0 <= value <= 1 for value in probabilities)
+        or (event == 2 and abs(sum(probabilities) - 1) > .001)
+    ):
+        return None
+    return NoteTimbreTelemetryFrame(
+        **_common("noteTimbre", node, sequence, dropped),
+        sample_rate=sample_rate, time_seconds=time_seconds, hop_seconds=hop_seconds,
+        generation=generation, frame_index=frame_index, note_id=note_id, midi=midi,
+        event=("start", "result", "end")[event - 1], start_frame_index=start_frame_index,
+        end_frame_index=None if end_frame_index == 0xffffffff else end_frame_index,
+        probabilities=probabilities if event == 2 else None,
+    )
+
+
 def _decode_note_spectrogram(
     payload: memoryview,
     node: tuple[str, str | None, int],
     sequence: int,
     dropped: int,
 ) -> TelemetryFrame | None:
-    if len(payload) != 8840:
+    if len(payload) != 9192:
         return None
     (
         sample_rate,
@@ -682,6 +734,9 @@ def _decode_note_spectrogram(
     volume_db = struct.unpack_from("<440f", payload, 32 + 440 * 4)
     if any(not math.isfinite(value) for value in volume_db):
         return None
+    pitch_cents = struct.unpack_from("<88f", payload, 8840)
+    if any(not math.isfinite(value) for value in pitch_cents):
+        return None
     revisions = []
     for expected_age, age_offset, levels_offset in ((2, 5312, 5316), (4, 7076, 7080), (8, 28, 3552)):
         age = struct.unpack_from("<I", payload, age_offset)[0]
@@ -706,6 +761,7 @@ def _decode_note_spectrogram(
         revision_age=revision_age,
         levels=levels,
         volume_db=volume_db,
+        pitch_cents=pitch_cents,
         revised_levels=revised_levels,
         revisions=tuple(revisions),
     )
@@ -792,7 +848,7 @@ def _decode_analog_meter(
     loudness = mode == _ANALOG_METER_LOUDNESS_MODE
     program_offset = 4 + channel_count * 8
     if (
-        mode > _ANALOG_METER_LOUDNESS_MODE
+        mode >= _ANALOG_METER_MODE_COUNT
         or not 1 <= channel_count <= 16
         or flags & ~(3 if loudness else 0)
         or len(payload) != program_offset + (24 if loudness else 0)
@@ -1138,6 +1194,7 @@ _DECODERS = {
     27: _decode_analog_meter,
     28: _decode_rhythm_analyzer,
     29: _decode_tonal_balance,
+    31: _decode_note_timbre,
 }
 
 
@@ -1161,7 +1218,8 @@ def _decode_telemetry_packet(
             break
         node = nodes_by_tap.get(tap_id)
         expected = _ANALYZER_FRAMES.get(node[0]) if node else None
-        if expected and expected[0] == frame_type and version in expected[1]:
+        if ((expected and expected[0] == frame_type and version in expected[1])
+                or (node and node[0] == "NoteSpectrogram" and frame_type == 31 and version == 1)):
             payload = view[offset + 16 : offset + 16 + payload_bytes]
             decoded = (
                 _decode_multires_hq(
@@ -1191,6 +1249,7 @@ __all__ = [
     "LevelTelemetryFrame",
     "NoteSpectrogramTelemetryFrame",
     "NoteSpectrogramRevision",
+    "NoteTimbreTelemetryFrame",
     "OscilloscopeTelemetryFrame",
     "PitchMeterTelemetryFrame",
     "RhythmAnalyzerTelemetryEvent",

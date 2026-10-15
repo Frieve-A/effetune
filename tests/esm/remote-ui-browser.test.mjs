@@ -239,6 +239,32 @@ async function openEffectPage(t) {
     return { page, errors };
 }
 
+test('remote Dynamic EQ sidechain frequency edits refresh every band without rebuilding the UI', { timeout: 30000 }, async t => {
+    const { page } = await openEffectPage(t);
+    const result = await page.evaluate(async () => {
+        const { applyParamsToPlugin } = await import('./js/remote/pipeline-apply.js');
+        const plugin = pluginManager.createPlugin('5Band Dynamic EQ');
+        audioManager.pipeline.push(plugin);
+        const ui = plugin.createUI();
+        document.getElementById('effect-fixture').append(ui);
+        const bands = plugin.getSerializableParameters().bs.map((band, index) => ({ ...band, scf: 321 + index * 123 }));
+        applyParamsToPlugin(plugin, { bs: bands });
+        plugin.syncUIControls();
+        const values = bands.map((band, index) => ({
+            expected: band.scf,
+            actual: Number(ui.querySelector(`[id="${plugin.instanceId}-band${index}-SCFreq.Hz-input"]`).value),
+            slider: Number(ui.querySelector(`[id="${plugin.instanceId}-band${index}-SCFreq.Hz-slider"]`).value),
+            expectedSlider: Math.round(plugin._logFreqToSlider(band.scf) * 100) / 100
+        }));
+        plugin.cleanup();
+        return values;
+    });
+    for (const value of result) {
+        assert.equal(value.actual, value.expected);
+        assert.equal(value.slider, value.expectedSlider);
+    }
+});
+
 test('remote effect UIs hide local audio outputs and retain parameter curves and editing', { timeout: 60000 }, async t => {
     const { page, errors } = await openEffectPage(t);
     const pureViews = [

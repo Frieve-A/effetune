@@ -1,5 +1,5 @@
 ---
-title: "Browser Extension - EffeTune"
+title: "Browser Extension - Equalizer & Audio Effects for Chrome and Edge - EffeTune"
 description: "Process audio from up to four Chrome or Edge tabs with EffeTune, with URL presets and a selectable sample rate."
 lang: en
 ---

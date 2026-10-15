@@ -1,6 +1,6 @@
 ---
-title: "Autres Plugins - EffeTune"
-description: "Plugins utilitaires supplémentaires incluant Oscillator pour générer des signaux audio."
+title: "Autres Plugins - Générateur de sons et de bruits de test, SFZ Note Player - EffeTune"
+description: "Oscillator : sons de test, bruit blanc ou rose pour vérifier enceintes et casques. SFZ Note Player joue les notes détectées dans l’audio avec un instrument SFZ."
 lang: fr
 ---
 
@@ -147,9 +147,16 @@ Augmentez **Note Hold** pour prolonger les notes et relier les courtes interrupt
 
 Une note visible dans **Note Spectrogram** ne sera pas forcément jouée : les réglages **Threshold** et **Lowest Note / Highest Note** influencent aussi le déclenchement. Si les notes très graves ou très aiguës ne sont pas jouées, vérifiez la plage de notes et essayez de réduire **Threshold**. Vérifiez aussi que l’instrument SFZ couvre la note obtenue après l’application de **Octave** et de **Sample Shift**.
 
+### Affichage des notes
+
+Le clavier s’étend de **Lowest Note** à **Highest Note**. Le clavier met en évidence les notes jouées par l’instrument SFZ, y compris celles qui s’éteignent progressivement après leur relâchement. Il suit le décalage **Octave** ; **Sample Shift** modifie le timbre sans déplacer la touche affichée. La barre au-dessus de chaque touche démarre à une hauteur proportionnelle à la vélocité de la note (1–127), puis diminue avec le temps jusqu’à disparaître, même après la fin de la note. **Voices** indique le nombre actuel de voix d’échantillons / **Max Voices**, en comptant celles qui s’éteignent. Un instrument à plusieurs couches peut utiliser plusieurs voix pour une seule note. **Color** change les couleurs des touches actives et des barres de vélocité sans interrompre ni relancer leur décroissance.
+
+Touchez le clavier ou le graphique de vélocité, ou faites-y glisser le doigt ou la souris, pour écouter l’instrument SFZ sélectionné. Le clavier joue à une vélocité de 100 ; le graphique utilise la hauteur à laquelle vous entrez dans la zone d’une note (1–127). Tant que vous restez dans la même note, elle continue avec sa vélocité initiale. En passant à une autre note, la précédente s’arrête et la nouvelle démarre ; relâcher le doigt ou le bouton de la souris arrête l’écoute. La hauteur affichée est jouée directement, indépendamment de **Octave** et des réglages de détection, tandis que **Sample Shift** continue de modifier le timbre.
+
 ### Paramètres
 
 - **SFZ** : Ouvrez **SFZ Library…** pour choisir et gérer les instruments. **Clear** désélectionne l’instrument sans le supprimer. Les problèmes sont signalés dans une boîte de dialogue uniquement au premier chargement explicite ; les rechargements automatiques restent silencieux.
+- **Color** : **Normal** (par défaut) utilise la couleur du graphique définie par le thème. **Note Colors** reprend les couleurs de Note Spectrogram : chaque nom de note a sa propre couleur, identique dans toutes les octaves.
 - **Threshold** : Seuil de confiance de détection (0,01–1, 0,75 par défaut). L’augmenter réduit les notes indésirables, mais peut écarter des notes faibles ou peu distinctes. Jusqu’à B5 inclus, une attaque nette peut aussi déclencher une note avec une confiance légèrement inférieure à cette valeur.
 - **Retrigger Drop (dB)** : Pour les notes au-dessus de B5, baisse nécessaire depuis le niveau maximal de la note entrante avant qu’elle puisse être rejouée (1–96 dB, 40 dB par défaut). Le niveau doit ensuite remonter d’au moins 6 dB. Une valeur élevée réduit les répétitions des notes tenues ; une valeur basse facilite le suivi des frappes répétées d’une même note. Jusqu’à B5 inclus, ce réglage n’agit pas sur la détection des notes répétées : les nouvelles notes suivent les attaques détectées.
 - **Note Hold (ms)** : Durée supplémentaire de maintien après la fin de la détection, avant l’envoi de la commande de fin de note (0–100 ms, 50 ms par défaut). Si la même note réapparaît pendant cette durée, elle continue sans redémarrer, sauf si une nouvelle attaque nette est détectée jusqu’à B5 inclus. L’enveloppe de l’instrument et la durée de l’échantillon restent applicables.

@@ -1,6 +1,6 @@
 ---
-title: "Basic Plugins - EffeTune"
-description: "Essential audio plugins including Bass Management, Volume, Mute, Stereo Balance, FIR crossover, Matrix routing, and more."
+title: "Basic Plugins - Bass Management, Channel Routing & Crossover - EffeTune"
+description: "Volume, balance, polarity, and routing tools, plus Bass Management for subwoofers and FIR Crossover and Channel Divider for multi-amplifier speaker systems."
 lang: en
 ---
 

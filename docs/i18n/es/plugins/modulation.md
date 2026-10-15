@@ -1,6 +1,6 @@
 ---
-title: "Plugins de modulación - EffeTune"
-description: "Efectos de modulación como Auto Filter, Auto Pan, Chorus, Frequency Shifter, Phaser y Rotary Speaker."
+title: "Plugins de modulación - Chorus, phaser y pitch shifter - EffeTune"
+description: "Efectos de modulación como Auto Filter, Auto Pan, Chorus, Doppler Distortion, Frequency Shifter, Phaser, Pitch Shifter, Rotary Speaker, Tremolo y Wow Flutter."
 lang: es
 ---
 

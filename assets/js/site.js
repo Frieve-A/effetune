@@ -578,10 +578,11 @@
   }
 
   function getPreferredLanguage() {
-    const dspOverviewLanguage = getCurrentDspOverviewLanguage();
-    if (dspOverviewLanguage) {
-      writeStoredLanguage(dspOverviewLanguage);
-      return dspOverviewLanguage;
+    // A directly opened translation keeps its language, so crawlers without a stored preference can index it.
+    const localizedPageLanguage = getCurrentLocalizedPageLanguage();
+    if (localizedPageLanguage) {
+      writeStoredLanguage(localizedPageLanguage);
+      return localizedPageLanguage;
     }
 
     const stored = readStoredLanguage();
@@ -605,9 +606,9 @@
     return defaultLanguage;
   }
 
-  function getCurrentDspOverviewLanguage() {
+  function getCurrentLocalizedPageLanguage() {
     const pageInfo = getLocalizablePageInfo(window.location.pathname);
-    if (pageInfo.area !== "dsp" || pageInfo.currentLanguage === "en") {
+    if (!pageInfo.localizable || pageInfo.currentLanguage === "en") {
       return null;
     }
     return pageInfo.currentLanguage;

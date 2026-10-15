@@ -1,5 +1,5 @@
 ---
-title: "स्पैशियल प्लगइन - EffeTune"
+title: "स्पैशियल प्लगइन - क्रॉसफ़ीड, क्रॉसटॉक कैंसलेशन, स्टीरियो चौड़ाई और अपमिक्स - EffeTune"
 description: "Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Balance, Phase Select EQ, Spatial Mapper और Stereo Blend सहित spatial audio प्लगइन।"
 lang: hi
 ---
@@ -319,13 +319,13 @@ Balance grid left:right ratio दिखाता है। Balance 0%, ±17%, ±
 - **Band 1-5 / checkbox** (Off/On): edit करने के लिए Band चुनता है और settings बदले बिना उसे चालू या बंद करता है।
 - **Gain** (0% से 200%): Core के भीतर level multiplier तय करता है। 100% level नहीं बदलता, 0% selected component हटाता है और 200% amplitude दोगुना करता है।
 - **Solo** (Off/On): Solo चालू किए गए Band जिस हिस्से को चुनते हैं, केवल वही सुनाई देता है। किसी भी चालू Band पर Solo On रहते हुए Gain लागू नहीं होता और उन Band के बाहर की हर चीज़ म्यूट हो जाती है; किनारों पर Transition का वही smooth fade बना रहता है। एक साथ कई Band पर Solo चालू करने पर उनके चुने हुए क्षेत्रों का संयोजन सुनाई देता है। सभी Solo बंद करते ही सामान्य processing लौट आती है।
-- **Core Low Frequency / Core High Frequency** (20 Hz से 40 kHz, current sample rate की सीमा के अनुसार): 100% processed frequency range तय करते हैं।
+- **Core Low Freq / Core High Freq** (20 Hz से 40 kHz, current sample rate की सीमा के अनुसार): 100% processed frequency range तय करते हैं।
 - **Core Low Phase / Core High Phase** (0° से 180°): 100% processed absolute L/R phase-difference range तय करते हैं।
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% से +100%): Balance की चारों boundaries सीधे तय करते हैं। Core pair पूरी तरह processed L/R amplitude-balance range तय करता है; Outer pair वह जगह तय करता है जहाँ Transition में processing शून्य हो जाती है। negative values left और positive values right चुनती हैं।
-- **Low Frequency Transition / High Frequency Transition**: frequency Core के नीचे और ऊपर effect के fade की दूरी तय करते हैं।
-- **Low Phase Transition / High Phase Transition**: 0° और 180° की ओर effect के fade की दूरी तय करते हैं।
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% से +100%): Balance की चारों boundaries सीधे तय करते हैं। Core pair पूरी तरह processed L/R amplitude-balance range तय करता है; Outer pair वह जगह तय करता है जहाँ Transition में processing शून्य हो जाती है। negative values left और positive values right चुनती हैं।
+- **Low Freq Trans / High Freq Trans**: frequency Core के नीचे और ऊपर effect के fade की दूरी तय करते हैं।
+- **Low Phase Trans / High Phase Trans**: 0° और 180° की ओर effect के fade की दूरी तय करते हैं।
 
-Map handles, sliders और numeric inputs वही values बदलते हैं। mouse या touch से selected Band के outer frame के अंदर drag करके पूरा Band ले जाएँ, Core के edges या corners drag करके उसका आकार बदलें, और outer-edge handles से हर Transition अलग-अलग बदलें। low-phase handle center पर रुकता है: Core Low Phase 0° पर और Low Phase Transition अपनी maximum width पर रुकता है। Core Low Phase ठीक 0° हो तो center handle शुरू में किसी भी तरफ जा सकता है; पहली movement के बाद drag समाप्त होने तक उसी तरफ lock रहता है।
+Map handles, sliders और numeric inputs वही values बदलते हैं। mouse या touch से selected Band के outer frame के अंदर drag करके पूरा Band ले जाएँ, Core के edges या corners drag करके उसका आकार बदलें, और outer-edge handles से हर Transition अलग-अलग बदलें। low-phase handle center पर रुकता है: Core Low Phase 0° पर और Low Phase Trans अपनी maximum width पर रुकता है। Core Low Phase ठीक 0° हो तो center handle शुरू में किसी भी तरफ जा सकता है; पहली movement के बाद drag समाप्त होने तक उसी तरफ lock रहता है।
 
 ## Spatial Mapper
 

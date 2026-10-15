@@ -1,6 +1,6 @@
 ---
-title: "Плагины динамической обработки - EffeTune"
-description: "Плагины динамической обработки: Attack Tonal Balance, Compressor, Limiter, Gate, Multiband Compressor и Transient Shaper."
+title: "Плагины динамической обработки - Автоматическая регулировка громкости, компрессор и лимитер - EffeTune"
+description: "Auto Leveler помогает выровнять громкость; Brickwall Limiter, Compressor, Expander, Gate, Transient Shaper и многополосные процессоры управляют динамикой."
 lang: ru
 ---
 

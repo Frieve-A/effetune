@@ -460,6 +460,21 @@ test('delegating methods forward calls to their managers', () => {
   ]);
 });
 
+test('pipeline rebuild closes routing controls bound to the previous pipeline items', async () => {
+  const { core } = createBareCore();
+  const dialog = {};
+  const documentRef = createDocument([]);
+  documentRef.querySelector = selector => selector === '.routing-dialog' ? dialog : null;
+  let closed = false;
+  core.routingDialog.closeDialog = (element, options) => {
+    assert.equal(element, dialog);
+    assert.equal(options.immediate, true);
+    closed = true;
+  };
+  await withPipelineGlobals({ document: documentRef }, async () => core.updatePipelineUI());
+  assert.equal(closed, true);
+});
+
 test('updateURL runs only when an UI manager is present', async () => {
   const present = createBareCore();
   const presentCalls = [];
@@ -577,7 +592,7 @@ test('updateAllPluginDisplayState updates matching items and ignores missing dat
       dataset: { pluginId: '1' },
       querySelector(selector) {
         calls.push(['itemQuerySelector', 'one', selector]);
-        return nameElement;
+        return selector === '.plugin-name' ? nameElement : null;
       }
     },
     {
@@ -607,8 +622,12 @@ test('updateAllPluginDisplayState updates matching items and ignores missing dat
   });
 
   assert.deepEqual(calls, [
+    ['itemQuerySelector', 'one', '.pipeline-item-header .toggle-button'],
+    ['updateBusInfo', 1],
     ['itemQuerySelector', 'one', '.plugin-name'],
     ['updatePluginNameDisplayState', 1, 'name'],
+    ['itemQuerySelector', 'two', '.pipeline-item-header .toggle-button'],
+    ['updateBusInfo', 2],
     ['itemQuerySelector', 'two', '.plugin-name']
   ]);
   assert.deepEqual(documentCalls, [['documentQuerySelectorAll', '.pipeline-item']]);

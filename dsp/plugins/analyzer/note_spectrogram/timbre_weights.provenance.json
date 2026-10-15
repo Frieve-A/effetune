@@ -1,0 +1,93 @@
+{
+  "artifact": "timbre_weights.h",
+  "architecture": {
+    "base": [
+      1337,
+      32,
+      64,
+      64,
+      9
+    ],
+    "link": [
+      58,
+      24,
+      1
+    ],
+    "refinement": [
+      103,
+      64,
+      64,
+      9
+    ],
+    "zstd": 32
+  },
+  "normalization": "Input mean/std folded into the first layer of each head",
+  "activation": "ReLU after the base 64-unit layers, LinkNet hidden layer and refinement hidden layers",
+  "refinement": "Residual added to base logits; Vocal calibration folded into refinement output bias",
+  "vocal_delta": 0.2,
+  "classes": [
+    "Bass",
+    "Guitar",
+    "Piano",
+    "Strings",
+    "Wind",
+    "Synth",
+    "Organ",
+    "Other",
+    "Vocal"
+  ],
+  "observations": [
+    0,
+    2,
+    4
+  ],
+  "features": [
+    "a216 at frames 0, 2 and 4",
+    "d208 at frames 0, 2 and 4",
+    "z64 at frame 4",
+    "normalized MIDI pitch"
+  ],
+  "refinement_features": {
+    "base_logp": 9,
+    "base_z": 32,
+    "context": 31,
+    "link_pool": 11,
+    "inventory": 20
+  },
+  "confirm_delay_frames": 4,
+  "link_window_frames": 200,
+  "link_candidates": 192,
+  "inventory": {
+    "decay_seconds": 20,
+    "pitch_sigma": 4,
+    "prior_weight": 0.5
+  },
+  "seed": 20261010,
+  "trunk": "stem-As1-c",
+  "trunk_weights_sha256": "e68045df25465629f8ab5960417a349bc12505b7d3beffb054a2656987248289",
+  "weights_sha256": "cbcd35c885e90ea34f282aab79293d5f4872cbe8e87484bd1cf98c5148234718",
+  "weights_bytes": 250188,
+  "checkpoint_sha256": {
+    "base": "c0c6c37e172c7c4315c6f0733f3823c16743f422119d1ac8f127cd32dd7683d5",
+    "link": "8c599e013695f6b3204ddbf28b0a136fd954d99830f04bbcbcd8d481d95a742f",
+    "refinement": "a34637860ac029a9d8f773ab17ec8de5a3b4ccab2e13cef3acca35c5c91a419e"
+  },
+  "training_sources": [
+    "Slakh2100-redux",
+    "ccMixter",
+    "Karoryfer bass recordings",
+    "Proprietary dataset"
+  ],
+  "training": "Selected same-seed base, LinkNet and context/inventory refinement; popmix weight 0.3, proprietary separation labels (Demucs, MIT), Vocal label threshold 0.6; no runtime adaptation",
+  "precision": "H inputs and the base projection used by LinkNet and refinement are rounded through float16, matching classifier training and inference",
+  "feature_columns": {
+    "envelope": [
+      256,
+      320
+    ],
+    "level": [
+      848,
+      1064
+    ]
+  }
+}

@@ -1,5 +1,7 @@
 @import "../../css/asset-library.css";
 
+.sfz-note-player-plugin-ui .sfz-voice-display { margin-top: 12px; }
+.sfz-note-player-plugin-ui .sfz-voice-display canvas { touch-action: none; cursor: pointer; }
 .sfz-note-player-plugin-ui .sfz-bank-row {
     column-span: all;
     row-gap: 4px;

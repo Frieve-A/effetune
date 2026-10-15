@@ -1,6 +1,6 @@
 ---
-title: "Lo-Fi плагины - EffeTune"
-description: "Lo-Fi эффекты: AM Radio Simulator, Bit Crusher, Noise Blender, Vinyl Artifacts и другие."
+title: "Lo-Fi плагины - Имитация звука кассет, MiniDisc, MP3, радио и винила - EffeTune"
+description: "Имитация звука кассет, катушечной ленты, винила, MiniDisc (ATRAC), MP3, Bluetooth SBC, радио AM/FM/КВ и ТВ. Bit Crusher, добавление гула и шума."
 lang: ru
 ---
 

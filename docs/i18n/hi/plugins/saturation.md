@@ -1,6 +1,6 @@
 ---
-title: "सैचुरेशन प्लगइन - EffeTune"
-description: "Saturation, Exciter, Hard Clipping आदि सहित saturation और distortion प्लगइन।"
+title: "सैचुरेशन प्लगइन - बेस एक्सटेंशन, एक्साइटर और ट्यूब एम्प सिम्युलेटर - EffeTune"
+description: "ट्यूब एम्प सिमुलेशन, Saturation, Exciter और Harmonic Distortion शामिल हैं। Bandwidth Extender नई उच्च-आवृत्ति सामग्री और Bass Extender नया बेस बनाते हैं।"
 lang: hi
 ---
 

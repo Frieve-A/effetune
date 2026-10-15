@@ -77,7 +77,50 @@ export function paletteGradient(ctx, palette, width, time, vertical = false, hei
 
 // Backplates are drawn on the stage behind the item at full resolution, so they
 // never pass through the reduced-resolution layer chain below.
-export const isLayerEffect = effect => effect.enabled && effect.type !== 'backplate';
+export const isLayerEffect = effect => effect.enabled && effect.type !== 'backplate' && effect.type !== 'edge-fade';
+
+// The renderer applies this mask after composing every visual part of an item.
+export function applyEdgeFade(ctx, maskCanvas, effect, amount) {
+    if (amount <= 0) return;
+    const mask = maskCanvas.getContext('2d'), { width, height } = maskCanvas;
+    mask.save();
+    mask.clearRect(0, 0, width, height);
+    mask.fillStyle = '#ffffff'; // theme-allow: Alpha mask; destination-in uses only its opacity.
+    if (effect.shape === 'circle') {
+        const radius = Math.min(width, height) / 2;
+        if (effect.circleWidth > 0) {
+            const gradient = mask.createRadialGradient(width / 2, height / 2, radius * (1 - effect.circleWidth),
+                width / 2, height / 2, radius);
+            gradient.addColorStop(0, '#ffffff'); gradient.addColorStop(1, 'rgba(255,255,255,0)'); // theme-allow: Alpha mask; destination-in uses only its opacity.
+            mask.fillStyle = gradient; mask.fillRect(0, 0, width, height);
+        } else {
+            mask.beginPath(); mask.arc(width / 2, height / 2, radius, 0, Math.PI * 2); mask.fill();
+        }
+    } else {
+        mask.fillRect(0, 0, width, height);
+        mask.globalCompositeOperation = 'destination-in';
+        for (const [fraction, x0, y0, x1, y1] of [
+            [effect.top, 0, 0, 0, effect.top * height],
+            [effect.bottom, 0, height, 0, height * (1 - effect.bottom)],
+            [effect.left, 0, 0, effect.left * width, 0],
+            [effect.right, width, 0, width * (1 - effect.right), 0]
+        ]) {
+            if (!(fraction > 0)) continue;
+            const gradient = mask.createLinearGradient(x0, y0, x1, y1);
+            gradient.addColorStop(0, 'rgba(255,255,255,0)'); gradient.addColorStop(1, '#ffffff'); // theme-allow: Alpha mask; destination-in uses only its opacity.
+            mask.fillStyle = gradient; mask.fillRect(0, 0, width, height);
+        }
+    }
+    // Interpolate the complete mask, including its multiplied rectangular corners.
+    mask.globalCompositeOperation = 'source-over';
+    mask.globalAlpha = 1 - amount;
+    mask.fillStyle = '#ffffff'; mask.fillRect(0, 0, width, height); // theme-allow: Alpha mask; destination-in uses only its opacity.
+    mask.restore();
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(maskCanvas, 0, 0);
+    ctx.restore();
+}
 
 export function effectAmount(effect, time, modulators) {
     const source = effect.mod.source;

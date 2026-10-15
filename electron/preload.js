@@ -296,6 +296,8 @@ contextBridge.exposeInMainWorld(
     openPlaybackSelection: () => ipcRenderer.invoke('open-playback-selection'),
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+    readTrackLyrics: request => ipcRenderer.invoke('read-track-lyrics', request),
+    getPathForFile: file => webUtils.getPathForFile(file),
     readFileBytes: (filePath, expectedByteLength) => {
       if (expectedByteLength === undefined) {
         return ipcRenderer.invoke('read-file-bytes', filePath);

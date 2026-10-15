@@ -4,6 +4,7 @@
 import { PipelineCore } from './pipeline-core.js';
 import { PluginListManager } from '../plugin-list-manager.js'; // Temporary path
 import { readTextFromClipboard } from '../../utils/clipboard-utils.js';
+import { attachLyricsFiles } from '../audio-player/lyrics-file-links.js';
 import { handlePipelineKeyboardShortcut, handlePipelinePasteEvent } from './keyboard-shortcut-handler.js';
 
 const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
@@ -534,6 +535,7 @@ export class UIEventHandler {
                     // Process music files (if any and no preset files)
                     else if (musicFiles.length > 0) {
                         if (window.uiManager) {
+                            attachLyricsFiles(musicFiles, files.filter(file => /\.lrc$/i.test(file.name || '')));
                             // Pass the File objects directly to preserve original file names
                             void Promise.resolve(window.uiManager.createAudioPlayer(musicFiles, false))
                                 .catch(error => {

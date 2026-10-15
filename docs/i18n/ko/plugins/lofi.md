@@ -1,6 +1,6 @@
 ---
-title: "Lo-Fi 플러그인 - EffeTune"
-description: "AM Radio Simulator, Bit Crusher, Noise Blender, Vinyl Artifacts 등을 포함한 lo-fi 이펙트 플러그인입니다."
+title: "Lo-Fi 플러그인 - 카세트, MD, MP3, 라디오, LP 사운드 재현 - EffeTune"
+description: "카세트테이프, 오픈릴 테이프, LP, MD(ATRAC), MP3, 블루투스 SBC, AM/FM/단파 라디오와 TV 소리를 재현합니다. 비트 크러시, 험, 노이즈도 더할 수 있습니다."
 lang: ko
 ---
 

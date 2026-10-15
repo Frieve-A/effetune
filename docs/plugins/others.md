@@ -1,6 +1,6 @@
 ---
-title: "Other Plugins - EffeTune"
-description: "Additional utility plugins including Oscillator for audio signal generation."
+title: "Other Plugins - Test Tone & Noise Generator, SFZ Note Player - EffeTune"
+description: "Oscillator generates test tones and white or pink noise for checking speakers and headphones, and SFZ Note Player plays detected notes with an SFZ instrument."
 lang: en
 ---
 
@@ -147,9 +147,16 @@ Raise **Note Hold** to lengthen notes and connect short gaps in detection. At 10
 
 A colored line in **Note Spectrogram** does not by itself guarantee playback: **Threshold** and **Lowest Note / Highest Note** still apply. For very low or high notes, check these limits, try a lower **Threshold**, and check that the SFZ instrument covers the note selected by **Octave** and **Sample Shift**.
 
+### Playback Display
+
+The keyboard spans **Lowest Note** to **Highest Note**. The keyboard lights up the notes the SFZ instrument is playing, including their release tails. It follows **Octave**; **Sample Shift** changes the timbre without moving the displayed key. Each bar above a key starts at a height proportional to its playing velocity (1–127), then gradually falls with time until it disappears, even after the note ends. **Voices** shows the current number of sample voices / **Max Voices**, including releases. A layered instrument can use several voices for one note. **Color** changes the colors of sounding keys and velocity bars without restarting their decay.
+
+Tap or drag on the keyboard or velocity graph to preview the selected SFZ instrument. The keyboard plays at velocity 100; the graph uses the height where you enter a note (1–127). Moving within the same note keeps it sounding at its original velocity. Entering another note stops the previous one and starts the new one; releasing your finger or mouse stops the preview. Preview plays the displayed pitch directly, regardless of **Octave** or note-detection settings, while **Sample Shift** still changes its timbre.
+
 ### Parameters
 
 - **SFZ**: Open **SFZ Library…** to choose and manage instruments. **Clear** deselects the instrument without deleting it. Problems are explained in a dialog only on the first explicit load; automatic reloads stay quiet.
+- **Color**: **Normal** (default) uses the theme’s graph color. **Note Colors** uses the same colors as Note Spectrogram, with a separate color for each note, repeated across octaves.
 - **Threshold**: Detection confidence threshold (0.01–1, default 0.75). Higher values reduce unwanted notes but can miss quieter or less distinct notes. At B5 and below, a clear attack can also start a note with confidence slightly below this value.
 - **Retrigger Drop (dB)**: For notes above B5, the required fall from the note's peak input level before it can play again (1–96 dB, default 40 dB). The level must then rise by at least 6 dB. Higher values reduce repeats during sustained notes; lower values make repeated strikes easier to follow. At B5 and below, this setting does not affect repeated-note detection; new notes follow detected attacks.
 - **Note Hold (ms)**: Extra time to keep a note held after detection ends (0–100 ms, default 50 ms). If the same pitch returns within this period, the existing note continues unless a clear new attack is detected at B5 or below. The instrument's envelope and sample length still apply.

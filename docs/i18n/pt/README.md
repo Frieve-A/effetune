@@ -296,6 +296,21 @@ Para consultar frequência, fase, atraso de grupo mínimo, atraso de grupo exced
 
 **Reprodução sem intervalos** vem ativada por padrão e pode ser alterada em **Configuração de Áudio**. Quando está ativada, faixas locais compatíveis são reproduzidas sem intervalo; o suporte é limitado pelo formato do arquivo e pelo navegador ou aplicativo em uso. Formatos não suportados e alguns ambientes móveis usam automaticamente um modo alternativo que limita a memória, portanto ainda pode haver um breve intervalo. Ao desativá-la, o aplicativo prioriza menor uso de memória e estabilidade, e pode haver um pequeno intervalo entre as faixas. Alterar essa opção não interrompe a faixa atual. A reprodução sem intervalos fica indisponível enquanto a velocidade não estiver em 1x. Se você mudar a velocidade durante uma faixa reproduzida sem intervalos, ela será retomada da mesma posição após uma breve interrupção.
 
+### Controlar o EffeTune com um assistente de IA (MCP)
+
+Você pode pedir ao Codex ou ao Claude Code para configurar o MCP e, depois, adicionar efeitos, ajustar seus parâmetros e carregar ou salvar presets no EffeTune para desktop. Use um agente que possa executar comandos no seu computador.
+
+1. No EffeTune para desktop, abra **Configurações > Remote Control...**, ative **Allow remote control** e clique em **Copy link**.
+2. Envie o texto abaixo ao agente de IA, substituindo o campo indicado pelo link copiado:
+
+```text
+Configure o EffeTune MCP seguindo o guia oficial:
+https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
+Link de conexão: <cole aqui o link copiado>
+```
+
+Após a configuração, reinicie o cliente se for orientado a fazê-lo e experimente pedir: "Mostre meus efeitos atuais". Mantenha o link de conexão privado; se clicar em **New token** ou mudar a porta, refaça a configuração com o novo link.
+
 ## Combinações Comuns de Efeitos
 
 Aqui estão algumas combinações populares de efeitos para aprimorar sua experiência de escuta:

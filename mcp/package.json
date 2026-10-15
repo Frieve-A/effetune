@@ -1,0 +1,36 @@
+{
+  "name": "effetune-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that drives a running EffeTune desktop app over its LAN Remote Control API",
+  "type": "module",
+  "bin": {
+    "effetune-mcp": "src/index.mjs"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  },
+  "keywords": [
+    "mcp",
+    "effetune",
+    "audio"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Frieve-A/effetune.git",
+    "directory": "mcp"
+  },
+  "license": "MIT"
+}

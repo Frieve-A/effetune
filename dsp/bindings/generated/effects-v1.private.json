@@ -32,8 +32,8 @@
   "effects": {
     "AnalogMeter": {
       "internalType": "AnalogMeterPlugin",
-      "layoutHash": 3236050637,
-      "floatCount": 4,
+      "layoutHash": 2906474012,
+      "floatCount": 7,
       "packedParameters": [
         {
           "publicName": "mode",
@@ -82,6 +82,42 @@
           "transform": {
             "kind": "identity"
           }
+        },
+        {
+          "publicName": "detector",
+          "field": "detector",
+          "keys": [
+            "de"
+          ],
+          "offset": 4,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "needleResponse",
+          "field": "needleResponse",
+          "keys": [
+            "nr"
+          ],
+          "offset": 5,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "overshoot",
+          "field": "overshoot",
+          "keys": [
+            "os"
+          ],
+          "offset": 6,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
         }
       ],
       "assets": []
@@ -102,8 +138,8 @@
     },
     "NoteSpectrogram": {
       "internalType": "NoteSpectrogramPlugin",
-      "layoutHash": 2641392907,
-      "floatCount": 2,
+      "layoutHash": 2948988679,
+      "floatCount": 3,
       "packedParameters": [
         {
           "publicName": "minimumMidi",
@@ -124,6 +160,18 @@
             "mx"
           ],
           "offset": 1,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "timbreEnabled",
+          "field": "timbreEnabled",
+          "keys": [
+            "te"
+          ],
+          "offset": 2,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -10827,5 +10875,5 @@
     "dsp/plugins/spatial/spatial_mapper/params.json": "dsp/plugins/spatial/spatial_mapper/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "1670a41fce89dc7b4d1bbc79fa0f07fda23c81b184d48248b847401a4d5685ec"
+  "contractDigest": "c304b1221b7ce4f1d2957412dcd30dfe46db2b7486e0d441bd04ba6a079441fa"
 }

@@ -61,11 +61,11 @@
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^44.7.0",
+    "electron": "^44.7.2",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
-    "playwright": "^1.64.0",
+    "playwright": "^1.64.1",
     "rimraf": "^6.1.3"
   },
   "build": {
@@ -272,10 +272,10 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.61.3",
+    "@mediabunny/flac-encoder": "1.61.4",
     "electron-updater": "6.8.9",
-    "mediabunny": "1.61.3",
-    "music-metadata": "^12.0.0",
+    "mediabunny": "1.61.4",
+    "music-metadata": "^12.2.1",
     "qrcode-generator": "^2.0.4",
     "ws": "^8.22.0"
   },

@@ -1,6 +1,6 @@
 ---
 title: "إضافات الرنين - EffeTune"
-description: "إضافات الرنين: Adaptive Prediction وHorn Resonator وModal Resonator."
+description: "يضيف Adaptive Prediction رنينًا يتطور مع التعلم من الصوت، ويمنح Horn Resonator وHorn Resonator Plus طابع السماعات البوقية، ويضيف Modal Resonator رنينات مضبوطة."
 lang: ar
 ---
 

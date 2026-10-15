@@ -516,7 +516,7 @@ All payloads are little-endian and four-byte aligned. Consumers must accept the
 exact payload size for the selected format version. The default format version
 is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
 `TAP_AM_RADIO_SIMULATOR` (type 17) use version 2. `TAP_NOTE_SPECTROGRAM`
-(type 24) uses version 5; `TAP_RHYTHM_ANALYZER` (type 28) uses version 4.
+(type 24) uses version 6; `TAP_RHYTHM_ANALYZER` (type 28) uses version 4.
 `TAP_SPECTRUM` (type 4) and `TAP_SPECTROGRAM`
 (type 5) use version 2 for HQ output; Chroma Spiral always uses type 4 version 2.
 
@@ -594,11 +594,12 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   frame maximum level in dB as float32. Each record contains float32 frequency
   in Hz, signed L/R phase difference in degrees (-180 to +180), and level in dB
   relative to the frame maximum.
-- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 5 is exactly 8,840 bytes:
+- **Type 24 — `TAP_NOTE_SPECTROGRAM`.** Format version 6 is exactly 9,192 bytes:
   a 32-byte header followed by 440 float32 pitch-confidence levels in [0, 1],
   440 float32 volume levels in dB, and 440 float32 revised pitch-confidence
   levels in [0, 1], followed by two revision records. Each record contains a
   `u32` revision age and 440 float32 pitch-confidence levels in [0, 1].
+  The payload ends with 88 float32 estimated cent offsets at byte 8840.
   The volume values include a 3 dB/octave
   correction above 100 Hz and use -240 dB for pitches without a measured level.
   The header contains float32 sample rate, observation time, and hop duration;
@@ -616,6 +617,10 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   `Float32Array` or tuple values. Index `i` maps to MIDI
   `firstMidi + (i - 2) / divisionsPerSemitone`, placing five bins at -40, -20,
   0, +20, and +40 cents around each piano-key center.
+  `pitchCents` / `pitch_cents` contains the current frame's unrounded estimated
+  cent offsets as an owned `Float32Array[88]` or tuple. Index `n` maps to MIDI
+  `firstMidi + n + pitchCents[n] / 100`. These offsets are separate from the
+  five-bin confidence grid and are not changed by confidence revisions.
   `revisionAge` / `revision_age` exposes the revision age; `revisedLevels` /
   `revised_levels` is an owned confidence array or tuple when the age is 8,
   otherwise null / `None`. Its pitch indexing matches `levels`; the revised
@@ -645,12 +650,13 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   followed by `channelCount` 8-byte records, plus a 24-byte program record in
   Loudness mode, for an exact payload size of `4 + 8 * channelCount` bytes
   (`+ 24` in Loudness). The header contains `u8` mode (0 VU, 1 PPM, 2 RMS,
-  3 Sample Peak, 4 True Peak, 5 Loudness), `u8` channel count (1-16), and `u16`
-  flags: bit 0 marks a valid Integrated value and bit 1 a valid LRA, and both
+  3 Sample Peak, 4 True Peak, 5 Loudness, 6 Custom), `u8` channel count (1-16),
+  and `u16` flags: bit 0 marks a valid Integrated value and bit 1 a valid LRA, and both
   are zero outside Loudness. Outside Loudness each record holds the float32
   needle level in dB and the float32 maximum in dB since the last accepted
-  frame; VU and RMS read a sine at its peak level. In Loudness each record holds
-  that channel's unweighted, ungated Momentary and Short-term loudness in LUFS,
+  frame; VU, RMS, and every Custom detector read a sine at its peak level. In
+  Loudness each record holds that channel's unweighted, ungated Momentary and
+  Short-term loudness in LUFS,
   and the program record holds float32 Momentary, Short-term, Integrated, and
   LRA, the maximum true peak in dBTP, and the Integrated accumulation time in
   seconds. Integrated and LRA read zero while their flag bits are clear. Levels

@@ -1,6 +1,7 @@
-import { createLayer, drawBackplates, paletteGradient, VisualizerEffects } from './visualizer-effects.js';
+import { createLayer, drawBackplates, paletteGradient, VisualizerEffects, applyEdgeFade, effectAmount, animatedEffects } from './visualizer-effects.js';
 
 import { drawStyledText } from './visualizer-text.js';
+import { lyricsFrame, lyricsOpacity, drawLyrics } from './visualizer-lyrics.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
 import { REFERENCE_WIDTH } from './visualizer-model.js';
 
@@ -29,7 +30,7 @@ export class VisualizerRenderer {
         this.layers.clear();
     }
 
-    draw(layout, sources, metadata, time, { editing = false, quality = 'auto' } = {}) {
+    draw(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null } = {}) {
         const start = performance.now();
         const stage = this.canvas, ctx = stage.getContext('2d');
         if (!ctx || !stage.width || !stage.height) return;
@@ -49,6 +50,9 @@ export class VisualizerRenderer {
             const image = this.image(item.type === 'background' ? item.image : item.type === 'artwork' ? metadata?.artwork?.[0]?.src : null);
             // An absent cover has no visual layer or effect history, even while editing.
             if (item.type === 'artwork' && !image) continue;
+            const lyricFrame = item.type === 'lyrics' ? lyricsFrame(item, lyrics, editing) : null;
+            const lyricOpacity = lyricFrame ? lyricsOpacity(item, lyrics, editing) : 1;
+            if (lyricFrame && (!lyricOpacity || (!lyricFrame.rows.length && !lyricFrame.placeholder))) continue;
             alive.add(item.id);
             const width = Math.max(1, Math.round(stage.width * item.rect.w));
             const height = Math.max(1, Math.round(stage.height * item.rect.h));
@@ -62,11 +66,11 @@ export class VisualizerRenderer {
                 state.signature = '';
             }
             const frame = sources.getFrame(item.id);
-            const text = item.type === 'text' ? item.params.text : ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null;
+            const text = lyricFrame ? lyricFrame.key : item.type === 'text' ? item.params.text : ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null;
             // Image identity is checked separately; never copy data URLs into a
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
-                item.palette, item.style, item.effects, item.color, text, editing]);
+                item.palette, item.style, item.effects, item.color, item.flipX, item.flipY, text, editing]);
             let changed = state.signature !== signature || state.frame !== frame || state.image !== image ||
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
@@ -75,7 +79,7 @@ export class VisualizerRenderer {
                 changed = state.signature !== signature || state.image !== image || rendered !== false;
                 state.signature = signature; state.frame = frame; state.image = image;
             } else if (changed) {
-                this.drawItem(state, item, metadata, image, time, editing);
+                this.drawItem(state, item, metadata, image, time, editing, lyricFrame);
                 state.signature = signature; state.frame = frame; state.image = image;
             }
             const signal = state.display?.signalCanvas;
@@ -85,40 +89,80 @@ export class VisualizerRenderer {
                 { width: stage.width, height: stage.height,
                     centerX: (item.rect.x + item.rect.w / 2) * stage.width,
                     centerY: (item.rect.y + item.rect.h / 2) * stage.height });
-            drawBackplates(ctx, item.rect.x * stage.width, item.rect.y * stage.height, width, height,
-                item.effects, time, modulators, stageScale);
-            if (state.display?.underlayCanvas) ctx.drawImage(state.display.underlayCanvas,
-                item.rect.x * stage.width, item.rect.y * stage.height, width, height);
-            ctx.save();
-            ctx.globalAlpha = output.opacity;
-            ctx.translate((item.rect.x + item.rect.w / 2) * stage.width, (item.rect.y + item.rect.h / 2) * stage.height);
-            ctx.scale(flipCanvas && item.flipX ? -1 : 1, flipCanvas && item.flipY ? -1 : 1);
-            const paddingX = output.paddingX || 0, paddingY = output.paddingY || 0;
-            const bounds = output.bounds;
-            if (bounds) ctx.drawImage(output.canvas, bounds.x, bounds.y, bounds.w, bounds.h);
-            else ctx.drawImage(output.canvas, -width / 2 - paddingX, -height / 2 - paddingY, width + paddingX * 2, height + paddingY * 2);
-            ctx.restore();
-            if (signal) ctx.drawImage(state.canvas, (item.rect.x + item.rect.w / 2) * stage.width - width / 2,
-                (item.rect.y + item.rect.h / 2) * stage.height - height / 2, width, height);
-            for (const label of state.display?.overflowLevelValues || []) {
+            const fades = item.effects.filter(effect => effect.enabled && effect.type === 'edge-fade')
+                .map(effect => ({ effect, amount: effectAmount(effect, time, modulators) })).filter(entry => entry.amount > 0);
+            let target = ctx, repaint = true;
+            const isolate = fades.length || lyricOpacity < 1;
+            let composite;
+            if (isolate) {
+                // Temporal fades retain decorations outside the item. Only Edge Fade
+                // clips the composite to the item rectangle.
+                const cw = fades.length ? width : stage.width, ch = fades.length ? height : stage.height;
+                if (fades.length) {
+                    state.fadeLayer ||= createLayer(cw, ch);
+                    state.fadeMask ||= createLayer(cw, ch);
+                    composite = state.fadeLayer;
+                } else composite = state.lyricsLayer ||= createLayer(cw, ch);
+                const resized = composite.width !== cw || composite.height !== ch;
+                if (resized) {
+                    composite.width = cw; composite.height = ch;
+                    if (fades.length) { state.fadeMask.width = cw; state.fadeMask.height = ch; }
+                }
+                repaint = changed || resized || Boolean(lyricFrame) || animatedEffects(item.effects);
+                target = composite.getContext('2d');
+                if (repaint) {
+                    target.clearRect(0, 0, cw, ch);
+                    target.save();
+                    if (fades.length) target.translate(-item.rect.x * stage.width, -item.rect.y * stage.height);
+                }
+            }
+            if (repaint) {
+                const ctx = target;
+                drawBackplates(ctx, item.rect.x * stage.width, item.rect.y * stage.height, width, height,
+                    item.effects, time, modulators, stageScale);
+                if (state.display?.underlayCanvas) ctx.drawImage(state.display.underlayCanvas,
+                    item.rect.x * stage.width, item.rect.y * stage.height, width, height);
                 ctx.save();
-                const { text, x: labelX, y: labelY, ...style } = label;
-                Object.assign(ctx, style);
-                const metrics = ctx.measureText(text);
-                const minX = metrics.actualBoundingBoxLeft ?? (label.textAlign === 'right' ? metrics.width : metrics.width / 2);
-                const maxX = stage.width - (metrics.actualBoundingBoxRight ?? (label.textAlign === 'right' ? 0 : metrics.width / 2));
-                const x = (item.rect.x + item.rect.w / 2) * stage.width - width / 2 + labelX;
-                const y = (item.rect.y + item.rect.h / 2) * stage.height - height / 2 + labelY;
-                const draw = method => {
-                    // Off-frame labels follow their item and clip naturally at the scene edge.
-                    if (item.rect.x < 0 || item.rect.x + item.rect.w > 1) ctx[method](text, x, y);
-                    else if (minX > maxX) {
-                        ctx.textAlign = 'center';
-                        ctx[method](text, stage.width / 2, y, Math.max(1, stage.width - 2));
-                    } else ctx[method](text, Math.max(minX, Math.min(maxX, x)), y);
-                };
-                draw('strokeText');
-                draw('fillText');
+                ctx.globalAlpha = output.opacity;
+                ctx.translate((item.rect.x + item.rect.w / 2) * stage.width, (item.rect.y + item.rect.h / 2) * stage.height);
+                ctx.scale(flipCanvas && item.flipX ? -1 : 1, flipCanvas && item.flipY ? -1 : 1);
+                const paddingX = output.paddingX || 0, paddingY = output.paddingY || 0;
+                const bounds = output.bounds;
+                if (bounds) ctx.drawImage(output.canvas, bounds.x, bounds.y, bounds.w, bounds.h);
+                else ctx.drawImage(output.canvas, -width / 2 - paddingX, -height / 2 - paddingY, width + paddingX * 2, height + paddingY * 2);
+                ctx.restore();
+                if (signal) ctx.drawImage(state.canvas, (item.rect.x + item.rect.w / 2) * stage.width - width / 2,
+                    (item.rect.y + item.rect.h / 2) * stage.height - height / 2, width, height);
+                for (const label of state.display?.overflowLevelValues || []) {
+                    ctx.save();
+                    const { text, x: labelX, y: labelY, ...style } = label;
+                    Object.assign(ctx, style);
+                    const metrics = ctx.measureText(text);
+                    const minX = metrics.actualBoundingBoxLeft ?? (label.textAlign === 'right' ? metrics.width : metrics.width / 2);
+                    const maxX = stage.width - (metrics.actualBoundingBoxRight ?? (label.textAlign === 'right' ? 0 : metrics.width / 2));
+                    const x = (item.rect.x + item.rect.w / 2) * stage.width - width / 2 + labelX;
+                    const y = (item.rect.y + item.rect.h / 2) * stage.height - height / 2 + labelY;
+                    const draw = method => {
+                        // Off-frame labels follow their item and clip naturally at the scene edge.
+                        if (item.rect.x < 0 || item.rect.x + item.rect.w > 1) ctx[method](text, x, y);
+                        else if (minX > maxX) {
+                            ctx.textAlign = 'center';
+                            ctx[method](text, stage.width / 2, y, Math.max(1, stage.width - 2));
+                        } else ctx[method](text, Math.max(minX, Math.min(maxX, x)), y);
+                    };
+                    draw('strokeText');
+                    draw('fillText');
+                    ctx.restore();
+                }
+            }
+            if (isolate) {
+                if (repaint) {
+                    target.restore();
+                    for (const { effect, amount } of fades) applyEdgeFade(target, state.fadeMask, effect, amount);
+                }
+                ctx.save();
+                ctx.globalAlpha *= lyricOpacity;
+                ctx.drawImage(composite, fades.length ? item.rect.x * stage.width : 0, fades.length ? item.rect.y * stage.height : 0);
                 ctx.restore();
             }
         }
@@ -134,7 +178,7 @@ export class VisualizerRenderer {
         }
     }
 
-    drawItem(state, item, metadata, image, time, editing) {
+    drawItem(state, item, metadata, image, time, editing, lyricFrame) {
         const canvas = state.canvas, ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
         ctx.clearRect(0, 0, w, h);
         if (item.type === 'background') {
@@ -151,6 +195,15 @@ export class VisualizerRenderer {
                 : metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
             drawStyledText(ctx, raw, item.style, w, h, this.canvas.width / REFERENCE_WIDTH,
                 item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h));
+        } else if (item.type === 'lyrics') {
+            if (item.palette.mode === 'gradient') {
+                state.glyphMask ||= createLayer(w, h);
+                if (state.glyphMask.width !== w) state.glyphMask.width = w;
+                if (state.glyphMask.height !== h) state.glyphMask.height = h;
+            }
+            drawLyrics(ctx, item, lyricFrame, w, h, this.canvas.width / REFERENCE_WIDTH,
+                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h),
+                item.palette.mode === 'gradient' ? state.glyphMask : null, state.lyricsMeasurements ||= {});
         } else if (item.type === 'shape') {
             this.drawShape(ctx, item, w, h, time);
         }

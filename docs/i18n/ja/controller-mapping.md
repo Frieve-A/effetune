@@ -1,5 +1,5 @@
 ---
-title: "コントローラーマッピング - EffeTune"
+title: "コントローラーマッピング - MIDI・ゲームパッド・キーボードで操作 - EffeTune"
 description: "MIDIコントローラー、ゲームパッド、キーボードからEffeTuneのエフェクトパラメーターを操作します。"
 lang: ja
 ---

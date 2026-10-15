@@ -1,6 +1,6 @@
 ---
-title: "EQ Plugins - EffeTune"
-description: "Equalizer plugins including Parametric EQ, FIR EQ, Graphic EQ, Dynamic EQ, Room EQ, Earphone Cable Sim, filters, and Tone Control."
+title: "EQ Plugins - Parametric, Graphic, Linear-Phase & Room Correction EQ - EffeTune"
+description: "Parametric EQ with AutoEQ import, graphic EQ, dynamic EQ, linear-phase EQ, Room EQ from your own measurements, Tonal Balance EQ, Loudness Equalizer, and filters."
 lang: en
 ---
 
@@ -692,7 +692,7 @@ Measurements are device-local references. A URL or preset stores the selected me
 ### Parameters
 
 - **Measurement** - Selects the shared saved frequency-response measurement used by any channel that has no per-channel override. The list shows its name, number of points, and `IR` when impulse-response data is available. Use **Refresh measurements** after adding or changing measurements.
-- **Measurement Ch N** - One optional override selector per channel handled by the instance's bus selection. Leave it at **(Shared)**, the default, to use Measurement above; assign a different saved measurement to give that channel its own filter. Leaving every channel at **(Shared)** reproduces the single shared-filter behavior exactly.
+- **Measurement ChN** - One optional override selector per channel handled by the instance's bus selection. Leave it at **(Shared)**, the default, to use Measurement above; assign a different saved measurement to give that channel its own filter. Leaving every channel at **(Shared)** reproduces the single shared-filter behavior exactly.
 - **Delay** - Adds 0 to 20 ms of manual delay to every channel routed through the instance. It is not included in the plugin's reported processing latency.
 - **Phase** - Selects how the FIR filter handles phase.
   - **Minimum** - Minimum-phase magnitude correction with the lowest added latency.
@@ -724,7 +724,7 @@ Measurements are device-local references. A URL or preset stores the selected me
 - **Min Group Delay** shows the delay implied by the minimum-phase part of the magnitude response. **Excess Group Delay** separately shows the remaining delay after that minimum-phase part is removed, making reflections and other non-minimum-phase timing easier to inspect. Both views use a logarithmic frequency axis and a vertical axis in milliseconds. Values retain the absolute group delay after removing the measured onset and, from the corrected result, the FIR's known fixed delay. They are not re-referenced at 1 kHz, so the value there is not necessarily 0 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. Group-delay analysis is independent of the displayed point spacing and does not rely on phase unwrapping. Smoothing is applied on a fixed logarithmic-frequency analysis grid, so a lower Smoothing setting shows finer detail. **Min Group Delay** automatically adjusts its vertical range to the displayed curves. **Excess Group Delay** keeps a fixed -100 to +100 ms range, while the readout retains the unclipped value when a curve extends beyond it. A measurement without impulse-response data shows an unavailable message instead.
 - **Impulse** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 2 ms before the measured onset through the largest of 5 ms, Direct Window, and — when Reverb Correction is above 0% — Reverb Window limited to 50 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. Low-frequency Phase Extension and Reverb Correction can analyze later response than this view displays. For this display only, components at and above 20 kHz are removed; this does not affect the correction filter or audio processing. A measurement without impulse-response data shows an unavailable message instead.
 - **Frequency** uses a logarithmic frequency axis and a vertical gain axis in dB.
-- The **Preview channel** selector above the graph appears only when filters have been designed for more than one channel; it selects which channel's response the graph and the Additional EQ base curve show, and does not affect the audio.
+- The **Graph Preview Ch** selector above the graph appears only when filters have been designed for more than one channel; it selects which channel's response the graph and the Additional EQ base curve show, and does not affect the audio.
 - Hover over the graph, or touch and drag on it, to mark each curve with a dot at that point and show its value beside its name in the legend, with the frequency — or time in the Impulse view — above them.
 - The two white dotted vertical lines mark the frequencies set by Correction Low and Correction High.
 - Numbered markers correspond to the five bands. Drag a marker horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.

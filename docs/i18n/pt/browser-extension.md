@@ -1,5 +1,5 @@
 ---
-title: "Extensão do navegador - EffeTune"
+title: "Extensão do navegador - Equalizador e efeitos de áudio para Chrome e Edge - EffeTune"
 description: "A extensão processa simultaneamente o áudio de até quatro abas, cada uma com seu próprio Effect Pipeline estéreo."
 lang: pt
 ---

@@ -1,5 +1,5 @@
 ---
-title: "Asignación de controladores - EffeTune"
+title: "Asignación de controladores - Control con MIDI, gamepad y teclado - EffeTune"
 description: "Controla los parámetros de EffeTune mediante MIDI, un mando o el teclado."
 lang: es
 ---

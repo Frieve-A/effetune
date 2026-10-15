@@ -46,7 +46,7 @@ function createRiffInfoWave(tags) {
 test('metadata workers reject invalid path requests', async () => {
   assert.throws(() => validateParseMessage({
     type: 'parse', requestId: 1, filePath: 'relative.wav', relativePath: 'relative.wav',
-    skipCovers: true, languageHints: null
+    skipCovers: true, languageHints: null, lyrics: null
   }), error => error?.code === 'invalidMetadataRequest');
 
   const pool = new MetadataWorkerPool({ workerCount: 2 });
@@ -88,6 +88,50 @@ test('Electron catalog metadata worker restores v2 CP932 RIFF INFO decoding', as
   assert.equal(result.sampleRate, 44100);
   assert.equal(result.bitsPerSample, 16);
   assert.equal(result.channels, 1);
+  assert.equal(Object.hasOwn(result, 'lyrics'), false);
+});
+
+test('lyrics requests require explicit bounded names and a valid region', () => {
+  const message = {
+    type: 'parse', requestId: 1, filePath: path.resolve('song.wav'), relativePath: 'song.wav',
+    skipCovers: true, languageHints: null, lyrics: null
+  };
+  assert.doesNotThrow(() => validateParseMessage(message));
+  const { lyrics: _lyrics, ...missingLyrics } = message;
+  assert.throws(() => validateParseMessage(missingLyrics), error => error?.code === 'invalidMetadataRequest');
+  for (const lyrics of [
+    { names: [], region: null },
+    { names: ['song'], region: { start: 5, end: 5 } },
+    { names: ['song'], region: { start: -1, end: null } },
+    { names: Array(9).fill('song'), region: null }
+  ]) {
+    assert.throws(() => validateParseMessage({ ...message, lyrics }), error => error?.code === 'invalidMetadataRequest');
+  }
+  assert.doesNotThrow(() => validateParseMessage({
+    ...message, lyrics: { names: ['song'], region: { start: 5, end: null } }
+  }));
+});
+
+test('on-demand lyrics worker finds listed sidecars and rebases album lyrics', async t => {
+  const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-lyrics-worker-')));
+  const filePath = path.join(temporary, 'song.wav');
+  await fs.writeFile(filePath, createRiffInfoWave([]));
+  await fs.writeFile(path.join(temporary, 'SONG.LRC'), '[00:01.00]Before\n[00:05.00]Current\n[00:09.00]After');
+  const pool = new MetadataWorkerPool({ workerCount: 2, timeoutMs: 10_000 });
+  t.after(async () => {
+    await pool.close();
+    await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+  const request = { path: filePath, relativePath: 'song.wav', skipCovers: true };
+  assert.deepEqual(await pool.parse({ ...request, lyrics: { names: ['song'], region: null } }), {
+    lyrics: { synced: true, lines: [
+      { time: 1, text: 'Before' }, { time: 5, text: 'Current' }, { time: 9, text: 'After' }
+    ] }
+  });
+  assert.deepEqual(await pool.parse({ ...request, lyrics: { names: ['song'], region: { start: 5, end: 9 } } }), {
+    lyrics: { synced: true, lines: [{ time: 0, text: 'Current' }] }
+  });
+  assert.deepEqual(await pool.parse({ ...request, lyrics: { names: ['missing'], region: null } }), { lyrics: null });
 });
 
 test('Electron catalog metadata worker maps alternate RIFF INFO identifiers', async t => {

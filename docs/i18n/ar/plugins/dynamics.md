@@ -1,6 +1,6 @@
 ---
-title: "إضافات الديناميكيات - EffeTune"
-description: "إضافات معالجة ديناميكية تشمل Attack Tonal Balance وCompressor وLimiter وGate وMultiband Compressor وTransient Shaper."
+title: "إضافات الديناميكيات - ضبط مستوى الصوت تلقائيًا والضاغط والمحدِّد - EffeTune"
+description: "يجعل Auto Leveler مستوى الاستماع أكثر اتساقًا، وتضبط Brickwall Limiter وCompressor وExpander وGate وTransient Shaper ومعالجات متعددة النطاقات الديناميكيات."
 lang: ar
 ---
 

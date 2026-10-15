@@ -15,9 +15,15 @@
 namespace effetune::plugins::analyzer {
 namespace {
 
-enum Mode : std::uint32_t { Vu, Ppm, Rms, SamplePeak, TruePeak, Loudness };
+enum Mode : std::uint32_t { Vu, Ppm, Rms, SamplePeak, TruePeak, Loudness, Custom };
+enum Detector : std::uint32_t {
+  AverageRectified,
+  RmsDetector,
+  SamplePeakDetector,
+  TruePeakDetector
+};
 
-constexpr std::uint32_t kModeCount = 6u;
+constexpr std::uint32_t kModeCount = 7u;
 constexpr std::uint16_t kTelemetryType = 27u;
 constexpr std::uint16_t kTelemetryVersion = 1u;
 constexpr std::uint32_t kMaxTelemetryChannels = 16u;
@@ -34,6 +40,50 @@ constexpr double kVuNormalized99Time = 4.0535737687598132;
 constexpr double kVuRiseTime = 0.3;
 // Full-wave rectified average times the sine form factor pi/2 reads a sine at its peak level.
 constexpr double kVuRectifierGain = std::numbers::pi / 2.0;
+
+struct NeedleCoefficients {
+  double a1 = 0.0;
+  double a2 = 0.0;
+  double gain = 1.0;
+};
+
+NeedleCoefficients designNeedle(double damping, double normalized99, double response,
+                                double rate) noexcept {
+  const double period = 1.0 / rate;
+  const double natural = normalized99 / response;
+  const double radius = std::exp(-damping * natural * period);
+  const double a1 = -2.0 * radius * std::cos(natural * std::sqrt(1.0 - damping * damping) * period);
+  const double a2 = radius * radius;
+  return {a1, a2, 1.0 + a1 + a2};
+}
+
+double normalized99Time(double damping) noexcept {
+  const double frequency = std::sqrt(1.0 - damping * damping);
+  double low = 0.0;
+  double high = damping == 1.0 ? 16.0 : std::numbers::pi / frequency;
+  for (int iteration = 0; iteration < 64; ++iteration) {
+    const double time = (low + high) * 0.5;
+    const double response =
+        damping == 1.0
+            ? 1.0 - (1.0 + time) * std::exp(-time)
+            : 1.0 - std::exp(-damping * time) * (std::cos(frequency * time) +
+                                                 damping / frequency * std::sin(frequency * time));
+    if (response < 0.99) {
+      low = time;
+    } else {
+      high = time;
+    }
+  }
+  return (low + high) * 0.5;
+}
+
+void advanceNeedle(const NeedleCoefficients &coefficients, double detected, double &y1, double &y2,
+                   double &peak) noexcept {
+  const double y = coefficients.gain * detected - coefficients.a1 * y1 - coefficients.a2 * y2;
+  y2 = y1;
+  y1 = y;
+  peak = y > peak ? y : peak;
+}
 
 // PPM (IEC 60268-10 quasi-peak): an instant-attack rectifier hold that decays with a time
 // constant of kPpmHoldRatio * at, followed by a needle that rises toward it with
@@ -158,12 +208,8 @@ public:
         info.maxChannels < kMaxTelemetryChannels ? info.maxChannels : kMaxTelemetryChannels;
     const std::size_t channels = max_channels_;
 
-    const double period = 1.0 / rate_;
-    const double natural = kVuNormalized99Time / kVuRiseTime;
-    const double radius = std::exp(-kVuDamping * natural * period);
-    vu_a1_ = -2.0 * radius * std::cos(natural * std::sqrt(1.0 - kVuDamping * kVuDamping) * period);
-    vu_a2_ = radius * radius;
-    vu_gain_ = 1.0 + vu_a1_ + vu_a2_;
+    vu_needle_ = designNeedle(kVuDamping, kVuNormalized99Time, kVuRiseTime, rate_);
+    updateCustomNeedle();
 
     designTruePeak();
     k_highpass_ = dsp::k_weighting::designHighpass(rate_);
@@ -174,6 +220,7 @@ public:
     level_.assign(channels, 0.0);
     level_state_.assign(channels, 0.0);
     interval_max_.assign(channels, 0.0);
+    detector_.assign(channels, 0.0);
     peak_history_.assign(channels * 2u * kTruePeakTaps, 0.0F);
     rms_ring_.assign(channels * kRmsBuckets, 0.0);
     rms_bucket_.assign(channels, 0.0);
@@ -202,17 +249,33 @@ public:
     synchronize(channel_count);
     switch (mode_) {
     case Vu:
-      processVu(audio, frame_count);
+      processRectifiedNeedle(audio, frame_count, vu_needle_);
       break;
     case Ppm:
       processPpm(audio, frame_count);
       break;
     case Rms:
-      processRms(audio, frame_count);
+      processRms<false>(audio, frame_count);
       break;
     case SamplePeak:
     case TruePeak:
       processPeak(audio, frame_count, mode_ == TruePeak);
+      break;
+    case Custom:
+      switch (detector_mode_) {
+      case AverageRectified:
+        processRectifiedNeedle(audio, frame_count, custom_needle_);
+        break;
+      case RmsDetector:
+        processRms<true>(audio, frame_count);
+        break;
+      case SamplePeakDetector:
+        processCustomPeak<false>(audio, frame_count);
+        break;
+      case TruePeakDetector:
+        processCustomPeak<true>(audio, frame_count);
+        break;
+      }
       break;
     default:
       processLoudness(audio, frame_count);
@@ -261,6 +324,18 @@ public:
   }
 
 private:
+  void updateCustomNeedle() noexcept {
+    needle_response_ = params_.needleResponse;
+    overshoot_ = params_.overshoot;
+    const double logarithm = overshoot_ > 0.0F ? std::log(overshoot_ * 0.01) : 0.0;
+    const double damping =
+        overshoot_ > 0.0F
+            ? -logarithm / std::sqrt(std::numbers::pi * std::numbers::pi + logarithm * logarithm)
+            : 1.0;
+    custom_needle_ = designNeedle(damping, normalized99Time(damping),
+                                  static_cast<double>(needle_response_) * 0.001, rate_);
+  }
+
   void designTruePeak() noexcept {
     // Smallest factor that brings the interpolated rate to 176.4 kHz or above, at most 4.
     true_peak_factor_ = rate_ >= 176400.0 ? 1u : (rate_ >= 88200.0 ? 2u : 4u);
@@ -304,8 +379,12 @@ private:
                                             : (requested_mode >= static_cast<float>(kModeCount)
                                                    ? kModeCount - 1u
                                                    : static_cast<std::uint32_t>(requested_mode)));
-    if (channel_count != active_channels_ || mode != mode_) {
+    const auto detector =
+        static_cast<Detector>(static_cast<std::uint32_t>(params_.detector + 0.5F));
+    if (channel_count != active_channels_ || mode != mode_ ||
+        (mode == Custom && detector != detector_mode_)) {
       mode_ = mode;
+      detector_mode_ = detector;
       active_channels_ = channel_count;
       clearDetectors();
       clearRms();
@@ -316,6 +395,9 @@ private:
     if (params_.release != release_ || params_.attack != attack_) {
       updateBallistics();
     }
+    if (params_.needleResponse != needle_response_ || params_.overshoot != overshoot_) {
+      updateCustomNeedle();
+    }
   }
 
   void clearDetectors() noexcept {
@@ -323,6 +405,7 @@ private:
       level_[channel] = 0.0;
       level_state_[channel] = 0.0;
       interval_max_[channel] = 0.0;
+      detector_[channel] = 0.0;
     }
     for (float &sample : peak_history_) {
       sample = 0.0F;
@@ -378,7 +461,18 @@ private:
     }
   }
 
-  void processVu(const float *audio, std::uint32_t frame_count) noexcept {
+  void storeNeedle(std::uint32_t channel, double y1, double y2, double peak) noexcept {
+    if ((y1 < 0.0 ? -y1 : y1) < kFlush && (y2 < 0.0 ? -y2 : y2) < kFlush) {
+      y1 = 0.0;
+      y2 = 0.0;
+    }
+    level_[channel] = y1;
+    level_state_[channel] = y2;
+    interval_max_[channel] = peak;
+  }
+
+  void processRectifiedNeedle(const float *audio, std::uint32_t frame_count,
+                              const NeedleCoefficients &coefficients) noexcept {
     for (std::uint32_t channel = 0u; channel < active_channels_; ++channel) {
       const float *input = audio + static_cast<std::size_t>(channel) * frame_count;
       double y1 = level_[channel];
@@ -387,18 +481,9 @@ private:
       for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
         const double sample = input[frame];
         const double rectified = (sample < 0.0 ? -sample : sample) * kVuRectifierGain;
-        const double y = vu_gain_ * rectified - vu_a1_ * y1 - vu_a2_ * y2;
-        y2 = y1;
-        y1 = y;
-        peak = y > peak ? y : peak;
+        advanceNeedle(coefficients, rectified, y1, y2, peak);
       }
-      if ((y1 < 0.0 ? -y1 : y1) < kFlush && (y2 < 0.0 ? -y2 : y2) < kFlush) {
-        y1 = 0.0;
-        y2 = 0.0;
-      }
-      level_[channel] = y1;
-      level_state_[channel] = y2;
-      interval_max_[channel] = peak;
+      storeNeedle(channel, y1, y2, peak);
     }
   }
 
@@ -427,6 +512,7 @@ private:
     }
   }
 
+  template <bool CustomNeedle>
   void processRms(const float *audio, std::uint32_t frame_count) noexcept {
     const double scale = 2.0 / (static_cast<double>(kRmsBuckets) * rms_bucket_length_);
     std::uint32_t offset = 0u;
@@ -437,11 +523,20 @@ private:
       for (std::uint32_t channel = 0u; channel < active_channels_; ++channel) {
         const float *input = audio + static_cast<std::size_t>(channel) * frame_count + offset;
         double sum = rms_bucket_[channel];
+        double y1 = level_[channel];
+        double y2 = level_state_[channel];
+        double peak = interval_max_[channel];
         for (std::uint32_t frame = 0u; frame < count; ++frame) {
           const double sample = input[frame];
           sum += sample * sample;
+          if constexpr (CustomNeedle) {
+            advanceNeedle(custom_needle_, detector_[channel], y1, y2, peak);
+          }
         }
         rms_bucket_[channel] = sum;
+        if constexpr (CustomNeedle) {
+          storeNeedle(channel, y1, y2, peak);
+        }
       }
       offset += count;
       rms_bucket_position_ += count;
@@ -458,9 +553,44 @@ private:
           window += ring[bucket];
         }
         // sqrt(2 * mean square) reads a sine at its peak level (+3.01 dB over RMS).
-        holdMax(channel, std::sqrt(window * scale));
+        const double value = std::sqrt(window * scale);
+        if constexpr (CustomNeedle) {
+          detector_[channel] = value;
+        } else {
+          holdMax(channel, value);
+        }
       }
       rms_bucket_index_ = rms_bucket_index_ + 1u == kRmsBuckets ? 0u : rms_bucket_index_ + 1u;
+    }
+  }
+
+  template <bool TruePeakDetection>
+  void processCustomPeak(const float *audio, std::uint32_t frame_count) noexcept {
+    const std::uint32_t start = peak_position_;
+    for (std::uint32_t channel = 0u; channel < active_channels_; ++channel) {
+      const float *input = audio + static_cast<std::size_t>(channel) * frame_count;
+      double detected = detector_[channel];
+      double y1 = level_[channel];
+      double y2 = level_state_[channel];
+      double peak = interval_max_[channel];
+      peak_position_ = start;
+      for (std::uint32_t frame = 0u; frame < frame_count; ++frame) {
+        double rectified;
+        if constexpr (TruePeakDetection) {
+          rectified = truePeakSample(channel, input[frame]);
+          advancePeakPosition(1u);
+        } else {
+          rectified = input[frame] < 0.0F ? -static_cast<double>(input[frame]) : input[frame];
+        }
+        const double decayed = detected * release_factor_;
+        detected = rectified > decayed ? rectified : decayed;
+        advanceNeedle(custom_needle_, detected, y1, y2, peak);
+      }
+      detector_[channel] = detected < kFlush ? 0.0 : detected;
+      storeNeedle(channel, y1, y2, peak);
+    }
+    if constexpr (!TruePeakDetection) {
+      advancePeakPosition(frame_count);
     }
   }
 
@@ -667,6 +797,7 @@ private:
   std::vector<double> level_;
   std::vector<double> level_state_;
   std::vector<double> interval_max_;
+  std::vector<double> detector_;
   std::vector<float> peak_history_;
   std::vector<double> rms_ring_;
   std::vector<double> rms_bucket_;
@@ -683,9 +814,8 @@ private:
   dsp::BiquadCoefficients k_shelf_{};
   dsp::NyquistDenormalNoise denormal_noise_;
   double rate_ = 48000.0;
-  double vu_a1_ = 0.0;
-  double vu_a2_ = 0.0;
-  double vu_gain_ = 1.0;
+  NeedleCoefficients vu_needle_;
+  NeedleCoefficients custom_needle_;
   double ppm_hold_decay_ = 0.0;
   double ppm_needle_rise_ = 1.0;
   double release_factor_ = 1.0;
@@ -698,7 +828,10 @@ private:
   float release_ = 0.0F;
   float attack_ = 0.0F;
   float integration_ = 0.0F;
+  float needle_response_ = 0.0F;
+  float overshoot_ = 0.0F;
   Mode mode_ = Vu;
+  Detector detector_mode_ = AverageRectified;
   std::uint32_t max_channels_ = 0u;
   std::uint32_t active_channels_ = 0u;
   std::uint32_t true_peak_factor_ = 1u;

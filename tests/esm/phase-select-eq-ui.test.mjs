@@ -389,17 +389,17 @@ test('UI exposes five enabled tabs, settings before the graph, and sliders for e
   const labels = elements.filter(element => element.tagName === 'LABEL')
     .map(element => element.textContent);
   for (const expected of [
-    'Gain (%)', 'Solo:', 'Core Low Frequency (Hz)', 'Core High Frequency (Hz)',
-    'Core Low Phase (°)', 'Core High Phase (°)',
-    'Low Frequency Transition (oct)', 'High Frequency Transition (oct)',
-    'Low Phase Transition (°)', 'High Phase Transition (°)',
-    'Core Low Balance (%)', 'Core High Balance (%)', 'Outer Low Balance (%)',
-    'Outer High Balance (%)'
+    'Gain (%):', 'Solo:', 'Core Low Freq (Hz):', 'Core High Freq (Hz):',
+    'Core Low Phase (°):', 'Core High Phase (°):',
+    'Low Freq Trans (oct):', 'High Freq Trans (oct):',
+    'Low Phase Trans (°):', 'High Phase Trans (°):',
+    'Core Low Bal (%):', 'Core High Bal (%):', 'Outer Low Bal (%):',
+    'Outer High Bal (%):'
   ]) assert.ok(labels.includes(expected), expected);
   const balanceRows = plugin._editor.children[0].children.slice(-4);
   assert.deepEqual(balanceRows.map(row => row.children[0].textContent), [
-    'Core Low Balance (%)', 'Core High Balance (%)',
-    'Outer Low Balance (%)', 'Outer High Balance (%)'
+    'Core Low Bal (%):', 'Core High Bal (%):',
+    'Outer Low Bal (%):', 'Outer High Bal (%):'
   ]);
   assert.deepEqual(balanceRows.flatMap(row => row.children.slice(1).map(control => control.type)),
     ['range', 'number', 'range', 'number', 'range', 'number', 'range', 'number']);
@@ -832,7 +832,7 @@ test('Phase Select EQ guidance stays technically complete in every language', as
       section.includes('B 100:0›80:20–70:30›0:100'), `${language} per-Band badges`);
     assert.match(normalizedRanges, /150-180°/, `${language} hard-pan Phase Core`);
     assert.match(normalizedRanges, /0-180°/, `${language} full-Phase alternative`);
-    assert.ok(section.includes('Core Low Phase') && section.includes('Low Phase Transition'),
+    assert.ok(section.includes('Core Low Phase') && section.includes('Low Phase Trans'),
       `${language} handle limits`);
     if (language !== 'en' && language !== 'ja') {
       assert.ok(section.includes('59:41') && section.includes('dB'),

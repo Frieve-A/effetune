@@ -302,6 +302,21 @@ Open **Visualizer** from the PC header, the mobile **Player** tab, or the deskto
 
 **Gapless Playback** is on by default and can be changed in **Audio Configuration**. When it is on, compatible local tracks play without a gap; support is limited by the file format and the current browser or app environment. Unsupported formats and some mobile environments automatically use a memory-safe fallback, so a short gap may still occur. Turning it off prioritizes lower memory use and stability, and may add a short gap between tracks. Changing the setting does not interrupt the current track. Gapless playback is unavailable while playback speed is not 1x; changing speed during a track that was playing gaplessly restarts it from the same position with a brief interruption.
 
+### Control EffeTune with an AI Assistant (MCP)
+
+Codex or Claude Code can set up MCP and then help you add effects, adjust their settings, and load or save presets in the EffeTune desktop app. Use an agent that can run commands on your computer.
+
+1. In the EffeTune desktop app, open **Settings > Remote Control...**, turn on **Allow remote control**, and select **Copy link**.
+2. Paste the prompt below into your AI agent, replacing the placeholder with the copied link:
+
+```text
+Set up EffeTune MCP following the official guide below.
+https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
+Pairing link: <paste the copied link here>
+```
+
+After setup, follow any restart instructions, then try asking, "Show my current effects." Keep the pairing link private; if you select **New token** or change the port, repeat setup with the new link.
+
 ## Common Effect Combinations
 
 Here are some popular effect combinations to enhance your listening experience:

@@ -1,5 +1,5 @@
 ---
-title: "Double Blind Test 사용법 - EffeTune"
+title: "Double Blind Test 사용법 - ABX와 A/B 블라인드 청음 테스트 - EffeTune"
 description: "EffeTune의 두 이펙트 Pipeline을 ABX Test와 A/B Preference Test로 블라인드 청취 비교하고, 결과를 통계적 유의성과 함께 확인하는 방법을 설명합니다."
 lang: ko
 ---

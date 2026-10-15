@@ -1,14 +1,30 @@
 import { TEXT_DECORATION_DEFAULTS } from './visualizer-model.js';
 
-// Shared typography for metadata, decoration text, and the Rhythm Analyzer BPM overlay.
-export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fitRadius) {
+export const TEXT_LINE_HEIGHT = 1.2;
+
+const textContent = (raw, style) => style.textCase === 'upper' ? raw.toUpperCase() : style.textCase === 'lower' ? raw.toLowerCase() : raw;
+const setTextFont = (ctx, style, scale) => {
+    ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize * scale}px ${style.fontFamily || 'sans-serif'}`;
+    ctx.letterSpacing = `${style.letterSpacing * scale}px`;
+};
+
+export function measureStyledText(ctx, raw, inputStyle, scale) {
     const style = { ...TEXT_DECORATION_DEFAULTS, ...inputStyle };
-    const text = style.textCase === 'upper' ? raw.toUpperCase() : style.textCase === 'lower' ? raw.toLowerCase() : raw;
+    ctx.save();
+    setTextFont(ctx, style, scale);
+    const width = Math.max(...textContent(raw, style).split(/\r\n|\r|\n/).map(line => ctx.measureText(line).width));
+    ctx.restore();
+    return width;
+}
+
+// Shared typography for metadata, decoration text, and the Rhythm Analyzer BPM overlay.
+export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fitRadius, filledCharacters, offsetY = 0, paintFill, offsetX = 0) {
+    const style = { ...TEXT_DECORATION_DEFAULTS, ...inputStyle };
+    const text = textContent(raw, style);
     ctx.save();
     ctx.fillStyle = fillStyle;
     if (fitRadius !== undefined) {
-        ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize * scale}px ${style.fontFamily || 'sans-serif'}`;
-        ctx.letterSpacing = `${style.letterSpacing * scale}px`;
+        setTextFont(ctx, style, scale);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const metrics = ctx.measureText(text);
@@ -22,15 +38,14 @@ export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fit
         if (radius > fitRadius) scale *= fitRadius / radius;
     }
     const outline = style.outlineWidth * scale, spacing = style.letterSpacing * scale;
-    ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize * scale}px ${style.fontFamily || 'sans-serif'}`;
-    ctx.letterSpacing = `${spacing}px`;
+    setTextFont(ctx, style, scale);
     ctx.textAlign = style.align;
     ctx.textBaseline = style.verticalAlign;
     // Keep the outline inside the item box; letter spacing also trails the last glyph.
-    const x = style.align === 'center' ? (w + spacing) / 2 : style.align === 'right' ? w - outline + spacing : outline;
-    const lines = text.split(/\r\n|\r|\n/), lineHeight = style.fontSize * scale * 1.2;
+    const x = offsetX + (style.align === 'center' ? (w + spacing) / 2 : style.align === 'right' ? w - outline + spacing : outline);
+    const lines = text.split(/\r\n|\r|\n/), lineHeight = style.fontSize * scale * TEXT_LINE_HEIGHT;
     const lineSpan = (lines.length - 1) * lineHeight;
-    const y = style.verticalAlign === 'top' ? outline : style.verticalAlign === 'bottom' ? h - outline - lineSpan : (h - lineSpan) / 2;
+    const y = offsetY + (style.verticalAlign === 'top' ? outline : style.verticalAlign === 'bottom' ? h - outline - lineSpan : (h - lineSpan) / 2);
     const maxWidth = Math.max(1, w - outline * 2);
     if (style.shadowOpacity > 0 && (style.shadowBlur || style.shadowX || style.shadowY)) {
         ctx.shadowColor = `${style.shadowColor}${Math.round(style.shadowOpacity * 255).toString(16).padStart(2, '0')}`;
@@ -47,6 +62,21 @@ export function drawStyledText(ctx, raw, inputStyle, w, h, scale, fillStyle, fit
         lines.forEach((line, index) => ctx.strokeText(line, x, y + index * lineHeight, maxWidth));
         ctx.shadowColor = 'transparent';
     }
-    lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight, maxWidth));
+    lines.forEach((line, index) => {
+        if (paintFill) paintFill(line, x, y + index * lineHeight, maxWidth);
+        else ctx.fillText(line, x, y + index * lineHeight, maxWidth);
+    });
+    let fill;
+    if (filledCharacters !== undefined) {
+        const width = ctx.measureText(text).width;
+        const count = Math.max(0, Math.min(raw.length, filledCharacters));
+        const prefix = raw.slice(0, Math.floor(count));
+        const prefixWidth = ctx.measureText(textContent(prefix, style)).width;
+        const nextWidth = ctx.measureText(textContent(raw.slice(0, Math.ceil(count)), style)).width;
+        const drawnWidth = Math.min(width, maxWidth);
+        fill = { left: x - (style.align === 'center' ? drawnWidth / 2 : style.align === 'right' ? drawnWidth : 0),
+            filled: width > 0 ? drawnWidth * (prefixWidth + (nextWidth - prefixWidth) * (count % 1)) / width : 0 };
+    }
     ctx.restore();
+    return fill;
 }

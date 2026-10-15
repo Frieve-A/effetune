@@ -1,0 +1,43 @@
+{
+  "synthetic": true,
+  "reference": "Independent fixed PyTorch stem-As1-c and calibrated d8 head",
+  "sampleRates": [
+    44100,
+    48000
+  ],
+  "midi": [
+    35,
+    47
+  ],
+  "frames": [
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "columns": [
+    "lower",
+    "octave"
+  ],
+  "input": "One second, MIDI 35; harmonics h=2..7, amplitude 0.08/h, phase 0.37*h*h; float32 PCM",
+  "absoluteTolerance": 0.0001,
+  "stemCheckpointSha256": "e68045df25465629f8ab5960417a349bc12505b7d3beffb054a2656987248289",
+  "calibrationSha256": "2f76e371602e2c588c12f0ac73fa1aaa16cd0d430e942dafe2e5909880a0a427",
+  "sha256": "9f7bb9af4007a1d66580cdc766deb9ef2075ec023406beb5a279f7467985cfe2"
+}

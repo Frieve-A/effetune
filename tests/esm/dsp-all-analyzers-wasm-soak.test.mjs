@@ -16,7 +16,7 @@ const PITCH_METER_TAP_ID = 207;
 const MULTI_F0_NOTE_COUNT = 88;
 const MULTI_F0_FINE_DIVISIONS = 5;
 const MULTI_F0_PITCH_COUNT = MULTI_F0_NOTE_COUNT * MULTI_F0_FINE_DIVISIONS;
-const MULTI_F0_PAYLOAD_BYTES = 8840;
+const MULTI_F0_PAYLOAD_BYTES = 9192;
 const MULTI_F0_VALUES_OFFSET = 32;
 const MULTI_F0_FIRST_MIDI = 21;
 const MULTI_F0_EXPECTED_PITCHES = [69, 72].map(midi => midi - MULTI_F0_FIRST_MIDI);
@@ -44,7 +44,7 @@ const analyzers = [
   ['SpectrumAnalyzerPlugin', 203, TelemetryFrameType.TAP_SPECTRUM, 1],
   ['SpectrogramPlugin', 204, TelemetryFrameType.TAP_SPECTROGRAM_COL, 1],
   ['StereoMeterPlugin', 205, TelemetryFrameType.TAP_STEREO_FIELD, 2],
-  ['NoteSpectrogramPlugin', MULTI_F0_TAP_ID, 24, 5],
+  ['NoteSpectrogramPlugin', MULTI_F0_TAP_ID, 24, 6],
   ['PitchMeterPlugin', PITCH_METER_TAP_ID, TelemetryFrameType.TAP_PITCH_METER, 1],
   ['RhythmAnalyzerPlugin', 210, TelemetryFrameType.TAP_RHYTHM_ANALYZER, 4]
 ];
@@ -156,6 +156,9 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
           assert.equal(frame.frameType, expectedTypeByTap.get(frame.tapId));
           if (frame.tapId === MULTI_F0_TAP_ID) {
             assert.equal(frame.payload.byteLength, MULTI_F0_PAYLOAD_BYTES);
+            for (let note = 0; note < MULTI_F0_NOTE_COUNT; note++) {
+              assert.ok(Number.isFinite(frame.payload.getFloat32(8840 + note * 4, true)));
+            }
             const mode = frame.payload.getUint32(20, true);
             const generation = frame.payload.getUint32(24, true);
             const frameIndex = frame.payload.getUint32(16, true);

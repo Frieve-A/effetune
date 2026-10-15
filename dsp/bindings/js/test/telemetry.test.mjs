@@ -403,6 +403,11 @@ test('analog meter telemetry decodes needle and program loudness records', () =>
   assert.equal(peak.program, null);
   assert.equal(peak.dropped, 2);
 
+  const [custom] = decode(analogMeterPacket({ mode: 6, channels: [[-18, -17.5]] }).packet);
+  assert.equal(custom.mode, 6);
+  assert.deepEqual(custom.channels, [{ needleDb: -18, maxDb: -17.5 }]);
+  assert.equal(custom.program, null);
+
   const [loudness] = decode(analogMeterPacket({
     mode: 5, channels: [[-23, -24]], flags: 3, program: [-23, -23.5, -23, 7, -1.5, 12]
   }).packet);
@@ -419,7 +424,7 @@ test('analog meter telemetry decodes needle and program loudness records', () =>
   assert.equal(pending.program.integrated, 0);
 
   for (const [name, fields] of [
-    ['unknown mode', { mode: 6, channels: [[-6, -6]] }],
+    ['unknown mode', { mode: 7, channels: [[-6, -6]] }],
     ['no channels', { mode: 0, channels: [] }],
     ['17 channels', { mode: 0, channels: Array(17).fill([-6, -6]) }],
     ['loudness flags outside Loudness', { mode: 0, channels: [[-6, -6]], flags: 1 }],

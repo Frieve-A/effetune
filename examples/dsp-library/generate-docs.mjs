@@ -2574,7 +2574,7 @@ Common metadata:
 
 | JavaScript / Python | Meaning |
 |---|---|
-| \`kind\` / \`kind\` | \`analogMeter\`, \`level\`, \`noteSpectrogram\`, \`oscilloscope\`, \`pitch\`, \`rhythmAnalyzer\`, \`spectrum\`, \`spectrumHq\`, \`spectrogram\`, \`spectrogramHq\`, \`stereo\`, or \`tonalBalance\` |
+| \`kind\` / \`kind\` | \`analogMeter\`, \`level\`, \`noteSpectrogram\`, \`noteTimbre\`, \`oscilloscope\`, \`pitch\`, \`rhythmAnalyzer\`, \`spectrum\`, \`spectrumHq\`, \`spectrogram\`, \`spectrogramHq\`, \`stereo\`, or \`tonalBalance\` |
 | \`effectType\` / \`effect_type\` | Semantic effect type |
 | \`effectId\` / \`effect_id\` | Declared effect ID, or null / \`None\` |
 | \`effectIndex\` / \`effect_index\` | Zero-based position in the declared DSP chain |
@@ -2585,9 +2585,9 @@ Analyzer fields:
 
 | Kind | JavaScript / Python | Unit and shape / order |
 |---|---|---|
-| Analog Meter | \`mode\` / \`mode\` | Mode index: 0 VU, 1 PPM, 2 RMS, 3 Sample Peak, 4 True Peak, 5 Loudness |
+| Analog Meter | \`mode\` / \`mode\` | Mode index: 0 VU, 1 PPM, 2 RMS, 3 Sample Peak, 4 True Peak, 5 Loudness, 6 Custom |
 | Analog Meter | \`channelCount\` / \`channel_count\` | Number of channel records, 1 to 16 |
-| Analog Meter | \`channels\` / \`channels\` | Processing-channel order; each item has \`needleDb\` / \`needle_db\` and \`maxDb\` / \`max_db\`. Outside Loudness mode these are the ballistic needle reading in dB and the highest detector reading since the previous frame; VU and RMS readings are scaled so a sine wave reads its peak level. In Loudness mode they are that channel's momentary and short-term LUFS (unweighted, ungated reference values) |
+| Analog Meter | \`channels\` / \`channels\` | Processing-channel order; each item has \`needleDb\` / \`needle_db\` and \`maxDb\` / \`max_db\`. Outside Loudness mode these are the ballistic needle reading in dB and the highest needle reading since the previous frame; VU, RMS, and every Custom detector are scaled so a sine wave reads its peak level. In Loudness mode they are that channel's momentary and short-term LUFS (unweighted, ungated reference values) |
 | Analog Meter | \`integratedValid\`, \`lraValid\` / \`integrated_valid\`, \`lra_valid\` | True once integrated loudness or loudness range has enough gated data; always false outside Loudness mode |
 | Analog Meter | \`program\` / \`program\` | Loudness mode only, otherwise null / \`None\`: \`momentary\`, \`shortTerm\` / \`short_term\`, and \`integrated\` in LUFS (BS.1770 / EBU R128), \`lra\` in LU (EBU Tech 3342), \`maxTruePeak\` / \`max_true_peak\` in dBTP, and \`integratedSeconds\` / \`integrated_seconds\`; \`integrated\` and \`lra\` are 0 until their valid flag is true |
 | Analog Meter | All dB and LUFS values | Floored at -240; true peak above 0 dBTP is reported as measured |
@@ -2630,6 +2630,16 @@ Analyzer fields:
 | Note Spectrogram | \`revisedLevels\` / \`revised_levels\` | Revised pitch confidence in [0, 1], with the same shape and pitch indexing as \`levels\`; null / \`None\` when \`revisionAge\` is 0 |
 | Note Spectrogram | \`revisions\` / \`revisions\` | Available updates in order of age 2, 4, and 8 observations (40, 80, and 160 ms); each item has \`age\` and \`levels\` with the same pitch indexing as current levels. Subtract each age from \`frameIndex\` modulo 2^32 to identify its frame; the list is empty before the first update is available |
 | Note Spectrogram | \`volumeDb\` / \`volume_db\` | Volume in dB as JavaScript \`Float32Array[440]\` or Python \`tuple[440]\`, with the same pitch indexing as \`levels\`; values include a 3 dB/octave correction above 100 Hz, and -240 dB means no level was measured |
+| Note Spectrogram | \`pitchCents\` / \`pitch_cents\` | Current-frame estimated cent offsets as JavaScript \`Float32Array[88]\` or Python \`tuple[88]\`, without rounding to the confidence grid; index \`n\` maps to MIDI \`firstMidi + n + pitchCents[n] / 100\`. Confidence revisions do not change these offsets |
+| Note Timbre | \`sampleRate\` / \`sample_rate\` | Hz; emitted by Note Spectrogram when \`timbreEnabled\` is true (default false) |
+| Note Timbre | \`timeSeconds\`, \`hopSeconds\` / \`time_seconds\`, \`hop_seconds\` | Current analysis observation time and nominal analysis step, in seconds on the processing timeline |
+| Note Timbre | \`generation\`, \`frameIndex\` / \`generation\`, \`frame_index\` | Non-zero analysis generation and unsigned current observation counter; a generation change starts a new analysis history |
+| Note Timbre | \`noteId\` / \`note_id\` | Non-zero note identity within the generation; distinguishes repeated starts at the same pitch |
+| Note Timbre | \`midi\` / \`midi\` | Integer piano-key MIDI note, 21 to 108 |
+| Note Timbre | \`event\` / \`event\` | \`start\`, \`result\`, or \`end\`; a result updates the identified note after its observations are available |
+| Note Timbre | \`startFrameIndex\` / \`start_frame_index\` | Analysis observation counter at the note's detected start |
+| Note Timbre | \`endFrameIndex\` / \`end_frame_index\` | Analysis observation counter at the detected end, or null / \`None\` while the end is not known |
+| Note Timbre | \`probabilities\` / \`probabilities\` | \`result\` only: probabilities in [0, 1] as JavaScript \`Float32Array[9]\` or Python \`tuple[9]\`, ordered Bass, Guitar, Piano, Strings, Wind, Synth, Organ, Other, Vocal; null / \`None\` for start and end |
 | Pitch | \`sampleRate\` / \`sample_rate\` | Hz |
 | Pitch | \`timeSeconds\` / \`time_seconds\` | Observation time in seconds on the processing timeline |
 | Pitch | \`hopSeconds\` / \`hop_seconds\` | Nominal time step between analysis observations, in seconds |
@@ -2679,6 +2689,20 @@ Analyzer fields:
 | Tonal Balance EQ | \`targetMuDb\`, \`targetSigmaDb\` / \`target_mu_db\`, \`target_sigma_db\` | Active target relative level and its spread per band in dB; 0 where the target has no data |
 | Tonal Balance EQ | \`bandFlags\` / \`band_flags\` | \`uint8[41]\`: bit 0 stationary, bit 1 noise floor, bit 2 has target, bit 3 has level, bit 4 inside \`low\`-\`high\` |
 | Tonal Balance EQ | \`responseDb\` / \`response_db\` | Applied response including make-up gain in dB at 128 points \`20 * 1000 ** (i / 127)\` Hz |
+
+Note Timbre is separate from the pitch-confidence frames and does not delay them or
+change the pass-through audio latency of 0 samples. To place a note's start on the
+processing timeline, subtract \`((frameIndex - startFrameIndex) >>> 0) * hopSeconds\`
+from \`timeSeconds\` in JavaScript; use the difference modulo 2^32 in Python.
+A result's \`timeSeconds\` identifies the analysis observation when its estimate
+became available, rather than its note's start. The three-group probabilities are
+Vocal = probabilities[8], Bass = probabilities[0], and Other = sum(probabilities[1:8]);
+the three-group and nine-group color views mix their group RGB colors in proportion
+to the respective probabilities. These are estimates,
+not guaranteed instrument identities; drums are outside the classification groups.
+Instrument estimation uses earlier notes in the music as clues, so estimates are
+less reliable immediately after enabling it or seeking. Completed instrument
+estimates are not revised.
 
 \`frame.dropped\` reports loss since the previous decoded delivery. By contrast,
 \`dropped_telemetry_frames\` on a Python stream and \`droppedTelemetryFrames\` on a

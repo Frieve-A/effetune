@@ -1,5 +1,5 @@
 ---
-title: "空间音频插件 - EffeTune"
+title: "空间音频插件 - 交叉馈送、串扰消除、立体声宽度与上混 - EffeTune"
 description: "用于耳机和扬声器聆听的空间处理插件，包括 Crossfeed Filter、Crosstalk Cancellation、MS Matrix、Multiband Balance、Phase Select EQ、Spatial Mapper 和 Stereo Blend。"
 lang: zh
 ---
@@ -281,13 +281,13 @@ Balance 网格显示左:右比例。Balance 0%、±17%、±33%、±60%、±82% �
 - **Band 1-5 / 复选框** (Off/On)：选择要编辑的 Band，并在不改变设置的情况下启用或停用它。
 - **Gain** (0% 至 200%)：设置 Core 内的电平倍率。100% 不改变电平，0% 移除选中的成分，200% 将振幅加倍。
 - **Solo** (Off/On)：只聆听开启 Solo 的 Band 所选中的声音。只要有任一启用的 Band 打开了 Solo，Gain 便不再生效，这些 Band 之外的成分全部静音，边缘仍按 Transition 平滑衰减。同时对多个 Band 开启 Solo 时，将输出它们所选范围的合集。关闭全部 Solo 后即恢复常规处理。
-- **Core Low Frequency / Core High Frequency** (20 Hz 至 40 kHz，受当前采样率上限限制)：设置 100% 处理的频率范围。
+- **Core Low Freq / Core High Freq** (20 Hz 至 40 kHz，受当前采样率上限限制)：设置 100% 处理的频率范围。
 - **Core Low Phase / Core High Phase** (0° 至 180°)：设置 100% 处理的 L/R 绝对相位差范围。
-- **Outer Low Balance / Core Low Balance / Core High Balance / Outer High Balance** (-100% 至 +100%)：直接设置 Balance 的四个边界。Core 的两个值确定 100% 处理的左右振幅平衡范围；Outer 的两个值确定 Transition 达到不处理状态的位置。负值选择左侧，正值选择右侧。
-- **Low Frequency Transition / High Frequency Transition**：设置频率 Core 下方和上方的效果渐变范围。
-- **Low Phase Transition / High Phase Transition**：设置朝向 0° 和 180° 的效果渐变范围。
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% 至 +100%)：直接设置 Balance 的四个边界。Core 的两个值确定 100% 处理的左右振幅平衡范围；Outer 的两个值确定 Transition 达到不处理状态的位置。负值选择左侧，正值选择右侧。
+- **Low Freq Trans / High Freq Trans**：设置频率 Core 下方和上方的效果渐变范围。
+- **Low Phase Trans / High Phase Trans**：设置朝向 0° 和 180° 的效果渐变范围。
 
-相位图手柄、滑块和数值输入框编辑相同的值。使用鼠标或触摸时，在所选 Band 的外框内拖动可移动整个 Band；拖动 Core 的边或角可调整大小；拖动外框手柄可分别调整各个 Transition。低 Phase 一侧的手柄不会越过中央：Core Low Phase 在 0° 处停止，Low Phase Transition 在最大宽度处停止。当 Core Low Phase 恰好为 0° 时，中央手柄起初可向任一侧移动；一旦移向某一侧，在本次拖动结束前都会锁定在该侧。
+相位图手柄、滑块和数值输入框编辑相同的值。使用鼠标或触摸时，在所选 Band 的外框内拖动可移动整个 Band；拖动 Core 的边或角可调整大小；拖动外框手柄可分别调整各个 Transition。低 Phase 一侧的手柄不会越过中央：Core Low Phase 在 0° 处停止，Low Phase Trans 在最大宽度处停止。当 Core Low Phase 恰好为 0° 时，中央手柄起初可向任一侧移动；一旦移向某一侧，在本次拖动结束前都会锁定在该侧。
 
 ## Spatial Mapper
 

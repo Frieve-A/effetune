@@ -1,6 +1,6 @@
 ---
-title: "Базовые плагины - EffeTune"
-description: "Основные аудиоплагины: Bass Management, Volume, Mute, Stereo Balance, FIR Crossover, маршрутизация Matrix и другие."
+title: "Базовые плагины - Бас-менеджмент, маршрутизация каналов и кроссовер - EffeTune"
+description: "Громкость, баланс, полярность и маршрутизация; Bass Management для сабвуферов, FIR Crossover и Channel Divider для акустики с несколькими усилителями."
 lang: ru
 ---
 

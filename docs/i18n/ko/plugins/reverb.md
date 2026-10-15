@@ -1,5 +1,5 @@
 ---
-title: "리버브 플러그인 - EffeTune"
+title: "리버브 플러그인 - 컨볼루션, 홀, 플레이트, 룸 리버브 - EffeTune"
 description: "Dattorro Plate Reverb, FDN Reverb, IR Reverb, RS Reverb를 포함한 리버브 플러그인입니다."
 lang: ko
 ---

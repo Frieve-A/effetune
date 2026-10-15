@@ -1,6 +1,6 @@
 ---
-title: "调制插件 - EffeTune"
-description: "包含Auto Filter、Auto Pan、Chorus、Frequency Shifter、Phaser和Rotary Speaker的调制效果。"
+title: "调制插件 - 合唱、移相与变调效果 - EffeTune"
+description: "包含 Auto Filter、Auto Pan、Chorus、Frequency Shifter、Phaser、Pitch Shifter、Rotary Speaker、Tremolo 等调制效果。"
 lang: zh
 ---
 

@@ -1,0 +1,18 @@
+{
+  "pipeline": [
+    {
+      "name": "Note Spectrogram",
+      "enabled": true,
+      "parameters": {
+        "cl": "Instrument3",
+        "hl": "None",
+        "pr": "Semitone",
+        "ly": "Horizontal",
+        "vl": true,
+        "ts": 2,
+        "mn": 28,
+        "mx": 91
+      }
+    }
+  ]
+}

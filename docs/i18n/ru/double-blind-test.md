@@ -1,5 +1,5 @@
 ---
-title: "Руководство по Double Blind Test - EffeTune"
+title: "Руководство по Double Blind Test - Слепые ABX-тесты и A/B-тесты - EffeTune"
 description: "Как выполнять слепые ABX-тесты и A/B-тесты предпочтения между двумя конвейерами эффектов в EffeTune и проверять результат на статистическую значимость."
 lang: ru
 ---

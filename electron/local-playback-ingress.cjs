@@ -44,7 +44,7 @@ class LocalPlaybackIngress {
   }
 
   async resolveSelection(filePaths, request = this.beginRequest()) {
-    const paths = requirePathArray(filePaths);
+    const paths = requirePathArray(filePaths).filter(filePath => path.extname(filePath).toLowerCase() !== '.lrc');
     const cuePaths = paths.filter(filePath => path.extname(filePath).toLowerCase() === CUE_EXTENSION);
     if (cuePaths.length === 0) {
       const descriptors = await admitLocalPlaybackPaths(paths, {

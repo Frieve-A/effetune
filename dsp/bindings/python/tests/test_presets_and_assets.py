@@ -471,7 +471,8 @@ class PresetAndAssetTests(unittest.TestCase):
 
     def test_legacy_note_spectrogram_discards_display_settings(self) -> None:
         parameters = {
-            "cl": "Rainbow", "pr": "High", "ly": "Vertical", "vl": False, "ts": 5,
+            "cl": "Rainbow", "hl": "Vocal", "pr": "High", "ly": "Vertical",
+            "vl": False, "os": True, "ts": 5,
             "mn": 36, "mx": 84,
         }
         for preset in (
@@ -482,7 +483,7 @@ class PresetAndAssetTests(unittest.TestCase):
                 document, _ = presets.import_legacy_preset(preset)
                 self.assertEqual(document["chain"][0]["type"], "NoteSpectrogram")
                 self.assertEqual(document["chain"][0]["parameters"], {
-                    "minimumMidi": 36, "maximumMidi": 84,
+                    "minimumMidi": 36, "maximumMidi": 84, "timbreEnabled": False,
                 })
         self.assertEqual(parameters["cl"], "Rainbow")
         with self.assertRaises(effetune.ValidationError):
@@ -517,7 +518,7 @@ class PresetAndAssetTests(unittest.TestCase):
             })
 
     def test_legacy_analog_meter_validates_and_discards_meter_face_settings(self) -> None:
-        display = {"rl": -20, "rg": 60, "ph": 0, "sc": 2, "ln": 1, "tg": -14, "ls": 1}
+        display = {"rl": -20, "rg": 60, "ph": 0, "sc": 2, "ln": 1, "tg": -14, "ls": 1, "dc": 4}
         document, _ = presets.import_legacy_preset({
             "pipeline": [{"name": "Analog Meter", "parameters": display}]
         })
@@ -526,7 +527,7 @@ class PresetAndAssetTests(unittest.TestCase):
             self.assertNotIn(key, document["chain"][0]["parameters"])
         for parameters in (
             {"rl": 1}, {"rg": 19}, {"ph": 11}, {"sc": 3}, {"sc": 1.5}, {"ln": 0.5}, {"ln": 2},
-            {"tg": -9}, {"ls": -1}, {"rl": "0"}, {"ln": True},
+            {"tg": -9}, {"ls": -1}, {"rl": "0"}, {"ln": True}, {"dc": 5}, {"dc": 1.5},
         ):
             with self.subTest(parameters=parameters):
                 with self.assertRaises(effetune.ValidationError):

@@ -1,5 +1,5 @@
 ---
-title: "浏览器扩展 - EffeTune"
+title: "浏览器扩展 - 适用于 Chrome 和 Edge 的均衡器与音频效果 - EffeTune"
 description: "浏览器扩展可同时处理最多四个标签页的音频，每个标签页都有独立的立体声 Effect Pipeline。"
 lang: zh
 ---

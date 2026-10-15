@@ -191,6 +191,33 @@ test('direct localized DSP overview follows its URL before stored preference', (
   ]);
 });
 
+test('direct localized docs pages follow their URL before stored or browser preference', () => {
+  for (const pathname of ['/docs/i18n/ja/', '/docs/i18n/ja/plugins/lofi.html']) {
+    const crawlerHarness = createSiteHarness({
+      pathname,
+      storedLanguage: null,
+      browserLanguages: ['en-US']
+    });
+    const storedHarness = createSiteHarness({
+      pathname,
+      storedLanguage: 'fr'
+    });
+
+    for (const harness of [crawlerHarness, storedHarness]) {
+      assert.deepEqual(harness.replaced, [], pathname);
+      assert.equal(harness.select.value, 'ja', pathname);
+      assert.equal(harness.storage.get('effetune.site.language'), 'ja', pathname);
+    }
+  }
+
+  const englishHarness = createSiteHarness({
+    pathname: '/docs/plugins/lofi.html',
+    storedLanguage: null,
+    browserLanguages: ['ja-JP', 'en']
+  });
+  assert.deepEqual(englishHarness.replaced, ['https://example.test/docs/i18n/ja/plugins/lofi.html']);
+});
+
 test('DSP subroutes without localized pages do not invent locale routes', () => {
   const harness = createSiteHarness({
     pathname: '/dsp/effects/bit-crusher/',

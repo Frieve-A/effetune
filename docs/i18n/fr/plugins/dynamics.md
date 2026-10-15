@@ -1,6 +1,6 @@
 ---
-title: "Plugins Dynamics - EffeTune"
-description: "Plugins de traitement de dynamique incluant Attack Tonal Balance, Compressor, Limiter, Gate, Multiband Compressor et Transient Shaper."
+title: "Plugins Dynamics - Contrôle automatique du volume, compresseur et limiteur - EffeTune"
+description: "Auto Leveler rend le volume plus régulier ; Brickwall Limiter, Compressor, Expander, Gate, Transient Shaper et effets multibandes ajustent la dynamique."
 lang: fr
 ---
 

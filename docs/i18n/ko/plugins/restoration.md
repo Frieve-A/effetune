@@ -1,5 +1,5 @@
 ---
-title: "복원 플러그인 - EffeTune"
+title: "복원 플러그인 - 클릭 노이즈·험 제거와 노이즈 리덕션 - EffeTune"
 description: "클릭, 클리핑된 피크, 전기 험 및 지속적인 배경 소음을 다루는 복원 플러그인입니다."
 lang: ko
 ---

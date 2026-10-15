@@ -1,6 +1,6 @@
 ---
-title: "基本プラグイン - EffeTune"
-description: "Bass Management、Volume、Mute、Stereo Balance、FIRクロスオーバー、Matrixルーティングなどの基本オーディオプラグイン。"
+title: "基本プラグイン - ベースマネジメント・チャンネルルーティング・クロスオーバー - EffeTune"
+description: "音量、バランス、極性、ルーティングの基本ツールに加え、サブウーファー向けのBass Management、マルチアンプのスピーカーシステム向けのFIR CrossoverとChannel Dividerを収録しています。"
 lang: ja
 ---
 

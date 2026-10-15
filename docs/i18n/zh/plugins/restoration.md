@@ -1,5 +1,5 @@
 ---
-title: "修复插件 - EffeTune"
+title: "修复插件 - 咔嗒声修复、电源嗡声去除与降噪 - EffeTune"
 description: "用于处理爆音、削波峰值、电源嗡声和持续背景噪声的修复插件。"
 lang: zh
 ---

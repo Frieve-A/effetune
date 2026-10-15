@@ -2,6 +2,7 @@
 #include "../../analyzer/note_spectrogram/spectral_analysis.h"
 #include "SFZNotePlayerPluginParams.h"
 #include "bank.h"
+#include "binary_io.h"
 #include "effetune/dsp/fir.h"
 #include "nothrow_storage.h"
 #include "onset_rule.h"
@@ -40,10 +41,11 @@ struct Voice {
   float gainLeft = 0.0F, gainRight = 0.0F, envelope = 0.0F, releaseMultiplier = 0.0F;
   float lastLeft = 0.0F, lastRight = 0.0F, stolenLeft = 0.0F, stolenRight = 0.0F;
   std::uint64_t age = 0u, elapsed = 0u;
-  std::uint32_t midi = 0u, fade = 0u, releaseFrames = 0u;
+  std::uint32_t midi = 0u, outputMidi = 0u, velocity = 0u, fade = 0u, releaseFrames = 0u;
   float decayMultiplier = 1.0F;
   bool looped = false;
   bool released = false;
+  bool preview = false;
   std::uint32_t filter = kVoices;
   float loopMeanLeft = 0.0F, loopMeanRight = 0.0F;
   bool loopMeanOnly = false;
@@ -357,6 +359,7 @@ public:
         static_cast<std::uint32_t>(std::round(bounded(params_.maxVoices, 1, kVoices, 32)));
     for (auto v = voice_limit_; v < kVoices; ++v)
       (*voices_)[v] = {};
+    updatePreview();
     const auto dry_gain = bounded(params_.dryMix, 0, 100, 0) * .01F;
     const auto wet_gain = bounded(params_.wetMix, 0, 100, 100) * .01F;
     const auto output_gain = std::pow(10.0F, bounded(params_.outputGain, -60, 12, 0) * .05F);
@@ -426,6 +429,33 @@ public:
     sample_clock_ += frames;
   }
 
+  void writeTelemetry(TelemetryWriter &writer) noexcept override {
+    // One record per output key: active sample voices and velocity with a one-second decay.
+    std::array<std::uint8_t, 4u + 128u * 8u> payload{};
+    std::array<std::uint16_t, 128> counts{};
+    std::array<float, 128> velocities{};
+    std::uint16_t total = 0u;
+    if (voices_ && !notes_reset_pending_)
+      for (const auto &voice : *voices_) {
+        if (!voice.region)
+          continue;
+        ++total;
+        ++counts[voice.outputMidi];
+        const auto velocity = static_cast<float>(voice.velocity) / 127.0F *
+                              std::exp(-static_cast<float>(voice.elapsed) / rate_);
+        if (velocity > velocities[voice.outputMidi])
+          velocities[voice.outputMidi] = velocity;
+      }
+    binary_io::writeU16(payload.data(), total);
+    binary_io::writeU16(payload.data() + 2u, static_cast<std::uint16_t>(voice_limit_));
+    for (auto midi = 0u; midi < 128u; ++midi) {
+      auto *record = payload.data() + 4u + midi * 8u;
+      binary_io::writeU16(record, counts[midi]);
+      binary_io::writeF32(record + 4u, velocities[midi]);
+    }
+    writer.write(30u, 1u, payload.data(), static_cast<std::uint16_t>(payload.size()));
+  }
+
 private:
   SFZBank *bank() noexcept { return static_cast<SFZBank *>(bank_.get()); }
   const SFZBank *bank() const noexcept { return static_cast<const SFZBank *>(bank_.get()); }
@@ -451,20 +481,36 @@ private:
     note_on_level_.fill(0.0F);
     next_note_event_ = 0u;
     age_ = 0u;
+    preview_midi_ = -1;
   }
-  void release(Voice &v) noexcept {
-    if (!v.region || v.released || v.region[LoopMode] == 1.0F)
+  void release(Voice &v, bool preview = false) noexcept {
+    if (!v.region || v.released || (!preview && v.region[LoopMode] == 1.0F))
       return;
     v.released = true;
     // Keep detected note-offs natural even when an SFZ omits its release envelope.
-    const auto duration = std::max(v.region[Release], .2F) * rate_;
+    const auto duration = preview ? fade_length_ : std::max(v.region[Release], .2F) * rate_;
     v.releaseFrames = std::max(1u, static_cast<std::uint32_t>(duration));
     v.releaseMultiplier = std::exp(-9.210340372F / v.releaseFrames);
   }
-  void releaseKey(std::uint32_t midi) noexcept {
+  void releaseKey(std::uint32_t midi, bool preview = false) noexcept {
     for (auto &v : *voices_)
-      if (v.midi == midi)
-        release(v);
+      if (v.midi == midi && v.preview == preview)
+        release(v, preview);
+  }
+  void updatePreview() noexcept {
+    if (!bank() || bank()->state_ != ET_ASSET_STATE_ACTIVE)
+      return;
+    const auto midi = static_cast<int>(std::round(bounded(params_.previewMidi, -1, 127, -1)));
+    if (midi == preview_midi_)
+      return;
+    if (preview_midi_ >= 0)
+      releaseKey(static_cast<std::uint32_t>(preview_midi_), true);
+    preview_midi_ = midi;
+    if (midi >= 0) {
+      const auto velocity =
+          static_cast<std::uint32_t>(std::round(bounded(params_.previewVelocity, 1, 127, 100)));
+      startVoices(static_cast<std::uint32_t>(midi), midi, velocity, true);
+    }
   }
   void startOnset(std::uint32_t pitch, float level) noexcept {
     trough_[pitch] = onset_peak_[pitch] = level;
@@ -684,19 +730,26 @@ private:
     }
   }
   void noteOn(std::uint32_t midi, float level) noexcept {
+    const auto target_key =
+        static_cast<int>(midi) +
+        12 * static_cast<int>(std::round(bounded(params_.octaveShift, -2, 2, 0)));
+    const auto floor = bounded(params_.velocityFloor, -96, 0, -30);
+    const auto ceiling = std::max(floor + 1.0F, bounded(params_.velocityCeiling, -60, 24, 3));
+    const auto velocity = static_cast<std::uint32_t>(
+        std::round(bounded(1.0F + 126.0F * (level - floor) / (ceiling - floor), 1, 127, 1)));
+    startVoices(midi, target_key, velocity, false);
+  }
+  void startVoices(std::uint32_t midi, int target_key, std::uint32_t velocity,
+                   bool preview) noexcept {
     for (auto &v : *voices_)
-      if (v.midi == midi) {
+      if (v.midi == midi && v.preview == preview) {
         if (v.region && v.region[LoopMode] == 1.0F) {
           v.released = true;
           v.releaseFrames = fade_length_;
           v.releaseMultiplier = std::exp(-9.210340372F / fade_length_);
         } else
-          release(v);
+          release(v, preview);
       }
-    // Voices retain the detected source key for note-off; only new playback is shifted.
-    const auto target_key =
-        static_cast<int>(midi) +
-        12 * static_cast<int>(std::round(bounded(params_.octaveShift, -2, 2, 0)));
     if (target_key < 0 || target_key > 127)
       return;
     // Select a neighboring key's timbre, but tune playback to the unshifted target key.
@@ -704,10 +757,6 @@ private:
         target_key + static_cast<int>(std::round(bounded(params_.sampleShift, -6, 6, 0)));
     if (sample_key < 0 || sample_key > 127)
       return;
-    const auto floor = bounded(params_.velocityFloor, -96, 0, -30);
-    const auto ceiling = std::max(floor + 1.0F, bounded(params_.velocityCeiling, -60, 24, 3));
-    const auto velocity = static_cast<std::uint32_t>(
-        std::round(bounded(1.0F + 126.0F * (level - floor) / (ceiling - floor), 1, 127, 1)));
     random_ ^= random_ << 13u;
     random_ ^= random_ >> 17u;
     random_ ^= random_ << 5u;
@@ -760,6 +809,9 @@ private:
       chosen->fade = fade_length_;
       chosen->region = r;
       chosen->midi = midi;
+      chosen->outputMidi = static_cast<std::uint32_t>(target_key);
+      chosen->velocity = velocity;
+      chosen->preview = preview;
       chosen->position = indexValue(r, Offset);
       chosen->age = ++age_;
       chosen->envelope = r[Attack] > 0.0F ? 0.0F : 1.0F;
@@ -1016,6 +1068,7 @@ private:
                 timing_fade_ = 0u, selection_mask_ = 7u;
   std::uint32_t voice_limit_ = 32u, seed_ = 1u, salt_ = 0u, random_ = 1u;
   std::uint64_t age_ = 0u;
+  int preview_midi_ = -1;
   std::uint64_t sample_clock_ = 0u, last_detection_ = 0u, silent_frames_ = 0u;
   std::uint64_t next_note_event_ = 0u;
   float low_register_ = 0.0F, high_register_ = 0.0F;

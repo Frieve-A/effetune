@@ -1,6 +1,6 @@
 ---
 title: "レゾネータープラグイン - EffeTune"
-description: "Adaptive Prediction、Horn Resonator、Modal Resonatorなどのレゾネーターエフェクト。"
+description: "Adaptive Predictionは音声から学習して変化する共鳴を、Horn ResonatorとHorn Resonator Plusはホーンスピーカー風の響きを、Modal Resonatorはチューニングされた共鳴を加えます。"
 lang: ja
 ---
 

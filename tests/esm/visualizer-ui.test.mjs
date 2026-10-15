@@ -8,7 +8,11 @@ import { VisualizerHistory } from '../../js/visualizer/visualizer-history.js';
 import { VisualizerPresetStore } from '../../js/visualizer/visualizer-preset-store.js';
 import { createDefaultLayout, createItem, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
 import { UIManager } from '../../js/ui-manager.js';
+import { lyricsFrame, drawLyrics, lyricsOpacity } from '../../js/visualizer/visualizer-lyrics.js';
+import { parseLrc } from '../../js/library/metadata/lyrics.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 function classes(...initial) {
     const values = new Set(initial);
@@ -457,6 +461,67 @@ test('Fall time, smoothing, and the Peak toggle appear per type and hide Peak Ho
     });
 });
 
+test('Custom Analog Meter keeps detector, dial, and appearance controls in place while disabling unused settings', async () => {
+    const context = vm.createContext({ window: {}, PluginBase: class {} });
+    vm.runInContext(await readFile(new URL('../../plugins/analyzer/analog_meter.js', import.meta.url), 'utf8'), context);
+    await withGlobals({ window: { AnalogMeterPlugin: context.window.AnalogMeterPlugin } }, () => {
+        const fields = new Map();
+        const item = createItem('analog-meter', 'custom');
+        item.params.md = 'Custom';
+        const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+            t: (_key, fallback) => fallback,
+            group: () => ({}),
+            field(_parent, label, type, value, change, options = {}) {
+                fields.set(label, { type, value, change, options });
+            },
+            changed() { render(); }
+        });
+        const render = () => { fields.clear(); editor.parameters({}, item); };
+        render();
+        const labels = [...fields.keys()];
+        assert.equal(fields.get('Integration').options.disabled, true);
+        assert.equal(fields.get('Release').options.disabled, true);
+        assert.equal(fields.get('Range').options.disabled, true);
+        assert.equal(fields.get('Reference').options.disabled, false);
+        assert.equal(fields.get('Secondary % scale').options.disabled, false);
+        assert.equal(fields.get('Arrow tip aspect ratio').options.disabled, true);
+        fields.get('Detector').change('RMS');
+        assert.deepEqual([...fields.keys()], labels);
+        assert.equal(fields.get('Integration').options.disabled, false);
+        fields.get('Integration').change(1.25);
+        fields.get('Detector').change('True Peak');
+        assert.equal(fields.get('Integration').options.disabled, true);
+        assert.equal(fields.get('Release').options.disabled, false);
+        assert.equal(fields.get('Integration').value, 1.25);
+        fields.get('Secondary % scale').change(true);
+        fields.get('Reading unit').change('percent');
+        fields.get('Dial').change('4');
+        assert.equal(item.params.dc, 4);
+        assert.deepEqual([...fields.keys()], labels);
+        assert.equal(fields.get('Reference').options.disabled, true);
+        assert.equal(fields.get('Range').options.disabled, false);
+        assert.equal(fields.get('Secondary % scale').options.disabled, true);
+        assert.equal(fields.get('Reading unit').options.disabled, true);
+        fields.get('Needle tip').change('arrow');
+        assert.equal(fields.get('Arrow tip aspect ratio').options.disabled, false);
+        fields.get('Arrow tip aspect ratio').change(2.5);
+        fields.get('Needle tip').change('line');
+        assert.deepEqual([...fields.keys()], labels);
+        assert.equal(fields.get('Arrow tip aspect ratio').options.disabled, true);
+        assert.equal(fields.get('Arrow tip aspect ratio').value, 2.5);
+        fields.get('Dial').change('0');
+        assert.equal(fields.get('Secondary % scale').options.disabled, false);
+        assert.equal(fields.get('Secondary % scale').value, true);
+        assert.equal(fields.get('Reading unit').value, 'percent');
+        fields.get('Mode').change('PPM');
+        assert.equal(fields.has('Detector'), false);
+        assert.equal(fields.has('Integration'), false);
+        assert.equal(fields.has('Secondary % scale'), false);
+        assert.equal(fields.has('Arrow tip aspect ratio'), false);
+        assert.equal(fields.get('Release').options.disabled, false);
+    });
+});
+
 test('The Graph scale slider updates the layout and is undoable', async () => {
     await withGlobals({ document: { createElement: () => ({ appendChild() {}, setAttribute() {}, classList: { add() {}, toggle() {} } }) } }, () => {
         const fields = [], changes = [];
@@ -516,6 +581,237 @@ test('Static background and artwork reuse layers without copying image data each
         assert.equal(drawn.at(-1), 'art');
         assert.equal(drawn.length, 5);
     });
+});
+
+test('Lyrics redraw on line advances and reuse held step layers', async () => {
+    const context = { clearRect() {}, save() {}, translate() {}, scale() {}, drawImage() {}, restore() {} };
+    const canvas = { width: 1280, height: 720, getContext: () => context };
+    const layout = { ...createDefaultLayout(), items: [createItem('lyrics', 'lyrics')] };
+    Object.assign(layout.items[0].params, { lyricsFadeIn: 0, lyricsFadeOut: 0 });
+    const sources = { getModulators: () => ({}), getFrame: () => null };
+    const data = { synced: true, lines: [{ time: 1, text: 'First' }, { time: 3, text: 'Second' }] };
+    const renderer = new VisualizerRenderer(canvas), drawn = [];
+    renderer.drawItem = (_state, item) => drawn.push(item.id);
+    await withGlobals({ document: { createElement: () => ({ getContext: () => context }) } }, () => {
+        const draw = time => renderer.draw(layout, sources, null, time, { lyrics: { data, time, duration: 5 } });
+        draw(1.3); draw(2);
+        assert.deepEqual(drawn, ['background', 'lyrics']);
+        draw(3.1); draw(3.3); draw(4);
+        assert.deepEqual(drawn, ['background', 'lyrics', 'lyrics', 'lyrics']);
+        renderer.draw(layout, sources, null, 4);
+        assert.equal(renderer.layers.has('lyrics'), false);
+        assert.equal(drawn.length, 4);
+        renderer.draw(layout, sources, null, 4, { editing: true });
+        assert.equal(drawn.at(-1), 'lyrics');
+    });
+});
+
+test('Horizontal Lyrics repaint during scrolling through the last cue and reuse held step glyphs', async () => {
+    const context = { clearRect() {}, save() {}, translate() {}, scale() {}, drawImage() {}, restore() {} };
+    const canvas = { width: 1280, height: 720, getContext: () => context };
+    const sources = { getModulators: () => ({}), getFrame: () => null };
+    const data = { synced: true, lines: [{ time: 0, text: 'First' }, { time: 3, text: 'Last' }] };
+    await withGlobals({ document: { createElement: () => ({ getContext: () => context }) } }, () => {
+        for (const motion of ['step-horizontal', 'smooth-horizontal']) {
+            const item = createItem('lyrics', 'lyrics');
+            Object.assign(item.params, { lyricsMotion: motion, lyricsFadeIn: 0, lyricsFadeOut: 0 });
+            const renderer = new VisualizerRenderer(canvas), drawn = [];
+            renderer.drawItem = (_state, value) => drawn.push(value.id);
+            const draw = time => renderer.draw({ ...createDefaultLayout(), items: [item] }, sources, null, time,
+                { lyrics: { data, time, duration: 6 } });
+            draw(1); draw(2);
+            assert.equal(drawn.filter(id => id === 'lyrics').length, motion === 'step-horizontal' ? 1 : 2);
+            draw(4); draw(5);
+            assert.equal(drawn.filter(id => id === 'lyrics').length, motion === 'step-horizontal' ? 2 : 4);
+            renderer.dispose();
+        }
+    });
+});
+
+test('Lyrics whole-item opacity immediately follows playback position across loading, seeking, and track changes', () => {
+    const item = createItem('lyrics', 'lyrics');
+    item.params.lyricsOffset = 5;
+    const old = { synced: false, lines: [{ text: 'Old' }] }, next = { synced: false, lines: [{ text: 'New' }] };
+    const source = (time, data = old, duration = 20) => ({ data, time, duration, isStopped: false });
+    const opacity = lyrics => lyricsOpacity(item, lyrics, false);
+    assert.equal(opacity(source(0)), 0);
+    assert.equal(opacity(source(.5)), .5);
+    assert.equal(opacity(source(1)), 1);
+    assert.equal(opacity(source(17)), 1);
+    assert.equal(opacity(source(18.5)), .5);
+    assert.equal(opacity(source(20)), 0);
+    assert.equal(opacity(source(0, next)), 0);
+    assert.equal(opacity(source(.5, next)), .5);
+    assert.equal(lyricsFrame(item, source(.5, next), false).rows[0].text, 'New');
+    assert.equal(opacity(source(8, null)), 0);
+    assert.equal(opacity(source(8, next)), 1); // Late arrival catches up immediately.
+    assert.equal(opacity(source(18.5, next)), .5);
+    assert.equal(opacity(source(8, next)), 1); // Seeking retains no previous envelope.
+    assert.equal(opacity(source(.5, next)), .5);
+    assert.equal(opacity(source(.5, next)), .5); // Paused position holds opacity.
+    assert.equal(opacity(source(8, next, 0)), 1); // Unknown duration disables the tail envelope.
+    assert.equal(opacity({ ...source(8), isStopped: true }), 0);
+    assert.equal(opacity(null), 0);
+    assert.equal(lyricsOpacity(item, null, true), 1);
+    item.params.lyricsFadeIn = item.params.lyricsFadeOut = 0;
+    assert.equal(opacity(source(0)), 1);
+    assert.equal(opacity(source(20)), 1);
+});
+
+test('Lyrics display only an editing placeholder without data and keep unsynced text unhighlighted', () => {
+    const item = createItem('lyrics', 'lyrics'), drawn = [];
+    const ctx = { save() {}, restore() {}, translate() {}, beginPath() {}, rect() {}, clip() {}, globalAlpha: 1,
+        fillText: text => drawn.push(text), measureText: text => ({ width: text.length * 10 }) };
+    drawLyrics(ctx, item, lyricsFrame(item, null, false), 300, 100, 1, '#fff');
+    assert.deepEqual(drawn, []);
+    drawLyrics(ctx, item, lyricsFrame(item, null, true), 300, 100, 1, '#fff');
+    assert.deepEqual(drawn, ['Lyrics']);
+    const data = { synced: false, lines: [{ text: 'One' }, { text: 'Two' }, { text: 'Three' }] };
+    const frame = lyricsFrame(item, { data, time: 5, duration: 10 }, false);
+    assert.equal(frame.p, 1);
+    assert.equal(frame.current, -1);
+    assert.equal(frame.fill, null);
+    assert.equal(frame.list, true);
+});
+
+test('Lyrics horizontal steps share vertical easing and scroll through the final line while Single line stays vertical', () => {
+    const item = createItem('lyrics', 'lyrics');
+    const data = { synced: true, lines: [{ time: 1, text: 'First' }, { time: 3, text: 'Last' }] };
+    const frame = time => lyricsFrame(item, { data, time, duration: 5 }, false);
+    item.params.lyricsMotion = 'smooth-horizontal';
+    assert.equal(frame(2).horizontal, true);
+    assert.equal(frame(2).p, .5);
+    assert.equal(frame(4).progress, .5);
+    assert.notEqual(frame(4).key, frame(4.1).key);
+    item.params.lyricsMotion = 'step-horizontal';
+    const horizontalMidpoint = frame(1.09).p;
+    item.params.lyricsMotion = 'step';
+    assert.equal(frame(1.09).p, horizontalMidpoint);
+    item.params.lyricsMotion = 'step-horizontal';
+    assert.ok(Math.abs(horizontalMidpoint + .5) < 1e-9);
+    assert.equal(frame(2.9).p, 0);
+    assert.equal(frame(3).p, 0);
+    assert.ok(Math.abs(frame(3.09).p - .5) < 1e-9);
+    assert.equal(frame(3.18).p, 1);
+    const unsynced = { synced: false, lines: data.lines.map(({ text }) => ({ text })) };
+    assert.equal(lyricsFrame(item, { data: unsynced, time: 2.4, duration: 5 }, false).p, 0);
+    assert.equal(lyricsFrame(item, { data: unsynced, time: 2.5, duration: 5 }, false).p, 0);
+    assert.ok(Math.abs(lyricsFrame(item, { data: unsynced, time: 2.59, duration: 5 }, false).p - .5) < 1e-9);
+    assert.equal(lyricsFrame(item, { data: unsynced, time: 2.68, duration: 5 }, false).p, 1);
+    const later = { data: unsynced, time: 15, duration: 20 };
+    assert.equal(lyricsFrame(item, later, false).p, 1);
+    assert.equal(lyricsOpacity(item, later, false), 1);
+    assert.equal(lyricsFrame(item, { ...later, time: 20 }, false).p, 1);
+    item.params.lyricsMotion = 'smooth-horizontal';
+    assert.equal(lyricsFrame(item, { data: unsynced, time: 2.9, duration: 0 }, false).ticker, false);
+    item.params.lyricsMotion = 'step-horizontal';
+    item.params.lyricsView = 'line';
+    assert.equal(frame(2).horizontal, false);
+    assert.equal(frame(2).p, 0);
+});
+
+test('Lyrics step transition duration applies equally to vertical and horizontal lists and caps at the next cue', () => {
+    const item = createItem('lyrics', 'lyrics');
+    const data = { synced: true, lines: [{ time: 1, text: 'First' }, { time: 3, text: 'Second' }, { time: 3.5, text: 'Third' }] };
+    const frame = time => lyricsFrame(item, { data, time, duration: 8 }, false);
+    for (const motion of ['step', 'step-horizontal']) {
+        item.params.lyricsMotion = motion;
+        item.params.lyricsStepDuration = 0;
+        assert.equal(frame(3).p, 1);
+        item.params.lyricsStepDuration = .18;
+        assert.ok(Math.abs(frame(3.09).p - .5) < 1e-9);
+        item.params.lyricsStepDuration = 2;
+        assert.equal(frame(2).p, -.5);
+        assert.equal(frame(3.25).p, .5); // A shorter cue interval caps the requested duration.
+        item.params.lyricsView = 'line';
+        assert.equal(frame(3.18).p, 1); // Single line retains its existing transition.
+        item.params.lyricsView = 'list';
+    }
+});
+
+test('Lyrics word fill and item offset follow content timing', () => {
+    const item = createItem('lyrics', 'lyrics');
+    const data = { synced: true, lines: [{ time: 1, text: 'One Two', words: [
+        { time: 1, text: 'One ' }, { time: 2, text: 'Two' }] }, { time: 3, text: 'Next' }] };
+    assert.equal(lyricsFrame(item, { data, time: -0.1, duration: 5 }, false).current, -1);
+    const frame = lyricsFrame(item, { data, time: 1.5, duration: 5 }, false);
+    assert.equal(frame.fill, 2);
+    item.params.lyricsOffset = 1;
+    assert.equal(lyricsFrame(item, { data, time: 1.5, duration: 5 }, false).current, -1);
+});
+
+test('Lyrics list position moves the current row from top to bottom and leaves single-line alignment intact', () => {
+    const item = createItem('lyrics', 'lyrics'), drawn = [];
+    const ctx = { save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, globalAlpha: 1,
+        fillText: (text, _x, y) => drawn.push({ text, y }) };
+    const frame = { rows: [{ text: 'Before' }, { text: 'Now' }, { text: 'Next' }], list: true,
+        next: true, synced: true, current: 1, p: 1, fill: null };
+    const currentY = position => {
+        drawn.length = 0;
+        item.params.lyricsPosition = position;
+        drawLyrics(ctx, item, frame, 400, 300, 1, '#fff');
+        return drawn.find(row => row.text === 'Now').y;
+    };
+    assert.ok(Math.abs(currentY(0) - 21.6) < 1e-10);
+    assert.equal(currentY(50), 150);
+    assert.ok(Math.abs(currentY(100) - 278.4) < 1e-10);
+    frame.list = false;
+    item.style.verticalAlign = 'top';
+    assert.equal(currentY(0), currentY(100));
+    item.style.verticalAlign = 'bottom';
+    assert.ok(Math.abs(currentY(0) - 235.2) < 1e-10);
+});
+
+test('Enhanced LRC word fill reaches the explicit word end before the next line', () => {
+    const item = createItem('lyrics', 'lyrics');
+    const data = parseLrc('[00:01]<00:01>Hello<00:02>\n[00:10]Next');
+    assert.equal(lyricsFrame(item, { data, time: 1.5, duration: 12 }, false).fill, 2.5);
+    assert.equal(lyricsFrame(item, { data, time: 2, duration: 12 }, false).fill, 5);
+    assert.equal(lyricsFrame(item, { data, time: 9, duration: 12 }, false).fill, 5);
+});
+
+test('Lyrics line spacing changes the stride while keeping glyph size, list position, and word clipping fixed', () => {
+    const item = createItem('lyrics'), drawn = [], clips = [];
+    const ctx = { save() {}, restore() {}, beginPath() {}, clip() {}, globalAlpha: 1,
+        rect: (...bounds) => clips.push(bounds), measureText: text => ({ width: text.length * 10 }),
+        fillText(text, _x, y) { drawn.push({ text, y, font: this.font }); } };
+    const frame = { rows: [{ text: 'Before' }, { text: 'Now' }, { text: 'Next' }], list: true,
+        next: true, synced: true, current: 1, p: 1, fill: 1.5 };
+    const draw = (spacing, position = 50) => {
+        drawn.length = 0; clips.length = 0;
+        Object.assign(item.params, { lyricsLineSpacing: spacing, lyricsPosition: position });
+        drawLyrics(ctx, item, frame, 400, 300, 1, '#fff');
+        return { current: drawn.find(row => row.text === 'Now'), next: drawn.find(row => row.text === 'Next'),
+            wordClip: clips.at(-1) };
+    };
+    for (const spacing of [.5, 1, 2]) {
+        const result = draw(spacing);
+        assert.equal(result.current.y, 150);
+        assert.equal(result.current.font, '36px sans-serif');
+        assert.ok(Math.abs(result.next.y - result.current.y - 43.2 * spacing) < 1e-10);
+        assert.ok(Math.abs(result.wordClip[1] - 128.4) < 1e-10);
+        assert.ok(Math.abs(result.wordClip[3] - 43.2) < 1e-10);
+        assert.ok(Math.abs(draw(spacing, 0).current.y - 21.6) < 1e-10);
+        assert.ok(Math.abs(draw(spacing, 100).current.y - 278.4) < 1e-10);
+    }
+    frame.list = false;
+    item.style.verticalAlign = 'middle';
+    const single = draw(2);
+    assert.ok(Math.abs(single.current.y - 106.8) < 1e-10);
+    assert.ok(Math.abs(single.next.y - 193.2) < 1e-10);
+    frame.next = false;
+    assert.equal(draw(2).current.y, 150);
+});
+
+test('Lyrics word fill clips the drawn width after casing, letter spacing, and line compression', async () => {
+    const { drawStyledText } = await import('../../js/visualizer/visualizer-text.js');
+    const ctx = { save() {}, restore() {}, fillText() {},
+        measureText(text) { return { width: text.length * (10 + parseFloat(this.letterSpacing)) }; } };
+    const item = createItem('lyrics', 'lyrics');
+    const measured = drawStyledText(ctx, 'aß', { ...item.style, align: 'right', textCase: 'upper', letterSpacing: 2 },
+        20, 50, 1, '#fff', undefined, 1.5);
+    assert.equal(measured.left, 2);
+    assert.ok(Math.abs(measured.filled - 40 / 3) < 1e-10);
 });
 
 test('Missing artwork hides its decorations and returns only after an image loads', async () => {

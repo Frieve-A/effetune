@@ -1,5 +1,5 @@
 ---
-title: "延迟插件 - EffeTune"
+title: "延迟插件 - 回声与扬声器时间校准 - EffeTune"
 description: "用于调整时序、添加回声和校准播放到达时间的延迟插件。"
 lang: zh
 ---

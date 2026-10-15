@@ -1,3 +1,9 @@
+---
+title: "Pipeline Analyzer - 效果链的频率响应与相位响应 - EffeTune"
+description: "Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当前 Effect Pipeline 的频率响应、相位、群延迟和脉冲响应。"
+lang: zh
+---
+
 # Pipeline Analyzer
 
 Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当前 Effect Pipeline 的响应。窗口较宽时，它位于 pipeline 旁边；窗口较窄时，它移到标题下方，便于一边调整效果器，一边查看结果更新。
