@@ -41,19 +41,6 @@ test('touching a number input allows scrolling and opens the keypad only after a
   await touch('touchStart', [y]);
   assert.equal(await isOpen(), false, 'initial contact must leave the keypad closed');
   assert.equal(await input.evaluate(element => element === document.activeElement), false);
-  for (const distance of [20, 60, 100, 140]) {
-    await touch('touchMove', [y - distance]);
-  }
-  await touch('touchEnd', []);
-  await page.waitForFunction(() => window.scrollY > 0);
-  assert.equal(await isOpen(), false, 'a swipe must scroll without opening the keypad');
-  assert.equal(await input.inputValue(), '3');
-
-  // Scroll back before checking an independent tap on the same control.
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForFunction(() => window.scrollY === 0);
-  await touch('touchStart', [y]);
-  assert.equal(await isOpen(), false);
   await touch('touchEnd', []);
   assert.equal(await isOpen(), true);
   assert.equal(await page.locator('.mobile-number-keypad-overlay').isVisible(), true);
@@ -62,4 +49,15 @@ test('touching a number input allows scrolling and opens the keypad only after a
   await page.evaluate(() => window.keypad.cancel());
   await input.click();
   assert.equal(await isOpen(), true, 'mouse activation must also work on release');
+
+  // Check native scrolling last so momentum cannot affect another gesture.
+  await page.evaluate(() => window.keypad.cancel());
+  await touch('touchStart', [y]);
+  for (const distance of [20, 60, 100, 140]) {
+    await touch('touchMove', [y - distance]);
+  }
+  await touch('touchEnd', []);
+  await page.waitForFunction(() => window.scrollY > 0);
+  assert.equal(await isOpen(), false, 'a swipe must scroll without opening the keypad');
+  assert.equal(await input.inputValue(), '3');
 });

@@ -49,15 +49,6 @@ test('mobile effect sliders ignore taps, allow vertical scrolling, and adjust wi
   assert.deepEqual(await page.evaluate(() => window.rangeEvents), []);
 
   await touch('touchStart', [[x, y]]);
-  for (const distance of [20, 60, 100, 140]) await touch('touchMove', [[x, y - distance]]);
-  await touch('touchEnd', []);
-  await page.waitForFunction(() => window.scrollY > 0);
-  assert.equal(await slider.inputValue(), '50');
-  assert.deepEqual(await page.evaluate(() => window.rangeEvents), []);
-
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForFunction(() => window.scrollY === 0);
-  await touch('touchStart', [[x, y]]);
   await touch('touchMove', [[x - 3, y]]);
   assert.equal(await slider.inputValue(), '50');
   await touch('touchMove', [[x - 60, y + 2]]);
@@ -74,4 +65,14 @@ test('mobile effect sliders ignore taps, allow vertical scrolling, and adjust wi
   assert.ok(clicked > 50);
   await slider.press('ArrowLeft');
   assert.equal(Number(await slider.inputValue()), clicked - 1);
+
+  // Check native scrolling last so momentum cannot affect another gesture.
+  const valueBeforeScroll = await slider.inputValue();
+  const eventsBeforeScroll = await page.evaluate(() => window.rangeEvents);
+  await touch('touchStart', [[x, y]]);
+  for (const distance of [20, 60, 100, 140]) await touch('touchMove', [[x, y - distance]]);
+  await touch('touchEnd', []);
+  await page.waitForFunction(() => window.scrollY > 0);
+  assert.equal(await slider.inputValue(), valueBeforeScroll);
+  assert.deepEqual(await page.evaluate(() => window.rangeEvents), eventsBeforeScroll);
 });
