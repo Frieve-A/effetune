@@ -5,38 +5,41 @@ registry. `.github/workflows/mcp.yml` publishes it when a tag `mcp-v<version>` i
 
 ## One-time preparation
 
-1. **npm account.** Sign in at <https://www.npmjs.com> (create an account if needed) and turn on
-   two-factor authentication. Check that the name is still free: `npm view effetune-mcp` should
-   answer `404 Not Found`.
-2. **Access token.** npmjs.com > Access Tokens > Generate New Token > *Granular Access Token*:
-   - Permissions: *Read and write* for packages. A token cannot be limited to a package that does
-     not exist yet, so for the first release choose all packages, and after it narrow a new token
-     to `effetune-mcp` only.
-   - Allow it to publish without a one-time password (*Bypass two-factor authentication*), since
-     the workflow cannot type one.
-   - Give it an expiry date and note it.
-3. **Repository secret.** On GitHub, the repository > Settings > Secrets and variables >
-   Actions > New repository secret: name `NPM_TOKEN`, value the token.
-4. **Actions enabled.** In a fork, Actions start disabled: open the Actions tab and enable
-   workflows.
-5. **Public repository.** `npm publish --provenance` only works from a public repository whose URL
-   matches `repository.url` in `mcp/package.json` (`https://github.com/Frieve-A/effetune`).
+1. **Trusted publisher.** The initial `effetune-mcp@0.1.0` release is already on npm.
+   In its npm Settings > Trusted publishing, add GitHub Actions with user `Frieve-A`,
+   repository `effetune`, workflow filename `mcp.yml`, and environment `npm`. Enable
+   **Allow npm publish**. No `NPM_TOKEN` secret or local npm login is needed for CI publication.
+2. **GitHub environment.** The repository's `npm` environment must allow the `mcp-v*` tag
+   pattern alongside `dsp-v*`. Retain its existing reviewer protection.
+3. **Workflow.** Use the public `Frieve-A/effetune` repository and Node.js 24 in the publish
+   job, with `id-token: write` and the matching `npm` environment. Keep `repository.url`
+   aligned with that repository so npm can generate provenance.
+4. Complete the first successful publication within two days of registering the trusted
+   publisher; otherwise recreate the expired registration. See the
+   [npm trusted publishing guide](https://docs.npmjs.com/trusted-publishers/).
 
 ## Each release
 
 1. Merge the work into `main` (the tag must point at a commit that contains
    `.github/workflows/mcp.yml`) and check that the **MCP server** workflow passed on it.
-2. Set the version in `mcp/package.json` (semver: a fix raises the patch, a new tool or option
-   the minor), run `npm install` in `mcp/` so `package-lock.json` follows, and commit.
-3. Tag that commit and push the tag; the tag must equal `mcp-v` plus the version:
+2. For future MCP releases, match the minor and patch (`y.z`) to the app's `x.y.z` in the root
+   `package.json`, keeping the MCP major independent (for example, app `2.15.0` → MCP `0.15.0`).
+   Update `mcp/package.json` and `mcp/package-lock.json` together and verify this alignment before
+   committing and publishing. Already published versions remain unchanged.
+3. Complete the repository's commit/push verification gates. Tag the verified release commit
+   and push only that tag; the tag must equal `mcp-v` plus the version:
 
    ```sh
-   git tag mcp-v0.1.0
-   git push origin mcp-v0.1.0
+   git tag mcp-v0.15.0
+   git push origin mcp-v0.15.0
    ```
 
-4. Watch Actions > **MCP server**: the `Test` job runs, then `Publish to npm` checks the tag
-   against `package.json` and publishes with provenance.
+4. Watch Actions > **MCP server**. After `Test` passes, verify the release commit, package
+   contents, version alignment, and tag before approving the pending `npm` environment
+   deployment. When the user has authorized publication, the agent may perform this GitHub
+   approval without asking again. Request user action only when authentication or permissions
+   require it. `Publish to npm with trusted publishing` checks the tag against `package.json`
+   and publishes with provenance.
 5. Check the result:
 
    ```sh
@@ -44,8 +47,10 @@ registry. `.github/workflows/mcp.yml` publishes it when a tag `mcp-v<version>` i
    npx -y effetune-mcp@latest setup --help
    ```
 
-An app release needs no MCP release: the server reads effects and parameters from the running
-app. Release the MCP server only when files in `mcp/` change.
+An app release does not automatically require an MCP release: the server reads effects and
+parameters from the running app. For an explicitly requested combined DSP/MCP release, complete
+the DSP release first, then push the MCP tag separately and verify its publication. Skip an
+already published version rather than attempting to publish it again.
 
 ## If a release went wrong
 
@@ -54,8 +59,9 @@ app. Release the MCP server only when files in `mcp/` change.
 - A published version is broken: npm never accepts the same version twice. Publish a fixed
   version, then mark the broken one: `npm deprecate effetune-mcp@X.Y.Z "use X.Y.Z+1"`.
   `npm unpublish` is only allowed within 72 hours and blocks the version number for good.
-- The token leaked or expired: revoke it on npmjs.com, create a new one and replace the
-  `NPM_TOKEN` secret.
+- Authentication failed: check the npm trusted publisher's repository, workflow filename,
+  environment, direct-publish permission, and expiry against the workflow. Fix the diagnosed
+  cause before retrying; do not introduce a long-lived token as a workaround.
 
 ## What users need
 
