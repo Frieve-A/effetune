@@ -1111,11 +1111,6 @@ install.button > a {
     gap: 0.45rem;
   }
 
-  .language-switcher select {
-    width: 82px;
-    max-width: 82px;
-  }
-
   .nav-toggle {
     display: block;
   }

@@ -31,26 +31,15 @@ Tilts the tonal balance around a configurable pivot frequency.
 
 ## Tilt EQ
 
-A simple yet effective equalizer that gently tilts the frequency balance of your music. It's designed for subtle adjustments, making your music sound warmer or brighter without complex controls. Ideal for quickly tailoring the overall tone to your preference.
+Tilts the overall frequency balance around a pivot frequency with a matched pair of shelving filters: one side of the spectrum is raised and the other lowered. Use it for broad warmer or brighter adjustments with a single control, for example when a recording or a pair of headphones sounds consistently too bright or too dull.
 
-### Listening Enhancement Guide
-- Make Music Warmer:
-  - Use negative slope values to reduce high frequencies and increase low frequencies.
-  - Perfect for bright recordings or headphones that sound too sharp.
-  - Creates a cozy and relaxed listening experience.
-- Make Music Brighter:
-  - Use positive slope values to increase high frequencies and reduce low frequencies.
-  - Ideal for dull recordings or speakers that sound muffled.
-  - Adds clarity and sparkle to your music.
-- Subtle Tone Adjustments:
-  - Use small slope values for gentle overall tone shaping.
-  - Fine-tune the balance to match your listening environment or mood.
+### Sound Enhancement Guide
+- **Warmer**: Use a small negative **Slope** (for example, -1 dB/oct) to lower the treble and raise the bass, such as for bright recordings or headphones.
+- **Brighter**: Use a small positive **Slope** (for example, +1 dB/oct) to raise the treble and lower the bass, such as for dull recordings or speakers.
+- **Where the change starts**: Lower **Pivot Freq (Hz)** to extend the treble-side change into the midrange; raise it to confine that change to the top octaves.
 
 ### Parameters
-- **Pivot Frequency** - Controls the center frequency of the tilt (20Hz to ~20kHz)
-  - Adjust to set the frequency point around which the tilt occurs.
-- **Slope** - Controls the steepness of the tilt around the Pivot Frequency (-12 dB/oct to +12 dB/oct)
-  - Positive values make the sound brighter; negative values make it warmer.
-  - Smaller values make gentler changes.
+- **Pivot Freq (Hz)** (20 Hz to ~20 kHz; default about 1 kHz) - The frequency around which the balance tilts.
+- **Slope** (-12 to +12 dB/oct; default 0) - The amount and direction of the tilt. Positive values make the sound brighter, negative values warmer, and 0 leaves it unchanged.
 
 [Back to all effects](/dsp/effects/)

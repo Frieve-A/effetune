@@ -55,10 +55,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
   config.startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
+  config.libraryIncludeVideo = config.libraryIncludeVideo === true;
   config.frequencyPreviewSound = config.frequencyPreviewSound === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
   config.sfzMaxSizeMiB = normalizeSfzSizeLimitMiB(config.sfzMaxSizeMiB);
   config.spectrumOverlayQuality = config.spectrumOverlayQuality === 'hq' ? 'hq' : 'normal';
   config.spectrumOverlayPeakHold = config.spectrumOverlayPeakHold === true;
+  config.pipelineColumnMode = config.pipelineColumnMode === 'manual' ? 'manual' : 'auto';
   let powerSavingSettings = normalizePowerSettings(config.powerSaving);
   config.powerSaving = { ...powerSavingSettings };
   let offlineOutputSettings = normalizeOfflineOutputSettings(config.offlineOutput);
@@ -222,6 +224,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
             <select id="sfz-size-limit" class="config-select" aria-describedby="sfz-size-limit-help"></select>
             <div class="power-mode-help" id="sfz-size-limit-help"></div>
           </div>
+          <div class="device-section">
+            <div class="checkbox-container">
+              <input type="checkbox" id="library-include-video" aria-describedby="library-include-video-help" ${config.libraryIncludeVideo ? 'checked' : ''}>
+              <label for="library-include-video" id="library-include-video-label"></label>
+            </div>
+            <div class="power-mode-help" id="library-include-video-help"></div>
+          </div>
           ${electronGeneralSections}`,
     startup: `
           ${electronStartupSections}
@@ -258,6 +267,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
             </div>
           </div>`,
     display: `
+          <div class="device-section">
+            <label class="section-label" for="pipeline-column-mode" id="pipeline-column-mode-label"></label>
+            <select id="pipeline-column-mode" class="config-select" aria-describedby="pipeline-column-mode-help"></select>
+            <div class="power-mode-help" id="pipeline-column-mode-help"></div>
+          </div>
           <div class="device-section">
             <div class="checkbox-container">
               <input type="checkbox" id="visual-sync" aria-describedby="visual-sync-help" ${isVisualSyncEnabled(config) ? 'checked' : ''}>
@@ -328,8 +342,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
       border-radius: 8px;
       padding: 20px;
       width: 760px;
-      max-width: calc(100vw - 32px);
-      height: min(600px, calc(100vh - 40px));
+      max-width: calc(100% - 32px);
+      height: min(600px, calc(100% - 40px));
+      max-height: calc(100% - 32px);
+      overflow: auto;
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
@@ -674,6 +690,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       normalizeThemeId(config.theme), id => getThemePreset(id).label);
   }
 
+  function renderPipelineColumnOptions() {
+    replaceOptions(document.getElementById('pipeline-column-mode'), ['manual', 'auto'],
+      config.pipelineColumnMode, value => t(`dialog.config.pipelineColumns.${value}`));
+  }
+
   function renderSpectrumOverlayOptions() {
     replaceOptions(document.getElementById('spectrum-overlay-quality'),
       ['normal', 'hq'], config.spectrumOverlayQuality,
@@ -1009,7 +1030,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const openHomeRisk = document.getElementById('openhome-risk');
     if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
+    document.getElementById('library-include-video-label').textContent = t('dialog.config.libraryIncludeVideo');
+    document.getElementById('library-include-video-help').textContent = t('dialog.config.libraryIncludeVideoHelp');
     document.getElementById('config-theme-label').textContent = t('dialog.config.theme');
+    document.getElementById('pipeline-column-mode-label').textContent = t('dialog.config.pipelineColumns');
+    document.getElementById('pipeline-column-mode-help').textContent = t('dialog.config.pipelineColumns.help');
+    renderPipelineColumnOptions();
     document.getElementById('frequency-preview-sound-label').textContent = t('dialog.config.frequencyPreview.sound');
     renderFrequencyPreviewOptions();
     document.getElementById('sfz-size-limit-label').textContent = t('dialog.config.sfzSizeLimit');
@@ -1099,6 +1125,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (hardwareAcceleration) hardwareAcceleration.checked = config.hardwareAcceleration !== false;
     const visualSync = document.getElementById('visual-sync');
     if (visualSync) visualSync.checked = isVisualSyncEnabled(config);
+    const libraryIncludeVideo = document.getElementById('library-include-video');
+    if (libraryIncludeVideo) libraryIncludeVideo.checked = config.libraryIncludeVideo === true;
 
     const startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
     const startupEffects = document.getElementById('startup-view-effects');
@@ -1128,6 +1156,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderLanguageOptions();
     renderThemeOptions();
     renderOfflineOutputControls();
+    renderPipelineColumnOptions();
     renderSpectrumOverlayOptions();
     renderFrequencyPreviewOptions();
     renderSfzSizeLimitOptions();
@@ -1279,6 +1308,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (updateSequence !== visualSyncUpdateSequence) return;
     await window.audioManager?.setVisualSyncEnabled?.(enabled);
   });
+  document.getElementById('library-include-video').addEventListener('change', async e => {
+    await save({ libraryIncludeVideo: e.target.checked });
+  });
   document.getElementById('frequency-preview-sound').addEventListener('change', async e => {
     const frequencyPreviewSound = e.target.value === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
     await save({ frequencyPreviewSound });
@@ -1386,6 +1418,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const theme = normalizeThemeId(e.target.value);
     if (!await save({ theme })) return;
     window.uiManager?.setThemePreference?.(theme);
+  });
+
+  document.getElementById('pipeline-column-mode').addEventListener('change', async e => {
+    const pipelineColumnMode = e.target.value === 'manual' ? 'manual' : 'auto';
+    if (!await save({ pipelineColumnMode })) return;
+    const columnManager = window.uiManager?.pipelineManager?.core?.columnManager;
+    columnManager?.updatePipelineColumns(columnManager.getCurrentColumns());
   });
   document.getElementById('controller-mapping-btn').addEventListener('click', async () => {
     try {

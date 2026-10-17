@@ -183,7 +183,7 @@ test('item color modes preserve independent solid color and gradient settings', 
         text.palette.mode = 'gradient';
         assert.equal(normalizeLayout({ ...createDefaultLayout(), items: [text] }).items[0].palette.mode, 'gradient');
     }
-    assert.equal(Object.hasOwn(createItem('artwork').palette, 'mode'), false);
+    for (const type of ['artwork', 'video']) assert.equal(Object.hasOwn(createItem(type).palette, 'mode'), false);
 });
 
 test('Gradient direction survives presets and sharing while existing layouts keep frequency coloring', () => {
@@ -628,6 +628,11 @@ test('text font choices and emphasis persist without affecting non-text items', 
     const normalized = normalizeLayout({ ...createDefaultLayout(), items: [title] }).items[0];
     assert.deepEqual([normalized.style.fontFamily, normalized.style.bold, normalized.style.italic], ['sans-serif', false, false]);
     assert.deepEqual(createItem('artwork', 'cover').style, { rounded: false });
+    assert.deepEqual(createItem('video', 'video').style, { fit: 'contain', rounded: false, artworkFallback: true });
+    const video = createItem('video', 'invalid-video');
+    Object.assign(video.style, { fit: 'zoom', rounded: 'true', artworkFallback: false });
+    assert.deepEqual(normalizeLayout({ ...createDefaultLayout(), items: [video] }).items[0].style,
+        { fit: 'contain', rounded: false, artworkFallback: false });
 });
 
 test('text decorations are optional, persist when set, and clamp invalid values', () => {

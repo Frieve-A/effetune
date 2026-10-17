@@ -8,11 +8,6 @@ lang: fr
 
 Un ensemble d'outils essentiels pour ajuster les aspects fondamentaux de la lecture de votre musique. Ces plugins vous aident à contrôler le volume, l'équilibre et d'autres aspects basiques de votre expérience d'écoute.
 
-<!-- spectrum-overlay -->
-## Superposition du spectre
-
-Appuyez sur l’icône de spectre d’un graphique compatible pour passer successivement de After à Before + After, puis à Off. After affiche uniquement le spectre après traitement sous forme de courbe bleue. Before + After remplit la variation entre le spectre avant et après traitement : une couleur chaude signale les fréquences dont le niveau a augmenté, le bleu celles dont le niveau a diminué, et une courbe grise indique le spectre After. Les spectres d’entrée et de sortie sont alignés sur le même instant de lecture, afin de comparer le même son. Le réglage **Normale** applique un lissage au 1/12 d’octave ; **Haute qualité** analyse les basses fréquences plus en détail. Utilisez cette comparaison pour voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez les niveaux du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. Dans Configuration, choisissez **Normale** ou **Haute qualité** pour la qualité du spectre superposé, et **Valeur instantanée** ou **Maintien des crêtes** pour son affichage. Le maintien des crêtes garde les pics récents visibles puis les fait diminuer progressivement. En mode After, seul le spectre après traitement est recueilli ; en mode Off, l’acquisition et le tracé s’arrêtent.
-
 ## Liste des plugins
 
 * [Bass Management](#bass-management) - Envoie les graves gérés et le LFE vers les sorties de caisson choisies
@@ -25,6 +20,11 @@ Appuyez sur l’icône de spectre d’un graphique compatible pour passer succes
 * [Polarity Inversion](#polarity-inversion) - Inverse la polarité du signal pour correction ou routage spécial
 * [Stereo Balance](#stereo-balance) - Ajuste l'équilibre gauche-droite de votre musique
 * [Volume](#volume) - Contrôle le volume de la lecture
+
+<!-- spectrum-overlay -->
+## Superposition du spectre
+
+Appuyez sur l’icône de spectre d’un graphique compatible pour passer successivement de After à Before + After, puis à Off. After affiche uniquement le spectre après traitement sous forme de courbe bleue. Before + After remplit la variation entre le spectre avant et après traitement : une couleur chaude signale les fréquences dont le niveau a augmenté, le bleu celles dont le niveau a diminué, et une courbe grise indique le spectre After. Les spectres d’entrée et de sortie sont alignés sur le même instant de lecture, afin de comparer le même son. Le réglage **Normale** applique un lissage au 1/12 d’octave ; **Haute qualité** analyse les basses fréquences plus en détail. Utilisez cette comparaison pour voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez les niveaux du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. Dans Configuration, choisissez **Normale** ou **Haute qualité** pour la qualité du spectre superposé, et **Valeur instantanée** ou **Maintien des crêtes** pour son affichage. Le maintien des crêtes garde les pics récents visibles puis les fait diminuer progressivement. En mode After, seul le spectre après traitement est recueilli ; en mode Off, l’acquisition et le tracé s’arrêtent.
 
 ## Bass Management
 

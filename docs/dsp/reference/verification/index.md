@@ -7,14 +7,17 @@ permalink: /dsp/reference/verification/
 ---
 # Verification
 
-The frozen wrapper reference origin is 82 JavaScript-derived effect suites,
-6 native direct-double suites, 1 independent native-reference suites, and 22 production-native-promoted suites. The independent native reference validates IIR filtering with RBJ biquads in direct form I and linear-phase filtering with direct FIR convolution. Maintainers run:
+Each test case processes a fixed input and compares the output with a frozen
+reference output under that case's tolerance. The same cases run on the native
+Python package, the JavaScript package's baseline and SIMD WebAssembly modules, and
+the AudioWorklet in Chromium. These comparisons check processing behavior; they do
+not promise byte-identical output across backends. See [Determinism](/dsp/concepts/determinism/)
+for the conditions needed to reproduce a result.
 
-```console
-node tools/verify-dsp-library-goldens.mjs
-```
+Package checks also exercise installation and the documented examples. See the
+[DSP Library Release workflow results](https://github.com/Frieve-A/effetune/actions/workflows/dsp-library-release.yml)
+for the verification status of published releases and [Release integrity](/dsp/reference/release-integrity/)
+for published package checksums and provenance.
 
-See the stable [DSP Library workflow and runs](https://github.com/Frieve-A/effetune/actions/workflows/dsp-library-ci.yml).
-CI acceptance summaries are temporary workflow artifacts, not public Release assets.
-The repository Chromium harness uses a special `file:` flag; that exception is not a
-public browser-support claim.
+Use [Compatibility](/dsp/reference/compatibility/) to check supported runtimes
+and browser requirements before integrating the library.

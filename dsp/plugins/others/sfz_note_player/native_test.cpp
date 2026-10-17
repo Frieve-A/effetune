@@ -100,9 +100,9 @@ struct Harness {
   PluginKernel *kernel = nullptr;
   float rate;
   std::uint32_t analysis_latency = 0u;
-  generated::SFZNotePlayerPluginParams params{.5F,    -30.0F, 3.0F, 28.0F, 91.0F, 32.0F, 0.0F,
-                                              100.0F, 0.0F,   0.0F, 1.0F,  1.0F,  1.0F,  0.0F,
-                                              18.0F,  0.0F,   0.0F, -1.0F, 100.0F};
+  generated::SFZNotePlayerPluginParams params{.5F,    -30.0F, 3.0F, 28.0F, 91.0F,  32.0F, 0.0F,
+                                              100.0F, 0.0F,   0.0F, 1.0F,  1.0F,   1.0F,  0.0F,
+                                              18.0F,  0.0F,   0.0F, -1.0F, 100.0F, 0.0F};
   double time = 0;
   explicit Harness(float sampleRate = 48000) : rate(sampleRate) {
     kernel = descriptor->construct(storage.data());
@@ -1246,12 +1246,17 @@ void assetsAndDelay() {
       CHECK(output[i] == (i == delay ? 1.F : 0.F));
   }
 }
-void realAnalysisAndLinks() {
+void realAnalysisAndLinks(bool event_detection = false, bool timbre = false) {
   Harness linked, own;
   Bank bank;
   linked.load(bank);
   own.load(bank);
+  linked.params.detection = own.params.detection = event_detection ? 1.0F : 0.0F;
+  linked.sync();
+  own.sync();
   plugins::analyzer::SpectralAnalysis producer;
+  producer.setEventEnabled(event_detection);
+  producer.setTimbreEnabled(timbre);
   producer.prepare({48000, 2, 1024});
   producer.configure(28, 91);
   bool heard = false;
@@ -1302,6 +1307,106 @@ void realAnalysisAndLinks() {
   CHECK(engine->setInstanceAnalysisSource(target, 0) == ET_OK);
   engine->destroyInstance(source);
   CHECK(engine->setInstanceAnalysisSource(target, source) == ET_ERR_ARGS);
+}
+void detectionSwitch() {
+  Harness h;
+  Bank bank;
+  h.load(bank);
+  const auto classic_latency = h.kernel->latencySamples();
+  CHECK(peak(h.attack(60)) > 0);
+  const auto hop = static_cast<unsigned>(std::round(h.rate * .02F));
+  h.params.detection = 1;
+  h.sync();
+  CHECK(h.kernel->latencySamples() == classic_latency + 7u * hop);
+  NoteAnalysisFrame classic{}, event{};
+  classic.probabilities[60 - 21] = 1;
+  event.probabilities[64 - 21] = 1.0F;
+  event.probabilities[84 - 21] = 1.0F;
+  const auto render = [&](bool start) {
+    event.starts[64 - 21] = start;
+    event.starts[84 - 21] = start;
+    NoteAnalysisView view{&classic, 1,
+                          28,       91,
+                          hop,      h.time,
+                          2,        h.analysis_latency,
+                          &event,   h.analysis_latency + 7u * hop};
+    std::vector<float> audio(2u * hop);
+    h.process(audio, 2, &view);
+    return audio;
+  };
+  // Neither classic nor event presence alone can fire in Event mode, even at confidence 1.
+  CHECK(peak(render(false)) == 0);
+  event.probabilities[64 - 21] = event.probabilities[84 - 21] = .2F;
+  CHECK(peak(render(false)) == 0);
+  event.probabilities[64 - 21] = event.probabilities[84 - 21] = 1.0F;
+  CHECK(peak(render(false)) == 0);
+  CHECK(peak(render(true)) > 0);
+  const auto voices = h.snapshot();
+  CHECK(voices[20u + 64u * 8u] == 1u);
+  CHECK(voices[20u + 84u * 8u] == 1u); // C6 uses the analyzer's presence-based start.
+  // Once a note ends, recovered confidence cannot synthesize another start.
+  event.probabilities.fill(0);
+  event.ends[64 - 21] = event.ends[84 - 21] = true;
+  for (auto i = 0u; i < 16u; ++i)
+    render(false);
+  event.probabilities[64 - 21] = event.probabilities[84 - 21] = 1.0F;
+  event.ends.fill(false);
+  CHECK(peak(render(false)) == 0);
+  h.params.detection = 0;
+  h.sync();
+  CHECK(h.kernel->latencySamples() == classic_latency);
+  CHECK(peak(h.event(60, 0)) == 0);
+  CHECK(peak(h.attack(60)) > 0);
+  // An event-mode consumer rejects a classic-only view and analyses its silent input.
+  h.params.detection = 1;
+  h.sync();
+  CHECK(peak(h.event(60)) == 0);
+}
+void eventNoteHold() {
+  for (const float hold : {0.0F, 50.0F, 100.0F}) {
+    Harness h;
+    Bank bank;
+    CHECK(h.load(bank) == ET_OK);
+    h.params.detection = 1;
+    h.params.threshold = .75F;
+    h.params.noteHoldMs = hold;
+    h.sync();
+    constexpr unsigned hop = 960u;
+    NoteAnalysisFrame classic{}, event{};
+    const auto render = [&](float probability, bool start, bool end = false) {
+      event.probabilities[39] = probability;
+      event.starts[39] = start;
+      event.ends[39] = end;
+      NoteAnalysisView view{&classic, 1u,
+                            28u,      91u,
+                            hop,      h.time,
+                            2u,       h.analysis_latency,
+                            &event,   h.analysis_latency + 7u * hop};
+      std::vector<float> audio(2u * hop);
+      h.process(audio, 2u, &view);
+      return audio.back();
+    };
+    CHECK(render(1, true) == .25F);
+    render(.2F, false, true);
+    // A second onset cancels the earlier stop, including its output reservation.
+    CHECK(render(1, true) >= .25F);
+    for (unsigned i = 0; i < 20u; ++i)
+      CHECK(render(1, false) >= .25F);
+    // Confirmed intervals survive a low presence score without a separate SFZ release.
+    for (unsigned i = 0; i < 20u; ++i)
+      CHECK(render(.55F, false) == .25F);
+    // Same-key reattacks sustain even when confidence is below the Classic threshold.
+    CHECK(render(.55F, true) >= .25F);
+    for (unsigned i = 0; i < 20u; ++i)
+      CHECK(render(.55F, false) >= .25F);
+    // Confidence recovery after the hold expires must not add a new attack.
+    render(.2F, false, true);
+    for (unsigned i = 0; i < 20u; ++i)
+      render(.2F, false);
+    for (unsigned i = 0; i < 20u; ++i)
+      CHECK(render(1, false) == 0);
+    CHECK(render(1, true) == .25F);
+  }
 }
 void realHighRegisterRetrigger() {
   auto r = region();
@@ -1357,58 +1462,65 @@ void realHighRegisterRetrigger() {
   CHECK(held_attacks == 1u);
 }
 void revisedAnalysisTiming() {
-  for (float rate : {48000.F, 96000.F})
-    for (const unsigned onset_ms : {100u, 107u})
-      for (const unsigned midi : {48u, 60u, 69u}) {
-        Harness linked(rate), own(rate), dry(rate);
-        Bank bank;
-        linked.load(bank);
-        own.load(bank);
-        dry.params.dryMix = 100;
-        dry.params.wetMix = 0;
-        dry.sync();
-        plugins::analyzer::SpectralAnalysis producer;
-        producer.prepare({rate, 2, 128});
-        producer.configure(28, 91);
-        const auto onset = static_cast<unsigned>(std::round(rate * onset_ms / 1000.0));
-        unsigned wet_onset = 0, dry_onset = 0, detection = 0;
-        for (unsigned at = 0; at < static_cast<unsigned>(rate * .25F); at += 128) {
-          std::vector<float> audio(256);
-          for (unsigned i = 0; i < 128; ++i) {
-            double value = 0;
-            if (at + i >= onset)
-              for (unsigned harmonic = 1; harmonic <= 8; ++harmonic)
-                value += .1 / harmonic *
-                         std::sin(6.283185307179586 * 440 *
-                                      std::exp2((static_cast<double>(midi) - 69) / 12) * harmonic *
-                                      (at + i) / rate +
-                                  .37 * harmonic * harmonic);
-            audio[i] = audio[i + 128] = static_cast<float>(value);
+  for (const bool event_detection : {false, true})
+    for (float rate : {48000.F, 96000.F})
+      for (const unsigned onset_ms : {100u, 107u})
+        for (const unsigned midi : {48u, 60u, 69u}) {
+          Harness linked(rate), own(rate), dry(rate);
+          Bank bank;
+          linked.load(bank);
+          own.load(bank);
+          for (auto *h : {&linked, &own, &dry}) {
+            h->params.detection = event_detection ? 1.0F : 0.0F;
+            h->sync();
           }
-          auto self = audio, original = audio;
-          producer.process(audio.data(), 2, 128, {linked.time});
-          const auto &view = producer.view();
-          CHECK(view.latencySamples == linked.analysis_latency);
-          for (unsigned i = 0; i < view.count; ++i)
-            if (!detection && view.frames[i].probabilities[midi - 21] >= .5F)
-              detection = at + view.frames[i].sampleOffset;
-          linked.process(audio, 2, &view);
-          own.process(self);
-          dry.process(original, 2, &view);
-          CHECK(audio == self);
-          for (unsigned i = 0; i < 128; ++i) {
-            if (!wet_onset && audio[i] != 0)
-              wet_onset = at + i;
-            if (!dry_onset && original[i] != 0)
-              dry_onset = at + i;
+          dry.params.dryMix = 100;
+          dry.params.wetMix = 0;
+          dry.sync();
+          plugins::analyzer::SpectralAnalysis producer;
+          producer.setEventEnabled(event_detection);
+          producer.prepare({rate, 2, 128});
+          producer.configure(28, 91);
+          const auto onset = static_cast<unsigned>(std::round(rate * onset_ms / 1000.0));
+          unsigned wet_onset = 0, dry_onset = 0, detection = 0;
+          for (unsigned at = 0; at < static_cast<unsigned>(rate * .45F); at += 128) {
+            std::vector<float> audio(256);
+            for (unsigned i = 0; i < 128; ++i) {
+              double value = 0;
+              if (at + i >= onset)
+                for (unsigned harmonic = 1; harmonic <= 8; ++harmonic)
+                  value += .1 / harmonic *
+                           std::sin(6.283185307179586 * 440 *
+                                        std::exp2((static_cast<double>(midi) - 69) / 12) *
+                                        harmonic * (at + i) / rate +
+                                    .37 * harmonic * harmonic);
+              audio[i] = audio[i + 128] = static_cast<float>(value);
+            }
+            auto self = audio, original = audio;
+            producer.process(audio.data(), 2, 128, {linked.time});
+            const auto &view = producer.view();
+            CHECK(view.latencySamples == linked.analysis_latency);
+            const auto *detected = event_detection ? view.eventFrames : view.frames;
+            for (unsigned i = 0; i < view.count; ++i)
+              if (!detection && detected[i].probabilities[midi - 21] >= .5F)
+                detection = at + detected[i].sampleOffset;
+            linked.process(audio, 2, &view);
+            own.process(self);
+            dry.process(original, 2, &view);
+            CHECK(audio == self);
+            for (unsigned i = 0; i < 128; ++i) {
+              if (!wet_onset && audio[i] != 0)
+                wet_onset = at + i;
+              if (!dry_onset && original[i] != 0)
+                dry_onset = at + i;
+            }
           }
+          CHECK(detection != 0 && wet_onset != 0);
+          CHECK(dry_onset == onset + dry.kernel->latencySamples());
+          // Attack detection may refine the frame position; compare the audible paths.
+          const auto residual = static_cast<int>(wet_onset) - static_cast<int>(dry_onset);
+          CHECK(std::abs(residual) <= static_cast<int>(std::round(rate * .04F)));
         }
-        CHECK(detection != 0 && wet_onset != 0);
-        CHECK(dry_onset == onset + dry.kernel->latencySamples());
-        // Attack detection may refine the frame position; compare the audible paths.
-        const auto residual = static_cast<int>(wet_onset) - static_cast<int>(dry_onset);
-        CHECK(std::abs(residual) <= static_cast<int>(std::round(rate * .04F)));
-      }
   // A mismatched shared source must fall back to this input's own analysis.
   for (const bool wrong_channels : {false, true}) {
     Harness h;
@@ -1645,8 +1757,8 @@ struct AssetEngineHarness {
     player = engine->createInstance("SFZNotePlayerPlugin");
     volume = engine->createInstance("VolumePlugin");
     const generated::NoteSpectrogramPluginParams analysis{83, 83, 0};
-    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,  0,
-                                                      1,    1,   1, 0,  18, 0,  0, -1,  100};
+    const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,   0,
+                                                      1,    1,   1, 0,  18, 0,  0, -1,  100, 0};
     const generated::VolumePluginParams gain{-6.020599913F};
     CHECK(engine->setInstanceParams(source, reinterpret_cast<const float *>(&analysis),
                                     analysis.kFloatCount, analysis.kHash, 0u) == ET_OK);
@@ -1992,6 +2104,10 @@ int main() {
   timingOffset();
   assetsAndDelay();
   realAnalysisAndLinks();
+  realAnalysisAndLinks(true);
+  realAnalysisAndLinks(true, true);
+  detectionSwitch();
+  eventNoteHold();
   realHighRegisterRetrigger();
   revisedAnalysisTiming();
   performance();

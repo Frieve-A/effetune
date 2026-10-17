@@ -6,12 +6,7 @@ lang: fr
 
 # Plugins Saturation
 
-Une collection de plugins qui ajoutent de la chaleur et du caractère à votre musique. Ces effets peuvent donner à la musique numérique un son plus analogique et ajouter une richesse agréable au son, similaire à la coloration sonore des équipements audio vintage.
-
-<!-- spectrum-overlay -->
-## Superposition du spectre
-
-Appuyez sur l’icône de spectre d’un graphique compatible pour passer successivement de After à Before + After, puis à Off. After affiche uniquement le spectre après traitement sous forme de courbe bleue. Before + After remplit la variation entre le spectre avant et après traitement : une couleur chaude signale les fréquences dont le niveau a augmenté, le bleu celles dont le niveau a diminué, et une courbe grise indique le spectre After. Les spectres d’entrée et de sortie sont alignés sur le même instant de lecture, afin de comparer le même son. Le réglage **Normale** applique un lissage au 1/12 d’octave ; **Haute qualité** analyse les basses fréquences plus en détail. Utilisez cette comparaison pour voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez les niveaux du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. Dans Configuration, choisissez **Normale** ou **Haute qualité** pour la qualité du spectre superposé, et **Valeur instantanée** ou **Maintien des crêtes** pour son affichage. Le maintien des crêtes garde les pics récents visibles puis les fait diminuer progressivement. En mode After, seul le spectre après traitement est recueilli ; en mode Off, l’acquisition et le tracé s’arrêtent.
+Une collection de plugins pour façonner les harmoniques et restaurer la bande passante. Ils peuvent ajouter de la chaleur ou de la distorsion, ou générer un contenu aigu mesuré lorsque l'enregistrement présente une limite de bande nette.
 
 ## Liste des Plugins
 
@@ -20,32 +15,41 @@ Appuyez sur l’icône de spectre d’un graphique compatible pour passer succes
 - [Dynamic Saturation](#dynamic-saturation) - Simule le déplacement non linéaire des cônes de haut-parleur
 - [Exciter](#exciter) - Ajoute du contenu harmonique pour améliorer la clarté et la présence
 - [Hard Clipping](#hard-clipping) - Ajoute de l'intensité et du mordant au son
-- [Harmonic Distortion](#harmonic-distortion) - Façonne la forme d'onde avec des termes non linéaires ajustables
+- [Harmonic Distortion](#harmonic-distortion) - Ajoute du caractère avec une distorsion non linéaire réglable du 2e au 5e ordre
 - [Multiband Saturation](#multiband-saturation) - Façonne et améliore différentes plages de fréquences indépendamment
 - [Saturation](#saturation) - Ajoute de la chaleur et de la richesse comme un équipement vintage
 - [Sub Synth](#sub-synth) - Ajoute un signal basse fréquence filtré dérivé de l'audio original
 - [Tube Simulator](#tube-simulator) - Modélise des étages ligne à lampes et des amplificateurs de puissance push-pull ou single-ended
 
+<!-- spectrum-overlay -->
+## Superposition du spectre
+
+Appuyez sur l’icône de spectre d’un graphique compatible pour passer successivement de After à Before + After, puis à Off. After affiche uniquement le spectre après traitement sous forme de courbe bleue. Before + After remplit la variation entre le spectre avant et après traitement : une couleur chaude signale les fréquences dont le niveau a augmenté, le bleu celles dont le niveau a diminué, et une courbe grise indique le spectre After. Les spectres d’entrée et de sortie sont alignés sur le même instant de lecture, afin de comparer le même son. Le réglage **Normale** applique un lissage au 1/12 d’octave ; **Haute qualité** analyse les basses fréquences plus en détail. Utilisez cette comparaison pour voir comment chaque réglage modifie les graves, les médiums et les aigus pendant l’écoute. Lisez les niveaux du spectre sur l’échelle dBFS à droite du graphique. Elle est distincte de l’échelle de gain du graphique : 0 dBFS est la référence numérique de pleine échelle et les valeurs plus basses correspondent à des niveaux plus faibles. Dans Configuration, choisissez **Normale** ou **Haute qualité** pour la qualité du spectre superposé, et **Valeur instantanée** ou **Maintien des crêtes** pour son affichage. Le maintien des crêtes garde les pics récents visibles puis les fait diminuer progressivement. En mode After, seul le spectre après traitement est recueilli ; en mode Off, l’acquisition et le tracé s’arrêtent.
+
 ## Bandwidth Extender
 
-Bandwidth Extender est destiné aux sources présentant une coupure nette dans les aigus, comme certains MP3 à faible débit. Il analyse la paire stéréo ensemble et n'ajoute du contenu qu'au-dessus de la limite détectée ou définie. Il ne reconstitue pas la forme d'onde d'origine ; en mode Auto, il reste inactif si aucune coupure stable n'est trouvée.
+Bandwidth Extender est destiné aux sources présentant une coupure nette dans les aigus, comme certains MP3 à faible débit. Il analyse la paire stéréo ensemble et n'ajoute que du contenu nouvellement généré au-dessus de la limite détectée ou définie. Il ne reconstitue pas la forme d'onde d'origine manquante et reste normalement inactif lorsque le mode Auto ne trouve pas de coupure stable.
 
-La bande générée comprend deux composantes réglables séparément : une continuation harmonique liée au signal d'entrée et un bruit façonné déterministe. Le signal d'origine reste présent pendant l'ajout de ces composantes.
+La bande générée comprend deux composantes réglables séparément : une continuation harmonique liée au signal d'entrée et un bruit façonné déterministe. La continuation harmonique maintient le contenu tonal relié au spectre restant, tandis que le bruit façonné donne aux percussions et aux autres sons de type bruit une texture moins artificielle. Le son d'origine reste présent pendant l'ajout de ces nouvelles composantes.
 
 ### Guide d'amélioration de l'écoute
 
-- Commencez avec **Auto** et les deux réglages Amount à leur valeur par défaut de 100 %. Utilisez **Manual** si la fréquence de coupure est connue.
-- Réduisez **Noise Amount** pour les sons tonals soutenus, ou **Harmonic Amount** pour les percussions et les sons soufflés. Gardez les deux actifs sur un contenu mixte.
-- Comparez au bypass à niveau égal. Pour éclaircir une source déjà large bande, utilisez plutôt Exciter.
+- Pour une musique limitée par un codec, commencez avec **Auto** et les deux réglages Amount à leur valeur par défaut de 100 %.
+- Si Auto ne s'enclenche pas alors que la coupure est connue, choisissez **Manual** et réglez la limite sur la coupure mesurée de la source.
+- Réduisez **Noise Amount** pour les sons tonals soutenus, ou **Harmonic Amount** pour les percussions et les sons proches du souffle. Gardez les deux actifs lorsque la source mélange les deux.
+- Comparez au bypass à niveau égal. Augmenter l'un des réglages n'accroît que la composante générée correspondante et ne peut pas reconstituer des détails absents de la source.
+- Ne l'utilisez pas comme éclaircisseur général sur une source déjà large bande ; Exciter est conçu pour cet usage différent.
 
 ### Paramètres
 
-- **Harmonic Amount** (0-200 %, 100 % par défaut) règle uniquement la continuation harmonique : 0 % la supprime, 100 % est son niveau de référence et 200 % la double sans modifier le bruit ni la voie sèche.
-- **Noise Amount** (0-200 %, 100 % par défaut) règle uniquement le bruit façonné : 0 % le supprime, 100 % est son niveau de référence et 200 % le double sans modifier les harmoniques ni la voie sèche.
-- **Cutoff** choisit **Auto**, qui recherche une chute spectrale abrupte et persistante commune aux deux canaux, ou **Manual**. En Manual, la bande générée reste automatiquement dans la plage disponible à la lecture.
-- **Manual Cutoff** (6000-24000 Hz) fixe le début de la génération en mode Manual.
+- **Harmonic Amount** (0-200 %, 100 % par défaut) - Règle indépendamment la continuation harmonique. 0 % supprime cette composante, 100 % correspond à son niveau de référence et 200 % la double sans modifier le bruit façonné ni le signal sec.
+- **Noise Amount** (0-200 %, 100 % par défaut) - Règle indépendamment le bruit façonné déterministe. 0 % supprime cette composante, 100 % correspond à son niveau de référence et 200 % la double sans modifier la continuation harmonique ni le signal sec.
+- **Cutoff** - Choisit la manière dont la limite de la bande manquante est déterminée.
+  - **Auto** recherche une chute spectrale abrupte et persistante commune aux deux canaux stéréo et réduit l'effet lorsque la confiance est faible.
+  - **Manual** utilise la valeur de Manual Cutoff. La bande générée reste automatiquement dans la plage de fréquences disponible à la lecture.
+- **Manual Cutoff** (6000-24000 Hz) - Fixe le début de la génération en mode Manual. Faites-la correspondre à la limite mesurée de la source plutôt que de la baisser simplement pour rendre l'effet plus évident.
 
-Bandwidth Extender ajoute environ 26,7-29,0 ms de latence, dont un saut de traitement supplémentaire : 1 280 échantillons à 48 kHz, 2 560 à 96 kHz ou 5 120 à 192 kHz. S'il ne peut pas fonctionner avec la fréquence d'échantillonnage, la configuration des canaux ou l'appareil actuels, son panneau indique qu'il est contourné et le son reste inchangé. Utilisez un réglage compatible ou désactivez le plugin.
+Bandwidth Extender ajoute environ 26,7-29,0 ms de latence, dont un saut de traitement supplémentaire : 1 280 échantillons à 48 kHz, 2 560 à 96 kHz ou 5 120 à 192 kHz. S'il ne peut pas fonctionner avec la fréquence d'échantillonnage, la configuration des canaux ou l'appareil actuels, le plugin indique qu'il est contourné et le son reste inchangé. Utilisez un réglage compatible ou désactivez le plugin.
 
 ## Bass Extender
 
@@ -68,21 +72,11 @@ Bass Extender renforce les enregistrements pauvres en graves en générant du co
 
 Un effet basé sur la physique qui simule le déplacement non linéaire des cônes de haut-parleur dans différentes conditions. En modélisant le comportement mécanique d'un haut-parleur, puis en appliquant une saturation à ce déplacement, il crée une forme unique de distorsion qui répond de manière dynamique à votre musique.
 
-**Oversampling** : Choisissez 1x (par défaut), 2x, 4x, 8x. Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
-
-### Préréglages système
-
-Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comparer des réglages complets du mouvement du cône.
-
-- **Subtle Cone Color** - Un caractère de cône de haut-parleur discret, presque sans distorsion.
-- **Pushed Speaker** - Un mouvement du cône et une saturation plus marqués, avec compensation du niveau de sortie.
-- **Ragged Cone** - Le caractère de cône le plus prononcé, volontairement rugueux.
-
 ### Guide d'Amélioration de l'Écoute
 - **Amélioration Subtile :**
   - Ajoute une chaleur douce et un léger arrondi des crêtes
   - Crée un son naturellement "poussé" sans distorsion évidente
-  - Ajoute une profondeur et une dimensionnalité subtiles au son
+  - Ajoute un mouvement et une profondeur subtils au son
 - **Effet Modéré :**
   - Crée une distorsion plus dynamique et réactive
   - Ajoute un mouvement unique et de la vivacité aux sons soutenus
@@ -92,7 +86,17 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comp
   - Crée des comportements résonants similaires à ceux des haut-parleurs
   - Crée un caractère marqué et évolutif pour une écoute expérimentale
 
+### Préréglages système
+
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comparer des réglages complets du mouvement du cône.
+
+- **Subtle Cone Color** - Un caractère de cône de haut-parleur discret, presque sans distorsion.
+- **Pushed Speaker** - Un mouvement du cône et une saturation plus marqués, avec compensation du niveau de sortie.
+- **Ragged Cone** - Le caractère de cône le plus prononcé, volontairement rugueux.
+
 ### Paramètres
+
+- **Oversampling** (1x, 2x, 4x, 8x ; 1x par défaut) - Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
 - **Speaker Drive** (0.0-10.0) - Contrôle la force avec laquelle le signal audio déplace le cône
   - Valeurs basses : Mouvement subtil et effet doux
   - Valeurs hautes : Mouvement dramatique et caractère plus fort
@@ -163,15 +167,13 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour comp
 
 Un effet qui ajoute du contenu harmonique pour améliorer la clarté et la présence. En filtrant le contenu haute fréquence et en appliquant une saturation, il crée des harmoniques supplémentaires qui illuminent et améliorent votre musique.
 
-**Oversampling** : Choisissez 1x (par défaut), 2x, 4x, 8x. Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
-
 ### Guide d'Amélioration de l'Écoute
 - **Amélioration Subtile :**
-  - Ajoute de la clarté et de l'air aux voix
-  - Améliore la présence des instruments
+  - Ajoute de la clarté et de l'air aux voix et aux détails des hautes fréquences
+  - Améliore la présence dans l'ensemble du signal de lecture
   - Crée un son plus ouvert et détaillé
 - **Effet Modéré :**
-  - Fait ressortir des détails cachés dans les enregistrements chargés
+  - Fait ressortir des détails cachés dans le mix
   - Ajoute de l'éclat et de la brillance
   - Rend la musique plus "hi-fi"
 - **Effet Créatif :**
@@ -180,6 +182,8 @@ Un effet qui ajoute du contenu harmonique pour améliorer la clarté et la prés
   - Utile lorsque vous voulez un son plus brillant et plus en avant, mais à utiliser avec retenue
 
 ### Paramètres
+
+- **Oversampling** (1x, 2x, 4x, 8x ; 1x par défaut) - Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
 - **HPF Freq** (500-10000Hz) - Définit la fréquence de coupure pour le filtrage passe-haut
   - Valeurs basses (500-2000Hz) : Affecte plus du signal
   - Valeurs moyennes (2000-5000Hz) : Cible les fréquences de présence
@@ -240,8 +244,6 @@ Un effet qui ajoute du contenu harmonique pour améliorer la clarté et la prés
 
 Un effet d'écrêtage numérique qui limite les crêtes au-dessus d'un seuil défini. Utilisez-le lorsque vous voulez plus de mordant, de densité ou de distorsion créative ; gardez le seuil haut pour un contrôle léger des crêtes et baissez-le progressivement pour un caractère plus fort.
 
-**Oversampling** : Choisissez 1x (par défaut), 2x, 4x, 8x, 16x. Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 16x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
-
 ### Guide d'Amélioration de l'Écoute
 - Amélioration Subtile :
   - Ajoute un peu de mordant et de densité lorsque Threshold reste haut
@@ -257,6 +259,8 @@ Un effet d'écrêtage numérique qui limite les crêtes au-dessus d'un seuil dé
   - Parfait pour l'écoute expérimentale
 
 ### Paramètres
+
+- **Oversampling** (1x, 2x, 4x, 8x, 16x ; 1x par défaut) - Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 16x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
 - **Threshold** - Contrôle la quantité de son affectée (-60dB à 0dB)
   - Valeurs hautes (-6dB à 0dB) : Contrôle léger des crêtes ou mordant subtil
   - Valeurs moyennes (-24dB à -6dB) : Caractère d'écrêtage et densité notables
@@ -286,8 +290,6 @@ Un effet d'écrêtage numérique qui limite les crêtes au-dessus d'un seuil dé
 
 Le plugin Harmonic Distortion façonne la forme d'onde avec des termes non linéaires ajustables du 2e au 5e ordre. Il permet de régler le caractère des distorsions paires et impaires, d'une chaleur subtile à une coloration plus forte, ce qui peut rendre plus vivant un son trop propre, mince ou plat.
 
-**Oversampling** : Choisissez 1x (par défaut), 2x, 4x, 8x. Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
-
 ### Guide d'amélioration de l'écoute
 
 - **Effet subtil :**
@@ -309,6 +311,7 @@ Le plugin Harmonic Distortion façonne la forme d'onde avec des termes non liné
 
 ### Paramètres
 
+- **Oversampling:** Choisit le multiplicateur de la fréquence de traitement (1x, 2x, 4x, 8x, défaut: 1x). Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
 - **2nd Harm (%):** Définit le terme de distorsion du deuxième ordre (-30 à 30%, défaut: 2%)
 - **3rd Harm (%):** Définit le terme de distorsion du troisième ordre (-30 à 30%, défaut: 3%)
 - **4th Harm (%):** Définit le terme de distorsion du quatrième ordre (-30 à 30%, défaut: 0.5%)
@@ -335,8 +338,6 @@ Le plugin Harmonic Distortion façonne la forme d'onde avec des termes non liné
 
 Un effet polyvalent qui permet d'ajouter de la chaleur et du caractère à des plages de fréquences spécifiques du signal de lecture entier. En divisant le son en bandes basses, moyennes et hautes, vous pouvez façonner chaque plage indépendamment pour une amélioration sonore précise.
 
-**Oversampling** : Choisissez 1x (par défaut), 2x, 4x, 8x. Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
-
 ### Guide d'Amélioration de l'Écoute
 - Amélioration des Basses :
   - Ajoute de la chaleur et du punch aux basses fréquences
@@ -347,13 +348,15 @@ Un effet polyvalent qui permet d'ajouter de la chaleur et du caractère à des p
   - Aide les enregistrements chargés à paraître plus clairs
   - Crée un son plus clair et plus défini
 - Amélioration des Aigus :
-  - Ajoute de l'éclat aux cymbales et aux hi-hats
+  - Ajoute de l'éclat aux hautes fréquences
   - Améliore l'air et la brillance
   - Crée des aigus nets et détaillés
 
 Comme ce traitement agit par bande de fréquences, il affecte tous les sons de la plage sélectionnée, pas des instruments ou voix isolés.
 
 ### Paramètres
+
+- **Oversampling** (1x, 2x, 4x, 8x ; 1x par défaut) - Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
 - **Fréquences de Crossover**
   - Freq 1 (20Hz-2kHz) : Définit où la bande basse se termine et la bande moyenne commence
   - Freq 2 (200Hz-20kHz, toujours maintenu à Freq 1 ou au-dessus) : Définit où la bande moyenne se termine et la bande haute commence
@@ -417,8 +420,6 @@ Comme ce traitement agit par bande de fréquences, il affecte tous les sons de l
 
 Un effet qui simule le son chaud et agréable des équipements à lampes vintage. Il peut ajouter de la richesse et du caractère à votre musique, lui donnant un son plus "analogique" et moins "numérique".
 
-**Oversampling** : Choisissez 1x (par défaut), 2x, 4x, 8x. Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
-
 ### Guide d'Amélioration de l'Écoute
 - Ajout de Chaleur :
   - Rend la musique numérique plus naturelle
@@ -434,6 +435,8 @@ Un effet qui simule le son chaud et agréable des équipements à lampes vintage
   - Idéal pour l'écoute expérimentale
 
 ### Paramètres
+
+- **Oversampling** (1x, 2x, 4x, 8x ; 1x par défaut) - Les valeurs élevées réduisent les sons indésirables dus au repliement des harmoniques aiguës dans la bande audible, mais sollicitent davantage le processeur. Commencez par 2x ou 4x ; choisissez 8x pour une réduction plus forte à 48 kHz. 1x conserve le traitement d’origine. Au-delà de 1x, un retard de 64 échantillons s’ajoute (environ 1,33 ms à 48 kHz).
 - **Drive** - Contrôle la quantité de chaleur et de caractère (0.0 à 10.0)
   - Léger (0.0-3.0) : Chaleur analogique subtile
   - Moyen (3.0-6.0) : Caractère riche et vintage
@@ -548,7 +551,7 @@ Tube Simulator ajoute les harmoniques, la compression et la réaction de l’ali
 
 ### Guide de Réglage à l’Écoute
 
-- Pour une coloration discrète, choisissez dans le groupe **Pre** un preset portant le suffixe **@0.01%** ou **@0.1%**. Choisissez le suffixe **@1%** ou **@2%** pour rendre les harmoniques et la compression plus audibles.
+- Pour une coloration discrète, choisissez dans le groupe **Pre** un préréglage portant le suffixe **@0.01%** ou **@0.1%**. Choisissez le suffixe **@1%** ou **@2%** pour rendre les harmoniques et la compression plus audibles.
 - Utilisez **Pre** pour le son de l’étage ligne, **Power** pour l’étage de sortie seul ou **Pre+Power** pour le parcours complet de l’amplificateur.
 - Commencez par **EL84 Distributed 10 W @2%** pour un son push-pull mesuré. Comparez-le à **EL84 Pentode 10 W @2%** pour un caractère plus ferme et direct.
 - Essayez **300B SE @2%** ou **2A3 SE @2%** pour des harmoniques paires plus présentes et une réponse single-ended plus douce.
@@ -568,51 +571,82 @@ Les commandes sont réparties dans cinq onglets.
 
 Les onglets Power et Transformer n’affichent que les commandes utilisées par le Output Circuit sélectionné.
 
-### Choix d’un Preset
+### Choix d’un Préréglage
 
-Cliquez sur le bouton **Préréglages d’effet** dans l’en-tête de l’effet pour ouvrir la boîte de dialogue des presets. Choisissez un réglage de Préréglages système dans le groupe Pre, Power ou Pre+Power pour l’appliquer immédiatement. Le preset qui correspond aux réglages actuels est mis en évidence ; si aucun ne correspond, aucun preset n’est mis en évidence. Les réglages initiaux correspondent à **EL84 Pentode @2%**. **Output Safety Trim** et **Auto Gain Reduction** ne servent pas à la correspondance ; les modifier ne retire donc pas la mise en évidence.
+Cliquez sur le bouton **Préréglages d’effet** dans l’en-tête de l’effet pour ouvrir la boîte de dialogue des préréglages. Dans Préréglages système, choisissez un réglage du groupe Pre, Power ou Pre+Power pour l’appliquer immédiatement. Le préréglage qui correspond aux réglages actuels est mis en évidence ; si aucun ne correspond, aucun préréglage n’est mis en évidence. Les réglages initiaux correspondent à **EL84 Pentode @2%**. **Output Safety Trim** et **Auto Gain Reduction** ne servent pas à la correspondance ; les modifier ne retire donc pas la mise en évidence.
 
-Le suffixe du preset donne un repère pratique sur l’intensité de l’effet : **@0.01%** est très subtil, **@0.1%** ajoute une coloration légère, et **@1%** ou **@2%** rendent les harmoniques et la compression plus évidentes. Les presets règlent aussi Output Trim pour faciliter la comparaison, mais le volume perçu peut varier selon la musique. Égalisez les niveaux avec Output Trim avant de choisir le son que vous préférez.
+Le suffixe du préréglage donne un repère pratique sur l’intensité de l’effet : **@0.01%** est très subtil, **@0.1%** ajoute une coloration légère, et **@1%** ou **@2%** rendent les harmoniques et la compression plus évidentes. Les préréglages règlent aussi Output Trim pour faciliter la comparaison, mais le volume perçu peut varier selon la musique. Égalisez les niveaux avec Output Trim avant de choisir le son que vous préférez.
 
 ### Paramètres
 
-- **Input Volume** (-96 à 0dB) - Réduit le niveau qui attaque le circuit choisi. Une valeur plus basse réduit la compression et la distorsion et augmente la réserve.
-- **Driver Type** (12AX7, 12AT7, 12AU7 ou Bypass) - Sélectionne les lampes du driver à deux étages ou le retire du trajet. La 12AX7 offre le gain le plus élevé, la 12AT7 est intermédiaire et la 12AU7 offre le gain le plus faible et la plus grande réserve.
-- **Bias** (-50 à +50%) - Déplace le point de polarisation du driver. L’augmenter déplace les étages vers un courant plus élevé ; le réduire fait l’inverse et modifie le caractère des harmoniques et de la compression.
-- **Plate** (150 à 300 V) - Règle la tension de plaque du driver. Une valeur plus élevée donne généralement plus de réserve ; une valeur plus basse fait apparaître plus tôt la compression et la non-linéarité.
-- **Source Z** (0.6 à 100 kΩ) - Règle l’impédance de la source qui alimente le premier étage. Une valeur plus élevée peut adoucir les aigus et les transitoires.
-- **Supply** (0.1 à 47 kΩ) - Règle la résistance d’alimentation du driver. Une valeur plus élevée accentue l’affaissement de l’alimentation ; une valeur plus basse donne une réponse plus ferme.
-- **Negative Feedback** (0 à 30dB) - Règle la contre-réaction globale. L’augmenter réduit généralement la distorsion et raffermit la réponse et le contrôle du haut-parleur ; 0dB ouvre la boucle.
-- **Output Trim** (-48 à +48dB) - Égalise le volume traité sans modifier l’excitation à l’intérieur du circuit.
-- **Output Safety Trim** (-96 à 0dB) - Offre un réglage de niveau séparé pour la protection de sortie. Auto Gain Reduction ne réduit que cette commande, pas Output Trim.
-- **Auto Gain Reduction** (activé par défaut) - Réduit automatiquement Output Safety Trim lorsque la sortie traitée risquerait de dépasser le maximum numérique. Une fois désactivé, aucune nouvelle réduction n’est ajoutée, mais celle déjà appliquée reste en place.
-- **Wet/Dry Mix** (0 à 100%) - Mélange le signal traité et l’original. Une valeur plus basse rend l’effet plus discret.
-- **Input Reference** (0.100 à 300.000 Vpk) - Définit la tension d’entrée représentée par un pic numérique à pleine échelle. Une valeur plus élevée attaque davantage le circuit ; utilisez Input Volume pour le réglage principal de l’intensité.
-- **Output Circuit** (Line, Push-Pull Power ou SE Triode) - Sélectionne la topologie. Line comprend seulement le driver ; les deux autres modes ajoutent l’étage de puissance, le transformateur et la charge du haut-parleur.
-- **Power Tubes** (EL84 ×2, EL34 ×2, 6L6GC ×2 ou KT88 ×2) - Sélectionne les lampes de sortie push-pull et leur caractère.
-- **Output B+** (300 à 470 V) - Règle l’alimentation de l’étage push-pull. Une valeur plus élevée augmente l’excursion disponible et la réserve des lampes.
-- **Cathode Resistor** (270 à 500 Ω / valve) - Règle la résistance de polarisation de chaque lampe push-pull. L’augmenter réduit le courant de repos ; la diminuer l’augmente.
-- **SE Triode** (300B ou 2A3) - Sélectionne la lampe de sortie single-ended.
-- **SE B+** (250 à 450 V) - Règle l’alimentation de l’étage single-ended.
-- **SE Cathode Resistor** (700 à 1300 Ω) - Règle la résistance de polarisation de la lampe single-ended et modifie son point de fonctionnement et sa compression.
-- **Screen Tap** (0%, 20% ou 43%) - Sélectionne la connexion de grille-écran. 0% correspond au fonctionnement pentode ; 20% et 43% donnent une charge répartie.
-- **Push-Pull Primary** (6.0, 6.6 ou 8.0 kΩ) - Règle l’impédance primaire du transformateur push-pull et modifie la charge des lampes et leur réponse. Ce choix fixe aussi le flux de saturation magnétique du noyau.
-- **SE Primary** (2.5, 3.5 ou 5.0 kΩ) - Règle l’impédance primaire du transformateur single-ended. Ce choix détermine aussi la quantité de flux qu’un signal donné envoie dans le noyau à entrefer, si bien que les impédances plus élevées atteignent la saturation plus tôt à niveau égal. Le courant de repos du fonctionnement single-ended maintient un flux permanent dans le noyau : le signal le sature donc de façon asymétrique et ajoute des harmoniques de rang pair dans les graves.
-- **Assumed Speaker Load** (4, 8, 15 ou 16 Ω) - Sélectionne l’impédance nominale et la prise secondaire pour lesquelles le circuit est conçu.
-- **Actual Speaker Load** (2 à 32 Ω) - Règle l’impédance du haut-parleur réellement connecté. Si elle diffère de Assumed Speaker Load, la charge renvoyée aux lampes, l’amortissement et la puissance disponible changent ; des valeurs identiques correspondent au point de fonctionnement prévu.
+- **Input Volume** (-96 à 0dB) - Réduit le niveau qui attaque le trajet de signal choisi
+  - 0dB correspond à l’ouverture complète ; une valeur plus basse réduit l’excitation interne et augmente la réserve
+- **Driver Type** (12AX7, 12AT7, 12AU7 ou Bypass) - Sélectionne les lampes du driver à deux étages ou retire ce driver du trajet du signal
+  - La 12AX7 offre le gain en tension le plus élevé, la 12AT7 est intermédiaire et la 12AU7 offre le gain le plus faible et la plus grande réserve
+  - En Push-Pull Power, il alimente le déphaseur 12AX7 fixe ; en SE Triode, il attaque directement la triode de sortie choisie
+  - Bypass est destiné aux préréglages Power. Push-Pull Power conserve son déphaseur ; SE Triode alimente la triode de sortie sans le driver commun. Line avec Bypass est un simple passage aligné en temps, et Negative Feedback n’y a aucun effet
+- **Bias** (-50 à +50%) - Déplace le point de polarisation cathodique des deux étages du driver
+  - L’augmenter abaisse leur résistance de cathode modélisée et les déplace vers un courant plus élevé ; le réduire fait l’inverse
+- **Plate** (150 à 300 V) - Règle l’alimentation de plaque des étages du driver
+  - Une valeur plus élevée donne généralement plus de réserve en tension ; une valeur plus basse fait apparaître plus tôt la compression et la non-linéarité
+- **Source Z** (0.6 à 100 kΩ) - Règle l’impédance de la source qui alimente le premier étage (Stage 1)
+  - Une valeur plus élevée interagit davantage avec les capacités d’entrée et peut adoucir l’attaque dans les aigus ou sur les transitoires
+- **Supply** (0.1 à 47 kΩ) - Règle la résistance de l’alimentation B+ des étages du driver
+  - Une valeur plus élevée produit un affaissement plus marqué de l’alimentation quand le courant augmente ; une valeur plus basse rend l’alimentation plus rigide
+- **Negative Feedback** (0 à 30dB) - Règle la quantité de contre-réaction globale
+  - Line renvoie la réponse de plaque du second étage ; les deux topologies de puissance renvoient un enroulement de contre-réaction fixe au secondaire du transformateur
+  - L’augmenter réduit généralement le gain en boucle ouverte et la distorsion et raffermit la réponse ; 0dB ouvre la boucle de contre-réaction
+  - SE Triode est prévu pour une contre-réaction légère : partez de 3dB et restez normalement entre 0 et 6dB
+  - L’amortissement électrique de la charge du haut-parleur découle de cette boucle elle-même ; l’augmenter renforce donc aussi l’emprise de l’amplificateur sur la charge
+- **Output Trim** (-48 à +48dB) - Règle le niveau numérique du signal traité après le circuit modélisé, sans modifier son excitation interne
+- **Output Safety Trim** (-96 à 0dB) - Applique un réglage de niveau linéaire distinct après le circuit modélisé, séparé de Output Trim afin que la protection du niveau de sortie dispose de sa propre commande
+  - Auto Gain Reduction ne réduit que ce réglage ; il ne modifie jamais Output Trim
+  - Le curseur et sa case de valeur affichent le réglage effectif, c’est-à-dire la valeur que vous avez définie moins la réduction automatique actuellement appliquée ; le réglage enregistré est la dernière valeur que vous avez définie vous-même, et c’est elle qui est sauvegardée
+  - Lorsque vous saisissez le curseur, la valeur effective affichée devient votre réglage, si bien que le niveau ne saute pas, et la réduction accumulée est alors effacée
+- **Auto Gain Reduction** (activé par défaut) - Permet à la protection du niveau de sortie de réduire Output Safety Trim d’elle-même
+  - Une fois désactivé, aucune nouvelle réduction ne s’accumule et celle déjà appliquée reste en place
+- **Wet/Dry Mix** (0 à 100%) - Mélange le signal traité et l’original aligné sur la latence
+  - À 0%, la voie sèche conserve le retard fixe de 64 échantillons nécessaire à l’alignement
+- **Input Reference** (0.100 à 300.000 Vpk) - Tension de crête aux bornes représentée par une crête numérique de 0dBFS
+  - 2.828 Vpk correspond à une sinusoïde pleine échelle de 2 Vrms ; 5.657 Vpk correspond à 4 Vrms
+  - Une valeur plus élevée attaque davantage le circuit modélisé ; utilisez Input Volume pour le réglage principal à l’écoute
+- **Output Circuit** (Line, Push-Pull Power ou SE Triode) - Sélectionne la topologie modélisée
+  - Line s’arrête après le driver à deux étages et n’exécute ni le modèle de lampes de puissance, ni celui du transformateur, ni celui de la charge du haut-parleur
+  - Push-Pull Power ajoute le déphaseur et le circuit de sortie de puissance complet
+  - SE Triode ajoute une 300B ou une 2A3 attaquée directement et un transformateur de sortie single-ended à entrefer
+- **Power Tubes** (EL84 ×2, EL34 ×2, 6L6GC ×2 ou KT88 ×2) - Sélectionne le modèle de courant des lampes de sortie et les composants de circuit associés ; il n’agit qu’en mode Power
+  - Les quatre modèles suivent les données réelles des lampes de sortie selon les tensions de plaque, d’écran et de grille, y compris le blocage complet atteint lorsque la grille est suffisamment négative
+- **Output B+** (300 à 470 V) - Règle la tension d’alimentation de l’étage de puissance ; une valeur plus élevée augmente l’excursion de tension disponible et la dissipation des lampes
+- **Cathode Resistor** (270 à 500 Ω / valve) - Règle la résistance de polarisation cathodique séparée de chaque lampe de sortie
+  - Une résistance plus élevée réduit le courant de repos ; une résistance plus basse l’augmente
+- **SE Triode** (300B ou 2A3) - Sélectionne le modèle de triode de sortie single-ended à chauffage direct ; il n’agit qu’en mode SE Triode
+- **SE B+** (250 à 450 V) - Règle la tension d’alimentation de l’étage de sortie single-ended
+- **SE Cathode Resistor** (700 à 1300 Ω) - Règle la résistance de polarisation cathodique de l’unique triode de sortie
+- **Screen Tap** (0%, 20% ou 43%) - Sélectionne la connexion de la grille-écran des lampes de sortie
+  - 0% utilise l’alimentation d’écran fixe ; 20% et 43% relient les écrans aux prises correspondantes du primaire du transformateur pour une charge répartie (ultra-linéaire)
+  - La prise est un rapport de spires : les écrans suivent donc cette part du couplage magnétique de l’enroulement primaire
+- **Push-Pull Primary** (6.0, 6.6 ou 8.0 kΩ) - Sélectionne l’impédance primaire plaque à plaque du transformateur de sortie push-pull et, avec Assumed Speaker Load, son rapport de transformation
+  - Ce choix fixe aussi le flux de saturation magnétique du noyau
+- **SE Primary** (2.5, 3.5 ou 5.0 kΩ) - Sélectionne l’impédance primaire du transformateur single-ended à entrefer et, avec Assumed Speaker Load, son rapport de transformation
+  - Ce choix détermine aussi la quantité de flux qu’un signal donné envoie dans le noyau à entrefer, si bien que les impédances plus élevées atteignent la saturation plus tôt à niveau égal. Le courant de repos du fonctionnement single-ended maintient un flux permanent dans le noyau : le signal le sature donc de façon asymétrique et ajoute des harmoniques de rang pair dans les graves
+- **Assumed Speaker Load** (4, 8, 15 ou 16 Ω) - Sélectionne la prise secondaire du transformateur et l’impédance nominale de haut-parleur pour laquelle le circuit est conçu
+  - Chaque choix utilise une charge électrique RLC dépendante de la fréquence plutôt qu’une simple résistance, et agit sur la charge du transformateur et sur la contre-réaction
+- **Actual Speaker Load** (2 à 32 Ω) - Règle l’impédance du haut-parleur réellement connecté à cette prise
+  - Le réseau de charge est mis à l’échelle selon son rapport à Assumed Speaker Load : la fréquence de résonance et le Q sont conservés et seul le niveau d’impédance change
+  - Le rapport de transformation reste celui de Assumed Speaker Load ; un écart renvoie donc une impédance différente aux lampes de sortie et modifie l’amortissement, la puissance disponible et l’excitation. Des valeurs identiques font fonctionner le circuit à son point de conception
 
 ### Protection du Niveau de Sortie
 
 La modification des paramètres du circuit peut provoquer un saut important de niveau. Lorsque **Auto Gain Reduction** est activé, Tube Simulator réduit **Output Safety Trim** si la sortie traitée risque de dépasser la pleine échelle numérique. La réduction reste appliquée au lieu de remonter automatiquement et s’affiche dans l’état sous le graphique.
 
-- Si la réduction devient importante, baissez Input Volume ou Output Trim, puis sélectionnez à nouveau un preset ou réglez Output Safety Trim.
+- Si la réduction devient importante, baissez Input Volume ou Output Trim, puis sélectionnez à nouveau un préréglage ou réglez Output Safety Trim.
 - Désactivez Auto Gain Reduction uniquement si vous surveillez déjà les crêtes de sortie par un autre moyen.
 - Cette protection réduit le niveau de sortie ; elle ne supprime pas les harmoniques ni la compression créées dans le circuit choisi.
 
 ### Bypass de Sécurité et Récupération
 
-- Si un réglage instable active le bypass, baissez Negative Feedback ou sélectionnez un preset. Le son traité revient automatiquement dès que le réglage est stable.
-- Si l’état indique toujours un bypass, restaurez un preset et rechargez l’effet. Lorsque le traitement n’est pas disponible sur l’appareil, le son traverse sans modification.
+- Si un réglage instable active le bypass, baissez Negative Feedback ou sélectionnez un préréglage. Le son traité revient automatiquement dès que le réglage est stable.
+- Si l’état indique toujours un bypass, restaurez un préréglage et rechargez l’effet. Lorsque le traitement n’est pas disponible sur l’appareil, le son traverse sans modification.
 
 ### Lecture du HUD
 

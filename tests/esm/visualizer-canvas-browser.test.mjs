@@ -9,6 +9,102 @@ const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replac
 const frequencyAxisScript = read('../../plugins/frequency-axis.js');
 const { FrequencyAxis } = (() => { const window = {}; vm.runInNewContext(frequencyAxisScript, { window }); return window; })();
 
+test('Gaussian blur retains its scene-relative width and opaque edges at different output sizes', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        const results = await page.evaluate(() => [640, 1280, 2560].map(width => {
+            const canvas = createLayer(width, width / 2), ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, width, width / 2);
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(width / 2, 0, width / 2, width / 2);
+            const output = new VisualizerEffects().apply('blur', canvas,
+                [normalizeEffect({ type: 'blur', amount: .75 })], 0, {}, 0, true, false, false, width / 1280).canvas;
+            const read = (x, y) => [...output.getContext('2d').getImageData(x, y, 1, 1).data];
+            return {
+                profile: [-.04, -.02, 0, .02, .04].map(offset => read(Math.floor(output.width * (.5 + offset)), output.height / 2)[0]),
+                edges: [[0, 0], [output.width - 1, 0], [0, output.height - 1], [output.width - 1, output.height - 1]]
+                    .map(([x, y]) => read(x, y)[3])
+            };
+        }));
+        for (const result of results) {
+            assert.ok(result.edges.every(alpha => alpha >= 254), 'Edge extension keeps the opaque layer opaque');
+            assert.ok(result.profile[1] > 0 && result.profile[3] < 255, 'Gaussian transitions remain smooth');
+            assert.ok(result.profile.every((value, index) => Math.abs(value - results[1].profile[index]) <= 6),
+                `The same scene positions have the same blur profile: ${JSON.stringify(results)}`);
+        }
+    } finally { await browser.close(); }
+});
+
+test('Lyrics seeking follows rendered transforms, movement and flips including overflow', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        await page.addScriptTag({ content: `{${moduleScript('../../js/library/metadata/lyrics.js')}; window.lyricsLineAt = lyricsLineAt;}` });
+        await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
+        const results = await page.evaluate(() => {
+            const stage = createLayer(1280, 720), renderer = new VisualizerRenderer(stage), item = createItem('lyrics', 'lyrics');
+            item.rect = { x: .3, y: .25, w: .3, h: .3 };
+            Object.assign(item.params, { lyricsView: 'list', lyricsMotion: 'step', lyricsFadeIn: 0, lyricsFadeOut: 0 });
+            item.style.fontSize = 40;
+            const layout = { ...createDefaultLayout(), items: [item] };
+            layout.background.color = '#000000';
+            const lyrics = { data: { synced: true, lines: [{ text: 'First', time: 0 },
+                { text: 'Second', time: 5 }, { text: 'Third', time: 10 }] }, time: 6, duration: 20 };
+            const sources = { getModulators: () => ({}), getFrame: () => null };
+            // Color the measured row regions so their actual rendered positions can be
+            // located from pixels independently of the hit-test transformation.
+            const drawItem = renderer.drawItem.bind(renderer);
+            renderer.drawItem = (state, item, ...args) => {
+                drawItem(state, item, ...args);
+                if (item.type !== 'lyrics') return;
+                const ctx = state.canvas.getContext('2d');
+                ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
+                for (const [index, row] of state.lyricsMeasurements.hits.entries()) {
+                    ctx.fillStyle = ['#ff0000', '#00ff00', '#0000ff'][index];
+                    ctx.fillRect(row.left, row.top, row.right - row.left, row.bottom - row.top);
+                }
+            };
+            const cases = [[], [{ type: 'transform', offsetY: 100 }],
+                [{ type: 'transform', angle: 35, skewX: 20, skewY: -10, scaleX: 120, scaleY: 75, offsetX: 20 }],
+                [{ type: 'scale-pulse', amount: 1 }, { type: 'shake', amount: 1 }],
+                [{ type: 'transform', angle: 20, offsetY: 40 }, { type: 'scale-pulse', amount: 1 }, { type: 'shake', amount: 1 }]];
+            const results = [];
+            for (const quality of ['high', 'low']) for (const effects of cases) {
+                for (const [flipX, flipY] of [[false, false], [true, false], [false, true], [true, true]]) {
+                    Object.assign(item, { effects: effects.map(effect => normalizeEffect(effect)), flipX, flipY });
+                    renderer.draw(layout, sources, null, .13, { lyrics, quality });
+                    const pixels = stage.getContext('2d').getImageData(0, 0, stage.width, stage.height).data;
+                    const sums = Array.from({ length: 3 }, () => ({ x: 0, y: 0, count: 0 }));
+                    for (let y = 0; y < stage.height; y++) for (let x = 0; x < stage.width; x++) {
+                        const offset = (y * stage.width + x) * 4;
+                        for (let color = 0; color < 3; color++) if (pixels[offset + color] > 250 &&
+                            pixels[offset + (color + 1) % 3] < 5 && pixels[offset + (color + 2) % 3] < 5) {
+                            sums[color].x += x + .5; sums[color].y += y + .5; sums[color].count++;
+                        }
+                    }
+                    const rows = renderer.layers.get(item.id).lyricsMeasurements.hits;
+                    results.push({ quality, effects, flipX, flipY, rows: sums.map((sum, index) => ({
+                        pixels: sum.count, expected: rows[index].time,
+                        actual: renderer.lyricsSeekTime(layout, sum.x / sum.count / stage.width, sum.y / sum.count / stage.height)
+                    })) });
+                }
+            }
+            renderer.dispose();
+            return results;
+        });
+        for (const result of results) for (const row of result.rows) {
+            assert.ok(row.pixels > 100, `Each row is visibly rendered: ${JSON.stringify(result)}`);
+            assert.equal(row.actual, row.expected, JSON.stringify(result));
+        }
+    } finally { await browser.close(); }
+});
+
 test('Edge Fade uses independent rectangular widths, a true circle, and whole-mask Amount interpolation', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -101,7 +197,7 @@ test('Edge Fade composites every item including analyzer underlays, axes, labels
             }
             return results;
         });
-        assert.equal(results.length, 18);
+        assert.equal(results.length, 19);
         for (const result of results) {
             assert.ok(result.checked > 100, result.type);
             assert.equal(result.mismatches, 0, JSON.stringify(result));
@@ -171,7 +267,7 @@ test('Edge Fade repaints cached static items after horizontal and vertical flips
             for (const [color, x, y] of [['#ff0000', 0, 0], ['#0000ff', 100, 0], ['#00ff00', 0, 50], ['#ffffff', 100, 50]]) {
                 coverCtx.fillStyle = color; coverCtx.fillRect(x, y, 100, 50);
             }
-            return ['text', 'title', 'artwork', 'shape'].map(type => {
+            return ['text', 'title', 'artwork', 'video', 'shape'].map(type => {
                 const stage = createLayer(200, 100), renderer = new VisualizerRenderer(stage), item = createItem(type, type);
                 item.rect = { x: 0, y: 0, w: 1, h: 1 };
                 item.effects = [normalizeEffect({ type: 'edge-fade', top: 0, bottom: 0 })];
@@ -195,10 +291,52 @@ test('Edge Fade repaints cached static items after horizontal and vertical flips
             assert.equal(result.afterY, 2, result.type);
             assert.equal(result.held, 2, result.type);
         }
-        const artwork = results.find(result => result.type === 'artwork');
-        assert.deepEqual(artwork.before, [255, 0, 0]);
-        assert.deepEqual(artwork.horizontal, [0, 0, 255]);
-        assert.deepEqual(artwork.vertical, [255, 255, 255]);
+        // Video without a playing picture falls back to the cover by default.
+        for (const type of ['artwork', 'video']) {
+            const picture = results.find(result => result.type === type);
+            assert.deepEqual(picture.before, [255, 0, 0], type);
+            assert.deepEqual(picture.horizontal, [0, 0, 255], type);
+            assert.deepEqual(picture.vertical, [255, 255, 255], type);
+        }
+    } finally { await browser.close(); }
+});
+
+test('Video items draw the current frame with each fit and redraw when the frame time advances', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
+        }
+        const result = await page.evaluate(() => {
+            // A canvas stands in for the video element; drawImage accepts both.
+            const frame = createLayer(100, 100), frameCtx = frame.getContext('2d');
+            Object.assign(frame, { videoWidth: 100, videoHeight: 100, currentTime: 0 });
+            frameCtx.fillStyle = '#ff0000'; frameCtx.fillRect(0, 0, 100, 100);
+            const sources = { getModulators: () => ({}), getFrame: () => null };
+            const pixels = fit => {
+                const stage = createLayer(200, 100), renderer = new VisualizerRenderer(stage), item = createItem('video', 'video');
+                item.rect = { x: 0, y: 0, w: 1, h: 1 }; item.style.fit = fit;
+                const layout = { ...createDefaultLayout(), items: [item] };
+                renderer.draw(layout, sources, {}, 0, { video: frame });
+                const read = (x, y) => Array.from(stage.getContext('2d').getImageData(x, y, 1, 1).data.slice(0, 4));
+                const edge = read(10, 50), center = read(100, 50);
+                frameCtx.fillStyle = '#0000ff'; frameCtx.fillRect(0, 0, 100, 100);
+                renderer.draw(layout, sources, {}, 0, { video: frame }); const held = read(100, 50);
+                frame.currentTime = 1; renderer.draw(layout, sources, {}, 0, { video: frame }); const advanced = read(100, 50);
+                frame.currentTime = 0; frameCtx.fillStyle = '#ff0000'; frameCtx.fillRect(0, 0, 100, 100);
+                renderer.dispose();
+                return { edge, center, held, advanced };
+            };
+            return { contain: pixels('contain'), cover: pixels('cover'), stretch: pixels('stretch') };
+        });
+        assert.deepEqual(result.contain.edge.slice(0, 3), [8, 13, 28]);
+        for (const fit of ['contain', 'cover', 'stretch']) {
+            assert.deepEqual(result[fit].center.slice(0, 3), [255, 0, 0], fit);
+            assert.deepEqual(result[fit].held.slice(0, 3), [255, 0, 0], fit);
+            assert.deepEqual(result[fit].advanced.slice(0, 3), [0, 0, 255], fit);
+        }
+        for (const fit of ['cover', 'stretch']) assert.deepEqual(result[fit].edge.slice(0, 3), [255, 0, 0], fit);
     } finally { await browser.close(); }
 });
 

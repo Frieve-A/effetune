@@ -4,6 +4,44 @@ import test from 'node:test';
 import { AudioPlayerUI } from '../../js/ui/audio-player/audio-player-ui.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('video preview reuses playback, expands, and restores on audio track change', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement' } });
+    const video = documentRef.createElement('video');
+    video.videoWidth = 640;
+    player.audioElement = video;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    try {
+      assert.equal(ui.videoElement, video);
+      assert.equal(video.parentNode, ui.artworkImage.parentNode);
+      assert.equal(ui.artworkImage.hidden, true);
+      assert.equal(ui.videoExpandButton.hidden, false);
+      const controls = container.querySelector('.player-controls');
+      ui.videoExpandButton.click();
+      assert.equal(container.getAttribute('data-video-expanded'), 'true');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      assert.equal(container.querySelector('.player-controls'), controls);
+      container.setAttribute('data-video-controls', 'false');
+      container.dispatchEvent('pointerdown');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      ui.onVideoKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+      assert.equal(ui.videoExpanded, false);
+      assert.equal(documentRef.activeElement, ui.videoExpandButton);
+      ui.setVideoExpanded(true);
+      player.audioElement = null;
+      player.stateManager.emit('playbackMode', 'bufferSource');
+      assert.equal(ui.videoExpanded, false);
+      assert.equal(ui.videoElement, null);
+      assert.equal(video.parentNode, null);
+      assert.equal(ui.videoExpandButton.hidden, true);
+      assert.equal(ui.videoControlsTimer, null);
+    } finally {
+      ui.removeUI();
+    }
+  });
+});
+
 class FakeElement {
   constructor(tagName, ownerDocument, calls = []) {
     this.tagName = tagName.toUpperCase();
@@ -515,6 +553,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'isPlaybackPending',
       'isPlaying',
       'isStopped',
+      'playbackMode',
       'playlist',
       'queueWindow'
     ].sort());
@@ -1941,7 +1980,7 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
     ).length, warningCountAfterRemove);
-    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 14);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 15);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

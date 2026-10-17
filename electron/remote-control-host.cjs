@@ -1110,14 +1110,14 @@ function openRemoteControlPanel() {
 
 function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
   const handlers = new Map([
-    [CHANNELS.rendererReady, host => (host ? host.setRendererReady() : { enabled: false })],
-    [CHANNELS.rendererUnavailable, host => (host ? host.setRendererUnavailable() : false)],
-    [CHANNELS.response, (host, response) => (host ? host.handleRendererResponse(response) : false)],
-    [CHANNELS.state, (host, snapshot) => (host ? host.handleRendererState(snapshot) : false)],
-    [CHANNELS.presetsChanged, host => (host ? host.handlePresetsChanged() : false)],
-    [CHANNELS.irsChanged, host => (host ? host.handleIrsChanged() : false)],
-    [CHANNELS.openPanel, host => host?.openPanel() || false],
-    [CHANNELS.getStatus, host => (host ? host.getBriefStatus() : { enabled: false })],
+    [CHANNELS.rendererReady, host => host.setRendererReady()],
+    [CHANNELS.rendererUnavailable, host => host.setRendererUnavailable()],
+    [CHANNELS.response, (host, response) => host.handleRendererResponse(response)],
+    [CHANNELS.state, (host, snapshot) => host.handleRendererState(snapshot)],
+    [CHANNELS.presetsChanged, host => host.handlePresetsChanged()],
+    [CHANNELS.irsChanged, host => host.handleIrsChanged()],
+    [CHANNELS.openPanel, host => host.openPanel() || false],
+    [CHANNELS.getStatus, host => host.getBriefStatus()],
     [PANEL_CHANNELS.getStatus, host => host.getStatus({ withQr: true })],
     [PANEL_CHANNELS.setEnabled, async (host, enabled) => {
       await host.setEnabled(enabled === true);
@@ -1136,7 +1136,12 @@ function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
       if (!window?.webContents || window.isDestroyed?.() || event.sender !== window.webContents) {
         throw new Error('invalid-sender');
       }
-      return handler(getHost(), ...args);
+      const host = getHost();
+      if (!host) {
+        return channel === CHANNELS.rendererReady || channel === CHANNELS.getStatus ||
+          channel === PANEL_CHANNELS.getStatus ? { enabled: false } : false;
+      }
+      return handler(host, ...args);
     });
   }
   return () => {

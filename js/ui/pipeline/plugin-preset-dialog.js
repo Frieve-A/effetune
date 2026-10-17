@@ -231,6 +231,7 @@ export class PluginPresetDialog {
         this.pipelineCore.routingDialog.positionDialog(dialog, anchorButton);
         await this.renderContent(content, provider, generation, saveRow);
         if (generation !== this.generation || document.querySelector('.preset-dialog') !== dialog) return dialog;
+        this.pipelineCore.routingDialog.positionDialog(dialog, anchorButton);
         this.setupCloseHandler(dialog, anchorButton, generation);
         this.setupKeyboardNavigation(dialog, content, provider, generation, saveRow);
 
@@ -450,6 +451,12 @@ export class PluginPresetDialog {
     setupKeyboardNavigation(dialog, content, provider, generation, saveRow) {
         let navigationQueue = Promise.resolve();
         dialog.addEventListener('keydown', async event => {
+            if (event.key === 'Escape' && !event.defaultPrevented) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.close();
+                return;
+            }
             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
             if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) return;

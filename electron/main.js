@@ -29,6 +29,7 @@ const { createLibraryDialogTranslator } = require('./library-dialog-localization
 const { armQuitDeadline, QUIT_DEADLINE_DEFAULT_TIMEOUT_SECONDS } = require('./quit-deadline.cjs');
 const { createInstanceRegistry } = require('./instance-registry.cjs');
 const { createAppUpdater } = require('./app-updater.cjs');
+const { AlacPlaybackSource } = require('./alac-playback-source.cjs');
 const {
   LibraryCatalogRecovery,
   registerLibraryCatalogRecoveryIpc
@@ -47,7 +48,7 @@ const packageJson = require('../package.json');
 const appVersion = packageJson.version;
 constants.setAppVersion(appVersion);
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');
 
 function isSupportedPlaybackAudioPath(filePath) {
@@ -110,6 +111,7 @@ let disposeOpenHomeIpc = null;
 let remoteControlHost = null;
 let disposeRemoteControlIpc = null;
 let disposePowerMonitorEvents = null;
+let alacPlaybackSource = null;
 let appServicesClosePromise = null;
 
 async function closeLibraryCatalogServices() {
@@ -233,14 +235,15 @@ async function closeApplicationServices() {
   disposeOpenHomeIpc = null;
   const openHomeHost = openHomeControlHost;
   openHomeControlHost = null;
-  disposeRemoteControlIpc?.();
-  disposeRemoteControlIpc = null;
   const remoteHost = remoteControlHost;
   remoteControlHost = null;
+  const playbackSource = alacPlaybackSource;
+  alacPlaybackSource = null;
   appServicesClosePromise = Promise.all([
     closeLibraryCatalogRecovery(),
     openHomeHost?.dispose(),
-    remoteHost?.dispose()
+    remoteHost?.dispose(),
+    playbackSource?.dispose()
   ]);
   return appServicesClosePromise;
 }
@@ -250,33 +253,23 @@ async function closeApplicationServices() {
 // visible behind the splash.  Set only when a splash is going to be shown.
 let pendingMainWindowShow = false;
 
-// Renderer watchdog state — the renderer is expected to call 'renderer-ping'
-// every 2 s.  If the main process does not see a ping for WATCHDOG_THRESHOLD_MS,
-// the renderer is assumed to be frozen (e.g., stuck in a native audio system
-// call on macOS HDMI flux) and the whole app is forcibly relaunched.  This is
-// the last-resort safety net behind the in-renderer timeouts.
+// Renderer watchdog state — delayed pings diagnose a stall, but cannot
+// distinguish a frozen renderer from CPU or I/O contention. Keep the process
+// and its unsaved state alive regardless of how long the delay lasts.
 const WATCHDOG_PING_INTERVAL_MS = 2000;
 const WATCHDOG_THRESHOLD_MS = 15000;
-// If app.quit() repeatedly throws (deterministic invalid-lifecycle state),
-// fall back to a hard process.exit(1) after this many attempts so the
-// watchdog cannot become an infinite log-spam loop.
-const WATCHDOG_MAX_QUIT_ATTEMPTS = 5;
 let lastRendererPing = 0;
 let watchdogIntervalId = null;
 let watchdogArmed = false;
 let watchdogArmedBeforeSystemSuspend = false;
 let watchdogSystemSuspended = false;
-// Set true once app.relaunch() has been registered, so a subsequent watchdog
-// tick (e.g., after app.quit() throws) does not queue a second relaunch.
-let watchdogRelaunchQueued = false;
-// Counts consecutive failed app.quit() attempts to bound the retry loop.
-let watchdogQuitAttempts = 0;
+let watchdogStallReported = false;
 
 function armRendererWatchdog(reason = 'renderer') {
+  if (isAppQuitting) return;
   if (watchdogSystemSuspended) return;
   lastRendererPing = Date.now();
-  watchdogRelaunchQueued = false;
-  watchdogQuitAttempts = 0;
+  watchdogStallReported = false;
   if (!watchdogArmed) {
     watchdogArmed = true;
     console.log(`[watchdog] armed (${reason})`);
@@ -289,61 +282,32 @@ function disarmRendererWatchdog(reason = 'navigation') {
   }
   watchdogArmed = false;
   lastRendererPing = 0;
-  watchdogRelaunchQueued = false;
-  watchdogQuitAttempts = 0;
+  watchdogStallReported = false;
 }
 
 function rendererPingReceived() {
+  if (isAppQuitting || watchdogSystemSuspended) return;
   if (!watchdogArmed) {
     armRendererWatchdog('renderer-ping');
     return;
   }
-  lastRendererPing = Date.now();
+  const now = Date.now();
+  if (watchdogStallReported) {
+    console.log(`[watchdog] Renderer responsive again after ${now - lastRendererPing}ms`);
+    watchdogStallReported = false;
+  }
+  lastRendererPing = now;
 }
 
 function startWatchdog() {
   if (watchdogIntervalId) return;
   watchdogIntervalId = setInterval(() => {
-    if (!watchdogArmed || isAppQuitting) return;
+    if (!watchdogArmed || isAppQuitting || watchdogStallReported) return;
     const elapsed = Date.now() - lastRendererPing;
     if (elapsed <= WATCHDOG_THRESHOLD_MS) return;
 
-    console.error(`[watchdog] Renderer unresponsive for ${elapsed}ms — forcing relaunch`);
-    // Note: a queued relaunch cannot be cancelled if the renderer happens to
-    // recover between app.relaunch() and app.quit() taking effect — the
-    // relaunch will still happen.  This is an accepted trade-off for a
-    // last-resort safety net (Electron has no cancelRelaunch() API).
-    try {
-      // Step 1: register the relaunch (idempotent only against our own guard
-      // — Electron's app.relaunch() queues per-call and we don't want stacks).
-      if (!watchdogRelaunchQueued) {
-        queueAutoRestart(app);
-        watchdogRelaunchQueued = true;
-      }
-      // Step 2: use the normal quit lifecycle so Chromium storage and app
-      // services release their files before the replacement process starts.
-      // The window close path has its own bounded fallback for a frozen renderer.
-      app.quit();
-      clearInterval(watchdogIntervalId);
-      watchdogIntervalId = null;
-    } catch (e) {
-      // relaunch() or quit() threw (rare; usually invalid lifecycle state).
-      watchdogQuitAttempts++;
-      console.error(
-        `[watchdog] relaunch/quit failed (attempt ${watchdogQuitAttempts}/${WATCHDOG_MAX_QUIT_ATTEMPTS}), will retry on next tick:`,
-        e
-      );
-      if (watchdogQuitAttempts >= WATCHDOG_MAX_QUIT_ATTEMPTS) {
-        // Hard fallback: bypass Electron's lifecycle entirely so we don't
-        // spin-loop forever logging.  Pipeline state was already saved before
-        // this watchdog fired (or the renderer was unresponsive — best effort).
-        console.error('[watchdog] exhausted retries — calling process.exit(1)');
-        clearInterval(watchdogIntervalId);
-        watchdogIntervalId = null;
-        process.exit(1);
-      }
-      // Otherwise keep the interval running for the next retry.
-    }
+    watchdogStallReported = true;
+    console.warn(`[watchdog] Renderer heartbeat delayed by ${elapsed}ms; waiting for recovery`);
   }, WATCHDOG_PING_INTERVAL_MS);
 }
 
@@ -352,7 +316,7 @@ function stopWatchdog() {
     clearInterval(watchdogIntervalId);
     watchdogIntervalId = null;
   }
-  watchdogArmed = false;
+  disarmRendererWatchdog('shutdown');
   watchdogArmedBeforeSystemSuspend = false;
   watchdogSystemSuspended = false;
 }
@@ -389,9 +353,8 @@ function handleSystemResumeForWatchdog() {
 
 function registerWatchdogPowerEvents() {
   if (disposePowerMonitorEvents) return;
-  // Date.now() advances while the computer sleeps. Without suspending the
-  // watchdog too, its first timer after wake can mistake normal sleep for a
-  // frozen renderer and force a relaunch before current pipeline state is saved.
+  // Date.now() advances while the computer sleeps. Pause diagnostics too so
+  // the first timer after wake does not report normal sleep as a renderer stall.
   powerMonitor.on('suspend', handleSystemSuspendForWatchdog);
   powerMonitor.on('resume', handleSystemResumeForWatchdog);
   disposePowerMonitorEvents = () => {
@@ -1441,7 +1404,8 @@ async function initializeApp() {
 
   // The audio-only document is intentionally tiny and can invoke its preference
   // bridge immediately, so its IPC handlers must exist before navigation starts.
-  ipcHandlers.registerIpcHandlers({ onConfigSaved: applyNativeTheme });
+  alacPlaybackSource = new AlacPlaybackSource();
+  ipcHandlers.registerIpcHandlers({ onConfigSaved: applyNativeTheme, alacPlaybackSource });
 
   // Create the main window
   createWindow();
@@ -1467,8 +1431,8 @@ async function initializeApp() {
   });
 
   // Run the splash + 3s audio warm-up on every normal launch (Windows workaround for
-  // audio instability at startup).  Skip only on auto-restart (watchdog or
-  // HDMI-recovery IPC), since another navigation would reset the renderer's
+  // audio instability at startup). Skip on auto-restart (such as HDMI-recovery
+  // IPC), since another navigation would reset the renderer's
   // startup-grace clock and could mask the recovery.
   if (useStartupAudioWarmup) {
     createSplashScreen();
@@ -1646,7 +1610,7 @@ app.on('before-quit', (event) => {
   isAppQuitting = true;
   stopWatchdog();
   armQuitProtection();
-  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost)) {
+  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || alacPlaybackSource)) {
     event.preventDefault();
     closeApplicationServices()
       .catch(error => {
@@ -1657,6 +1621,14 @@ app.on('before-quit', (event) => {
         app.quit();
       });
   }
+});
+
+app.on('will-quit', () => {
+  // The renderer can still publish state and send its final unload notification
+  // while services close. Keep IPC registered until every window has closed;
+  // getHost() returns null during shutdown so those requests receive a response.
+  disposeRemoteControlIpc?.();
+  disposeRemoteControlIpc = null;
 });
 
 // Quit the app when all windows are closed (except on macOS unless explicitly quitting)

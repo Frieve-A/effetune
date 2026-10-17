@@ -6,6 +6,8 @@ import {
   getFileExtension,
   getFileName,
   isSupportedAudioPath,
+  isSupportedLibraryPath,
+  isSupportedVideoPath,
   joinRelativePath,
   normalizeMusicLibraryStartupView,
   normalizeRelativePath,
@@ -28,6 +30,16 @@ test('music library path helpers normalize supported files and display names', (
   assert.equal(stripExtension('.hidden'), '.hidden');
   assert.equal(isSupportedAudioPath('Song.OpUs'), true);
   assert.equal(isSupportedAudioPath('cover.jpg'), false);
+  for (const extension of ['mp4', 'webm', 'm4v', 'mov', 'mkv', '3gp']) {
+    const path = `Clip.${extension.toUpperCase()}?download=1`;
+    assert.equal(isSupportedVideoPath(path), true);
+    assert.equal(isSupportedAudioPath(path), true);
+    assert.equal(isSupportedLibraryPath(path), false);
+    assert.equal(isSupportedLibraryPath(path, true), true);
+  }
+  assert.equal(isSupportedLibraryPath('Music.m4a'), true);
+  assert.equal(isSupportedVideoPath('Music.m4a'), false);
+  assert.equal(isSupportedLibraryPath('cover.jpg', true), false);
   assert.equal(normalizeRelativePath('\\Album\\Disc 1//Song.flac'), 'Album/Disc 1/Song.flac');
   assert.equal(normalizeRelativePathForMatching('Cafe\u0301/Song.flac'), 'Café/Song.flac');
   assert.equal(joinRelativePath('/Album/', '', 'Song.flac'), 'Album/Song.flac');

@@ -3,6 +3,58 @@ import test from 'node:test';
 
 import { WebCatalogScanRuntime } from '../../js/library/scan/web-scan-runtime.js';
 
+test('Web folder and session scans include video formats only when enabled', async t => {
+  const files = ['song.m4a', 'clip.mp4', 'clip.webm', 'clip.m4v', 'clip.mov', 'clip.mkv', 'clip.3gp']
+    .map(name => ({ name, size: 1, lastModified: 1, slice() {} }));
+  const root = {
+    kind: 'directory', name: 'Music',
+    queryPermission: async () => 'granted',
+    async *values() {
+      for (const file of files) yield { kind: 'file', name: file.name, getFile: async () => file };
+    }
+  };
+  const folders = [];
+  const discoveries = [];
+  let id = 0;
+  const runtime = new WebCatalogScanRuntime({
+    repository: {
+      listFolderRecords: async () => folders,
+      upsertFolders: async rows => folders.push(...rows),
+      setFolderAvailability: async () => {},
+      tombstoneFolder: async () => {},
+      runFolderDeletion: async () => {},
+      getScanFolderTrackCount: async () => ({ trackCount: 0 })
+    },
+    handleStore: { list: async () => [], put: async () => {}, get: async () => root, close() {} },
+    idFactory: () => String(++id),
+    scanServiceFactory: ({ filesystem }) => ({
+      async runFolder({ folder }) {
+        const discovered = [];
+        for await (const entry of filesystem.enumerateDirectory()) {
+          if (entry.kind === 'file') discovered.push(entry.name);
+        }
+        discoveries.push(discovered.sort());
+        return { folderId: folder.id, status: 'completed', counts: {} };
+      }
+    })
+  });
+  t.after(() => runtime.close());
+  const audioOnly = ['song.m4a'];
+  const allMedia = files.map(file => file.name).sort();
+  const added = await runtime.addFolder({ handle: root });
+  assert.deepEqual(discoveries.at(-1), audioOnly);
+  await runtime.scanFolders({ folderIds: [added.folder.id], includeVideo: true });
+  assert.deepEqual(discoveries.at(-1), allMedia);
+  await runtime.scanFolders({ folderIds: [added.folder.id] });
+  assert.deepEqual(discoveries.at(-1), audioOnly);
+  const session = await runtime.beginSessionFolder();
+  runtime.appendSessionFolderFiles({ token: session.token, entries: files.map(file => ({ file, relativePath: file.name })) });
+  const imported = await runtime.commitSessionFolder({ token: session.token, includeVideo: true });
+  assert.deepEqual(discoveries.at(-1), allMedia);
+  await runtime.scanFolders({ folderIds: [imported.folder.id] });
+  assert.deepEqual(discoveries.at(-1), audioOnly);
+});
+
 async function withTimeout(promise, message) {
   let timer;
   try {

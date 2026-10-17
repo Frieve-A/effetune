@@ -792,7 +792,7 @@
   }
 
   function isLocalizedDocSuffix(suffix) {
-    return /^\/(?:faq|bus-function|double-blind-test)\.html$/.test(suffix) || /^\/plugins\/[a-z0-9-]+\.html$/.test(suffix);
+    return /^\/(?:faq|bus-function|double-blind-test|music-player|music-library|visualizer|measurement|pipeline-analyzer|controller-mapping|browser-extension|openhome)\.html$/.test(suffix) || /^\/plugins\/[a-z0-9-]+\.html$/.test(suffix);
   }
 
   function withCurrentLocationParts(path) {

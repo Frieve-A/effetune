@@ -6,12 +6,7 @@ lang: es
 
 # Plugins de Saturación
 
-Una colección de plugins que agregan calidez y carácter a tu música. Estos efectos pueden hacer que la música digital suene más analógica y agregar una agradable riqueza al sonido, similar a cómo el equipo de audio vintage colorea el sonido.
-
-<!-- spectrum-overlay -->
-## Superposición de espectro
-
-Pulsa el icono de espectro de un gráfico compatible para alternar entre After, Before + After y Off. After muestra solo el espectro procesado mediante una línea azul. Before + After rellena el cambio entre el espectro sin procesar y el procesado: el color cálido marca las frecuencias cuyo nivel aumenta tras el procesamiento, el azul marca las que disminuyen y una línea gris señala el espectro After. Los espectros de entrada y salida se alinean en el mismo instante de reproducción, por lo que la diferencia compara el mismo audio. El modo **Normal** aplica un suavizado de 1/12 de octava; **Alta calidad** analiza las frecuencias bajas con más detalle. Usa la comparación para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee los niveles del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. En Configuración, elige **Normal** o **Alta calidad** para la calidad del espectro superpuesto, y **Valor instantáneo** o **Retención de picos** para su visualización. Retención de picos mantiene visibles los máximos recientes y los deja bajar gradualmente. En After solo se recopila el espectro procesado; en Off se detienen la recopilación y el dibujo.
+Una colección de plugins para modelar armónicos y restaurar el ancho de banda. Pueden añadir calidez o distorsión, o generar con moderación contenido de agudos cuando una grabación tiene un límite de banda claro.
 
 ## Lista de Plugins
 
@@ -26,26 +21,35 @@ Pulsa el icono de espectro de un gráfico compatible para alternar entre After, 
 - [Sub Synth](#sub-synth) - Añade una señal filtrada de baja frecuencia para reforzar los graves
 - [Tube Simulator](#tube-simulator) - Modela etapas de línea a válvulas y amplificadores de potencia push-pull o single-ended
 
+<!-- spectrum-overlay -->
+## Superposición de espectro
+
+Pulsa el icono de espectro de un gráfico compatible para alternar entre After, Before + After y Off. After muestra solo el espectro procesado mediante una línea azul. Before + After rellena el cambio entre el espectro sin procesar y el procesado: el color cálido marca las frecuencias cuyo nivel aumenta tras el procesamiento, el azul marca las que disminuyen y una línea gris señala el espectro After. Los espectros de entrada y salida se alinean en el mismo instante de reproducción, por lo que la diferencia compara el mismo audio. El modo **Normal** aplica un suavizado de 1/12 de octava; **Alta calidad** analiza las frecuencias bajas con más detalle. Usa la comparación para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee los niveles del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. En Configuración, elige **Normal** o **Alta calidad** para la calidad del espectro superpuesto, y **Valor instantáneo** o **Retención de picos** para su visualización. Retención de picos mantiene visibles los máximos recientes y los deja bajar gradualmente. En After solo se recopila el espectro procesado; en Off se detienen la recopilación y el dibujo.
+
 ## Bandwidth Extender
 
-Bandwidth Extender está pensado para audio con un corte de agudos claro, como algunos MP3 de baja tasa de bits. Analiza ambos canales conjuntamente y añade contenido nuevo solo por encima del límite detectado o especificado. No recupera la forma de onda original; en Auto permanece inactivo si no encuentra un corte estable.
+Bandwidth Extender está pensado para audio con un corte de agudos claro, como algunos MP3 de baja tasa de bits. Analiza ambos canales conjuntamente y añade contenido nuevo solo por encima del límite detectado o especificado. No recupera la forma de onda original que falta y normalmente permanece inactivo cuando Auto no encuentra un corte estable.
 
-La banda generada consta de dos componentes ajustables por separado: una continuación armónica relacionada con la entrada y ruido conformado determinista. La señal original se conserva mientras se añaden estos componentes.
+La banda generada consta de dos componentes ajustables por separado: una continuación armónica relacionada con la entrada y ruido conformado determinista. La continuación armónica mantiene el material tonal conectado con el espectro restante, mientras que el ruido conformado da a la percusión y a otros sonidos de tipo ruido una textura menos artificial. La señal original se conserva mientras se añaden estos componentes.
 
 ### Guía de mejora auditiva
 
-- Empieza con **Auto** y ambos controles Amount al 100%, su valor predeterminado. Usa **Manual** si conoces el corte exacto.
-- Reduce **Noise Amount** para material tonal sostenido o **Harmonic Amount** para percusión y sonidos de respiración. Mantén ambos activos en material mixto.
-- Compáralo con bypass al mismo nivel. No lo uses como abrillantador general de audio de banda completa; para eso está Exciter.
+- Empieza con **Auto** y ambos controles Amount en su valor predeterminado del 100% para música limitada por el códec.
+- Si Auto no se activa aunque sabes que hay un corte, selecciona **Manual** y ajusta el límite al corte medido de la fuente.
+- Reduce **Noise Amount** para material tonal sostenido o **Harmonic Amount** para percusión y sonidos de tipo respiración. Mantén ambos activos cuando la fuente contenga una mezcla.
+- Compáralo con bypass al mismo nivel. Subir cualquiera de los dos controles solo aumenta ese componente generado y no puede reconstruir detalles ausentes en la fuente.
+- No lo uses como abrillantador general de audio que ya es de banda completa; Exciter está diseñado para ese otro propósito.
 
 ### Parámetros
 
-- **Harmonic Amount** (0-200%, predeterminado: 100%) controla solo la continuación armónica: 0% la elimina, 100% es su nivel de referencia y 200% la duplica sin alterar el ruido ni la señal seca.
-- **Noise Amount** (0-200%, predeterminado: 100%) controla solo el ruido conformado: 0% lo elimina, 100% es su nivel de referencia y 200% lo duplica sin alterar los armónicos ni la señal seca.
-- **Cutoff** elige **Auto**, que busca una caída espectral pronunciada y persistente común a ambos canales, o **Manual**. En Manual, la banda generada se limita automáticamente al rango disponible durante la reproducción.
-- **Manual Cutoff** (6000-24000 Hz) fija el inicio de la generación en modo Manual.
+- **Harmonic Amount** (0-200%, predeterminado: 100%) - Controla la continuación armónica de forma independiente. 0% elimina este componente, 100% es su nivel de referencia y 200% lo duplica sin cambiar el ruido conformado ni la señal seca.
+- **Noise Amount** (0-200%, predeterminado: 100%) - Controla el ruido conformado determinista de forma independiente. 0% elimina este componente, 100% es su nivel de referencia y 200% lo duplica sin cambiar la continuación armónica ni la señal seca.
+- **Cutoff** - Selecciona cómo se elige el límite de la banda que falta.
+  - **Auto** busca una caída espectral pronunciada y persistente común a ambos canales y reduce el efecto cuando la confianza es baja.
+  - **Manual** usa el valor de Manual Cutoff. La banda generada se mantiene automáticamente dentro del rango de frecuencias disponible para la reproducción.
+- **Manual Cutoff** (6000-24000 Hz) - Fija el inicio de la generación en modo Manual. Ajústalo al límite medido de la fuente en lugar de bajarlo solo para que el efecto se note más.
 
-Bandwidth Extender añade unos 26,7-29,0 ms de latencia, incluido un salto adicional de procesamiento: 1.280 muestras a 48 kHz, 2.560 a 96 kHz o 5.120 a 192 kHz. Si no puede funcionar con la frecuencia de muestreo, la configuración de canales o el dispositivo actuales, el panel muestra un mensaje de bypass y el audio no cambia. Usa una configuración compatible o desactiva el plugin.
+Bandwidth Extender añade unos 26,7-29,0 ms de retardo, incluido un salto adicional de procesamiento: 1.280 muestras a 48 kHz, 2.560 a 96 kHz o 5.120 a 192 kHz. Si no puede funcionar con la frecuencia de muestreo, la configuración de canales o el dispositivo actuales, el panel muestra un mensaje de bypass y el audio no cambia. Usa una configuración compatible o desactiva el plugin.
 
 ## Bass Extender
 
@@ -61,22 +65,12 @@ Bass Extender refuerza grabaciones con graves débiles generando contenido aprox
 
 ### Parámetros
 
-- **Amount** (0–100%, predeterminado: 25%) controla el nivel de los graves generados. 0% elimina este aporte; los valores mayores lo hacen más presente sin modificar directamente la señal original.
-- **Output** (-24 a 0 dB, predeterminado: 0 dB) ajusta el nivel final después de añadir los graves. Bájalo para igualar el volumen con bypass o dejar más margen en la salida.
+- **Amount** (0–100%, predeterminado: 25%) - Controla el nivel de los graves generados. 0% elimina este aporte; los valores mayores lo hacen más presente sin modificar directamente la señal original.
+- **Output** (-24 a 0 dB, predeterminado: 0 dB) - Ajusta el nivel final después de añadir los graves. Bájalo para igualar el volumen con bypass o dejar más margen en la salida.
 
 ## Dynamic Saturation
 
 Un efecto basado en la física que simula el desplazamiento no lineal de los conos de altavoces bajo diferentes condiciones. Al modelar el comportamiento mecánico de un altavoz y luego aplicar saturación a ese desplazamiento, crea una forma única de distorsión que responde dinámicamente a tu música.
-
-**Oversampling**: Elija 1x (predeterminado), 2x, 4x, 8x. Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empiece con 2x o 4x; use 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
-
-### Preajustes del sistema
-
-Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar ajustes completos del movimiento del cono.
-
-- **Subtle Cone Color** - Un carácter de cono de altavoz discreto y casi limpio.
-- **Pushed Speaker** - Mayor movimiento del cono y más saturación, con compensación del nivel de salida.
-- **Ragged Cone** - El carácter de cono más marcado, deliberadamente áspero.
 
 ### Guía de Mejora de Escucha
 - **Mejora Sutil:**
@@ -92,7 +86,17 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar aju
   - Crea comportamientos resonantes similares a los de un altavoz
   - Crea un carácter intenso y cambiante para escucha experimental
 
+### Presets del sistema
+
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para comparar ajustes completos del movimiento del cono.
+
+- **Subtle Cone Color** - Un carácter de cono de altavoz discreto y casi limpio.
+- **Pushed Speaker** - Mayor movimiento del cono y más saturación, con compensación del nivel de salida.
+- **Ragged Cone** - El carácter de cono más marcado, deliberadamente áspero.
+
 ### Parámetros
+
+- **Oversampling** (1x, 2x, 4x, 8x; predeterminado: 1x) - Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empieza con 2x o 4x; usa 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 - **Speaker Drive** (0.0-10.0) - Controla cuán fuertemente la señal de audio mueve el cono
   - Valores bajos: Movimiento sutil y efecto suave
   - Valores altos: Movimiento dramático y carácter más fuerte
@@ -163,12 +167,10 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar aju
 
 Un efecto que agrega contenido armónico para mejorar la claridad y presencia. Al filtrar el contenido de alta frecuencia y aplicar saturación, crea armónicos adicionales que iluminan y mejoran tu música.
 
-**Oversampling**: Elija 1x (predeterminado), 2x, 4x, 8x. Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empiece con 2x o 4x; use 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
-
 ### Guía de Mejora de Escucha
 - **Mejora Sutil:**
-  - Añade claridad y aire a las voces
-  - Mejora la presencia de los instrumentos
+  - Añade claridad y aire a las voces y a los detalles de alta frecuencia
+  - Mejora la presencia en toda la señal de reproducción
   - Crea un sonido más abierto y detallado
 - **Efecto Moderado:**
   - Saca a relucir detalles ocultos en la mezcla
@@ -180,6 +182,8 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
   - Útil cuando quieres un sonido más brillante y directo, pero conviene usarlo con moderación
 
 ### Parámetros
+
+- **Oversampling** (1x, 2x, 4x, 8x; predeterminado: 1x) - Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empieza con 2x o 4x; usa 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 - **HPF Freq** (500-10000Hz) - Establece la frecuencia de corte para el filtrado de paso alto
   - Valores bajos (500-2000Hz): Afecta más de la señal
   - Valores medios (2000-5000Hz): Se enfoca en frecuencias de presencia
@@ -204,7 +208,7 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
 - Gráfico de respuesta de frecuencia del filtro paso alto
 - Visualización de la curva de transferencia de saturación
 - Retroalimentación visual clara tanto para el filtro como para la saturación
-- Pasa el cursor sobre cualquiera de los gráficos, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
+- Pasa el cursor sobre cualquiera de los gráficos, o tócalos y desliza el dedo sobre ellos, para leer los valores en ese punto.
 
 ### Consejos para Mejorar la Música
 - Para Voces más Claras en Canciones, Podcasts o Vídeos:
@@ -240,8 +244,6 @@ Un efecto que agrega contenido armónico para mejorar la claridad y presencia. A
 
 Un efecto de clipping digital que limita los picos por encima de un umbral definido. Úsalo cuando quieras más borde, densidad o distorsión creativa; mantén Threshold alto para un control ligero de picos y bájalo gradualmente para un carácter más fuerte.
 
-**Oversampling**: Elija 1x (predeterminado), 2x, 4x, 8x, 16x. Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empiece con 2x o 4x; use 16x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
-
 ### Guía de Mejora de Escucha
 - Mejora Sutil:
   - Añade un poco de borde y densidad cuando Threshold permanece alto
@@ -257,6 +259,8 @@ Un efecto de clipping digital que limita los picos por encima de un umbral defin
   - Perfecto para escucha experimental
 
 ### Parámetros
+
+- **Oversampling** (1x, 2x, 4x, 8x, 16x; predeterminado: 1x) - Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empieza con 2x o 4x; usa 16x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 - **Threshold** - Controla cuánto del sonido es afectado (-60dB a 0dB)
   - Valores más altos (-6dB a 0dB): Control ligero de picos o borde sutil
   - Valores medios (-24dB a -6dB): Carácter de clipping y densidad notables
@@ -286,8 +290,6 @@ Un efecto de clipping digital que limita los picos por encima de un umbral defin
 
 Harmonic Distortion moldea la forma de onda con términos no lineales ajustables de 2º a 5º orden. Permite afinar el carácter de distorsión de orden par e impar, desde una calidez sutil hasta una coloración más fuerte, lo que puede ayudar a que música demasiado limpia, delgada o plana se sienta más viva.
 
-**Oversampling**: Elija 1x (predeterminado), 2x, 4x, 8x. Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empiece con 2x o 4x; use 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
-
 ### Guía para la Mejora Auditiva
 - **Efecto Sutil:**
   - Añade una capa suave de calidez armónica
@@ -298,7 +300,7 @@ Harmonic Distortion moldea la forma de onda con términos no lineales ajustables
   - Puede añadir cuerpo, brillo o borde a toda la grabación
   - Útil cuando el sonido se siente demasiado plano o contenido
 - **Efecto Agresivo:**
-  - Intensifica múltiples armónicos para crear una distorsión rica y compleja
+  - Intensifica varios términos no lineales para crear una distorsión rica y compleja
   - Crea texturas atrevidas para escucha experimental
   - Puede sonar filoso o poco convencional cuando se fuerza mucho
 - **Valores Positivos vs. Negativos:**
@@ -307,6 +309,8 @@ Harmonic Distortion moldea la forma de onda con términos no lineales ajustables
   - Los términos de orden impar cambian sobre todo el carácter de la distorsión simétrica
 
 ### Parámetros
+
+- **Oversampling:** Elige el multiplicador de la frecuencia de procesamiento (1x, 2x, 4x, 8x; predeterminado: 1x). Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empieza con 2x o 4x; usa 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 - **2nd Harm (%):** Establece el término de distorsión de segundo orden (-30 a 30%, predeterminado: 2%)
 - **3rd Harm (%):** Establece el término de distorsión de tercer orden (-30 a 30%, predeterminado: 3%)
 - **4th Harm (%):** Establece el término de distorsión de cuarto orden (-30 a 30%, predeterminado: 0.5%)
@@ -318,7 +322,7 @@ Harmonic Distortion moldea la forma de onda con términos no lineales ajustables
 
 ### Visualización
 - Curva de transferencia que muestra cómo los niveles de entrada se moldean en niveles de salida
-- Controles deslizantes e campos de entrada intuitivos que ofrecen retroalimentación inmediata
+- Controles deslizantes y campos de entrada intuitivos que ofrecen retroalimentación inmediata
 - El gráfico se actualiza a medida que cambian los ajustes de armónicos y sensibilidad
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
@@ -330,8 +334,6 @@ Harmonic Distortion moldea la forma de onda con términos no lineales ajustables
 ## Multiband Saturation
 
 Un efecto versátil que te permite añadir calidez y carácter a rangos de frecuencia específicos de toda la señal de reproducción. Al dividir el sonido en bandas bajas, medias y altas, puedes moldear cada rango de forma independiente para un realce preciso.
-
-**Oversampling**: Elija 1x (predeterminado), 2x, 4x, 8x. Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empiece con 2x o 4x; use 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 
 ### Guía de Mejora de Escucha
 - Mejora de Graves:
@@ -350,6 +352,8 @@ Un efecto versátil que te permite añadir calidez y carácter a rangos de frecu
 Como procesa bandas de frecuencia, afecta a todos los sonidos del rango seleccionado, no a instrumentos o voces aislados.
 
 ### Parámetros
+
+- **Oversampling** (1x, 2x, 4x, 8x; predeterminado: 1x) - Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empieza con 2x o 4x; usa 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 - **Frecuencias de Crossover**
   - Freq 1 (20Hz-2kHz): Define dónde termina la banda baja y comienza la media
   - Freq 2 (200Hz-20kHz, siempre mantenida en o por encima de Freq 1): Define dónde termina la banda media y comienza la alta
@@ -413,8 +417,6 @@ Como procesa bandas de frecuencia, afecta a todos los sonidos del rango seleccio
 
 Un efecto que simula el sonido cálido y agradable del equipo de válvulas vintage. Puede agregar riqueza y carácter a tu música, haciéndola sonar más "analógica" y menos "digital".
 
-**Oversampling**: Elija 1x (predeterminado), 2x, 4x, 8x. Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empiece con 2x o 4x; use 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
-
 ### Guía de Mejora de Escucha
 - Agregando Calidez:
   - Hace que la música digital suene más natural
@@ -430,6 +432,8 @@ Un efecto que simula el sonido cálido y agradable del equipo de válvulas vinta
   - Ideal para escucha experimental
 
 ### Parámetros
+
+- **Oversampling** (1x, 2x, 4x, 8x; predeterminado: 1x) - Los valores altos reducen los tonos no deseados que aparecen cuando los armónicos de alta frecuencia se repliegan al rango audible, pero consumen más CPU. Empieza con 2x o 4x; usa 8x para una mayor reducción a 48 kHz. 1x conserva el procesamiento original. Los valores superiores a 1x añaden 64 muestras de retardo (unos 1,33 ms a 48 kHz).
 - **Drive** - Controla la cantidad de calidez y carácter (0.0 a 10.0)
   - Ligero (0.0-3.0): Calidez analógica sutil
   - Medio (3.0-6.0): Carácter vintage rico
@@ -572,30 +576,61 @@ El sufijo del preset sirve como guía práctica de intensidad: **@0.01%** es muy
 
 ### Parámetros
 
-- **Input Volume** (-96 a 0dB) - Reduce el nivel que alimenta el circuito elegido. Los valores más bajos reducen la compresión y la distorsión y aumentan el margen.
-- **Driver Type** (12AX7, 12AT7, 12AU7 o Bypass) - Selecciona las válvulas del driver de dos etapas o lo retira de la ruta. 12AX7 ofrece la mayor ganancia, 12AT7 queda en medio y 12AU7 ofrece la menor ganancia y el mayor margen.
-- **Bias** (-50 a +50%) - Desplaza el punto de polarización del driver. Al subirlo, las etapas se mueven hacia una corriente mayor; al bajarlo, hacia una menor, lo que cambia los armónicos y la compresión.
-- **Plate** (150 a 300 V) - Ajusta la tensión de placa del driver. Los valores más altos suelen dar más margen; los más bajos hacen aparecer antes la compresión y la no linealidad.
-- **Source Z** (0.6 a 100 kΩ) - Ajusta la impedancia de la fuente que alimenta la primera etapa. Los valores más altos pueden suavizar los agudos y los transitorios.
-- **Supply** (0.1 a 47 kΩ) - Ajusta la resistencia de alimentación del driver. Los valores más altos producen más caída de alimentación; los más bajos dan una respuesta más firme.
-- **Negative Feedback** (0 a 30dB) - Ajusta la realimentación negativa global. Al subirla suele reducirse la distorsión y reforzarse el control de la respuesta y del altavoz; 0dB abre el lazo.
-- **Output Trim** (-48 a +48dB) - Iguala el volumen procesado sin cambiar la excitación dentro del circuito.
-- **Output Safety Trim** (-96 a 0dB) - Es un control de nivel independiente para la protección de salida. Auto Gain Reduction solo reduce este control, no Output Trim.
-- **Auto Gain Reduction** (activado de forma predeterminada) - Reduce automáticamente Output Safety Trim cuando la salida procesada se acercaría al máximo digital. Al desactivarlo no se añade reducción nueva, pero se conserva la ya aplicada.
-- **Wet/Dry Mix** (0 a 100%) - Mezcla la señal procesada con la original. Los valores más bajos hacen que el efecto sea más sutil.
-- **Input Reference** (0.100 a 300.000 Vpk) - Define la tensión de entrada representada por un pico digital a escala completa. Los valores más altos excitan más el circuito; usa Input Volume como ajuste principal de intensidad.
-- **Output Circuit** (Line, Push-Pull Power o SE Triode) - Selecciona la topología. Line usa solo el driver; los otros dos modos añaden la etapa de potencia, el transformador y la carga del altavoz.
-- **Power Tubes** (EL84 ×2, EL34 ×2, 6L6GC ×2 o KT88 ×2) - Selecciona las válvulas de salida push-pull y su carácter.
-- **Output B+** (300 a 470 V) - Ajusta la alimentación de la etapa push-pull. Los valores más altos aumentan la excursión disponible y el margen de las válvulas.
-- **Cathode Resistor** (270 a 500 Ω / valve) - Ajusta la resistencia de polarización de cada válvula push-pull. Al subirla baja la corriente de reposo; al bajarla aumenta.
-- **SE Triode** (300B o 2A3) - Selecciona la válvula de salida single-ended.
-- **SE B+** (250 a 450 V) - Ajusta la alimentación de la etapa single-ended.
-- **SE Cathode Resistor** (700 a 1300 Ω) - Ajusta la resistencia de polarización de la válvula single-ended, cambiando el punto de trabajo y la compresión.
-- **Screen Tap** (0%, 20% o 43%) - Selecciona la conexión de pantalla. 0% corresponde al funcionamiento pentodo; 20% y 43% ofrecen carga distribuida.
-- **Push-Pull Primary** (6.0, 6.6 u 8.0 kΩ) - Ajusta la impedancia primaria del transformador push-pull y cambia la carga y la respuesta de las válvulas. También fija el flujo de saturación magnética del núcleo.
-- **SE Primary** (2.5, 3.5 o 5.0 kΩ) - Ajusta la impedancia primaria del transformador single-ended. También determina cuánto flujo introduce una señal dada en el núcleo con entrehierro, así que las impedancias más altas alcanzan la saturación antes con el mismo nivel. La corriente de reposo del funcionamiento single-ended mantiene un flujo permanente en el núcleo, así que la señal lo satura de forma asimétrica y añade armónicos de orden par en los graves.
-- **Assumed Speaker Load** (4, 8, 15 o 16 Ω) - Selecciona la impedancia nominal y la toma secundaria para las que está diseñado el circuito.
-- **Actual Speaker Load** (2 a 32 Ω) - Ajusta la impedancia del altavoz conectado. Si difiere de Assumed Speaker Load, cambian la carga reflejada a las válvulas, el amortiguamiento y la potencia disponible; los valores iguales corresponden al punto de diseño.
+- **Input Volume** (-96 a 0dB) - Reduce el nivel que alimenta la ruta de señal elegida
+  - 0dB es totalmente abierto; los valores más bajos reducen la excitación interna y aumentan el margen
+- **Driver Type** (12AX7, 12AT7, 12AU7 o Bypass) - Selecciona las válvulas del driver de dos etapas o retira ese driver de la ruta de señal
+  - 12AX7 tiene la mayor ganancia de tensión, 12AT7 queda en medio y 12AU7 tiene la menor ganancia y el mayor margen
+  - En Push-Pull Power alimenta el inversor de fase fijo 12AX7; en SE Triode excita directamente el triodo de salida elegido
+  - Bypass está pensado para los presets Power. Push-Pull Power sigue incluyendo su inversor de fase; SE Triode alimenta el triodo de salida sin el driver común. Line con Bypass es un paso directo alineado, y Negative Feedback no tiene efecto en ese caso
+- **Bias** (-50 a +50%) - Desplaza el punto de polarización de cátodo de las dos etapas del driver
+  - Al subirlo baja su resistencia de cátodo modelada y se desplazan hacia una corriente mayor; al bajarlo ocurre lo contrario
+- **Plate** (150 a 300 V) - Ajusta la tensión de alimentación de placa del driver
+  - Los valores más altos suelen dar más margen de tensión; los más bajos hacen aparecer antes la compresión y la no linealidad
+- **Source Z** (0.6 a 100 kΩ) - Ajusta la impedancia de la fuente que alimenta Stage 1
+  - Los valores más altos interactúan más con las capacidades de entrada y pueden suavizar la excitación de agudos o de transitorios
+- **Supply** (0.1 a 47 kΩ) - Ajusta la resistencia de la alimentación B+ del driver
+  - Los valores más altos producen más caída de alimentación al aumentar la corriente; los más bajos hacen la alimentación más firme
+- **Negative Feedback** (0 a 30dB) - Ajusta la cantidad de realimentación negativa global
+  - Line realimenta la respuesta de placa de la segunda etapa; ambas topologías de potencia realimentan desde un devanado fijo del secundario del transformador
+  - Al subirla suelen reducirse la ganancia en lazo abierto y la distorsión, y la respuesta se vuelve más firme; 0dB abre el lazo de realimentación
+  - SE Triode está pensado para una realimentación ligera: empieza en 3dB y mantente normalmente entre 0 y 6dB
+  - El amortiguamiento eléctrico de la carga del altavoz surge de este mismo lazo, así que al subirla también aumenta el control del amplificador sobre la carga
+- **Output Trim** (-48 a +48dB) - Ajusta el nivel digital de la señal procesada después del circuito modelado sin cambiar su excitación interna
+- **Output Safety Trim** (-96 a 0dB) - Aplica un ajuste lineal independiente después del circuito modelado, separado de Output Trim para que la protección del nivel de salida tenga su propio control
+  - Auto Gain Reduction solo reduce este ajuste; nunca modifica Output Trim
+  - El deslizador y su casilla de valor muestran el ajuste efectivo, es decir, el valor que fijaste menos la reducción automática aplicada en ese momento; el ajuste almacenado es el último valor que fijaste tú, y es el que se guarda
+  - Al sujetar el deslizador, el valor efectivo mostrado pasa a ser tu ajuste, de modo que el nivel no salta, y en ese momento se borra la reducción acumulada
+- **Auto Gain Reduction** (activado de forma predeterminada) - Permite que la protección del nivel de salida reduzca Output Safety Trim por sí sola
+  - Al desactivarlo no se acumula reducción nueva y se conserva la ya aplicada
+- **Wet/Dry Mix** (0 a 100%) - Mezcla la señal procesada con la original alineada en latencia
+  - Con 0%, la ruta seca sigue llevando el retardo fijo de 64 muestras necesario para la alineación
+- **Input Reference** (0.100 a 300.000 Vpk) - Tensión de pico en los terminales que representa un pico digital de 0dBFS
+  - 2.828 Vpk corresponde a una senoidal de escala completa de 2 Vrms; 5.657 Vpk corresponde a 4 Vrms
+  - Los valores más altos excitan más el circuito modelado; usa Input Volume como ajuste principal de escucha
+- **Output Circuit** (Line, Push-Pull Power o SE Triode) - Selecciona la topología modelada
+  - Line termina tras el driver de dos etapas y no ejecuta los modelos de válvulas de potencia, transformador ni carga del altavoz
+  - Push-Pull Power añade el inversor de fase y el circuito de salida de potencia completo
+  - SE Triode añade una 300B o 2A3 excitada directamente y un transformador de salida single-ended con entrehierro
+- **Power Tubes** (EL84 ×2, EL34 ×2, 6L6GC ×2 o KT88 ×2) - Selecciona el modelo de corriente de las válvulas de salida y sus componentes de circuito asociados; solo afecta al modo Power
+  - Los cuatro modelos siguen datos reales de válvulas de salida en función de las tensiones de placa, pantalla y rejilla, incluido el corte completo que se alcanza cuando la rejilla se lleva a una tensión suficientemente negativa
+- **Output B+** (300 a 470 V) - Ajusta la tensión de alimentación de la etapa de potencia; los valores más altos aumentan la excursión de tensión disponible y la disipación de las válvulas
+- **Cathode Resistor** (270 a 500 Ω / valve) - Ajusta la resistencia de polarización de cátodo independiente de cada válvula de salida
+  - Una resistencia mayor reduce la corriente de reposo; una menor la aumenta
+- **SE Triode** (300B o 2A3) - Selecciona el modelo de triodo de salida single-ended de caldeo directo; solo afecta al modo SE Triode
+- **SE B+** (250 a 450 V) - Ajusta la tensión de alimentación de la etapa de salida single-ended
+- **SE Cathode Resistor** (700 a 1300 Ω) - Ajusta la resistencia de polarización de cátodo del único triodo de salida
+- **Screen Tap** (0%, 20% o 43%) - Selecciona la conexión de pantalla de las válvulas de salida
+  - 0% usa la alimentación de pantalla fija; 20% y 43% conectan las pantallas a las tomas correspondientes del primario del transformador para una carga distribuida (ultralineal)
+  - La toma es una relación de espiras, así que las pantallas siguen esa proporción del acoplamiento magnético del devanado primario
+- **Push-Pull Primary** (6.0, 6.6 u 8.0 kΩ) - Selecciona la impedancia primaria placa a placa del transformador de salida push-pull y, junto con Assumed Speaker Load, su relación de espiras
+  - La elección también fija el flujo de saturación magnética del núcleo
+- **SE Primary** (2.5, 3.5 o 5.0 kΩ) - Selecciona la impedancia primaria del transformador single-ended con entrehierro y, junto con Assumed Speaker Load, su relación de espiras
+  - La elección también determina cuánto flujo introduce una señal dada en el núcleo con entrehierro, así que las impedancias más altas alcanzan la saturación antes con el mismo nivel. La corriente de reposo del funcionamiento single-ended mantiene un flujo permanente en el núcleo, así que la señal lo satura de forma asimétrica y añade armónicos de orden par en los graves
+- **Assumed Speaker Load** (4, 8, 15 o 16 Ω) - Selecciona la toma del secundario del transformador y la impedancia nominal del altavoz para la que está diseñado el circuito
+  - Cada opción usa una carga eléctrica RLC dependiente de la frecuencia en lugar de una simple resistencia, y afecta a la carga del transformador y a la realimentación
+- **Actual Speaker Load** (2 a 32 Ω) - Ajusta la impedancia del altavoz realmente conectado a esa toma
+  - La red de carga se escala según su relación con Assumed Speaker Load, de modo que se conservan la frecuencia de resonancia y el Q y solo se desplaza el nivel de impedancia
+  - La relación de espiras sigue basada en Assumed Speaker Load, así que una diferencia refleja otra impedancia hacia las válvulas de salida y cambia el amortiguamiento, la potencia disponible y la excitación; si ambos valores coinciden, el circuito funciona en su punto de diseño
 
 ### Protección del Nivel de Salida
 

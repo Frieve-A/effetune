@@ -21,6 +21,8 @@ struct NoteAnalysisFrame {
   std::array<float, 88> probabilities{};
   std::array<float, 88> levels{};
   std::array<float, 88> onsets{};
+  // Confirmed note boundaries are populated only in the event plane.
+  std::array<bool, 88> starts{}, ends{};
 };
 // Borrowed immutable frames committed during one process call.
 struct NoteAnalysisView {
@@ -28,6 +30,12 @@ struct NoteAnalysisView {
   std::uint32_t count = 0u, minimumMidi = 28u, maximumMidi = 91u, blockFrames = 0u;
   double timeSeconds = -1.0;
   std::uint32_t channels = 0u, latencySamples = 0u;
+  // Optional age-9 presence/level plane with age-8 event scores for peak confirmation.
+  const NoteAnalysisFrame *eventFrames = nullptr;
+  std::uint32_t eventLatencySamples = 0u;
+  // Boundary continuity is independent of the borrowed view's storage and process-call time.
+  const void *eventSource = nullptr;
+  std::uint64_t eventGeneration = 0u;
 };
 } // namespace effetune
 namespace effetune::plugins::analyzer {
@@ -56,6 +64,10 @@ public:
   bool ready() const noexcept { return ready_; }
   const NoteAnalysisView &view() const noexcept { return view_; }
   std::uint32_t hopSamples() const noexcept { return hop_; }
+  void setEventEnabled(bool enabled) noexcept { event_requested_ = enabled; }
+  std::uint32_t eventLatencySamples() const noexcept {
+    return latencySamples() + (kRevisionFrames + kTimbreDelay - kSynthesisRevisionAge) * hop_;
+  }
   void setTimbreEnabled(bool enabled) noexcept {
     if (timbre_requested_ == enabled)
       return;
@@ -89,8 +101,9 @@ public:
         return;
     }
     timbre_enabled_ = timbre_requested_;
+    event_enabled_ = timbre_requested_ || event_requested_;
     network_ = std::make_unique<HarmNetInference>();
-    network_->setEventEnabled(timbre_enabled_);
+    network_->setEventEnabled(event_enabled_);
     timbre_ = std::make_unique<TimbreAnalysis>();
     schedule_ = std::make_unique<Schedule>();
     published_.resize(kPendingFrames);
@@ -98,6 +111,7 @@ public:
       frame.resize(kPayloadBytes);
     staging_.resize(kPayloadBytes);
     analysis_frames_.resize(info.maxFrames / hop_ + 2u);
+    event_frames_.resize(analysis_frames_.size());
     ready_ = buildSchedule();
     reset(1u);
   }
@@ -125,6 +139,12 @@ public:
                const ProcessInfo &info) noexcept {
     view_ = {analysis_frames_.data(), 0u,       minimum_pitch_ + 21u, maximum_pitch_ + 21u, frames,
              info.timeSeconds,        channels, latencySamples()};
+    view_.eventSource = this;
+    view_.eventGeneration = event_generation_;
+    if (timbre_requested_ || event_requested_) {
+      view_.eventFrames = event_frames_.data();
+      view_.eventLatencySamples = eventLatencySamples();
+    }
     if (!ready_ || !audio || channels == 0u)
       return;
     auto frame = 0u;
@@ -177,6 +197,7 @@ public:
 
 private:
   void resetTimbre() noexcept {
+    view_.eventGeneration = ++event_generation_;
     advance_active_ = false;
     if (network_)
       network_->resetEvent();
@@ -209,7 +230,7 @@ private:
     timbre_pending_write_ = (timbre_pending_write_ + 1u) % kTimbrePending;
     ++timbre_pending_count_;
   }
-  void processTimbre(std::uint32_t pitch) noexcept {
+  void processEvent(std::uint32_t pitch) noexcept {
     if (frame_index_ <= kTimbreDelay)
       return;
     const auto index = frame_index_ - 1u - kTimbreDelay;
@@ -231,9 +252,16 @@ private:
         below_floor_[pitch_frame]
             ? 0.0F
             : shape * network_->probability(pitch, HarmNetInference::kHeads - 1u);
+    event_frame_.probabilities[pitch] = probability;
+    event_frame_.levels[pitch] = level_history_[pitch_frame][pitch];
+    event_frame_.onsets[pitch] = onset;
     // Raw age7 plus previous-peak confirmation aligns with the age8 presence decision.
     const auto prime = confirmed <= timbre_enabled_frame_;
     const auto decision = timbre_rules_[pitch].step(probability, onset, prime);
+    event_frame_.starts[pitch] = !prime && decision.start;
+    event_frame_.ends[pitch] = !prime && decision.end;
+    if (!timbre_enabled_ || !timbre_requested_)
+      return;
     const auto emit = [this](const auto &result) { publishTimbre(result); };
     if (prime)
       return;
@@ -250,7 +278,7 @@ private:
     const auto addPitch = [&](Stage kind, std::uint32_t pitch, double cost) {
       schedule_->addStage(static_cast<std::uint8_t>(kind), 0u, pitch, pitch + 1u, weight(cost));
     };
-    if (timbre_enabled_) {
+    if (event_enabled_) {
       for (auto p = minimum_pitch_; p <= maximum_pitch_; ++p)
         addPitch(Stage::Event, p, 451.207);
       for (auto p = minimum_pitch_; p <= maximum_pitch_; ++p)
@@ -339,10 +367,17 @@ private:
   void startJob(double time) noexcept {
     if (timbre_enabled_ != timbre_requested_) {
       timbre_enabled_ = timbre_requested_;
-      network_->setEventEnabled(timbre_enabled_);
       resetTimbre();
       schedule_dirty_ = true;
     }
+    const auto event_enabled = timbre_requested_ || event_requested_;
+    if (event_enabled_ != event_enabled) {
+      event_enabled_ = event_enabled;
+      network_->setEventEnabled(event_enabled_);
+      network_->resetEvent();
+      schedule_dirty_ = true;
+    }
+    event_frame_ = {};
     if (schedule_dirty_ && !buildSchedule()) {
       ready_ = false;
       return;
@@ -398,18 +433,18 @@ private:
     }
     switch (kind) {
     case Stage::Event:
-      if (!timbre_enabled_ || !timbre_requested_)
+      if (!event_enabled_)
         break;
-      if (frame_index_ > kTimbreDelay && frame_index_ - 1u - kTimbreDelay >= timbre_enabled_frame_)
+      if (frame_index_ > kTimbreDelay)
         network_->inferEvents(begin, end);
       break;
     case Stage::Rule:
-      if (!timbre_enabled_ || !timbre_requested_)
+      if (!event_enabled_)
         break;
-      if (frame_index_ > kTimbreDelay && frame_index_ - 1u - kTimbreDelay >= timbre_enabled_frame_)
+      if (frame_index_ > kTimbreDelay)
         for (auto pitch = begin; pitch < end; ++pitch)
-          processTimbre(pitch);
-      if (end == maximum_pitch_ + 1u)
+          processEvent(pitch);
+      if (timbre_enabled_ && timbre_requested_ && end == maximum_pitch_ + 1u)
         beginTimbreAdvance();
       break;
     case Stage::Convolution:
@@ -422,8 +457,9 @@ private:
       network_->pitchConvolution(begin, end);
       break;
     case Stage::Recurrent:
-      if (timbre_enabled_ && timbre_requested_ && stage.begin == 0u) {
+      if (event_enabled_ && stage.begin == 0u)
         network_->updateEventFlux(features_[0].data());
+      if (timbre_enabled_ && timbre_requested_ && stage.begin == 0u) {
         TimbreAnalysis::setInput(timbre_->frame(frame_index_ - 1u), features_[0].data(),
                                  features_[1].data());
       }
@@ -479,6 +515,8 @@ private:
     }
     case Stage::Commit:
       if (view_.count < analysis_frames_.size()) {
+        event_frame_.sampleOffset = commit_offset_;
+        event_frames_[view_.count] = event_frame_;
         auto &frame = analysis_frames_[view_.count++];
         frame.sampleOffset = commit_offset_;
         const auto level_frame =
@@ -565,6 +603,7 @@ private:
   std::uint32_t timbre_enabled_frame_ = 0u;
   float timbre_time_ = 0.0F;
   bool timbre_enabled_ = false, timbre_requested_ = false, schedule_dirty_ = true;
+  bool event_enabled_ = false, event_requested_ = false;
   bool advance_active_ = false;
   std::uint32_t rule_slot_ = 0u;
   std::array<double, 512> slot_weights_{}, sorted_slot_weights_{};
@@ -583,6 +622,9 @@ private:
   std::uint32_t history_head_ = 0u, history_frames_ = 0u, minimum_pitch_ = 7u, maximum_pitch_ = 70u;
   bool ready_ = false, job_active_ = false;
   std::vector<NoteAnalysisFrame> analysis_frames_;
+  std::vector<NoteAnalysisFrame> event_frames_;
+  NoteAnalysisFrame event_frame_{};
+  std::uint64_t event_generation_ = 0u;
   NoteAnalysisView view_{};
   std::uint32_t commit_offset_ = 0u;
 };

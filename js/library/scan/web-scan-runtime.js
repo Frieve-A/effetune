@@ -90,7 +90,7 @@ export class WebCatalogScanRuntime {
     return { checked: activeFolderIds.size, cleaned };
   }
 
-  async addFolder({ handle, displayName, scan = true, scanReason = 'automatic', languageHints = null } = {}) {
+  async addFolder({ handle, displayName, scan = true, scanReason = 'automatic', languageHints = null, includeVideo = false } = {}) {
     assertDirectoryHandle(handle);
     const folders = await this.repository.listFolderRecords({ includeRemoved: true, limit: MAX_WEB_FOLDERS });
     const activeFolders = new Map(
@@ -151,7 +151,7 @@ export class WebCatalogScanRuntime {
       return { folder, scan: null };
     }
     const scanId = `web-scan-${this.idFactory()}`;
-    const result = await this.#runFolder({ scanId, folder, source: handle, scanReason, resume: false, languageHints });
+    const result = await this.#runFolder({ scanId, folder, source: handle, scanReason, resume: false, languageHints, includeVideo });
     return { folder, scan: result };
   }
 
@@ -180,7 +180,8 @@ export class WebCatalogScanRuntime {
     token,
     scan = true,
     scanReason = 'automatic',
-    languageHints = null
+    languageHints = null,
+    includeVideo = false
   } = {}) {
     const pending = this.#requirePendingSessionSource(token);
     assertRepositoryContract(pending.source.size > 0, 'invalidSessionFiles', 'At least one folder file is required');
@@ -209,7 +210,8 @@ export class WebCatalogScanRuntime {
           source: pending.source,
           scanReason,
           resume: false,
-          languageHints
+          languageHints,
+          includeVideo
         })
       : null;
     return { folder, existing: Boolean(pending.folder), scan: result };
@@ -224,7 +226,8 @@ export class WebCatalogScanRuntime {
     scanId = null,
     scanReason = 'automatic',
     resume = false,
-    languageHints = null
+    languageHints = null,
+    includeVideo = false
   } = {}) {
     const folders = await this.repository.listFolderRecords({ limit: MAX_WEB_FOLDERS });
     const selected = folderIds == null
@@ -252,7 +255,8 @@ export class WebCatalogScanRuntime {
           source,
           scanReason,
           resume,
-          languageHints
+          languageHints,
+          includeVideo
         });
         results.push(result);
         if (result.status === 'paused') break;
@@ -274,7 +278,8 @@ export class WebCatalogScanRuntime {
         source: handle,
         scanReason,
         resume,
-        languageHints
+        languageHints,
+        includeVideo
       });
       results.push(result);
       if (result.status === 'paused') break;
@@ -473,7 +478,7 @@ export class WebCatalogScanRuntime {
     return { file: await filesystem.getFile(relativePath), index: match.index };
   }
 
-  async #runFolder({ scanId, folder, source, scanReason, resume, languageHints }) {
+  async #runFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo }) {
     assertRepositoryContract(!this.activeScans.has(scanId), 'scanAlreadyRunning', 'Scan is already running');
     const controller = new AbortController();
     this.activeScans.set(scanId, { controller, folderId: folder.id });
@@ -481,7 +486,7 @@ export class WebCatalogScanRuntime {
     const current = previous.catch(() => {}).then(() => {
       if (controller.signal.aborted) throw controller.signal.reason;
       return this.#executeFolder({
-        scanId, folder, source, scanReason, resume, languageHints, controller
+        scanId, folder, source, scanReason, resume, languageHints, includeVideo, controller
       });
     });
     this.folderScanTails.set(folder.id, current);
@@ -493,11 +498,11 @@ export class WebCatalogScanRuntime {
     }
   }
 
-  async #executeFolder({ scanId, folder, source, scanReason, resume, languageHints, controller }) {
+  async #executeFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo, controller }) {
     const playlistCollector = new AutomaticPlaylistCollector();
     const filesystem = source instanceof WebSessionFileSource
-      ? source.createAdapter({ onPlaylistFile: candidate => playlistCollector.add(candidate) })
-      : this.filesystemFactory(source, { onPlaylistFile: candidate => playlistCollector.add(candidate) });
+      ? source.createAdapter({ includeVideo, onPlaylistFile: candidate => playlistCollector.add(candidate) })
+      : this.filesystemFactory(source, { includeVideo, onPlaylistFile: candidate => playlistCollector.add(candidate) });
     let latestProgress = null;
     let terminalProgress = null;
     const service = this.scanServiceFactory({

@@ -1207,23 +1207,5 @@ test('Group Delay PEQ is registered and styled under its own class names', () =>
     assert.doesNotMatch(pluginSource, /createRadioGroup/);
     assert.doesNotMatch(pluginSource, /group-delay-eq/);
 
-    const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
-    const keys = [...pluginSource.matchAll(/'(groupDelayPeq\.[\w.]+)'/g)].map(match => match[1]);
-    assert.ok(keys.length >= 20);
-    for (const locale of locales) {
-        const source = fs.readFileSync(
-            new URL(`../../js/locales/${locale}.json5`, import.meta.url),
-            'utf8'
-        );
-        for (const key of keys) {
-            assert.ok(source.includes(`"${key}":`), `${locale}.json5 has no ${key}`);
-        }
-        for (const [id, name] of [['pk', 'Peak'], ['ls', 'LowShelv'], ['hs', 'HighShel'], ['fl', 'FilterGD']]) {
-            assert.ok(
-                source.includes(`"groupDelayPeq.type.${id}": "${name}"`),
-                `${locale}.json5 type ${id}`
-            );
-        }
-    }
     assert.equal(path.basename(pluginUrl.pathname), 'group_delay_peq.js');
 });

@@ -6,47 +6,47 @@ lang: en
 
 # Pipeline Analyzer
 
-Pipeline Analyzer measures the response of the active Effect Pipeline without changing the audio you hear. It stays beside the pipeline in a wide window and moves below its header in a narrow window, so you can adjust an effect while watching the result update.
+Pipeline Analyzer measures the response of the active Effect Pipeline without changing the audio you hear. It sits beside the pipeline in wide windows or below the pipeline header in narrow windows, letting you adjust effects while watching the response update.
 
-Open it with the graph button in the Effect Pipeline header or **View > Pipeline Analyzer** in the desktop app. With **Auto** selected, pipeline changes start a new measurement automatically. Clear **Auto** to measure pipeline changes only when you select **Refresh measurements**. Measurement-setting changes always start a new measurement.
+Open it with the graph button in the Effect Pipeline header or **View > Pipeline Analyzer** in the desktop app. When **Auto** is enabled, pipeline edits trigger a new measurement automatically. Clear **Auto** to remeasure pipeline edits only when you click **Refresh measurements**; changing the channels, speaker responses, or measurement settings always starts a new measurement.
 
 ## Choosing channels and speaker responses
 
-Choose one input channel from the active pipeline, which can have up to 16 channels. One output is present initially; use **+ Add Output** to add up to four distinct channels supported by the current audio device. The four output slots remain the analyzer's limit even with a 16-channel pipeline. Delete removes that output and its speaker-response setting. The final output cannot be deleted.
+Select one input channel from the active pipeline (up to 16 channels) and up to four output channels using **+ Add Output**. At least one output always remains, so the last one cannot be removed. Deleting an output also removes its speaker-response setting.
 
-Each output can use **No speaker IR**, or a saved measurement point for the connected tweeter, woofer, or other speaker unit. Choosing a measurement without choosing its point is treated as **No speaker IR**. When no output uses a speaker IR, **Before** is the ideal unit impulse: 1.0 at 0 ms and 0 elsewhere. With speaker IRs, **Before** is the signed sum of the aligned responses. **After** is the signed sum after the selected pipeline has processed every output, so a FIR Crossover can be checked together with its speaker units. A missing saved response stays identified as missing until you replace or clear it.
+Each output can use **No speaker IR** or a saved measurement point for the connected speaker or driver:
 
-Saved speaker responses are aligned at their detected starts. Separate measurements do not preserve the acoustic arrival-time difference between drivers, so set relative delay and polarity in the pipeline before relying on the combined response.
+- **Without speaker IRs:** **Before** is an ideal flat reference impulse, and **After** shows the response of the effect pipeline alone.
+- **With speaker IRs:** **Before** is the combined response of the selected speaker measurements, and **After** is the combined response after the pipeline processes each output. This lets you verify a **Channel Divider** or **FIR Crossover** together with the actual driver measurements.
+
+A saved response that is no longer available stays selected but appears as — until you replace or clear it.
+
+Because separate speaker measurements are aligned at their detected onsets and do not preserve physical arrival-time differences between drivers, configure relative driver delay and polarity in the pipeline before evaluating the summed response.
 
 ## Measurement settings
 
-Open **Measurement settings** for these controls:
+Open **Measurement settings** to adjust how the pipeline is measured:
 
-- **Signal** uses **MLS** by default. **TSP** is an alternative periodic test signal, while **Unit Impulse** directly captures the time response. Each can measure the pipeline differently when effects are nonlinear or change over time.
-- **Level** sets the test-signal peak and defaults to `-12 dBFS`. Linear effects normally give the same normalized response at every level; nonlinear and level-dependent effects can give a different result.
-- **Sequence Length** controls how long a response can be measured cleanly: for MLS and TSP it is the period of the test signal, and for Unit Impulse it is the number of samples captured after the impulse. Longer settings take more time and memory. Increase it for delay, reverb, or other long-ringing effects, especially when the analyzer recommends a longer value.
-- **Stabilization Periods** defaults to 12 and lets the pipeline settle before capture. Increase it when slow-moving effects have not reached a steady state.
-- **Averages** defaults to 2. Increase it to reduce run-to-run variation when the graph is unstable; measurements will take longer.
-
-The details show whether the current length is sufficient, the recommended length and stabilization time, and the total measurement time. For Unit Impulse they show the capture length in samples and seconds at the current sample rate. Recommendations are guidance; apply them when they match the effects you are measuring.
-
-Stabilization Periods and Averages are disabled only for Unit Impulse. MLS uses lengths of 2^n-1 samples, while TSP and Unit Impulse use lengths of 2^n samples; switching signals keeps the nearest matching length. Changing Frequency, Phase, Min Group Delay, Excess Group Delay, or Impulse only changes the displayed graph and does not remeasure.
+- **Signal:** **MLS** (default), **TSP**, or **Unit Impulse**. MLS and TSP use periodic test signals (`2^n - 1` and `2^n` samples), while **Unit Impulse** directly captures the time-domain impulse response (`2^n` samples).
+- **Level:** Peak test-signal level (default `-12 dBFS`). Linear filters measure the same at any level, whereas compressors, saturators, and other level-dependent effects change with **Level**.
+- **Sequence Length:** Measurement window length. Increase it when measuring reverb, delay, or steep low-frequency filters with long ringing, especially when the analyzer recommends a longer length.
+- **Stabilization Periods:** Number of periods played before capture (default `12`, used by MLS and TSP) so slow-moving effects can settle.
+- **Averages:** Number of captured periods averaged together (default `2`, used by MLS and TSP) to reduce variation.
 
 ## Reading the graphs
 
-- Use the **Graph** radio buttons above the graph to select the response to display.
-- **Frequency** shows level versus frequency.
-- **Phase** shows phase versus frequency.
-- **Min Group Delay** shows the delay implied by the minimum-phase part of the magnitude response.
-- **Excess Group Delay** shows the remaining delay after the minimum-phase part is removed, making pure delay and other non-minimum-phase timing easier to distinguish.
-- **Impulse** shows the response over time.
+Use the **Graph** selector above the plot to switch views without remeasuring:
 
-The graph always shows **Before** and **After**. Move the pointer across the graph to read both curves at the same frequency or time; moving over **Before** temporarily hides **After** for an unobstructed comparison. **Smoothing (oct)** and **Impulse Range (ms)** remain visible for every graph so the layout does not move. Smoothing is enabled for Frequency, Phase, and both Group Delay graphs; Impulse Range is enabled for Impulse. The Excess Group Delay graph is limited to ±100 ms for readability, while the pointer readout retains the original value outside that display range. Controls that do not affect the selected graph are disabled. Each frequency curve is independently referenced to 0 dB, while each impulse is independently scaled to its full-response peak and displayed from -2 ms to the selected Impulse Range.
+- **Frequency:** Magnitude response (dB) versus frequency, referenced to 0 dB.
+- **Phase:** Phase response (degrees) versus frequency.
+- **Min Group Delay:** Group delay implied by the minimum-phase magnitude response.
+- **Excess Group Delay:** Remaining group delay after removing the minimum-phase part (the plot is limited to ±100 ms, while cursor readouts show the actual value), making pure delay and linear-phase or all-pass timing easy to spot.
+- **Impulse:** Time-domain impulse response from `-2 ms` to **Impulse Range (ms)**, normalized to its peak.
+
+Hover over the graph to read **Before** and **After** values at the cursor; hover over the **Before** legend label to temporarily hide **After**. Use **Smoothing (oct)** for the frequency, phase, and group-delay plots, and **Impulse Range (ms)** for the impulse plot.
 
 ## How the measurement works
 
-Each measurement captures the active pipeline, its current settings and routing, and any selected speaker responses. The graphs show the resulting frequency, phase, minimum-group-delay, excess-group-delay, and impulse responses; **After** compensates for latency reported by the pipeline.
+Pipeline Analyzer captures the active pipeline, its routing, and any selected speaker responses, and automatically compensates **After** for latency reported by the pipeline. If a reverb tail or filter ringing extends past **Sequence Length**, increase **Sequence Length** to avoid wraparound (MLS/TSP) or truncation (**Unit Impulse**). For nonlinear, modulated, or random effects, treat the plot as a snapshot at the current settings and **Level**.
 
-MLS and TSP are best for general response measurement. If delay, reverb, or ringing extends beyond the selected measurement window, the result can overlap itself; increase **Sequence Length**. **Unit Impulse** records exactly the selected **Sequence Length** of samples, so tails longer than that window are cut off; increase the length when a tail is still ringing at the end of the capture.
-
-Nonlinear, time-varying, random, noisy, and source-generating effects can produce different results at different levels or between runs. Treat these graphs as snapshots of the selected settings rather than fixed characteristics.
+[← Back to README](../README.md)

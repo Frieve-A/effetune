@@ -400,7 +400,8 @@ function createHarness(options = {}) {
           return new Uint8Array([1, 2, 3]).buffer;
         }
       },
-      './main': main
+      './main': main,
+      ...options.moduleStubs
     },
     tempDir
   };
@@ -454,6 +455,21 @@ async function invokeAllDelegates(handlers) {
   assert.equal(handlers.get('fileExists')({}, 'missing'), false);
   assert.deepEqual(await handlers.get('save-pipeline-state-to-file')({}, { pipeline: [] }), { success: true });
 }
+
+test('prepare-local-playback-source delegates to the main-owned converter', async () => {
+  await withHarness({}, async ({ ipcMain, moduleUnderTest }) => {
+    const paths = [];
+    let result = { success: true, path: 'converted.wav', byteLength: 44, converted: true };
+    moduleUnderTest.registerIpcHandlers({
+      alacPlaybackSource: { async prepare(filePath) { paths.push(filePath); return result; } }
+    });
+    const prepare = ipcMain.handlers.get('prepare-local-playback-source');
+    assert.deepEqual(await prepare({}, 'original.m4a'), result);
+    result = { success: false, code: 'alacRequiresMacDesktop' };
+    assert.deepEqual(await prepare({}, 'another.mp4'), result);
+    assert.deepEqual(paths, ['original.m4a', 'another.mp4']);
+  });
+});
 
 test('registers core handlers and delegates file, config, update, path, and URL work', async () => {
   await withHarness({}, async ({ calls, electron, ipcMain, moduleUnderTest, tempDir }) => {
@@ -555,6 +571,64 @@ test('playlist file adapter publishes atomic writes', async () => {
       { success: true }
     );
     assert.equal(fs.readFileSync(targetPath, 'utf8'), '#EXTM3U\n');
+  });
+});
+
+test('read-track-tags validates the path before artwork and closes both worker pools', async () => {
+  const poolCalls = [];
+  let artworkError = null;
+  class FakeMetadataWorkerPool {
+    async parse(request) {
+      poolCalls.push(['metadata.parse', request]);
+      if (!path.isAbsolute(request.path)) {
+        throw Object.assign(new Error('invalid'), { code: 'invalidMetadataRequest' });
+      }
+      return { title: 'PENIA', artist: 'Frieve-A', album: 'Album', year: 2026 };
+    }
+    async close() {
+      poolCalls.push(['metadata.close']);
+    }
+  }
+  class FakeArtworkWorkerPool {
+    async extract(request) {
+      poolCalls.push(['artwork.extract', request.filePath]);
+      if (artworkError) throw artworkError;
+      return { bytes: new Uint8Array([1, 2, 3]), mimeType: 'image/jpeg', embeddedOffset: null, embeddedLength: 3 };
+    }
+    async close() {
+      poolCalls.push(['artwork.close']);
+    }
+  }
+  await withHarness({
+    moduleStubs: {
+      './library-metadata-worker-pool.cjs': { MetadataWorkerPool: FakeMetadataWorkerPool },
+      './library-artwork-worker-pool.cjs': { ArtworkWorkerPool: FakeArtworkWorkerPool }
+    }
+  }, async ({ ipcMain, moduleUnderTest, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const readTrackTags = ipcMain.handlers.get('read-track-tags');
+    const filePath = path.join(tempDir, 'penia.flac');
+
+    const tags = await readTrackTags({}, filePath);
+    assert.deepEqual(tags, {
+      title: 'PENIA',
+      artist: 'Frieve-A',
+      album: 'Album',
+      picture: { data: new Uint8Array([1, 2, 3]), format: 'image/jpeg' }
+    });
+    assert.deepEqual(poolCalls.splice(0), [
+      ['metadata.parse', { path: filePath, relativePath: 'penia.flac', skipCovers: true }],
+      ['artwork.extract', filePath],
+      ['metadata.close'],
+      ['artwork.close']
+    ]);
+
+    artworkError = new Error('artwork-source-changed');
+    assert.equal((await readTrackTags({}, filePath)).picture, null);
+    poolCalls.length = 0;
+
+    await assert.rejects(readTrackTags({}, 'relative.flac'), error => error?.code === 'invalidMetadataRequest');
+    assert.deepEqual(poolCalls.map(call => call[0]), ['metadata.parse', 'metadata.close', 'artwork.close']);
   });
 });
 

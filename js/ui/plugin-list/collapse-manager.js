@@ -143,10 +143,21 @@ export class CollapseManager {
     setupPullTabFunctionality() {
         if (!this.pullTab) return;
         this.pullTab.textContent = '◀';
-        window.addEventListener('resize', () => {
+        const adjustLayout = () => {
             this.updatePositions();
             this.checkWindowWidthAndAdjust();
-        });
+        };
+        window.addEventListener('resize', adjustLayout);
+        // Electron zoom changes the body style without resizing the window.
+        if (typeof MutationObserver === 'function') {
+            let zoom = document.body.style.zoom;
+            this.zoomObserver = new MutationObserver(() => {
+                if (document.body.style.zoom === zoom) return;
+                zoom = document.body.style.zoom;
+                adjustLayout();
+            });
+            this.zoomObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+        }
         this.pullTab.addEventListener('click', () => this.togglePluginListCollapse());
         this.updatePositions();
     }
@@ -202,6 +213,16 @@ export class CollapseManager {
 
         const pipeline = document.getElementById('pipeline');
         if (!pipeline) return;
+
+        const columnManager = window.uiManager?.pipelineManager?.core?.columnManager;
+        if (columnManager?.isAutomatic()) {
+            // Fit columns before deciding whether to hide the list. The current
+            // pipeline rectangle can still have its old width during animation.
+            columnManager.adjustColumnsToWindow();
+            const fits = columnManager.canFitWithPluginList();
+            if (this.isCollapsed === fits) this.togglePluginListCollapse();
+            return;
+        }
 
         const windowWidth = window.innerWidth;
         const pipelineRect = pipeline.getBoundingClientRect();

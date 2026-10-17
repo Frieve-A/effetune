@@ -50,6 +50,10 @@ export class Element {
     await Promise.all((this.listeners.get(type) || []).map(listener => listener({ target: this, ...event })));
   }
 
+  contains(target) {
+    return target === this || this.children.some(child => child.contains(target));
+  }
+
   focus() {
     this.focused = true;
     if (globalThis.document) globalThis.document.activeElement = this;

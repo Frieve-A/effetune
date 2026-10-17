@@ -31,6 +31,14 @@ export class PipelineAIDialog {
         // Create dialog
         const dialog = document.createElement('div');
         dialog.className = 'ai-dialog';
+        dialog.tabIndex = -1;
+        dialog.onkeydown = event => {
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeDialog(dialog);
+            button?.focus();
+        };
         
         // Create dialog header
         const header = this.createDialogHeader();

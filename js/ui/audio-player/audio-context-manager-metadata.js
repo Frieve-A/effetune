@@ -60,6 +60,7 @@ export const audioContextManagerMetadataMethods = {
    * Load metadata for a track
    */
   loadMetadata(track, loadRequest = null, targetIndex = null) {
+    track = track?.presentationTrack ?? track;
     const metadataRequest = this.beginMetadataRequest(track, loadRequest, targetIndex);
     const currentIndex = metadataRequest.targetIndex >= 0
       ? metadataRequest.targetIndex
@@ -135,9 +136,32 @@ export const audioContextManagerMetadataMethods = {
 
     if (isFileObject(track.file)) {
       this.readID3Tags(track.file, currentIndex, metadataRequest);
+    } else if (this.shouldUseElectronFileRead(track.path) && window.electronAPI.readTrackTags) {
+      this.readTrackTagsFromPath(track, currentIndex, metadataRequest);
     } else {
       this.tryReadFromAudioElementSrc(track, currentIndex, metadataRequest);
     }
+  },
+
+  /**
+   * Show embedded tags ({ title, artist, album, picture }) as the current track presentation
+   */
+  applyTagMetadata(tags, riffInfo, fallbackName, label) {
+    const title = riffInfo?.title || this.normalizeMetadataTagText(tags.title || '', [fallbackName]);
+    const tagReferenceTexts = [title, fallbackName];
+    const artist = riffInfo?.artist || this.normalizeMetadataTagText(tags.artist || '', tagReferenceTexts);
+    const album = riffInfo?.album || this.normalizeMetadataTagText(tags.album || '', tagReferenceTexts);
+    const artworkUrl = this.createArtworkURL(tags.picture);
+    const displayText = title ? (artist ? `${artist} - ${title}` : title) : fallbackName;
+
+    this.updateState({
+      currentTrackName: displayText,
+      artworkUrl,
+      isTrackPresentationPending: false
+    }, label);
+    this.updateTrackNameDisplayText(displayText);
+
+    this.updateMediaSessionWithTags(title || fallbackName, artist, album, artworkUrl);
   },
 
   /**
@@ -147,22 +171,7 @@ export const audioContextManagerMetadataMethods = {
     const riffInfoPromise = this.createRiffInfoMetadataPromise(file);
     const applyMetadata = (tags = {}, riffInfo = null) => {
       if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return false;
-
-      const title = riffInfo?.title || this.normalizeMetadataTagText(tags.title || '', [file.name]);
-      const tagReferenceTexts = [title, file.name];
-      const artist = riffInfo?.artist || this.normalizeMetadataTagText(tags.artist || '', tagReferenceTexts);
-      const album = riffInfo?.album || this.normalizeMetadataTagText(tags.album || '', tagReferenceTexts);
-      const artworkUrl = this.createArtworkURL(tags.picture);
-      const displayText = title ? (artist ? `${artist} - ${title}` : title) : file.name;
-
-      this.updateState({
-        currentTrackName: displayText,
-        artworkUrl,
-        isTrackPresentationPending: false
-      }, 'ID3 metadata loaded');
-      this.updateTrackNameDisplayText(displayText);
-
-      this.updateMediaSessionWithTags(title || file.name, artist, album, artworkUrl);
+      this.applyTagMetadata(tags, riffInfo, file.name, 'ID3 metadata loaded');
       return true;
     };
     const applyRiffInfoFallback = riffInfo => {
@@ -199,6 +208,24 @@ export const audioContextManagerMetadataMethods = {
   },
 
   /**
+   * Read tags of a local desktop file by path in the main process
+   */
+  async readTrackTagsFromPath(track, currentIndex, metadataRequest = null) {
+    let tags = null;
+    try {
+      tags = await window.electronAPI.readTrackTags(track.path);
+    } catch (error) {
+      console.warn('Error reading track tags by path:', error);
+    }
+    if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
+    if (tags) {
+      this.applyTagMetadata(tags, null, track.name, 'Path metadata loaded');
+    } else {
+      this.fallbackToMediaSession(currentIndex, metadataRequest);
+    }
+  },
+
+  /**
    * Try to read metadata from audio element src
    */
   tryReadFromAudioElementSrc(track, currentIndex, metadataRequest = null) {
@@ -210,23 +237,7 @@ export const audioContextManagerMetadataMethods = {
           window.jsmediatags.read(this.audioPlayer.audioElement.src, {
             onSuccess: (tag) => {
               if (!this.isMetadataRequestCurrent(metadataRequest, currentIndex)) return;
-
-              const tags = tag.tags;
-              const title = this.normalizeMetadataTagText(tags.title || '', [track.name]);
-              const tagReferenceTexts = [title, track.name];
-              const artist = this.normalizeMetadataTagText(tags.artist || '', tagReferenceTexts);
-              const album = this.normalizeMetadataTagText(tags.album || '', tagReferenceTexts);
-              const artworkUrl = this.createArtworkURL(tags.picture);
-              const displayText = title ? (artist ? `${artist} - ${title}` : title) : track.name;
-
-              this.updateState({
-                currentTrackName: displayText,
-                artworkUrl,
-                isTrackPresentationPending: false
-              }, 'Source metadata loaded');
-              this.updateTrackNameDisplayText(displayText);
-
-              this.updateMediaSessionWithTags(title || track.name, artist, album, artworkUrl);
+              this.applyTagMetadata(tag.tags || {}, null, track.name, 'Source metadata loaded');
             },
             onError: (error) => {
               if (error && error.type !== 'tagFormat') {

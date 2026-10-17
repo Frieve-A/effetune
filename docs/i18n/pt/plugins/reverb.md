@@ -17,11 +17,9 @@ Uma coleção de plugins que adicionam espaço e atmosfera à sua música. Esses
 
 ## Dattorro Plate Reverb
 
-Uma implementação clássica de reverb de placa baseada no renomado algoritmo de Jon Dattorro do artigo de 1997 "Effect Design, Part 1: Reverberator and Other Filters." Este algoritmo é celebrado por sua qualidade sonora rica e suave e tornou-se uma referência padrão no design de reverb digital. Perfeito para adicionar ambiência rica e brilhante à sua música.
+Um reverb de placa baseado no projeto de Jon Dattorro de 1997. Ele acrescenta um decaimento denso e suave, adequado quando você quer uma ambiência espaçosa sem a impressão de uma sala específica.
 
-Nota de roteamento: Dattorro Plate Reverb é um modelo de placa estéreo. Quando roteado com mais de dois canais, todos os canais de entrada roteados alimentam uma placa mono para estéreo compartilhada, mas a mistura wet/dry é escrita apenas no primeiro par estéreo roteado. Canais adicionais contribuem para a entrada da placa e, fora isso, passam sem alteração, inclusive quando Dry Mix está em 0%; eles não recebem retorno wet e não são tanks de placa independentes.
-
-### Guia de Experiência de Audição
+### Guia de experiência de audição
 - Som de Placa Exuberante:
   - Caráter clássico de reverb de placa
   - Cauda de reverb suave e densa sem artefatos metálicos
@@ -49,7 +47,7 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para aplicar uma
   - 0-10ms: Reverb imediato, sensação íntima
   - 10-30ms: Sensação natural de espaço
   - 30-99.9ms: Cria impressão de espaços maiores
-  - Evite exatamente 100.0ms quando quiser pre-delay máximo; a implementação atual trata esse ponto final como sem pre-delay efetivo
+  - Evite exatamente 100.0ms quando quiser o pre-delay máximo, porque esse valor produz um pre-delay quase inaudível
 - **Bandwidth** - Filtragem do sinal de entrada (0.0 a 1.0)
   - Valores mais baixos: Tom de entrada mais escuro e quente
   - Valores mais altos (perto de 1.0): Entrada mais brilhante, frequência completa
@@ -90,37 +88,37 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para aplicar uma
   - Geralmente mantida em 100% para audição normal
   - Reduzir para efeitos especiais ou lavagens ambientes
 
-### Configurações Recomendadas para Diferentes Estilos Musicais
+### Configurações recomendadas para diferentes estilos musicais
 
 1. Piano Clássico
    - Decay: 0.6-0.7
    - Damping: 0.001
    - Mod Depth: 1.0
    - Wet Mix: 25-35%
-   - Perfeito para: Piano solo, música de câmara
+   - Útil para: Piano solo, música de câmara
 
 2. Vocais e Acústico
    - Decay: 0.4-0.5
    - Damping: 0.002
    - Pre Delay: 15-25ms
    - Wet Mix: 20-30%
-   - Perfeito para: Vocais, violão
+   - Útil para: Vocais, violão
 
 3. Ambiente e Atmosférico
    - Decay: 0.8-0.95
    - Mod Depth: 4.0-8.0
    - Mod Rate: 0.5-1.0Hz
    - Wet Mix: 50-70%
-   - Perfeito para: Ambient, eletrônica, paisagens sonoras
+   - Útil para: Ambient, eletrônica, paisagens sonoras
 
 4. Aprimoramento Geral
    - Decay: 0.5
    - Damping: 0.0005
    - Mod Depth: 1.0
    - Wet Mix: 20-30%
-   - Perfeito para: Uso geral, acabamento sutil
+   - Útil para: Audição geral e ambiência sutil
 
-### Guia de Início Rápido
+### Guia de início rápido
 
 1. Definir o Caráter Básico
    - Comece com Decay para controlar o comprimento do reverb
@@ -144,13 +142,15 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para aplicar uma
 
 O Dattorro Plate Reverb traz uma ambiência clássica em estilo de placa para sua experiência de escuta. Seu caráter suave e exuberante é útil para adicionar um espaço bonito e natural a uma gravação.
 
+### Roteamento multicanal
+
+O Dattorro Plate Reverb é um modelo de placa estéreo. Quando roteado com mais de dois canais, todos os canais de entrada roteados alimentam uma placa mono para estéreo compartilhada, mas a mistura wet/dry é escrita apenas no primeiro par estéreo roteado. Canais adicionais contribuem para a entrada da placa e, fora isso, passam sem alteração, inclusive quando Dry Mix está em 0%; eles não recebem retorno wet e não são tanks de placa independentes.
+
 ## FDN Reverb
 
 O FDN Reverb acrescenta um decaimento denso e natural. Use-o para dar a gravações secas ou próximas uma noção mais clara de tamanho e distância do ambiente.
 
-Nota de roteamento: o FDN Reverb faz a média de todos os canais de entrada roteados em um único tanque de feedback compartilhado. O tanque avança uma vez por amostra, e suas saídas wet são distribuídas pelos canais de saída roteados.
-
-### Guia de Experiência de Audição
+### Guia de experiência de audição
 - Sensação de Sala Natural:
   - Cria a sensação de ouvir em espaços acústicos reais
   - Adiciona profundidade e dimensão à sua música
@@ -166,7 +166,7 @@ Nota de roteamento: o FDN Reverb faz a média de todos os canais de entrada rote
 
 ### Predefinições do sistema
 
-Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+Clique em **Predefinições de efeito** no cabeçalho do efeito para aplicar um espaço completo, em vez de ajustar cada controle separadamente.
 
 - **Tight Room** - Uma resposta de sala curta e contida.
 - **Warm Hall** - Um salão mais longo e levemente escurecido para música acústica e orquestral.
@@ -226,37 +226,37 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
   - 100%: Largura estéreo wet moderada padrão
   - 200%: Separação completa dos taps wet esquerdo/direito, não amplificação extra dos lados
 
-### Configurações Recomendadas para Diferentes Experiências de Audição
+### Configurações recomendadas para diferentes experiências de audição
 
 1. Aprimoramento de Música Clássica
    - Reverb Time: 2.5-3.5s
    - Density: 8 linhas
    - Pre Delay: 30-50ms
    - HF Damp: 4.0-6.0
-   - Perfeito para: Gravações orquestrais, música de câmara
+   - Útil para: Gravações orquestrais, música de câmara
 
 2. Atmosfera de Clube de Jazz
    - Reverb Time: 1.2-1.8s
    - Density: 6 linhas
    - Pre Delay: 15-25ms
    - HF Damp: 2.0-4.0
-   - Perfeito para: Jazz acústico, performances íntimas
+   - Útil para: Jazz acústico, performances íntimas
 
 3. Aprimoramento Pop/Rock
    - Reverb Time: 1.0-2.0s
    - Density: 6-7 linhas
    - Pre Delay: 10-30ms
    - Wet Mix: 20-40%
-   - Perfeito para: Gravações modernas, adição de espaço
+   - Útil para: Gravações que precisam de um pouco mais de espaço
 
 4. Paisagens Sonoras Ambientes
    - Reverb Time: 4.0-8.0s
    - Density: 8 linhas
    - Mod Depth: 3.0-6.0
    - Wet Mix: 60-80%
-   - Perfeito para: Música atmosférica, relaxamento
+   - Útil para: Música atmosférica e decaimentos longos
 
-### Guia de Início Rápido
+### Guia de início rápido
 
 1. Definir o Caráter do Espaço
    - Comece com Reverb Time para corresponder ao tamanho de espaço desejado
@@ -278,70 +278,74 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
    - Mantenha Dry Mix em 100% para audição normal
    - Ajuste fino baseado em sua música e preferências
 
-O FDN Reverb transforma sua experiência de audição adicionando espaços acústicos realistas com reverberação bela e natural a qualquer gravação. Perfeito para amantes da música que querem aprimorar suas faixas favoritas com reverberação bela e natural!
+Comece com um valor baixo de Wet Mix e aumente-o até que o espaço acrescentado fique audível sem mascarar os detalhes da gravação.
+
+### Roteamento multicanal
+
+Todos os canais de entrada roteados são misturados em uma única reverberação compartilhada. O som reverberado é distribuído pelos canais de saída roteados, sem criar uma reverberação independente para cada entrada.
 
 ## IR Reverb
 
-O IR Reverb convolui o sinal com uma resposta ao impulso (IR) importada para reproduzir o decaimento e o caráter espacial medidos de uma sala, auditório, placa ou outro sistema acústico. É indicado quando você quer o som reproduzível de uma captura específica.
+O IR Reverb faz a convolução do sinal com uma resposta ao impulso (IR) importada e reproduz o decaimento e o caráter espacial medidos de uma sala, auditório, placa ou outro sistema acústico. É útil quando você quer o caráter reproduzível de uma captura específica, em vez de um modelo de reverberação sintetizado.
 
-### Guia de aprimoramento sonoro
+### Guia de aprimoramento da audição
 
-- Para uma ambiência discreta, use uma IR curta, mantenha **Dry** ativado, ajuste **Dry Level** para 0 dB e **Wet Level** entre -18 e -12 dB, e aplique um **Pre Delay** curto.
-- Para ampliar a sensação de auditório, use uma IR estéreo ou True Stereo e encurte uma cauda excessiva com **Decay** e **Trim**.
-- Em send/return, copie a fonte para outro bus com **Matrix**, desative **Dry**, ajuste **Wet Level** para 0 dB e controle a quantidade pelo nível de envio.
-- Para reproduzir o resultado, preserve o arquivo IR original e sua fonte/licença: os mesmos bytes geram o mesmo ID.
+- **Ambiência discreta de sala:** importe uma IR curta de sala, mantenha **Dry** ativado com **Dry Level** em 0 dB, ajuste **Wet Level** entre -18 e -12 dB e use um **Pre Delay** curto. Isso acrescenta espaço sem encobrir a gravação.
+- **Ampliação de sala de concerto:** use uma IR de auditório estéreo ou True Stereo, reduza primeiro **Wet Level** e depois encurte uma cauda longa demais com **Decay** e **Trim**.
+- **Send/return de reverberação:** envie a fonte para outro bus com **Matrix**, coloque o IR Reverb nesse retorno com **Dry** desativado e **Wet Level** em 0 dB e controle a reverberação pelo nível de envio. Isso evita somar o sinal seco duas vezes e também funciona com retornos multicanal selecionados.
+- **Comparação e reprodutibilidade:** guarde o arquivo IR original e o registro de sua fonte e licença. Os mesmos bytes de IR geram o mesmo ID na biblioteca, então outra instalação pode reconectá-la exatamente importando esse arquivo.
 
 ### Parâmetros
 
-- **Channel Mode**: **Auto** seleciona Mono para uma IR de um canal, True Stereo para uma IR de quatro canais com seleção estéreo, Independent quando as quantidades de canais coincidem e Diagonal Matrix nos demais casos; o modo resultante aparece à direita do menu. Também permite escolher explicitamente Mono, Independent, True Stereo (rotas LL/LR/RL/RR) ou Diagonal Matrix sem crossfeed.
-- **Latency**: Zero ou 128/256/512/1024 samples. Valores altos aliviam o processamento, mas atrasam toda a saída do efeito; o sinal direto é atrasado na mesma medida para continuar alinhado com a reverberação, e a cadeia compensa esse atraso; Zero exige Full.
-- **Convolution Rate**: Auto, Full, Half ou Quarter. Com Auto, a taxa resultante aparece à direita do menu. Taxas menores reduzem carga e largura de banda wet; Quarter exige pelo menos 176,4 kHz.
-- **Wet Level**: nível do sinal convoluído, de -96 a +12 dB. O padrão é -15 dB para uso normal como insert; em uma configuração de send/return, ajuste para 0 dB e controle a quantidade de reverb pelo nível de envio.
-- **Dry**: ativa o sinal original. Fica ativado por padrão; desative-o para remover totalmente o sinal direto sem perder o valor de **Dry Level**.
-- **Dry Level**: ajusta o nível do sinal original de -96 a +12 dB quando **Dry** está ativado. O valor -96 dB também silencia esse sinal.
-- **Pre Delay**: atrasa apenas o sinal wet de 0 a 500 ms.
-- **Direct Cut** remove o impulso direto detectado; **Cut Offset** move o corte entre -20 e +50 ms. A normalização continua usando a IR sem corte como referência; portanto, ativar o Direct Cut não aumenta o nível da cauda de reverberação restante.
-- **Decay** remodela o decaimento de 10% a 400%; 100% preserva a captura.
-- **Trim** conserva de 1% a 100% da IR após o corte; uma cauda menor usa menos CPU e memória.
+- **Channel Mode** - Seleciona como os canais da IR são roteados. **Auto** seleciona Mono para uma IR de um canal, True Stereo para uma IR de quatro canais com seleção estéreo, Independent quando as quantidades de canais da IR e da seleção coincidem e Diagonal Matrix nos demais casos; o modo resultante aparece à direita do menu. **Mono** aplica uma IR aos canais selecionados; **Independent** associa um canal da IR a cada canal selecionado; **True Stereo** usa os caminhos LL/LR/RL/RR; **Diagonal Matrix** associa canais de entrada e saída correspondentes sem crossfeed.
+- **Latency** - Escolhe a latência do bloco de convolução (Zero, 128, 256, 512 ou 1024 amostras). Valores maiores geralmente aliviam o processamento, mas atrasam toda a saída do efeito; o sinal direto é atrasado na mesma medida para continuar alinhado com a reverberação, e a cadeia compensa esse atraso. **Zero** exige **Convolution Rate = Full**.
+- **Convolution Rate** - Define a taxa usada pela convolução wet. **Auto** usa meia taxa quando a taxa do contexto é alta e mostra a taxa resultante à direita do menu, enquanto **Full**, **Half** e **Quarter** tornam a escolha explícita. Taxas reduzidas diminuem a carga de processamento, mas também a largura de banda do caminho wet; Quarter exige uma taxa de contexto de pelo menos 176.4 kHz.
+- **Wet Level** - Define o nível da saída convoluída de -96 a +12 dB. O padrão é -15 dB para o uso comum como insert; em uma configuração de send/return, use 0 dB e controle a quantidade de reverberação pelo nível de envio.
+- **Dry** - Ativa o sinal direto. Fica ativado por padrão; desative-o para remover totalmente o sinal seco, mantendo o valor de **Dry Level** para uso posterior.
+- **Dry Level** - Define o nível do sinal direto de -96 a +12 dB enquanto **Dry** está ativado. O extremo de -96 dB também silencia o sinal seco.
+- **Pre Delay** - Atrasa apenas o sinal wet de 0 a 500 ms, separando o transiente original da resposta da sala.
+- **Direct Cut** - Remove da IR o impulso direto detectado, para que a captura contribua apenas com sua parte reverberante. A normalização continua usando a IR sem corte como referência, então ativar o Direct Cut não aumenta o nível da cauda reverberante restante.
+- **Cut Offset** - Move o ponto de corte detectado de -20 a +50 ms quando **Direct Cut** está ativado.
+- **Decay** - Remodela o decaimento da IR de 10% a 400%; 100% preserva o decaimento gravado, valores menores o encurtam e valores maiores o prolongam.
+- **Trim** - Conserva de 1% a 100% da IR após o corte, com um fade. Valores menores reduzem o comprimento da cauda, o uso de CPU e a memória.
 
 ### Como ler o gráfico de decaimento
 
-O tempo avança da esquerda para a direita e o nível vai de 0 a -90 dB. A curva EDC contínua mostra a perda de energia; uma inclinação maior indica cauda menor. Os marcadores indicam onset, cut, pre-delay e trim. O RT60 estima o tempo de queda de 60 dB. Ao alterar **Decay**, a curva nova é contínua e a original aparece pontilhada. Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
+O tempo avança da esquerda para a direita e o nível vai de 0 a -90 dB. A curva contínua de decaimento de energia (EDC) mostra como a energia acústica armazenada diminui; uma descida mais íngreme significa uma cauda mais curta. O envelope tênue dá o contexto dos transientes. Os marcadores indicam o início detectado, o ponto de corte direto ativo, o pre-delay do sinal wet e o ponto de trim. **RT60** estima o tempo para um decaimento de 60 dB; “unavailable” significa que a IR não continha um trecho confiável para o ajuste. Quando **Decay** é diferente de 100%, compare a curva contínua remodelada com a curva original pontilhada. Passe o cursor sobre o gráfico, ou toque e arraste, para ler os valores nesse ponto.
 
 ### Roteamento, biblioteca e compartilhamento
 
-Mono aplica uma IR, Independent mantém os canais separados, True Stereo usa LL/LR/RL/RR e Diagonal Matrix conecta apenas entradas e saídas correspondentes. Em Auto, toda IR de quatro canais com seleção estéreo é interpretada nessa ordem; para layouts Quad ou outros layouts de quatro canais, selecione explicitamente Independent ou Diagonal Matrix. Para um par True Stereo, selecione juntos arquivos correspondentes terminados em `L`/`R` ou `Left`/`Right`.
+Uma IR mono pode alimentar os canais selecionados, canais independentes da IR permanecem separados e uma IR True Stereo de quatro canais usa as rotas cruzadas LL/LR/RL/RR. Em Auto, toda IR de quatro canais com seleção estéreo é interpretada nessa ordem; para layouts Quad ou outros layouts de quatro canais, escolha explicitamente Independent ou Diagonal Matrix. Outros arquivos multicanal usam uma rota diagonal limitada; o IR Reverb não cria uma matriz completa de crossfeed surround. Para arquivos True Stereo em par, selecione juntos os arquivos com nomes correspondentes `L`/`R` ou `Left`/`Right`.
 
-Os arquivos IR importados ficam na **Biblioteca de respostas ao impulso**, onde você pode pesquisá-los pelo nome original, carregá-los ou excluí-los. Para excluir vários de uma vez, marque as caixas de seleção ou use **Selecionar tudo** para selecionar todas as entradas exibidas no momento e escolha **Excluir selecionadas**. **Ctrl+A** (**Command+A** no macOS) também seleciona todas as entradas visíveis; **Desmarcar tudo** limpa a seleção. Arquivos com extensão `.irs` que contenham áudio WAV podem ser importados sem renomeá-los. Na versão web, eles são armazenados no navegador e podem ser perdidos se você limpar os dados do site ou se o navegador liberar espaço. O app desktop os guarda nos dados do aplicativo. Mantenha uma cópia separada de cada IR necessário.
+Os arquivos IR importados ficam na **Biblioteca de respostas ao impulso**, onde você pode pesquisá-los, carregá-los ou excluí-los pelo nome original. Para excluir vários de uma vez, marque as caixas de seleção ou use **Selecionar tudo** para selecionar todas as entradas exibidas no momento e escolha **Excluir selecionadas**. **Ctrl+A** (**Command+A** no macOS) também seleciona todas as entradas visíveis; **Desmarcar tudo** limpa a seleção. Áudio WAV com a extensão `.irs` pode ser importado sem renomear o arquivo. Na versão web, esses arquivos ficam armazenados no navegador e podem ser perdidos se você limpar os dados do site ou se o navegador liberar espaço. O app desktop os guarda junto com os dados do aplicativo. Mantenha uma cópia separada de cada IR de que precisar.
 
-URLs compartilhadas e presets identificam a IR, mas não incluem seus dados de áudio. Se a IR não estiver disponível, nenhum som wet será produzido; importe-a ou selecione-a novamente, ou escolha outra. O sinal original segue as configurações **Dry** e **Dry Level**. Há material no [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) e [Freesound](https://freesound.org/), mas verifique a licença de cada download (CC0, CC BY ou CC BY-NC, por exemplo) e preserve autor, fonte, atribuição e permissão comercial fora do EffeTune, que não armazena nem verifica informações de licença.
+URLs compartilhadas e predefinições identificam a IR, mas não incluem seus dados de áudio. Se a IR não estiver disponível, nenhum som wet é produzido; importe ou selecione a IR novamente, ou escolha uma substituta. O sinal direto continua conforme **Dry** e **Dry Level**.
+
+Para material disponível gratuitamente, comece pela [biblioteca OpenAIR](https://www.openair.hosted.york.ac.uk/) da Universidade de York, pelos [downloads do EchoThief](https://www.echothief.com/downloads/) ou por envios individuais de IR no [Freesound](https://freesound.org/). “Gratuito” não significa sem restrições: o OpenAIR informa a licença na página de cada conteúdo, e os arquivos do Freesound podem ser CC0, CC BY ou CC BY-NC. Verifique a página de download específica, guarde o autor, a fonte e a licença junto com o arquivo, faça a atribuição quando exigida e confirme se o uso comercial ou a redistribuição pretendidos são permitidos. O EffeTune não armazena nem verifica informações de licença.
 
 ## RS Reverb
 
-Um efeito que pode transportar sua música para diferentes espaços, desde salas aconchegantes até salões majestosos. Adiciona ecos e reflexões naturais que tornam sua música mais tridimensional e imersiva.
+O RS Reverb acrescenta reflexões e decaimento ajustáveis, fazendo uma gravação seca soar como se estivesse sendo tocada em uma sala ou auditório.
 
-### Guia de Experiência de Audição
+### Guia de experiência de audição
 - Espaço Íntimo:
-  - Faz a música parecer estar em uma sala quente e aconchegante
-  - Perfeito para audição próxima e pessoal
-  - Adiciona profundidade sutil sem perder clareza
-- Experiência de Sala de Concerto:
-  - Recria a grandiosidade de apresentações ao vivo
-  - Adiciona espaço majestoso à música clássica e orquestral
-  - Cria uma experiência de concerto imersiva
-- Aprimoramento Atmosférico:
-  - Adiciona qualidades sonhadoras e etéreas
-  - Perfeito para música ambiente e atmosférica
-  - Cria paisagens sonoras envolventes
+  - Comece com Room Size 8-12m, Reverb Time 1.0-1.5s e Mix 20-30%
+  - Reduza Mix se as vozes ou os ataques dos instrumentos perderem clareza
+- Espaço de Auditório:
+  - Comece com Room Size 30-40m, Reverb Time 2.0-2.5s e Mix 30-40%
+  - Encurte Reverb Time se notas sucessivas ficarem borradas
+- Decaimento Longo e Atmosférico:
+  - Comece com Room Size 25-40m, Reverb Time 3-6s e Mix 40-60%
+  - Aumente Damping ou reduza High Damp se a cauda ficar brilhante demais
 
 ### Predefinições do sistema
 
-Clique em **Predefinições de efeito** no cabeçalho do efeito para experimentar diretamente estas configurações completas.
+Clique em **Predefinições de efeito** no cabeçalho do efeito para aplicar uma configuração completa de sala ou auditório.
 
-- **Small Room** - Ambiência de sala curta e próxima com 5 ms de pre-delay.
-- **Jazz Club** - Sala moderada para material acústico intimista com 15 ms de pre-delay.
-- **Concert Hall** - Sala de concertos com 25 ms de pre-delay e decaimento de graves mais rico.
-- **Cathedral** - Espaço reverberante longo e escuro com 40 ms de pre-delay e o decaimento de graves mais rico.
+- **Small Room** - Uma ambiência de sala curta e próxima, com 5 ms de pre-delay e decaimento de graves mais contido.
+- **Jazz Club** - Uma sala moderada com 15 ms de pre-delay para material acústico intimista.
+- **Concert Hall** - Um espaço maior e mais profundo, com 25 ms de pre-delay e decaimento de graves mais cheio.
+- **Cathedral** - Um espaço longo e escuro, com 40 ms de pre-delay e o decaimento de graves mais cheio.
 
 ### Parâmetros
 - **Pre-Delay** (0 a 50 ms) - Atrasa as reflexões do sinal reverberado antes de entrarem no modelo de sala. Valores mais altos mantêm o ataque do som original distinto por mais tempo, mas não eliminam o atraso do próprio modelo de sala.
@@ -378,33 +382,33 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
   - 30-50%: Espaço notável
   - 50-100%: Efeito dramático
 
-### Configurações Recomendadas para Diferentes Estilos de Música
+### Configurações recomendadas para diferentes estilos de música
 
 1. Música Clássica em Sala de Concerto
    - Room Size: 30-40m
    - Reverb Time: 2.0-2.5s
    - Mix: 30-40%
-   - Perfeito para: Obras orquestrais, concertos de piano
+   - Útil para: Obras orquestrais, concertos de piano
 
 2. Clube de Jazz Íntimo
    - Room Size: 8-12m
    - Reverb Time: 1.0-1.5s
    - Mix: 20-30%
-   - Perfeito para: Jazz, apresentações acústicas
+   - Útil para: Jazz, apresentações acústicas
 
 3. Pop/Rock Moderno
    - Room Size: 15-20m
    - Reverb Time: 1.2-1.8s
    - Mix: 15-25%
-   - Perfeito para: Música contemporânea
+   - Útil para: Música contemporânea
 
 4. Ambiente/Eletrônica
    - Room Size: 25-40m
    - Reverb Time: 3.0-6.0s
    - Mix: 40-60%
-   - Perfeito para: Música eletrônica atmosférica
+   - Útil para: Música eletrônica atmosférica
 
-### Guia de Início Rápido
+### Guia de início rápido
 
 1. Escolha Seu Espaço
    - Comece com Room Size para definir o espaço básico
@@ -420,4 +424,4 @@ Clique em **Predefinições de efeito** no cabeçalho do efeito para experimenta
    - Ajuste Mix para equilíbrio final
    - Confie em seus ouvidos e ajuste ao gosto
 
-Lembre-se: O objetivo é aprimorar sua música com espaço e atmosfera naturais. Comece com configurações sutis e ajuste até encontrar o equilíbrio perfeito para sua experiência de audição!
+Comece com um valor baixo de Mix e aumente-o até que o espaço acrescentado fique nítido sem encobrir a gravação original.

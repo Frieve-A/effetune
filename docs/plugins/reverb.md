@@ -19,8 +19,6 @@ A collection of plugins that add space and atmosphere to your music. These effec
 
 A plate reverb based on Jon Dattorro's 1997 design. It adds a dense, smooth decay that works well when you want spacious ambience without the impression of a specific room.
 
-Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
-
 ### Listening Experience Guide
 - Lush Plate Sound:
   - Classic plate reverb character
@@ -144,11 +142,13 @@ Click **Effect Presets** in the effect header to start with a complete plate set
 
 The Dattorro Plate Reverb brings a classic plate-style ambience to your listening experience. Its smooth, lush character makes it useful for adding beautiful, natural-sounding space to a recording.
 
+### Multichannel Routing
+
+Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
+
 ## FDN Reverb
 
 FDN Reverb adds a dense, natural-sounding decay. Use it to give dry or close recordings a clearer sense of room size and distance.
-
-Routing note: FDN Reverb averages all routed input channels into one shared feedback tank. The tank advances once per sample, and its wet taps are distributed across the routed output channels.
 
 ### Listening Experience Guide
 - Natural Room Feel:
@@ -278,7 +278,11 @@ Click **Effect Presets** in the effect header to apply a complete space rather t
    - Keep Dry Mix at 100% for normal listening
    - Fine-tune based on your music and preferences
 
-Start with a low Mix value, then increase it until the added space is audible without masking detail in the recording.
+Start with a low Wet Mix value, then increase it until the added space is audible without masking detail in the recording.
+
+### Multichannel Routing
+
+All routed input channels are mixed into one shared reverb. The reverberated sound is distributed across the routed output channels, rather than producing a separate reverb for each input.
 
 ## IR Reverb
 

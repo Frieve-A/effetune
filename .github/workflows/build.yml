@@ -282,6 +282,7 @@ jobs:
         if: inputs.source_verified
         run: >-
           node --test --test-concurrency=1
+          tests/cjs/electron-alac-playback-source.test.cjs
           tests/cjs/electron-ipc-handlers-mini-player.test.cjs
           tests/cjs/electron-ipc-handlers.test.cjs
           tests/cjs/electron-ir-library-ipc.test.cjs

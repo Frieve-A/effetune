@@ -42,8 +42,6 @@ Creates a plate-style reverberation using a Dattorro-inspired network.
 
 A plate reverb based on Jon Dattorro's 1997 design. It adds a dense, smooth decay that works well when you want spacious ambience without the impression of a specific room.
 
-Routing note: Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
-
 ### Listening Experience Guide
 - Lush Plate Sound:
   - Classic plate reverb character
@@ -166,5 +164,9 @@ Click **Effect Presets** in the effect header to start with a complete plate set
    - The default values are a great starting point
 
 The Dattorro Plate Reverb brings a classic plate-style ambience to your listening experience. Its smooth, lush character makes it useful for adding beautiful, natural-sounding space to a recording.
+
+### Multichannel Routing
+
+Dattorro Plate Reverb is a stereo plate model. When routed with more than two channels, all routed input channels feed one shared mono-to-stereo plate, but the wet/dry mix is written only to the first routed stereo pair. Additional channels contribute to the plate input and otherwise pass through unchanged, including when Dry Mix is 0%; they do not receive a wet return and are not independent plate tanks.
 
 [Back to all effects](/dsp/effects/)

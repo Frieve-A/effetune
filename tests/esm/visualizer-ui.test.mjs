@@ -34,7 +34,7 @@ test('Layout shortcuts and paste belong to Visualizer controls and leave externa
             const view = Object.assign(Object.create(VisualizerView.prototype), {
                 root: { contains: target => target?.inRoot === true }, layout: createDefaultLayout(),
                 history: new VisualizerHistory(), undoButton: {}, redoButton: {}, cutButton: {}, copyButton: {},
-                stage: { style: {} }, sources: { setLayout() {} }, store: { saveCurrent: layout => saved.push(snapshotLayout(layout)) }
+                stage: { style: {} }, sources: { setLayout() {} }, video: { setEnabled() {}, setActive() {}, frame: () => null }, store: { saveCurrent: layout => saved.push(snapshotLayout(layout)) }
             });
             const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
                 view, open: true, selection: new Set(['main-spectrum']),
@@ -762,6 +762,26 @@ test('Lyrics list position moves the current row from top to bottom and leaves s
     assert.ok(Math.abs(currentY(0) - 235.2) < 1e-10);
 });
 
+test('Clicking a drawn synced Lyrics row returns its cue time plus the item offset', () => {
+    const item = createItem('lyrics', 'lyrics'), measurements = {};
+    Object.assign(item, { rect: { x: .5, y: 0, w: .5, h: 1 }, flipX: true });
+    item.params.lyricsOffset = .5;
+    const ctx = { save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, fillText() {}, globalAlpha: 1 };
+    const frame = { rows: [{ time: 1, text: 'Before' }, { time: 3, text: 'Now' }, { time: 4, text: '' }], list: true,
+        next: true, synced: true, current: 1, p: 1, fill: null };
+    drawLyrics(ctx, item, frame, 400, 300, 1, '#fff', null, measurements);
+    const renderer = new VisualizerRenderer({ width: 800, height: 300 });
+    renderer.layers.set('lyrics', { canvas: { width: 400, height: 300 }, lyricsMeasurements: measurements,
+        lyricsClipped: true, lyricsTransform: { transformPoint: ({ x, y }) => ({ x: 800 - x, y }) } });
+    const layout = { items: [item] };
+    assert.equal(renderer.lyricsSeekTime(layout, .9, .5), 3.5);
+    assert.equal(renderer.lyricsSeekTime(layout, .6, .5), 3.5); // Flip X mirrors the item box.
+    assert.equal(renderer.lyricsSeekTime(layout, .4, .5), null);
+    assert.deepEqual(measurements.hits.map(row => row.time), [1.5, 3.5]); // Empty clear rows are not seek targets.
+    drawLyrics(ctx, item, { ...frame, synced: false }, 400, 300, 1, '#fff', null, measurements);
+    assert.equal(renderer.lyricsSeekTime(layout, .9, .5), null);
+});
+
 test('Enhanced LRC word fill reaches the explicit word end before the next line', () => {
     const item = createItem('lyrics', 'lyrics');
     const data = parseLrc('[00:01]<00:01>Hello<00:02>\n[00:10]Next');
@@ -817,6 +837,7 @@ test('Lyrics word fill clips the drawn width after casing, letter spacing, and l
 test('Missing artwork hides its decorations and returns only after an image loads', async () => {
     const composed = [];
     const context = { clearRect() {}, save() {}, translate() {}, scale() {}, restore() {},
+        getTransform: () => ({ translate() { return this; }, scale() { return this; } }),
         fillRect() {}, fillText() {}, beginPath() {}, roundRect() {}, clip() {}, drawImage() {} };
     const stage = { width: 1280, height: 720, getContext: () => ({ ...context, drawImage: image => composed.push(image) }) };
     const layout = createDefaultLayout();
@@ -1259,7 +1280,7 @@ test('Mobile Visualizer reload reuses normal and expanded history entries for Ba
 test('Visualizer stops sources and animation when host visibility changes', async () => {
     const calls = [], classList = classes('view-visualizer');
     const view = Object.assign(Object.create(VisualizerView.prototype), {
-        sources: { hostHidden: true, setVisible: visible => calls.push(visible) },
+        sources: { hostHidden: true, setVisible: visible => calls.push(visible) }, video: { setEnabled() {}, setActive() {}, frame: () => null },
         frameRequest: 7, uiManager: { audioManager: {}, isDoubleBlindActive: () => false }
     });
     await withGlobals({ document: { body: { classList }, hidden: false }, cancelAnimationFrame: id => calls.push(id), requestAnimationFrame: () => 8 }, () => {
@@ -1287,7 +1308,7 @@ test('Hiding the main Visualizer preserves feed sources until the feed closes', 
         const sources = new VisualizerSources(audioManager);
         const feed = { visible: true, dispose() { this.visible = false; } };
         const view = Object.assign(Object.create(VisualizerView.prototype), {
-            sources, feed, visible: true, frameRequest: 7,
+            sources, feed, visible: true, frameRequest: 7, video: { setEnabled() {}, setActive() {}, frame: () => null },
             uiManager: { audioManager, isDoubleBlindActive: () => false },
             setEditing() {}, setExpanded() {}
         });
@@ -1376,7 +1397,7 @@ test('Visualizer preset rename collisions preserve the existing layout on the ne
     const view = Object.assign(Object.create(VisualizerView.prototype), {
         layout: createDefaultLayout(), currentPresetName: '',
         systems: { '16:9': { Default: createDefaultLayout() } }, store,
-        history: new VisualizerHistory(), sources: { setLayout() {} }, stage: { style: {} },
+        history: new VisualizerHistory(), sources: { setLayout() {} }, video: { setEnabled() {}, setActive() {}, frame: () => null }, stage: { style: {} },
         editor: { open: false, selection: new Set(), resetForLayout() {}, updateSelection() {} },
         undoButton: {}, redoButton: {}, cutButton: {}, copyButton: {},
         uiManager: { pipelineManager: { core: { pluginPresetDialog: {

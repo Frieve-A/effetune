@@ -88,6 +88,17 @@ export class AudioPlayerUI {
     this.pinButton = null;
     this.desktopQueueExpanded = readStoredQueueExpanded();
     this.artworkImage = null;
+    this.videoElement = null;
+    this.videoExpanded = false;
+    this.videoControlsTimer = null;
+    this.onVideoKeyDown = event => {
+      if (event.key === 'Escape' && this.videoExpanded) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.setVideoExpanded(false);
+        this.videoExpandButton?.focus();
+      }
+    };
     this.mobileTrackPresentationPending = false;
     this.trackPresentationGeneration = 0;
     this.pendingArtworkPreload = null;
@@ -132,9 +143,12 @@ export class AudioPlayerUI {
     
     // Listen to specific state changes
     addStateListener('currentTrack', (track) => {
+      this.updateVideoPresentation();
       this.handleCurrentTrackChange(track);
       this.notifyLibraryNowPlaying(track);
     });
+
+    addStateListener('playbackMode', () => this.updateVideoPresentation());
 
     addStateListener('currentTrackName', () => {
       this.updateTrackDisplay();
@@ -309,6 +323,18 @@ export class AudioPlayerUI {
     this.restoreButton = container.querySelector('.restore-button');
     this.pinButton = container.querySelector('.pin-button');
     this.artworkImage = container.querySelector('.player-artwork-image');
+    this.videoExpandButton = document.createElement('button');
+    this.videoExpandButton.className = 'player-button player-video-expand';
+    this.videoExpandButton.type = 'button';
+    this.videoExpandButton.hidden = true;
+    this.videoExpandButton.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>';
+    this.artworkImage.parentNode.appendChild(this.videoExpandButton);
+    this.videoExpandButton.addEventListener('click', () => this.setVideoExpanded(!this.videoExpanded));
+    for (const eventName of ['pointermove', 'pointerdown', 'focusin']) {
+      container.addEventListener(eventName, () => this.showVideoControls());
+    }
+    this.documentRef?.addEventListener?.('keydown', this.onVideoKeyDown, true);
+    this.updateVideoPresentation();
     this.lastAppliedArtworkUrl = null;
     this.playlistDisplay = container.querySelector('.player-playlist');
     const initialState = this.audioPlayer.stateManager?.getStateSnapshot?.();
@@ -500,6 +526,7 @@ export class AudioPlayerUI {
   setMiniMode(enabled) {
     if (!this.container) return;
     const miniMode = enabled === true;
+    if (miniMode) this.setVideoExpanded(false);
     this.container.setAttribute('data-mini-player', miniMode ? 'true' : 'false');
     this.setMiniPlayerAlwaysOnTop(window.uiManager?.miniPlayerAlwaysOnTop === true);
     this.applyDesktopQueueExpansion();
@@ -877,20 +904,66 @@ export class AudioPlayerUI {
       this.artworkImage.src = nextUrl;
       this.lastAppliedArtworkUrl = nextUrl;
     }
-    this.artworkImage.hidden = !artworkUrl;
+    this.artworkImage.hidden = !!this.videoElement || !artworkUrl;
     const artworkContainer = this.artworkImage.parentNode;
     const placeholder = artworkContainer?.querySelector?.('.player-artwork-placeholder');
     if (placeholder) {
-      placeholder.hidden = !!artworkUrl;
+      placeholder.hidden = !!this.videoElement || !!artworkUrl;
     }
     if (artworkContainer?.style) {
       const miniPlayer = this.container?.getAttribute('data-mini-player') === 'true';
       const keepPlaceholder = miniPlayer || window.uiManager?.layoutMode?.isMobile ||
         this.isDesktopQueueExpanded();
-      const hasArtworkLayout = !!artworkUrl || !!keepPlaceholder;
+      const hasArtworkLayout = !!this.videoElement || !!artworkUrl || !!keepPlaceholder;
       artworkContainer.style.display = hasArtworkLayout ? '' : 'none';
       this.container?.setAttribute('data-artwork-layout', hasArtworkLayout ? 'true' : 'false');
     }
+  }
+
+  updateVideoPresentation() {
+    if (!this.artworkImage) return;
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const element = this.audioPlayer.audioElement;
+    const video = state?.playbackMode === 'audioElement' && element?.tagName === 'VIDEO' &&
+      element.videoWidth > 0 ? element : null;
+    const changed = this.videoElement !== video;
+    if (changed) {
+      this.videoElement?.parentNode?.removeChild(this.videoElement);
+      this.videoElement = video;
+      if (video) this.artworkImage.parentNode.appendChild(video);
+    }
+    if (!video) this.setVideoExpanded(false);
+    this.container?.setAttribute('data-video', video ? 'true' : 'false');
+    if (this.videoExpandButton) {
+      this.videoExpandButton.hidden = !video;
+      const label = this.t(this.videoExpanded ? 'ui.title.restoreVideo' : 'visualizer.expand');
+      this.videoExpandButton.title = label;
+      this.videoExpandButton.setAttribute('aria-label', label);
+      this.videoExpandButton.setAttribute('aria-pressed', String(this.videoExpanded));
+    }
+    if (changed || video) this.applyArtwork(state?.artworkUrl || '');
+  }
+
+  setVideoExpanded(expanded) {
+    const next = expanded === true && !!this.videoElement;
+    if (this.videoExpanded === next) return;
+    this.videoExpanded = next;
+    this.closePlayerPopup();
+    this.container?.setAttribute('data-video-expanded', String(next));
+    this.updateVideoPresentation();
+    clearTimeout(this.videoControlsTimer);
+    this.videoControlsTimer = null;
+    if (next) this.showVideoControls();
+  }
+
+  showVideoControls() {
+    if (!this.videoExpanded) return;
+    this.container?.setAttribute('data-video-controls', 'true');
+    clearTimeout(this.videoControlsTimer);
+    this.videoControlsTimer = setTimeout(() => {
+      this.videoControlsTimer = null;
+      this.container?.setAttribute('data-video-controls', 'false');
+    }, 2500);
   }
 
   updateLoadingState() {
@@ -1535,6 +1608,12 @@ export class AudioPlayerUI {
    * Remove player UI from DOM
    */
   removeUI() {
+    this.setVideoExpanded(false);
+    clearTimeout(this.videoControlsTimer);
+    this.videoControlsTimer = null;
+    this.videoElement = null;
+    this.videoExpandButton = null;
+    this.documentRef?.removeEventListener?.('keydown', this.onVideoKeyDown, true);
     this.isDisposed = true;
     this.cancelArtworkPreload();
     this.trackPresentationGeneration += 1;
@@ -1593,6 +1672,8 @@ export class AudioPlayerUI {
       'library.state.noResolvedTracks': 'There are no available library tracks.',
       'ui.title.expandPlayer': 'Expand player',
       'ui.title.collapsePlayer': 'Collapse player',
+      'ui.title.restoreVideo': 'Restore video size',
+      'visualizer.expand': 'Fill app window',
       'ui.preservePitch': 'Preserve Pitch'
     };
     return fallback[key] || String(key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '');

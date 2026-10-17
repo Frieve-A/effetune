@@ -877,10 +877,6 @@ Tape Artifacts संगीत को analog reel-to-reel tape machine से �
 - **Output** (-24.0 से +24.0 dB) - पूरी chain के बाद level बदलता है। 0 dB से शुरू करें और bypass से तुलना या ऊंचे Record Level से घटी आवाज़ वापस लाने के लिए समायोजित करें।
 - **Mix** (0 से 100%) - tape sound को मूल signal में मिलाता है। पूरे प्रभाव के लिए 100% से शुरू करें और हल्की रंगत के लिए घटाएं। बीच के मानों पर partial cancellation से सबसे ऊंची frequencies नरम हो सकती हैं।
 
-### Status line को पढ़ना
-
-Controls के नीचे की पंक्ति चुनी गई Speed, Tape, Record Level, Wow/Flutter और Hiss के लिए प्रभावी movement तथा background-noise level दिखाती है। Settings की तुलना के लिए इसे देखें। `off` का अर्थ है कि tape-noise layer बंद है।
-
 ### सुझाई गई सेटिंग
 
 1. **स्टूडियो मास्टर टेप (डिफ़ॉल्ट)**
@@ -908,6 +904,7 @@ Controls के नीचे की पंक्ति चुनी गई Speed
    - Wow/Flutter: 0.480%, Hiss: -56.5 dB re 320 nWb/m, Output: +1.0 dB, Mix: 100%
    - तेज़ pitch movement, grit, compression और hiss वाला जानबूझकर degraded sound।
 
+Tape Artifacts, Mix के 0% से अधिक होने पर लगभग 5ms का विलंब जोड़ता है। यह टेप टोन, सैचुरेशन, हिस और ट्रांसपोर्ट मूवमेंट पर केंद्रित है; यह ड्रॉपआउट, स्प्लाइस शोर या हेड-अलाइनमेंट त्रुटियां नहीं जोड़ता।
 
 ## TV Audio Simulator
 

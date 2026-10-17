@@ -44,8 +44,6 @@ Creates reverberation with a feedback delay network.
 
 FDN Reverb adds a dense, natural-sounding decay. Use it to give dry or close recordings a clearer sense of room size and distance.
 
-Routing note: FDN Reverb averages all routed input channels into one shared feedback tank. The tank advances once per sample, and its wet taps are distributed across the routed output channels.
-
 ### Listening Experience Guide
 - Natural Room Feel:
   - Creates the sensation of listening in real acoustic spaces
@@ -174,6 +172,10 @@ Click **Effect Presets** in the effect header to apply a complete space rather t
    - Keep Dry Mix at 100% for normal listening
    - Fine-tune based on your music and preferences
 
-Start with a low Mix value, then increase it until the added space is audible without masking detail in the recording.
+Start with a low Wet Mix value, then increase it until the added space is audible without masking detail in the recording.
+
+### Multichannel Routing
+
+All routed input channels are mixed into one shared reverb. The reverberated sound is distributed across the routed output channels, rather than producing a separate reverb for each input.
 
 [Back to all effects](/dsp/effects/)

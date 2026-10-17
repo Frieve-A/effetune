@@ -6,162 +6,127 @@ lang: es
 
 # Cómo usar la Biblioteca musical
 
-La Biblioteca musical indexa las carpetas de música que seleccionas y te permite explorar tu colección local por pistas, archivos, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente y listas de reproducción. El audio reproducido pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
+La Biblioteca musical indexa las carpetas de música seleccionadas para que puedas explorar tu colección local por pistas, archivos, álbumes, artistas, géneros, subcarpetas, carpetas, elementos añadidos recientemente o listas de reproducción. La reproducción pasa por el pipeline de efectos actual de EffeTune, igual que durante la reproducción normal de archivos de música.
 
-La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de carátulas y las listas de reproducción. No edita, cambia de nombre, mueve ni elimina los archivos de audio.
+La Biblioteca musical guarda dentro de la aplicación su catálogo, la caché de carátulas y las listas de reproducción. No edita, cambia de nombre, mueve ni elimina tus archivos de audio.
 
-## Disponibilidad
+## Disponibilidad {#availability}
 
-- **Aplicación de escritorio:** Usa el escáner completo de carpetas y puede mantener disponibles las carpetas seleccionadas entre reinicios de la aplicación. La versión de escritorio también puede mostrar una pista en la carpeta donde está su archivo.
-- **Navegadores Chromium en PC con File System Access:** Pueden conservar el acceso a las carpetas seleccionadas después de recargar. El navegador puede volver a pedir permiso.
-- **Navegadores móviles, Safari, Firefox y otros sin File System Access:** Conservan el acceso a los archivos seleccionados solo durante la sesión actual. El catálogo permanece guardado, pero vuelve a seleccionar la carpeta o los archivos después de cada recarga para que EffeTune pueda enlazarlos.
+- **Aplicación de escritorio:** Usa el escáner completo de carpetas y mantiene disponibles las carpetas seleccionadas entre inicios. Las versiones de escritorio también pueden mostrar una pista en su carpeta.
+- **Navegadores Chromium en PC con File System Access:** Pueden conservar el acceso a las carpetas seleccionadas después de recargar, aunque el navegador puede volver a pedir permiso.
+- **Navegadores móviles, Safari, Firefox y otros sin File System Access:** Conservan el acceso a los archivos seleccionados solo durante la sesión actual de la página. El catálogo permanece guardado, pero vuelve a seleccionar la carpeta o los archivos después de cada recarga para reconectarlos.
 
-La Biblioteca musical indexa extensiones de archivos multimedia habituales, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM y MP4. También puede usar una hoja CUE externa para dividir en pistas un archivo de álbum WAV o FLAC situado en la misma carpeta. En los archivos MP4, EffeTune reproduce solo la pista de audio y no muestra el vídeo. La reproducción efectiva, incluido el códec de audio del archivo MP4, también depende de las funciones de decodificación del navegador o del sistema operativo.
+La Biblioteca musical indexa extensiones de audio habituales como MP3, WAV, OGG, FLAC, Opus, M4A y AAC. También puede usar una hoja CUE externa para dividir en pistas individuales un álbum WAV o FLAC situado en la misma carpeta.
+
+Para incluir archivos MP4, WebM, M4V, MOV, MKV y 3GP, activa **Incluir formatos de vídeo en la Biblioteca musical** en **Configuración > Configuración... > General** y después añade o vuelve a escanear una carpeta. Esta opción está desactivada de forma predeterminada; cambiarla no modifica de inmediato el catálogo existente. La reproducción efectiva, incluido el códec de audio dentro de un archivo de vídeo, depende del decodificador del navegador o del sistema operativo. Para ver cómo se muestra el vídeo, consulta la [guía del Reproductor de música](music-player.md#video).
 
 ## Abrir la Biblioteca musical
 
 - **Diseño de PC:** Haz clic en el botón **Biblioteca musical** del encabezado.
 - **Diseño móvil:** Abre la pestaña **Biblioteca** en la navegación inferior.
-- **Aplicación de escritorio:** También puedes abrirla desde **Ver > Biblioteca musical** o con **Ctrl+L** (**Command+L** en macOS).
+- **Aplicación de escritorio:** También puedes usar **Ver > Biblioteca musical** o **Ctrl+L** (**Command+L** en macOS).
 
-Para volver a editar efectos, haz clic en el botón **Effect Pipeline** en el diseño de PC o vuelve a la pestaña **Efectos** en el diseño móvil. En la aplicación de escritorio también puedes usar **Ver > Effect Pipeline** o **Ctrl+E** (**Command+E** en macOS).
+Para volver a editar efectos, haz clic en el botón **Effect Pipeline** en el diseño de PC, vuelve a la pestaña **Efectos** en el diseño móvil o usa **Ver > Effect Pipeline** o **Ctrl+E** (**Command+E** en macOS) en la aplicación de escritorio.
 
-Si quieres que la Biblioteca musical sea la primera vista al iniciar, abre **Configuración > Configuración...** y cambia **Vista al inicio:** a **Biblioteca musical**. En la lista situada junto a **Biblioteca musical**, elige la sección que aparecerá primero: **Pistas**, **Archivos**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**.
+Si quieres que la Biblioteca musical sea la primera vista al iniciar, abre **Configuración > Configuración...** y establece **Vista al inicio:** en **Biblioteca musical**. En la lista situada junto a **Biblioteca musical**, elige qué sección aparecerá primero: **Pistas**, **Archivos**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**.
 
 ## Añadir carpetas de música
 
 1. Abre la Biblioteca musical.
 2. Selecciona **Añadir carpeta de música**.
-3. Elige la carpeta que contiene tus archivos de música. En navegadores móviles o con el método alternativo, puede aparecer un selector para elegir los archivos de la carpeta en vez de conceder acceso permanente a la carpeta.
-4. Espera a que termine el escaneo. La línea de estado muestra el número de pistas y álbumes y, mientras se indexa, también el progreso.
+3. Elige la carpeta que contiene tu música. En navegadores móviles o con el método alternativo, el selector puede pedirte que elijas los archivos de la carpeta en vez de conceder acceso persistente a la carpeta.
+4. Espera a que termine el escaneo. La línea de estado muestra el número de pistas y álbumes, así como el progreso mientras se indexa.
 
-Si intentas añadir una carpeta que ya está dentro de una carpeta registrada, EffeTune te avisa sin indexar contenido duplicado. Si añades una carpeta principal que contiene carpetas ya registradas, puedes combinarlas en la nueva carpeta.
+Si intentas añadir una carpeta que ya está dentro de una carpeta existente de la biblioteca, EffeTune te avisa en lugar de indexar contenido duplicado. Si añades una carpeta superior que contiene carpetas ya indexadas, EffeTune puede combinarlas en la nueva carpeta.
 
 ## Explorar y buscar
 
-Usa las pestañas de navegación para cambiar de vista en el catálogo.
+Usa las pestañas de navegación para recorrer tu colección:
 
-- **Pistas** - Muestra todas las pistas indexadas. En el diseño de PC se presenta como una tabla ordenable; en el diseño móvil, como una lista compacta.
-- **Archivos** - Muestra las pistas indexadas por la ubicación de sus archivos para que puedas elegirlas directamente. La aplicación de escritorio muestra rutas absolutas; los navegadores web muestran el nombre de la carpeta raíz de la biblioteca y la ruta relativa. Las pistas procedentes de un mismo archivo de audio CUE aparecen por separado y se pueden seleccionar individualmente.
-- **Álbumes** - Agrupa los álbumes a partir de los metadatos.
-- **Artistas** - Agrupa por artistas y artistas de álbum indicados en los metadatos.
-- **Géneros** - Agrupa por los géneros indicados en los metadatos.
-- **Subcarpetas** - Agrupa las pistas por la subcarpeta que las contiene.
-- **Carpetas** - Muestra las raíces de música registradas, su estado de escaneo y su estructura real de directorios.
-- **Añadidas recientemente** - Muestra las pistas indexadas recientemente.
-- **Listas de reproducción** - Muestra las listas de reproducción creadas o importadas dentro de la Biblioteca musical.
+- **Pistas:** Todas las pistas indexadas (una tabla ordenable en PC; una lista compacta en móvil).
+- **Archivos:** Pistas ordenadas por ruta de archivo para elegir un archivo directamente. Las pistas definidas por una hoja CUE aparecen como entradas individuales.
+- **Álbumes:** Álbumes agrupados a partir de los metadatos de las pistas.
+- **Artistas:** Artistas y artistas del álbum obtenidos de los metadatos (los valores separados por punto y coma, como `Artist A; Artist B`, se indexan bajo cada artista manteniendo visible el crédito completo).
+- **Géneros:** Grupos de género obtenidos de los metadatos.
+- **Subcarpetas:** Pistas agrupadas por la subcarpeta superior directa dentro de cada carpeta raíz indexada (por ejemplo, `Artist/Album`).
+- **Carpetas:** Carpetas raíz registradas, su estado de escaneo y su jerarquía de carpetas.
+- **Añadidas recientemente:** Pistas indexadas recientemente.
+- **Listas de reproducción:** Listas de reproducción creadas o importadas dentro de la Biblioteca musical.
 
-Un valor de artista del álbum separado por punto y coma, como `Artist A; Artist B`, se indexa bajo cada artista y conserva el crédito completo en pantalla. `&`, `/` y `feat.` no se tratan como separadores.
+En **Carpetas**, abre una raíz registrada para recorrer sus carpetas en **Vista de árbol** o cambia a **Vista plana** para listar de una vez todas las pistas de esa raíz. En **Vista de árbol**, las carpetas con una sola subcarpeta y sin pistas directas se combinan en una sola fila (como `Artist / Album`) para ir directamente a la carpeta del álbum, mientras que la ruta de navegación permite abrir cualquier carpeta intermedia.
 
-Abre una raíz en **Carpetas** para recorrerla en **Vista de árbol**. Las subcarpetas aparecen encima de la lista de pistas; selecciona una para entrar en ella y usa la ruta de navegación o **Anterior** para subir de nivel. La lista solo muestra las pistas guardadas directamente en el nivel actual. **Vista plana** muestra, en cambio, todas las pistas indexadas de la raíz registrada, incluidas las de sus subcarpetas. Al cambiar de vista se conserva la ubicación actual, de modo que puedes volver al mismo punto en **Vista de árbol**. **Buscar en la biblioteca** sigue buscando en toda la biblioteca, por lo que la lista de subcarpetas se oculta durante la búsqueda.
+Usa **Buscar en la biblioteca** para filtrar pistas, álbumes, artistas y listas de reproducción. Los términos de tres o más caracteres coinciden en cualquier parte del título, artista, álbum, género, nombre de archivo o ruta; los de uno o dos caracteres coinciden con el inicio de una palabra. En PC, haz clic en los encabezados de la tabla de pistas (**N.º de pista**, **Título**, **Artista**, **Álbum**, **Género** o **Duración**) o usa la lista **Ordenar** en las demás vistas. En móvil, usa la lista **Ordenar** para cambiar el orden en cualquier vista fuera de las listas de reproducción guardadas.
 
-Cuando una carpeta no contiene pistas directamente y tiene exactamente una subcarpeta, **Vista de árbol** combina los niveles consecutivos que cumplen esa condición en una sola fila, como `Artist / Album`. Selecciona la fila para ir directamente a la carpeta más profunda; el número que muestra también corresponde a esa carpeta. Puedes usar la ruta de navegación para abrir cualquier nivel intermedio, mientras que **Anterior** en el escritorio retrocede un nivel cada vez. En móviles, **Anterior** vuelve a la vista en la que estabas antes, por lo que puede saltarse los niveles intermedios de una cadena combinada en un solo paso.
+Cuando un resultado de búsqueda, nivel de carpeta, álbum, artista, género, subcarpeta o lista de reproducción contiene 300 pistas o menos, todas quedan seleccionadas de forma predeterminada para empezar a reproducir de inmediato. Los resultados con 301 pistas o más no se seleccionan automáticamente; usa las casillas de las filas, **Seleccionar todo** o **Deseleccionar todo** para cambiar la selección. En móvil, mantén pulsada cualquier fila de pista para mostrar las casillas y los controles de selección.
 
-El árbol de **Carpetas** respeta las rutas relativas físicas exactas e incluye todas las entradas de pista encontradas en el catálogo, incluso mientras se analizan sus metadatos o si el análisis falla. El número de una carpeta incluye las pistas de esa carpeta y de todos sus descendientes. Las pistas CUE se cuentan por separado: varias pistas lógicas que comparten un único WAV o FLAC cuentan como varias pistas, no como un solo archivo de audio físico. **Subcarpetas** tiene otra finalidad: agrupa las pistas analizadas correctamente según la identidad normalizada de su carpeta superior directa, por lo que puede combinar variantes que solo difieren en mayúsculas, minúsculas o normalización Unicode.
-
-Por ejemplo, `Artist/Album/01 Song.flac` aparece en el grupo de subcarpeta `Artist/Album` y bajo `Artist` y después `Album` en el árbol físico de **Carpetas**. Las rutas relativas idénticas de distintas raíces indexadas se mantienen separadas. Los archivos situados directamente en una raíz no crean un grupo de subcarpeta, pero siguen disponibles en **Pistas** y en la lista de pistas directas de esa raíz en **Carpetas**.
-
-Con **Buscar en la biblioteca** puedes buscar en pistas, álbumes, artistas y listas de reproducción. En el diseño de PC, los encabezados de la lista de pistas permiten ordenar por número de pista, título, artista, álbum, género o duración. Las vistas de álbumes, artistas, géneros, subcarpetas y listas de reproducción incluyen una lista **Ordenar** basada en el catálogo. Según la vista, permite ordenar por nombre, artista, año, ruta, número de pistas, duración total, fecha de actualización o fecha de creación, en ambos sentidos. Cada vista conserva su propia selección.
-
-En el diseño móvil, las listas de pistas que no pertenecen a una lista de reproducción ofrecen una lista **Ordenar** con opciones ascendentes y descendentes, incluidas las de subcarpetas y los resultados de búsqueda. Las pistas de una lista de reproducción mantienen su orden guardado. **Añadidas recientemente** muestra primero las pistas más recientes de forma predeterminada; puedes elegir otro orden en la misma lista.
-
-Al buscar pistas, los términos de tres o más caracteres coinciden en cualquier parte del título, artista, álbum, género, nombre de archivo o ruta. Los términos de uno o dos caracteres solo coinciden al principio de una palabra. Escribe al menos tres caracteres para buscar dentro de una palabra.
-
-Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas, las pistas directas del nivel actual en **Vista de árbol** o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. Usa las casillas de las filas, **Seleccionar todo** o **Deseleccionar todo** para cambiar la selección.
-
-En móvil se muestra primero la lista normal de títulos, sin columnas de artista ni duración. Solo mantener pulsada una pista abre el modo de selección; entonces aparecen las casillas, **Seleccionar todo** y **Deseleccionar todo**, mientras las acciones habituales de las filas siguen disponibles. La selección automática y los cambios posteriores —incluidos **Seleccionar todo**, **Deseleccionar todo** y las casillas individuales— solo cambian el estado de selección; no abren ni cierran el modo de selección.
-
-Si faltan metadatos o no se pueden leer, EffeTune usa el nombre del archivo y la información de la carpeta como alternativa. En **Propiedades de la pista** puedes consultar la ruta del archivo, el formato, la tasa de muestreo, la profundidad de bits, la tasa de bits y los principales campos de metadatos. En una pista CUE también se muestran su tipo, la ruta del archivo CUE, la ruta del audio de origen y el intervalo que ocupa dentro de ese archivo.
+Si faltan etiquetas, EffeTune recurre al nombre del archivo y de la carpeta. En **Propiedades de la pista** se muestran la ruta del archivo, el formato, la tasa de muestreo, la profundidad de bits, la tasa de bits, los metadatos y, en las pistas CUE, la ruta de la hoja CUE y el intervalo de la pista.
 
 ## Archivos de álbum con CUE
 
-Coloca el archivo `.cue` externo junto a los archivos WAV o FLAC que menciona y añade o vuelve a analizar esa carpeta. Cada entrada `TRACK ... AUDIO` válida aparecerá como una pista independiente en la Biblioteca musical. Cuando están disponibles, se usan el título, el intérprete, la fecha, el género y la numeración del CUE; los datos técnicos proceden del WAV o FLAC de origen.
+Coloca una hoja `.cue` externa en la misma carpeta que los archivos WAV o FLAC a los que hace referencia y añade o vuelve a escanear la carpeta. Cada entrada `TRACK ... AUDIO` válida aparece como una pista independiente en la Biblioteca musical.
 
-Para las pistas añadidas a la Biblioteca musical, EffeTune usa primero la carátula incrustada en el audio de origen. Si no hay ninguna, busca junto al archivo CUE, por este orden, `cover.jpg`, `cover.png`, `front.jpg`, `front.png` y después un JPEG o PNG con el nombre del archivo de audio, con o sin su extensión de audio. La reproducción directa en la aplicación de escritorio usa automáticamente esos mismos archivos de imagen contiguos; esta vía de reproducción no extrae la carátula incrustada del audio de origen. La reproducción directa en el navegador usa la imagen correspondiente a la que se pueda acceder desde los archivos seleccionados o la carpeta registrada.
+Para la carátula, la Biblioteca musical comprueba primero la imagen incrustada en el audio de origen y, si no existe, busca junto al archivo `.cue` los archivos `cover.jpg`, `cover.png`, `front.jpg`, `front.png` o una imagen que coincida con el nombre del archivo de audio.
 
-También puedes reproducir directamente un álbum CUE con **Open music files** o, en dispositivos móviles, **Open Music**. En la aplicación de escritorio también puedes usar **File > Open music file...**; selecciona solo el archivo `.cue`. En un navegador Chromium para PC, añade primero la carpeta del álbum a la Biblioteca musical y permite el acceso. Después podrás seleccionar solo el archivo `.cue`, y EffeTune abrirá los WAV o FLAC referenciados y la carátula correspondiente desde esa carpeta registrada, sin añadir la selección al catálogo. Los navegadores sin File System Access todavía deben recibir el archivo `.cue` junto con todos y únicamente los WAV o FLAC que menciona, además de la carátula correspondiente si quieres usarla. Una selección válida sustituye la cola actual. Si la validación falla, la cola no cambia.
+También puedes abrir una hoja `.cue` directamente desde el reproductor (**Abrir archivos de música**, **Archivo > Abrir archivo de música...** en escritorio o **Abrir música** en móvil):
+- **Aplicación de escritorio:** Selecciona únicamente el archivo `.cue`.
+- **Navegador Chromium en PC:** Si la carpeta del álbum ya está registrada en la Biblioteca musical con permiso concedido, selecciona únicamente el archivo `.cue`.
+- **Otros navegadores:** Selecciona el archivo `.cue` junto con todos los archivos WAV/FLAC a los que hace referencia, y solo esos, además de una imagen de portada coincidente si quieres usarla.
 
-Si la hoja CUE no es válida o no permite identificar con seguridad sus archivos de origen, EffeTune explica el problema e importa los WAV o FLAC como pistas normales de archivo completo. Corrige la hoja CUE o los nombres de archivo y vuelve a analizar la carpeta para intentarlo de nuevo.
+Si una hoja CUE no es válida o no se pueden asociar sus archivos de audio, EffeTune lo notifica e importa los archivos WAV o FLAC como pistas individuales de archivo completo. Corrige la hoja CUE o los nombres de archivo y vuelve a escanear la carpeta para intentarlo de nuevo.
 
 ## Reproducir desde la biblioteca
 
-Selecciona una pista, álbum, artista, género, subcarpeta, carpeta, resultado de búsqueda o lista de reproducción y usa estas acciones.
+Selecciona una pista, álbum, artista, género, subcarpeta, carpeta, resultado de búsqueda o lista de reproducción y elige:
 
-- **Reproducir** - Sustituye la cola actual del reproductor e inicia la reproducción.
-- **Aleatorio** - Reproduce el grupo seleccionado en orden aleatorio.
-- **Reproducir a continuación** - Inserta las pistas seleccionadas justo después de la pista actual.
-- **Añadir a la cola** - Añade las pistas seleccionadas al final de la cola.
-- **Añadir a lista** - Guarda las pistas seleccionadas en una lista de reproducción de la Biblioteca musical.
+- **Reproducir:** Sustituye la cola actual del reproductor e inicia la reproducción.
+- **Aleatorio:** Reproduce la selección en orden aleatorio.
+- **Reproducir a continuación:** Inserta la selección después de la pista actual.
+- **Añadir a la cola:** Añade la selección al final de la cola.
+- **Añadir a lista:** Añade la selección a una lista de reproducción de la Biblioteca musical.
 
-En PC, puedes hacer doble clic en la fila de una pista para reproducir desde ese punto, o abrir sus acciones con el clic derecho o el menú **Más**. En móvil, toca una pista de la lista normal para reproducirla; mantenerla pulsada entra en el modo de selección descrito arriba.
-
-Los controles normales del reproductor de música y los ajustes de repetición y aleatorio siguen funcionando. En dispositivos con teclado, también funcionan los atajos habituales del reproductor. Si no se puede abrir una pista de la biblioteca porque la carpeta está sin conexión, reconecta o vuelve a importar esa carpeta.
+En PC, haz doble clic en la fila de una pista para reproducir desde esa pista, o haz clic derecho / abre **Más** para ver las acciones de la pista. En móvil, toca una pista para reproducirla o mantenla pulsada para seleccionar varias pistas.
 
 ## Actualizar y reconectar carpetas
 
-Usa **Volver a escanear** después de añadir, eliminar, cambiar de nombre o editar las etiquetas de archivos en tus carpetas de música. Al volver a escanear, se actualizan las pistas modificadas, se quitan del catálogo los archivos que ya no se encuentran y se intenta resolver de nuevo los elementos de listas de reproducción que antes no estaban disponibles.
+Usa **Volver a escanear** después de añadir, eliminar, cambiar de nombre o volver a etiquetar archivos en tus carpetas de música. Al volver a escanear se actualizan las pistas modificadas, se eliminan del catálogo los archivos borrados y se vuelven a enlazar las entradas de listas de reproducción cuando se encuentran archivos coincidentes.
 
-Los estados de la pantalla **Carpetas** indican si cada carpeta está disponible.
+Estado de las carpetas en **Carpetas**:
+- **OK:** Lista para explorar y reproducir.
+- **Sin escanear:** Añadida, pero aún no indexada.
+- **No encontrado:** Ya no se encuentra la ruta de la carpeta.
+- **Reconectar:** Se necesita de nuevo permiso del navegador o de la carpeta; haz clic en **Reconectar** y concede acceso a la misma carpeta.
 
-- **OK** - La carpeta está disponible.
-- **Sin escanear** - La carpeta todavía no se ha indexado.
-- **No encontrado** - La carpeta o la ruta guardada no está disponible.
-- **Reconectar** - EffeTune necesita permiso de acceso otra vez.
+Si no se puede abrir una pista de la biblioteca porque su carpeta no está disponible, vuelve a conectar o a importar la carpeta.
 
-Cuando una carpeta muestre **Reconectar**, selecciona **Reconectar** y vuelve a conceder acceso a la misma carpeta. Quitar una carpeta solo la elimina del catálogo de la Biblioteca musical; los archivos del disco no se borran.
+Elegir **Quitar** solo retira la carpeta del catálogo de EffeTune; tus archivos en el disco nunca se borran.
 
 ## Listas de reproducción
 
-Las listas de reproducción de la Biblioteca musical se guardan dentro de EffeTune y pueden contener pistas de tus carpetas indexadas.
+Las listas de reproducción de la Biblioteca musical se guardan dentro de EffeTune y pueden incluir pistas de cualquier carpeta indexada:
 
-Puedes hacer lo siguiente.
-
-- Crear una lista de reproducción a partir de pistas seleccionadas de la biblioteca.
-- Guardar la cola actual del reproductor como lista de reproducción.
-- Cambiar el nombre, duplicar, eliminar y reordenar listas de reproducción.
-- Arrastrar pistas dentro de una lista de reproducción para cambiar su orden. En entornos donde arrastrar no sea cómodo, usa **Subir** y **Bajar**.
-- Usar **Importar lista** para importar listas de reproducción en formato M3U, M3U8, PLS y XSPF.
-- Abrir una lista de reproducción concreta y exportarla con **Exportar M3U8** o **Exportar XSPF**.
+- Crea una lista de reproducción a partir de las pistas seleccionadas en la biblioteca o guarda la cola actual del reproductor como lista de reproducción.
+- Usa **Cambiar nombre**, **Duplicar** y **Eliminar** para gestionar las listas de reproducción, y arrastra las pistas (o usa **Subir** / **Bajar**) para reordenarlas.
+- Usa **Importar lista** para archivos M3U, M3U8, PLS y XSPF, y **Exportar M3U8** o **Exportar XSPF** dentro de una lista para exportarla.
 
 ### Reproducidas recientemente y Favoritos
 
-EffeTune muestra dos listas especiales junto a las listas normales, en la misma cuadrícula de tarjetas. Solo se crean cuando hacen falta: **Reproducidas recientemente** al iniciar la reproducción de una pista indexada y **Favoritos** al marcar una pista con la estrella por primera vez.
+Dos listas de reproducción automáticas aparecen en la cuadrícula de listas de reproducción una vez utilizadas:
 
-- **Reproducidas recientemente** conserva las 100 últimas pistas distintas, con la más reciente al principio. Si vuelves a reproducir una pista, esta regresa al primer puesto.
-- **Favoritos** contiene las pistas que marcas con ☆. En PC, usa la estrella situada junto a la pista; en el móvil, abre el menú **Más** de la pista. También puedes abrir ese menú haciendo clic derecho en una pista en PC.
+- **Reproducidas recientemente:** Conserva las últimas 100 pistas distintas reproducidas desde la Biblioteca musical, ordenadas de la más reciente a la más antigua.
+- **Favoritos:** Reúne las pistas marcadas con la **☆** situada junto a cada pista en PC o con **Añadir a Favoritos** en el menú **Más** de la pista (en PC también se abre con clic derecho). Haz clic en el botón de reproducción de la tarjeta **Favoritos** para iniciarla al instante.
 
-Sus nombres son fijos y se muestran en el idioma actual de la interfaz, por lo que no se pueden cambiar. Sí puedes duplicar, exportar o eliminar estas listas como cualquier otra. Si eliminas una, se vuelve a crear vacía la próxima vez que la reproducción o una acción de favoritos la necesite. Sus tarjetas muestran un reloj o una estrella en el área de la carátula; el botón de reproducción de la esquina inferior derecha de **Favoritos** inicia la lista al instante. Las listas especiales no se incluyen en los resultados de búsqueda de listas normales.
+Sus nombres siguen el idioma actual de la interfaz y no se pueden cambiar, aunque puedes duplicarlas, exportarlas o eliminarlas como cualquier otra lista de reproducción.
 
-Al escanear una carpeta, EffeTune importa automáticamente los archivos de listas de reproducción compatibles una vez indexizadas sus pistas y omite los archivos cuyo contenido no ha cambiado. Si cambia el contenido de un archivo ubicado en la misma carpeta y ruta relativa, EffeTune sustituye de forma atómica los elementos de la lista importada automáticamente; esto también sustituye las modificaciones de elementos realizadas en EffeTune. Una importación fallida o cancelada se reintenta en el siguiente escaneo. Eliminar o cambiar el nombre del archivo de origen no elimina la lista existente, y un archivo renombrado se importa como una lista nueva.
+### Importar y exportar listas de reproducción
 
-Al importar, se muestra una vista previa del número de elementos que coinciden con pistas de la biblioteca actual. Los elementos que no coincidan también se conservan, siempre que sea posible, como elementos sin resolver para que puedan resolverse más adelante al añadir o reconectar la carpeta correspondiente.
+Los escaneos de carpetas importan automáticamente los archivos de listas de reproducción compatibles que se encuentran dentro de tus carpetas de música y los actualizan al volver a escanear cuando el archivo cambia en el disco; esta actualización sustituye los cambios que hayas hecho en esa lista dentro de EffeTune. Las entradas sin coincidencia se conservan como elementos no resueltos para enlazarse automáticamente cuando se añada o reconecte la carpeta correspondiente.
 
-Al exportar, si eliges **Rutas relativas**, las rutas se escriben, cuando es posible, en relación con la ubicación de exportación. Esto resulta útil si quieres mover la lista de reproducción junto con la carpeta de música. M3U8 y XSPF no pueden conservar el intervalo de una pista CUE dentro del archivo del álbum, por lo que EffeTune omite esas pistas e indica cuántas se excluyeron. Nunca escribe en su lugar la ruta física del archivo del álbum.
+Al exportar una lista de reproducción, activa **Rutas relativas** si quieres mover el archivo M3U8 o XSPF exportado junto con tu carpeta de música. Dado que los archivos M3U8 y XSPF estándar no guardan intervalos de subpistas CUE, las pistas CUE se omiten durante la exportación y EffeTune informa de cuántas se han omitido.
 
 ## Seguridad y almacenamiento
 
-- La Biblioteca musical lee archivos de audio y metadatos, pero no escribe cambios en los archivos de audio.
-- La caché de carátulas y las listas de reproducción son datos de la aplicación, no cambios incrustados en los archivos de música.
-- La clasificación por **Subcarpetas** se obtiene de las rutas relativas guardadas en el catálogo.
-- El almacenamiento del navegador puede borrarse desde la configuración del navegador o por acciones del usuario. Exporta las listas de reproducción importantes si lo necesitas.
-- En navegadores con File System Access, los permisos determinan si el acceso a la carpeta sigue disponible tras recargar. En otros navegadores, selecciona de nuevo los archivos después de cada recarga.
-
-## Bibliotecas grandes
-
-EffeTune carga las colecciones grandes por etapas, sin mantener toda la biblioteca en la memoria. El tiempo de análisis y los límites prácticos dependen de la velocidad del almacenamiento, la memoria disponible, los metadatos, las carátulas y las restricciones del navegador o del sistema operativo.
-
-Las pistas cercanas se cargan a medida que te desplazas. Un salto excepcionalmente rápido puede mostrar brevemente filas vacías hasta que se carguen las pistas solicitadas, sobre todo con almacenamiento lento.
-
-Usa la Biblioteca musical en una sola ventana de EffeTune.
-
-## Control remoto OpenHome (aplicación de escritorio)
-
-En las versiones de escritorio compatibles, EffeTune puede aparecer como reproductor OpenHome para las aplicaciones de control de la misma red local. Abre **Configuración > Configuración...**, activa **Permitir controladores OpenHome en esta red** y espera a que el estado indique que EffeTune está disponible. El nombre predeterminado es `EffeTune (nombre del equipo)`; usa **Nombre del reproductor** para asignar a cada equipo un nombre reconocible, como `EffeTune Living Room`. La opción está desactivada de forma predeterminada.
-
-OpenHome no requiere iniciar sesión. Mientras esté activado, otros dispositivos de la red local pueden ver los metadatos de reproducción, sustituir o editar la cola del Player y controlar la reproducción. Si el Firewall de Windows solicita permiso, permite EffeTune solo en **redes privadas**, no en **redes públicas**. Desactiva la opción cuando no necesites el control remoto.
-
-Los paquetes compatibles son Windows x64, macOS para Intel o Apple silicon y Linux x64. La función no está disponible en la aplicación web ni en navegadores móviles. Las operaciones básicas de cola y reproducción se han verificado con BubbleUPnP para Android; otros controladores OpenHome pueden mostrar de forma distinta los servicios y controles no compatibles. EffeTune es una fuente OpenHome Playlist, no un UPnP AV MediaRenderer, y no se declara compatibilidad ni certificación.
-
-Los controladores pueden añadir audio por HTTP o HTTPS y gestionar una cola remota con reproducción, pausa, parada, salto, búsqueda, repetición y orden aleatorio. El audio remoto sigue pasando por el pipeline de efectos actual. No se admite la edición remota de efectos de EffeTune, rutas de archivos locales, volumen maestro, Radio, Songcast ni reproducción multiroom sincronizada. No se garantiza la reproducción sin pausas y algunos datos técnicos pueden ser desconocidos hasta que la fuente los proporcione. Los cambios de suspensión, VPN o interfaz de red pueden ocultar brevemente el reproductor mientras vuelve a conectarse.
+- La Biblioteca musical lee archivos de audio y metadatos sin modificar tus archivos en el disco.
+- Borrar los datos del sitio en el navegador elimina el catálogo y las listas de reproducción de la aplicación web; exporta las listas importantes para conservarlas.
+- Las colecciones grandes se cargan progresivamente a medida que te desplazas. Usa la Biblioteca musical en una sola ventana de EffeTune a la vez.
 
 [← Volver al README](README.md)

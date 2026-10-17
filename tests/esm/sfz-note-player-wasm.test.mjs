@@ -35,15 +35,96 @@ class SFZNotePlayerPlugin {
   getWasmAssets() { return new Map([[0, this.asset]]); }
 }
 
+test('SFZ Event releases old notes when its boundary stream changes and accepts later starts', async t => {
+  const parsed = await parseSfz({ selectedPath: 'stream.sfz',
+    readText: async () => '<region> sample=tone.wav key=69 loop_mode=loop_continuous amp_veltrack=0',
+    hasSample: () => true, onDiagnostic: null });
+  const asset = packSfzAsset(parsed.regions, new Map([['tone.wav',
+    { channels: [new Float32Array(4800).fill(.25)], sampleRate: SAMPLE_RATE }]]));
+  for (const variant of ['baseline', 'simd']) {
+    const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
+    const binding = await instantiateDspBinding(fs.readFileSync(
+      new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
+    binding.createEngine();
+    assert.equal(binding.prepare(SAMPLE_RATE, 2, BLOCK_SIZE, 262144), 0);
+    try {
+      for (const change of ['enable sharing', 'disable sharing', 'reset shared analyzer']) {
+        await t.test(`${variant}: ${change}`, () => {
+          const source = binding.createInstance('NoteSpectrogramPlugin');
+          const player = binding.createInstance('SFZNotePlayerPlugin');
+          const analyzerPacker = DSP_PARAM_PACKERS.get('NoteSpectrogramPlugin');
+          const playerPacker = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
+          const setAnalyzer = enabled => assert.equal(binding.instanceSetParams(source,
+            analyzerPacker.pack({ ...PARAMETERS, te: enabled }), analyzerPacker.hash), 0);
+          try {
+            assert.equal(binding.instanceSetAnalysisSource(player, source), 0);
+            setAnalyzer(change !== 'enable sharing');
+            assert.equal(binding.instanceSetParams(player,
+              playerPacker.pack({ ...PARAMETERS, dt: 'Event', nh: 0 }), playerPacker.hash), 0);
+            assert.equal(binding.instanceSetAsset(player, 0, asset.payload,
+              { ...asset, frames: asset.samples, topology: 0 }), 0);
+            const { combined, offsets } = binding.getArenaViews();
+            for (let step = 0; step < 100 && (binding.instanceAssetState(player, 0) & 0xff) !== 3; step++) {
+              combined.fill(0);
+              assert.equal(binding.instanceProcess(player, offsets.combined, 2, BLOCK_SIZE,
+                step * BLOCK_SIZE / SAMPLE_RATE), 0);
+            }
+            assert.equal(binding.instanceAssetState(player, 0) & 0xff, 3);
+            assert.equal(binding.resetInstance(source), 0);
+            assert.equal(binding.resetInstance(player), 0);
+            let changed = false, firstPeak = 0, gapPeak = 0, secondPeak = 0, tailPeak = 0;
+            for (let offset = 0; offset < SAMPLE_RATE * 2.6; offset += BLOCK_SIZE) {
+              const time = offset / SAMPLE_RATE;
+              if (!changed && time >= .55) {
+                if (change === 'reset shared analyzer') assert.equal(binding.resetInstance(source), 0);
+                else setAnalyzer(change === 'enable sharing');
+                changed = true;
+              }
+              for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+                const at = (offset + frame) / SAMPLE_RATE;
+                const elapsed = at < 1.4 ? at - .1 : at - 1.4;
+                const sounding = (at >= .1 && at < .9) || (at >= 1.4 && at < 1.9);
+                const gain = sounding ? Math.min(1, elapsed / .005) : 0;
+                const value = .25 * gain * Math.sin(2 * Math.PI * 440 * elapsed);
+                combined[frame] = combined[BLOCK_SIZE + frame] = value;
+              }
+              assert.equal(binding.instanceProcess(source, offsets.combined, 2, BLOCK_SIZE, time), 0);
+              assert.equal(binding.instanceProcess(player, offsets.combined, 2, BLOCK_SIZE, time), 0);
+              for (let frame = 0; frame < BLOCK_SIZE; frame++) {
+                const at = (offset + frame) / SAMPLE_RATE, value = Math.abs(combined[frame]);
+                if (at >= .45 && at < .55) firstPeak = Math.max(firstPeak, value);
+                if (at >= 1.3 && at < 1.4) gapPeak = Math.max(gapPeak, value);
+                if (at >= 1.8 && at < 1.9) secondPeak = Math.max(secondPeak, value);
+                if (at >= 2.5) tailPeak = Math.max(tailPeak, value);
+              }
+            }
+            assert.ok(firstPeak > .2, 'the original stream must start a voice');
+            assert.ok(gapPeak < 1e-6, 'the old stream must not leave a looping voice');
+            assert.ok(secondPeak > .2, 'a later start from the new stream must play');
+            assert.ok(tailPeak < 1e-6, 'the new stream must release its own voice');
+          } finally {
+            binding.destroyInstance(player);
+            binding.destroyInstance(source);
+          }
+        });
+      }
+    } finally {
+      binding.destroyEngine();
+    }
+  }
+});
+
 test('SFZ parameter packing preserves note controls and supplies defaults for older presets', () => {
   const { pack } = DSP_PARAM_PACKERS.get('SFZNotePlayerPlugin');
-  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0, -1, 100]);
+  assert.deepEqual(Array.from(pack()), [0.75, -60, -10, 28, 91, 32, 20, 100, 0, 0, 1, 1, 1, 0, 40, 50, 0, -1, 100, 0]);
   assert.deepEqual(Array.from(pack(PARAMETERS).slice(14, 17)), [40, 50, 0]);
   assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 96, nh: 100 }).slice(14, 17)), [96, 100, 0]);
   assert.deepEqual(Array.from(pack({ ...PARAMETERS, rd: 6, nh: 37, ss: 1 }).slice(14, 17)), [6, 37, 1]);
   assert.equal(pack({ ss: -6 })[16], -6);
   assert.equal(pack({ ss: 6 })[16], 6);
-  assert.deepEqual(Array.from(pack({ pm: 60, pv: 64 }).slice(17)), [60, 64]);
+  assert.deepEqual(Array.from(pack({ pm: 60, pv: 64 }).slice(17)), [60, 64, 0]);
+  assert.equal(pack(PARAMETERS)[19], 0);
+  assert.equal(pack({ dt: 'Event' })[19], 1);
 });
 
 test('SFZ manual preview plays without input, holds its velocity and releases when the key changes or stops', async t => {
@@ -301,8 +382,9 @@ test('synthetic SFZ bank produces detected notes through the offline WASM pipeli
 });
 
 test('boundary sine notes share Note Spectrogram analysis and select the matching SFZ key', async t => {
-  for (const variant of ['baseline', 'simd']) {
-    await t.test(variant, async () => {
+  for (const [variant, detection] of [['baseline', 'Classic'], ['simd', 'Classic'],
+    ['baseline', 'Event'], ['simd', 'Event']]) {
+    await t.test(`${variant} ${detection}`, async () => {
       const filename = variant === 'simd' ? 'effetune-dsp.simd.wasm' : 'effetune-dsp.wasm';
       const binding = await instantiateDspBinding(fs.readFileSync(
         new URL(`../../plugins/dsp/${filename}`, import.meta.url)));
@@ -320,11 +402,15 @@ test('boundary sine notes share Note Spectrogram analysis and select the matchin
           [linked, 'SFZNotePlayerPlugin'], [own, 'SFZNotePlayerPlugin']]) {
           const packer = DSP_PARAM_PACKERS.get(type);
           assert.equal(binding.instanceSetParams(id,
-            packer.pack({ ...PARAMETERS, mn: 21, mx: 108, rd: 96 }), packer.hash), 0);
+            packer.pack({ ...PARAMETERS, mn: 21, mx: 108, rd: 96, dt: detection,
+              te: detection === 'Event' }), packer.hash), 0);
+          const { combined, offsets } = binding.getArenaViews();
+          combined.fill(0);
+          assert.equal(binding.instanceProcess(id, offsets.combined, 2, BLOCK_SIZE, 0), 0);
         }
         assert.equal(binding.instanceLatency(source), 0,
           'Note Spectrogram must pass audio through without delaying it');
-        const analysisLatency = SAMPLE_RATE * .08;
+        const analysisLatency = SAMPLE_RATE * (detection === 'Event' ? .22 : .08);
         for (const id of [linked, own]) {
           assert.equal(binding.instanceLatency(id), analysisLatency + SAMPLE_RATE * .01,
             'SFZ playback latency must include half a hop beyond the shared analysis latency');

@@ -1,166 +1,132 @@
 ---
 title: "Guia da Biblioteca de música - Navegação e reprodução de arquivos de música locais - EffeTune"
-description: "Aprenda a criar uma Biblioteca de música no EffeTune, navegar por subpastas e metadados, reproduzir faixas pelo Effect Pipeline e gerenciar playlists."
+description: "Aprenda a configurar a Biblioteca de música no EffeTune, encontrar e reproduzir músicas por subpasta ou metadados e gerenciar playlists."
 lang: pt
 ---
 
 # Como Usar a Biblioteca de música
 
-A Biblioteca de música indexa as pastas de música selecionadas para que você possa explorar sua coleção local por faixa, arquivo, álbum, artista, gênero, subpasta, pasta, faixas adicionadas recentemente ou playlist. A reprodução passa pelo Effect Pipeline atual do EffeTune, assim como na reprodução normal de arquivos de música.
+A Biblioteca de música indexa as pastas de música selecionadas para que você possa navegar pela sua coleção local por faixas, arquivos, álbuns, artistas, gêneros, subpastas, pastas, faixas adicionadas recentemente ou playlists. A reprodução continua passando pela cadeia de efeitos atual do EffeTune, então você ouve com os mesmos efeitos usados na reprodução normal de arquivos de música.
 
-A Biblioteca de música armazena o catálogo, o cache de capas e as playlists dentro do aplicativo. Ela não edita, renomeia, move nem exclui os arquivos de música.
+A Biblioteca de música armazena o catálogo, o cache de capas e as playlists dentro do aplicativo. Ela não edita, renomeia, move nem exclui seus arquivos de áudio.
 
-## Ambientes disponíveis
+## Ambientes disponíveis {#availability}
 
-- **Aplicativo desktop:** usa o scanner de pastas completo e consegue manter as pastas selecionadas disponíveis entre inicializações. Na versão desktop, também é possível mostrar uma faixa na pasta onde o arquivo está.
-- **Navegadores Chromium em PC com File System Access:** podem manter o acesso às pastas selecionadas após recarregar. O navegador pode pedir permissão novamente.
-- **Navegadores móveis, Safari, Firefox e outros sem File System Access:** mantêm acesso aos arquivos selecionados apenas durante a sessão atual da página. O catálogo permanece salvo, mas selecione novamente a pasta ou os arquivos após cada recarregamento para que o EffeTune os reconecte.
+- **Aplicativo desktop:** Usa o scanner de pastas completo e pode manter as pastas selecionadas disponíveis entre inicializações. As versões desktop também podem mostrar uma faixa na pasta onde o arquivo está.
+- **Navegadores Chromium em PC com File System Access:** Podem manter o acesso às pastas selecionadas após recarregar, embora o navegador possa pedir permissão novamente.
+- **Navegadores móveis, Safari, Firefox e outros sem File System Access:** Mantêm acesso aos arquivos selecionados apenas durante a sessão atual da página. O catálogo permanece salvo, mas selecione novamente a pasta ou os arquivos após cada recarregamento para que o EffeTune os reconecte.
 
-A Biblioteca de música indexa extensões comuns de arquivos de mídia, como MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM e MP4. Ela também pode usar uma folha CUE externa para dividir em faixas um arquivo de álbum WAV ou FLAC que esteja na mesma pasta. Nos arquivos MP4, o EffeTune reproduz apenas a faixa de áudio e não exibe o vídeo. A possibilidade real de reprodução, inclusive do codec de áudio contido no MP4, também depende dos recursos de decodificação do navegador ou do sistema operacional.
+A Biblioteca de música indexa extensões comuns de arquivos de áudio, como MP3, WAV, OGG, FLAC, Opus, M4A e AAC. Ela também pode usar uma folha CUE externa para dividir em faixas individuais um arquivo de álbum WAV ou FLAC na mesma pasta.
+
+Para incluir arquivos MP4, WebM, M4V, MOV, MKV e 3GP, ative **Incluir formatos de vídeo na Biblioteca de música** em **Configurações > Configuração... > Geral** e depois adicione ou reescaneie uma pasta. Essa opção fica desativada por padrão; alterá-la não modifica imediatamente o catálogo existente. A reprodução efetiva, incluindo o codec de áudio dentro de um arquivo de vídeo, depende do decodificador do navegador ou do sistema operacional. Para a exibição de vídeo, consulte o [guia do Player de música](music-player.md#video).
 
 ## Abrir a Biblioteca de música
 
-- **Layout para PC:** clique no botão **Biblioteca de música** no cabeçalho.
-- **Layout móvel:** abra a aba **Biblioteca** na navegação inferior.
-- **Aplicativo desktop:** também é possível abrir por **Visualizar > Biblioteca de música** ou **Ctrl+L** (**Command+L** no macOS).
+- **Layout para PC:** Clique no botão **Biblioteca de música** no cabeçalho.
+- **Layout móvel:** Abra a aba **Biblioteca** na navegação inferior.
+- **Aplicativo desktop:** Você também pode usar **Visualizar > Biblioteca de música** ou **Ctrl+L** (**Command+L** no macOS).
 
-Para voltar à edição de efeitos, clique no botão **Effect Pipeline** no layout para PC e, no layout móvel, volte para a aba **Efeitos**. No aplicativo desktop, também é possível usar **Visualizar > Effect Pipeline** ou **Ctrl+E** (**Command+E** no macOS).
+Para voltar à edição de efeitos, clique no botão **Effect Pipeline** no layout para PC, volte para a aba **Efeitos** no layout móvel ou use **Visualizar > Effect Pipeline** ou **Ctrl+E** (**Command+E** no macOS) no aplicativo desktop.
 
-Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, abra **Configurações > Configuração...** e defina **Visualização ao iniciar:** como **Biblioteca de música**. Na lista ao lado de **Biblioteca de música**, escolha qual seção será exibida primeiro: **Faixas**, **Arquivos**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas** ou **Playlists**.
+Se quiser que a Biblioteca de música seja a primeira tela exibida ao iniciar, abra **Configurações > Configuração...** e defina **Visualização ao iniciar:** como **Biblioteca de música**. Na lista ao lado de Biblioteca de música, escolha qual seção será exibida primeiro: **Faixas**, **Arquivos**, **Álbuns**, **Artistas**, **Gêneros**, **Subpastas**, **Pastas** ou **Playlists**.
 
 ## Adicionar pastas de música
 
 1. Abra a Biblioteca de música.
 2. Selecione **Adicionar pasta de música**.
-3. Escolha a pasta que contém os arquivos de música. Em navegadores móveis ou sem acesso persistente a pastas, o seletor pode pedir que você escolha os arquivos da pasta.
-4. Aguarde o fim da varredura. A linha de status mostra o número de faixas e álbuns e, durante a indexação, também mostra o andamento.
+3. Escolha a pasta que contém suas músicas. Em navegadores móveis ou sem acesso persistente a pastas, o seletor pode pedir para escolher os arquivos da pasta em vez de conceder acesso contínuo à pasta.
+4. Aguarde o término da varredura. A linha de status mostra o número de faixas e álbuns e o progresso durante a indexação.
 
-Se você tentar adicionar uma pasta que já está dentro de uma pasta registrada, o EffeTune avisa sem indexar o mesmo conteúdo em duplicidade. Ao adicionar uma pasta pai que contém pastas já registradas, é possível mesclar as pastas existentes na nova pasta.
+Se você tentar adicionar uma pasta que já está dentro de uma pasta existente da biblioteca, o EffeTune avisa em vez de indexar conteúdo duplicado. Se adicionar uma pasta pai que contém pastas já indexadas, o EffeTune pode mesclá-las na nova pasta.
 
 ## Navegação e pesquisa
 
-Use as abas de navegação para alternar o catálogo.
+Use as abas de navegação para explorar sua coleção:
 
-- **Faixas** - Exibe todas as faixas indexadas. No layout para PC, elas aparecem em uma tabela ordenável; no layout móvel, em uma lista compacta.
-- **Arquivos** - Exibe as faixas indexadas pelo local do arquivo para que você possa escolhê-las diretamente. O aplicativo desktop mostra caminhos absolutos; os navegadores mostram o nome da pasta raiz da biblioteca e o caminho relativo. Faixas originadas do mesmo arquivo de áudio CUE continuam sendo itens separados e podem ser selecionadas individualmente.
-- **Álbuns** - Agrupa por álbum a partir dos metadados.
-- **Artistas** - Agrupa por artista e artista do álbum nos metadados.
-- **Gêneros** - Agrupa por gênero nos metadados.
-- **Subpastas** - Agrupa as faixas pelo caminho relativo da subpasta que contém diretamente cada arquivo em cada pasta de música indexada.
-- **Pastas** - Mostra as raízes de música registradas, o estado da varredura e a estrutura física de diretórios.
-- **Adicionadas recentemente** - Mostra as faixas indexadas recentemente.
-- **Playlists** - Mostra as playlists criadas ou importadas dentro da Biblioteca de música.
+- **Faixas:** Todas as faixas indexadas (uma tabela ordenável no PC; uma lista compacta no celular).
+- **Arquivos:** Faixas listadas por caminho de arquivo para escolher um arquivo diretamente. As faixas definidas por uma folha CUE aparecem como entradas separadas.
+- **Álbuns:** Álbuns agrupados a partir dos metadados das faixas.
+- **Artistas:** Artistas e artistas do álbum obtidos dos metadados (valores separados por ponto e vírgula, como `Artist A; Artist B`, são indexados em cada artista mantendo o crédito completo exibido).
+- **Gêneros:** Grupos de gênero obtidos dos metadados.
+- **Subpastas:** Faixas agrupadas pela subpasta pai direta dentro de cada pasta raiz indexada (por exemplo, `Artist/Album`).
+- **Pastas:** Pastas raiz registradas, seu estado de varredura e sua hierarquia de pastas.
+- **Adicionadas recentemente:** Faixas indexadas recentemente.
+- **Playlists:** Playlists criadas ou importadas dentro da Biblioteca de música.
 
-Um valor de artista do álbum separado por ponto e vírgula, como `Artist A; Artist B`, é indexado para cada artista, mantendo o crédito completo na exibição. `&`, `/` e `feat.` não são tratados como separadores.
+Em **Pastas**, abra uma raiz registrada para navegar por suas pastas na **Visualização em árvore** ou mude para a **Visualização plana** para listar todas as faixas dessa raiz de uma só vez. Na **Visualização em árvore**, pastas com apenas uma subpasta e sem faixas diretas são combinadas em uma única linha (como `Artist / Album`) para ir direto à pasta do álbum, enquanto o caminho de navegação permite abrir qualquer pasta intermediária.
 
-Abra uma raiz em **Pastas** para percorrê-la na **Vista em árvore**. As subpastas aparecem acima da lista de faixas; selecione uma para entrar nela e use o caminho de navegação ou **Anterior** para subir um nível. A lista mostra somente as faixas armazenadas diretamente no nível atual. A **Vista plana**, por sua vez, mostra todas as faixas indexadas da raiz registrada, inclusive as que estão em subpastas. A troca de vista preserva o local atual, para que você possa voltar ao mesmo ponto na **Vista em árvore**. **Pesquisar na biblioteca** continua pesquisando em toda a biblioteca, portanto a lista de subpastas fica oculta durante a pesquisa.
+Use **Pesquisar na biblioteca** para filtrar faixas, álbuns, artistas e playlists. Termos com três ou mais caracteres correspondem a qualquer parte do título, artista, álbum, gênero, nome do arquivo ou caminho; termos de um ou dois caracteres correspondem ao início de uma palavra. No PC, clique nos cabeçalhos da tabela de faixas (**N.º da faixa**, **Título**, **Artista**, **Álbum**, **Gênero** ou **Tempo**) ou use a lista **Ordenar** nas outras visualizações. No celular, use a lista **Ordenar** para mudar a ordem em qualquer visualização fora das playlists salvas.
 
-Quando uma pasta não contém faixas diretamente e tem exatamente uma subpasta, a **Vista em árvore** combina os níveis consecutivos nessa condição em uma única linha, como `Artist / Album`. Selecione a linha para ir diretamente à pasta mais profunda; o número exibido nela também corresponde a essa pasta. Use o caminho de navegação para abrir qualquer nível intermediário; no desktop, **Anterior** volta um nível de cada vez. No dispositivo móvel, **Anterior** volta à vista em que estava antes e, por isso, pode saltar os níveis intermediários de uma cadeia combinada em uma única etapa.
+Quando um resultado de pesquisa, nível de pasta, álbum, artista, gênero, subpasta ou playlist contém 300 faixas ou menos, todas as faixas são selecionadas por padrão para que você possa iniciar a reprodução imediatamente. Resultados com 301 faixas ou mais não são selecionados automaticamente; use as caixas de seleção das linhas, **Selecionar tudo** ou **Desmarcar tudo** para alterar a seleção. No celular, toque e segure qualquer linha de faixa para mostrar as caixas e os controles de seleção.
 
-A árvore de **Pastas** respeita os caminhos relativos físicos exatos e inclui todas as entradas de faixa encontradas no catálogo, mesmo durante a análise dos metadados ou quando essa análise falha. A contagem de uma pasta inclui as faixas da própria pasta e de todos os níveis abaixo dela. As faixas CUE são contadas individualmente: várias faixas lógicas que compartilham uma única fonte WAV ou FLAC contam como várias faixas, não como um único arquivo de áudio físico. **Subpastas** tem outra finalidade: agrupa as faixas analisadas com êxito pela identidade normalizada da pasta pai direta, portanto variantes que diferem apenas em maiúsculas, minúsculas ou normalização Unicode podem ser combinadas.
-
-Por exemplo, `Artist/Album/01 Song.flac` aparece no grupo de subpasta `Artist/Album` e sob `Artist` e depois `Album` na árvore física de **Pastas**. Caminhos relativos idênticos em raízes indexadas diferentes permanecem separados. Arquivos armazenados diretamente na raiz não criam um grupo de subpasta; eles continuam disponíveis em **Faixas** e na lista de faixas diretas dessa raiz em **Pastas**.
-
-Com **Pesquisar na biblioteca**, você pode pesquisar faixas, álbuns, artistas e playlists ao mesmo tempo. No layout para PC, é possível ordenar a lista de faixas pelo cabeçalho usando **N.º da faixa**, **Título**, **Artista**, **Álbum**, **Gênero** e **Tempo**. As visualizações de álbuns, artistas, gêneros, subpastas e playlists oferecem uma lista **Ordenar** baseada no catálogo. Dependendo da visualização, é possível ordenar por nome, artista, ano, caminho, número de faixas, duração total, data de atualização ou data de criação, em ambos os sentidos. Cada visualização mantém sua própria seleção.
-
-No layout móvel, as listas de faixas fora das playlists oferecem uma lista **Ordenar** com opções crescentes e decrescentes, incluindo as de subpastas e os resultados de pesquisa. As faixas de uma playlist mantêm a ordem salva. **Adicionadas recentemente** mostra primeiro as faixas mais recentes por padrão; você pode escolher outra ordem na mesma lista.
-
-Na pesquisa de faixas, termos com três ou mais caracteres correspondem a qualquer parte do título, artista, álbum, gênero, nome do arquivo ou caminho. Termos com um ou dois caracteres correspondem apenas ao início de uma palavra. Digite pelo menos três caracteres para pesquisar no meio de uma palavra.
-
-Nos layouts para PC e dispositivos móveis, quando uma pesquisa de faixas, as faixas diretas do nível atual na **Vista em árvore** ou os detalhes de um álbum, artista, gênero, subpasta ou playlist retornam 300 faixas ou menos, todas são selecionadas por padrão. Com 301 faixas ou mais, não há seleção automática. Use as caixas das linhas, **Selecionar tudo** ou **Desmarcar tudo** para alterar a seleção.
-
-No celular, a lista normal de títulos aparece primeiro, sem colunas de artista ou duração. Somente manter uma faixa pressionada abre o modo de seleção; as caixas, **Selecionar tudo** e **Desmarcar tudo** aparecem, enquanto as ações normais das linhas continuam disponíveis. A seleção automática e as alterações posteriores — incluindo **Selecionar tudo**, **Desmarcar tudo** e as caixas individuais — mudam apenas o estado da seleção; elas não abrem nem encerram o modo de seleção.
-
-Quando os metadados estão ausentes ou não podem ser lidos, o EffeTune usa o nome do arquivo e as informações da pasta para a exibição. Nas propriedades da faixa, você pode conferir o caminho do arquivo, formato, taxa de amostragem, profundidade de bits, taxa de bits e os principais itens de metadados. Para uma faixa CUE, elas também mostram o tipo, o caminho do arquivo CUE, o caminho do áudio de origem e o trecho ocupado nesse arquivo.
+Se faltarem tags, o EffeTune usa o nome do arquivo e da pasta. As propriedades da faixa mostram o caminho do arquivo, formato, taxa de amostragem, profundidade de bits, taxa de bits, metadados e, nas faixas CUE, o caminho da folha CUE e o trecho da faixa.
 
 ## Arquivos de álbum com CUE
 
-Coloque o arquivo `.cue` externo junto aos arquivos WAV ou FLAC citados nele e adicione ou examine novamente essa pasta. Cada entrada `TRACK ... AUDIO` válida aparece como uma faixa separada na Biblioteca de música. Quando disponíveis, são usados o título, intérprete, data, gênero e número de faixa do CUE; as informações técnicas vêm do WAV ou FLAC de origem.
+Coloque uma folha `.cue` externa na mesma pasta dos arquivos WAV ou FLAC que ela referencia e adicione ou reescaneie a pasta. Cada entrada `TRACK ... AUDIO` válida aparece como uma faixa individual na Biblioteca de música.
 
-Para as faixas adicionadas à Biblioteca de música, o EffeTune usa primeiro a capa incorporada ao áudio de origem. Se não houver nenhuma, ele procura, ao lado do arquivo CUE e nesta ordem, `cover.jpg`, `cover.png`, `front.jpg`, `front.png` e depois um JPEG ou PNG com o nome do arquivo de áudio, com ou sem a extensão de áudio. A reprodução direta no aplicativo para desktop usa automaticamente essas mesmas imagens vizinhas; esse modo de reprodução não extrai a capa incorporada ao áudio de origem. A reprodução direta no navegador usa a imagem correspondente acessível pelos arquivos selecionados ou pela pasta registrada.
+Para a capa, a Biblioteca de música verifica primeiro a imagem incorporada no áudio de origem e, em seguida, procura ao lado do arquivo `.cue` por `cover.jpg`, `cover.png`, `front.jpg`, `front.png` ou uma imagem com o mesmo nome do arquivo de áudio.
 
-Você também pode reproduzir diretamente um álbum CUE com **Open music files** ou, no celular, **Open Music**. No aplicativo para desktop, **File > Open music file...** também está disponível; selecione apenas o arquivo `.cue`. Em um navegador Chromium para PC, primeiro adicione a pasta do álbum à Biblioteca de música e permita o acesso. Depois disso, basta selecionar o arquivo `.cue`: o EffeTune abrirá os WAV ou FLAC referenciados e a capa correspondente a partir da pasta registrada, sem adicionar a seleção ao catálogo. Navegadores sem File System Access ainda precisam receber o arquivo `.cue` junto com todos e somente os WAV ou FLAC citados nele, além da capa correspondente se você quiser usá-la. Uma seleção válida substitui a fila atual. Se a validação falhar, a fila permanece inalterada.
+Você também pode abrir uma folha `.cue` diretamente pelo player (**Abrir arquivos de música**, **Arquivo > Abrir arquivo de música...** no desktop ou **Abrir música** no celular):
+- **Aplicativo desktop:** Selecione apenas o arquivo `.cue`.
+- **Navegador Chromium em PC:** Se a pasta do álbum já estiver registrada na Biblioteca de música com permissão concedida, selecione apenas o arquivo `.cue`.
+- **Outros navegadores:** Selecione o arquivo `.cue` junto com todos os arquivos WAV/FLAC que ele referencia, e somente eles, além de uma imagem de capa correspondente, se quiser.
 
-Se a folha CUE for inválida ou não puder identificar com segurança os arquivos de origem, o EffeTune explica o problema e importa os arquivos WAV ou FLAC como faixas comuns que abrangem o arquivo inteiro. Corrija a folha CUE ou os nomes dos arquivos e examine a pasta novamente.
+Se uma folha CUE for inválida ou seus arquivos de áudio não puderem ser associados, o EffeTune avisa e importa os arquivos WAV ou FLAC como faixas únicas de arquivo inteiro. Corrija a folha CUE ou os nomes dos arquivos e reescaneie a pasta para tentar de novo.
 
 ## Reproduzir a partir da biblioteca
 
-Selecione faixas, álbuns, artistas, gêneros, subpastas, pastas, resultados de pesquisa ou playlists e use as ações abaixo.
+Selecione uma faixa, álbum, artista, gênero, subpasta, pasta, resultado de pesquisa ou playlist e escolha:
 
-- **Reproduzir** - Substitui a fila atual do player e inicia a reprodução.
-- **Aleatório** - Reproduz o conjunto de faixas selecionado em ordem aleatória.
-- **Reproduzir a seguir** - Insere as faixas selecionadas logo depois da faixa atual.
-- **Adicionar à fila** - Adiciona as faixas selecionadas ao fim da fila.
-- **Adicionar à playlist** - Salva as faixas selecionadas em uma playlist da Biblioteca de música.
+- **Reproduzir:** Substitui a fila atual do player e inicia a reprodução.
+- **Aleatório:** Reproduz a seleção em ordem aleatória.
+- **Reproduzir a seguir:** Insere a seleção após a faixa atual.
+- **Adicionar à fila:** Adiciona a seleção ao final da fila.
+- **Adicionar à playlist:** Adiciona a seleção a uma playlist da Biblioteca de música.
 
-No PC, você pode clicar duas vezes em uma linha de faixa para reproduzir a partir dessa posição, ou abrir as ações pelo botão direito do mouse ou pelo menu **Mais**. No celular, toque em uma faixa da lista normal para reproduzi-la; manter pressionado entra no modo de seleção descrito acima.
-
-Os controles normais do player e as configurações de repetição/aleatório continuam disponíveis. Em dispositivos com teclado, os atalhos de teclado normais do player também podem ser usados. Se uma pasta ficar offline e uma faixa da biblioteca não puder ser aberta, reconecte ou importe novamente essa pasta.
+No PC, clique duas vezes na linha de uma faixa para reproduzir a partir dela, ou clique com o botão direito / abra **Mais** para ver as ações da faixa. No celular, toque em uma faixa para reproduzi-la ou mantenha pressionado para selecionar várias faixas.
 
 ## Atualizar e reconectar pastas
 
-Depois de adicionar, excluir, renomear ou editar tags de arquivos dentro de uma pasta de música, use **Reescanear**. A nova varredura atualiza as faixas alteradas, remove do catálogo os arquivos que não forem mais encontrados e também tenta resolver novamente itens de playlist que antes estavam indisponíveis.
+Use **Reescanear** após adicionar, remover, renomear ou editar tags de arquivos nas suas pastas de música. A nova varredura atualiza as faixas modificadas, remove do catálogo os arquivos excluídos e reconecta itens de playlists quando arquivos correspondentes são encontrados.
 
-Na tela **Pastas**, os estados mostram se a pasta está disponível.
+Estado das pastas em **Pastas**:
+- **OK:** Pronta para navegar e reproduzir.
+- **Não escaneado:** Adicionada, mas ainda não indexada.
+- **Não encontrado:** O caminho da pasta não foi mais encontrado.
+- **Reconectar:** A permissão do navegador ou da pasta é necessária novamente; clique em **Reconectar** e conceda acesso à mesma pasta.
 
-- **OK** - A pasta está disponível.
-- **Não escaneado** - A pasta ainda não foi indexada.
-- **Não encontrado** - A pasta ou o caminho salvo não está disponível.
-- **Reconectar** - O EffeTune precisa de permissão de acesso novamente.
+Se não for possível abrir uma faixa da biblioteca porque a pasta está offline, reconecte ou importe a pasta novamente.
 
-Se uma pasta mostrar **Reconectar**, selecione **Reconectar** e conceda novamente acesso à mesma pasta. Remover uma pasta apenas a retira do catálogo da Biblioteca de música; os arquivos no disco não são excluídos.
+Escolher **Remover** apenas retira a pasta do catálogo do EffeTune; seus arquivos no disco nunca são excluídos.
 
 ## Playlists
 
-As playlists da Biblioteca de música são salvas dentro do EffeTune e podem incluir faixas de pastas já indexadas.
+As playlists da Biblioteca de música são salvas dentro do EffeTune e podem conter faixas de qualquer pasta indexada:
 
-Você pode:
-
-- criar uma playlist a partir de faixas selecionadas na biblioteca;
-- salvar a fila atual do player como uma playlist;
-- renomear, duplicar, excluir e reordenar playlists;
-- arrastar faixas dentro de uma playlist para mudar a ordem; em ambientes onde arrastar é difícil, usar **Mover para cima** e **Mover para baixo**;
-- importar playlists nos formatos M3U, M3U8, PLS e XSPF com **Importar playlist**;
-- abrir uma playlist específica e exportá-la em formato M3U8 ou XSPF com **Exportar M3U8** ou **Exportar XSPF**.
+- Crie uma playlist a partir de faixas selecionadas na biblioteca ou salve a fila atual do player como uma playlist.
+- Use **Renomear**, **Duplicar** e **Excluir** para gerenciar playlists, e arraste faixas (ou use **Mover para cima** / **Mover para baixo**) para mudar a ordem das faixas.
+- Use **Importar playlist** para arquivos M3U, M3U8, PLS e XSPF, e **Exportar M3U8** ou **Exportar XSPF** dentro de uma playlist para exportá-la.
 
 ### Reproduzidas recentemente e Favoritos
 
-O EffeTune mostra duas playlists especiais ao lado das playlists comuns, na mesma grade de cartões. Elas são criadas apenas quando necessárias: **Reproduzidas recentemente** quando uma faixa indexada começa a tocar e **Favoritos** quando você marca uma faixa com a estrela pela primeira vez.
+Duas playlists automáticas aparecem na grade de playlists depois de usadas:
 
-- **Reproduzidas recentemente** mantém as 100 faixas distintas mais recentes, com a mais nova no topo. Ao reproduzir uma faixa novamente, ela volta para o topo.
-- **Favoritos** contém as faixas marcadas com ☆. No PC, use a estrela ao lado da faixa; no celular, abra o menu **Mais** da faixa. O mesmo menu também pode ser aberto clicando com o botão direito em uma faixa no PC.
+- **Reproduzidas recentemente:** Mantém as últimas 100 faixas diferentes reproduzidas pela Biblioteca de música, da mais recente para a mais antiga.
+- **Favoritos:** Reúne as faixas marcadas com a **☆** ao lado da faixa no PC ou com **Adicionar aos favoritos** no menu **Mais** da faixa (no PC, também disponível com o botão direito). Clique no botão de reprodução do cartão **Favoritos** para iniciá-la imediatamente.
 
-Os nomes dessas playlists são fixos e aparecem no idioma atual da interface, portanto não podem ser alterados. Ainda é possível duplicar, exportar ou excluir essas playlists como as demais. Se uma delas for excluída, será recriada vazia na próxima vez que a reprodução ou uma ação de favoritos precisar dela. Os cartões exibem um relógio ou uma estrela na área da capa; o botão de reprodução no canto inferior direito de **Favoritos** inicia a playlist imediatamente. As playlists especiais não aparecem nos resultados da pesquisa de playlists comuns.
+Os nomes acompanham o idioma atual da interface e não podem ser renomeados, mas você pode duplicar, exportar ou excluir essas playlists como qualquer outra.
 
-Ao escanear uma pasta, o EffeTune importa automaticamente os arquivos de playlist compatíveis depois de indexar as faixas e ignora os arquivos cujo conteúdo não mudou. Se o conteúdo de um arquivo na mesma pasta e no mesmo caminho relativo mudar, o EffeTune substitui atomicamente os itens da playlist importada automaticamente; isso também substitui as edições feitas nesses itens dentro do EffeTune. Uma importação que falhou ou foi cancelada é tentada novamente na próxima varredura. Excluir ou renomear o arquivo de origem não remove a playlist existente, e um arquivo renomeado é importado como uma nova playlist.
+### Importar e exportar playlists
 
-Durante a importação, é exibida uma prévia de quantos itens coincidem com faixas da biblioteca atual. Os itens sem correspondência também são mantidos, sempre que possível, como itens não resolvidos, para que possam ser resolvidos depois se a pasta correspondente for adicionada ou reconectada.
+As varreduras de pastas importam automaticamente arquivos de playlist compatíveis encontrados nas suas pastas de música e os atualizam ao reescanear quando o arquivo de playlist muda no disco; essa atualização substitui as edições que você fez nessa playlist no EffeTune. Entradas sem correspondência são mantidas como itens não resolvidos para que sejam vinculadas automaticamente quando a pasta correspondente for adicionada ou reconectada.
 
-Ao exportar, escolher **Caminhos relativos** grava, quando possível, caminhos relativos ao destino da exportação. Isso é útil quando você quer mover a playlist junto com a pasta de música. M3U8 e XSPF não conseguem preservar o trecho de uma faixa CUE dentro do arquivo do álbum; por isso, o EffeTune omite essas faixas e informa quantas foram excluídas. Ele nunca grava o caminho físico do arquivo do álbum no lugar de uma faixa CUE omitida.
+Ao exportar uma playlist, ative **Caminhos relativos** se quiser mover o arquivo M3U8 ou XSPF exportado junto com a pasta de música. Como arquivos M3U8 e XSPF padrão não armazenam intervalos de subfaixas CUE, as faixas CUE são omitidas durante a exportação e o EffeTune informa quantas foram ignoradas.
 
 ## Segurança e local de armazenamento
 
-- A Biblioteca de música lê os arquivos de música e seus metadados, mas não grava alterações nos arquivos de música.
-- O cache de capas e as playlists são dados internos do aplicativo, não alterações incorporadas aos arquivos de música.
-- A área de armazenamento do navegador pode ser apagada pelas configurações do navegador ou por ações do usuário. Exporte playlists importantes conforme necessário.
-- Nos navegadores com File System Access, a permissão determina se a pasta continua disponível após recarregar. Nos outros navegadores, selecione os arquivos novamente após cada recarregamento.
-
-## Bibliotecas grandes
-
-O EffeTune carrega coleções grandes em etapas, sem manter a biblioteca inteira na memória. O tempo de varredura e os limites práticos dependem da velocidade do armazenamento, da memória disponível, dos metadados, das capas e das limitações do navegador ou do sistema operacional.
-
-As faixas próximas são carregadas conforme você rola a lista. Um salto excepcionalmente rápido pode mostrar linhas vazias por alguns instantes até que as faixas solicitadas sejam carregadas, principalmente em armazenamento lento.
-
-Use a Biblioteca de música em uma janela do EffeTune por vez.
-
-## Controle remoto OpenHome (aplicativo desktop)
-
-Nas versões desktop compatíveis, o EffeTune pode aparecer como um player OpenHome para aplicativos controladores na mesma rede local. Abra **Configurações > Configuração...**, ative **Permitir controladores OpenHome nesta rede** e aguarde até o status informar que o EffeTune está disponível. O nome padrão é `EffeTune (nome do computador)`; use **Nome do Player** para dar a cada computador um nome fácil de reconhecer, como `EffeTune Living Room`. A opção fica desativada por padrão.
-
-O OpenHome não exige login. Enquanto a opção estiver ativa, outros dispositivos na rede local poderão ver os metadados de reprodução, substituir ou editar a fila do Player e controlar a reprodução. Se o Firewall do Windows solicitar permissão, permita o EffeTune somente em **redes privadas**, nunca em **redes públicas**. Desative a opção quando não precisar do controle remoto.
-
-Os pacotes compatíveis são Windows x64, macOS em Intel ou Apple silicon e Linux x64. O recurso não está disponível no aplicativo web nem em navegadores móveis. As operações básicas de fila e reprodução foram verificadas com o BubbleUPnP no Android; outros controladores OpenHome podem exibir de outra forma os serviços e controles não compatíveis. O EffeTune é uma fonte OpenHome Playlist, não um UPnP AV MediaRenderer, e não declara compatibilidade ou certificação.
-
-Os controladores podem adicionar áudio HTTP ou HTTPS e gerenciar uma fila remota com reprodução, pausa, parada, avanço, busca, repetição e ordem aleatória. O áudio remoto continua passando pelo pipeline de efeitos atual. Não há suporte para editar efeitos do EffeTune, acessar caminhos de arquivos locais, ajustar volume mestre, Radio, Songcast ou reprodução multiroom sincronizada. A reprodução sem intervalos não é garantida e alguns dados técnicos podem ficar desconhecidos até a fonte fornecê-los. Suspensão, retomada, VPN ou mudanças de interface de rede podem fazer o player desaparecer brevemente enquanto ele se reconecta.
+- A Biblioteca de música lê arquivos de áudio e metadados sem modificar seus arquivos no disco.
+- Limpar os dados do site no navegador remove o catálogo e as playlists do aplicativo web; exporte as playlists importantes para mantê-las.
+- Coleções grandes são carregadas progressivamente conforme você rola a tela. Use a Biblioteca de música em uma única janela do EffeTune por vez.
 
 [← Voltar para o README](README.md)

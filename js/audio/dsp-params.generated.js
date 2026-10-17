@@ -1560,9 +1560,9 @@ export function packSaturationPluginParams(params = {}) {
   return packed;
 }
 
-export const SFZNotePlayerPlugin_PARAMS_HASH = 0x378e7f2b;
+export const SFZNotePlayerPlugin_PARAMS_HASH = 0xdfb4bbc5;
 export function packSFZNotePlayerPluginParams(params = {}) {
-  const packed = new Float32Array(19);
+  const packed = new Float32Array(20);
   packed[0] = (() => { const value = params["th"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 0.75; if (value < 0.01) return 0.01; if (value > 1) return 1; return value; })();
   packed[1] = (() => { const value = params["vf"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -60; if (value < -96) return -96; if (value > 0) return 0; return value; })();
   packed[2] = (() => { const value = params["vc"]; if (!(typeof value === 'number' && Number.isFinite(value))) return -10; if (value < -60) return -60; if (value > 24) return 24; return value; })();
@@ -1582,6 +1582,7 @@ export function packSFZNotePlayerPluginParams(params = {}) {
   packed[16] = (() => { const value = params["ss"]; if (!(Number.isSafeInteger(value))) return 0; if (value < -6) return -6; if (value > 6) return 6; return value; })();
   packed[17] = (() => { const value = params["pm"]; if (!(Number.isSafeInteger(value))) return -1; if (value < -1) return -1; if (value > 127) return 127; return value; })();
   packed[18] = (() => { const value = params["pv"]; if (!(Number.isSafeInteger(value))) return 100; if (value < 1) return 1; if (value > 127) return 127; return value; })();
+  packed[19] = (() => { const index = ["Classic","Event"].indexOf(params["dt"]); return index < 0 ? 0 : index; })();
   return packed;
 }
 
@@ -2767,7 +2768,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   RotarySpeakerPlugin: Object.freeze({ hash: RotarySpeakerPlugin_PARAMS_HASH, floatCount: 9 }),
   RSReverbPlugin: Object.freeze({ hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 }),
   SaturationPlugin: Object.freeze({ hash: SaturationPlugin_PARAMS_HASH, floatCount: 5 }),
-  SFZNotePlayerPlugin: Object.freeze({ hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 19 }),
+  SFZNotePlayerPlugin: Object.freeze({ hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 20 }),
   SimpleJitterPlugin: Object.freeze({ hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 }),
   SpatialMapperPlugin: Object.freeze({ hash: SpatialMapperPlugin_PARAMS_HASH, floatCount: 776 }),
   SpectrogramPlugin: Object.freeze({ hash: SpectrogramPlugin_PARAMS_HASH, floatCount: 3 }),
@@ -2882,7 +2883,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["RotarySpeakerPlugin", Object.freeze({ pack: packRotarySpeakerPluginParams, hash: RotarySpeakerPlugin_PARAMS_HASH, floatCount: 9 })],
   ["RSReverbPlugin", Object.freeze({ pack: packRSReverbPluginParams, hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 })],
   ["SaturationPlugin", Object.freeze({ pack: packSaturationPluginParams, hash: SaturationPlugin_PARAMS_HASH, floatCount: 5 })],
-  ["SFZNotePlayerPlugin", Object.freeze({ pack: packSFZNotePlayerPluginParams, hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 19 })],
+  ["SFZNotePlayerPlugin", Object.freeze({ pack: packSFZNotePlayerPluginParams, hash: SFZNotePlayerPlugin_PARAMS_HASH, floatCount: 20 })],
   ["SimpleJitterPlugin", Object.freeze({ pack: packSimpleJitterPluginParams, hash: SimpleJitterPlugin_PARAMS_HASH, floatCount: 1 })],
   ["SpatialMapperPlugin", Object.freeze({ pack: packSpatialMapperPluginParams, hash: SpatialMapperPlugin_PARAMS_HASH, floatCount: 776 })],
   ["SpectrogramPlugin", Object.freeze({ pack: packSpectrogramPluginParams, hash: SpectrogramPlugin_PARAMS_HASH, floatCount: 3 })],

@@ -36,8 +36,6 @@ Applies smooth nonlinear distortion with controllable drive and mix.
 
 An effect that simulates the warm, pleasant sound of vintage tube equipment. It can add richness and character to your music, making it sound more "analog" and less "digital."
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - Adding Warmth:
   - Makes digital music sound more natural
@@ -53,6 +51,8 @@ An effect that simulates the warm, pleasant sound of vintage tube equipment. It 
   - Ideal for experimental listening
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Drive** - Controls the amount of warmth and character (0.0 to 10.0)
   - Light (0.0-3.0): Subtle analog warmth
   - Medium (3.0-6.0): Rich, vintage character

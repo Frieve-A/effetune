@@ -134,15 +134,16 @@ export class ElectronCatalogClient {
     if (result?.canceled || result?.rejected || !result?.folder?.id || result.scan) return result;
     const scanRequest = {
       folderIds: [result.folder.id],
-      scanReason: 'automatic'
+      scanReason: 'automatic',
+      includeVideo: options?.includeVideo === true
     };
     if (options?.languageHints) scanRequest.languageHints = options.languageHints;
     const scan = await this.scanFolders(scanRequest);
     return { ...result, scan };
   }
 
-  requestFolderAccess(folderId) {
-    return this.api.requestFolderAccess(folderId);
+  requestFolderAccess(folderId, options = {}) {
+    return this.api.requestFolderAccess(folderId, options);
   }
 
   scanFolders(request) {

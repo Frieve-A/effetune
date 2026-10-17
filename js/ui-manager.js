@@ -46,10 +46,11 @@ function usesIOSFilePicker(windowRef = window) {
 const MESSAGE_DISPLAY_DURATION_MS = 5000;
 const AUDIO_GLITCH_WARNING_DURATION_MS = 10000;
 const MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY = 'miniPlayerAlwaysOnTop';
-const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.lrc,.jpg,.png';
+const WEB_MUSIC_FILE_ACCEPT = 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.jpg,.png';
 const WEB_MUSIC_PICKER_TYPES = [{
     accept: {
         'audio/*': ['.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'],
+        'video/*': ['.3gp', '.m4v', '.mkv', '.mov', '.mp4', '.webm'],
         'text/plain': ['.cue', '.lrc'],
         'image/jpeg': ['.jpg', '.jpeg'],
         'image/png': ['.png']

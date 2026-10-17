@@ -46,8 +46,8 @@ body.layout-mobile .sfz-note-player-plugin-ui .sfz-controls .parameter-row input
 .sfz-load-notice {
     box-sizing: border-box;
     width: 480px;
-    max-width: calc(100vw - 32px);
-    max-height: calc(100vh - 40px);
+    max-width: calc(100% - 32px);
+    max-height: calc(100% - 40px);
     overflow: auto;
     padding: 20px;
     border: 1px solid var(--et-border-strong);

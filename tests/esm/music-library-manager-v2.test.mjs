@@ -581,7 +581,7 @@ test('LibraryManagerV2 exposes typed unavailable results instead of legacy fallb
   assert.equal(manager.showTrackInFolder, undefined);
 });
 
-test('LibraryManagerV2 forwards current UI and browser language hints to catalog scans', async () => {
+test('LibraryManagerV2 forwards current language hints and video preference to catalog scans', async () => {
   const harness = createClient();
   const calls = [];
   const manager = createManager(harness.client, {
@@ -593,6 +593,9 @@ test('LibraryManagerV2 forwards current UI and browser language hints to catalog
       async addFolder(options) {
         calls.push(['addFolder', options]);
         return { id: 'folder-1' };
+      },
+      async requestFolderAccess(folderId, options) {
+        calls.push(['requestFolderAccess', folderId, options]);
       }
     },
     scanService: {
@@ -614,8 +617,17 @@ test('LibraryManagerV2 forwards current UI and browser language hints to catalog
     browserLanguages: ['ja-JP', 'en-US']
   };
   assert.deepEqual(calls, [
-    ['addFolder', { languageHints }],
-    ['scanFolders', { folderIds: ['folder-1'], languageHints }]
+    ['addFolder', { languageHints, includeVideo: false }],
+    ['scanFolders', { folderIds: ['folder-1'], languageHints, includeVideo: false }]
+  ]);
+  manager.windowRef.appConfig = { libraryIncludeVideo: true };
+  await manager.addFolder();
+  await manager.scanFolders(['folder-1']);
+  await manager.requestFolderAccess('folder-1');
+  assert.deepEqual(calls.slice(2), [
+    ['addFolder', { languageHints, includeVideo: true }],
+    ['scanFolders', { folderIds: ['folder-1'], languageHints, includeVideo: true }],
+    ['requestFolderAccess', 'folder-1', { includeVideo: true }]
   ]);
 });
 

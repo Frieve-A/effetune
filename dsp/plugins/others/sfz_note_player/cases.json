@@ -126,6 +126,19 @@
       "frames": 8192,
       "params": { "lo": false, "md": true, "hi": false },
       "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    },
+    {
+      "id": "event-sine-bank",
+      "stimulus": "sin1k",
+      "params": { "dt": "Event" },
+      "asset": { "sfz": { "kind": "sfz-sine-v1" } }
+    },
+    {
+      "id": "event-dry-negative-timing",
+      "stimulus": "noise",
+      "frames": 24000,
+      "blockSize": 63,
+      "params": { "dt": "Event", "dm": 100, "wm": 0, "tm": -100 }
     }
   ]
 }

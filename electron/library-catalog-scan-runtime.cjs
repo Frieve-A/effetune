@@ -14,8 +14,9 @@ const {
 const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
 
 const AUDIO_EXTENSIONS = new Set([
-  '.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
+  '.3gp', '.aac', '.flac', '.m4a', '.m4v', '.mkv', '.mov', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
 ]);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.m4v', '.mov', '.mkv', '.3gp']);
 const PLAYLIST_EXTENSIONS = new Set(['.m3u', '.m3u8', '.pls', '.xspf']);
 const CUE_EXTENSION = '.cue';
 const PLAYLIST_IMPORT_GRANT_TTL_MS = 10 * 60 * 1000;
@@ -127,7 +128,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
   }
 
   async addFolder(request = {}) {
-    assertAllowedFields(request, ['languageHints'], 'invalidFolderRequest');
+    assertAllowedFields(request, ['languageHints', 'includeVideo'], 'invalidFolderRequest');
     this.assertOpen();
     const languageHints = normalizeLanguageHints(request.languageHints);
     const selected = await this.pickDirectory();
@@ -162,13 +163,14 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     const scan = await this.scanFolders({
       folderIds: [folder.id],
       scanReason: 'automatic',
-      languageHints
+      languageHints,
+      includeVideo: request.includeVideo === true
     });
     return { canceled: false, folder: publicFolder(folder), existing: false, scan };
   }
 
   async requestFolderAccess(request) {
-    assertExactFields(request, ['folderId'], 'invalidFolderRequest');
+    assertAllowedFields(request, ['folderId', 'includeVideo'], 'invalidFolderRequest');
     this.assertOpen();
     const folderId = requireBoundedString(request.folderId, 'folderId', 512);
     const folder = await this.requireFolder(folderId);
@@ -203,7 +205,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     await this.host.upsertFolders([availableFolder]);
     this.issueGrant(availableFolder, canonicalRoot, { catalogReady: !rootChanged });
     const scan = rootChanged
-      ? await this.scanFolders({ folderIds: [folderId], scanReason: 'automatic' })
+      ? await this.scanFolders({ folderIds: [folderId], scanReason: 'automatic', includeVideo: request.includeVideo === true })
       : null;
     return {
       canceled: false,
@@ -252,7 +254,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     request = normalizeScanRequest(request);
     assertAllowedFields(
       request,
-      ['folderIds', 'scanId', 'resume', 'scanReason', 'languageHints'],
+      ['folderIds', 'scanId', 'resume', 'scanReason', 'languageHints', 'includeVideo'],
       'invalidScanRequest'
     );
     this.assertOpen();
@@ -290,6 +292,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
       resume,
       scanReason: normalizeScanReason(request.scanReason),
       languageHints: normalizeLanguageHints(request.languageHints),
+      includeVideo: request.includeVideo === true,
       signal: controller.signal
     });
     return { accepted: true, scanId, folderIds: [...record.folderIds], resume };
@@ -314,6 +317,7 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     const service = new this.BoundedScanService({
       repository: this.host,
       filesystem: this.createFilesystemAdapter({
+        includeVideo: options.includeVideo,
         onPlaylistFile: candidate => collectors.get(candidate.folderId)?.add(candidate)
       }),
       metadataParser,
@@ -866,18 +870,18 @@ class LibraryCatalogScanRuntime extends EventEmitter {
     }
   }
 
-  createFilesystemAdapter({ onPlaylistFile = () => {} } = {}) {
+  createFilesystemAdapter({ onPlaylistFile = () => {}, includeVideo = false } = {}) {
     if (typeof onPlaylistFile !== 'function') {
       throw createRuntimeError('invalidScanAdapter', 'Playlist file observer is invalid');
     }
     return {
-      enumerateDirectory: input => this.enumerateDirectory({ ...input, onPlaylistFile }),
+      enumerateDirectory: input => this.enumerateDirectory({ ...input, onPlaylistFile, includeVideo }),
       statFile: input => this.statFile(input),
       readSmallFile: input => this.readSmallFile(input)
     };
   }
 
-  async *enumerateDirectory({ root, relativeDirectory = '', signal, onPlaylistFile = () => {} } = {}) {
+  async *enumerateDirectory({ root, relativeDirectory = '', signal, onPlaylistFile = () => {}, includeVideo = false } = {}) {
     throwIfAborted(signal);
     const grant = this.grantForRoot(root);
     const directoryPath = await this.resolveGrantedPath(grant, relativeDirectory, { allowRoot: true, directory: true });
@@ -895,7 +899,8 @@ class LibraryCatalogScanRuntime extends EventEmitter {
             yield { kind: 'error', relativePath, phase: 'containment', error: { code: 'symbolic-link-rejected' } };
           } else if (stats.isDirectory()) {
             yield { kind: 'directory', name: entry.name, relativePath };
-          } else if (stats.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+          } else if (stats.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) &&
+              (includeVideo === true || !VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
             yield { kind: 'file', name: entry.name, relativePath, path: candidate };
           } else if (stats.isFile() && path.extname(entry.name).toLowerCase() === CUE_EXTENSION) {
             yield { kind: 'cue', name: entry.name, relativePath, path: candidate };

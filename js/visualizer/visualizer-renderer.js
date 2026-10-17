@@ -7,6 +7,15 @@ import { REFERENCE_WIDTH } from './visualizer-model.js';
 
 const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'guitar', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
 
+// Returns the [x, y, width, height] that places an image or video frame in a w x h box.
+function fitRect(image, w, h, fit) {
+    const sw = image.videoWidth || image.naturalWidth, sh = image.videoHeight || image.naturalHeight;
+    if (fit === 'stretch') return [0, 0, w, h];
+    const scale = fit === 'contain' ? Math.min(w / sw, h / sh) : Math.max(w / sw, h / sh);
+    const iw = sw * scale, ih = sh * scale;
+    return [(w - iw) / 2, (h - ih) / 2, iw, ih];
+}
+
 export class VisualizerRenderer {
     constructor(canvas) {
         this.canvas = canvas;
@@ -30,7 +39,7 @@ export class VisualizerRenderer {
         this.layers.clear();
     }
 
-    draw(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null } = {}) {
+    draw(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null, video = null } = {}) {
         const start = performance.now();
         const stage = this.canvas, ctx = stage.getContext('2d');
         if (!ctx || !stage.width || !stage.height) return;
@@ -47,9 +56,12 @@ export class VisualizerRenderer {
         const imageUrls = new Set([layout.background.image, metadata?.artwork?.[0]?.src]);
         for (const url of this.images.keys()) if (!imageUrls.has(url)) this.images.delete(url);
         for (const item of [background, ...layout.items]) {
-            const image = this.image(item.type === 'background' ? item.image : item.type === 'artwork' ? metadata?.artwork?.[0]?.src : null);
-            // An absent cover has no visual layer or effect history, even while editing.
-            if (item.type === 'artwork' && !image) continue;
+            const artwork = item.type === 'artwork' || (item.type === 'video' && !video && item.style.artworkFallback);
+            const image = item.type === 'video' && video ? video
+                : this.image(item.type === 'background' ? item.image : artwork ? metadata?.artwork?.[0]?.src : null);
+            // An absent picture has no visual layer or effect history, even while editing.
+            if ((item.type === 'artwork' || item.type === 'video') && !image) continue;
+            const videoTime = video && image === video ? video.currentTime : null;
             const lyricFrame = item.type === 'lyrics' ? lyricsFrame(item, lyrics, editing) : null;
             const lyricOpacity = lyricFrame ? lyricsOpacity(item, lyrics, editing) : 1;
             if (lyricFrame && (!lyricOpacity || (!lyricFrame.rows.length && !lyricFrame.placeholder))) continue;
@@ -71,7 +83,7 @@ export class VisualizerRenderer {
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
                 item.palette, item.style, item.effects, item.color, item.flipX, item.flipY, text, editing]);
-            let changed = state.signature !== signature || state.frame !== frame || state.image !== image ||
+            let changed = state.signature !== signature || state.frame !== frame || state.image !== image || state.videoTime !== videoTime ||
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
                 state.display ||= createAnalyzerDisplay(item, state.canvas, sources);
@@ -80,7 +92,7 @@ export class VisualizerRenderer {
                 state.signature = signature; state.frame = frame; state.image = image;
             } else if (changed) {
                 this.drawItem(state, item, metadata, image, time, editing, lyricFrame);
-                state.signature = signature; state.frame = frame; state.image = image;
+                state.signature = signature; state.frame = frame; state.image = image; state.videoTime = videoTime;
             }
             const signal = state.display?.signalCanvas;
             const flipCanvas = !ANALYZER_TYPES.has(item.type);
@@ -127,9 +139,18 @@ export class VisualizerRenderer {
                 ctx.translate((item.rect.x + item.rect.w / 2) * stage.width, (item.rect.y + item.rect.h / 2) * stage.height);
                 ctx.scale(flipCanvas && item.flipX ? -1 : 1, flipCanvas && item.flipY ? -1 : 1);
                 const paddingX = output.paddingX || 0, paddingY = output.paddingY || 0;
-                const bounds = output.bounds;
-                if (bounds) ctx.drawImage(output.canvas, bounds.x, bounds.y, bounds.w, bounds.h);
-                else ctx.drawImage(output.canvas, -width / 2 - paddingX, -height / 2 - paddingY, width + paddingX * 2, height + paddingY * 2);
+                const bounds = output.bounds || { x: -width / 2 - paddingX, y: -height / 2 - paddingY,
+                    w: width + paddingX * 2, h: height + paddingY * 2 };
+                if (state.lyricsMeasurements?.hits?.length) {
+                    // Retain the actual source-to-stage geometry, including effects and flips.
+                    const originX = fades.length ? item.rect.x * stage.width : 0;
+                    const originY = fades.length ? item.rect.y * stage.height : 0;
+                    const matrix = new DOMMatrix().translate(originX, originY).multiply(ctx.getTransform())
+                        .translate(bounds.x, bounds.y).scale(bounds.w / output.canvas.width, bounds.h / output.canvas.height);
+                    state.lyricsTransform = (output.inputTransform ? matrix.multiply(output.inputTransform) : matrix).inverse();
+                    state.lyricsClipped = Boolean(fades.length || !output.bounds);
+                }
+                ctx.drawImage(output.canvas, bounds.x, bounds.y, bounds.w, bounds.h);
                 ctx.restore();
                 if (signal) ctx.drawImage(state.canvas, (item.rect.x + item.rect.w / 2) * stage.width - width / 2,
                     (item.rect.y + item.rect.h / 2) * stage.height - height / 2, width, height);
@@ -178,17 +199,36 @@ export class VisualizerRenderer {
         }
     }
 
+    // Returns the playback time of the synced lyric row drawn under a normalized stage point, or null.
+    lyricsSeekTime(layout, x, y) {
+        for (const item of layout.items.toReversed()) {
+            const state = item.type === 'lyrics' ? this.layers.get(item.id) : null;
+            const hits = state?.lyricsMeasurements?.hits;
+            if (!hits?.length || !state.lyricsTransform) continue;
+            if (state.lyricsClipped && (x < item.rect.x || x > item.rect.x + item.rect.w ||
+                y < item.rect.y || y > item.rect.y + item.rect.h)) continue;
+            const { x: px, y: py } = state.lyricsTransform.transformPoint({ x: x * this.canvas.width, y: y * this.canvas.height });
+            if (!Number.isFinite(px) || !Number.isFinite(py) || px < 0 || px > state.canvas.width || py < 0 || py > state.canvas.height) continue;
+            const hit = hits.find(row => px >= row.left && px <= row.right && py >= row.top && py <= row.bottom);
+            if (hit) return hit.time;
+        }
+        return null;
+    }
+
     drawItem(state, item, metadata, image, time, editing, lyricFrame) {
         const canvas = state.canvas, ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
         ctx.clearRect(0, 0, w, h);
         if (item.type === 'background') {
             ctx.fillStyle = item.color; ctx.fillRect(0, 0, w, h);
-            if (image) this.drawCover(ctx, image, w, h);
-        } else if (item.type === 'artwork') {
+            if (image) ctx.drawImage(image, ...fitRect(image, w, h, 'cover'));
+        } else if (item.type === 'artwork' || item.type === 'video') {
             if (image) {
+                const [x, y, iw, ih] = fitRect(image, w, h, item.type === 'video' ? item.style.fit : 'cover');
+                // Round the visible picture, which is smaller than the item when fitted inside.
+                const cx = Math.max(0, x), cy = Math.max(0, y), cw = Math.min(w, x + iw) - cx, ch = Math.min(h, y + ih) - cy;
                 ctx.save();
-                if (item.style.rounded) { ctx.beginPath(); ctx.roundRect(0, 0, w, h, Math.min(w, h) * .06); ctx.clip(); }
-                this.drawCover(ctx, image, w, h); ctx.restore();
+                if (item.style.rounded) { ctx.beginPath(); ctx.roundRect(cx, cy, cw, ch, Math.min(cw, ch) * .06); ctx.clip(); }
+                ctx.drawImage(image, x, y, iw, ih); ctx.restore();
             }
         } else if (['title', 'album', 'artist', 'text'].includes(item.type)) {
             const raw = item.type === 'text' ? item.params.text
@@ -234,12 +274,6 @@ export class VisualizerRenderer {
             ctx.lineWidth = border; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
         }
         ctx.restore();
-    }
-
-    drawCover(ctx, image, w, h) {
-        const scale = Math.max(w / image.naturalWidth, h / image.naturalHeight);
-        const iw = image.naturalWidth * scale, ih = image.naturalHeight * scale;
-        ctx.drawImage(image, (w - iw) / 2, (h - ih) / 2, iw, ih);
     }
 
 }

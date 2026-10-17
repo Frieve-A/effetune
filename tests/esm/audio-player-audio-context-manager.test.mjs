@@ -5,6 +5,7 @@ import { PowerPolicyController } from '../../js/audio/power-policy-controller.js
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { TrackLyrics } from '../../js/ui/audio-player/track-lyrics.js';
 import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { PCM16_STEREO_44100_TO_96000_PROFILE } from '../../js/ui/audio-player/rolling-pcm-core.js';
 import {
@@ -16,6 +17,398 @@ import {
   RollingPolicyMode
 } from '../../js/ui/audio-player/rolling-pcm-policy.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
+
+test('ALAC path playback reads only the prepared WAV and keeps original tags and lyrics', async () => {
+  const reads = [];
+  const tags = [];
+  const lyrics = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async prepareLocalPlaybackSource(path) {
+        assert.equal(path, '/music/original.mp4');
+        return { success: true, converted: true, path: '/cache/converted.wav', byteLength: 4 };
+      },
+      async readFileBytes(path, size) { reads.push([path, size]); return new Uint8Array(4); },
+      async readTrackTags(path) { tags.push(path); return { title: 'Original title', artist: 'Artist' }; },
+      async readTrackLyrics(request) { lyrics.push(request); return null; }
+    }
+  }, async ({ calls }) => {
+    const original = {
+      name: 'original.mp4', path: '/music/original.mp4', sourceFileName: 'original.mp4',
+      byteLength: 100, physicalSourceKey: 'original', bytes: new Uint8Array(100),
+      readBytes() { assert.fail('Original ALAC must not be read'); },
+      mediaSource: '/music/original.mp4'
+    };
+    const { manager, state, audioPlayer } = createHarness({ calls, playlist: [original], isStopped: true });
+    try {
+      assert.equal(await manager.loadTrack(original, 0), true);
+      await flushMicrotasks();
+      const playable = manager.currentPlaybackDecision.playableTrack;
+      assert.equal(playable.path, '/cache/converted.wav');
+      assert.equal(playable.sourceFileName, 'converted.wav');
+      assert.equal(playable.physicalSourceKey, '/cache/converted.wav');
+      assert.equal(manager.currentPlaybackDecision.descriptor.isVideo, false);
+      assert.equal(state.currentTrack, original);
+      assert.equal(state.currentTrackName, 'Artist - Original title');
+      assert.deepEqual(reads, [['/cache/converted.wav', 4]]);
+      assert.deepEqual(tags, ['/music/original.mp4']);
+      await new TrackLyrics(audioPlayer).load(playable);
+      assert.equal(lyrics[0].path, '/music/original.mp4');
+      assert.deepEqual(lyrics[0].names, ['original']);
+      assert.equal(original.bytes.byteLength, 100);
+    } finally { manager.disconnect(); }
+  });
+});
+
+test('Electron dropped ALAC File resolves its physical path and retains the File for metadata', async () => {
+  let originalFile;
+  const tagFiles = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      getPathForFile(file) { assert.equal(file, originalFile); return '/music/drop.m4a'; },
+      async prepareLocalPlaybackSource(path) {
+        assert.equal(path, '/music/drop.m4a');
+        return { success: true, converted: true, path: '/cache/drop.wav', byteLength: 4 };
+      },
+      async readFileBytes(path) { assert.equal(path, '/cache/drop.wav'); return new Uint8Array(4); }
+    },
+    jsmediatags: { read(file, callbacks) { tagFiles.push(file); callbacks.onSuccess({ tags: {} }); } }
+  }, async ({ calls }) => {
+    originalFile = new FakeFile('drop.m4a');
+    originalFile.arrayBuffer = () => assert.fail('Original ALAC File must not be decoded');
+    const original = { name: 'drop.m4a', file: originalFile };
+    const { manager, state } = createHarness({ calls, playlist: [original], isStopped: true });
+    try {
+      assert.equal(await manager.loadTrack(original, 0), true);
+      assert.equal(state.currentTrack, original);
+      assert.equal(manager.currentPlaybackDecision.playableTrack.file, undefined);
+      assert.deepEqual(tagFiles, [originalFile]);
+    } finally { manager.disconnect(); }
+  });
+});
+
+test('AAC passthrough keeps the original source and unrelated sources resolve synchronously', async () => {
+  const preparedPaths = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async prepareLocalPlaybackSource(path) {
+        preparedPaths.push(path);
+        return { success: true, converted: false, path, byteLength: 10 };
+      }
+    }
+  }, async () => {
+    const { manager } = createHarness();
+    const aac = { name: 'aac.m4a', path: '/music/aac.m4a', byteLength: 10 };
+    assert.equal(await manager.resolveTrackProvider(aac), aac);
+    for (const path of ['/music/audio.wav', 'https://example.com/audio.m4a']) {
+      const track = { path };
+      assert.equal(manager.resolveTrackProvider(track), track);
+    }
+    window.electronIntegration.isElectron = false;
+    assert.equal(manager.resolveTrackProvider(aac), aac);
+    assert.deepEqual(preparedPaths, ['/music/aac.m4a']);
+  });
+});
+
+test('ALAC platform failure reports the localized message without decoding or activating media', async () => {
+  const errors = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: { async prepareLocalPlaybackSource() { return { success: false, code: 'alacRequiresMacDesktop' }; } },
+    uiManager: { setError(...args) { errors.push(args); } }
+  }, async ({ calls }) => {
+    const track = { name: 'lossless.m4a', path: '/music/lossless.m4a' };
+    const { manager } = createHarness({ calls, playlist: [track] });
+    await assert.rejects(manager.loadTrack(track, 0), { code: 'alacRequiresMacDesktop' });
+    assert.deepEqual(errors, [['error.alacRequiresMacDesktop', true]]);
+    assert.equal(calls.some(call => call[0] === 'audioContext.decodeAudioData'), false);
+    assert.equal(FakeAudioElement.instances.length, 0);
+  });
+});
+
+test('stale ALAC conversion results cannot replace the newly loaded track', async () => {
+  let finishConversion;
+  const reads = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      prepareLocalPlaybackSource() { return new Promise(resolve => { finishConversion = resolve; }); },
+      async readFileBytes(path) { reads.push(path); return new Uint8Array(4); }
+    }
+  }, async ({ calls }) => {
+    const alac = { name: 'old.m4a', path: '/music/old.m4a' };
+    const next = { name: 'new.wav', path: '/music/new.wav', byteLength: 4 };
+    const { manager, state } = createHarness({ calls, playlist: [alac, next], isStopped: true });
+    try {
+      const pending = manager.loadTrack(alac, 0);
+      assert.equal(typeof finishConversion, 'function');
+      assert.equal(await manager.loadTrack(next, 1), true);
+      finishConversion({ success: true, converted: true, path: '/cache/old.wav', byteLength: 4 });
+      assert.equal(await pending, false);
+      assert.equal(state.currentTrack, next);
+      assert.deepEqual(reads, ['/music/new.wav']);
+    } finally { manager.disconnect(); }
+  });
+});
+
+test('manual Next discards a pending ALAC load when its conversion completes', async () => {
+  let finishConversion;
+  const reads = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      prepareLocalPlaybackSource() { return new Promise(resolve => { finishConversion = resolve; }); },
+      async readFileBytes(path) { reads.push(path); return new Uint8Array(4); }
+    }
+  }, async ({ calls }) => {
+    const tracks = [
+      { name: 'old.m4a', path: '/music/old.m4a' },
+      { name: 'new.wav', path: '/music/new.wav', byteLength: 4 }
+    ];
+    const harness = createHarness({ calls, playlist: tracks, isStopped: true, noUi: true });
+    const { manager, state } = harness;
+    const { playbackManager, entries } = installMaterializedPlaybackManager(harness);
+    try {
+      const pending = manager.loadTrack(entries[0], 0);
+      assert.equal(typeof finishConversion, 'function');
+      assert.equal(await playbackManager.playNext(true), true);
+      assert.equal(state.currentTrack, entries[1]);
+      const nextSource = manager.currentBufferSource;
+      finishConversion({ success: true, converted: true, path: '/cache/old.wav', byteLength: 4 });
+      assert.equal(await pending, false);
+      assert.equal(state.currentTrack, entries[1]);
+      assert.equal(state.currentTrackIndex, 1);
+      assert.equal(state.isPlaying, true);
+      assert.equal(manager.currentBufferSource, nextSource);
+      assert.deepEqual(reads, ['/music/new.wav']);
+    } finally { manager.disconnect(); }
+  });
+});
+
+for (const conversionResult of [
+  { success: true, converted: true, path: '/cache/old.wav', byteLength: 4 },
+  { success: false, code: 'alacRequiresMacDesktop' }
+]) {
+  test(`catalog Next discards a pending ALAC load after conversion ${conversionResult.success ? 'success' : 'failure'}`, async () => {
+    let finishConversion;
+    let conversionStarted;
+    const started = new Promise(resolve => { conversionStarted = resolve; });
+    const messages = [];
+    const playedTracks = [];
+    await withAudioContextGlobals({
+      electronIntegration: { isElectron: true },
+      electronAPI: {
+        prepareLocalPlaybackSource() {
+          return new Promise(resolve => {
+            finishConversion = resolve;
+            conversionStarted();
+          });
+        },
+        async readFileBytes() { return new Uint8Array(4); }
+      },
+      uiManager: {
+        setError(...args) { messages.push(args); },
+        showTransientMessage(...args) { messages.push(args); }
+      }
+    }, async ({ calls }) => {
+      const harness = createHarness({ calls, playlist: [], isStopped: true, noUi: true });
+      const { manager, state, audioPlayer } = harness;
+      const playbackManager = new PlaybackManager(audioPlayer);
+      audioPlayer.contextManager = manager;
+      audioPlayer.playbackManager = playbackManager;
+      const play = manager.play.bind(manager);
+      manager.play = (...args) => {
+        playedTracks.push(state.currentTrack?.libraryTrackId);
+        return play(...args);
+      };
+      try {
+        const pending = playbackManager.loadCatalogSequence({
+          sequenceId: 'alac-selection',
+          itemCount: 2,
+          async readPage() {
+            return { rows: [{ trackUid: 'A', title: 'A' }, { trackUid: 'B', title: 'B' }] };
+          },
+          async resolveSource({ trackUid }) {
+            return { path: trackUid === 'A' ? '/music/old.m4a' : '/music/new.wav', byteLength: 4 };
+          }
+        }, { currentOrdinal: 0, autoPlay: true });
+        await started;
+        assert.equal(state.isStopped, true);
+        const next = playbackManager.playNext(true);
+        finishConversion(conversionResult);
+        assert.equal((await pending).accepted, false);
+        assert.equal((await next).accepted, true);
+        assert.equal(state.currentTrack.libraryTrackId, 'B');
+        assert.equal(state.currentTrackIndex, 1);
+        assert.equal(state.isPlaying, true);
+        assert.deepEqual(playedTracks, ['B']);
+        assert.deepEqual(messages, []);
+        assert.equal(calls.some(call => call[0] === 'state.updateState' &&
+          (call[1].currentTrack?.libraryTrackId === 'A' || call[1].currentTrackName === 'A')), false);
+      } finally {
+        manager.disconnect();
+        playbackManager.dispose();
+      }
+    });
+  });
+}
+
+test('catalog and explicit automatic prefetch use WAV snapshots with original presentation identities', async () => {
+  const preparedPaths = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async prepareLocalPlaybackSource(path) {
+        preparedPaths.push(path);
+        return { success: true, converted: true, path: '/cache/next.wav', byteLength: 4 };
+      },
+      async readFileBytes(path) { assert.equal(path, '/cache/next.wav'); return new Uint8Array(4); }
+    }
+  }, async ({ calls }) => {
+    for (const catalog of [false, true]) {
+      const tracks = [
+        { name: 'current.wav', path: '/music/current.wav' },
+        { name: 'next.m4a', path: '/music/next.m4a', meta: { title: 'Catalog title' } }
+      ];
+      const harness = createHarness({ calls, playlist: tracks });
+      const { playbackManager, entries } = installMaterializedPlaybackManager(harness, tracks);
+      if (catalog) {
+        const sequence = new CatalogSequence({
+          sequenceId: 'alac-catalog', itemCount: 2,
+          async readPage() { return { rows: tracks.map((track, index) => ({ ...track, trackUid: `track-${index}` })) }; },
+          async resolveSource() { return { kind: 'electron-file', path: '/music/next.m4a', fileName: 'next.m4a' }; }
+        });
+        playbackManager.sequence = sequence;
+        playbackManager.catalogSequence = sequence;
+        harness.state.currentTrack = await sequence.getEntry(0);
+      } else {
+        harness.state.currentTrack = entries[0];
+      }
+      const plan = await playbackManager.preparePlannedAutomaticMove();
+      assert.ok(plan);
+      assert.equal(plan.nextTrack.path, '/music/next.m4a');
+      assert.equal(plan.nextTrack.meta.title, 'Catalog title');
+      assert.equal(plan.preparedRequest.playableTrack.path, '/cache/next.wav');
+      assert.equal(plan.preparedRequest.descriptor.byteLength, 4);
+      assert.equal(plan.preparedRequest.decisionRecord.sourceSnapshot.format, 'wav');
+      await harness.manager.prepareNextTrackBufferForTrack(plan.nextTrack, 1, plan);
+      assert.equal(harness.manager.nextBuffer.playableTrack.path, '/cache/next.wav');
+      assert.equal(harness.manager.nextBuffer.track.path, '/music/next.m4a');
+      harness.manager.disconnect();
+    }
+    assert.deepEqual(preparedPaths, ['/music/next.m4a', '/music/next.m4a']);
+  });
+});
+
+test('stale automatic ALAC prefetch discards both conversion success and platform failure', async () => {
+  const errors = [];
+  let finishConversion;
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      prepareLocalPlaybackSource() { return new Promise(resolve => { finishConversion = resolve; }); }
+    },
+    uiManager: { setError(...args) { errors.push(args); } }
+  }, async ({ calls }) => {
+    for (const result of [
+      { success: true, converted: true, path: '/cache/next.wav', byteLength: 4 },
+      { success: false, code: 'alacRequiresMacDesktop' }
+    ]) {
+      const harness = createHarness({ calls });
+      const { playbackManager } = installMaterializedPlaybackManager(harness, [
+        { path: '/music/current.wav' }, { path: '/music/next.m4a' }
+      ]);
+      const pending = playbackManager.preparePlannedAutomaticMove();
+      assert.equal(typeof finishConversion, 'function');
+      playbackManager.playbackGeneration += 1;
+      finishConversion(result);
+      assert.equal(await pending, null);
+      assert.equal(harness.manager.nextBuffer, null);
+      harness.manager.disconnect();
+    }
+    assert.deepEqual(errors, []);
+  });
+});
+
+test('other ALAC preparation failures use the existing generic load failure', async () => {
+  const errors = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: { async prepareLocalPlaybackSource() { return { success: false, code: 'alacConversionFailed' }; } },
+    uiManager: { setError(...args) { errors.push(args); } }
+  }, async ({ calls }) => {
+    const track = { path: '/music/unavailable.m4a' };
+    const { manager } = createHarness({ calls, playlist: [track] });
+    assert.equal(await manager.loadTrack(track, 0), false);
+    assert.deepEqual(errors, [['error.playbackCommandFailed', true]]);
+    assert.equal(calls.some(call => call[0] === 'audioContext.decodeAudioData'), false);
+    assert.equal(FakeAudioElement.instances.length, 0);
+  });
+});
+
+for (const code of [
+  'alacConversionFailed', 'playbackSourceUnavailable', 'invalidPlaybackSource', 'alacRequiresMacDesktop'
+]) {
+  test(`explicit Next reports local playback source failure: ${code}`, async () => {
+    const errors = [];
+    await withAudioContextGlobals({
+      electronIntegration: { isElectron: true },
+      electronAPI: { async prepareLocalPlaybackSource() { return { success: false, code }; } },
+      uiManager: { setError(...args) { errors.push(args); } }
+    }, async ({ calls }) => {
+      const tracks = [{ path: '/music/current.wav' }, { path: '/music/next.m4a' }];
+      const harness = createHarness({ calls, playlist: tracks, noUi: true });
+      const { playbackManager, entries } = installMaterializedPlaybackManager(harness);
+      try {
+        assert.equal(await playbackManager.playNext(true), false);
+        assert.deepEqual(errors, [[code === 'alacRequiresMacDesktop'
+          ? 'error.alacRequiresMacDesktop' : 'error.playbackCommandFailed', true]]);
+        assert.equal(harness.state.currentTrack, entries[0]);
+        assert.equal(calls.some(call => call[0] === 'audioContext.decodeAudioData'), false);
+        assert.equal(FakeAudioElement.instances.length, 0);
+      } finally { harness.manager.disconnect(); }
+    });
+  });
+}
+
+test('video uses one inline media element through the existing audio pipeline', async () => {
+  await withAudioContextGlobals({
+    document: {
+      createElement(tag) {
+        assert.equal(tag, 'video');
+        const element = new FakeAudioElement();
+        element.tagName = 'VIDEO';
+        element.videoWidth = 640;
+        return element;
+      }
+    }
+  }, async ({ calls }) => {
+    const track = { name: 'clip.mp4', file: new FakeFile('clip.mp4') };
+    const harness = createHarness({ calls, playlist: [track], isStopped: true });
+    harness.manager.rollingPolicyMode = RollingPolicyMode.LIMITED_ROLLING;
+    try {
+      assert.equal(await harness.manager.loadTrack(track, 0), true);
+      assert.equal(harness.state.playbackMode, 'audioElement');
+      const element = harness.audioPlayer.audioElement;
+      assert.equal(element.tagName, 'VIDEO');
+      assert.equal(element.playsInline, true);
+      assert.equal(FakeAudioElement.instances.length, 1);
+      assert.equal(harness.manager.currentPlaybackDecision.committedMode, 'media');
+      assert.equal(await harness.manager.play(), true);
+      assert.equal(element.paused, false);
+      harness.manager.seekAudioElement(3);
+      assert.equal(element.currentTime, 3);
+      await harness.manager.pause();
+      assert.equal(element.paused, true);
+      assert.equal(harness.audioPlayer.audioElement, element);
+    } finally {
+      harness.manager.disconnect();
+    }
+  });
+});
 
 const NATIVE_FRAGMENT_CANDIDATE_MATRIX = Object.freeze([
   PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.cell
@@ -5552,8 +5945,8 @@ test('disconnect invalidates pending metadata so late ID3 artwork is ignored', a
         currentTrackName: 'Pending Track'
       }
     });
-    const loadRequest = manager.beginLoadRequest(fileTrack, 0);
     manager.beginTransitionRequest(fileTrack, 0);
+    const loadRequest = manager.beginLoadRequest(fileTrack, 0);
 
     manager.loadMetadata(fileTrack, loadRequest, 0);
     assert.notEqual(manager.activeLoadRequest, null);
@@ -5668,6 +6061,69 @@ test('catalog metadata revokes previous embedded artwork URL', async () => {
     assert.equal(objectUrls.some(call => call[0] === 'revoke' && call[1] === artworkUrl), true);
     assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'Catalog Artist - Catalog Title');
   });
+});
+
+test('desktop path tracks show embedded tags read by path', async () => {
+  const tagReads = [];
+  await withAudioContextGlobals({
+    electronIntegration: { isElectron: true },
+    electronAPI: {
+      async readTrackTags(path) {
+        tagReads.push(path);
+        return {
+          title: 'PENIA',
+          artist: 'Frieve-A',
+          album: '',
+          picture: { data: new Uint8Array([1, 2, 3]), format: 'image/jpeg' }
+        };
+      }
+    }
+  }, async ({ calls, objectUrls }) => {
+    const pathTrack = { name: 'penia.flac', path: 'D:\\Music\\penia.flac', meta: { title: '', artist: '', album: '' } };
+    const { audioPlayer, manager, state } = createHarness({
+      calls,
+      playlist: [pathTrack],
+      currentTrackIndex: 0,
+      state: { currentTrack: pathTrack }
+    });
+
+    manager.loadMetadata(pathTrack, null, 0);
+    await flushMicrotasks();
+
+    assert.deepEqual(tagReads, ['D:\\Music\\penia.flac']);
+    assert.equal(state.currentTrackName, 'Frieve-A - PENIA');
+    assert.ok(state.artworkUrl);
+    assert.equal(manager.currentArtworkURL, state.artworkUrl);
+    assert.equal(objectUrls.some(call => call[0] === 'create' && call[1] === state.artworkUrl), true);
+    assert.equal(state.isTrackPresentationPending, false);
+    assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'Frieve-A - PENIA');
+  });
+});
+
+test('desktop path tracks keep the file name when tags cannot be read by path', async () => {
+  for (const readTrackTags of [async () => null, async () => { throw new Error('unreadable'); }]) {
+    await withAudioContextGlobals({
+      electronIntegration: { isElectron: true },
+      electronAPI: { readTrackTags }
+    }, async ({ calls, objectUrls }) => {
+      const pathTrack = { name: 'untagged.flac', path: 'D:\\Music\\untagged.flac' };
+      const { audioPlayer, manager, state } = createHarness({
+        calls,
+        playlist: [pathTrack],
+        currentTrackIndex: 0,
+        state: { currentTrack: pathTrack }
+      });
+
+      manager.loadMetadata(pathTrack, null, 0);
+      await flushMicrotasks();
+
+      assert.equal(state.currentTrackName, 'untagged.flac');
+      assert.equal(state.artworkUrl, '');
+      assert.equal(state.isTrackPresentationPending, false);
+      assert.equal(objectUrls.some(call => call[0] === 'create'), false);
+      assert.equal(audioPlayer.ui.trackNameDisplay.textContent, 'untagged.flac');
+    });
+  }
 });
 
 test('stale nextBuffer preparation and consumption are discarded', async () => {

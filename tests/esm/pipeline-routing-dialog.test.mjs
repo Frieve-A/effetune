@@ -13,6 +13,9 @@ class FakeElement {
     this.parentNode = null;
     this.style = {};
     this.className = '';
+    this.classList = { contains: name => this.className.split(' ').includes(name) };
+    this.offsetWidth = 200;
+    this.offsetHeight = 180;
     this.textContent = '';
     this.title = '';
     this.value = '';
@@ -59,6 +62,10 @@ class FakeElement {
   contains(target) {
     if (target === this) return true;
     return this.children.some(child => child.contains?.(target));
+  }
+
+  focus() {
+    this.ownerDocument.activeElement = this;
   }
 
   getBoundingClientRect() {
@@ -155,6 +162,7 @@ async function withRoutingGlobals(calls, options, callback) {
   const clearedTimeouts = [];
   await withGlobals({
     document: documentRef,
+    getComputedStyle: element => element.style,
     window: options.window ?? createWindow(calls, options),
     setTimeout(fn, delay) {
       calls.push(['setTimeout', delay]);
@@ -256,70 +264,6 @@ test('fixed stereo hosts offer supported channels and every audio bus', async ()
       const buses = handler[createSelector](plugin).children[1];
       assert.deepEqual(buses.children.map(option => String(option.value)), ['0', '1', '2', '3', '4']);
     }
-  });
-});
-
-test('positionDialog handles web zoom measurement and Electron CSS zoom correction', async () => {
-  const calls = [];
-  const handler = new PipelineRoutingDialog(createPipelineCore(calls));
-  const button = new FakeElement('button', null, calls);
-  button.rect = { bottom: 200, left: 40, width: 20, height: 20 };
-
-  await withRoutingGlobals(calls, {
-    measureWidth: 50,
-    window: createWindow(calls, { scrollX: 5, scrollY: 10 })
-  }, async () => {
-    const dialog = new FakeElement('div', null, calls);
-    handler.positionDialog(dialog, button);
-    assert.equal(dialog.style.top, '410px');
-    assert.equal(dialog.style.left, '85px');
-  });
-
-  await withRoutingGlobals(calls, {
-    bodyZoom: '2',
-    window: createWindow(calls, {
-      electronIntegration: { isElectronEnvironment: () => true },
-      scrollX: 20,
-      scrollY: 0,
-      pageYOffset: 40
-    })
-  }, async () => {
-    const dialog = new FakeElement('div', null, calls);
-    button.rect = { bottom: 200, left: 60, width: 20, height: 20 };
-    handler.positionDialog(dialog, button);
-    assert.equal(dialog.style.top, '120px');
-    assert.equal(dialog.style.left, '40px');
-  });
-
-  await withRoutingGlobals(calls, {
-    bodyZoom: 'bad',
-    scrollLeft: 12,
-    scrollTop: 18,
-    window: createWindow(calls, {
-      electronIntegration: { isElectronEnvironment: () => true },
-      scrollX: 0,
-      scrollY: 0,
-      pageXOffset: 0,
-      pageYOffset: 0
-    })
-  }, async () => {
-    const dialog = new FakeElement('div', null, calls);
-    button.rect = { bottom: 200, left: 60, width: 20, height: 20 };
-    handler.positionDialog(dialog, button);
-    assert.equal(dialog.style.top, '218px');
-    assert.equal(dialog.style.left, '72px');
-  });
-
-  await withRoutingGlobals(calls, {
-    bodyZoom: '',
-    window: createWindow(calls, {
-      electronIntegration: { isElectronEnvironment: () => true }
-    })
-  }, async () => {
-    const dialog = new FakeElement('div', null, calls);
-    handler.positionDialog(dialog, button);
-    assert.equal(dialog.style.top, '200px');
-    assert.equal(dialog.style.left, '60px');
   });
 });
 

@@ -19,8 +19,6 @@ Une collection de plugins qui ajoutent de l'espace et de l'atmosphère à votre 
 
 Une reverb à plaque fondée sur le modèle de Jon Dattorro de 1997. Elle ajoute une décroissance dense et douce, idéale pour créer une ambiance spacieuse sans évoquer une pièce précise.
 
-Note de routage : Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsqu'il est routé avec plus de deux canaux, tous les canaux d'entrée routés alimentent une plaque mono-vers-stéréo partagée, mais le mélange wet/dry est écrit uniquement vers la première paire stéréo routée. Les canaux supplémentaires contribuent à l'entrée de la plaque et passent sinon inchangés, même lorsque Dry Mix est à 0 % ; ils ne reçoivent pas de retour wet et ne sont pas des tanks de plaque indépendants.
-
 ### Guide d'Expérience d'Écoute
 - Son de Plaque Luxuriant :
   - Caractère classique de reverb à plaque
@@ -49,7 +47,7 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour appl
   - 0-10ms : Reverb immédiate, sensation intime
   - 10-30ms : Sensation naturelle d'espace
   - 30-99.9ms : Crée l'impression d'espaces plus grands
-  - Évitez exactement 100.0ms si vous voulez le pre-delay maximal ; l'implémentation actuelle traite ce point final comme sans pre-delay effectif
+  - Évitez exactement 100.0ms si vous voulez le pre-delay maximal ; ce réglage ne produit presque aucun pre-delay audible
 - **Bandwidth** - Filtrage du signal d'entrée (0.0 à 1.0)
   - Valeurs plus basses : Ton d'entrée plus sombre et chaud
   - Valeurs plus hautes (près de 1.0) : Entrée plus brillante, pleine fréquence
@@ -144,11 +142,13 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour appl
 
 Le Dattorro Plate Reverb apporte une reverb à plaque classique à votre expérience d'écoute. Son caractère doux et luxuriant aide à ajouter une ambiance belle et naturelle à vos morceaux.
 
+### Routage multicanal
+
+Dattorro Plate Reverb est un modèle de plaque stéréo. Lorsqu'il est routé avec plus de deux canaux, tous les canaux d'entrée routés alimentent une plaque mono-vers-stéréo partagée, mais le mélange wet/dry est écrit uniquement vers la première paire stéréo routée. Les canaux supplémentaires contribuent à l'entrée de la plaque et passent sinon inchangés, même lorsque Dry Mix est à 0 % ; ils ne reçoivent pas de retour wet et ne sont pas des tanks de plaque indépendants.
+
 ## FDN Reverb
 
 FDN Reverb ajoute une décroissance dense et naturelle. Utilisez-la pour donner aux enregistrements secs ou proches une sensation plus nette de taille de pièce et de distance.
-
-Note de routage : FDN Reverb fait la moyenne de tous les canaux d’entrée routés dans un seul réservoir de rétroaction partagé. Le réservoir avance une fois par échantillon et ses prises wet sont réparties entre les canaux de sortie routés.
 
 ### Guide d'Expérience d'Écoute
 - Sensation de Pièce Naturelle :
@@ -247,14 +247,14 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
    - Density : 6-7 lignes
    - Pre Delay : 10-30ms
    - Wet Mix : 20-40%
-   - Parfait pour : Enregistrements modernes, ajout d'espace
+   - Parfait pour : Enregistrements qui ont besoin d'un peu plus d'espace
 
 4. Paysages Sonores Ambiants
    - Reverb Time : 4.0-8.0s
    - Density : 8 lignes
    - Mod Depth : 3.0-6.0
    - Wet Mix : 60-80%
-   - Parfait pour : Musique atmosphérique, relaxation
+   - Parfait pour : Musique atmosphérique et longues décroissances
 
 ### Guide de Démarrage Rapide
 
@@ -278,70 +278,74 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
    - Maintenez Dry Mix à 100% pour l'écoute normale
    - Ajustez finement selon votre musique et vos préférences
 
-Le FDN Reverb transforme votre expérience d'écoute en ajoutant des espaces acoustiques réalistes avec une réverbération belle et naturelle à tout enregistrement. Parfait pour les mélomanes qui veulent améliorer leurs morceaux favoris avec une belle réverbération au son naturel !
+Commencez avec une valeur de Wet Mix faible, puis augmentez-la jusqu'à ce que l'espace ajouté soit audible sans masquer les détails de l'enregistrement.
+
+### Routage multicanal
+
+Tous les canaux d’entrée routés sont mélangés dans une seule réverbération commune. Le son réverbéré est réparti entre les canaux de sortie routés ; chaque entrée ne dispose pas d’une réverbération indépendante.
 
 ## IR Reverb
 
-IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afin de reproduire la décroissance et le caractère spatial mesurés d'une pièce, d'une salle, d'une plaque ou d'un autre système acoustique. Il convient lorsqu'on recherche le rendu reproductible d'une prise précise.
+IR Reverb convolue le signal avec une réponse impulsionnelle (IR) importée afin de reproduire la décroissance et le caractère spatial mesurés d'une pièce, d'une salle, d'une plaque ou d'un autre système acoustique. Il convient lorsque vous recherchez le caractère reproductible d'une prise précise plutôt qu'un modèle de réverbération synthétisé.
 
 ### Guide d'amélioration sonore
 
-- Pour une ambiance discrète, chargez une IR courte, laissez **Dry** activé, réglez **Dry Level** sur 0 dB et **Wet Level** entre -18 et -12 dB, puis ajoutez un **Pre Delay** bref.
-- Pour ouvrir un enregistrement vers une grande salle, utilisez une IR stéréo ou True Stereo, puis raccourcissez une traîne trop longue avec **Decay** et **Trim**.
-- En départ/retour, copiez les sources vers un autre bus avec **Matrix**, désactivez **Dry**, réglez **Wet Level** sur 0 dB et dosez l'effet au niveau du départ.
-- Pour reproduire le résultat, conservez le fichier IR original, sa source et sa licence : les mêmes octets donnent le même identifiant.
+- **Soutien discret de la pièce :** importez une IR de pièce courte, laissez **Dry** activé avec **Dry Level** à 0 dB, réglez **Wet Level** entre -18 et -12 dB environ et utilisez un **Pre Delay** court. Vous ajoutez ainsi de l'espace sans masquer l'enregistrement.
+- **Ampleur d'une salle de concert :** utilisez une IR de salle stéréo ou True Stereo, baissez d'abord **Wet Level**, puis raccourcissez une traîne trop longue avec **Decay** et **Trim**.
+- **Réverbération en départ/retour :** envoyez la source vers un autre bus avec **Matrix**, placez IR Reverb sur ce retour avec **Dry** désactivé et **Wet Level** à 0 dB, puis dosez la réverbération avec le niveau de départ. Le signal sec n'est ainsi pas ajouté deux fois, et cette méthode fonctionne aussi pour des retours multicanaux sélectionnés.
+- **Comparaison et reproductibilité :** conservez le fichier IR original ainsi que la trace de sa source et de sa licence. Les mêmes octets d'IR produisent le même identifiant de bibliothèque : une autre installation peut donc rétablir exactement le lien en important ce fichier.
 
 ### Paramètres
 
-- **Channel Mode** : **Auto** choisit Mono pour une IR à un canal, True Stereo pour une IR à quatre canaux avec une sélection stéréo, Independent lorsque les nombres de canaux correspondent, et Diagonal Matrix dans les autres cas ; le mode retenu apparaît à droite du menu. Vous pouvez aussi choisir explicitement Mono, Independent, True Stereo (trajets LL/LR/RL/RR) ou Diagonal Matrix sans diaphonie.
-- **Latency** : Zero ou 128/256/512/1024 échantillons. Une valeur élevée allège le traitement mais retarde toute la sortie de l'effet ; le signal direct est retardé d'autant pour rester aligné sur la réverbération, et la chaîne compense ce retard ; Zero impose Full.
-- **Convolution Rate** : Auto, Full, Half ou Quarter. Avec Auto, le taux retenu apparaît à droite du menu. Un taux réduit diminue la charge et la bande passante wet ; Quarter exige au moins 176,4 kHz.
-- **Wet Level** : niveau du signal convolué, de -96 à +12 dB. La valeur par défaut est de -15 dB pour une utilisation courante en insert ; en départ/retour, réglez-la sur 0 dB et dosez la réverbération avec le niveau de départ.
-- **Dry** : active le signal d'origine. Cette option est activée par défaut ; désactivez-la pour supprimer complètement le signal direct tout en conservant la valeur de **Dry Level**.
-- **Dry Level** : règle le niveau du signal d'origine de -96 à +12 dB lorsque **Dry** est activé. La valeur -96 dB coupe également ce signal.
-- **Pre Delay** : retarde uniquement le signal wet de 0 à 500 ms.
-- **Direct Cut** supprime l'impulsion directe détectée ; **Cut Offset** décale la coupe de -20 à +50 ms. La normalisation conserve l’IR non coupée comme référence : activer Direct Cut n’augmente donc pas le niveau de la queue de réverbération restante.
-- **Decay** remodèle la décroissance de 10% à 400% ; 100% conserve la prise.
-- **Trim** conserve 1% à 100% de l'IR après la coupe ; une traîne plus courte consomme moins de processeur et de mémoire.
+- **Channel Mode** - Choisit le routage des canaux de l'IR. **Auto** sélectionne Mono pour une IR à un canal, True Stereo pour une IR à quatre canaux avec une sélection stéréo, Independent lorsque le nombre de canaux de l'IR correspond à celui des canaux sélectionnés, et Diagonal Matrix dans les autres cas ; le mode retenu apparaît à droite du menu. **Mono** applique une même IR aux canaux sélectionnés ; **Independent** associe un canal de l'IR à chaque canal sélectionné ; **True Stereo** utilise les trajets LL/LR/RL/RR ; **Diagonal Matrix** relie les canaux d'entrée et de sortie correspondants, sans diaphonie.
+- **Latency** - Choisit la latence de bloc de la convolution (Zero, 128, 256, 512 ou 1024 échantillons). Les valeurs élevées réduisent généralement la charge de traitement, mais retardent toute la sortie de l'effet ; le signal direct est retardé d'autant pour rester aligné sur la réverbération, et la chaîne compense ce retard. **Zero** exige **Convolution Rate = Full**.
+- **Convolution Rate** - Règle la fréquence utilisée par la convolution du signal wet. **Auto** utilise la demi-fréquence lorsque la fréquence du contexte est élevée et affiche la fréquence retenue à droite du menu, tandis que **Full**, **Half** et **Quarter** fixent explicitement ce choix. Une fréquence réduite diminue la charge de traitement, mais aussi la bande passante du trajet wet ; Quarter exige une fréquence de contexte d'au moins 176,4 kHz.
+- **Wet Level** - Règle le niveau de sortie convolué de -96 à +12 dB. La valeur par défaut est de -15 dB pour une utilisation courante en insert ; en départ/retour, réglez-la sur 0 dB et dosez la réverbération avec le niveau de départ.
+- **Dry** - Active le signal direct. Cette option est activée par défaut ; désactivez-la pour supprimer complètement le signal sec tout en conservant le réglage de **Dry Level** pour plus tard.
+- **Dry Level** - Règle le niveau du signal direct de -96 à +12 dB lorsque **Dry** est activé. La valeur extrême de -96 dB coupe également le signal sec.
+- **Pre Delay** - Retarde uniquement le signal wet de 0 à 500 ms, ce qui sépare la transitoire d'origine de la réponse de la pièce.
+- **Direct Cut** - Supprime de l'IR l'impulsion directe détectée, afin que la prise n'apporte que sa partie réverbérée. La normalisation conserve l'IR non coupée comme référence : activer Direct Cut n'augmente donc pas le niveau de la traîne réverbérée restante.
+- **Cut Offset** - Décale le point de coupe détecté de -20 à +50 ms lorsque **Direct Cut** est activé.
+- **Decay** - Remodèle la décroissance de l'IR de 10% à 400% ; 100% conserve la décroissance enregistrée, une valeur plus basse la raccourcit et une valeur plus haute la prolonge.
+- **Trim** - Conserve de 1% à 100% de l'IR après la coupe, avec un fondu. Une valeur plus courte réduit la longueur de la traîne, la charge processeur et la mémoire utilisée.
 
 ### Lecture du graphique de décroissance
 
-Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe EDC continue montre la perte d'énergie ; une pente plus forte indique une traîne plus courte. Les repères indiquent onset, cut, pre-delay et trim. RT60 estime le temps d'une chute de 60 dB. Lorsque **Decay** change, la nouvelle courbe est continue et l'originale pointillée. Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
+Le temps va de gauche à droite et le niveau de 0 à -90 dB. La courbe continue de décroissance énergétique (EDC) montre comment l'énergie acoustique accumulée diminue ; une pente plus forte indique une traîne plus courte. L'enveloppe pâle donne le contexte des transitoires. Les repères indiquent le début détecté, le point de coupe directe actif, le pré-délai du signal wet et le point de Trim. **RT60** estime le temps nécessaire à une chute de 60 dB ; “unavailable” signifie que l'IR ne contenait pas de plage d'ajustement fiable. Lorsque **Decay** diffère de 100%, comparez la courbe continue remodelée avec la courbe originale en pointillés. Survolez le graphique, ou touchez-le et faites glisser, pour lire les valeurs à cet endroit.
 
 ### Routage, bibliothèque et partage
 
-Mono applique une IR, Independent sépare les canaux, True Stereo utilise LL/LR/RL/RR et Diagonal Matrix relie uniquement les entrées et sorties correspondantes. En Auto, toute IR à quatre canaux avec une sélection stéréo est interprétée dans cet ordre ; pour une disposition Quad ou une autre disposition à quatre canaux, choisissez explicitement Independent ou Diagonal Matrix. Pour une paire True Stereo, sélectionnez ensemble des fichiers assortis terminés par `L`/`R` ou `Left`/`Right`.
+Une IR mono peut alimenter les canaux sélectionnés, les canaux d'une IR en mode Independent restent séparés, et une IR True Stereo à quatre canaux utilise les trajets croisés LL/LR/RL/RR. En Auto, toute IR à quatre canaux avec une sélection stéréo est interprétée dans cet ordre ; pour une disposition Quad ou une autre disposition à quatre canaux, choisissez explicitement Independent ou Diagonal Matrix. Les autres fichiers multicanaux utilisent un routage diagonal limité ; IR Reverb ne crée pas de matrice de diaphonie surround complète. Pour une paire de fichiers True Stereo, sélectionnez ensemble des fichiers assortis dont le nom comporte `L`/`R` ou `Left`/`Right`.
 
-Les fichiers IR importés sont conservés dans la **Bibliothèque de réponses impulsionnelles**, où vous pouvez les rechercher par leur nom d'origine, les charger ou les supprimer. Pour en supprimer plusieurs à la fois, cochez leurs cases ou utilisez **Tout sélectionner** pour sélectionner toutes les entrées actuellement affichées, puis choisissez **Supprimer la sélection**. **Ctrl+A** (**Command+A** sous macOS) sélectionne aussi toutes les entrées affichées ; **Tout désélectionner** efface la sélection. Les fichiers portant l'extension `.irs` et contenant des données audio WAV peuvent être importés sans être renommés. Dans la version web, ils sont stockés dans le navigateur et peuvent être perdus si vous effacez les données du site ou si le navigateur libère de l'espace. L'application de bureau les conserve dans ses données. Gardez une copie séparée de chaque IR dont vous avez besoin.
+Les fichiers IR importés sont conservés dans la **Bibliothèque de réponses impulsionnelles**, où vous pouvez les rechercher par leur nom d'origine, les charger ou les supprimer. Pour en supprimer plusieurs à la fois, cochez leurs cases ou utilisez **Tout sélectionner** pour sélectionner toutes les entrées actuellement affichées, puis choisissez **Supprimer la sélection**. **Ctrl+A** (**Command+A** sous macOS) sélectionne aussi toutes les entrées affichées ; **Tout désélectionner** efface la sélection. Les fichiers audio WAV portant l'extension `.irs` peuvent être importés sans être renommés. Dans l'application web, ces fichiers sont stockés dans votre navigateur et peuvent être perdus si vous effacez les données du site ou si le navigateur libère de l'espace. L'application de bureau les conserve avec ses données d'application. Gardez une copie séparée de chaque IR dont vous avez besoin.
 
-Les URL partagées et les presets identifient l'IR, mais n'incluent pas ses données audio. Si l'IR n'est pas disponible, aucun son wet n'est produit ; importez-la ou sélectionnez-la de nouveau, ou choisissez-en une autre. Le signal d'origine suit les réglages **Dry** et **Dry Level**. Des IR sont disponibles sur [OpenAIR](https://www.openair.hosted.york.ac.uk/), [EchoThief](https://www.echothief.com/downloads/) et [Freesound](https://freesound.org/), mais vérifiez la licence de chaque fichier (CC0, CC BY ou CC BY-NC, par exemple) et conservez auteur, source, attribution et autorisation commerciale en dehors d'EffeTune, qui ne stocke ni ne vérifie les informations de licence.
+Les URL partagées et les préréglages identifient l'IR, mais n'incluent pas ses données audio. Si l'IR n'est pas disponible, aucun son wet n'est produit ; importez-la ou sélectionnez-la de nouveau, ou choisissez-en une autre. Le signal direct continue selon les réglages **Dry** et **Dry Level**.
+
+Pour du contenu librement disponible, commencez par la [bibliothèque OpenAIR](https://www.openair.hosted.york.ac.uk/) de l'Université d'York, les [téléchargements EchoThief](https://www.echothief.com/downloads/) ou les IR publiées individuellement sur [Freesound](https://freesound.org/). « Gratuit » ne veut pas dire sans restriction : OpenAIR indique la licence sur la page de chaque contenu, et les fichiers Freesound peuvent être sous CC0, CC BY ou CC BY-NC. Vérifiez la page de téléchargement concernée, conservez l'auteur, la source et la licence avec le fichier, mentionnez l'auteur lorsque c'est requis et assurez-vous que l'usage commercial ou la redistribution que vous prévoyez est autorisé. EffeTune ne stocke ni ne vérifie les informations de licence.
 
 ## RS Reverb
 
-Un effet qui peut transporter votre musique dans différents espaces, des pièces chaleureuses aux salles majestueuses. Il ajoute des échos et des réflexions naturels qui rendent votre musique plus tridimensionnelle et immersive.
+RS Reverb ajoute des réflexions et une décroissance réglables, de sorte qu'un enregistrement sec semble joué dans une pièce ou une salle.
 
 ### Guide d'Expérience d'Écoute
 - Espace Intime :
-  - Donne l'impression que la musique est dans une pièce chaleureuse et confortable
-  - Parfait pour une écoute proche et personnelle
-  - Ajoute une profondeur subtile sans perdre en clarté
-- Expérience Salle de Concert :
-  - Recrée la grandeur des performances live
-  - Ajoute un espace majestueux à la musique classique et orchestrale
-  - Crée une expérience de concert immersive
-- Amélioration Atmosphérique :
-  - Ajoute des qualités rêveuses et éthérées
-  - Parfait pour la musique ambiante et atmosphérique
-  - Crée des paysages sonores captivants
+  - Commencez avec Room Size à 8-12m, Reverb Time à 1.0-1.5s et Mix à 20-30%
+  - Baissez Mix si les voix ou les attaques des instruments perdent en netteté
+- Espace de type salle de concert :
+  - Commencez avec Room Size à 30-40m, Reverb Time à 2.0-2.5s et Mix à 30-40%
+  - Raccourcissez Reverb Time si les notes successives deviennent floues
+- Décroissance longue et atmosphérique :
+  - Commencez avec Room Size à 25-40m, Reverb Time à 3-6s et Mix à 40-60%
+  - Augmentez Damping ou baissez High Damp si la traîne est trop brillante
 
 ### Préréglages système
 
-Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour appliquer un réglage complet de pièce ou de salle.
 
-- **Small Room** - Ambiance de pièce courte et proche avec 5 ms de pré-délai.
-- **Jazz Club** - Pièce moyenne pour les sources acoustiques intimistes avec 15 ms de pré-délai.
-- **Concert Hall** - Salle de concert avec 25 ms de pré-délai et une décroissance des graves plus riche.
-- **Cathedral** - Espace réverbérant long et sombre avec 40 ms de pré-délai et la décroissance des graves la plus riche.
+- **Small Room** - Ambiance de pièce courte et proche avec 5 ms de pré-délai et une décroissance des graves plus resserrée.
+- **Jazz Club** - Pièce de taille moyenne avec 15 ms de pré-délai, pour les sources acoustiques intimistes.
+- **Concert Hall** - Espace plus grand et plus profond avec 25 ms de pré-délai et une décroissance des graves plus pleine.
+- **Cathedral** - Espace long et sombre avec 40 ms de pré-délai et la décroissance des graves la plus pleine.
 
 ### Paramètres
 - **Pre-Delay** (0 à 50 ms) - Retarde les réflexions du signal réverbéré avant leur entrée dans le modèle de pièce. Des valeurs plus élevées préservent plus longtemps la netteté de l’attaque du son d’origine, sans supprimer le délai propre au modèle de pièce.
@@ -384,25 +388,25 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
    - Room Size : 30-40m
    - Reverb Time : 2.0-2.5s
    - Mix : 30-40%
-   - Parfait pour : Œuvres orchestrales, concertos pour piano
+   - Utile pour : Œuvres orchestrales, concertos pour piano
 
 2. Club de Jazz Intime
    - Room Size : 8-12m
    - Reverb Time : 1.0-1.5s
    - Mix : 20-30%
-   - Parfait pour : Jazz, performances acoustiques
+   - Utile pour : Jazz, performances acoustiques
 
 3. Pop/Rock Moderne
    - Room Size : 15-20m
    - Reverb Time : 1.2-1.8s
    - Mix : 15-25%
-   - Parfait pour : Musique contemporaine
+   - Utile pour : Musique contemporaine
 
 4. Ambient/Électronique
    - Room Size : 25-40m
    - Reverb Time : 3.0-6.0s
    - Mix : 40-60%
-   - Parfait pour : Musique électronique atmosphérique
+   - Utile pour : Musique électronique atmosphérique
 
 ### Guide de Démarrage Rapide
 
@@ -420,4 +424,4 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
    - Ajustez Mix pour l'équilibre final
    - Faites confiance à vos oreilles et ajustez selon vos goûts
 
-N'oubliez pas : L'objectif est d'améliorer votre musique avec un espace et une atmosphère naturels. Commencez avec des réglages subtils et ajustez jusqu'à trouver l'équilibre parfait pour votre expérience d'écoute !
+Commencez avec une valeur de Mix faible, puis augmentez-la jusqu'à ce que l'espace ajouté soit audible sans masquer l'enregistrement d'origine.

@@ -8,7 +8,8 @@ import test from 'node:test';
 import { verifyRollingPcmPackage } from '../../tools/verify-rolling-pcm-package.mjs';
 
 const repoRoot = path.resolve('.');
-const mediabunnyVersion = '1.61.5';
+const manifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+const mediabunnyVersion = manifest.dependencies.mediabunny;
 const packagedFiles = [
   'js/vendor/rolling-pcm-decoder-worker.mjs',
   'js/vendor/rolling-pcm-decoder-worker.NOTICE.txt',

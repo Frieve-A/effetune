@@ -37,27 +37,23 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 Tracks one fundamental pitch (F0) at a time in a two-second scrolling piano roll without changing the audio. Use it to check the tuning and pitch movement of a solo voice or instrument.
 
-### Visualization Guide
-
-- **Horizontal** (default) places low notes on the left and high notes on the right. The newest estimate appears above the keyboard and history scrolls upward.
-- **Vertical** places low notes at the bottom and high notes at the top. The newest estimate appears beside the keyboard at the right and history moves left.
-- The line position shows pitch between semitones. A more confident estimate appears more strongly; the line breaks when the input is too quiet or no stable single pitch is found. **Heatmap** uses line color to show relative volume, while **Note Colors** follows pitch.
-- The current label shows the nearest note and the difference in cents. A positive value is above the note and a negative value is below it. The label disappears when there is no reliable estimate.
-- The note name uses the same note colors as Note Spectrogram. The large readout fits the available width and keeps the cents decimal point in a fixed position.
-
 ### Listening Guide
 
-- Start with a single sustained note, then watch whether the line stays centered on a note or moves sharp or flat.
-- Vibrato and pitch bends appear as smooth movement across the note rows.
-- This analyzer follows one dominant pitch. Chords, dense mixes, percussion, noise, or unclear repeating sounds can interrupt the line or produce an incorrect octave.
+- Play or sing a single sustained note and watch whether the trace stays centered on the note row or drifts sharp or flat.
+- Vibrato, slides, and pitch bends appear as smooth curves across the note rows.
+- Because Pitch Meter tracks a single dominant pitch, chords, dense mixes, or percussion can interrupt the trace or jump octaves; use [Note Spectrogram](/dsp/effects/note-spectrogram/) for polyphonic material.
+- Stereo input is analyzed by averaging the first two channels (mono input is used directly), so a sound with opposite polarity in the two channels can cancel out and leave no trace.
 
 ### Parameters
 
-- **Color** - Changes the line color without changing pitch detection. **Normal** (default) uses the theme’s graph trace color; **Heatmap** follows relative volume on the same 24 dB scale as Note Spectrogram; **Note Colors** follows pitch between the note colors.
-- **Layout** - Selects **Horizontal** (default) or **Vertical**.
-- **Reference A4** (400 to 480 Hz) - Sets the tuning reference used for note names and cents. Default: 440 Hz.
-- **Lowest Note** - Sets the bottom of the displayed and analyzed range. Default: C2. The lowest available setting is A0.
-- **Highest Note** - Sets the top of the displayed and analyzed range. Default: C7. The highest available setting is C8.
-- Stereo input is analyzed by averaging the first two channels; mono input is used directly. Strong opposite-polarity content can cancel in the average and leave no pitch trace.
+- **Color** - Changes trace color without affecting detection: **Normal** (default theme trace color), **Heatmap** (relative volume over a 24 dB range), or **Note Colors** (pitch class colors).
+- **Layout** - **Horizontal** (default, keyboard at bottom, history scrolls up) or **Vertical** (keyboard at right, history scrolls left).
+- **Reference A4** (400 to 480 Hz; default 440 Hz) - Tuning reference used for note names and cent offsets.
+- **Lowest Note** / **Highest Note** - Sets the analyzed and displayed pitch range (defaults: C2 to C7; full range: A0 to C8).
+
+### Visualization Guide
+
+- The trace position shows continuous pitch between semitones; higher confidence draws a brighter line, and silence or unpitched sound breaks the line.
+- The readout displays the nearest note name (colored by pitch class) and the tuning offset in cents (`+` sharp, `-` flat; for example, `+3.5 cent`).
 
 [Back to all effects](/dsp/effects/)

@@ -7,7 +7,9 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../../css/effetune-theme.css') +
     read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '') +
     read('../../css/effetune-mobile.css') + read('../../css/effetune-library.css');
-const viewSource = read('../../js/visualizer/visualizer-history.js').replace(/^export /gm, '') +
+const viewSource = read('../../js/ui/audio-player/playback-region.js').replace(/^export /gm, '') +
+    read('../../js/visualizer/visualizer-video.js').replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '') +
+    read('../../js/visualizer/visualizer-history.js').replace(/^export /gm, '') +
     read('../../js/visualizer/visualizer-view.js')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerView', 'window.VisualizerView = class VisualizerView');
@@ -837,6 +839,7 @@ test('Visualizer fills the available width on first display and after leaving ex
                 visible: true, layout: { aspect: '16:9' }, root, toolbar, qualityLabel, stageHost, stage,
                 canvas: stage.querySelector('canvas'), status: {},
                 renderer: { quality: 0, draw() {} }, sources: { getStatus: () => 'ready' },
+                video: new VisualizerVideo({}),
                 uiManager: { t: key => key }, editor: { open: false, navigation, navigationContent: navigation.firstElementChild,
                     setOpen(open) { this.open = open; navigation.hidden = !open; inspector.hidden = !open; root.classList.toggle('is-editing', open); } },
                 editButton: { setAttribute() {} }, expandButton: { setAttribute() {} }, showControls() {}
@@ -981,6 +984,7 @@ test('Mobile Visualizer Edit fits the artboard and keeps a page scroll lane outs
             const view = Object.assign(Object.create(window.VisualizerView.prototype), {
                 visible: true, layout: { ...createDefaultLayout(), aspect: '9:16' }, root, stageHost: host, stage, canvas,
                 status: {}, renderer: { quality: 0, draw() {} }, sources: { getStatus: () => 'ready' },
+                video: new VisualizerVideo({}),
                 uiManager: { mobileNav: { nav: document.querySelector('.mobile-bottom-nav') } },
                 updateEditButtons() {}, t: (_, fallback) => fallback, metadata: () => null, commitPending() {}
             });
@@ -1078,6 +1082,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             layout.items[0].params.showAxes = true;
             layout.items.push(window.createItem('artwork'));
             const view = Object.assign(Object.create(window.VisualizerView.prototype), { root, stage, layout, updateEditButtons() {},
+                video: new VisualizerVideo({}),
                 t: (key, fallback) => ({ 'visualizer.type.spectrum': 'Spectrum',
                     'visualizer.gradient': 'グラデーション', 'visualizer.apply': '適用',
                     'visualizer.effect': '演出', 'visualizer.add': '追加' })[key] || fallback, changes: 0,
@@ -1998,7 +2003,7 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
                 const item = createItem(type);
                 item.palette.mode = 'gradient';
                 item.effects = Object.entries(EFFECT_CATALOG).filter(([, effect]) => effect.allowedOn.includes('item'))
-                    .filter(([key]) => key !== 'ken-burns' || type === 'artwork')
+                    .filter(([key]) => key !== 'ken-burns' || type === 'artwork' || type === 'video')
                     .map(([key]) => normalizeEffect({ type: key }, 'item'));
                 for (const effect of item.effects) { effect.mod.source = 'time'; effect.palette.mode = 'gradient'; }
                 if (type === 'analog-meter') item.params.needleTip = 'arrow';
@@ -2074,7 +2079,7 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
                 invalidUnapplied, clamped, restored, initialDisabled, enabled, disabled, noteRange, peerRestored, bpmRange, mobile };
         });
         assert.deepEqual(result.violations, []);
-        assert.equal(Object.keys(result.counts).length, 18);
+        assert.equal(Object.keys(result.counts).length, 19);
         assert.ok(Object.values(result.counts).every(count => count > 0));
         assert.deepEqual(result.typing, [.33, '33', 0]);
         assert.deepEqual(result.committed, [1, '33%']);

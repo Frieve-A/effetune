@@ -32,9 +32,9 @@ Muestra el nivel de cada canal en un medidor de aguja clásico, sin cambiar el s
 - **Compara canciones con Loudness**: ajusta **Target** a una referencia de streaming como -14 LUFS, pulsa **Reset** al empezar una canción o álbum y reprodúcelo entero. El valor Integrated muestra su sonoridad global y el máximo True Peak muestra su pico más alto, lo que sirve de guía para igualar el volumen entre las canciones de un álbum o lista. LRA te permite comparar cuánto varía la sonoridad de cada canción.
 - **Crea tu medidor con Custom**: empieza con **Bouncy VU** para una aguja más animada, **Slow RMS** para observar el nivel medio con calma o **Fast Peak** para seguir picos breves. Ajusta la velocidad con **Needle Response** y el rebote con **Overshoot**. Puedes conseguir una subida y una caída parecidas a PPM, pero los detectores de pico de Custom suben al instante; usa **PPM** para la respuesta PPM estándar.
 
-### Preajustes del sistema
+### Presets del sistema
 
-Haz clic en **Preajustes de efecto** en la cabecera del efecto para elegir un medidor estándar o personalizado en un solo paso. Un preajuste que cambia **Mode** reinicia la medición; al pasar de un preajuste de Loudness a otro, la medición continúa.
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para elegir un medidor estándar o personalizado en un solo paso. Un preset que cambia **Mode** reinicia la medición; al pasar de un preset de Loudness a otro, la medición continúa.
 
 - **Studio VU (-18 dBFS)** - VU con 0 VU en -18 dBFS, la alineación de estudio habitual (EBU R68). Adecuado para grabaciones con mucho margen (headroom).
 - **SMPTE VU (-20 dBFS)** - VU con 0 VU en -20 dBFS (SMPTE RP 155), la práctica de los estudios y la radiodifusión de Norteamérica.
@@ -69,7 +69,7 @@ Solo se muestran los controles que se aplican al **Mode** seleccionado. En **Cus
 - **Needle Response** (Custom; de 1 a 3000 ms; predeterminado: 300 ms) - Define cuánto tarda la aguja en alcanzar por primera vez el 99% de un nuevo nivel constante del detector. Los valores más bajos dan una aguja más rápida; los más altos, más lenta. El promedio RMS y la liberación de los picos también afectan al movimiento global.
 - **Overshoot** (Custom; de 0 a 25%; predeterminado: 1,25%) - Define cuánto sobrepasa la aguja un nuevo nivel constante del detector, como porcentaje del cambio de nivel. Los valores más altos dan más rebote; con 0, la aguja se acerca sin sobrepasarlo.
 - **Dial** (Custom; predeterminado: VU) - Elige **VU**, **DIN**, **BBC**, **dB** o **dBFS** independientemente del detector y del movimiento de la aguja. VU, DIN y BBC usan las escalas descritas abajo. En dB, la marca 0 es **Reference** y el tope es 0 dBFS. En dBFS, el tope es 0 dBFS y las lecturas se muestran en dBTP si **Detector** es True Peak.
-- **Reference** (VU, PPM, RMS, Custom salvo con escala dBFS; de -30 a 0 dBFS; predeterminado: -14 dBFS) - Define el nivel digital que coincide con la marca de referencia del medidor. El valor predeterminado se adapta a la mayoría de las grabaciones comerciales terminadas; con las alineaciones de estudio de -18 o -20 dBFS (consulta Preajustes del sistema), un CD corriente suele mantener la aguja cerca del tope de la escala. Súbelo cuando las grabaciones intensas lleven la aguja al tope de la escala; bájalo cuando las grabaciones tranquilas apenas la muevan.
+- **Reference** (VU, PPM, RMS, Custom salvo con escala dBFS; de -30 a 0 dBFS; predeterminado: -14 dBFS) - Define el nivel digital que coincide con la marca de referencia del medidor. El valor predeterminado se adapta a la mayoría de las grabaciones comerciales terminadas; con las alineaciones de estudio de -18 o -20 dBFS (consulta Presets del sistema), un CD corriente suele mantener la aguja cerca del tope de la escala. Súbelo cuando las grabaciones intensas lleven la aguja al tope de la escala; bájalo cuando las grabaciones tranquilas apenas la muevan.
 - **Range** (PPM con la escala DIN o dB, RMS, Sample Peak, True Peak, Custom con escala DIN, dB o dBFS; de 20 a 60 dB; predeterminado: 40 dB) - Define hasta dónde llega la escala hacia abajo. Ámplialo para ver pasajes tranquilos; redúcelo para repartir mejor la parte superior de la escala.
 - **PPM Scale** (PPM; predeterminado: DIN) - Selecciona la escala del PPM: **DIN**, **BBC** o **dB** (consulta Cómo leer la visualización).
 - **Peak Hold** (PPM, RMS, Sample Peak, True Peak, Custom; de 0 a 10 s; predeterminado: 1 s) - Define cuánto tiempo permanece la marca de pico en la lectura más alta reciente y cuánto tiempo sigue encendido el indicador over. Con 0 se desactiva la marca y el indicador over permanece encendido 1 s.
@@ -137,7 +137,7 @@ Muestra en qué notas y octavas se sitúan los componentes de frecuencia de la m
 
 Una visualización que muestra en tiempo real el nivel de señal digital de tu música. Te ayuda a revisar los niveles después de aplicar efectos y a detectar posibles recortes antes de que se vuelvan distorsión audible.
 
-### Guía de Visualización
+### Cómo leer la visualización
 - La barra horizontal se extiende más hacia la derecha cuanto mayor es el nivel de señal
 - El marcador blanco mantiene un pico nuevo durante un segundo y luego desciende suavemente
 - OVERLOAD indica que la señal superó el rango digital seguro y puede distorsionar
@@ -145,226 +145,163 @@ Una visualización que muestra en tiempo real el nivel de señal digital de tu m
 
 ## Note Spectrogram
 
-Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll que se desplaza sin modificar el audio. Úsalo para seguir las notas de un acorde, líneas vocales y melódicas cambiantes, la línea de bajo y las notas que se superponen en distintas octavas. El analizador estima las frecuencias fundamentales de las notas que detecta dentro del rango seleccionado. Los colores por instrumento y el resaltado ayudan a seguir las voces y los grupos de instrumentos estimados dentro de la visualización.
+Muestra las frecuencias fundamentales (F0) estimadas de A0 a C8 en un piano roll que se desplaza, sin modificar el audio. Úsalo para seguir las notas de los acordes, las líneas vocales y melódicas, las líneas de bajo y las notas que se superponen en distintas octavas, con colores por instrumento y resaltado opcionales.
 
-### Guía de Visualización
+### Guía de uso
 
-- **Vertical** muestra el tiempo de izquierda a derecha, con el teclado y el sonido actual en el extremo derecho. Las notas más agudas aparecen arriba.
-- **Horizontal** coloca el teclado abajo, con las notas graves a la izquierda y las agudas a la derecha. El sonido nuevo aparece justo encima del teclado y el historial se desplaza hacia arriba.
-- El sonido nuevo se muestra primero con una estimación inmediata de su altura. Unos 40, 80 y 160 ms después, se actualiza la estimación en ese mismo punto con ayuda de los sonidos que vienen a continuación, por lo que las marcas recientes justo detrás del sonido más nuevo pueden cambiar. Esta actualización no añade retraso a la visualización ni cambia la sincronización de **Sincronizar elementos visuales con el audio**.
-- Las líneas en cada C marcan los límites de las octavas.
-- Las filas correspondientes a las teclas negras usan un fondo gris casi negro para que puedan distinguirse aunque no se detecte ninguna nota.
-- **Normal** usa el color del trazado del tema; **Note Colors** asigna un color a cada nota, igual en todas las octavas. **Instrument (3)** e **Instrument (9)** mezclan los colores de los grupos en proporción a sus probabilidades estimadas; Instrument (3) primero combina las probabilidades en Vocal, Bass y Other. La leyenda muestra los grupos y sus colores. Las guías entre E y F se muestran en todos los modos.
-- Los colores de instrumentos aparecen cuando la estimación está lista y actualizan el historial correspondiente. En las vistas Instrument, las notas pendientes o sin estimación aparecen en un gris neutro que no representa ningún grupo. El cambio entre 3 y 9 grupos utiliza las estimaciones disponibles.
-- La estimación de instrumentos añade 20 ms antes de mostrar el resultado; la visualización de la altura sigue actualizándose de inmediato.
-- La estimación de instrumentos usa como pistas las notas anteriores de la música, por lo que es menos precisa justo después de activarla o de cambiar la posición de reproducción. Una vez completada, la estimación de cada nota no se modifica.
-- Toda estimación de instrumento completada proporciona las probabilidades de los grupos, aunque la confianza sea baja. Los candidatos de altura débiles y los sonidos que ya estaban sonando al activar la estimación de instrumentos pueden permanecer grises porque no tienen una estimación de instrumento.
-- **Highlight** facilita seguir el grupo elegido acercando los colores de las demás notas a un gris neutro. Cuanto mayor es la probabilidad estimada del grupo, más se conserva el color original. Las notas pendientes o sin estimación también aparecen en gris neutro y siguen visibles. El objetivo elegido aparece junto a la leyenda y también se distingue dentro de ella. Pasa el cursor sobre un grupo de la leyenda para resaltarlo temporalmente; al retirarlo se recupera tu selección de Highlight.
-- **1/12 Octave** muestra una fila por semitono. **High** sitúa cada altura en su valor estimado en cents para facilitar el seguimiento de pequeños cambios. Note Colors mezcla los colores de notas vecinas según la altura; las vistas Instrument usan colores basados en la estimación del instrumento.
-- La intensidad del color indica la confianza en cada estimación de altura. A medida que la confianza se acerca a cero, la representación se atenúa hasta fundirse con el fondo.
-- Con **Volume** activado, cada altura detectada se convierte en una barra cuyo grosor del núcleo opaco representa su volumen relativo corregido según la frecuencia: de 1/60 de octava en la parte inferior de la escala a 1/12 de octava en la superior. En cada lado del núcleo se añade un desvanecido de 1/120 de octava, por lo que el ancho total dibujado aumenta en 1/60 de octava respecto al núcleo. **Pitch Resolution** cambia la posición central de la barra, no el grosor de su núcleo.
-- En el borde del teclado, un semicírculo de bordes suaves se extiende hacia el gráfico y muestra el volumen actual. Responde de inmediato a los aumentos y desciende a 20 dB por segundo; no hay una retención de pico visible independiente.
-- La escala de volumen abarca 24 dB. Su límite superior sigue el valor más alto entre una referencia reciente que estabiliza la escala del historial (durante aproximadamente un segundo) y -36 dB, de modo que el material más silencioso siga siendo legible sin que los pasajes más fuertes llenen continuamente la pantalla. Esta referencia es independiente del semicírculo del volumen actual.
-- Las líneas guía de las octavas y de E–F se dibujan detrás de las barras de volumen, para que la cuadrícula de alturas siga sirviendo de referencia visual.
-- Las teclas pasan gradualmente de su color habitual al color de visualización a medida que aumenta la confianza del último fotograma, hasta alcanzar ese color con un valor de 1. En Normal o Note Colors, Highlight se aplica al gráfico y mantiene los colores del teclado sin cambios.
-- Cambiar **Color** actualiza los colores del historial existente.
-
-### Visualización
-- Pasa el cursor sobre el historial, o tócalo y desliza el dedo, para leer la nota, el tiempo, **Salience** (confianza en la estimación de la altura) y **Level** (volumen corregido según la frecuencia, en dB) en ese punto.
-- Cuando la estimación de instrumentos está activa, la lectura también muestra las probabilidades de los grupos para la nota en ese punto del historial: Vocal, Bass y Other con **Instrument (3)**, y los nueve grupos con los demás ajustes de Color. Las notas sin estimación muestran **Not classified**.
-- Con **Highlight** seleccionado, la lectura también muestra la probabilidad estimada del objetivo cuando hay una estimación disponible. Es un valor distinto de Salience.
-
-### Qué Puedes Ver
-
-- Los acordes aparecen como varias filas brillantes al mismo tiempo
-- Las melodías y líneas de bajo forman recorridos entre las filas de notas
-- Para seguir la voz o el bajo, empieza con **Instrument (3)**, o conserva **Note Colors** y elige **Vocal** o **Bass** en **Highlight**. Usa **Instrument (9)** para una clasificación más detallada.
-- Las estimaciones de altura e instrumento pueden ser incorrectas, sobre todo cuando los sonidos se superponen. Los colores por instrumento son una ayuda para escuchar, no una identificación fiable de cada instrumento. La batería no se clasifica. La visualización no crea MIDI ni partituras ni separa por completo los sonidos simultáneos; la percusión, el ruido y las repeticiones poco claras también pueden producir alturas incorrectas.
+- **Acordes y melodías**: Los acordes aparecen como filas brillantes simultáneas; las melodías y las líneas de bajo trazan recorridos a través de las filas de notas.
+- **Seguir la voz o el bajo**: Elige **Instrument (3)**, o mantén **Note Colors** y selecciona **Vocal** o **Bass** en **Highlight**. Usa **Instrument (9)** para una agrupación de instrumentos más detallada.
+- **Precisión de las estimaciones**: Las estimaciones de altura y de instrumento son una ayuda visual para escuchar, no una transcripción exacta. Los sonidos superpuestos, la percusión o el ruido pueden producir estimaciones ambiguas, y la batería no se clasifica. Las estimaciones de instrumento usan las notas anteriores como pistas, por lo que son menos fiables justo después de activarlas o de mover la posición de reproducción; una vez lista, una estimación no se revisa.
 
 ### Grupos de instrumentos
 
-**Instrument (3)** usa **Vocal**, **Bass** y **Other**. Other reúne todos los grupos salvo Vocal y Bass y abarca más que Other en la vista de 9 grupos.
+**Instrument (3)** agrupa las alturas en **Vocal**, **Bass** y **Other** (todos los grupos siguientes salvo Vocal y Bass).
 
-**Instrument (9)** usa estos grupos:
-
-- **Vocal**: canto humano grabado, tanto voces solistas como coros.
-- **Bass**: bajo acústico, eléctrico y de sintetizador.
-- **Guitar**: guitarras acústicas, eléctricas limpias y con distorsión.
-- **Piano**: pianos acústicos y eléctricos, clave y clavinet.
-- **Strings**: cuerdas solistas y de conjunto, pizzicato, arpa y cuerdas de sintetizador.
-- **Wind**: instrumentos de metal y de madera, incluidos saxofones y flautas.
-- **Synth**: sonidos solistas y pads de sintetizador.
-- **Organ**: órganos, acordeón y armónica.
-- **Other**: percusión afinada como celesta y vibráfono, sonidos sintéticos de coro y voz, golpes orquestales, efectos de sintetizador, instrumentos étnicos y efectos sonoros.
+**Instrument (9)** separa las alturas en nueve grupos:
+- **Vocal**: Canto humano grabado, incluidas voces solistas y coros.
+- **Bass**: Bajo acústico, eléctrico y de sintetizador.
+- **Guitar**: Guitarras acústicas, eléctricas limpias y distorsionadas.
+- **Piano**: Pianos acústicos y eléctricos, clave y clavinet.
+- **Strings**: Cuerdas solistas y en conjunto, pizzicato, arpa y cuerdas de sintetizador.
+- **Wind**: Metales y maderas, incluidos saxofones y flautas.
+- **Synth**: Leads y pads de sintetizador.
+- **Organ**: Órganos, acordeón y armónica.
+- **Other**: Percusión afinada (celesta, vibráfono), sonidos de coro o voz sintetizados, efectos de sintetizador, golpes orquestales, instrumentos étnicos y efectos de sonido.
 
 ### Parámetros
 
-- **Color** - Selecciona los colores de visualización sin cambiar las estimaciones de notas.
-  - **Normal** (predeterminado): el color del trazado del gráfico del tema.
-  - **Note Colors**: un color distinto para cada nota, que se repite en todas las octavas.
-  - **Instrument (3)**: colores para Vocal, Bass y Other.
-  - **Instrument (9)**: colores para los nueve grupos anteriores.
-- **Highlight** - Resalta un grupo estimado con cualquier ajuste de Color, conservando el grosor que indica el volumen. **None** (predeterminado) desactiva el resaltado. Elige **Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ** u **Other (9)**. Other (3) incluye todo salvo Vocal y Bass; Other (9), solo el grupo Other más reducido descrito arriba. El resaltado cambia la imagen, no el sonido.
-- La estimación de instrumentos solo funciona con un modo de color Instrument o con Highlight distinto de None, y aumenta el uso de CPU. Para evitar ese procesamiento adicional, elige Normal o Note Colors y deja Highlight en None.
-- **Pitch Resolution** - Selecciona el detalle vertical de la altura sin borrar el historial existente.
-  - **1/12 Octave** (predeterminado): una fila por semitono, usando la estimación más fuerte de esa nota.
-  - **High**: muestra las alturas en sus valores estimados en cents, conservando las variaciones más pequeñas.
-- **Layout** - Selecciona **Horizontal** (predeterminado) o **Vertical**. El historial se conserva al cambiar la disposición.
-- **Volume** - Muestra el volumen relativo mediante el grosor de las barras y medidores semicirculares. Está activado por defecto; al desactivarlo, el grosor permanece fijo y la intensidad del color indica la confianza de la estimación de altura.
-- **Time Span** (de 1 a 10 s) - Define cuánto tiempo muestra el piano roll
-  - Los valores cortos permiten ver mejor los cambios de ritmo
-  - Los valores largos muestran un pasaje musical más extenso de una vez
-  - Valor predeterminado: 2 s
-- **Lowest Note** - Define la nota más baja del rango mostrado y analizado. Valor predeterminado: E1.
-- **Highest Note** - Define la nota más alta del rango mostrado y analizado. Valor predeterminado: G6.
-- Cuando la entrada es demasiado baja para el análisis, el piano roll permanece oscuro en lugar de mostrar una entrada extremadamente pequeña como alturas. Esta supresión no determina si un sonido sería audible o quedaría enmascarado perceptivamente.
+- **Color** - Selecciona los colores de la visualización sin cambiar la detección de alturas (al cambiarlo se recolorea el historial existente):
+  - **Normal** (predeterminado): Color del trazado de gráficos del tema.
+  - **Note Colors**: Un color distinto por clase de altura, repetido en todas las octavas.
+  - **Instrument (3)**: Colores para Vocal, Bass y Other.
+  - **Instrument (9)**: Colores para los nueve grupos de instrumentos anteriores.
+- **Highlight** - Destaca un grupo concreto (**Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ** u **Other (9)**) llevando las notas hacia un gris neutro cuanto menos probable es que pertenezcan a ese grupo, sin cambiar el grosor que indica el volumen. **None** (predeterminado) desactiva el resaltado.
+  - El análisis de ataques y de instrumentos consume CPU adicional. Para reducir al mínimo el uso de CPU, desactiva **Onsets**, elige **Normal** o **Note Colors** y pon **Highlight** en **None**.
+- **Pitch Resolution** - Selecciona el detalle vertical de altura sin borrar el historial:
+  - **1/12 Octave** (predeterminado): Una fila por semitono.
+  - **High**: Coloca las alturas en su posición estimada en cents para mostrar el vibrato y las inflexiones de tono.
+- **Layout** - **Horizontal** (predeterminado; teclado abajo y el historial se desplaza hacia arriba) o **Vertical** (teclado a la derecha y el historial se desplaza hacia la izquierda).
+- **Volume** - Representa el volumen relativo con el grosor de las barras y con medidores semicirculares en el borde del teclado (activado de forma predeterminada). Si está desactivado, el grosor de las barras es fijo.
+- **Onsets** - Marca los ataques estimados de las notas con triángulos (▼ en Horizontal, ▶ en Vertical; desactivado de forma predeterminada). El centro de la base de cada triángulo marca el momento y la altura del ataque, de modo que los ataques repetidos de una altura sostenida reciben marcas separadas. Desactivarlo no detiene el análisis de instrumentos mientras un **Color** de instrumento o **Highlight** lo necesite.
+- **Time Span** (1 a 10 s; predeterminado: 2 s) - Duración del historial visible en el piano roll.
+- **Lowest Note** / **Highest Note** - Establecen el rango de alturas que se analiza y se muestra (predeterminado: E1 a G6).
+
+### Cómo leer la visualización
+
+- **Actualización de alturas**: El sonido nuevo aparece de inmediato y se refina unos 40, 80 y 160 ms después con el contexto del audio que sigue, sin añadir retardo a la visualización ni afectar a **Sincronizar elementos visuales con el audio**.
+- **Cuadrícula y teclado**: Las líneas en cada C marcan los límites de las octavas, las guías entre E y F se ven en todos los modos y las filas de las teclas negras usan un fondo más oscuro. Las teclas del piano se iluminan según la confianza de la altura actual.
+- **Intensidad del color**: La intensidad del color siempre indica la confianza de la altura. Cuando la entrada es demasiado débil para analizarla, el piano roll permanece oscuro.
+- **Colores de instrumento y resaltado**: Los colores de instrumento mezclan los colores de los grupos según sus probabilidades estimadas. Los colores aparecen en las posiciones correspondientes del historial cuando la estimación del instrumento está lista; las notas pendientes de clasificar se muestran en gris neutro. La leyenda enumera los grupos mostrados y, mientras el resaltado está activo, añade **Highlight:** seguido del grupo seleccionado. Pasa el cursor sobre un grupo de la leyenda para resaltarlo temporalmente.
+- **Barras de volumen**: Con **Volume** activado, el grosor de las barras abarca un rango relativo de 24 dB, y un semicírculo suave en el borde del teclado sube de inmediato con el volumen actual y baja a 20 dB/s.
+
+### Visualización
+- Pasa el cursor sobre el historial, o tócalo y desliza el dedo, para leer la nota, el tiempo, **Salience** (confianza de la altura), **Level** (dB) y, cuando el análisis de instrumentos está activo, las probabilidades estimadas de los grupos: **Vocal**, **Bass** y **Other** con **Instrument (3)**, y los nueve grupos en los demás casos, más el grupo de **Highlight** cuando no está entre ellos (**Not classified** para las notas sin estimación).
 
 ## Oscilloscope
 
-Muestra la forma de la onda sonora en tiempo real para que puedas ver golpes, ataques marcados y cambios de volumen mientras escuchas. Los ajustes de Trigger ayudan a estabilizar la visualización cuando la forma de onda se repite.
-
-### Guía de Visualización
-- El eje horizontal muestra el tiempo en milisegundos o segundos
-- El eje vertical muestra amplitud normalizada; el rango visible cambia con Display Level y Vertical Offset
-- Con tiempos cortos, una línea muestra el detalle de la onda; con tiempos largos, una banda rellena muestra las amplitudes mínima y máxima de cada intervalo
-- Las líneas de cuadrícula ayudan a medir valores de tiempo y amplitud
-- Los ajustes de Trigger determinan dónde empieza la captura de la forma de onda; no se muestra un marcador aparte
-
-### Visualización
-- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
+Muestra la forma de la onda sonora en tiempo real para que veas golpes, ataques marcados y cambios de volumen mientras escuchas. Los ajustes de disparo estabilizan la imagen cuando la onda se repite.
 
 ### Guía de uso
-- Para observar una onda repetitiva, ajusta Display Time a 1–20 ms y Trigger Mode a Auto.
-- Para seguir los golpes y los cambios de volumen, ajusta Display Time a 1.000–10.000 ms y Trigger Mode a Off. El audio más reciente aparece en el borde derecho y la onda se desplaza suavemente hacia la izquierda.
-- En Auto y Normal, la nueva captura aparece cuando se ha recogido el tiempo indicado en Display Time.
+- Ajusta **Display Time** a 1–20 ms y **Trigger Mode** a **Auto** para observar un ciclo de onda repetitivo.
+- Ajusta **Display Time** a 1.000–10.000 ms y **Trigger Mode** a **Off** para seguir los golpes y la envolvente de volumen mientras se desplazan suavemente de derecha a izquierda.
+- En los modos **Auto** y **Normal**, el trazo se actualiza cuando se ha recogido todo el intervalo de **Display Time**.
 
 ### Parámetros
-- **Display Time** - Tiempo mostrado (de 1 a 10.000 ms, hasta 10 segundos)
-  - Valores más bajos: Ver más detalle en eventos más cortos
-  - Valores más altos: Ver patrones más largos
-- **Trigger Mode**
-  - Auto: Actualizaciones continuas incluso sin disparo
-  - Normal: Congela la visualización hasta el siguiente disparo
-  - Off: Sin disparo; el audio más reciente aparece en el borde derecho y la onda se desplaza hacia la izquierda. Trigger Level, Trigger Edge y Holdoff no tienen efecto
-- La detección del disparo usa el promedio de los canales izquierdo y derecho. La entrada mono se usa directamente.
-- **Trigger Level** - Nivel de amplitud que inicia la captura
-  - Rango: -1 a 1 (amplitud normalizada)
-- **Trigger Edge**
-  - Rising: Dispara cuando la señal sube
-  - Falling: Dispara cuando la señal baja
-- **Holdoff** - Tiempo mínimo entre disparos (0.1 a 10 ms)
-- **Display Level** - Escala vertical en dB (-96 a 0 dB)
-- **Vertical Offset** - Desplaza la forma de onda arriba/abajo (-1 a 1)
+- **Display Time** (1 a 10.000 ms) - Intervalo de tiempo visible. Los valores cortos muestran ciclos de onda individuales; los largos, la envolvente general.
+- **Trigger Mode**:
+  - **Auto**: Se actualiza continuamente aunque no haya disparo.
+  - **Normal**: Solo se actualiza cuando se produce un disparo y mantiene la última captura hasta el siguiente.
+  - **Off**: Se desplaza continuamente de derecha a izquierda; los ajustes de disparo no tienen efecto.
+- **Trigger Level** (-1 a 1) - Umbral de amplitud normalizada que inicia la captura (se detecta en la señal mono o en el promedio de L/R).
+- **Trigger Edge** - **Rising** (dispara al cruzar hacia arriba) o **Falling** (dispara al cruzar hacia abajo).
+- **Holdoff** (0,1 a 10 ms) - Tiempo mínimo de espera entre disparos.
+- **Display Level** (-96 a 0 dB; predeterminado: 0 dB) - Nivel que se muestra en los bordes superior e inferior de la pantalla. Con 0 dB se ve todo el rango de ±1; los valores más bajos amplían las señales más débiles.
+- **Vertical Offset** (-1 a 1) - Desplaza la onda verticalmente; los valores positivos la suben.
 
-### Nota sobre la Visualización de Forma de Onda
-Con tiempos largos, la banda rellena conserva las amplitudes mínima y máxima de cada intervalo, de modo que los picos breves siguen siendo visibles aunque muchas muestras ocupen la misma posición en pantalla. El cursor muestra Minimum y Maximum para ese intervalo; con tiempos cortos, muestra Amplitude sobre la onda. Usa la visualización como referencia, no como instrumento de medición exacta.
+### Cómo leer la visualización
+- **Eje horizontal**: Tiempo en milisegundos o segundos.
+- **Eje vertical**: Amplitud normalizada, escalada por **Display Level** y desplazada por **Vertical Offset**.
+- **Línea o banda de envolvente**: Con tiempos cortos se dibuja una línea continua; con tiempos largos, una banda rellena de mínimos y máximos, para que los picos breves sigan visibles aunque muchas muestras compartan la misma columna de píxeles.
+
+### Visualización
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo, para leer el tiempo y la amplitud (o Minimum/Maximum con tiempos largos).
 
 ## Pitch Meter
 
-Sigue una frecuencia fundamental (F0) cada vez en un piano roll móvil de dos segundos sin modificar el audio. Úsalo para comprobar la afinación y los cambios de altura de una voz o un instrumento solista.
+Sigue una única frecuencia fundamental (F0) cada vez en un piano roll de dos segundos que se desplaza, sin modificar el audio. Úsalo para comprobar la afinación y el movimiento de altura de una voz o un instrumento solista.
 
-### Guía de Visualización
+### Guía de uso
 
-- **Horizontal** (predeterminado) coloca las notas graves a la izquierda y las agudas a la derecha. La estimación más reciente aparece sobre el teclado y el historial se desplaza hacia arriba.
-- **Vertical** coloca las notas graves abajo y las agudas arriba. La estimación más reciente aparece junto al teclado de la derecha y el historial avanza hacia la izquierda.
-- La posición de la línea indica la altura entre semitonos. Una estimación más fiable se ve más intensa; la línea se interrumpe cuando la entrada es demasiado baja o no se encuentra una sola altura estable.
-- La etiqueta actual muestra la nota más cercana y la diferencia en cents. Un valor positivo indica una altura superior y uno negativo, inferior. La etiqueta desaparece cuando no hay una estimación fiable.
-- El nombre de la nota usa los mismos colores que Note Spectrogram. El tamaño del nombre y la diferencia en cents se adapta al ancho disponible, y el punto decimal de los cents mantiene una posición fija.
-
-### Visualización
-- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo sobre ella, para leer los valores en ese punto.
-
-### Guía de Uso
-
-- Empieza con una sola nota sostenida y observa si la línea permanece centrada o se desplaza hacia agudo o grave.
-- El vibrato y los pitch bends aparecen como movimientos suaves entre las filas de notas.
-- Este analizador sigue una altura dominante. Los acordes, las mezclas densas, la percusión, el ruido o los sonidos periódicos poco claros pueden interrumpir la línea o producir una octava incorrecta.
+- Toca o canta una sola nota sostenida y observa si el trazo se mantiene centrado en la fila de la nota o se desvía hacia arriba (sostenido) o hacia abajo (bemol).
+- El vibrato, los glissandos y las inflexiones de tono aparecen como curvas suaves a través de las filas de notas.
+- Como Pitch Meter sigue una sola altura dominante, los acordes, las mezclas densas o la percusión pueden interrumpir el trazo o hacerlo saltar de octava; para material polifónico usa [Note Spectrogram](#note-spectrogram).
+- La entrada estéreo se analiza promediando los dos primeros canales (la entrada mono se usa directamente), por lo que un sonido con polaridad opuesta en los dos canales puede cancelarse y no dejar trazo.
 
 ### Parámetros
 
-- **Layout** - Selecciona **Horizontal** (predeterminado) o **Vertical**.
-- **Color** - Cambia el color de la línea sin modificar la detección de altura. **Normal** (predeterminado) usa el color del gráfico del tema; **Heatmap** muestra el volumen en la misma escala de 24 dB que Note Spectrogram; **Note Colors** sigue la altura entre los colores de las notas.
-- **Reference A4** (400 a 480 Hz) - Ajusta la referencia de afinación usada para los nombres de nota y los cents. Valor predeterminado: 440 Hz.
-- **Lowest Note** - Define el límite inferior del intervalo mostrado y analizado. Valor predeterminado: C2. El ajuste más bajo es A0.
-- **Highest Note** - Define el límite superior del intervalo mostrado y analizado. Valor predeterminado: C7. El ajuste más alto es C8.
-- La entrada estéreo se analiza promediando los dos primeros canales; la entrada mono se usa directamente. El contenido con polaridad muy opuesta puede cancelarse al promediar y dejar la gráfica sin trazo.
+- **Color** - Cambia el color del trazo sin afectar a la detección: **Normal** (predeterminado; color del trazado del tema), **Heatmap** (volumen relativo en un rango de 24 dB) o **Note Colors** (colores por clase de altura).
+- **Layout** - **Horizontal** (predeterminado; teclado abajo y el historial se desplaza hacia arriba) o **Vertical** (teclado a la derecha y el historial se desplaza hacia la izquierda).
+- **Reference A4** (400 a 480 Hz; predeterminado: 440 Hz) - Referencia de afinación que se usa para los nombres de nota y las desviaciones en cents.
+- **Lowest Note** / **Highest Note** - Establecen el rango de alturas que se analiza y se muestra (predeterminado: C2 a C7; rango completo: A0 a C8).
+
+### Cómo leer la visualización
+
+- La posición del trazo muestra la altura de forma continua entre semitonos; una confianza mayor dibuja una línea más brillante, y el silencio o los sonidos sin altura definida cortan la línea.
+- La lectura muestra el nombre de la nota más cercana (con el color de su clase de altura) y la desviación de afinación en cents (`+` sostenido, `-` bemol; por ejemplo, `+3.5 cent`).
+
+### Visualización
+- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo, para leer los valores en ese punto.
 
 ## Rhythm Analyzer
 
-Calcula el tempo de tu música y muestra, pulso a pulso, dónde caen los golpes de batería e instrumentos y cuánto se adelanta o se retrasa cada parte, sin modificar el sonido salvo que **Metronome Click** esté activado. Sirve para averiguar el BPM de un tema, comprobar cuánto swing tiene un groove, ver si la caja suena por detrás del tiempo, o localizar dónde entra un fill o cambia un patrón.
+Detecta el tempo de tu música y muestra, pulso a pulso, dónde caen los golpes de batería y de los instrumentos y lo adelantada o retrasada que toca cada parte, sin cambiar el sonido salvo que **Metronome Click** esté activado. Úsalo para averiguar el BPM de una pista, medir el swing, ver si la caja va por detrás del pulso o localizar redobles y cambios de sección.
 
-### Guía de Uso
+### Guía de uso
 
-- **Comprueba el tempo**: Reproduce música con un pulso claro y estable. El BPM y la línea **adopted** siguen el historial analizado, que aparece unos 1–2 segundos después del sonido. **LOCKED** indica que se muestran pulsos con la luz y el clic. Si el tempo no coincide con el que marcas con el pie, compara **×½**, **×2** y **strongest** para encontrar el nivel de pulso que percibes.
-- **Escucha dónde cae el pulso**: activa **Metronome Click** para oír un clic en cada tiempo detectado. Si los clics coinciden con el pulso que marcas con el pie, el analizador ha encontrado el pulso correcto. Si caen entre los tiempos que marcas con el pie, o al doble o a la mitad de tu velocidad, el analizador sigue una posición o un nivel de pulso distinto; consulta **Corrige un bloqueo al doble o a la mitad de tempo** más abajo y **Limitaciones**.
-- **Colócalo al final al usar el clic**: el clic se mezcla en el audio que sale del analizador, así que cualquier efecto posterior también lo procesa. Coloca Rhythm Analyzer al final de la cadena de efectos mientras escuchas con el clic activado.
-- **Desactiva el clic antes de procesar archivos**: con **Metronome Click** activado, los clics se graban en cualquier archivo que proceses. Desactívalo antes.
-- **Corrige un bloqueo al doble o a la mitad de tempo**: si una balada lenta se bloquea al doble de su tempo, baja **Max BPM** por debajo de ese valor (por ejemplo, a 100 para una balada de 60 BPM). Si un tema rápido se bloquea a la mitad de velocidad, sube **Min BPM** por encima de ese valor. El análisis se reinicia con el nuevo rango.
-- **Lee un groove estable**: con música programada o tocada con clic, los puntos se sitúan cerca del centro de sus carriles y **jitter** se mantiene cerca de 0 ms. Cuando una parte suena sistemáticamente por detrás o por delante de las demás, sus puntos quedan por encima o por debajo del centro del carril en las mismas posiciones cada vez. Una caja que llega 15 ms detrás del bombo y el hi-hat, por ejemplo, aparece como puntos Mid por encima del centro del carril en los tiempos 2 y 4, y como una marca Mid etiquetada +15 en la columna **1** de la lente de tiempos.
-- **Lee el swing**: **swing** muestra cuánto se retrasa el contratiempo: 1.00:1 es recto, 2.00:1 es un shuffle de tresillo completo, y los valores intermedios son un swing más ligero. En música claramente swingueada, la lente de tiempos coloca los golpes del contratiempo en la columna **⅔** en lugar de **&**.
-- **Localiza fills y cambios de sección**: un anillo marca un golpe que esa misma banda no tocó en la misma posición uno o dos intervalos antes. Mientras se repite un patrón aparecen pocos anillos; un fill o los primeros compases de una nueva sección muestran muchos. Las filas de eco, debajo de los carriles principales, te permiten comparar el nuevo patrón con los anteriores.
-- **Cuando aparece searching**: Dejan de mostrarse pulsos nuevos, pero el análisis continúa. El tempo, los carriles de sincronización y la lente pueden seguir visibles y atenuarse al bajar la confianza. Un pulso ya detectado todavía puede encender la luz o producir un clic. El silencio borra las lecturas actuales; el análisis se reanuda al volver el sonido. Los fundidos y el sonido de fondo pueden tardar más en detener los pulsos.
+- **Comprobar el tempo**: Reproduce una pista con un pulso estable. El BPM confirmado y la línea **adopted** aparecen unos 1–2 segundos después del sonido, mientras que **LOCKED** indica que el pulso está activo para la lámpara y el clic. Compara **×½**, **×2** y **strongest** si el analizador se fija al doble o a la mitad del tempo que percibes.
+- **Oír dónde cae el pulso**: Activa **Metronome Click** para oír un clic en cada pulso detectado. Coloca Rhythm Analyzer al final de la cadena de efectos mientras escuchas con el clic, y desactiva **Metronome Click** antes de exportar archivos de audio procesados.
+- **Corregir fijaciones al doble o a la mitad del tempo**: Si una balada lenta se fija al doble de tempo, baja **Max BPM** por debajo de ese valor; si una pista rápida se fija a la mitad, sube **Min BPM** por encima.
+- **Leer el groove y la microtemporización**: Los ritmos programados quedan cerca del centro del carril, con un **jitter** cercano a 0 ms. Una caja que va siempre 15 ms por detrás del bombo aparece como puntos **Mid** por encima del centro del carril en los pulsos 2 y 4, y como una marca **+15** en Beat lens.
+- **Leer el swing**: **swing** indica la proporción de retraso de los contratiempos (1.00:1 es recto y 2.00:1, un shuffle de tresillo). En los grooves con swing, los golpes a contratiempo se agrupan en la columna **⅔** de Beat lens en lugar de en **&**.
+- **Localizar redobles y cambios**: Los anillos (**◎**) destacan los golpes que no se tocaron en la misma posición del pulso uno o dos ciclos antes, de modo que los redobles de batería y las transiciones de sección resaltan en las **Echo rows**.
+- **Cuando muestra searching**: Dejan de producirse nuevos pulsos y clics, pero el análisis continúa; el tempo, Timing lanes y Beat lens siguen visibles y se atenúan a medida que baja la confianza. El silencio borra las lecturas del pulso actual y la columna de Tempogram; el análisis vuelve a empezar cuando regresa el sonido.
 
 ### Parámetros
 
-- **Min BPM** (40 a 192; predeterminado 40) - Define el tempo mínimo considerado. Auméntalo si el analizador sigue la mitad del tempo que percibes.
-- **Max BPM** (50 a 240; predeterminado 240) - Define el tempo máximo considerado. Redúcelo si sigue el doble del tempo que percibes. Max BPM se mantiene al menos en 1,25 veces Min BPM; si una modificación rompe esa relación, se ajusta el otro límite. Cambiar cualquiera reinicia el análisis. El tempograma siempre abarca 30–480 BPM; **×½** y **×2** pueden quedar fuera del rango elegido.
-- **Metronome Click** (activado o desactivado; desactivado por defecto) - Añade un clic corto y agudo en cada pulso mostrado, igual que la luz. Durante **searching** no se generan clics nuevos, aunque uno ya detectado puede sonar. El nivel fijo es de unos −10 dBFS y se suma a los canales 1 y 2 (solo el 1 en mono); los demás no cambian. Desactivado, el audio pasa sin cambios. Alternarlo no reinicia el análisis.
-- **Span (beats)** (4, 6, 8, 12 o 16; 8 predeterminado) - Fija cuántos tiempos muestran los carriles principales y cada fila de eco, y hasta dónde retroceden los anillos al comparar. Solo cambia la visualización, no el análisis. Un valor que cubre compases completos alinea un patrón que se repite entre las filas de eco, por ejemplo 8 para dos compases de 4/4 o 6 para dos compases de 3/4.
-- **Tempogram**, **Timing lanes**, **Echo rows**, **Beat lens** (activado o desactivado; de forma predeterminada están activados **Timing lanes** y **Beat lens**) - Muestran u ocultan la franja del tempograma, los carriles principales, las filas de eco y la lente de tiempos. Los paneles restantes crecen para ocupar el espacio, y el encabezado siempre se muestra. Ocultar un panel solo cambia la visualización: el análisis continúa, y el panel vuelve a mostrar todo su historial cuando lo reactivas.
+- **Min BPM** (40 a 192; predeterminado: 40) / **Max BPM** (50 a 240; predeterminado: 240) - Rango de búsqueda del tempo (Max BPM se mantiene en al menos 1,25 veces Min BPM; cambiar cualquiera de los dos reinicia el análisis).
+- **Metronome Click** (desactivado de forma predeterminada) - Mezcla un clic corto de −10 dBFS en los canales 1 y 2 (solo el canal 1 en mono) en cada pulso detectado; los demás canales no cambian.
+- **Span (beats)** (4, 6, 8, 12 o 16; predeterminado: 8) - Número de pulsos que se muestran a lo ancho de Timing lanes y de cada fila de Echo rows (por ejemplo, 8 para dos compases de 4/4 y 6 para dos compases de 3/4).
+- **Tempogram**, **Timing lanes**, **Echo rows**, **Beat lens** - Muestran u ocultan cada panel de la visualización (Timing lanes y Beat lens empiezan activados; ocultar un panel no detiene el análisis).
 
-### Guía de Visualización
+### Cómo leer la visualización
 
-La pantalla tiene cinco partes: el encabezado, la franja del tempograma, los carriles principales, las filas de eco y la lente de tiempos. En una pantalla ancha, la lente de tiempos se sitúa a la derecha de los carriles y, cuando solo se muestran estos dos paneles, como al principio, sus filas se alinean con las de los carriles, de modo que cada banda se lee en una sola línea; en una pantalla alta, todas las partes se apilan de arriba abajo. Al ocultar paneles con sus casillas, los paneles restantes ocupan el espacio; el encabezado siempre permanece. Los golpes se clasifican en tres bandas: **Low** (bombo y bajo), **Mid** (caja, voces y la mayoría de los instrumentos) y **High** (hi-hats y platillos). Todas las bandas comparten un mismo color; en los carriles, las filas de eco y la lente de tiempos, cada banda tiene su propia fila, con **High** arriba y **Low** abajo. Los nombres de los ejes, los valores de las marcas y las etiquetas de fila **High**, **Mid** y **Low** se dibujan sobre los gráficos. La pantalla solo cuenta tiempos; no detecta compases ni el tiempo 1.
-
-- **Encabezado**:
-  - La luz se enciende una vez por cada pulso mostrado y se desvanece rápidamente; **Metronome Click** sigue esos mismos pulsos. El destello es más débil cuando baja la confianza. Durante **searching** queda un círculo hueco, aunque un pulso ya detectado aún puede encenderlo. La luz y el clic responden antes que el historial analizado.
-  - El BPM procede de los pulsos confirmados del análisis. **LOCKED** significa que se muestran pulsos nuevos; **searching**, que se ocultan. Searching no borra un tempo o un análisis temporal ya disponible.
-  - **×½** y **×2** - La mitad y el doble del tempo mostrado.
-  - **strongest** - El tempo con mayor apoyo actual en el tempograma. Puede diferir del tempo del historial analizado, que se muestra con retraso.
-  - **swing** - La proporción entre la primera y la segunda mitad de un tiempo, a partir de la posición típica del contratiempo en los últimos 32 tiempos. 1.00:1 es recto y 2.00:1 es un shuffle de tresillo.
-  - **jitter** - La dispersión aleatoria típica de los golpes alrededor de su posición media en la lente de tiempos, en ms. Las partes ajustadas y programadas marcan cerca de 0; una interpretación más suelta marca más alto.
-  - Leyenda: **○ timing unavailable**, **◎ new vs N / 2N beats ago** y **beat re-aligned** para la línea discontinua.
-  - Un valor que todavía no está disponible se muestra como —.
-- **Tempograma**: Muestra los últimos 20 segundos. **Time** avanza de izquierda a derecha; **Tempo (BPM)** abarca 30–480 en escala logarítmica. El brillo expresa el apoyo relativo a cada tempo, no la probabilidad de que sea correcto. Las bandas a mitad o doble tempo sugieren otros niveles de pulso. La línea continua **adopted** muestra el tempo de los pulsos confirmados; **×2** y **×½**, discontinuas, muestran sus múltiplos. El historial conserva el instante del audio que representa, mientras las líneas llegan al borde derecho con el último tempo confirmado. Una confianza menor las atenúa. El silencio vacía la columna actual.
-- **Carriles principales**: Muestran los pulsos más recientes, incluidas las últimas estimaciones, con el último a la derecha. **Span (beats)** fija su amplitud y el título es **Last N beats**. Hay una fila por banda, con **Beats** en horizontal y **Timing (ms)** en vertical. Las guías de pulsos y corcheas aparecen donde hay análisis. Cada punto es un golpe detectado, unido al centro por una línea; cuanto mayor es, más segura es la detección. Los puntos aparecen en cuanto se detectan los golpes. Sus posiciones más recientes son estimaciones que se actualizan continuamente a medida que llega más sonido. Los puntos se desplazan suavemente hacia la posición estimada en cada momento y quedan fijos cuando el análisis los confirma unos 1–2 segundos después. Los carriles y las filas de eco se desplazan suavemente con el sonido. Siguen desplazándose al último tempo disponible durante el silencio o cuando se detiene la reproducción, de modo que los golpes antiguos salen de la zona visible.
-  - La altura de un punto en su carril indica su desfase: por encima del centro del carril (0 ms) va retrasado; por debajo, adelantado. Unas líneas de puntos marcadas **+20** y **−20** señalan ±20 ms, y los golpes que superan ±30 ms se quedan en el borde del carril. El desfase se mide desde la semicorchea o la posición de tresillo más cercana, según la cuadrícula que siga la música, y se muestra en relación con el desfase típico de los 16 tiempos anteriores. Por eso un retraso constante compartido por todas las partes no se muestra; los carriles indican cómo difiere cada golpe del promedio reciente.
-  - Un círculo hueco es un golpe sin análisis de pulso disponible. Se sitúa en el centro porque su sincronización es desconocida.
-  - Un anillo marca un golpe ausente en la misma banda y posición uno o dos intervalos antes. Los anillos comienzan tras un intervalo desde el inicio del análisis o la realineación de la cuadrícula.
-  - Una zona sombreada indica que no hay análisis temporal. **searching** en el encabezado por sí solo no elimina la sincronización.
-  - Una línea discontinua marca una realineación de la cuadrícula al cambiar la posición o el nivel del pulso. La lente, swing y jitter comienzan un resumen nuevo allí.
-- **Filas de eco**: ciclos de tantos tiempos como fije **Span (beats)**, apilados con el más reciente arriba y separados por líneas. El eje horizontal es **Beats**, y el vertical, **Cycles ago**, numera cada fila. Mientras se muestran los carriles principales, las filas empiezan un ciclo atrás, en 1, y el rótulo dice **Previous N-beat cycles**. Con los carriles principales ocultos, la fila superior es el ciclo actual, en 0, el rótulo dice **Recent N-beat cycles** y, si hay espacio, esa fila lleva los nombres de las bandas. Como los tiempos se alinean verticalmente, un patrón que se repite cada ciclo forma columnas verticales, y un cambio las rompe. Las filas de eco muestran la banda de cada golpe, con **High** arriba y **Low** abajo dentro de cada fila, pero no su desfase. Los círculos huecos, los anillos, el sombreado y las líneas discontinuas tienen el mismo significado que en los carriles principales.
-- **Lente de pulso**: Resume hasta los últimos 32 pulsos confirmados desde el inicio del análisis o la realineación. Las columnas de **Position in beat** son **1**, las semicorcheas **e**, **&**, **a** y los tresillos **⅓**, **⅔**. Cada banda tiene una fila etiquetada, alineada con la banda correspondiente al lado de los carriles.
-  - La marca vertical muestra cuánto se adelanta (izquierda) o se retrasa (derecha) esa banda en esa posición, en promedio. La escala superior cubre ±30 ms, con marcas en ±20 ms. La barra sombreada alrededor de la marca muestra la dispersión (± una desviación estándar). Una marca más opaca indica que esa posición suena con más frecuencia; una posición necesita al menos cuatro golpes para aparecer.
-  - Cuando se actualizan los valores, las marcas y el ancho de las barras cambian suavemente hacia los nuevos valores, cada vez más despacio a medida que se acercan a ellos.
-  - Los desfases se miden respecto al conjunto: si todo suena junto, cada marca queda en el centro. La lente muestra cómo difieren las partes entre sí.
-  - Los desfases de 3 ms o más se etiquetan en ms. Los desfases menores se dibujan sin etiqueta, porque los desfases entre bandas por debajo de unos 3 ms no se pueden medir de forma fiable.
-  - Hasta que haya análisis de pulso, muestra **waiting for a steady beat**. Sigue disponible durante **searching** si existe análisis confirmado.
-- La confianza atenúa el texto y las líneas de tempo, carriles, ecos, lente, swing y jitter. Una lectura tenue indica menor confianza, no una interpretación menos precisa. La dispersión rítmica se ve en las alturas de los puntos, **jitter** y las barras. **LOCKED** determina si aparecen pulsos nuevos en la luz y el clic.
-- Cuando el reproductor de EffeTune empieza un tema nuevo, el análisis se reinicia automáticamente desde el principio del tema y la pantalla conserva su historial. El botón **Reset** borra la pantalla y reinicia el análisis, por ejemplo cuando otra aplicación cambia de tema.
-- La entrada estéreo se analiza promediando los dos primeros canales; la entrada mono se usa directamente.
+En una pantalla ancha, **Beat lens** se coloca a la derecha de Timing lanes; en una pantalla alta, todos los paneles se apilan. Los golpes se separan en las filas **High** (hi-hats, platillos), **Mid** (caja, voces, instrumentos) y **Low** (bombo, bajo):
+- **Cabecera**: Muestra la lámpara que destella con el pulso (más débil cuanto menor es la confianza y hueca durante **searching**), el BPM confirmado (**LOCKED** o **searching**), **×½**, **×2**, el candidato **strongest** de Tempogram, la proporción de **swing** (calculada con los últimos 32 pulsos), el **jitter** (dispersión típica de los golpes alrededor de su posición media, en ms) y la leyenda de símbolos. Los valores que aún no están disponibles se muestran como —.
+- **Tempogram**: Historial de 20 segundos del apoyo a cada tempo, con **Time** avanzando de izquierda a derecha y **Tempo (BPM)** de 30 a 480 en escala logarítmica, con la línea continua del tempo **adopted** y las líneas discontinuas **×2** / **×½** superpuestas. El brillo muestra el apoyo relativo a cada tempo, no la probabilidad de que sea el correcto.
+- **Timing lanes**: Muestran los golpes de los últimos *N* pulsos (**Span (beats)**; leyenda **Last N beats**); un punto más grande indica un golpe más seguro, y las posiciones más recientes son estimaciones que se asientan unos 1–2 segundos después. La altura del trazo vertical muestra la microtemporización respecto a la cuadrícula de semicorcheas o de tresillos más cercana, comparada con la temporización típica de los 16 pulsos anteriores (guías punteadas de **+20** / **−20** ms; por encima del centro = tarde, por debajo = pronto; los golpes que superan ±30 ms se quedan en el borde del carril). Los círculos huecos (**○**) son golpes cuya temporización no está disponible (se dibujan en el centro del carril), las zonas sombreadas marcan periodos sin análisis de temporización, los anillos (**◎**) marcan golpes nuevos respecto a 1–2 ciclos antes y las líneas verticales discontinuas marcan los reajustes de la cuadrícula de pulsos.
+- **Echo rows**: Apila verticalmente los ciclos de *N* pulsos anteriores, con el más reciente arriba, para que los patrones de compás que se repiten se alineen en columnas y los redobles o variaciones resalten. **Cycles ago** numera las filas a partir de 1; con **Timing lanes** oculto, la fila superior es el ciclo actual (0). Cada golpe muestra su banda, pero no su temporización.
+- **Beat lens**: Resume, para cada banda, cuánto se adelanta (marca a la izquierda) o se retrasa (marca a la derecha) de media (escala de ±30 ms) y su dispersión (barra sombreada, ± una desviación estándar) en las subdivisiones del pulso (**1**, **e**, **&**, **a**, **⅓**, **⅔**) durante los últimos 32 pulsos confirmados. Los desplazamientos son relativos al conjunto completo, una marca más opaca indica que esa posición se toca con más frecuencia, cada posición necesita al menos cuatro golpes para aparecer y los desplazamientos de 3 ms o más llevan etiqueta. Hasta que el análisis de pulso esté disponible, el panel muestra **waiting for a steady beat**.
+- **Confianza**: Las lecturas más tenues indican menos confianza en el análisis, no una interpretación menos precisa.
+- **Reset**: El botón **Reset** bajo la visualización la borra y reinicia el análisis, por ejemplo cuando otra aplicación cambia de pista. Cuando el reproductor de EffeTune empieza una pista nueva, el análisis se reinicia automáticamente.
 
 ### Visualización
-- Pasa el cursor o toca y arrastra para leer valores. Los carriles y ecos muestran cuántos pulsos han pasado, la banda y la sincronización del golpe más próximo (— si no está disponible). El tempograma muestra tempo, tiempo, **Tempo support** (apoyo relativo, 100% para el tempo más apoyado) y **Adopted**. La lente muestra el desplazamiento y la dispersión de cada banda.
+- Pasa el cursor sobre la pantalla, o tócala y desliza el dedo, para leer los valores: hace cuántos pulsos, la banda y la temporización del golpe más cercano en Timing lanes y Echo rows (— si no está disponible); el tempo, **Tempo support** y el tempo **Adopted** en Tempogram; y el desplazamiento y la dispersión de cada banda en Beat lens.
 
 ### Limitaciones
 
-- La precisión puede bajar con grandes variaciones de tempo, ritmos dispersos, interpretaciones acústicas o piano solo. El sonido ambiente, el ruido y los tonos sostenidos pueden producir pulsos incorrectos; **LOCKED** no garantiza que sean correctos. Compara el clic con el ritmo que oyes y desactívalo si no resulta útil.
-- El analizador puede asentarse en un nivel de pulso distinto al que elegiría un oyente, y entonces el piloto y el clic pueden ir al doble, a la mitad, a dos tercios o a una vez y media el tempo que sientes. En la música clásica, en la tocada con rubato y en alguna otra, además, tarda más en bloquearse y salta brevemente a otro nivel con más frecuencia que en la música de pulso estable. **×½**, **×2** y **strongest** muestran tempos alternativos probables. Si el tempo detectado o la posición del pulso no coinciden con lo que oyes, prueba a acotar el rango con **Min BPM** y **Max BPM** alrededor del tempo esperado y vuelve a escuchar.
-- Con patrones rítmicos escasos, del tipo de la clave, el pulso puede bloquearse en el contratiempo.
-- Cuando el tempo cambia de forma continua, como en una aceleración gradual o un rubato libre, el pulso lo sigue con un pequeño retraso, así que el clic puede sonar algo adelantado o retrasado hasta que el tempo se estabiliza.
-- En algunos temas de tempo estable, la posición del pulso se realinea ocasionalmente, como muestra la línea discontinua, aunque la música no haya cambiado.
-- En mezclas densas y grabaciones ruidosas, los carriles **Mid** y **High** muestran más puntos donde en realidad no sonó ningún instrumento. El carril **Low** pasa por alto algunas notas graves del piano.
-- No hay detección de compás ni de métrica: la pantalla se organiza solo por tiempos y no muestra dónde empieza un compás.
-- El análisis está disponible a 8, 11,025, 16, 22,05, 24, 32, 44,1, 48, 88,2, 96, 176,4, 192, 352,8 y 384 kHz. A otras frecuencias, como 64 kHz, el audio sigue pasando, pero no hay análisis rítmico ni clics. Elige una frecuencia compatible para utilizarlos.
+- El seguimiento del tempo y del pulso es menos seguro con rubato, música clásica, piano solo o pasajes ambientales o sin pulso, y el pulso puede fijarse al doble, a la mitad, a dos tercios o a una vez y media el tempo que percibes, o en el contratiempo (usa **Min BPM** / **Max BPM** para acotar el rango). **LOCKED** no garantiza que el pulso sea correcto.
+- Cuando el tempo cambia de forma continua, el pulso lo sigue con un pequeño retraso, por lo que el clic puede ir ligeramente adelantado o retrasado.
+- En mezclas densas y grabaciones con ruido, los carriles **Mid** y **High** pueden mostrar puntos de más, y el carril **Low** no detecta algunas notas graves del piano.
+- El analizador sigue los pulsos, no las líneas de compás ni el compás (no identifica el pulso 1).
+- Frecuencias de muestreo compatibles: 8, 11,025, 16, 22,05, 24, 32, 44,1, 48, 88,2, 96, 176,4, 192, 352,8 y 384 kHz. Con otras frecuencias, el audio pasa sin cambios, pero el análisis y los clics no están disponibles.
 
 ## Spectrogram
 
-Crea patrones coloridos que muestran cómo cambia tu música con el tiempo. Los colores indican la intensidad de cada sonido, mientras que la posición vertical muestra su frecuencia.
+Muestra cómo cambia tu música con el tiempo. La intensidad del color indica la fuerza de cada frecuencia, mientras que la posición vertical muestra su frecuencia.
 
 El gráfico se desplaza de derecha a izquierda a una velocidad constante, con marcas cada segundo.
 
-### Guía de Visualización
+### Cómo leer la visualización
 - Los colores muestran qué tan fuertes son diferentes frecuencias:
   - Colores oscuros: Sonidos suaves
   - Colores brillantes: Sonidos fuertes
@@ -373,11 +310,12 @@ El gráfico se desplaza de derecha a izquierda a una velocidad constante, con ma
   - Abajo: Sonidos graves
   - Medio: Instrumentos principales
   - Arriba: Frecuencias altas
+- Con **Log (HQ)**, los tonos graves cercanos aparecen como bandas más claramente separadas. La medición más larga de las frecuencias bajas puede tardar algo más en asentarse o desvanecerse.
 
 ### Visualización
 - Pasa el cursor sobre la pantalla, o tócala y desliza el dedo sobre ella, para leer los valores en ese punto.
 
-### Lo Que Puedes Ver
+### Qué puedes ver
 - Melodías: Líneas fluidas de color
 - Ritmos: Franjas verticales
 - Graves: Colores brillantes en la parte inferior
@@ -385,7 +323,6 @@ El gráfico se desplaza de derecha a izquierda a una velocidad constante, con ma
 - Diferentes instrumentos crean patrones únicos
 
 ### Parámetros
-- **Color** - **Normal** usa el color del gráfico del tema y se ilumina con las frecuencias más fuertes. **Heatmap** (predeterminado) conserva la escala multicolor original. El cambio recolorea el historial existente.
 - **DB Range** - Qué tan vibrantes son los colores (-144dB a -48dB)
   - Números más bajos: Ver más detalles sutiles
   - Números más altos: Enfocarse en los sonidos principales
@@ -393,6 +330,7 @@ El gráfico se desplaza de derecha a izquierda a una velocidad constante, con ma
   - Números más altos: Más detalle de frecuencia, pero actualizaciones temporales más lentas
   - Números más bajos: Movimiento más rápido, pero menos detalle de frecuencia
   - Con **Log (HQ)**, Points define la ventana de análisis corta; una ventana cuatro veces más larga mejora la separación de las frecuencias bajas.
+- **Color** - **Normal** usa el color del gráfico del tema y muestra más brillantes las frecuencias más fuertes. **Heatmap** (predeterminado) usa la escala multicolor original, de oscuro a brillante. Al cambiar el color se recolorea el historial existente.
 - **Frequency Scale** - **Log** da más espacio a las frecuencias bajas. **Log (HQ)** añade una medición más larga para separar con mayor claridad los graves cercanos, manteniendo la medición corta para los agudos. Usa más procesamiento y los cambios graves pueden tardar más en aparecer o desaparecer, pero no cambia el audio. **Linear** distribuye intervalos de frecuencia iguales a distancias iguales.
 - **Keyboard** - Muestra a la derecha del gráfico una guía estática de teclado que relaciona las notas musicales con las frecuencias. No cambia el análisis ni el audio. La disposición de las teclas sigue **Log**, **Log (HQ)** o **Linear**; **Log (HQ)** usa el mismo espaciado logarítmico que **Log**, y con **Linear** las teclas graves se ven más estrechas.
 - El analizador usa el promedio de los canales izquierdo y derecho. La entrada mono se analiza directamente.
@@ -401,7 +339,7 @@ El gráfico se desplaza de derecha a izquierda a una velocidad constante, con ma
 
 Crea una visualización en tiempo real de las frecuencias de tu música, desde graves profundos hasta agudos altos. Es como ver los ingredientes individuales que componen el sonido completo de tu música.
 
-### Guía de Visualización
+### Cómo leer la visualización
 - El lado izquierdo muestra frecuencias graves (batería, bajo)
 - El medio muestra frecuencias principales (voces, guitarras, piano)
 - El lado derecho muestra frecuencias altas (platillos, brillo, aire)
@@ -410,19 +348,19 @@ Crea una visualización en tiempo real de las frecuencias de tu música, desde g
 - La línea más fina sigue los picos recientes y desciende suavemente al desaparecer
 - En la visualización **Bar**, cada barra muestra el nivel más alto en una parte de igual ancho de la pantalla. **Log** y **Log (HQ)** usan anchos de octava iguales; **Linear** usa anchos de frecuencia iguales.
 - La marca fina sobre una barra muestra su pico reciente y desciende suavemente.
+- Con **Log (HQ)**, los tonos graves cercanos pueden aparecer como picos separados. Su medición más larga de las frecuencias bajas puede tardar algo más en asentarse o desvanecerse.
 - Observa cómo diferentes instrumentos crean diferentes patrones
 
 ### Visualización
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
-### Lo Que Puedes Ver
+### Qué puedes ver
 - Caídas de Graves: Grandes movimientos a la izquierda
 - Melodías Vocales: Actividad en el medio
 - Agudos Nítidos: Destellos a la derecha
 - Mezcla Completa: Cómo todas las frecuencias trabajan juntas
 
 ### Parámetros
-- **Color** - **Normal** (predeterminado) conserva los colores del gráfico del tema. **Heatmap** ilumina los niveles más altos y **Note Colors** sigue los colores de las notas a lo largo del eje de frecuencias. Se aplica tanto a **Line** como a **Bar**. Con **Bar** y **Note Colors**, cada barra y su marca de pico usan un solo color según la frecuencia central de la banda.
 - **DB Range** - Qué tan sensible es la visualización (-144dB a -48dB)
   - Números más bajos: Ver más detalles sutiles
   - Números más altos: Enfocarse en los sonidos principales
@@ -430,6 +368,7 @@ Crea una visualización en tiempo real de las frecuencias de tu música, desde g
   - Números más altos: Más detalle de frecuencia, con actualizaciones más lentas
   - Números más bajos: Actualizaciones más rápidas, con menos detalle de frecuencia
   - Con **Log (HQ)**, Points define la ventana de análisis corta; una ventana cuatro veces más larga mejora la separación de las frecuencias bajas.
+- **Color** - **Normal** (predeterminado) conserva los colores del gráfico del tema. **Heatmap** ilumina los niveles más altos y **Note Colors** sigue los colores de las notas a lo largo del eje de frecuencias. La elección se aplica tanto a la visualización Line como a Bar. Con **Bar** y **Note Colors**, cada barra y su marca de pico usan un solo color según la frecuencia central de la banda.
 - **Frequency Scale** - **Log** da más espacio a las frecuencias bajas. **Log (HQ)** añade una medición más larga para separar con mayor claridad los graves cercanos, manteniendo la medición corta para los agudos. Usa más procesamiento y los cambios graves pueden tardar más en aparecer o desaparecer, pero no cambia el audio. **Linear** distribuye intervalos de frecuencia iguales a distancias iguales.
 - **Display** - Solo cambia el aspecto del espectro; no cambia el análisis ni el audio.
   - **Line** (predeterminado): Muestra el espectro como líneas continuas.
@@ -437,29 +376,12 @@ Crea una visualización en tiempo real de las frecuencias de tu música, desde g
 - **Keyboard** - Muestra debajo del gráfico una guía estática de teclado que relaciona las notas musicales con las frecuencias. No cambia el análisis ni el audio. La disposición de las teclas sigue **Log**, **Log (HQ)** o **Linear**; **Log (HQ)** usa el mismo espaciado logarítmico que **Log**, y con **Linear** las teclas graves se ven más estrechas.
 - El analizador usa el promedio de los canales izquierdo y derecho. La entrada mono se analiza directamente.
 
-### Formas Divertidas de Usar Estas Herramientas
-
-1. Explorando Tu Música
-   - Observa cómo diferentes géneros crean diferentes patrones
-   - Ve la diferencia entre música acústica y electrónica
-   - Observa cómo los instrumentos ocupan diferentes rangos de frecuencia
-
-2. Aprendiendo Sobre el Sonido
-   - Ve los graves en la música electrónica
-   - Observa las melodías vocales moverse a través de la visualización
-   - Observa cómo la batería crea patrones nítidos
-
-3. Mejorando Tu Experiencia
-   - Usa el Level Meter para revisar los picos de señal después de añadir efectos
-   - Mira el Spectrum Analyzer bailar con la música
-   - Crea un espectáculo de luces visual con el Spectrogram
-
 ## Stereo Meter
 
 Una fascinante herramienta de visualización que te permite ver cómo tu música crea una sensación de espacio a través del sonido estéreo. Observa cómo diferentes instrumentos y sonidos se mueven entre tus altavoces o auriculares, añadiendo una emocionante dimensión visual a tu experiencia de escucha.
 
-### Guía de Visualización
-- **Pantalla de Diamante** - La ventana principal donde la música cobra vida:
+### Cómo leer la visualización
+- **Pantalla en rombo** - La ventana principal donde la música cobra vida:
   - Centro: Momentos muy silenciosos o momentos en los que la señal combinada está cerca de cero
   - Arriba/Abajo: Sonido compartido por los canales izquierdo y derecho, como contenido centrado o cercano a mono
   - Izquierda/Derecha: Contenido de diferencia o fuera de fase entre canales
@@ -478,7 +400,7 @@ Una fascinante herramienta de visualización que te permite ver cómo tu música
   - Izquierda/Derecha: Música más fuerte en un altavoz
   - Los números muestran cuánto más fuerte en decibelios (dB)
 
-### Lo Que Puedes Ver
+### Qué puedes ver
 - **Sonido Centrado**: Movimiento vertical fuerte en el medio
 - **Sonido Espacioso**: Actividad extendida por toda la pantalla
 - **Efectos Especiales**: Patrones interesantes en las esquinas
@@ -508,4 +430,21 @@ Una fascinante herramienta de visualización que te permite ver cómo tu música
    - Compara grabaciones antiguas y nuevas de tus canciones favoritas
    - Observa cómo diferentes posiciones de escucha cambian la visualización
 
-¡Recuerda: Estas herramientas están diseñadas para mejorar tu disfrute de la música agregando una dimensión visual a tu experiencia de escucha. ¡Diviértete explorando y descubriendo nuevas formas de ver tu música favorita!
+## Formas Divertidas de Usar Estas Herramientas
+
+1. Explorando Tu Música
+   - Observa cómo diferentes géneros crean diferentes patrones
+   - Ve la diferencia entre música acústica y electrónica
+   - Observa cómo los instrumentos ocupan diferentes rangos de frecuencia
+
+2. Aprendiendo Sobre el Sonido
+   - Ve los graves en la música electrónica
+   - Observa las melodías vocales moverse a través de la visualización
+   - Observa cómo la batería crea patrones nítidos
+
+3. Mejorando Tu Experiencia
+   - Usa el Level Meter para revisar los picos de señal después de añadir efectos
+   - Mira el Spectrum Analyzer bailar con la música
+   - Crea un espectáculo de luces visual con el Spectrogram
+
+Recuerda: estas herramientas están pensadas para que disfrutes más de la música añadiendo una dimensión visual a tu experiencia de escucha. ¡Diviértete explorando y descubriendo nuevas formas de ver tu música favorita!

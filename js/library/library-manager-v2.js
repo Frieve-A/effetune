@@ -469,6 +469,7 @@ export class LibraryManagerV2 {
       ? { handle: options }
       : { ...(options && typeof options === 'object' ? options : {}) };
     request.languageHints = this.#getMetadataRepairHints();
+    request.includeVideo = this.windowRef?.appConfig?.libraryIncludeVideo === true;
     return this.#invokeService(this.folderService, 'addFolder', 'folderService', [request]);
   }
 
@@ -476,8 +477,10 @@ export class LibraryManagerV2 {
     return this.#invokeService(this.folderService, 'removeFolder', 'folderService', args);
   }
 
-  requestFolderAccess(...args) {
-    return this.#invokeService(this.folderService, 'requestFolderAccess', 'folderService', args);
+  requestFolderAccess(folderId, options = {}) {
+    return this.#invokeService(this.folderService, 'requestFolderAccess', 'folderService', [
+      folderId, { ...options, includeVideo: this.windowRef?.appConfig?.libraryIncludeVideo === true }
+    ]);
   }
 
   scanFolders(options = {}) {
@@ -485,6 +488,7 @@ export class LibraryManagerV2 {
       ? { folderIds: options }
       : { ...(options && typeof options === 'object' ? options : {}) };
     request.languageHints = this.#getMetadataRepairHints();
+    request.includeVideo = this.windowRef?.appConfig?.libraryIncludeVideo === true;
     return this.#invokeService(this.scanService, 'scanFolders', 'scanService', [request]);
   }
 

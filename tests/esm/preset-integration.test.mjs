@@ -801,5 +801,6 @@ test('getAudioMimeType maps supported extensions and defaults safely', () => {
   assert.equal(getAudioMimeType('track.m4a'), 'audio/mp4');
   assert.equal(getAudioMimeType('track.aac'), 'audio/aac');
   assert.equal(getAudioMimeType('track.webm'), 'audio/webm');
+  assert.equal(getAudioMimeType('track.mkv'), 'video/x-matroska');
   assert.equal(getAudioMimeType('track.unknown'), 'audio/mpeg');
 });

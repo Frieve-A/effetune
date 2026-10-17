@@ -77,7 +77,7 @@
     "coverage": "这是简短的入口页面。v{version} 的完整文档以英文维护。",
     "fullDocs": "完整英文文档",
     "demo": "在线演示",
-    "chainSchema": "Chain v1 架构",
-    "bundleSchema": "Bundle v1 架构"
+    "chainSchema": "Chain v1 模式",
+    "bundleSchema": "Bundle v1 模式"
   }
 }

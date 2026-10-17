@@ -8,11 +8,6 @@ lang: pt
 
 Uma coleção de ferramentas essenciais para ajustar os aspectos fundamentais da reprodução da sua música. Esses plugins ajudam você a controlar o volume, o equilíbrio e outros aspectos básicos da sua experiência auditiva.
 
-<!-- spectrum-overlay -->
-## Sobreposição de espectro
-
-Pressione o ícone de espectro de um gráfico compatível para alternar entre After, Before + After e Off. After mostra apenas o espectro processado como uma linha azul. Before + After preenche a mudança entre o espectro antes e depois do processamento: a cor quente marca as frequências cujo nível aumentou após o processamento, o azul marca aquelas cujo nível diminuiu e uma linha cinza indica o espectro After. Os espectros de entrada e saída são alinhados ao mesmo instante da reprodução, para que a comparação use o mesmo áudio. O modo **Normal** aplica suavização de 1/12 de oitava; o modo **Alta qualidade** analisa as frequências baixas com mais detalhe. Use a comparação para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia os níveis do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. Em Configuração, escolha **Normal** ou **Alta qualidade** para a qualidade do espectro sobreposto e **Valor instantâneo** ou **Retenção de pico** para a exibição. A retenção de pico mantém os máximos recentes visíveis e os reduz gradualmente. Em After, apenas o espectro processado é coletado; em Off, a coleta e o desenho são interrompidos.
-
 ## Lista de Plugins
 
 * [Bass Management](#bass-management) - Envia graves gerenciados e LFE para as saídas de subwoofer escolhidas
@@ -25,6 +20,11 @@ Pressione o ícone de espectro de um gráfico compatível para alternar entre Af
 * [Polarity Inversion](#polarity-inversion) - Inverte a polaridade do sinal para correção ou casos especiais de roteamento
 * [Stereo Balance](#stereo-balance) - Ajusta o equilíbrio esquerdo-direito da sua música
 * [Volume](#volume) - Controla o quão alto a música é reproduzida
+
+<!-- spectrum-overlay -->
+## Sobreposição de espectro
+
+Pressione o ícone de espectro de um gráfico compatível para alternar entre After, Before + After e Off. After mostra apenas o espectro processado como uma linha azul. Before + After preenche a mudança entre o espectro antes e depois do processamento: a cor quente marca as frequências cujo nível aumentou após o processamento, o azul marca aquelas cujo nível diminuiu e uma linha cinza indica o espectro After. Os espectros de entrada e saída são alinhados ao mesmo instante da reprodução, para que a comparação use o mesmo áudio. O modo **Normal** aplica suavização de 1/12 de oitava; o modo **Alta qualidade** analisa as frequências baixas com mais detalhe. Use a comparação para ver como cada ajuste altera graves, médios e agudos enquanto escuta. Leia os níveis do espectro na escala dBFS à direita do gráfico. Ela é separada da escala de ganho do gráfico; 0 dBFS é a referência digital de escala completa, e valores mais baixos são mais silenciosos. Em Configuração, escolha **Normal** ou **Alta qualidade** para a qualidade do espectro sobreposto e **Valor instantâneo** ou **Retenção de pico** para a exibição. A retenção de pico mantém os máximos recentes visíveis e os reduz gradualmente. Em After, apenas o espectro processado é coletado; em Off, a coleta e o desenho são interrompidos.
 
 ## Bass Management
 

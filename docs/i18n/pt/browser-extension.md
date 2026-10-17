@@ -1,53 +1,72 @@
 ---
 title: "Extensão do navegador - Equalizador e efeitos de áudio para Chrome e Edge - EffeTune"
-description: "A extensão processa simultaneamente o áudio de até quatro abas, cada uma com seu próprio Effect Pipeline estéreo."
+description: "Processe o áudio de até quatro abas do Chrome ou Edge com o EffeTune, com predefinições por URL e taxa de amostragem selecionável."
 lang: pt
 ---
 
 # Extensão do navegador EffeTune
 
-A extensão processa simultaneamente o áudio de até quatro abas, cada uma com seu próprio **Effect Pipeline** estéreo. Ela é útil para ouvir um site de vídeo ou música sem abrir o aplicativo de desktop nem configurar um dispositivo de áudio virtual.
+A extensão do navegador EffeTune processa simultaneamente o áudio de até quatro abas do navegador, cada uma com seu próprio Effect Pipeline estéreo. Ela é útil para ouvir sites de vídeo ou música sem iniciar o aplicativo para desktop nem configurar um dispositivo de áudio virtual.
 
-## Compatibilidade e instalação
+Para mais detalhes sobre o tratamento de dados locais e links externos opcionais, leia a [Política de Privacidade da Extensão do Navegador](../../browser-extension-privacy.md). Para obter ajuda, use o [GitHub Issues](https://github.com/Frieve-A/effetune/issues), mas não publique áudio, títulos ou URLs de abas, predefinições, medições, respostas ao impulso nem outras informações privadas em uma issue pública.
 
-Use-a em um PC com Chrome 116 ou posterior, ou uma versão compatível do Microsoft Edge baseada em Chromium. Firefox, Safari, navegadores móveis e navegação privada não são compatíveis. Cada aba usa um pipeline de efeitos estéreo.
+## Compatibilidade
 
-Instale uma extensão recebida de uma loja na própria loja. Para um pacote local, extraia `effetune-extension-<version>.zip` em uma pasta que você manterá. Abra `chrome://extensions` no Chrome ou `edge://extensions` no Edge, ative **Developer mode**, escolha **Load unpacked** e selecione essa pasta. **Load unpacked** não instala o ZIP; recarregue a extensão nessa página depois de substituir arquivos.
+Use a extensão em um PC com Chrome 116 ou posterior, ou em uma versão compatível do Microsoft Edge baseada em Chromium. Firefox, Safari, navegadores móveis e navegação privada não são compatíveis. Cada aba usa um pipeline de efeitos estéreo.
 
-## Iniciar, comparar e parar
+## Instalar um pacote local
+
+Se você obteve a extensão em uma loja do navegador, instale-a por lá. Para um pacote local, extraia `effetune-extension-<version>.zip` em uma pasta que você manterá e carregue a pasta extraída:
+
+1. No Chrome, abra `chrome://extensions`. No Edge, abra `edge://extensions`.
+2. Ative **Developer mode**.
+3. Escolha **Load unpacked** e selecione a pasta extraída da extensão.
+
+**Load unpacked** não instala o arquivo ZIP diretamente. Recarregue a extensão nessa página após substituir arquivos na pasta extraída.
+
+## Iniciar, comparar e parar o processamento
 
 1. Abra a aba cujo áudio deseja processar e inicie a reprodução.
-2. Abra a extensão EffeTune pela barra de ferramentas do navegador.
-3. Escolha **Start on this tab**. Quando a cadeia estiver pronta, o estado muda de **Starting…** para **Processing**.
+2. Abra a extensão EffeTune na barra de ferramentas do navegador.
+3. Escolha **Start on this tab**. O estado muda de **Starting…** para **Processing** quando a cadeia de efeitos está pronta.
 
-Para adicionar outra aba, abra a extensão nela e escolha **Start on this tab**. O pop-up mostra todas as sessões. Até quatro abas podem funcionar ao mesmo tempo; pare uma antes de iniciar a quinta. **Bypass** permite ouvir uma aba sem efeitos mantendo a sessão. **Stop** devolve essa aba à reprodução normal sem interromper as demais.
+Para adicionar outra aba, abra a extensão a partir dessa aba e escolha **Start on this tab**. O pop-up lista todas as sessões. Até quatro abas podem funcionar ao mesmo tempo; pare uma antes de iniciar uma quinta.
 
-O processamento continua se você fechar o pop-up ou o editor. Ao abri-los novamente, eles mostram a aba e o estado atuais. Depois de reiniciar o navegador, inicie uma nova sessão manualmente: a extensão não captura abas automaticamente.
+Use **Bypass** ao lado de uma aba para ouvi-la sem efeitos mantendo a sessão ativa. Escolha **Stop** ao lado dessa aba quando terminar; a aba volta à reprodução normal sem interromper as demais.
 
-## Editar e usar predefinições
+Você pode fechar o pop-up da extensão ou o editor enquanto o processamento continua. Ao abrir qualquer um deles novamente, a aba atual e o estado do processamento serão exibidos. Após reiniciar o navegador, inicie uma nova sessão; a extensão não captura abas automaticamente.
 
-Escolha **Edit pipeline** para abrir o **EffeTune Pipeline Editor**. Você pode adicionar, reordenar, ativar ou desativar efeitos, ajustar parâmetros e usar as visualizações disponíveis como no EffeTune. **Saved preset** e **Apply to selected tab** mudam toda a cadeia no pop-up. No editor, abra **Pipeline Presets** para salvar uma predefinição completa com **Save as**. Para importar ou exportar predefinições completas, abra **Settings** e escolha **Import preset…** ou **Export preset**. Selecione a aba no cabeçalho do editor para exibir sua cadeia e suas análises. Sem sessões ativas, **Offline pipeline** edita a cadeia padrão do próximo início. No pop-up, selecione a aba à qual deseja aplicar a predefinição.
+## Editar o Effect Pipeline e usar predefinições
 
-Escolha **Visualizer** no cabeçalho do editor para ver no [Visualizer](visualizer.md) o áudio processado da aba selecionada; escolha-o novamente para voltar à cadeia. Se essa aba não estiver sendo processada, o Visualizer mostra "Start EffeTune on a tab to show Visualizer.". Títulos das faixas e capas não aparecem na extensão. **Share** e **Import Link** funcionam como no aplicativo web, e os links compartilhados abrem na versão web. Os layouts e predefinições do Visualizer ficam na extensão e não sincronizam com os aplicativos web ou de desktop.
+Escolha **Edit pipeline** para abrir o **EffeTune Pipeline Editor** e selecione a aba desejada no cabeçalho. Adicione, reordene, ative/desative e ajuste efeitos exatamente como no EffeTune; os analisadores acompanham a aba selecionada. Quando nenhuma aba está ativa, **Offline pipeline** edita o pipeline padrão usado na próxima aba que você iniciar.
 
-As predefinições e configurações salvas ficam na extensão; elas não sincronizam automaticamente com os aplicativos web ou de desktop. Se uma predefinição exigir roteamento, efeito ou recurso externo indisponível, ela não será aplicada e a cadeia atual será preservada.
+Selecione **Visualizer** no cabeçalho do editor para ver o áudio processado da aba selecionada no [Visualizer](visualizer.md), ou clique novamente para voltar ao pipeline. Títulos de faixas e capas não são exibidos na extensão, e **Share** / **Import Link** funcionam como no aplicativo web.
 
-Para usar no Room EQ ou no Crosstalk Cancellation uma medição do aplicativo web ou de desktop, exporte-a ali como JSON. No editor da extensão, abra **Settings**, escolha **Import measurement…** e selecione esse arquivo JSON. Inclua as respostas ao impulso na exportação ao usar o Crosstalk Cancellation ou a correção de fase do Room EQ. As medições importadas aparecem imediatamente na lista **Measurement** do Room EQ, permanecem no armazenamento do navegador da extensão e não são sincronizadas automaticamente. Para remover uma cópia importada, selecione-a nessa lista e escolha **Delete** ao lado dela. Após a confirmação, todas as atribuições do Room EQ e do Crosstalk Cancellation que a utilizam são limpas antes da exclusão da cópia.
+Para trocar predefinições rapidamente pelo pop-up, selecione uma aba, escolha um **Saved preset** e clique em **Apply to selected tab**. No editor, use **Pipeline Presets > Save as** para salvar uma predefinição, ou **Settings > Import preset…** / **Export preset** para trocar arquivos `.effetune_preset`. Se uma predefinição exigir roteamento multicanal não suportado, efeitos incompatíveis ou recursos externos ausentes, o pipeline atual permanece inalterado.
 
-Para escolher quais dados salvos transferir, abra **Settings > Backup / Restore** no editor. O mesmo arquivo `.effetune_backup` funciona nos aplicativos web e de desktop e pode incluir predefinições da cadeia, predefinições de efeitos, predefinições do Visualizer, respostas ao impulso e medições importadas. Uma cadeia que use roteamento ou efeitos incompatíveis com a extensão permanece salva e pode entrar em um novo backup, embora não possa ser aplicada na extensão. As regras de URL e a configuração Sample rate da extensão não são incluídas.
+Para usar uma medição de sala ou de alto-falante do aplicativo web ou desktop com **Room EQ** ou **Crosstalk Cancellation**:
+
+1. Exporte a medição como JSON no aplicativo web ou desktop (inclua respostas ao impulso ao usar **Crosstalk Cancellation** ou correção de fase do **Room EQ**).
+2. No editor da extensão, abra **Settings > Import measurement…** e selecione o arquivo JSON.
+3. Selecione a medição importada no **Room EQ** ou no **Crosstalk Cancellation**. Para remover uma cópia importada, selecione-a na lista **Measurement** do Room EQ e escolha **Delete**; após a confirmação, todas as atribuições do Room EQ e do Crosstalk Cancellation que usam essa medição são removidas.
+
+Para transferir predefinições, predefinições de efeitos, predefinições do Visualizer, respostas ao impulso e medições importadas em conjunto entre o aplicativo web, o aplicativo desktop e a extensão, use **Settings > Backup / Restore** (`.effetune_backup`). As predefinições, layouts e medições importadas da extensão ficam armazenados localmente na extensão e não sincronizam automaticamente com o aplicativo web ou desktop. Os backups não incluem as regras de URL nem a configuração de taxa de amostragem da extensão.
 
 ## Predefinições por URL e taxa de amostragem
 
-Em **Settings**, abra **URL rules…**, adicione um padrão, escolha uma predefinição salva e ative a regra. Os padrões usam `host/path`, como `example.com/music/*`; `*` corresponde a qualquer texto. A primeira regra ativa correspondente é usada. Maiúsculas e minúsculas do nome do host não são diferenciadas; protocolo, parâmetros de consulta e fragmento são ignorados. Reordene as regras para definir a prioridade, ou desative ou exclua as que não precisar.
+Abra **Settings > URL rules…** para carregar automaticamente uma predefinição salva quando a URL de uma aba corresponder a um padrão `host/path` (como `example.com/music/*`, em que `*` corresponde a qualquer texto). Você continua iniciando cada aba por conta própria; as regras apenas escolhem a predefinição dela na inicialização e quando a URL muda. A primeira regra ativa correspondente na lista prevalece; se nenhuma regra corresponder, o pipeline padrão é usado. As alterações nas regras passam a valer no próximo início ou na próxima navegação de página. Editar um pipeline carregado por uma regra de URL atualiza a predefinição salva dessa regra, enquanto as demais edições, inclusive as feitas depois de aplicar uma predefinição manualmente, atualizam o pipeline padrão. Excluir uma predefinição desativa as regras que a usam e faz as abas que usavam essas regras voltarem ao pipeline padrão.
 
-Você ainda inicia cada aba manualmente. A predefinição é escolhida no início e quando a URL muda; sem correspondência, a cadeia padrão é usada. As alterações das regras valem a partir do próximo início ou navegação. Editar uma cadeia escolhida por uma regra atualiza essa predefinição salva. As outras edições, inclusive após aplicar uma predefinição manualmente, atualizam a cadeia padrão. Excluir uma predefinição desativa suas regras e devolve as abas que as usam à cadeia padrão.
+**Sample rate** em **Settings** aplica-se a todas as abas ativas (**Auto**, **44.1 kHz**, **48 kHz**, **96 kHz** ou **192 kHz**). **Auto** deixa o navegador escolher. Alterar a taxa reinicia brevemente o processamento nas abas ativas, mantendo as capturas. Se uma aba não puder operar na nova taxa, ela volta à reprodução normal; escolha outra taxa e inicie a aba novamente.
 
-**Sample rate**, em **Settings**, vale para todas as abas ativas: **Auto**, **44.1 kHz**, **48 kHz**, **96 kHz** ou **192 kHz**. Auto deixa o navegador escolher. A mudança reinicia brevemente o processamento de todas as abas, mantendo as capturas. Se uma aba não conseguir funcionar na nova taxa, volta à reprodução normal; escolha outra taxa e inicie o processamento dessa aba novamente.
+## Permissões e limites
 
-## Permissões, limites e ajuda
+A extensão captura áudio apenas das abas em que você clica em **Start on this tab** e lê as URLs dessas abas somente para verificar regras de predefinições por URL. Ela nunca lê o conteúdo das páginas, não injeta scripts, não usa o microfone nem envia áudio pela rede.
 
-A extensão captura áudio apenas das abas onde você inicia explicitamente o processamento. Ela lê suas URLs, inclusive após a navegação, para escolher predefinições salvas. Não lê o conteúdo das páginas, não insere scripts, não usa o microfone, não grava áudio nem o envia para outros serviços.
+Cada aba executa um pipeline estéreo compatível com **Main** e **Bus 1–4**. Saída multicanal (>2 canais), execução de medições acústicas, Biblioteca de música, conversão de arquivos em lote offline e recursos de hardware exclusivos do desktop não estão disponíveis na extensão. Transmissões protegidas (DRM) que bloqueiam a captura pelo navegador retornam à reprodução normal.
 
-Os pipelines estéreo oferecem Bus Routing com Main e Bus 1–4, inclusive caminhos de efeitos paralelos. Mais de dois canais, realização de novas medições e controle de dispositivos, Music Library, conversão de arquivos em lote e recursos exclusivos de desktop que dependem de dispositivos ou caminhos de arquivo não estão disponíveis na extensão.
+## Se algo der errado
 
-Parte do conteúdo protegido pode não estar disponível para captura; a extensão não contorna a proteção. Se a captura não iniciar, o EffeTune interrompe o processamento e a aba volta à reprodução normal. Confirme que a aba está tocando áudio e escolha **Start on this tab** novamente. Se aparecer **Needs attention**, faça o mesmo. Se uma predefinição não for aplicada, a cadeia atual será preservada; troque a predefinição ou disponibilize os recursos necessários antes de tentar de novo.
+- **O estado mostra "Needs attention" ou a captura não inicia:** Certifique-se de que a aba esteja reproduzindo áudio ativamente e clique em **Start on this tab** novamente.
+- **Não é possível aplicar uma predefinição:** O editor mantém o pipeline atual. Verifique se quaisquer medições ou respostas ao impulso necessárias foram importadas para a extensão primeiro.
+
+[← Voltar para o README](README.md)

@@ -19,7 +19,15 @@ export const SUPPORTED_AUDIO_EXTENSIONS = Object.freeze([
   'm4a',
   'aac',
   'webm',
-  'mp4'
+  'mp4',
+  'm4v',
+  'mov',
+  'mkv',
+  '3gp'
+]);
+
+export const SUPPORTED_VIDEO_EXTENSIONS = Object.freeze([
+  'mp4', 'webm', 'm4v', 'mov', 'mkv', '3gp'
 ]);
 
 export const SUPPORTED_PLAYLIST_EXTENSIONS = Object.freeze([
@@ -31,6 +39,7 @@ export const SUPPORTED_PLAYLIST_EXTENSIONS = Object.freeze([
 export const SUPPORTED_CUE_EXTENSIONS = Object.freeze(['cue']);
 
 export const SUPPORTED_AUDIO_EXTENSION_SET = new Set(SUPPORTED_AUDIO_EXTENSIONS);
+export const SUPPORTED_VIDEO_EXTENSION_SET = new Set(SUPPORTED_VIDEO_EXTENSIONS);
 export const SUPPORTED_PLAYLIST_EXTENSION_SET = new Set(SUPPORTED_PLAYLIST_EXTENSIONS);
 export const SUPPORTED_CUE_EXTENSION_SET = new Set(SUPPORTED_CUE_EXTENSIONS);
 export const DEFAULT_SCAN_BATCH_SIZE = 200;
@@ -61,6 +70,14 @@ export function stripExtension(fileName = '') {
 
 export function isSupportedAudioPath(pathOrName = '') {
   return SUPPORTED_AUDIO_EXTENSION_SET.has(getFileExtension(pathOrName));
+}
+
+export function isSupportedVideoPath(pathOrName = '') {
+  return SUPPORTED_VIDEO_EXTENSION_SET.has(getFileExtension(pathOrName));
+}
+
+export function isSupportedLibraryPath(pathOrName = '', includeVideo = false) {
+  return isSupportedAudioPath(pathOrName) && (includeVideo === true || !isSupportedVideoPath(pathOrName));
 }
 
 export function isSupportedPlaylistPath(pathOrName = '') {

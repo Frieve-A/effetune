@@ -41,8 +41,6 @@ Applies saturation whose drive responds to the input level.
 
 A physics-based effect that simulates the nonlinear displacement of speaker cones under different conditions. By modeling the mechanical behavior of a speaker and then applying saturation to that displacement, it creates a unique form of distortion that responds dynamically to your music.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - **Subtle Enhancement:**
   - Adds gentle warmth and slight rounded-peak behavior
@@ -66,6 +64,8 @@ Click **Effect Presets** in the effect header to compare complete cone-motion se
 - **Ragged Cone** - The most pronounced, deliberately rough cone character.
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Speaker Drive** (0.0-10.0) - Controls how strongly the audio signal moves the cone
   - Low values: Subtle movement and gentle effect
   - High values: Dramatic movement and stronger character

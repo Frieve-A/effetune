@@ -27,28 +27,15 @@ such an effect directly and supply its asset.
 
 ## Visual editor to code
 
-The example below exports an asset-free stereo app pipeline, imports it explicitly, and
+The example below imports an asset-free stereo app preset and
 processes a fixed stereo input through the canonical Chain. The import report identifies
 editor-only metadata that is intentionally discarded; unsupported fields are not
 silently dropped.
 
-Input exported by the visual editor:
-
-```json
-{
-  "name": "DSP docs Volume",
-  "plugins": [
-    {
-      "nm": "Volume",
-      "en": true,
-      "ch": "A",
-      "vl": -6
-    }
-  ]
-}
-```
-
-Golden long-format export with `Date.now()` frozen to `1710000000000`:
+In the desktop app, build a pipeline containing only Volume at -6 dB, choose
+**File > Export Preset...**, and save it as `listening.effetune_preset` in your
+working directory (the export is named after the preset by default). Alternatively,
+save the following example under that name:
 
 ```json
 {
@@ -67,17 +54,17 @@ Golden long-format export with `Date.now()` frozen to `1710000000000`:
 }
 ```
 
-Import and process that exact golden:
+Run this Python example from the same directory. It checks that the imported
+preset applies the expected gain to a short stereo signal:
 
 ```python
 import json
-import os
 from pathlib import Path
 
 import numpy as np
 import effetune as et
 
-exported = json.loads(Path(os.environ["DSP_VISUAL_GOLDEN"]).read_text("utf-8"))
+exported = json.loads(Path("listening.effetune_preset").read_text("utf-8"))
 chain, report = et.Chain.from_legacy_preset(exported)
 assert isinstance(report.warnings, tuple)
 audio = np.ones((2, 256), dtype=np.float32) * np.float32(0.25)

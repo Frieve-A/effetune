@@ -32,7 +32,7 @@ const libraryCatalogV1 = Object.freeze({
   queryPlaylistItems: (request) => ipcRenderer.invoke('library-catalog-v1:query-playlist-items', request),
   tombstonePlaylist: (request) => ipcRenderer.invoke('library-catalog-v1:tombstone-playlist', request),
   addFolder: (request = {}) => ipcRenderer.invoke('library-catalog-v1:add-folder', request),
-  requestFolderAccess: (folderId) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId }),
+  requestFolderAccess: (folderId, options = {}) => ipcRenderer.invoke('library-catalog-v1:request-folder-access', { folderId, includeVideo: options.includeVideo === true }),
   scanFolders: (request) => ipcRenderer.invoke('library-catalog-v1:scan-folders', request),
   cancelScan: (scanId) => ipcRenderer.invoke('library-catalog-v1:cancel-scan', { scanId }),
   removeFolder: (folderId) => ipcRenderer.invoke('library-catalog-v1:remove-folder', { folderId }),
@@ -294,9 +294,11 @@ contextBridge.exposeInMainWorld(
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
     openPlaybackSelection: () => ipcRenderer.invoke('open-playback-selection'),
+    prepareLocalPlaybackSource: filePath => ipcRenderer.invoke('prepare-local-playback-source', filePath),
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     readTrackLyrics: request => ipcRenderer.invoke('read-track-lyrics', request),
+    readTrackTags: filePath => ipcRenderer.invoke('read-track-tags', filePath),
     getPathForFile: file => webUtils.getPathForFile(file),
     readFileBytes: (filePath, expectedByteLength) => {
       if (expectedByteLength === undefined) {

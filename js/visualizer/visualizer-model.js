@@ -11,7 +11,10 @@ export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo'
 // so the same geometry looks identical regardless of the output canvas size or window scale.
 export const REFERENCE_WIDTH = 1280;
 export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'guitar', 'chroma', 'phase'];
-export const META_TYPES = ['artwork', 'title', 'album', 'artist'];
+export const META_TYPES = ['artwork', 'video', 'title', 'album', 'artist'];
+// Picture items show the playing track's artwork or video frames and have no palette.
+export const PICTURE_TYPES = ['artwork', 'video'];
+export const VIDEO_FITS = ['contain', 'cover', 'stretch'];
 export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'rhythm-analyzer'];
 export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'shape'];
 export const SHAPES = ['rectangle', 'ellipse', 'triangle', 'line'];
@@ -236,6 +239,11 @@ function normalizeStyle(type, input) {
             .filter(([key]) => Object.hasOwn(style, key)).map(([key, rule]) => [key, rule(style[key])]))
     };
     if (type === 'artwork') return { rounded: style.rounded === true };
+    if (type === 'video') return {
+        fit: choice(style.fit, VIDEO_FITS, 'contain'),
+        rounded: style.rounded === true,
+        artworkFallback: style.artworkFallback !== false
+    };
     if (type === 'shape') return {
         shape: choice(style.shape, SHAPES, 'rectangle'),
         fillOpacity: Math.round(number(style.fillOpacity, 1, 0, 1) * 100) / 100,
@@ -419,7 +427,7 @@ export function normalizeParams(type, input) {
 }
 
 export function paletteModesForType(type) {
-    if (type === 'artwork') return [];
+    if (PICTURE_TYPES.includes(type)) return [];
     const modes = ['solid', 'gradient'];
     if (['spectrum', 'notes', 'guitar', 'chroma'].includes(type)) modes.push('note-colors');
     if (['spectrum', 'spectrogram', 'chroma', 'level-meter', 'phase'].includes(type)) modes.push('heatmap');
@@ -429,13 +437,13 @@ export function paletteModesForType(type) {
 function itemPalette(type, value) {
     const octave = type === 'notes' || type === 'guitar' || type === 'chroma';
     const palette = normalizePalette(value, octave ? 13 : 8);
-    if (type !== 'artwork') {
+    if (!PICTURE_TYPES.includes(type)) {
         palette.mode = choice(value?.mode, paletteModesForType(type), 'solid');
         palette.color = color(value?.color, '#40dfff'); // theme-allow: Editable scene palette fallback.
     }
     if (octave) palette.mapping = choice(value?.mapping, ['range', 'octave'], 'range');
     // Optional keys preserve the native coloring of layouts saved without a direction or angle.
-    if (type !== 'artwork') {
+    if (!PICTURE_TYPES.includes(type)) {
         const frequency = GRADIENT_DIRECTION_TYPES.includes(type);
         if (value?.direction !== undefined)
             palette.direction = choice(value.direction, frequency ? ['frequency', 'intensity', 'radial'] : ['linear', 'radial'],

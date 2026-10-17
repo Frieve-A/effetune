@@ -26,10 +26,6 @@ EffeTune was created for audio enthusiasts who want to elevate their music liste
 
 No audiophile myths, Just pure science.
 
-### Browser Extension
-
-Process up to four Chrome or Edge tabs with separate effect pipelines, URL-based preset selection, and a selectable sample rate, without a virtual audio device. See the [Browser Extension guide](docs/browser-extension.md).
-
 ## Features
 
 - Real-time audio processing
@@ -44,26 +40,30 @@ Process up to four Chrome or Edge tabs with separate effect pipelines, URL-based
 - Frequency response measurement and correction for system calibration
 - Multi-channel processing and output
 - Mobile-friendly web layout for phone and tablet use
-- Mobile numeric keypad with decimal-point, sign, and range controls for effect parameters
-- Web app settings and audio configuration saved in the browser
-- Installable web app with offline app-shell support
-- Power saving for Web/PWA and desktop apps, with configurable silence handling and audio-input retention
 
 ## Setup Guide
 
-Before using EffeTune, you'll need to set up your audio routing. Here's how to configure different audio sources:
+Choose the setup below that matches the audio source you want to listen to.
 
 ### Music File Player Setup
 
 - Open the EffeTune web app in your browser, or launch the EffeTune desktop app
 - Open and play a music file to ensure proper playback
-   - Open a music file and select EffeTune as the application (desktop app only)
+   - Click the **Open music files** button and select a music file
+   - Or open a music file and select EffeTune as the application (desktop app only)
    - Or select Open music file... from the File menu (desktop app only)
    - Or drag the music file into the window
 - For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input
-- A short fade-out when pausing or closing the player with × and a short fade-in when resuming reduce clicks.
-- Open the playback speed button next to Shuffle to show its popup. Choose one of the nine presets, or use the horizontal slider or number field to set a speed from 0.25x to 4x in 0.01x steps. The **Preserve Pitch** button next to it is on by default, so pitch stays the same as speed changes; turn it off to let pitch rise and fall with speed, like changing the speed of a tape or record.
-- In the desktop app, choose **View > Mini Player** (Ctrl/Cmd+Shift+M) or use the player’s mini-player button to keep playback controls in a compact window. The pin button keeps it above other windows.
+
+[Music Player](docs/music-player.md)
+
+### Browser Extension Setup
+
+Process up to four Chrome or Edge tabs with separate effect pipelines, URL-based preset selection, and a selectable sample rate, without a virtual audio device. See the [Browser Extension guide](docs/browser-extension.md).
+
+1. Install the EffeTune extension for [Chrome](https://chromewebstore.google.com/detail/effetune/fhjhnpepnhkcdggogicifibfegpbhibp) or [Edge](https://microsoftedge.microsoft.com/addons/detail/effetune/kjpcfdidpphaclfkfdahchhibgjcngdk).
+2. Play audio in the tab you want to process, open EffeTune from the browser toolbar, and choose **Start on this tab**.
+3. Choose **Edit pipeline** to add effects and adjust the sound.
 
 ### Streaming Service Setup
 
@@ -100,27 +100,6 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 On your first launch, a short tour shows you where to play music, add effects, and adjust your sound. You can reopen it anytime with **Take the tour** in the settings menu, the desktop app's **Help** menu, or the menu button on mobile.
 
-### Application Settings
-
-Open **Settings > Config...** to choose **Language**, set **Startup view:**, and configure **Effect Pipeline at startup:**. **Startup view:** can be **Effect Pipeline (Default)**, **Music Library**, or **Visualizer**. When you choose Music Library, use its list to select **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, or **Playlists** as the first library view. Use **Theme** to choose the app colors: Graphite (default), Paper, Midnight, Ember, or Mint.
-
-Supported desktop builds can also be controlled by OpenHome apps on the same local network. This is off by default; see [OpenHome Remote Control](docs/music-library.md#openhome-remote-control-desktop-app) for setup, network access, compatibility, and limitations.
-
-### Browsing Your Music Library
-
-1. Open **Music Library** from the PC header, the mobile **Library** tab, or **View > Music Library** in the desktop app.
-2. Select **Add Music Folder** to index a folder of music files. External CUE sheets can divide WAV or FLAC album files in the same folder into individual tracks.
-3. Browse **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, **Recently Added**, or **Playlists**, and use **Search library** to search the catalog. **Subfolders** groups tracks by their containing path inside each indexed root, while **Folders** manages those roots.
-4. Use **Play** to listen through the current effect pipeline, or use **Play Next**, **Add to Queue**, and **Add to Playlist** to manage playback.
-5. Use **Rescan** after changing files, and **Reconnect** if a browser or folder permission is lost.
-   - [More about Music Library](docs/music-library.md)
-
-In both PC and mobile layouts, track searches and album, artist, genre, subfolder, and playlist details select all matching tracks by default when there are 300 tracks or fewer; results with 301 tracks or more are not selected automatically. On mobile, automatic selection changes only the selection state. Only long-pressing a track enters selection mode and shows checkboxes, **Select All**, and **Deselect All**; selecting or deselecting tracks does not enter or leave that mode, and the usual row actions remain available.
-
-PC Chromium browsers can keep access to selected music folders between sessions. In Safari, Firefox, mobile browsers, and other browsers without persistent folder access, select the folder or files again after each reload; EffeTune reconnects them to the existing catalog.
-
-Large collections load in stages from storage; scanning and loading speed depends on your device, collection, and available memory. Very fast scrolling can briefly show blank rows while the next tracks load, especially on slow storage.
-
 ### Building Your Effect Chain
 
 1. Available effects are listed on the left side of the screen
@@ -142,13 +121,28 @@ Large collections load in stages from storage; scanning and loading speed depend
    - For Section effects: Shift+click the × button to remove entire sections
 9. Click the routing button to set the channels to be processed and the input and output busses
    - [More about bus functions](docs/bus-function.md)
-   - [Control effect parameters with MIDI, gamepads, or the keyboard](docs/controller-mapping.md)
 10. Click an effect's Effect Presets button to save or apply settings for that effect only
-11. For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
-   - For sliders with both negative and positive values, the fill extends from 0 to the current value. Ratio sliders use 1.0 as their starting point.
-12. On supported frequency and note graphs, drag along the graph's axis to preview the selected frequency through the effect chain. In **Config > General > Frequency Preview Sound**, choose **Sine Wave** (default, -12 dB) or **Band-pass Noise**, which plays noise centered on that frequency. Note Spectrogram, Pitch Meter, Chroma Spiral, and piano-key displays always use a sine wave. Piano-key displays snap to the nearest semitone; dragging over a key previews that key's pitch
+
+### Browsing Your Music Library
+
+You can organize the music files stored on your device in a library.
+
+1. Open **Music Library** from the PC header, the mobile **Library** tab, or **View > Music Library** in the desktop app.
+2. Select **Add Music Folder** to index a folder of music files. External CUE sheets can divide WAV or FLAC album files in the same folder into individual tracks.
+3. Browse **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Folders**, **Recently Added**, or **Playlists**, and use **Search library** to filter your collection.
+4. Use **Play** to listen through the current effect pipeline, or use **Play Next**, **Add to Queue**, and **Add to Playlist** to manage playback.
+5. Use **Rescan** after changing files, and **Reconnect** if a browser or folder permission is lost.
+   - [More about Music Library](docs/music-library.md)
+
+### Visualizer
+
+You can enjoy visualizations based on the music that is playing.
+
+Open **Visualizer** from the PC header, the mobile **Player** tab, or the desktop **View** menu. Choose a built-in layout or select **Edit** to arrange audio graphs, artwork, and track information. Changes take effect immediately and return at the next launch; use the preset dialog to save a named copy. Hover over or tap the display and select **⛶** to fill the app window. See the [Visualizer guide](docs/visualizer.md) for editing, effects, and display options.
 
 ### Using Presets
+
+You can save and load the effect pipelines you create.
 
 Click the **Pipeline Presets** button in the Effect Pipeline header to open the preset dialog.
 
@@ -162,15 +156,17 @@ Each effect also has its own **Effect Presets** button. It opens system presets 
 
 The existing `.effetune_preset` file import, export, and sharing features continue to use complete effect-chain presets.
 
-### Backing Up and Restoring Saved Data
+### Common Effect Controls
 
-Open **Settings > Backup / Restore** to move saved pipeline presets, effect presets, impulse responses, and measurements between the web app, desktop app, and browser extension. Named Visualizer presets can also be backed up in the web and desktop apps; the current working layout is not included. Select individual items or whole categories. A preset automatically selects data that it needs; clearing required data also clears presets that depend on it.
+- For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
+   - For sliders with both negative and positive values, the fill extends from 0 to the current value. Ratio sliders use 1.0 as their starting point.
+- On supported frequency and note graphs, drag along the graph's axis to preview the selected frequency through the effect chain. In **Config > General > Frequency Preview Sound**, choose **Sine Wave** (default, -12 dB) or **Band-pass Noise**, which plays noise centered on that frequency. Note Spectrogram, Pitch Meter, Chroma Spiral, and piano-key displays always use a sine wave. Piano-key displays snap to the nearest semitone; dragging over a key previews that key's pitch
 
-**Include measurement data** and **Include impulse response data** are on by default, making the backup self-contained. Turning either option off stores references for that type. Those references can be restored only when matching data already exists at the destination. Restored impulse responses go into EffeTune's managed **Impulse Response Library**. Existing identical data is reused, while a different item with the same name is added under a numbered name. The current pipeline, volume, selected preset, device settings, and extension URL rules are not changed.
-
-Each `.effetune_backup` file is limited to 256 MB; create separate backups when your selection is larger. If restoration stops, completed items remain available and you can safely restore the same file again. Before sharing a backup, review the selection: it can contain preset names and comments, original impulse-response files, and measurement details. Music files, Music Library data, application preferences, device choices, URL rules, credentials, and an unsaved current pipeline are not included. A preset can be carried to the browser extension even when its routing or effects cannot be applied there; it remains saved and can be backed up again.
+[Control effect parameters with MIDI, gamepads, or the keyboard](docs/controller-mapping.md)
 
 ### Using Section Features
+
+You can group multiple effects and control them together.
 
 1. Section Effect Usage:
    - Add a Section effect at the beginning of a group of effects
@@ -180,6 +176,8 @@ Each `.effetune_backup` file is limited to 256 MB; create separate backups when 
    - [More about control effects](docs/plugins/control.md)
 
 ### Using AB Pipeline Features
+
+You can switch between two effect pipelines to compare how they sound.
 
 1. AB Pipeline Overview:
    - EffeTune can maintain two separate effect pipelines: Pipeline A and Pipeline B
@@ -240,6 +238,8 @@ Each `.effetune_backup` file is limited to 256 MB; create separate backups when 
 
 ### Processing Audio Files
 
+You can apply the effect chain to music files and save the processed audio as new files.
+
 1. File Drop or File Specification Area:
    - A dedicated drop area is always visible below the Effect Pipeline
    - Supports single or multiple audio files
@@ -258,13 +258,31 @@ Each `.effetune_backup` file is limited to 256 MB; create separate backups when 
 
 ### Sharing Effect Chains
 
-You can share your effect chain configuration with other users:
+You can share your effect chain configuration with other users.
 1. After setting up your desired effect chain, click the "Share" button in the top-right corner of the Effect Pipeline area
 2. The web app URL will be automatically copied to your clipboard
 3. Share the copied URL with others - they can recreate your exact effect chain by opening it
 4. Shared URLs store the effect settings needed for reproduction; the web app also restores your normal working state from browser storage
-5. In the desktop app version, export the settings to an effetune_preset file from the File menu
-6. Share the exported effetune_preset file. The effetune_preset file can also be loaded by dragging it into the web app window
+5. In the desktop app version, export the settings to an `.effetune_preset` file from the File menu
+6. Share the exported `.effetune_preset` file. The `.effetune_preset` file can also be loaded by dragging it into the web app window
+
+### Backing Up and Restoring Saved Data
+
+Open **Settings > Backup / Restore** to move saved pipeline presets, effect presets, impulse responses, and measurements between the web app, desktop app, and browser extension. In the web and desktop apps, named Visualizer presets can also be included. Selecting a preset automatically selects any measurement or impulse-response data it uses.
+
+**Include measurement data** and **Include impulse response data** are enabled by default so backups are self-contained. Turn either option off only when the destination already has the matching measurement or impulse-response files. Restored impulse responses are added to EffeTune's **Impulse Response Library**. Restoring a backup does not change the current pipeline, volume, selected preset, device settings, Music Library, or extension URL rules. Each `.effetune_backup` file supports up to 256 MB; split larger backups into separate files if needed. If restoration stops, completed items remain and you can safely restore the same file again.
+
+Before sharing a backup, review the selection: it can contain preset names and comments, original impulse-response files, and measurement details. Music files, Music Library data, application preferences, device choices, URL rules, credentials, and an unsaved current pipeline are not included.
+
+### Application Settings
+
+Open **Settings > Config...** to choose **Language**, set **Startup view:** (`Effect Pipeline (Default)`, `Music Library`, or `Visualizer`), configure **Effect Pipeline at startup:**, and select a **Theme** (`Graphite`, `Paper`, `Midnight`, `Ember`, or `Mint`). When **Startup view:** is set to **Music Library**, you can also choose which library category opens first.
+
+For **Effect Pipeline columns**, choose **Manual** to adjust the column count with the +/− buttons, or **Automatic** (default) to fit the columns alongside the effect list within the window width. Automatic mode adjusts the column count when you resize the window.
+
+### Frequency Response Measurement and Correction
+
+Measure your audio system with a microphone and create a correction EQ that can be imported into EffeTune; see [Frequency Response Measurement and Correction](docs/measurement.md) and the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
 
 ### Audio Reset
 
@@ -273,34 +291,9 @@ If you experience audio issues (dropouts, glitches):
 2. The audio pipeline will be rebuilt automatically
 3. Your effect chain configuration will be preserved
 
-### Frequency Response Measurement and Correction
+### OpenHome Remote Control (Desktop App)
 
-To measure your audio system's frequency response and create a flat correction EQ:
-1. Launch the [Frequency Response Measurement tool](https://effetune.frieve.com/features/measurement/measurement.html), or select Frequency Response Measurement from the Settings menu.
-2. Follow the guided setup to configure your measurement microphone and output device
-3. Measure your system's frequency response at one or more listening positions
-4. Generate a parametric EQ correction that can be directly imported into EffeTune
-5. Apply the correction to achieve a more accurate, neutral sound reproduction
-
-Set **Output Device Channels** to match your output device: **6** for 5.1 or **8** for 7.1. Output channel and per-channel bandwidth choices stay within this range. Test signals, measurements, and individual channel remeasurement use this count even when only some channels are selected. For example, keep **6** when measuring only Ch 3 (center) and Ch 4 (subwoofer) on a 5.1 device.
-
-For a multichannel system, select **All Channels** to measure all outputs together, or select individual **Output Channel** entries to measure them one at a time. Under **Advanced Settings**, choose **Off**, **Same for All Channels**, or **Per Channel** for sweep bandwidth. With **Per Channel**, use **Channel to Configure** to set each selected output channel's frequency range. During level adjustment, **Channel Mode** starts at **Automatic Rotation**; select a test-signal channel or **Manual** when needed.
-
-If you already have an impulse-response WAV file, choose **Import** and select it. EffeTune saves each WAV channel as a measurement result, so you can select it in Room EQ and anywhere else that uses saved measurements.
-
-To remove the audio interface's own response, connect its output directly to its input and save that loopback as a normal, uncalibrated measurement with an impulse response. For the next measurement, choose that saved point under **Audio Interface Calibration**. Use the same interface, input and output channels, sampling rate, and input/output gains, and do not change the gains after the loopback measurement. Choose **None (uncalibrated)** to measure without this correction.
-
-Saved measurements with impulse-response data show a normalized **Impulse Response** plot in the results. It opens at 0–10 ms from the detected onset. Use the mouse wheel or buttons to zoom the time axis, and drag the plot or use the slider to scroll. Selecting a measurement point updates the plot; **All (Average)** displays the first point that has saved impulse-response data and identifies it above the graph. Use **Export Impulse Response (WAV)** below the plot to save the displayed point's complete, unnormalized response as a mono 32-bit floating-point WAV at the measurement sample rate.
-
-To inspect the active pipeline's Frequency, Phase, Min Group Delay, Excess Group Delay, and Impulse responses—including up to four selected outputs and optional saved speaker responses—see the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
-
-### Visualizer
-
-Open **Visualizer** from the PC header, the mobile **Player** tab, or the desktop **View** menu. Choose a built-in layout or select **Edit** to arrange audio graphs, artwork, and track information. Changes take effect immediately and return at the next launch; use the preset dialog to save a named copy. Hover over or tap the display and select **⛶** to fill the app window. See the [Visualizer guide](docs/visualizer.md) for editing, effects, and display options.
-
-### Gapless Playback
-
-**Gapless Playback** is on by default and can be changed in **Audio Configuration**. When it is on, compatible local tracks play without a gap; support is limited by the file format and the current browser or app environment. Unsupported formats and some mobile environments automatically use a memory-safe fallback, so a short gap may still occur. Turning it off prioritizes lower memory use and stability, and may add a short gap between tracks. Changing the setting does not interrupt the current track. Gapless playback is unavailable while playback speed is not 1x; changing speed during a track that was playing gaplessly restarts it from the same position with a brief interruption.
+Supported desktop builds can be controlled by OpenHome apps on the same local network. This is off by default; see [OpenHome Remote Control](docs/openhome.md) for setup, network access, compatibility, and limitations.
 
 ### Control EffeTune with an AI Assistant (MCP)
 
@@ -354,11 +347,11 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 
 ## Available Effects
 
-  | Category | Effect | Description | Documentation |
-  |-----------|--------|-------------|---------------|
-  | Analyzer  | Analog Meter | Shows channel levels on a needle meter with VU, PPM, peak, and loudness scales | [Details](docs/plugins/analyzer.md#analog-meter) |
-  | Analyzer  | Chroma Spiral | Shows frequency components by note and octave on a spiral | [Details](docs/plugins/analyzer.md#chroma-spiral) |
-  | Analyzer  | Level Meter | Displays audio level with peak hold | [Details](docs/plugins/analyzer.md#level-meter) |
+| Category | Effect | Description | Documentation |
+|-----------|--------|-------------|---------------|
+| Analyzer  | Analog Meter | Shows channel levels on a needle meter with VU, PPM, peak, and loudness scales | [Details](docs/plugins/analyzer.md#analog-meter) |
+| Analyzer  | Chroma Spiral | Shows frequency components by note and octave on a spiral | [Details](docs/plugins/analyzer.md#chroma-spiral) |
+| Analyzer  | Level Meter | Displays audio level with peak hold | [Details](docs/plugins/analyzer.md#level-meter) |
 | Analyzer  | Note Spectrogram | Shows estimated pitches over time as a scrolling piano roll | [Details](docs/plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | Real-time waveform visualization | [Details](docs/plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Pitch Meter | Tracks one fundamental pitch and its tuning over time | [Details](docs/plugins/analyzer.md#pitch-meter) |
@@ -366,6 +359,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Analyzer  | Spectrogram | Shows frequency spectrum changes over time | [Details](docs/plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | Shows the strength of bass, mids, and treble in real time | [Details](docs/plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer  | Stereo Meter | Visualizes stereo balance and channel correlation | [Details](docs/plugins/analyzer.md#stereo-meter) |
+| Basics    | Bass Management | Redirects low frequencies to one or more subwoofers and sums LFE with main-channel bass | [Details](docs/plugins/basics.md#bass-management) |
 | Basics    | Channel Divider | Splits stereo signal into frequency bands and routes each band to separate stereo output pairs | [Details](docs/plugins/basics.md#channel-divider) |
 | Basics    | DC Offset | DC offset adjustment | [Details](docs/plugins/basics.md#dc-offset) |
 | Basics    | FIR Crossover | FIR crossover that routes steeply separated frequency bands to stereo output pairs | [Details](docs/plugins/basics.md#fir-crossover) |
@@ -464,7 +458,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Spatial   | Multiband Balance | 5-band frequency-dependent stereo balance control | [Details](docs/plugins/spatial.md#multiband-balance) |
 | Spatial   | Phase Select EQ | Boosts or cuts frequency components selected by L/R phase difference and Balance | [Details](docs/plugins/spatial.md#phase-select-eq) |
 | Spatial   | Spatial Mapper | Separates direct, diffuse, and residual sound for flexible multichannel routing | [Details](docs/plugins/spatial.md#spatial-mapper) |
-| Spatial   | Stereo Blend | Controls stereo width from mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
+| Spatial   | Stereo Blend | Controls stereo width from polarity-swapped stereo through mono to enhanced stereo | [Details](docs/plugins/spatial.md#stereo-blend) |
 | Others    | Oscillator | Test tone and noise generator for checking speakers/headphones | [Details](docs/plugins/others.md#oscillator) |
 | Others    | SFZ Note Player | Plays an imported SFZ instrument from detected notes | [Details](docs/plugins/others.md#sfz-note-player) |
 | Control   | Section | Groups effects so a whole section can be bypassed or restored | [Details](docs/plugins/control.md) |
@@ -492,7 +486,7 @@ Frieve EffeTune has been tested and verified to work on Google Chrome. The appli
 
 ### Recommended Sample Rate
 
-Set EffeTune's **Sample Rate** to 96 kHz. This reduces audible-band aliasing from nonlinear effects whose anti-aliasing is limited. The setting controls EffeTune's processing rate and can normally differ from the OS, audio-device, and VB-CABLE rates, so those do not need to be changed. Confirm the effective Sample Rate shown in the app: the initial unsaved setting may follow the OS or browser default, and the Web version may fall back if 96 kHz is unavailable. If playback drops out, first disable demanding effects or shorten the chain; lower the sample rate only if needed.
+Set EffeTune's **Sample Rate** to 96 kHz. This reduces audible aliasing from nonlinear effects such as saturation. This setting controls EffeTune's internal processing rate and works independently of your OS, audio interface, or virtual audio device sample rate. Check the effective Sample Rate shown in the app: until you save a setting, it may follow the OS or browser default, and the web app may fall back to another rate if 96 kHz is unavailable. If playback drops out, first disable demanding effects or shorten the chain; lower the sample rate only if needed.
 
 ## Development Guide
 

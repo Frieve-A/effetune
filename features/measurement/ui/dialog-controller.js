@@ -39,6 +39,14 @@ class DialogController {
         
         // Show dialog
         confirmationDialog.style.display = 'flex';
+        confirmationDialog.tabIndex = -1;
+        confirmationDialog.onkeydown = event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            this.handleConfirmation(false);
+        };
+        document.getElementById('cancelBtn')?.focus();
     }
 
     /**
@@ -91,6 +99,14 @@ class DialogController {
         
         // Show dialog
         notificationDialog.style.display = 'flex';
+        notificationDialog.tabIndex = -1;
+        notificationDialog.onkeydown = event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeNotification();
+        };
+        document.getElementById('notificationOkBtn')?.focus();
     }
 
     /**

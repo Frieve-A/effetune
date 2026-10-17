@@ -20,9 +20,9 @@ In both cases EffeTune records your answers and reports a p-value, so you can se
 The test compares the two pipelines described in [Using AB Pipeline Features](../README.md#using-ab-pipeline-features):
 
 - **Pipeline A** and **Pipeline B** must each contain at least one effect.
-- Put one of the settings you want to compare in Pipeline A and the other in Pipeline B. Keep everything else identical except the one thing you want to test (for example, *With EQ* vs. *Without EQ*) so that only that difference is under test.
-- For an **A/B Preference Test**, it does not matter which of the two settings you put in Pipeline A and which in Pipeline B. During the test the A and B samples are reshuffled on every trial, so neither position has any advantage. If you swap the settings, the reported winning pipeline label will swap too, but the statistical interpretation is unchanged. What matters is that you remember which setting you placed in which pipeline: the result reports whether Pipeline A or Pipeline B was significantly preferred, so you read it against your own setup to know which one you favored. Clear results usually mean one setting had a real preference for you; if they sound the same or your choices vary, the test will usually report no significant preference.
-- You can open the test panel at any time, but the start buttons stay disabled until both pipelines are present. If Pipeline B is missing, a notice is shown instead.
+- Put one setting in Pipeline A and the other in Pipeline B, keeping everything else identical (for example, *With EQ* vs. *Without EQ*) so only the target difference is tested.
+- Remember which setting you placed in Pipeline A and which in Pipeline B. The test randomly reassigns the two pipelines on every trial; for an A/B Preference Test, it reports at the end whether Pipeline A or Pipeline B was significantly preferred.
+- The start buttons remain disabled until both Pipeline A and Pipeline B are present.
 
 ## Opening the Test
 

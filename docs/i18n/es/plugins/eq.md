@@ -8,21 +8,20 @@ lang: es
 
 Una colección de plugins que te permiten ajustar diferentes aspectos del sonido de tu música, desde los graves profundos hasta los agudos nítidos. Estas herramientas te ayudan a personalizar tu experiencia auditiva al realzar o reducir elementos específicos del sonido.
 
-<!-- spectrum-overlay -->
-## Superposición de espectro
-
-Pulsa el icono de espectro de un gráfico compatible para alternar entre After, Before + After y Off. After muestra solo el espectro procesado mediante una línea azul. Before + After rellena el cambio entre el espectro sin procesar y el procesado: el color cálido marca las frecuencias cuyo nivel aumenta tras el procesamiento, el azul marca las que disminuyen y una línea gris señala el espectro After. Los espectros de entrada y salida se alinean en el mismo instante de reproducción, por lo que la diferencia compara el mismo audio. El modo **Normal** aplica un suavizado de 1/12 de octava; **Alta calidad** analiza las frecuencias bajas con más detalle. Usa la comparación para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee los niveles del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. En Configuración, elige **Normal** o **Alta calidad** para la calidad del espectro superpuesto, y **Valor instantáneo** o **Retención de picos** para su visualización. Retención de picos mantiene visibles los máximos recientes y los deja bajar gradualmente. En After solo se recopila el espectro procesado; en Off se detienen la recopilación y el dibujo.
+## Controles del gráfico
 
 En los gráficos de puntos arrastrables de 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ y Additional EQ de Room EQ, arrastra un punto normalmente para cambiar ambos ejes. Mantén pulsada la tecla Shift mientras arrastras para limitar el movimiento a un solo eje: empieza a moverlo principalmente en horizontal para cambiar solo Frequency, o principalmente en vertical para cambiar solo Level (Delay en Group Delay PEQ). Suelta Shift para volver al movimiento libre. Coloca el puntero sobre un punto y desplaza la rueda hacia arriba para aumentar Q o hacia abajo para reducirlo.
+
+## Selección de bandas en móviles
 
 En móvil, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Additional EQ de Room EQ y Target Adjust de Tonal Balance EQ muestran los ajustes de una sola banda a la vez. Toca un botón numerado para cambiar de banda. Los ajustes de todas las bandas se conservan.
 
 ## Lista de Plugins
 
 - [15Band GEQ](#15band-geq) - Ajuste detallado del sonido con 15 controles precisos
-- [15Band PEQ](#15band-peq) - Ecualizador paramétrico de 15 bandas para ajustes detallados del tono de escucha
+- [15Band PEQ](#15band-peq) - Ajuste detallado del tono en 15 bandas para la reproducción de música
 - [5Band Dynamic EQ](#5band-dynamic-eq) - Ecualizador dinámico que responde a tu música
-- [5Band FIR PEQ](#5band-fir-peq) - Ecualizador FIR de cinco bandas para ajustes pronunciados y estables
+- [5Band FIR PEQ](#5band-fir-peq) - Ajuste del tono en cinco bandas con filtrado FIR de fase mínima o lineal
 - [5Band PEQ](#5band-peq) - Ecualizador flexible de 5 bandas para moldear graves, medios y agudos
 - [Band Pass Filter](#band-pass-filter) - Enfoca frecuencias específicas
 - [Comb Filter](#comb-filter) - Añade una coloración faseada, hueca o metálica
@@ -34,9 +33,14 @@ En móvil, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Additional EQ de Room EQ y
 - [Loudness Equalizer](#loudness-equalizer) - Corrección del balance de frecuencias para escuchar a bajo volumen
 - [Narrow Range](#narrow-range) - Enfoca partes específicas del sonido
 - [Room EQ](#room-eq) - Corrección FIR basada en mediciones de sala guardadas
-- [Tilt EQ](#tilt-eq) - Ecualizador de inclinación para ajuste tonal simple
+- [Tilt EQ](#tilt-eq) - EQ sencillo que inclina el espectro del sonido
 - [Tonal Balance EQ](#tonal-balance-eq) - Corrige automáticamente el balance tonal a largo plazo hacia un objetivo según el estilo musical
 - [Tone Control](#tone-control) - Ajuste sencillo de bajos, medios y agudos
+
+<!-- spectrum-overlay -->
+## Superposición de espectro
+
+Pulsa el icono de espectro de un gráfico compatible para alternar entre After, Before + After y Off. After muestra solo el espectro procesado mediante una línea azul. Before + After rellena el cambio entre el espectro sin procesar y el procesado: el color cálido marca las frecuencias cuyo nivel aumenta tras el procesamiento, el azul marca las que disminuyen y una línea gris señala el espectro After. Los espectros de entrada y salida se alinean en el mismo instante de reproducción, por lo que la diferencia compara el mismo audio. El modo **Normal** aplica un suavizado de 1/12 de octava; **Alta calidad** analiza las frecuencias bajas con más detalle. Usa la comparación para ver cómo cada ajuste cambia graves, medios y agudos mientras escuchas. Lee los niveles del espectro en la escala dBFS a la derecha del gráfico. Es distinta de la escala de ganancia del gráfico; 0 dBFS es la referencia digital de escala completa y los valores inferiores son más silenciosos. En Configuración, elige **Normal** o **Alta calidad** para la calidad del espectro superpuesto, y **Valor instantáneo** o **Retención de picos** para su visualización. Retención de picos mantiene visibles los máximos recientes y los deja bajar gradualmente. En After solo se recopila el espectro procesado; en Off se detienen la recopilación y el dibujo.
 
 ## 15Band GEQ
 
@@ -108,7 +112,7 @@ Un ecualizador paramétrico de 15 bandas para ajustar con detalle graves, voces,
   - Compara a menudo con bypass para que la música siga sonando equilibrada
 
 ### Parámetros
-- **Bandas de Precisión**
+- **Bandas configurables**
   - 15 bandas de frecuencia completamente configurables
   - Configuración inicial de frecuencias:
     - 25Hz, 40Hz, 63Hz, 100Hz, 160Hz (Bajos profundos)
@@ -141,8 +145,8 @@ Un ecualizador paramétrico de 15 bandas para ajustar con detalle graves, voces,
 ### Visualización
 - Visualización de la respuesta en frecuencia de alta resolución
 - Puntos de control interactivos con visualización precisa de parámetros
-- Cálculo en tiempo real de la función de transferencia
-- Cuadrícula calibrada de frecuencia y ganancia
+- Actualización en tiempo real de la curva al ajustar los parámetros
+- Cuadrícula de frecuencia y ganancia
 - Lecturas numéricas precisas para todos los parámetros
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
@@ -202,7 +206,7 @@ Un ecualizador inteligente que ajusta automáticamente las bandas de frecuencia 
 
 ### Guía de mejora del sonido
 
-- Empieza con **Minimum Phase**, 32768 Taps y una Latency de 128 samples. Para ajustes habituales de graves, medios y agudos, usa valores de Q amplios, entre 0,7 y 2 aproximadamente.
+- Empieza con **Minimum Phase**, 32768 Taps y una Latency de 128 muestras. Para ajustes habituales de graves, medios y agudos, usa valores de Q amplios, entre 0,7 y 2 aproximadamente.
 - Para reducir un pico estrecho confirmado mediante una medición, selecciona Peaking, ajusta la frecuencia central al pico y aumenta Q poco a poco. Los valores superiores a 10 están pensados para correcciones precisas; comprueba el estado porque una respuesta extremadamente estrecha puede necesitar más Taps.
 - Usa Low Shelf para equilibrar los graves y High Shelf para equilibrar los agudos. Para la escucha diaria, empieza con cambios pequeños de entre 1 y 3 dB.
 - Usa LowPass o HighPass para eliminar extremos de frecuencia no deseados. Empieza con una Slope de 12 o 24 dB/oct y auméntala solo si necesitas un corte más pronunciado.
@@ -213,22 +217,22 @@ Un ecualizador inteligente que ajusta automáticamente las bandas de frecuencia 
 
 - **Phase**
   - **Minimum Phase** - Crea una respuesta de fase mínima causal y no añade el retardo equivalente a la mitad de la longitud del FIR. La Latency seleccionada sí se aplica.
-  - **Linear Phase** - Crea una respuesta de fase lineal simétrica y añade `Taps / 2` samples de retardo FIR, además de la Latency seleccionada.
+  - **Linear Phase** - Crea una respuesta de fase lineal simétrica y añade `Taps / 2` muestras de retardo FIR, además de la Latency seleccionada.
 - **Taps** - Longitud del FIR: 8192, 16384, 32768, 65536 o 131072. Más taps mejoran la precisión en graves y con valores de Q muy altos, pero aumentan el uso de memoria, el tiempo de diseño y el retardo de Linear Phase.
-- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 samples. Los valores menores reducen el retardo, pero exigen más procesamiento.
-- **Cinco bandas ajustables** - Las frecuencias centrales iniciales son 100 Hz, 316 Hz, 1 kHz, 3,16 kHz y 10 kHz. Cada banda se puede activar por separado con Enable.
+- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 muestras. Los valores menores reducen el retardo, pero exigen más procesamiento.
+- **Cinco bandas ajustables** - Las frecuencias centrales iniciales son 100 Hz, 316 Hz, 1 kHz, 3,16 kHz y 10 kHz. Cada banda se puede activar por separado.
 - **Type** - Selecciona Peaking, LowPass, HighPass, Low Shelf, High Shelf, BandPass o Notch. Todas las bandas activas se combinan antes de diseñar el filtro FIR.
 - **Freq** - Ajusta la frecuencia de la banda entre 20 Hz y 20 kHz.
 - **Gain** - Ajusta el realce o la atenuación entre -20 y +20 dB para Peaking, Low Shelf y High Shelf. LowPass, HighPass, BandPass y Notch no usan Gain.
 - **Q** - Ajusta la anchura de la respuesta entre 0,1 y 100. Los valores mayores producen un cambio más estrecho y los menores uno más amplio. El deslizador utiliza una escala logarítmica.
 - **Slope** - Ajusta la pendiente de corte de LowPass o HighPass entre 0,1 y 384 dB/oct. El deslizador utiliza una escala logarítmica y el control solo está disponible para esos dos valores de Type.
 
-### Cómo leer la pantalla
+### Visualización
 
-- La curva gris muestra el «Objetivo» combinado de los ajustes actuales de las bandas.
+- La curva gris muestra el «Target» combinado de los ajustes actuales de las bandas.
 - La curva verde muestra la respuesta de magnitud que realiza el FIR diseñado. Una separación visible indica que los Taps seleccionados no pueden reproducir exactamente el objetivo.
 - Los marcadores numerados corresponden a las cinco bandas. Arrastra en horizontal para cambiar Freq y en vertical para cambiar Gain; las bandas desactivadas aparecen atenuadas.
-- La línea de estado indica si el FIR se está diseñando, preparando o utilizando, y muestra la latencia total de procesamiento en samples y milisegundos.
+- La línea de estado indica si el FIR se está diseñando, preparando o utilizando, y muestra la latencia total de procesamiento en muestras y milisegundos.
 - Si los Taps seleccionados no pueden reproducir con precisión una respuesta extrema, el estado recomienda aumentar Taps o reducir Q o Slope.
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
@@ -251,7 +255,7 @@ Un ecualizador flexible de 5 bandas para moldear la reproducción musical. Úsal
   - Compara a menudo con bypass para que la música siga sonando equilibrada
 
 ### Parámetros
-- **Bandas de Precisión**
+- **Cinco bandas ajustables**
   - Band 1: 100Hz (Control de Sub & Bass)
   - Band 2: 316Hz (Definición de Medios Bajos)
   - Band 3: 1.0kHz (Presencia de Medios)
@@ -274,8 +278,8 @@ Un ecualizador flexible de 5 bandas para moldear la reproducción musical. Úsal
 ### Visualización
 - Visualización de la respuesta en frecuencia de alta resolución
 - Puntos de control interactivos con visualización precisa de parámetros
-- Cálculo en tiempo real de la función de transferencia
-- Cuadrícula calibrada de frecuencia y ganancia
+- Actualización en tiempo real de la curva al ajustar los parámetros
+- Cuadrícula de frecuencia y ganancia
 - Lecturas numéricas precisas para todos los parámetros
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
@@ -379,14 +383,6 @@ Un filtro peine que añade un carácter faseado, hueco, metálico o resonante al
 
 Reproduce las pequeñas variaciones de respuesta en frecuencia que aparecen cuando un auricular se alimenta desde un amplificador a través de la resistencia e inductancia reales del cable y de una impedancia de salida no nula. Como la impedancia del auricular cambia con la frecuencia (por las resonancias del transductor y la inductancia de la bobina móvil), la impedancia de la fuente y del cable produce cambios de nivel propios de cada auricular. También sirve como comprobación práctica: con cables de construcción y calidad normales, una impedancia de salida de amplificador común y auriculares que no tengan una impedancia inusualmente baja ni otras condiciones anómalas, el cambio audible entre cables normales para auriculares suele ser lo bastante pequeño como para resultar despreciable. El efecto es más fuerte con auriculares de baja impedancia que tienen grandes picos de impedancia, y normalmente es sutil con amplificadores modernos de baja impedancia de salida.
 
-### Preajustes del sistema
-
-Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar distintas combinaciones de fuente y cable con todos sus ajustes.
-
-- **High Impedance Source** - Una fuente con alta impedancia de salida que alimenta un auricular de baja impedancia.
-- **Long Thin Cable** - Mayor resistencia e inductancia del cable.
-- **Vintage Portable Out** - Una salida portátil de mayor impedancia y un auricular de 32 Ω.
-
 ### Guía de Mejora Auditiva
 - Evalúa la interacción de la impedancia de la fuente:
   - Sube Output Z para emular amplificadores de válvulas o salidas de auriculares de alta impedancia
@@ -401,6 +397,14 @@ Haz clic en **Preajustes de efecto** en la cabecera del efecto para comparar dis
 - Comprueba la audibilidad de cables normales:
   - Usa valores realistas de Cable R y Cable L, y compáralos con el bypass para estimar lo pequeñas que son las diferencias habituales entre cables
   - Si el cambio solo se vuelve evidente con Output Z, Cable R o Base Z muy extremos, esa comparación sugiere que los cables normales probablemente no tendrán una importancia audible con ese auricular y ese amplificador
+
+### Presets del sistema
+
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para comparar distintas combinaciones de fuente y cable con todos sus ajustes.
+
+- **High Impedance Source** - Una fuente con alta impedancia de salida que alimenta un auricular de baja impedancia.
+- **Long Thin Cable** - Mayor resistencia e inductancia del cable.
+- **Vintage Portable Out** - Una salida portátil de mayor impedancia y un auricular de 32 Ω.
 
 ### Parámetros
 - **Output Z (Ω)** - Impedancia de salida del amplificador (0 a 20). Los valores por debajo de 1Ω son típicos en amplificadores modernos; valores más altos refuerzan la coloración relacionada con la impedancia.
@@ -436,17 +440,17 @@ Para el sonido solo importan las diferencias entre bandas. Un filtro que retrasa
 
 - **Tiempo entre altavoces y subwoofer**: Si los graves llegan tarde respecto al resto de la música, retrasa las bandas por encima del corte la misma cantidad hasta que el gráfico quede plano en esa zona. Las correcciones típicas van de 2 a 10 ms y se juzgan mejor con bombo y bajo.
 - **Cajas bass-reflex y modos de sala**: Una caja con puerto añade retardo de grupo cerca de su frecuencia de sintonía. Baja la banda grave afectada, o sube todas las demás, para que la curva quede más plana. Es normal que queden pequeñas diferencias por debajo de 50 Hz.
-- **Prueba de audición de la distorsión de fase**: Pon una banda en +10 ms, compara con el efecto desactivado y luego reduce el valor hasta que ya no oigas diferencia. Interpreta el resultado como una comparación de fase solo cuando el «Rizado» de la línea de estado sea suficientemente pequeño y la curva verde «Real» coincida estrechamente con la curva gris «Objetivo». De lo contrario, los cambios de magnitud o un retardo realizado con poca precisión también pueden afectar a lo que oyes.
+- **Prueba de audición de la distorsión de fase**: Pon una banda en +10 ms, compara con el efecto desactivado y luego reduce el valor hasta que ya no oigas diferencia. Interpreta el resultado como una comparación de fase solo cuando el «Ripple» de la línea de estado sea suficientemente pequeño y la curva verde «Realized» coincida estrechamente con la curva gris «Target». De lo contrario, los cambios de magnitud o un retardo realizado con poca precisión también pueden afectar a lo que oyes.
 - **Trabaja banda por banda**: Mueve un deslizador cada vez y escucha. Los cambios de solo fase son sutiles en la mayoría del material y se notan sobre todo en transitorios como batería, cuerdas pulsadas y ataques de piano.
 - **Observa las dos curvas**: Si la curva verde deja de seguir a la gris, el ajuste de Taps actual no puede realizar esa forma. Aumenta Taps o reduce la diferencia entre bandas vecinas.
 
 ### Parámetros
 
 - **Taps** - Longitud del FIR: 4096, 8192, 16384 o 32768. Las frecuencias bajas necesitan un filtro largo: a 96 kHz, 16384 taps siguen incluso grandes diferencias de retardo hasta unos 60 Hz, mientras que los ajustes más cortos pierden precisión primero en los graves. Taps también decide cuánto retardo puede contener el filtro y, por tanto, hasta dónde llegan los deslizadores. Más taps significan más latencia y más proceso.
-- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 samples. Valores menores reducen el retardo pero exigen más proceso.
+- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 muestras. Valores menores reducen el retardo pero exigen más proceso.
 - **Deslizadores de banda (25 Hz a 16 kHz)** - Quince deslizadores fijan el retardo de grupo de cada banda. Los valores positivos hacen que ese rango llegue más tarde y los negativos más pronto. El rango cubre todo el retardo que el filtro puede contener: a 96 kHz son ±18,6 ms con 4096 taps y ±149,3 ms con 32768 taps. La banda más alta realiza esos valores por completo, mientras que las bandas bajas necesitan más taps para seguir un ajuste grande; el gráfico muestra hasta dónde llega cada una. Los valores se interpolan suavemente en frecuencia, por lo que las bandas vecinas siempre se funden entre sí.
 - **Ángulo de fase** - Debajo de cada valor en milisegundos, el deslizador muestra el mismo retardo como rotación de fase en la frecuencia central de la banda. Más allá de una vuelta completa, la lectura se divide en ciclos enteros y el ángulo restante, de modo que `+2c180°` significa dos ciclos completos más media vuelta.
-- **Restablecer** - Haz doble clic en un deslizador para devolver esa banda a 0 ms. El botón Reset del gráfico restablece todas las bandas a la vez.
+- **Reset** - Haz doble clic en un deslizador para devolver esa banda a 0 ms. El botón Reset del gráfico restablece todas las bandas a la vez.
 
 La latencia total es el valor de Latency más la mitad de Taps. No cambia al mover los deslizadores, así que solo un cambio de Taps o de Latency altera el retardo de toda la cadena.
 
@@ -454,7 +458,7 @@ La latencia total es el valor de Latency más la mitad de Taps. No cambia al mov
 
 - La curva gris es el objetivo: el retardo solicitado, interpolado sobre un eje logarítmico de 20 Hz a 20 kHz. El eje de retardo se reescala para ajustarse a los ajustes actuales, con un mínimo de ±5 ms.
 - La curva verde es lo que el filtro diseñado hace realmente. Donde ambas coinciden, el ajuste se realiza por completo; donde se separan, el filtro no puede seguir la petición con los Taps actuales.
-- La línea de estado muestra la latencia total en samples y milisegundos, y el rizado de magnitud del filtro. El rizado mide cuánto se aparta la respuesta de magnitud realizada del objetivo de diseño plano: cuanto menor sea el valor, más cerca estará del objetivo, y 0,3 dB es el umbral del aviso de precisión.
+- La línea de estado muestra la latencia total en muestras y milisegundos, y el Ripple de magnitud del filtro. Ripple mide cuánto se aparta la respuesta de magnitud realizada del objetivo de diseño plano: cuanto menor sea el valor, más cerca estará del objetivo, y 0,3 dB es el umbral del aviso de precisión.
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ## Group Delay PEQ
@@ -484,7 +488,7 @@ Para el sonido solo importan las diferencias entre frecuencias. Un filtro que re
 - **Q** - Ajusta la anchura o la pendiente de la forma entre 0,1 y 100 con un deslizador logarítmico, y lo usan todos los Type. Los rangos útiles difieren: de 0,25 a 16 para Low Shelf y High Shelf, y de 0,1 a 10 para Filter GD. En la práctica, los shelves se usan con Q de 2 a 4 y Filter GD con Q de 0,5 a 8: 0,5 corresponde a un allpass de primer orden o una suma LR2, 0,7071 a una alineación Butterworth o una suma LR4, y 8 a una resonancia estrecha. Los ajustes fuera de esos rangos también se aceptan; la línea de estado avisa cuando los Taps actuales no pueden realizarlos.
 - **Enabled** - Activa o desactiva cada una de las cinco bandas. Las bandas desactivadas no aportan nada a la curva objetivo y aparecen atenuadas en el gráfico.
 - **Taps** - Longitud del FIR: 4096, 8192, 16384 o 32768. Las frecuencias bajas necesitan un filtro largo, y las formas de Q alto también. Taps también decide cuánto retardo puede contener el filtro y, por tanto, hasta dónde llega Delay. Más taps significan más latencia y más proceso.
-- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 samples. Valores menores reducen el retardo pero exigen más proceso.
+- **Latency** - Latencia inicial del motor de convolución: 0, 128, 256, 512 o 1024 muestras. Valores menores reducen el retardo pero exigen más proceso.
 
 La latencia total es el valor de Latency más la mitad de Taps. No cambia al mover las bandas, así que solo un cambio de Taps o de Latency altera el retardo de toda la cadena.
 
@@ -492,8 +496,8 @@ La latencia total es el valor de Latency más la mitad de Taps. No cambia al mov
 
 - La curva gris es el objetivo: la suma de las formas de las bandas activas, dibujada sobre un eje logarítmico de frecuencia. El eje de retardo se reescala para ajustarse a los ajustes actuales, con un mínimo de ±5 ms.
 - La curva verde es lo que el filtro diseñado hace realmente. Donde ambas coinciden, el ajuste se realiza por completo; donde se separan, el filtro no puede seguir la petición con los Taps actuales.
-- Los marcadores numerados corresponden a las cinco bandas. Arrastra en horizontal para cambiar Freq y en vertical para cambiar Delay. El marcador se sitúa sobre la curva solo con Peak: un shelf pasa por la mitad de Delay en Freq, y Filter GD alcanza su valor extremo por debajo de Freq: justo por debajo con Q alto y cada vez más abajo a medida que Q disminuye, hasta que con Q de aproximadamente 0,577 o menos el valor extremo queda en el extremo grave de la gráfica.
-- La línea de estado muestra la latencia total en samples y milisegundos, y el rizado de magnitud del filtro. El rizado mide cuánto se aparta la respuesta de magnitud realizada del objetivo de diseño plano: cuanto menor sea el valor, más cerca estará del objetivo, y 0,3 dB es el umbral del aviso de precisión.
+- Los marcadores numerados corresponden a las cinco bandas. Arrastra en horizontal para cambiar Freq y en vertical para cambiar Delay. El marcador se sitúa sobre la curva solo con Peak: un shelf pasa por la mitad de Delay en Freq, y Filter GD alcanza su valor extremo por debajo de Freq: justo por debajo con Q alto y cada vez más abajo a medida que Q disminuye, hasta que con Q de aproximadamente 0,577 o menos el valor extremo queda en el extremo grave del gráfico.
+- La línea de estado muestra la latencia total en muestras y milisegundos, y el Ripple de magnitud del filtro. Ripple mide cuánto se aparta la respuesta de magnitud realizada del objetivo de diseño plano: cuanto menor sea el valor, más cerca estará del objetivo, y 0,3 dB es el umbral del aviso de precisión.
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ## Hi Pass Filter
@@ -578,14 +582,6 @@ Un filtro pasa-bajos de precisión que elimina las frecuencias altas no deseadas
 
 ## Loudness Equalizer
 
-### Preajustes del sistema
-
-Haz clic en **Preajustes de efecto** en la cabecera del efecto para empezar con una curva completa de compensación de sonoridad.
-
-- **Late Night Listening** - Una compensación más intensa para niveles de escucha bajos.
-- **Quiet Background** - Una curva de compensación moderada para el uso cotidiano.
-- **Near Reference Level** - Una compensación mínima cerca de un nivel de referencia más alto.
-
 Un ecualizador especializado que vincula el ajuste de volumen con la corrección del balance de frecuencias. Configura Average SPL como el nivel medio estimado de presión sonora al usar 0dB en Relative Volume y utiliza Relative Volume para los cambios cotidianos de volumen. La corrección aumenta automáticamente al bajar el volumen y disminuye al subirlo.
 
 ### Guía de Mejora Auditiva
@@ -601,9 +597,17 @@ Un ecualizador especializado que vincula el ajuste de volumen con la corrección
   - Los valores positivos elevan el nivel de salida y reducen la corrección
   - La corrección de EQ se calcula a partir de `Average SPL + Relative Volume` y se limita al intervalo de corrección de 60dB a 85dB
 - Balance de Frecuencias:
-  - Estantería baja para el realce de bajos (100-300Hz)
-  - Estantería alta para el realce de agudos (3-6kHz)
+  - Shelf de graves para realzar los bajos (100-300Hz)
+  - Shelf de agudos para realzar los agudos (3-6kHz)
   - Transición suave entre rangos de frecuencia
+
+### Presets del sistema
+
+Haz clic en **Preajustes de efecto** en el encabezado del efecto para empezar con una curva completa de compensación de sonoridad.
+
+- **Late Night Listening** - Una compensación más intensa para niveles de escucha bajos.
+- **Quiet Background** - Una curva de compensación moderada para el uso cotidiano.
+- **Near Reference Level** - Una compensación mínima cerca de un nivel de referencia más alto.
 
 ### Parámetros
 - **Average SPL** - Nivel medio estimado de presión sonora con Relative Volume en 0dB (60dB a 96dB)
@@ -672,142 +676,116 @@ Una herramienta que te permite enfocarte en partes específicas de la música fi
 
 ## Room EQ
 
-Room EQ crea filtros de corrección FIR a partir de mediciones de respuesta en frecuencia guardadas por EffeTune. De forma predeterminada, diseña un único filtro a partir de una medición compartida y lo aplica a todos los canales dirigidos al plugin; asigna una medición distinta a un canal concreto para que ese canal tenga su propio filtro, mientras que el resto de los ajustes siguen siendo comunes a toda la instancia. Usa el selector de bus estándar del plugin para decidir qué canales procesa. Promedia todos los puntos de la medición elegida, suaviza el resultado y reduce las desviaciones dentro del intervalo de corrección seleccionado. Úsalo cuando la interacción entre los altavoces y la sala produzca picos repetibles o un desequilibrio tonal amplio en la zona de escucha. También puede aplicar corrección de magnitud con fase lineal o una corrección de fase mixta que combina corrección de magnitud con fase mínima y corrección del exceso de fase medido: Phase Correction actúa sobre el sonido directo y Reverb Correction puede además contrarrestar la reverberación de la sala medida que le sigue. Con Consenso, el objetivo de fase es el promedio de los puntos de medición ponderado por su fiabilidad. Room EQ necesita el motor DSP WASM; si no está disponible, la señal pasa sin cambios.
+Room EQ crea filtros de corrección FIR a partir de mediciones de respuesta en frecuencia guardadas por EffeTune. De forma predeterminada, diseña un único filtro compartido y lo aplica a todos los canales que pasan por el plugin; también puedes asignar una medición guardada distinta a canales concretos, mientras el resto de los ajustes de corrección siguen siendo comunes a toda la instancia. El filtro promedia todos los puntos de la medición elegida, suaviza la curva y reduce los picos y valles dentro del intervalo de frecuencias seleccionado. Úsalo cuando la interacción entre los altavoces y la sala provoque picos repetibles o un desequilibrio tonal amplio en tu posición de escucha. Además de la corrección de magnitud de fase mínima o de fase lineal, el modo **Correction** puede corregir el exceso de fase medido del sonido directo (**Phase Correction**) y de la reverberación de la sala (**Reverb Correction**). Room EQ necesita el motor DSP WASM; si no está disponible, la señal pasa sin cambios.
 
 ### Guía de mejora del sonido
 
-- Mide el grupo de altavoces que quieras corregir desde varias posiciones cercanas del micrófono en la zona de escucha y selecciona esa medición en Room EQ. Varios puntos hacen que la corrección dependa menos de una única posición exacta.
-- Empieza con **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** y **Level Correction: 100%**. Compara con el control principal de encendido y apagado del plugin para comprobar que el balance sea más uniforme sin sonar artificialmente delgado o brillante.
-- Si el filtro intenta rellenar valles estrechos que cambian con la posición del micrófono, aumenta Smoothing o reduce Max Boost. Con Max Boost en 0 dB se impiden los realces automáticos, pero los cortes siguen reduciendo los picos.
-- Si la corrección de nivel completa resulta demasiado intensa, reduce Level Correction. Como ajusta proporcionalmente en dB cada valor de corrección automática, al 50% una corrección de +6 dB pasa a +3 dB y una de -8 dB pasa a -4 dB.
-- Limita Correction Low y Correction High al intervalo que los altavoces y el micrófono reproduzcan con fiabilidad. Corregir fuera de un intervalo de medición fiable puede empeorar el resultado.
-- Cuando la corrección de sala sea estable, usa el EQ adicional para crear un objetivo de escucha suave, por ejemplo un Low shelf amplio de +2 dB cerca de 100 Hz o un pequeño ajuste High shelf alrededor de 10 kHz. Estas bandas modifican el objetivo y se integran en el filtro FIR.
-- Usa **Minimum** cuando importe una latencia baja. Usa **Correction** cuando quieras corregir tanto la respuesta en frecuencia como el exceso de fase. Empieza con Reference Point en **Consenso (todos los puntos)**, el valor predeterminado de Direct Window y **Phase Correction: 100%**. Selecciona un punto concreto solo cuando quieras optimizar el exceso de fase para esa posición del micrófono. Reduce Phase Correction de forma independiente si el resultado de fase es demasiado intenso.
-- **Low-frequency Phase Extension** está desactivada de forma predeterminada. Actívala solo cuando quieras corregir el exceso de fase por debajo de Phase Low. Las frecuencias más bajas usan ventanas de análisis cada vez más largas y pueden incluir una parte posterior de la respuesta de la sala, por lo que Consenso es el punto de partida más seguro. Compara varias posiciones de escucha y desactiva la extensión si la temporización de los graves se vuelve menos uniforme.
-- **Reverb Correction** está al 0% de forma predeterminada. En el modo Correction, súbela poco a poco manteniendo el valor predeterminado **Reverb Max Freq: 250 Hz**; así se contrarresta la reverberación de baja frecuencia sin dejar de ser útil en toda la zona de escucha. Amplía Reverb Max Freq hacia frecuencias más altas solo asumiendo que el resultado se convierte entonces en una optimización para una única posición de escucha.
-- Room EQ no calcula la alineación por distancia de los altavoces. **Delay** se comparte en toda la instancia, incluso cuando los canales usan mediciones distintas; usa instancias independientes de Room EQ solo cuando distintos grupos de canales necesiten valores de retardo manual diferentes.
+- **Medición en varios puntos**: Mide el altavoz o grupo de canales desde varias posiciones cercanas del micrófono alrededor de tu asiento y selecciona esa medición guardada, para que la corrección no se ajuste en exceso a una única posición del micrófono.
+- **Ajustes iniciales**: Empieza con **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** y **Level Correction: 100%**. Activa y desactiva el efecto para comprobar que el balance tonal se vuelve más uniforme sin sonar delgado ni áspero.
+- **No realzar en exceso los valles**: Si el filtro intenta rellenar cancelaciones acústicas estrechas, aumenta **Smoothing** o reduce **Max Boost** (con 0 dB se desactivan los realces automáticos y se mantienen los cortes de picos).
+- **Graduar la intensidad de la corrección**: Reduce **Level Correction** si el 100% resulta demasiado intenso (al 50%, un realce de +6 dB pasa a +3 dB y un corte de −8 dB pasa a −4 dB).
+- **Solo el intervalo fiable**: Mantén **Correction Low** y **Correction High** dentro del intervalo que el altavoz y el micrófono de medición reproducen con fiabilidad; corregir fuera de él hace que el resultado sea menos preciso.
+- **Ajustar la curva objetivo**: Cuando los picos de la sala estén controlados, usa **Additional EQ** (integrado directamente en el filtro FIR) para ajustes tonales suaves a tu gusto, como un Low shelf amplio de +2 dB alrededor de 100 Hz.
+- **Corrección del exceso de fase y de la reverberación**: Elige **Phase: Minimum** para la menor latencia o **Phase: Correction** para alinear también el exceso de fase. Empieza con **Reference Point: Consensus (all points)**, el valor predeterminado de **Direct Window** y **Phase Correction: 100%**. Activa **Low-frequency Phase Extension** solo si quieres corregir el exceso de fase por debajo de **Phase Low**, y desactívala si la temporización de los graves se vuelve menos uniforme entre posiciones de escucha. Sube **Reverb Correction** poco a poco con **Reverb Max Freq: 250 Hz** para contrarrestar la reverberación de baja frecuencia en toda la zona de escucha; al subir **Reverb Max Freq**, el resultado pasa a estar optimizado solo para la posición medida.
+- **Retardo manual**: Room EQ no calcula la alineación por distancia de los altavoces. **Delay** se aplica a todos los canales de la instancia; usa instancias de Room EQ separadas si distintos grupos de canales necesitan retardos manuales diferentes.
 
-La medición es una referencia local del dispositivo. Una URL o un preset guarda su nombre e identificador, pero no los datos medidos. Para usarla en otro dispositivo, activa **Incluir respuestas impulsionales al exportar mediciones en JSON** en la pantalla de medición antes de exportarla; después, impórtala en el otro dispositivo antes de seleccionarla. Esta opción está desactivada de forma predeterminada, e incluir respuestas impulsionales puede aumentar el tamaño del archivo en decenas de megabytes. Si falta la medición, se muestra un aviso y Room EQ usa un bypass alineado en lugar de datos de corrección antiguos.
+> **Compartir mediciones entre dispositivos**: Los presets y las URL guardan el nombre y el identificador de la medición, no los datos acústicos. Para llevar una medición a otro dispositivo, activa **Incluir respuestas impulsionales al exportar mediciones en JSON** en la herramienta de medición antes de exportar (activado de forma predeterminada; puede aumentar el archivo en decenas de megabytes) y después importa el archivo JSON en el dispositivo de destino. Si falta la medición seleccionada, Room EQ muestra un aviso y deja pasar la señal sin corrección.
 
 ### Parámetros
 
-- **Measurement** - Selecciona la medición de respuesta en frecuencia guardada y compartida que usa cualquier canal sin una anulación por canal. La lista muestra su nombre, número de puntos e `IR` cuando hay datos de respuesta impulsional. Usa **Refresh measurements** tras añadir o cambiar mediciones.
-- **Measurement ChN** - Un selector de anulación opcional por cada canal gestionado por la selección de bus de la instancia. Déjalo en **(Shared)**, el valor predeterminado, para usar el Measurement anterior; asigna una medición guardada distinta para que ese canal tenga su propio filtro. Si dejas todos los canales en **(Shared)**, el comportamiento reproduce exactamente el de un único filtro compartido.
-- **Delay** - Añade manualmente de 0 a 20 ms de retardo a todos los canales procesados. No se incluye en la latencia de procesamiento indicada por el plugin.
-- **Phase** - Selecciona el tratamiento de fase del filtro FIR.
-  - **Minimum** - Corrección de magnitud de fase mínima con la menor latencia añadida.
-  - **Linear** - Corrección de magnitud de fase lineal. Conserva la fase relativa de la entrada, pero añade un retardo igual a la mitad de los taps elegidos.
-  - **Correction** - Añade a la corrección de magnitud de fase mínima la corrección del exceso de fase de la respuesta impulsional guardada: Phase Correction controla el componente del sonido directo analizado dentro de Direct Window, y Reverb Correction puede contrarrestar además la reverberación posterior analizada dentro de Reverb Window. Esto reduce la variación del retardo de grupo y conserva `Taps / 2` muestras de retardo para el filtro de fase mixta. Durante el diseño mantiene la posición de la energía del impulso principal alineada con la respuesta Minimum que usa el mismo ajuste de Level Correction. Cuando todos los canales usan la medición compartida, se diseña un único filtro a partir de ella y se aplica sin cambios a todos los canales enrutados, por lo que cambiar Level Correction, Phase Correction o Reverb Correction no introduce diferencias de tiempo específicas entre canales. Si a un canal se le asigna su propia medición, se diseña un filtro aparte para ese canal. Necesita Reference Point, Direct Window y datos impulsionales.
-- **Taps** - Longitud FIR: 8192, 16384, 32768, 65536 o 131072. Más taps mejoran la resolución en graves, pero aumentan el retardo, el uso de memoria y el tiempo de diseño. Linear y Correction añaden `Taps / 2` muestras de retardo.
-- **Latency** - Latencia de cabecera del motor de convolución: 0, 128, 256, 512 o 1024 muestras. Los valores bajos reducen el retardo a costa de más procesamiento; en Linear y Correction suele dominar el retardo de media longitud del FIR.
-- **Smoothing** - Suavizado gaussiano de 0,02 a 1,00 octavas. Los valores altos producen una corrección más amplia y conservadora; los bajos siguen variaciones más finas.
-- **Phase Smoothing** - Suavizado gaussiano de 0,02 a 1,00 octavas aplicado a la corrección del exceso de fase del sonido directo medido en el modo Correction. Con **Auto** activado de forma predeterminada sigue a Smoothing, de modo que las correcciones de magnitud y de fase se suavizan por igual. Desactiva Auto para suavizar la corrección de fase de forma independiente; el valor efectivo actual se conserva como punto de partida. Los valores bajos siguen detalles temporales más finos y los altos producen una corrección de fase más conservadora. No afecta a Reverb Correction, que usa Reverb Smoothing.
-- **Correction Low / Correction High** - Establecen los límites de transición inferior y superior de la corrección automática de magnitud. Antes del suavizado gaussiano, la corrección automática se considera de 0 dB en estos límites y fuera de ellos. Por tanto, Smoothing controla lo gradualmente que se desvanece la corrección y hasta dónde se extiende más allá de cada límite. El límite superior también se restringe internamente para dejar margen bajo la frecuencia de Nyquist.
-- **Direct Window** - Tramo de 1 a 50 ms tras el inicio del sonido directo que utiliza Correction. Es la ventana de análisis fija en Phase Low y por encima y, cuando Low-frequency Phase Extension está activada, la ventana de análisis más corta. Una ventana mayor puede desplazar el valor automático de Phase Low hacia frecuencias más bajas, pero incluye más reflexiones de la sala.
-- **Phase Low** - Define entre 20 y 20000 Hz la frecuencia inferior de la corrección de exceso de fase medido en el modo Correction cuando Low-frequency Phase Extension está desactivada. Cuando la extensión está activada, Phase Low marca el límite entre la ventana Direct Window fija y las ventanas de baja frecuencia que se alargan progresivamente. Con **Auto** activado de forma predeterminada, Room EQ utiliza el valor más alto entre Correction Low y la frecuencia de la que caben tres ciclos en Direct Window (500 Hz con 6 ms). Desactiva Auto para ajustar el límite manualmente. El valor manual es independiente de Correction Low y no puede ser inferior a la frecuencia de un ciclo dentro de Direct Window (167 Hz con 6 ms). Los valores inferiores al límite automático son más sensibles al truncamiento de la ventana temporal y a las reflexiones de la sala.
-- **Low-frequency Phase Extension** - Extiende la corrección del exceso de fase medido desde Phase Low hacia Correction Low mediante ventanas de análisis dependientes de la frecuencia que se alargan progresivamente por debajo de Phase Low. En Phase Low y las frecuencias superiores se usa una ventana de análisis fija. Está desactivada de forma predeterminada. Solo está disponible en Correction; en Minimum y Linear el control queda desactivado, pero conserva el valor seleccionado. Si la respuesta al impulso medida es más corta que la ventana de baja frecuencia solicitada, Room EQ utiliza la ventana de medición más corta disponible y muestra un aviso. Solo reduce u omite la corrección cuando el FIR resultante se acerca a sus límites temporales; el resto del filtro de Room EQ sigue activo. La extensión solo funciona mientras Phase Correction está por encima del 0%; al 0% permanece inactiva aunque se use Reverb Correction.
-- **Max Boost** - Limita entre 0 y 18 dB los realces generados por la inversión automática de la respuesta. El límite se aplica antes del suavizado gaussiano, de modo que las zonas limitadas se integran suavemente en la curva de corrección circundante. No limita los cortes.
-- **Level Correction** - Ajusta la corrección automática de magnitud entre el 0% y el 100% en pasos del 1%, linealmente en dB. Al 0% se desactiva la corrección automática de nivel; Phase Correction, Additional EQ, Delay y Gain siguen activos.
-- **Phase Correction** - Ajusta la corrección del exceso de fase medido del sonido directo entre el 0% y el 100% en pasos del 1% y solo actúa en Correction. Sus controles están desactivados en los modos Minimum y Linear. Es independiente de Reverb Correction: al 0% se desactiva la corrección del exceso de fase del sonido directo mientras Level Correction y cualquier Reverb Correction siguen activas. Level Correction mantiene el cambio de fase mínima inherente a su respuesta de magnitud, por lo que Phase Correction solo controla el componente adicional de exceso de fase medido del sonido directo.
-- **Reverb Correction** - Ajusta la corrección del exceso de fase de la reverberación medida entre el 0% y el 100% en pasos del 1% y solo actúa en Correction. Por encima del 0%, analiza la respuesta mediante Reverb Window y corrige hasta Reverb Max Freq la fase tardía con independencia de Phase Correction. No cambia el objetivo de magnitud: Smoothing y Level Correction siguen controlando la corrección de frecuencia de toda la respuesta impulsional. Con Consenso usa el promedio de retardos ponderado por fiabilidad. Si la corrección no cabe en el FIR realizado, Room EQ la reduce o la omite y muestra un aviso; el resto del filtro sigue activo.
-- **Reverb Window** - Establece qué parte de la respuesta medida tras el inicio del sonido directo, de 20 a 1000 ms, se usa para el análisis de reverberación. La longitud disponible de la respuesta impulsional puede acortar la ventana efectiva. El análisis no se acorta solo porque Taps sea menor; después Room EQ comprueba por separado si la corrección de fase cabe en el FIR y reduce únicamente la parte irrealizable. Si la ventana disponible no supera Direct Window, o Reverb Window se ajusta a un valor igual o inferior, la corrección se omite y se muestra un aviso.
-- **Reverb Max Freq** - Establece el límite superior de frecuencia de la corrección de reverberación entre 20 y 20000 Hz. El valor predeterminado de 250 Hz mantiene la corrección en el rango de baja frecuencia, donde la reverberación de la sala se comporta de forma coherente entre posiciones cercanas. La parte de fase queda limitada en la práctica al menor valor entre Reverb Max Freq, Correction High y el 45% de la frecuencia de muestreo, de modo que Correction High sigue siendo el techo de toda la corrección y Reverb Max Freq selecciona el límite de la reverberación dentro de él. Subirlo extiende la corrección de reverberación a frecuencias más altas, donde el campo reverberante difiere de un asiento a otro e incluso varía con la temperatura del aire, por lo que el resultado solo se mantiene en la posición de escucha medida. Si no queda ninguna banda de frecuencias por debajo del límite efectivo —por ejemplo, cuando Correction Low está en ese límite o por encima—, la corrección de reverberación se omite por completo y se muestra un aviso; el resto del filtro sigue activo.
-- **Reverb Smoothing** - Suavizado gaussiano de 0,02 a 1,00 octavas aplicado solo al retardo de exceso de fase analizado mediante Reverb Window. Los valores bajos siguen estructuras temporales más finas y los altos producen una corrección de fase más amplia y conservadora. No cambia la corrección de frecuencia, que usa Smoothing.
-- **Reference Point** - Selecciona la fuente del exceso de fase en Correction tanto para el análisis del sonido directo como para el de la reverberación. **Consenso (todos los puntos)** alinea temporalmente los puntos y promedia sus retardos de exceso con una ponderación de fiabilidad que resta peso a la fase poco fiable cerca de cancelaciones profundas. Al elegir un punto por su nombre solo se usa el exceso de fase de ese punto. La corrección de magnitud siempre utiliza todos los puntos.
-- **EQ adicional (integrado en el FIR)** - Reutiliza la misma interfaz de cinco bandas y el mismo gráfico de 5Band PEQ. Cada banda puede activarse, configurarse como Peak, Low shelf o High shelf y ajustarse entre 20 Hz y 20 kHz, entre -20 y +20 dB y con Q de 0,1 a 10. La respuesta se incorpora al FIR, sin una etapa IIR separada. Su fase es cero en el modo Linear y de fase mínima en Minimum y Correction. Max Boost limita la inversión automática de la sala, no los realces intencionados de este EQ.
-- **Gain** - Aplica de -12 a +12 dB a todos los canales después de combinar las rutas corregidas y de bypass.
+- **Measurement**: Selecciona la medición guardada compartida (muestra el nombre, el número de puntos e `IR` cuando hay datos de respuesta al impulso). Haz clic en **Refresh measurements** después de añadir o editar mediciones.
+- **Measurement ChN**: Asignación opcional de una medición propia para cada canal de bus enrutado. Déjala en **(Shared)** para usar la **Measurement** compartida.
+- **Delay** (0 a 20 ms): Retardo manual aplicado a todos los canales enrutados; no se incluye en la latencia de procesamiento indicada.
+- **Phase**: Selecciona el comportamiento de fase del FIR:
+  - **Minimum**: Corrección de magnitud de fase mínima con la menor latencia.
+  - **Linear**: Corrección de magnitud de fase lineal (añade `Taps / 2` muestras de retardo).
+  - **Correction**: Corrección de magnitud de fase mínima más corrección del exceso de fase del sonido directo (**Phase Correction** dentro de **Direct Window**) y, opcionalmente, del decaimiento de la sala (**Reverb Correction** dentro de **Reverb Window**). Añade `Taps / 2` muestras de retardo y necesita datos de respuesta al impulso (`IR`). **Phase Smoothing**, **Phase Low**, **Low-frequency Phase Extension**, **Phase Correction**, los cuatro ajustes Reverb y **Reference Point** solo funcionan en este modo; en Minimum y Linear quedan desactivados y conservan sus valores.
+- **Taps** (8192, 16384, 32768, 65536 o 131072): Longitud del filtro FIR. Los valores altos mejoran la resolución en graves a costa de memoria, tiempo de diseño y, en los modos Linear/Correction, retardo.
+- **Latency** (0, 128, 256, 512 o 1024 muestras): Latencia de cabecera de la convolución. Los valores bajos reducen el retardo, pero aumentan la carga de procesamiento.
+- **Smoothing** (0,02 a 1,00 oct): Suavizado gaussiano en frecuencia para la corrección de magnitud. Los valores altos dan una corrección más amplia y conservadora; los bajos siguen variaciones más finas de la respuesta.
+- **Phase Smoothing** (0,02 a 1,00 oct, o **Auto**): Suavizado gaussiano para la corrección del exceso de fase del sonido directo en el modo Correction (sigue a **Smoothing** cuando **Auto** está marcado).
+- **Correction Low / Correction High**: Límites inferior y superior de frecuencia de la corrección automática.
+- **Direct Window** (1 a 50 ms): Ventana temporal tras el inicio del sonido que se analiza para la corrección de fase del sonido directo. Una ventana más larga baja el **Phase Low** automático, pero incluye más reflexiones de la sala.
+- **Phase Low** (20 a 20000 Hz, o **Auto**): Límite inferior de frecuencia de la corrección de fase del sonido directo con ventana fija (de forma predeterminada, el mayor entre **Correction Low** y la frecuencia de la que caben tres ciclos en **Direct Window**; por ejemplo, 500 Hz con 6 ms). Con **Low-frequency Phase Extension** activada, marca en cambio dónde la ventana fija deja paso a las ventanas más largas de baja frecuencia.
+- **Low-frequency Phase Extension** (desactivada de forma predeterminada): Extiende la corrección del exceso de fase por debajo de **Phase Low** hacia **Correction Low** mediante ventanas dependientes de la frecuencia que se alargan progresivamente.
+- **Max Boost** (0 a 18 dB): Limita los realces de la corrección automática antes del suavizado, sin limitar los cortes ni los realces intencionados de **Additional EQ**.
+- **Level Correction** (0% a 100%): Ajusta la corrección automática de magnitud de forma lineal en dB. Con 0% solo se detiene la corrección automática; **Phase Correction**, **Additional EQ**, **Delay** y **Gain** siguen activos.
+- **Phase Correction** (0% a 100%): Ajusta la corrección del exceso de fase del sonido directo en el modo Correction, con independencia de **Reverb Correction**.
+- **Reverb Correction** (0% a 100%; predeterminado 0%): Ajusta la corrección del exceso de fase de la reverberación posterior de la sala, analizada dentro de **Reverb Window** hasta **Reverb Max Freq**. No cambia la corrección de magnitud.
+- **Reverb Window** (20 a 1000 ms): Ventana temporal tras el inicio del sonido que analiza **Reverb Correction**. Si no es más larga que **Direct Window** (o la medición es demasiado corta), la corrección de la reverberación se omite con un aviso y el resto del filtro sigue activo.
+- **Reverb Max Freq** (20 a 20000 Hz; predeterminado 250 Hz): Límite superior de frecuencia de **Reverb Correction**, limitado por **Correction High** (mantenerlo alrededor de 250 Hz centra la corrección en el decaimiento de baja frecuencia de la sala, que se comporta de forma parecida en asientos cercanos).
+- **Reverb Smoothing** (0,02 a 1,00 oct): Suavizado gaussiano aplicado al retardo de exceso de fase de la reverberación.
+- **Reference Point**: Selecciona **Consensus (all points)** (promedio de los puntos de medición ponderado por su fiabilidad) o un único punto de medición para el análisis del exceso de fase. Si el punto seleccionado se elimina, vuelve a Consensus.
+- **Additional EQ (integrado en el FIR)**: Cinco bandas paramétricas para ajustar la curva objetivo (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0,1–10, hasta 2 en los shelves), integradas directamente en el filtro FIR. Su fase es cero en el modo Linear y de fase mínima en los modos Minimum y Correction.
+- **Gain** (-12 a +12 dB): Ajuste del nivel de salida.
 
 ### Visualización
 
-- Usa los botones de opción **Graph**, situados fuera del gráfico, para cambiar entre **Frecuencia**, **Fase**, **Retardo de grupo mínimo**, **Retardo de grupo excedente** e **Impulso**.
-- **Fase** usa una escala logarítmica de frecuencia en el eje horizontal y una escala de fase de -180° a 180° en el vertical. La línea gris muestra la fase antes de la corrección y la verde, la fase calculada después de aplicar el FIR real. De ambas se elimina el inicio medido y del resultado corregido también se elimina el retardo fijo conocido del FIR, de modo que el gráfico muestra el cambio de fase introducido por el filtro sin esos desplazamientos temporales fijos. Si la medición no contiene una respuesta al impulso, se muestra un mensaje de datos no disponibles.
-- **Retardo de grupo mínimo** muestra el retardo asociado a la parte de fase mínima de la respuesta de magnitud. **Retardo de grupo excedente** muestra por separado el retardo restante tras eliminar esa parte, lo que facilita examinar las reflexiones y otros comportamientos temporales que no son de fase mínima. Ambas vistas usan frecuencia logarítmica en el eje horizontal y milisegundos en el vertical. Los valores conservan el retardo de grupo absoluto respecto al inicio medido: se elimina ese inicio y, del resultado corregido, también el retardo fijo conocido del FIR. No se vuelven a referenciar a 1 kHz, por lo que el valor allí no tiene por qué ser 0 ms. La línea gris corresponde a antes de la corrección y la verde, al resultado calculado después de aplicar el FIR real. El análisis del retardo de grupo es independiente del espaciado entre los puntos mostrados y no depende de desenvolver la fase. Smoothing se aplica sobre una cuadrícula fija de frecuencia logarítmica, por lo que un valor menor muestra más detalle. **Retardo de grupo mínimo** ajusta automáticamente su rango vertical a las curvas mostradas. **Retardo de grupo excedente** mantiene un rango fijo de -100 a +100 ms, pero el valor leído conserva el resultado sin recortar cuando la curva lo supera. Si la medición no contiene una respuesta al impulso, se muestra un mensaje de datos no disponibles.
-- **Impulso** muestra el punto seleccionado o, cuando Reference Point está en Consenso, la forma de onda media alineada en el tiempo. El intervalo va desde 2 ms antes del inicio medido hasta el valor mayor entre 5 ms, Direct Window y, cuando Reverb Correction está por encima del 0%, Reverb Window limitado a 50 ms. La línea gris corresponde al estado anterior a la corrección y la verde al resultado calculado después de aplicar el FIR real. El inicio medido es la referencia común de 0 ms y de la forma de onda corregida solo se elimina el retardo fijo conocido del FIR, por lo que siguen siendo visibles la posición relativa del pico y el pre-ringing. Ambas líneas usan la misma escala de amplitud normalizada. Low-frequency Phase Extension y Reverb Correction pueden analizar una parte de la respuesta posterior al límite de esta vista. Solo para esta visualización, se eliminan los componentes de 20 kHz en adelante; esto no afecta al filtro de corrección ni al procesamiento de audio. Si la medición no contiene datos de respuesta al impulso, se muestra un mensaje que indica que no están disponibles.
-- **Frecuencia** muestra la frecuencia en escala logarítmica en el eje horizontal y el nivel en dB en el vertical.
-- El selector **Graph Preview Ch**, situado fuera del gráfico, solo aparece cuando se han diseñado filtros para más de un canal; elige de qué canal se muestra la respuesta en el gráfico y se usa como base del EQ adicional, y no afecta al audio.
-- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para marcar cada curva con un punto en esa posición y mostrar su valor junto a su nombre en la leyenda, con la frecuencia —o el tiempo en la vista Impulso— encima de ellas.
-- Las dos líneas verticales blancas de puntos marcan las frecuencias ajustadas con Correction Low y Correction High.
-- Los marcadores permiten cambiar la frecuencia y la ganancia de cada banda.
-- La curva gris clara muestra la respuesta en frecuencia medida y suavizada con el desplazamiento de visualización común del gráfico.
-- La curva fina de color verde claro muestra la corrección automática calculada a partir de la medición elegida y de los ajustes actuales de Room EQ, antes de aplicar el EQ adicional.
-- La curva verde brillante muestra esa corrección con el EQ adicional aplicado. Esta respuesta de magnitud combinada es la que se integra en el FIR.
-- La curva blanca muestra la respuesta corregida estimada que se obtiene al sumar la corrección combinada verde brillante a la respuesta medida gris clara. Las curvas gris y blanca comparten un desplazamiento que sitúa en 0 dB el nivel de destino de una corrección automática del 100%; los límites de Max Boost pueden dejar desviaciones residuales, mientras que Additional EQ modifica intencionadamente la respuesta alrededor de esa referencia. Es una vista previa calculada, no una nueva medición acústica.
-- El estado situado bajo los controles muestra la latencia total, la resolución FIR y si el filtro está en bypass, staged, preparing, active o error.
+- **Graph**: Cambia entre **Frequency** (la medición suavizada en gris claro, la corrección automática en verde pálido, la corrección combinada con Additional EQ en verde brillante y la respuesta corregida estimada en blanco, que es una vista previa calculada y no una nueva medición), **Phase** (de −180° a +180° antes y después del FIR), **Min Group Delay**, **Excess Group Delay** e **Impulse** (forma de onda normalizada antes y después del FIR, desde 2 ms antes del inicio medido hasta el mayor de 5 ms, **Direct Window** y, cuando **Reverb Correction** supera el 0%, **Reverb Window**, con un máximo de 50 ms). En las vistas de fase, de retardo de grupo y de impulso, la línea gris **Before** es la respuesta antes de la corrección y la línea verde **After**, el resultado calculado tras el FIR. Dos líneas verticales blancas de puntos marcan **Correction Low** y **Correction High**.
+- En la vista Frequency, las curvas gris y blanca se desplazan para que el nivel objetivo de la corrección automática completa (100%) quede en 0 dB; las desviaciones que quedan en la curva blanca se deben a límites como **Max Boost** o una **Level Correction** inferior al 100%, o a ajustes intencionados de **Additional EQ**.
+- Las vistas de fase, de retardo de grupo y de impulso eliminan el inicio medido, y del resultado corregido se elimina el retardo fijo del FIR. El retardo de grupo no se vuelve a referenciar a 1 kHz, por lo que allí no tiene por qué ser 0 ms. **Min Group Delay** ajusta su rango automáticamente; **Excess Group Delay** se mantiene entre −100 y +100 ms, aunque la lectura muestra los valores que quedan fuera de ese rango. Sin datos de respuesta al impulso, estas vistas muestran un mensaje de datos no disponibles.
+- **Graph Preview Ch**: Aparece cuando se han diseñado filtros para más de un canal; selecciona de qué canal se muestran las curvas y no afecta al audio.
+- **Controles interactivos**: Arrastra los marcadores numerados en horizontal para cambiar la frecuencia de una banda de **Additional EQ** y en vertical para cambiar su ganancia (las bandas desactivadas aparecen atenuadas), y pasa el cursor o arrastra sobre el gráfico para leer los valores en cualquier punto.
+- La línea de estado bajo los controles muestra la latencia total de procesamiento, la resolución del FIR y si el filtro está en bypass, staged, preparing, active o error.
+
+## Tilt EQ
+
+Inclina el balance de frecuencias general alrededor de una frecuencia pivote mediante un par emparejado de filtros shelving: un lado del espectro sube y el otro baja. Úsalo para ajustes amplios hacia un sonido más cálido o más brillante con un solo control, por ejemplo cuando una grabación o unos auriculares suenan siempre demasiado brillantes o demasiado apagados.
+
+### Guía de mejora del sonido
+- **Más cálido**: Usa un **Slope** negativo pequeño (por ejemplo, -1 dB/oct) para bajar los agudos y subir los graves, por ejemplo con grabaciones o auriculares brillantes.
+- **Más brillante**: Usa un **Slope** positivo pequeño (por ejemplo, +1 dB/oct) para subir los agudos y bajar los graves, por ejemplo con grabaciones o altavoces apagados.
+- **Dónde empieza el cambio**: Baja **Pivot Freq (Hz)** para extender el cambio del lado de los agudos hasta los medios; súbelo para limitarlo a las octavas más altas.
+
+### Parámetros
+- **Pivot Freq (Hz)** (20 Hz a ~20 kHz; predeterminado: aprox. 1 kHz): Frecuencia alrededor de la cual se inclina el balance.
+- **Slope** (-12 a +12 dB/oct; predeterminado: 0): Cantidad y sentido de la inclinación. Los valores positivos hacen el sonido más brillante, los negativos más cálido, y 0 lo deja sin cambios.
+
+### Visualización
+- El gráfico muestra la respuesta en frecuencia resultante.
+- **Reset** devuelve ambos parámetros a sus valores predeterminados.
+- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
 
 ## Tonal Balance EQ
 
-Mide el balance tonal a largo plazo de lo que se está reproduciendo y lo corrige poco a poco hacia el balance habitual de la música publicada en el estilo elegido. Úsalo cuando las grabaciones, las listas de reproducción o el streaming suenen de forma constante demasiado oscuros, demasiado brillantes, con graves retumbantes o delgados, y quieras igualarlos sin ajustar un EQ a mano para cada uno. Corrige la grabación, no tus altavoces ni tu sala; para eso usa Room EQ.
+Mide el balance tonal a largo plazo de lo que se está reproduciendo y lo acerca suavemente al balance espectral típico de la música publicada en el estilo elegido. Úsalo cuando las pistas de una lista de reproducción, un álbum o un streaming suenen de forma constante demasiado oscuras, demasiado brillantes, con graves retumbantes o delgadas, y quieras igualarlas automáticamente sin ajustar un EQ a mano para cada pista. (Corrige el balance de la grabación, no tus altavoces ni tu sala; para la corrección acústica usa [Room EQ](#room-eq)).
 
-El plugin compara el espectro medido con el objetivo después de igualar sus niveles globales, de modo que solo importa la forma del balance, no el volumen de la grabación. Atenúa las zonas demasiado fuertes y después eleva toda la señal con una única ganancia de compensación, así que la sonoridad se mantiene y las zonas más débiles ganan presencia. No realza las zonas que no contienen contenido musical real, como la parte alta vacía de una grabación de ancho de banda limitado o un siseo constante; un sonido estable y parecido al ruido, como un pad de sintetizador que no cambia, recibe el mismo trato, y también un sonido que se mantiene al mismo nivel durante las pausas tranquilas, porque no se puede distinguir del ruido de fondo. Los silencios y las pausas tranquilas no cuentan para la medición. Todos los canales reciben la misma corrección, por lo que la imagen estéreo no cambia, y el plugin no añade retardo.
-
-Los objetivos se han aprendido a partir de los espectros a largo plazo de una colección de música publicada con licencias que permiten su libre reutilización. Cada estilo tiene una curva típica y una dispersión típica entre pistas. **Tilt**, en cambio, es una referencia fija: plana en los graves y descendente a partir de ahí con una pendiente determinada. Cualquier objetivo se puede remodelar a tu gusto con las cinco bandas de Target Adjust.
+El plugin compara el espectro medido con el objetivo después de igualar la sonoridad global, atenúa las zonas demasiado fuertes y aplica una única ganancia de compensación para que las zonas más débiles ganen presencia sin cambiar la sonoridad percibida. Excluye de la medición los silencios y las pausas, y no realza el siseo ni las bandas estables parecidas al ruido (incluido un pad de sintetizador sostenido), de modo que los extremos de frecuencia vacíos no se realzan artificialmente. Todos los canales reciben la misma corrección sin latencia, lo que conserva la imagen estéreo.
 
 ### Guía de mejora del sonido
-- **Listas variadas y streaming**: Empieza con los valores predeterminados (Target **All**, Amount 100%, Averaging Time 30 s). La corrección entra de forma progresiva a lo largo de decenas de segundos a medida que la medición se vuelve fiable, así que compara con el plugin desactivado tras aproximadamente medio minuto de música.
-- **Una corrección estable para todo un álbum**: Pulsa **Reset** al empezar el álbum y pon Averaging Time en **∞**. El plugin promedia entonces todo lo que ha escuchado desde el Reset, así que la corrección se asienta y cada vez cambia menos.
-- **Música de un solo estilo**: Elige el Target más cercano a lo que escuchas, por ejemplo **Classical** para grabaciones orquestales o **Electronic** para música de baile. All es una buena opción cuando se mezclan estilos.
-- **Un resultado más suave**: Baja Amount a alrededor del 50% o Range a unos 3 dB. Si solo quieres corregir inclinaciones amplias sin retocar detalles más estrechos, sube Smoothing a alrededor de 1 oct.
-- **Seguir los cambios dentro de una canción**: Acorta Averaging Time a entre 0.5 y 1 s aproximadamente para que una estrofa oscura y un estribillo brillante se corrijan cada uno por su lado. Si notas que el tono se mueve, vuelve a alargar Averaging Time.
-- **No tocar los extremos**: Sube Low para no modificar la forma de los graves más profundos, o baja High para no modificar la forma de la octava más aguda.
-- **Tu propia curva de la casa**: Da forma al objetivo con Target Adjust. Por ejemplo, un High shelf de +1.5 dB a 8 kHz con Q 0.7 pide un balance algo más brillante, y un Peak amplio de -2 dB alrededor de 300 Hz con Q 0.7 pide menos peso en los medios graves. Cada grabación se corrige entonces hacia esa forma solo en la medida que necesita, en lugar de recibir todas el mismo EQ.
-- **Una referencia mecánica**: Elige Target **Tilt**. La Slope predeterminada de -6 dB/oct pide un balance algo más oscuro que el de la mayoría de la música publicada; pon Slope entre -4.5 y -5 dB/oct, aproximadamente, para un balance más habitual, o en -3 dB/oct, la referencia del ruido rosa, para uno más brillante.
+- **Listas variadas y streaming**: Empieza con los valores predeterminados (**Target: All**, **Amount: 100%**, **Averaging Time: 30 s**). La corrección se va formando durante decenas de segundos, a medida que la medición se vuelve fiable, así que deja sonar la música unos 30 segundos antes de compararla con el bypass.
+- **Una corrección estable para un álbum**: Haz clic en **Reset** al empezar el álbum y pon **Averaging Time** en **∞**, para que la corrección promedie toda la sesión de reproducción y se asiente en una curva fija.
+- **Objetivos por género**: Elige **Classical**, **Electronic**, **Pop** o **Rock** para ajustarte a un estilo concreto, o **All** si escuchas estilos variados.
+- **Un ajuste más suave**: Baja **Amount** (por ejemplo, al 50%), reduce **Range** (por ejemplo, a 3 dB) o sube **Smoothing** (por ejemplo, a 1 oct) para inclinaciones amplias y sutiles.
+- **Tu propia curva de la casa**: Usa las cinco bandas de **Target Adjust** bajo el gráfico para inclinar o dar forma al objetivo a tu gusto (por ejemplo, un High shelf de +1,5 dB a 8 kHz). Cada grabación se corrige entonces hacia tu objetivo personalizado solo en la medida necesaria.
+- **Referencia de pendiente fija**: Selecciona **Target: Tilt** para una respuesta plana por debajo de **Corner** seguida de una caída constante según **Slope** (−5 dB/oct se aproxima a los masters comerciales típicos; −3 dB/oct corresponde al ruido rosa).
 
-La ganancia de compensación mantiene la sonoridad, no el nivel de pico, por lo que los picos pueden subir. Si se produce recorte en una etapa posterior, baja el nivel después de este plugin o añade un limitador.
+La ganancia de compensación mantiene la sonoridad, no el nivel de pico, por lo que los picos pueden subir; si se produce recorte en una etapa posterior, baja el nivel después de este plugin o añade un limitador.
 
 ### Parámetros
-- **Target** - El balance tonal que se toma como objetivo: **All**, **Classical**, **Electronic**, **Pop**, **Rock** o **Tilt** (predeterminado: All)
-  - All es una mezcla a partes iguales de los cuatro estilos
-  - Tilt es una referencia fija, no un estilo aprendido: plana por debajo de Corner y descendente con la pendiente Slope a partir de ahí
-- **Slope** - Solo se muestra cuando Target es Tilt. Cuánto desciende el objetivo por encima de Corner (-18 dB/oct a 0 dB/oct, predeterminado: -6 dB/oct)
-  - -3 dB/oct es el ruido rosa, con la misma energía en cada octava; 0 dB/oct es el ruido blanco y -6 dB/oct, el ruido marrón
-  - Las grabaciones comerciales típicas promedian aproximadamente -5 dB/oct (Pestana et al.), así que el valor predeterminado pide un balance algo más oscuro que el de la música habitual. Una Slope más suave pide más agudos; cuanto más pronunciada (más negativa), más se inclina el balance hacia los graves
-- **Corner** - Solo se muestra cuando Target es Tilt. La frecuencia por debajo de la cual el objetivo permanece plano (20 Hz a 1000 Hz, predeterminado: 250 Hz)
-  - Los valores bajos prolongan la pendiente hacia los graves más profundos, lo que pide más graves profundos
-  - Los valores altos mantienen planos más graves, lo que pide menos graves
-- **Amount** - Cuánta corrección se aplica (0% a 100%, predeterminado: 100%)
-  - Los valores más bajos reducen toda la corrección; al 0% el sonido no cambia
-  - Al 0% la medición y el gráfico siguen funcionando, y Range, Smoothing, Low y High quedan desactivados
-- **Range** - La corrección máxima que puede recibir cualquier banda, tanto hacia arriba como hacia abajo (0 dB a 12 dB, predeterminado: 6 dB)
-  - Los valores bajos mantienen los cambios sutiles; con 0 dB la corrección se desactiva
-  - Los valores altos permiten acercar al objetivo las grabaciones que están muy lejos de él
-- **Smoothing** - La anchura de los detalles de la curva de corrección (0.1667 oct a 2 oct, predeterminado: 0.5 oct)
-  - Los valores altos producen inclinaciones amplias y suaves
-  - Los valores bajos siguen el objetivo más de cerca, incluidos picos y valles más estrechos
-- **Averaging Time** - Durante cuánto tiempo se promedia la medición (0.1 s a ∞, predeterminado: 30 s)
-  - Los valores cortos hacen que el tono siga los cambios dentro de una canción
-  - Los valores largos dan una corrección estable que cambia despacio de una canción a otra
-  - El extremo derecho del deslizador es **∞**: el plugin promedia todo lo escuchado desde el último Reset. También puedes escribir ∞ en la casilla del valor
-- **Low** - El límite inferior del rango corregido (20 Hz a 200 Hz, predeterminado: 20 Hz)
-  - Por debajo, la corrección se mantiene en el valor que tiene en Low
-  - Súbelo para no modificar la forma de los graves más profundos
-- **High** - El límite superior del rango corregido (2000 Hz a 20000 Hz, predeterminado: 16000 Hz)
-  - Por encima, la corrección se mantiene en el valor que tiene en High
-  - Bájalo para no modificar la forma de la octava más aguda
-- **Average SPL** - El nivel sonoro medio estimado en tu posición de escucha, igual que en Loudness Equalizer (60 dB a 96 dB, predeterminado: 83 dB)
-  - Solo sirve para decidir qué bandas débiles suenan lo bastante fuerte para oírse y, por tanto, pueden realzarse; no cambia el nivel de salida
-  - Los valores bajos tratan más bandas débiles como inaudibles, por lo que no se realzan
-  - Los valores altos consideran más bandas débiles como contenido audible
-- **Target Adjust** - Cinco bandas bajo el gráfico que remodelan el objetivo, con los mismos controles que Additional EQ de Room EQ y 5Band PEQ
-  - Cada banda se puede activar o desactivar y configurar como Peak, Low shelf o High shelf
-  - Frequency: 20 Hz a 20 kHz (predeterminadas: 100 Hz, 316 Hz, 1 kHz, 3.16 kHz y 10 kHz)
-  - Gain: -20 dB a +20 dB (predeterminado: 0 dB). Los valores positivos piden más de esa zona y los negativos, menos; con 0 dB el objetivo no cambia
-  - Q: 0.1 a 10, limitada a 2 en los shelves (predeterminado: 0.7). Cuanto mayor es, más estrecho es el rango afectado
+- **Target**: Balance tonal objetivo: **All** (predeterminado; mezcla a partes iguales de los cuatro estilos), **Classical**, **Electronic**, **Pop**, **Rock** o **Tilt** (referencia de pendiente fija).
+- **Slope** (-18 a 0 dB/oct; predeterminado: -6 dB/oct; solo en modo Tilt): Velocidad de caída por encima de **Corner** (-3 dB/oct = ruido rosa; ~-5 dB/oct = publicaciones comerciales típicas). Los valores más suaves piden más agudos; el predeterminado pide un balance algo más oscuro que el de la música típica.
+- **Corner** (20 a 1000 Hz; predeterminado: 250 Hz; solo en modo Tilt): Frecuencia por debajo de la cual el objetivo **Tilt** permanece plano. Los valores bajos piden más graves profundos; los altos, menos graves.
+- **Amount** (0% a 100%; predeterminado: 100%): Intensidad global de la corrección. Con 0% el sonido no cambia, pero la medición y el gráfico siguen funcionando, y **Range**, **Smoothing**, **Low** y **High** se desactivan.
+- **Range** (0 a 12 dB; predeterminado: 6 dB): Ajuste de ganancia máximo permitido en cualquier banda, hacia arriba o hacia abajo. Los valores bajos mantienen cambios sutiles (0 dB desactiva la corrección); los altos permiten acercar más al objetivo las grabaciones que se alejan mucho de él.
+- **Smoothing** (0,1667 a 2 oct; predeterminado: 0,5 oct): Anchura de los detalles de la curva de corrección (los valores altos producen inclinaciones más amplias).
+- **Averaging Time** (0,1 s a ∞; predeterminado: 30 s): Ventana de integración de la medición. Los valores cortos (por ejemplo, de 0,5 a 1 s) siguen los cambios dentro de una canción, como una estrofa oscura y un estribillo brillante; los largos dan una corrección estable (**∞** promedia de forma continua desde el último **Reset**).
+- **Low** (20 a 200 Hz; predeterminado: 20 Hz) / **High** (2000 a 20000 Hz; predeterminado: 16000 Hz): Límites inferior y superior de frecuencia del remodelado activo (fuera de ellos, la corrección se mantiene constante). Sube **Low** para no tocar los graves más profundos, o baja **High** para no tocar la octava más aguda.
+- **Average SPL** (60 a 96 dB; predeterminado: 83 dB): Nivel de escucha estimado que se usa para decidir qué bandas débiles son lo bastante audibles para realzarse; no cambia el nivel de salida. Con valores bajos, más bandas débiles se consideran inaudibles y no se realzan; con valores altos, se cuentan más como audibles.
+- **Target Adjust**: Cinco bandas paramétricas (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0,1–10, hasta 2 en los shelves; Q predeterminado 0,7) que remodelan la curva objetivo. Una ganancia positiva pide más de esa zona; una negativa, menos.
 
-Target Adjust solo cambia el objetivo. El plugin sigue midiendo cada grabación y la corrige hacia el objetivo ajustado con los mismos Amount, Range, Smoothing, Low y High; no es un EQ adicional aplicado encima. Por eso, subir o bajar todo el objetivo en la misma cantidad no cambia nada: los niveles globales se igualan antes de la comparación y la sonoridad se mantiene. Las zonas sin contenido musical real siguen sin realzarse, y por debajo de Low y por encima de High la corrección se mantiene constante, como siempre. El objetivo se sigue en bandas de anchura adaptada al oído y luego se suaviza, así que un pico o una muesca estrechos se ensanchan y resultan menores, como muestra el gráfico; para correcciones estrechas usa 5Band PEQ. Range sigue limitando la corrección en cada banda, de modo que un ajuste grande puede requerir un Range mayor.
+**Target Adjust** solo cambia el objetivo; cada grabación se sigue corrigiendo hacia él dentro de **Amount** y **Range**, por lo que un ajuste grande puede requerir un **Range** mayor. Subir todo el objetivo en la misma cantidad no cambia nada, porque los niveles globales se igualan antes de la comparación. Los picos y valles estrechos se suavizan; para correcciones estrechas usa 5Band PEQ.
 
 ### Visualización
-- El eje horizontal muestra la frecuencia de aproximadamente 26 Hz a 18.6 kHz y el vertical, el nivel en dB. El rango vertical se amplía para que quepan la franja del objetivo, la línea EQ response, el nivel medido dentro del rango corregido y los marcadores y la curva de Target Adjust, y vuelve a ±12 dB con Reset o al cambiar de Target. Los puntos medidos muy alejados del objetivo pueden quedar fuera del gráfico.
-- **Target** es la línea del balance objetivo, incluido Target Adjust, dibujada de modo que su promedio sea 0 dB. En un estilo, la franja sombreada que la rodea muestra la dispersión típica entre pistas de ese estilo; Tilt, al ser una referencia fija, no la tiene. Los niveles se muestran por hercio (densidad espectral), por lo que un objetivo Tilt se dibuja plano por debajo de Corner y, por encima, como una recta que desciende según Slope; el ruido rosa es una recta de -3 dB/oct.
-- **Measured** es la línea con puntos: el espectro a largo plazo medido, desplazado para alinearlo con el objetivo. Donde queda por debajo de la franja del objetivo, la grabación es más débil de lo habitual en esa zona; donde queda por encima, es más fuerte. La medición se pausa mientras escucha un tono de prueba y se reanuda al terminar.
-- **EQ response** es la línea gruesa: la ganancia que aplica el plugin, incluida la ganancia de compensación. 0 dB significa sin cambios.
-- **Withheld lift** es el área rellena que sube desde la línea EQ response. Su altura, que la lectura muestra como un valor aproximado en dB, indica cuánto realce adicional habría recibido la banda si no se hubiera retenido por reconocerse mal como contenido musical (véase más arriba). Es un tamaño aproximado, no una ganancia exacta, y depende de Amount y Range.
-- **Target adjust** es la curva fina alrededor de 0 dB: la respuesta combinada de las bandas de Target Adjust exactamente como las has ajustado. Los marcadores numerados muestran cada banda en su frecuencia y su ganancia, donde 0 dB significa sin cambios; no están sobre la línea Target. Arrastra un marcador en horizontal para cambiar la frecuencia y en vertical para cambiar Gain, gira la rueda del ratón sobre él para cambiar Q y haz clic con el botón derecho para activar o desactivar la banda. Las bandas desactivadas aparecen atenuadas.
-- Mientras suena el audio, la línea Target sigue los movimientos de los marcadores casi de inmediato; donde es más suave que la curva Target adjust, esa parte de lo pedido se está promediando. Con la reproducción detenida, la línea Target conserva su última forma medida y la curva Target adjust muestra lo que has pedido. Los cambios de Slope y Corner hechos con la reproducción detenida se ven en la línea Target cuando se reanuda.
-- Las zonas por debajo de Low y por encima de High aparecen atenuadas.
-- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto. Además de las curvas, la lectura muestra **Presence**, el porcentaje del tiempo medido en el que esa banda se reconoció como contenido musical audible; la **Make-up gain** actual, y la **Loudness** de todo lo medido desde el último Reset, en LKFS.
-- Antes de medir ningún audio, el gráfico muestra «Play audio to start measuring». Los marcadores de Target Adjust y la curva Target adjust se siguen mostrando y se pueden editar.
-- **Reset** borra la medición y vuelve a empezar desde el audio actual; Target Adjust no cambia. La medición también empieza de nuevo cuando el procesamiento se reanuda tras una pausa de ahorro de energía durante un silencio.
-- **Copy as PEQ** copia la curva EQ response del gráfico como ajustes de 5Band PEQ. Pulsa Ctrl+V en el Effect Pipeline para añadir un 5Band PEQ con esa curva delante del efecto seleccionado, o al final si no hay ninguno seleccionado. Para dejar fija la corrección actual, desactiva o quita Tonal Balance EQ. El 5Band PEQ reproduce la forma de la curva entre Low y High, pero no su nivel general, así que el volumen puede variar ligeramente. El botón está disponible cuando el gráfico muestra la curva EQ response y Amount es mayor que 0%.
+- El eje horizontal es la frecuencia, de unos 26 Hz a 18,6 kHz, y el vertical, el nivel en dB por hercio, de modo que el ruido rosa aparece como una línea que desciende a -3 dB/oct. El rango vertical se amplía para abarcar las curvas y vuelve a ±12 dB con **Reset** o al cambiar **Target**. Las zonas por debajo de **Low** y por encima de **High** aparecen atenuadas.
+- **Target** es el balance objetivo, incluido **Target Adjust**. En un estilo, la franja sombreada muestra la dispersión típica entre pistas, aprendida a partir de los espectros a largo plazo de una colección de música; **Tilt** no la tiene.
+- **Measured** es la línea con puntos: el espectro a largo plazo medido, alineado con el objetivo. Donde queda por debajo de la franja del objetivo, la grabación es más débil de lo habitual en esa zona; donde queda por encima, más fuerte. La medición se pausa mientras previsualizas una frecuencia.
+- **EQ response** es la línea gruesa: la ganancia aplicada, incluida la ganancia de compensación (0 dB = sin cambios).
+- **Withheld lift** es el área sombreada que indica aproximadamente cuánto realce adicional recibiría una banda si no se retuviera por considerarse contenido parecido al ruido o no musical.
+- **Target adjust** es la curva fina alrededor de 0 dB con marcadores numerados que muestran las bandas tal como las ajustas; los marcadores no están sobre la línea **Target**. Arrastra un marcador para cambiar la frecuencia y la ganancia, gira la rueda del ratón sobre él para cambiar Q y haz clic con el botón derecho para activar o desactivar la banda. Durante la reproducción, la línea **Target** sigue a los marcadores en un instante; con la reproducción detenida, conserva su última forma.
+- Pasa el cursor o arrastra sobre el gráfico para consultar los valores de cada banda, **Presence** (% del tiempo en que se reconoce como contenido musical), **Make-up gain** y la **Loudness** integrada (LKFS). Antes de medir ningún audio, el gráfico muestra «Play audio to start measuring».
+- **Reset** borra la medición acumulada; **Target Adjust** no cambia. La medición también se reinicia cuando el procesamiento se reanuda tras una pausa de ahorro de energía.
+- **Copy as PEQ** copia la curva EQ response como ajustes de 5Band PEQ. Pulsa **Ctrl+V** en el Effect Pipeline para insertarla delante del efecto seleccionado (o al final) y después desactiva Tonal Balance EQ para dejar fija la corrección. La copia reproduce la forma de la curva entre **Low** y **High**, pero no su nivel general, así que la sonoridad puede variar ligeramente. Está disponible cuando el gráfico muestra una curva EQ response y **Amount** es mayor que 0%.
 
 ## Tone Control
 
@@ -848,35 +826,4 @@ Un ajustador de sonido de tres bandas sencillo para una personalización rápida
 ### Visualización
 - Gráfico fácil de leer que muestra tus ajustes
 - Controles deslizantes simples para cada ajuste
-- Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.
-
-## Tilt EQ
-
-Un ecualizador simple pero efectivo que inclina suavemente el balance de frecuencia de tu música. Está diseñado para ajustes sutiles, haciendo que tu música suene más cálida o brillante sin controles complejos. Ideal para adaptar rápidamente el tono general a tu preferencia.
-
-### Guía de Mejora Auditiva
-- Haz la Música Más Cálida:
-  - Utiliza valores de Slope negativos para reducir las frecuencias altas y aumentar las frecuencias bajas.
-  - Perfecto para grabaciones brillantes o auriculares que suenan demasiado nítidos.
-  - Crea una experiencia auditiva acogedora y relajada.
-- Haz la Música Más Brillante:
-  - Utiliza valores de Slope positivos para aumentar las frecuencias altas y reducir las frecuencias bajas.
-  - Ideal para grabaciones opacas o altavoces que suenan apagados.
-  - Añade claridad y brillo a tu música.
-- Ajustes Sutiles de Tono:
-  - Utiliza valores pequeños de Slope para dar forma suave al tono general.
-  - Ajusta con precisión el balance para que coincida con tu entorno auditivo o estado de ánimo.
-
-### Parámetros
-- **Pivot Frequency** - Controla la frecuencia central de la inclinación (20Hz a ~20kHz)
-  - Ajusta para establecer el punto de frecuencia alrededor del cual se produce la inclinación.
-- **Slope** - Controla la inclinación de la pendiente alrededor de la Frecuencia Pivote (-12 a +12dB/octava)
-  - Los valores positivos hacen el sonido más brillante; los valores negativos lo hacen más cálido.
-  - Los valores más pequeños producen cambios más suaves.
-
-### Visualización
-- Deslizador simple para ajustar fácilmente la pendiente
-- Curva de respuesta de frecuencia en tiempo real para mostrar el efecto de inclinación
-- Indicación clara del valor de pendiente actual
-- Botón de reinicio rápido
 - Pasa el cursor sobre el gráfico, o tócalo y desliza el dedo sobre él, para leer los valores en ese punto.

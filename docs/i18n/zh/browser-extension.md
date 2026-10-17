@@ -1,53 +1,72 @@
 ---
 title: "浏览器扩展 - 适用于 Chrome 和 Edge 的均衡器与音频效果 - EffeTune"
-description: "浏览器扩展可同时处理最多四个标签页的音频，每个标签页都有独立的立体声 Effect Pipeline。"
+description: "使用 EffeTune 浏览器扩展同时处理最多四个 Chrome 或 Edge 标签页的音频，支持按 URL 自动切换预设和选择采样率。"
 lang: zh
 ---
 
 # EffeTune 浏览器扩展
 
-浏览器扩展可同时处理最多四个标签页的音频，每个标签页都有独立的立体声 **Effect Pipeline**。 它适合在不启动桌面应用、也不配置虚拟音频设备的情况下收听视频或音乐网站。
+EffeTune 浏览器扩展可同时处理最多四个浏览器标签页的音频，每个标签页都拥有独立的立体声 Effect Pipeline。无需启动桌面应用或配置虚拟音频设备，即可在视频或音乐网站上加工声音来聆听。
 
-## 兼容性和安装
+有关本地数据的处理方式以及可选的外部链接，请阅读[浏览器扩展隐私政策](../../browser-extension-privacy.md)。如需帮助，可以使用 [GitHub Issues](https://github.com/Frieve-A/effetune/issues)，但请不要在公开的 Issue 中发布音频、标签页标题或 URL、预设、测量数据、脉冲响应或其他个人信息。
 
-请在装有 Chrome 116 或更高版本，或兼容的基于 Chromium 的 Microsoft Edge 的 PC 上使用。Firefox、Safari、移动浏览器和隐私浏览不受支持。 每个标签页都使用立体声效果链。
+## 兼容环境
 
-从扩展商店获得的扩展请在该商店安装。对于本地包，请将 `effetune-extension-<version>.zip` 解压到会保留的文件夹。在 Chrome 中打开 `chrome://extensions`，在 Edge 中打开 `edge://extensions`，开启 **Developer mode**，选择 **Load unpacked**，再选择该文件夹。**Load unpacked** 不能直接安装 ZIP 文件；替换文件后，请在此页面重新加载扩展。
+请在电脑端使用 Chrome 116 或更高版本，或兼容的 Chromium 内核 Microsoft Edge。不支持 Firefox、Safari、移动端浏览器和无痕/隐私浏览模式。每个标签页使用一条立体声效果链。
+
+## 安装本地扩展包
+
+如果从浏览器扩展商店获取，请直接在商店中安装。若使用本地扩展包，请先将 `effetune-extension-<version>.zip` 解压到一个长期保留的文件夹中，然后加载该解压后的文件夹：
+
+1. 在 Chrome 中打开 `chrome://extensions`；在 Edge 中打开 `edge://extensions`。
+2. 开启 **Developer mode**。
+3. 选择 **Load unpacked**，然后选择解压后的扩展文件夹。
+
+**Load unpacked** 无法直接安装 ZIP 文件本身。替换解压文件夹内的文件后，请在该页面重新加载扩展。
 
 ## 开始、对比和停止处理
 
-1. 打开要处理其音频的标签页并开始播放。
+1. 打开要处理音频的标签页并开始播放。
 2. 从浏览器工具栏打开 EffeTune 扩展。
-3. 选择 **Start on this tab**。效果链准备好后，状态会从 **Starting…** 变为 **Processing**。
+3. 选择 **Start on this tab**。当效果链准备就绪后，状态会从 **Starting…** 变为 **Processing**。
 
-要添加另一个标签页，请在该标签页中打开扩展并选择 **Start on this tab**。弹窗会列出所有会话，最多可同时运行四个；开始第五个之前，请先停止一个。**Bypass** 可在保持会话的同时试听不加效果的音频。**Stop** 会让该标签页恢复正常播放，不影响其他标签页。
+若要添加另一个标签页，请在该标签页中打开扩展，然后选择 **Start on this tab**。弹窗中会列出所有会话。最多可同时运行四个标签页；启动第五个之前请先停止其中一个。
 
-关闭扩展弹窗或编辑器后，处理仍会继续。再次打开时会显示当前标签页和实际状态。重启浏览器后请手动开始新会话；扩展不会自动捕获标签页。
+使用标签页旁的 **Bypass**，可在保持会话活动的同时聆听不加效果的声音。使用完毕后，选择该标签页旁的 **Stop**。停止后该标签页会恢复普通播放，而不会打断其他标签页。
 
-## 编辑效果链和使用预设
+关闭扩展弹窗或编辑器后，处理仍会继续。再次打开任一窗口时，会显示当前标签页及其处理状态。重启浏览器后，请开始新的会话；扩展不会自动捕获标签页。
 
-选择 **Edit pipeline** 可打开 **EffeTune Pipeline Editor**。您可像在 EffeTune 中一样添加、排序、启用或禁用效果，调节参数，并使用可用的分析显示。弹窗中的 **Saved preset** 和 **Apply to selected tab** 可以不打开编辑器而更换完整效果链。在编辑器中打开 **Pipeline Presets**，可通过 **Save as** 保存完整效果链预设。要导入或导出完整预设，请打开 **Settings**，然后选择 **Import preset…** 或 **Export preset**。 在编辑器顶部选择标签页，即可查看它的效果链和分析显示。没有活动会话时，**Offline pipeline** 可编辑下次启动使用的默认效果链。在弹窗中先选择标签页，再应用预设。
+## 编辑 Effect Pipeline 和使用预设
 
-在编辑器顶部选择 **Visualizer**，即可在 [Visualizer](visualizer.md) 中查看所选标签页处理后的声音；再次选择即可返回效果链。如果该标签页尚未开始处理，Visualizer 会显示“Start EffeTune on a tab to show Visualizer.”。扩展中不显示曲目名称和封面图。**Share** 和 **Import Link** 的用法与网页应用相同，分享的链接会在网页版中打开。Visualizer 的布局和预设保存在扩展中，不会与网页应用或桌面应用同步。
+选择 **Edit pipeline** 打开 **EffeTune Pipeline Editor**，然后在顶部栏选择目标标签页。添加、排序、开关和调节效果器的方式与 EffeTune 相同；分析器显示会跟随所选标签页。当没有活动标签页时，可通过 **Offline pipeline** 编辑下次启动标签页时使用的默认效果链。
 
-已保存的设置和预设保存在扩展中，不会自动与网页应用或桌面应用同步。若预设需要不支持的路由、效果或不可用的外部资源，它不会被应用，当前效果链会保持不变。
+在编辑器顶部栏选择 **Visualizer** 可在 [Visualizer](visualizer.md) 中查看所选标签页处理后的音频，再次点击即可返回效果链。扩展中不显示曲目标题和专辑封面，**Share** / **Import Link** 的用法与网页版相同。
 
-要在 Room EQ 或 Crosstalk Cancellation 中使用网页应用或桌面应用的测量结果，请先在相应应用中将测量结果导出为 JSON。在扩展编辑器中打开 **Settings**，选择 **Import measurement…**，再选择该 JSON 文件。用于 Crosstalk Cancellation 或 Room EQ 相位校正时，导出时应包含脉冲响应。导入的测量结果会立即出现在 Room EQ 的 **Measurement** 列表中，保存在扩展的浏览器存储中，并且不会自动同步。如需删除导入的副本，请先在该列表中选中它，再选择列表旁的 **Delete**。确认后，会先清除所有使用该副本的 Room EQ 和 Crosstalk Cancellation 分配，再删除副本。
+若要在弹窗中快速切换预设，请先选中标签页，选择 **Saved preset**，然后点击 **Apply to selected tab**。在编辑器中，可通过 **Pipeline Presets > Save as** 保存预设，或通过 **Settings > Import preset…** / **Export preset** 交换 `.effetune_preset` 文件。如果预设需要扩展不支持的多声道路由或效果器，或缺少外部资源，当前效果链会保持不变。
 
-如需选择已保存的数据并一次性转移，请在编辑器中打开 **Settings > Backup / Restore**。同一个 `.effetune_backup` 文件也可用于网页应用和桌面应用，能包含已保存的效果链预设、效果器预设、Visualizer 预设、脉冲响应和导入的测量结果。使用扩展不支持的路由或效果的效果链仍会保存，也可以再次备份，但无法在扩展中应用。文件不包含 URL 规则和扩展的 Sample rate 设置。
+若要在 **Room EQ** 或 **Crosstalk Cancellation** 中使用来自网页版或桌面应用的房间或扬声器测量数据：
 
-## URL预设与采样率
+1. 在网页版或桌面应用中将测量结果导出为 JSON（用于 **Crosstalk Cancellation** 或 **Room EQ** 相位校正时，请包含脉冲响应）。
+2. 在扩展编辑器中打开 **Settings > Import measurement…** 并选择该 JSON 文件。
+3. 在 **Room EQ** 或 **Crosstalk Cancellation** 中选择导入的测量数据。若要删除导入的副本，请在 Room EQ 的 **Measurement** 列表中选中它并选择 **Delete**；确认后，所有使用该测量数据的 Room EQ 和 Crosstalk Cancellation 分配都会被清除。
 
-在 **Settings** 中打开 **URL rules…**，添加匹配模式，选择保存的预设并启用规则。模式使用 `host/path` 格式，例如 `example.com/music/*`，其中 `*` 可匹配任意文本。第一个匹配的启用规则生效。主机名不区分大小写，协议、查询字符串和片段不参与匹配。可调整规则顺序以改变优先级，也可停用或删除不需要的规则。
+若要在网页版、桌面应用和浏览器扩展之间一并迁移预设、效果器预设、Visualizer 预设、脉冲响应和导入的测量数据，请使用 **Settings > Backup / Restore**（`.effetune_backup`）。扩展中的预设、布局和导入的测量数据均保存在扩展内部，不会与网页版或桌面应用自动同步。备份不包含 URL 规则和扩展的采样率设置。
 
-每个标签页仍需手动开始处理。启动时及URL改变时会自动选择预设；没有匹配规则时使用默认效果链。规则修改从下次启动或页面跳转起生效。编辑由URL规则选中的效果链会更新对应的已保存预设；其他编辑会更新默认效果链。手动应用预设后的编辑也保存到默认效果链。删除预设会停用引用它的规则，并将正在使用这些规则的标签页切回默认效果链。
+## URL 预设与采样率
 
-**Settings** 中的 **Sample rate** 适用于所有活动标签页，可选 **Auto**、**44.1 kHz**、**48 kHz**、**96 kHz** 或 **192 kHz**。Auto由浏览器选择采样率。更改时，所有标签页的音频处理会短暂重启，但捕获会保留。如果某个标签页无法以新采样率处理，它会恢复正常播放；请选择其他采样率并重新开始该标签页的处理。
+打开 **Settings > URL rules…**，可在标签页 URL 匹配 `host/path` 模式（例如 `example.com/music/*`，其中 `*` 匹配任意文本）时自动加载已保存的预设。每个标签页仍需由你手动开始；规则只在开始时和 URL 变化时为其选择预设。列表中第一个匹配且已启用的规则优先生效；若无匹配规则，则使用默认效果链。规则的更改会在下次开始或页面跳转时生效。编辑由 URL 规则加载的效果链会更新该规则对应的已保存预设，而其他编辑（包括手动应用预设后的编辑）会更新默认效果链。删除预设后，使用该预设的规则会被停用，使用这些规则的标签页会恢复为默认效果链。
 
-## 权限、限制和帮助
+**Settings** 中的 **Sample rate**（**Auto**、**44.1 kHz**、**48 kHz**、**96 kHz** 或 **192 kHz**）对所有活动标签页生效。**Auto** 由浏览器自行选择。更改采样率会短暂重启活动标签页的处理，同时保留其捕获。如果某个标签页无法在新采样率下运行，会恢复普通播放；请改选其他采样率并重新开始该标签页。
 
-扩展只捕获您明确开始处理的标签页音频，并读取这些标签页的URL，包括页面跳转后的URL，以选择保存的预设。它不会读取页面内容、插入脚本、使用麦克风、录音或向外发送音频。
+## 权限与限制
 
-立体声效果链支持使用 Bus Routing 连接 Main 和 Bus 1–4，包括并行效果路径。扩展不支持两个以上声道、执行新测量与设备控制、Music Library、批量文件转换，以及依赖设备或文件路径的桌面专用功能。
+扩展仅在你点击 **Start on this tab** 的标签页上捕获音频，且仅读取这些标签页的 URL 用于匹配 URL 预设规则。它绝不会读取网页内容、注入脚本、使用麦克风或通过网络发送音频。
 
-某些受保护内容可能无法捕获，扩展不会绕过内容保护。如果无法开始捕获，EffeTune 会停止处理，标签页会恢复正常播放。确认标签页正在播放音频后，再选择 **Start on this tab**。出现 **Needs attention** 时，也请这样操作。若无法应用预设，当前效果链会被保留；请更换预设或提供所需资源后重试。
+每个标签页运行一条支持 **Main** 和 **Bus 1–4** 的立体声效果链。多声道输出（>2ch）、执行声学测量、音乐库、批量离线文件转换以及桌面端专属硬件功能在扩展中不可用。阻止浏览器捕获的受保护（DRM）流媒体会恢复普通播放。
+
+## 常见问题排查
+
+- **状态显示“Needs attention”或无法开始捕获：** 请确认该标签页正在播放音频，然后再次点击 **Start on this tab**。
+- **无法应用预设：** 编辑器会保留当前效果链。请检查所需的测量数据或脉冲响应资源是否已事先导入到扩展中。
+
+[← 返回 README](README.md)

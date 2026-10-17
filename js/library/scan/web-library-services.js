@@ -22,7 +22,8 @@ export function createWebLibraryServices({
         displayName: options.displayName ?? selection.displayName,
         scan: options.scan !== false,
         scanReason: options.scanReason ?? 'automatic',
-        languageHints: options.languageHints ?? null
+        languageHints: options.languageHints ?? null,
+        includeVideo: options.includeVideo === true
       };
       const result = await client.addFolder(request);
       if (result?.confirmationRequired !== true) return result;

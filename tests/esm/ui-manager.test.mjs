@@ -50,6 +50,8 @@ class FakeClassList {
 }
 
 class FakeElement {
+  get parentElement() { return this.parentNode; }
+
   constructor(tagName, ownerDocument) {
     this.tagName = tagName.toUpperCase();
     this.ownerDocument = ownerDocument;
@@ -281,6 +283,7 @@ function createDocument() {
   };
   document.body = document.createElement('body');
   document.documentElement = document.createElement('html');
+  document.documentElement.clientWidth = 1920;
   return document;
 }
 
@@ -307,6 +310,10 @@ function seedDocument(document) {
     'decreaseColumnsButton', 'increaseColumnsButton', 'sidebarButton'
   ];
   ids.forEach(id => appendElement(document, document.body, id.includes('Input') || id.includes('Select') ? 'input' : 'button', id));
+  Object.assign(document.body.style, { paddingLeft: '20px', paddingRight: '20px' });
+  Object.assign(document.getElementById('pipeline').style, { paddingLeft: '20px', paddingRight: '20px' });
+  document.getElementById('pluginList').style.width = '300px';
+  document.getElementById('pipelineList').style.columnGap = '10px';
 
   appendElement(document, document.body, 'div', '', 'subtitle');
   appendElement(document, document.body, 'a', '', 'whats-this');
@@ -466,9 +473,20 @@ async function withUIHarness(options = {}, callback) {
     showAudioConfigDialog: () => calls.push(['electron.showAudioConfigDialog'])
   };
   const electronAPI = options.electronAPI ?? null;
+  const getComputedStyle = element => {
+    assert.ok(element, 'Computed styles require an element');
+    const [top, right = top, bottom = top, left = right] = (element.style.margin || '0px').trim().split(/\s+/);
+    return { width: 'auto', zoom: '1', columnGap: 'normal', paddingLeft: '0px', paddingRight: '0px',
+      borderLeftWidth: '0px', borderRightWidth: '0px', marginTop: top, marginRight: right,
+      marginBottom: bottom, marginLeft: left, ...element.style,
+      getPropertyValue(name) { return this[name] || ''; } };
+  };
   const globals = {
     document,
+    getComputedStyle,
     window: {
+      innerWidth: 1920,
+      getComputedStyle,
       location: { href: 'https://example.test/effetune.html?p=old', search: options.search ?? '', reload: () => calls.push(['window.reload']) },
       history: { replaceState: (...args) => calls.push(['history.replaceState', ...args]) },
       appConfig: options.appConfig ?? {},
@@ -1463,7 +1481,7 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
       activeCalls = calls;
       await manager.openMusicButton.click();
       const fileInput = [...document.allElements].find(element => element.type === 'file' && element.parentNode);
-      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.cue,.lrc,.jpg,.png');
+      assert.equal(fileInput.accept, 'audio/*,video/mp4,image/jpeg,image/png,.mp4,.webm,.m4v,.mov,.mkv,.3gp,.cue,.lrc,.jpg,.png');
       fileInput.files = [{ name: 'song.wav', async arrayBuffer() { return new ArrayBuffer(0); } }];
       await fileInput.dispatch('change', { target: fileInput });
       await flushMicrotasks();
@@ -1743,7 +1761,8 @@ test('audio player replacement reserves layout until the new player mounts', asy
     assert.ok(placeholder);
     assert.equal(placeholder.className, 'audio-player-layout-placeholder');
     assert.equal(placeholder.style.height, '72px');
-    assert.equal(placeholder.style.margin, '1px 2px 3px 4px');
+    assert.deepEqual(['Top', 'Right', 'Bottom', 'Left'].map(side => placeholder.style[`margin${side}`]),
+      ['1px', '2px', '3px', '4px']);
     assert.equal(placeholder.parentNode, document.body);
     assert.equal(timers.at(-1).delay, 5000);
 

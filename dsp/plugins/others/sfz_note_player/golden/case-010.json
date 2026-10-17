@@ -30,7 +30,8 @@
     "nh": 50,
     "ss": 0,
     "pm": -1,
-    "pv": 100
+    "pv": 100,
+    "dt": "Classic"
   },
   "events": [],
   "asset": {
@@ -43,7 +44,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:ca6f93eeab6deeaee7d769b93f6e48f0e90a5c440dd7262749d69927e0262082",
+  "referenceHash": "sha256:4512b7922be918663e72a992903d071a5ae3aae57a542209a6073edde6dd2492",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type SFZNotePlayerPlugin --promote-production-native",
   "outputFloats": 32768,
   "byteLength": 131072,

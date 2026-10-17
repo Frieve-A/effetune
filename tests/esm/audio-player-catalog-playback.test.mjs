@@ -113,6 +113,24 @@ test('million-item catalog playback pages metadata and resolves only the selecte
   });
 });
 
+test('opened files without catalog tags leave the title empty for embedded tag reading', async () => {
+  await withPlaybackHarness(async ({ audioPlayer, manager }) => {
+    const loadedTracks = [];
+    audioPlayer.contextManager.loadTrack = async track => {
+      loadedTracks.push(track);
+      return true;
+    };
+    manager.loadFiles(['/music/first.flac', '/music/tagged.flac']);
+
+    const result = await manager.selectQueueOrdinal(1, { play: false });
+    assert.equal(result.accepted, true);
+    const track = loadedTracks.at(-1);
+    assert.equal(track.name, 'tagged.flac');
+    assert.equal(track.path, '/music/tagged.flac');
+    assert.deepEqual(track.meta, { title: '', artist: '', album: '' });
+  });
+});
+
 test('catalog playback resolves track indices without scanning the lazy playlist facade', async () => {
   await withPlaybackHarness(async ({ audioPlayer, manager }) => {
     const ordinal = 731_245;

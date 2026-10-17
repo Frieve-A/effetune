@@ -2,8 +2,17 @@ import {
   getPlaybackPhysicalSourceKey,
   hasPlaybackRegionDescriptor
 } from './playback-region.js';
+import { isSupportedVideoPath } from '../../library/constants.js';
 
 export const MAX_BUFFER_SOURCE_BYTES = 256 * 1024 * 1024;
+
+export function isVideoPlaybackSource(source) {
+  if (!source || typeof source !== 'object') return false;
+  return [source.type, source.mimeType, source.file?.type, source.mediaSource?.type,
+    source.meta?.mimeType].some(type => typeof type === 'string' && type.startsWith('video/')) ||
+    [source.path, source.name, source.file?.name, source.mediaSource, source.meta?.fileName]
+      .some(value => typeof value === 'string' && isSupportedVideoPath(value.split(/[?#]/, 1)[0]));
+}
 
 export function normalizePlaybackSourceDescriptor(source) {
   const input = source && typeof source === 'object' ? source : {};
@@ -20,6 +29,7 @@ export function normalizePlaybackSourceDescriptor(source) {
         ? () => file.arrayBuffer()
         : null);
   const descriptor = {
+    isVideo: isVideoPlaybackSource(input),
     physicalSourceKey: getPlaybackPhysicalSourceKey(input),
     byteLength,
     mediaSource,
@@ -37,6 +47,11 @@ export function choosePlaybackMode(descriptor) {
   const source = descriptor && typeof descriptor === 'object' ? descriptor : {};
   const hasMediaSource = source.mediaSource !== null && source.mediaSource !== undefined;
   const byteLength = normalizeByteLength(source.byteLength);
+
+  if (source.isVideo) {
+    return decision(hasMediaSource ? 'media' : 'unavailable', false,
+      hasMediaSource ? 'video-must-stream' : 'video-media-unavailable');
+  }
 
   if (hasPlaybackRegionDescriptor(source)) {
     return decision(

@@ -341,7 +341,7 @@ test('SFZ size errors use each language’s actual settings and General labels',
     const lines = fs.readFileSync(new URL(`../../js/locales/${language}.json5`, import.meta.url), 'utf8')
       .split(/\r?\n/).map(line => line.trim());
     const strings = Object.fromEntries(['dialog.config.title', 'dialog.config.category.general',
-      'dialog.config.sfzSizeLimit', 'sfzNotePlayer.error.tooLarge', 'sfzNotePlayer.status.scanning',
+      'dialog.config.sfzSizeLimit', 'sfzNotePlayer.error.tooLarge',
       ...['loop-points-ignored', 'invalid-regions', 'missing-samples', 'envelope-times-adjusted', 'reduced-bank']
         .map(code => `sfzNotePlayer.warning.${code}`)].map(key => {
       const line = lines.find(line => line.startsWith(`"${key}":`));
@@ -467,7 +467,7 @@ test('SFZ pointer preview holds a key, switches notes only on key changes, and u
   assert.equal(messages.at(-1).plugin.parameters.pm, 71);
   assert.equal(messages.at(-1).plugin.parameters.pv, 127);
   assert.equal('pm' in plugin.getParameters(), false, 'Preview state must not be saved in presets');
-  assert.deepEqual(Array.from(messages.at(-1).plugin.wasmParams.slice(17)), [71, 127]);
+  assert.deepEqual(Array.from(messages.at(-1).plugin.wasmParams.slice(17, 19)), [71, 127]);
   await canvas.dispatchEvent('pointerup', eventAt(-100, -100));
   assert.equal(messages.at(-1).plugin.parameters.pm, -1);
   assert.equal(canvas.hasPointerCapture(1), false);
@@ -825,12 +825,36 @@ test('SFZ UI uses independent Dry/Wet controls and standard-width readable note 
   assert.equal(plugin._status.getAttribute('role'), 'status');
   const controls = ui.children.find(child => child.className === 'sfz-controls analyzer-parameters');
   assert.equal(controls.className, 'sfz-controls analyzer-parameters');
-  assert.equal(controls.children.length, 20);
+  assert.equal(controls.children.length, 21);
   assert.equal(controls.children[0].className, 'parameter-row sfz-bank-row local-audio-only');
   assert.deepEqual(controls.children.filter(row => row.controlKey).map(row => row.controlKey),
-    ['cl', 'hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'ss', 'og', 'tm']);
+    ['dt', 'cl', 'hi', 'md', 'lo', 'th', 'rd', 'nh', 'vf', 'vc', 'pl', 'dm', 'wm', 'os', 'ss', 'og', 'tm']);
+  const detection = controls.children.find(row => row.controlKey === 'dt').control;
+  assert.equal(detection.value, 'Classic');
+  assert.equal(detection.options[0].label, 'Classic (Low Latency)');
+  const retriggerInputs = [document.createElement('input'), document.createElement('input')];
+  const thresholdInputs = [document.createElement('input'), document.createElement('input')];
+  plugin._retriggerControl.querySelectorAll = () => retriggerInputs;
+  plugin._thresholdControl.querySelectorAll = () => thresholdInputs;
+  plugin.setParameters({ rd: 42 });
+  assert.ok(retriggerInputs.every(input => input.disabled === false));
+  assert.ok(thresholdInputs.every(input => input.disabled === false));
+  detection.setter('Event');
+  assert.ok(retriggerInputs.every(input => input.disabled === true));
+  assert.ok(thresholdInputs.every(input => input.disabled === true));
+  assert.equal(plugin.getParameters().dt, 'Event');
+  const restored = createPlugin();
+  restored.setParameters(plugin.getParameters());
+  assert.equal(restored.getParameters().dt, 'Event');
+  restored.setParameters({ dt: 'invalid' });
+  assert.equal(restored.getParameters().dt, 'Event');
+  detection.setter('Classic');
+  assert.equal(plugin.getParameters().dt, 'Classic');
+  assert.ok(retriggerInputs.every(input => input.disabled === false));
+  assert.ok(thresholdInputs.every(input => input.disabled === false));
+  assert.equal(plugin.getParameters().rd, 42);
   for (const [index, key, label] of [[0, 'hi', 'Highest'], [1, 'md', 'Middle'], [2, 'lo', 'Lowest']]) {
-    const control = controls.children[index + 3].control;
+    const control = controls.children[index + 4].control;
     assert.equal(control.label, label);
     assert.equal(control.checked, true);
     control.setter(false);

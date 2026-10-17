@@ -3,18 +3,14 @@
 <div class="doc-primary-actions" aria-label="Acciones principales">
   <a class="button button-primary" href="https://effetune.frieve.com/effetune.html">Abrir aplicación web</a>
   <install class="button button-secondary"><a href="https://effetune.frieve.com/effetune.html">Instalar versión PWA</a></install>
-  <a class="button button-secondary" href="/dsp/">DSP Library</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune/releases/">Descargar aplicación de escritorio</a>
   <a class="button button-secondary" href="https://github.com/Frieve-A/effetune-mixwright/releases">Descargar versión VST</a>
   <a class="button button-secondary" href="https://chromewebstore.google.com/detail/effetune/fhjhnpepnhkcdggogicifibfegpbhibp">Instalar extensión para Chrome</a>
   <a class="button button-secondary" href="https://microsoftedge.microsoft.com/addons/detail/effetune/kjpcfdidpphaclfkfdahchhibgjcngdk">Instalar extensión para Edge</a>
+  <a class="button button-secondary" href="/dsp/">DSP Library</a>
 </div>
 
 Un procesador de efectos de audio en tiempo real, diseñado para entusiastas del audio que desean mejorar su experiencia musical. EffeTune te permite procesar cualquier fuente de audio a través de diversos efectos de alta calidad, lo que te posibilita personalizar y perfeccionar tu experiencia auditiva en tiempo real.
-
-### Extensión de navegador
-
-Procesa hasta cuatro pestañas de Chrome o Edge con cadenas independientes, preajustes según la URL y frecuencia de muestreo ajustable, sin un dispositivo de audio virtual. Consulta la [guía de la extensión de navegador](browser-extension.md).
 
 [![Screenshot](../../../images/screenshot.png)](https://effetune.frieve.com/effetune.html)
 
@@ -38,25 +34,34 @@ Sin mitos audiophiles, solo pura ciencia.
 - Cadena de procesamiento de audio que se puede modificar en tiempo real
 - Procesamiento de archivos de audio sin conexión con la cadena de efectos actual
 - Exploración de subcarpetas locales, metadatos y listas de reproducción con la Biblioteca musical
+- Reproductor mini compacto y siempre visible para la aplicación de escritorio
 - Medición y corrección de respuesta en frecuencia para calibración del sistema
 - Procesamiento y salida multicanal
-- Teclado numérico móvil con punto decimal, cambio de signo y rango permitido para los parámetros de los efectos
-- Ahorro de energía en las versiones Web/PWA y de escritorio, con gestión configurable del silencio y de la retención de la entrada de audio
+- Diseño web adaptado para teléfonos y tabletas
 
 ## Guía de Configuración
 
-Antes de usar EffeTune, deberás configurar el enrutamiento de audio. Aquí se explica cómo configurar diferentes fuentes de audio:
+Elige el método de configuración que corresponda a la fuente de audio que quieras escuchar.
 
 ### Configuración del Reproductor de Archivos de Música
 
 - Abre la aplicación web EffeTune en tu navegador, o inicia la aplicación de escritorio EffeTune
 - Abre y reproduce un archivo de música para asegurar una reproducción adecuada
-   - Abre un archivo de música y selecciona EffeTune como la aplicación (solo aplicación de escritorio)
+   - Haz clic en el botón **Abrir archivos de música** y selecciona un archivo de música
+   - O abre un archivo de música y selecciona EffeTune como la aplicación (solo aplicación de escritorio)
    - O selecciona **Abrir archivo de música...** desde el menú **Archivo** (solo aplicación de escritorio)
    - O arrastra el archivo de música a la ventana
 - Para usar solo el reproductor, selecciona Ninguno (solo reproductor de archivos de música) como dispositivo de entrada en Configuración de audio y evita usar una entrada de audio en vivo
-- Al pausar o cerrar el reproductor con el botón × de la esquina superior derecha, el sonido se desvanece brevemente; al reanudar, vuelve de forma gradual para reducir los chasquidos.
-- Pulsa el botón de velocidad junto a Shuffle para abrir la ventana emergente. Elige uno de los nueve ajustes predefinidos o usa el control deslizante horizontal o el campo numérico para ajustar la velocidad de 0,25x a 4x en incrementos de 0,01x. El botón **Mantener el tono**, situado junto a él, está activado de forma predeterminada, por lo que el tono se mantiene igual al cambiar la velocidad; desactívalo para que el tono suba o baje junto con la velocidad, como al cambiar la velocidad de una cinta o un disco de vinilo.
+
+[Reproductor de música](music-player.md)
+
+### Configuración de la extensión de navegador
+
+Procesa hasta cuatro pestañas de Chrome o Edge con cadenas independientes, preajustes según la URL y frecuencia de muestreo ajustable, sin un dispositivo de audio virtual. Consulta la [guía de la extensión de navegador](browser-extension.md).
+
+1. Instala la extensión EffeTune desde la tienda de [Chrome](https://chromewebstore.google.com/detail/effetune/fhjhnpepnhkcdggogicifibfegpbhibp) o [Edge](https://microsoftedge.microsoft.com/addons/detail/effetune/kjpcfdidpphaclfkfdahchhibgjcngdk).
+2. Reproduce audio en la pestaña que quieras procesar, abre EffeTune desde la barra de herramientas del navegador y selecciona **Start on this tab**.
+3. Selecciona **Edit pipeline** para añadir efectos y ajustar el sonido.
 
 ### Configuración para Servicios de Streaming
 
@@ -70,7 +75,7 @@ Para procesar audio de servicios de streaming (Spotify, YouTube Music, etc.):
    - Abre la aplicación web EffeTune en tu navegador, o inicia la aplicación de escritorio EffeTune
    - Selecciona el dispositivo de audio virtual como fuente de entrada
      - En Chrome, la primera vez que lo abras, aparecerá un cuadro de diálogo pidiéndote que selecciones y permitas la entrada de audio
-     - En la aplicación de escritorio, configúralo haciendo clic en el botón Config Audio en la esquina superior derecha de la pantalla
+     - Abre Configuración de audio desde el menú Configuración para elegir los dispositivos de entrada y salida y el formato de audio
    - Comienza a reproducir música desde tu servicio de streaming
    - Verifica que el audio esté fluyendo a través de EffeTune
    - Para instrucciones de configuración más detalladas, consulta la [FAQ](faq.md)
@@ -83,40 +88,15 @@ Para usar EffeTune con reproductores de CD, reproductores de red u otras fuentes
 - Abre la aplicación web EffeTune en tu navegador, o inicia la aplicación de escritorio EffeTune
 - Selecciona tu interfaz de audio como fuente de entrada y salida
    - En Chrome, la primera vez que lo abras, aparecerá un cuadro de diálogo pidiéndote que selecciones y permitas la entrada de audio
-   - En la aplicación de escritorio, configúralo haciendo clic en el botón Config Audio en la esquina superior derecha de la pantalla
+   - Abre Configuración de audio desde el menú Configuración para elegir los dispositivos de entrada y salida y el formato de audio
 - Tu interfaz de audio ahora funciona como un procesador de múltiples efectos:
-   * **Entrada:** Tu reproductor de CD, reproductor de red u otra fuente de audio
-   * **Procesamiento:** Efectos en tiempo real a través de EffeTune
-   * **Salida:** Audio procesado hacia tu amplificador o altavoces
+   * Entrada: Tu reproductor de CD, reproductor de red u otra fuente de audio
+   * Procesamiento: Efectos en tiempo real a través de EffeTune
+   * Salida: Audio procesado hacia tu amplificador o altavoces
 
 ## Uso
 
-Al abrir la aplicación por primera vez, un breve recorrido te muestra dónde reproducir música, añadir efectos y ajustar el sonido. Puedes repetirlo en cualquier momento con **Recorrer la aplicación** en el menú de configuración, en **Ayuda** en la aplicación de escritorio o desde el botón de menú en el móvil.
-
-### Configuración de la aplicación
-
-En el menú **Configuración**, abre **Configuración...** para elegir el idioma, la vista al inicio y el comportamiento del pipeline de efectos al iniciar. La vista al inicio puede ser **Effect Pipeline (predeterminado)**, **Biblioteca musical** o **Visualizer**. Si eliges **Biblioteca musical**, usa la lista de al lado para elegir qué sección aparecerá primero: **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas** o **Listas de reproducción**. En **Tema**, elige los colores de la aplicación: Graphite (predeterminado), Paper, Midnight, Ember o Mint.
-
-Las versiones de escritorio compatibles también pueden controlarse desde aplicaciones OpenHome en la misma red local. Esta función está desactivada de forma predeterminada; consulta [Control remoto OpenHome](music-library.md#control-remoto-openhome-aplicación-de-escritorio) para conocer la configuración, el acceso de red, la compatibilidad y las limitaciones.
-
-### Buscar música en la Biblioteca musical
-
-1. En PC, ábrela con el botón **Biblioteca musical** del encabezado; en móvil, con la pestaña **Biblioteca**; en la aplicación de escritorio, desde **Ver > Biblioteca musical**.
-2. Selecciona **Añadir carpeta de música** e indexa la carpeta que contiene tus archivos de música. Si una hoja CUE externa y los archivos WAV o FLAC a los que hace referencia están en la misma carpeta, al añadir esa carpeta a la Biblioteca musical, el álbum queda dividido en pistas individuales.
-3. Explora por **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas**, **Añadidas recientemente** y **Listas de reproducción**, y usa **Buscar en la biblioteca** para buscar en todo el catálogo. La sección **Subcarpetas** agrupa las pistas por la ruta que las contiene dentro de cada carpeta de música indexada, mientras que la sección **Carpetas** gestiona esas carpetas raíz.
-4. Las pistas que encuentres pueden reproducirse a través del pipeline de efectos actual, y puedes gestionar el orden de reproducción y las listas de reproducción con **Reproducir a continuación**, **Añadir a la cola** y **Añadir a lista**.
-5. Después de cambiar archivos, usa **Volver a escanear**; si caducan los permisos del navegador o de una carpeta, usa **Reconectar**.
-   - [Más detalles sobre la Biblioteca musical](music-library.md)
-
-Tanto en el diseño para PC como en el móvil, si una búsqueda de pistas o los detalles de un álbum, artista, género, subcarpeta o lista de reproducción devuelven 300 pistas o menos, todas se seleccionan de forma predeterminada. Con 301 pistas o más no hay selección automática. En móvil, la selección automática solo cambia el estado de selección. Solo mantener pulsada una pista abre el modo de selección y muestra las casillas, **Seleccionar todo** y **Deseleccionar todo**; seleccionar o deseleccionar pistas no abre ni cierra ese modo, y las acciones habituales de cada fila siguen disponibles.
-
-Los navegadores Chromium de PC pueden conservar el acceso a las carpetas de música seleccionadas entre sesiones. En Safari, Firefox, navegadores móviles y otros entornos sin acceso persistente a carpetas, vuelve a seleccionar la carpeta o los archivos después de cada recarga; EffeTune los enlaza con el catálogo existente.
-
-Las colecciones grandes se cargan por etapas desde el almacenamiento; la velocidad de análisis y carga depende del dispositivo, la colección y la memoria disponible. Al desplazarte muy rápido pueden aparecer filas vacías durante unos instantes mientras se cargan las pistas siguientes, sobre todo con almacenamiento lento.
-
-### Visualizar el audio
-
-Abre **Visualizer** desde la cabecera en PC, la pestaña **Reproductor** en móvil o el menú **Ver** de la aplicación de escritorio. Elige un diseño incluido o usa **Edit** para organizar gráficos, carátula y datos de la pista. Los cambios se aplican al instante y vuelven al abrir la aplicación; guarda una copia con nombre desde el diálogo de presets. Consulta la [guía de Visualizer](visualizer.md).
+Al abrir la aplicación por primera vez, un breve recorrido te muestra dónde reproducir música, añadir efectos y ajustar el sonido. Puedes repetirlo en cualquier momento con **Recorrer la aplicación** en el menú de configuración, en el menú **Ayuda** de la aplicación de escritorio o con el botón de menú en el móvil.
 
 ### Creando tu Cadena de Efectos
 
@@ -125,50 +105,66 @@ Abre **Visualizer** desde la cabecera en PC, la pestaña **Reproductor** en móv
    - Escribe cualquier texto para encontrar efectos por nombre o categoría  
    - Presiona ESC para limpiar la búsqueda
 2. Arrastra los efectos desde la lista hasta el área de **Effect Pipeline**
+   - En móvil, abre la pestaña **Efectos** y toca el botón **+** para añadir efectos desde la lista a pantalla completa
 3. Los efectos se procesan en orden de arriba a abajo
 4. Arrastra el manejador (⋮) o pulsa los botones ▲▼ para reordenar los efectos
    - Para efectos Section: Shift+clic en los botones ▲▼ para mover secciones completas (de una Section a la siguiente Section, inicio de pipeline, o final de pipeline)
 5. Haz clic en el nombre de un efecto para expandir o colapsar sus ajustes
    - Shift+clic en un efecto Section para colapsar/expandir todos los efectos dentro de esa sección
-   - Shift+clic en otros efectos para colapsar/expandir todos los efectos excepto la categoría Analizador
+   - Shift+clic en otros efectos para colapsar/expandir todos los efectos excepto los de la categoría Analyzer
    - Ctrl+clic para colapsar/expandir todos los efectos
 6. Utiliza el botón **ON** para omitir efectos individuales
 7. Haz clic en el botón **?** para abrir su documentación detallada en una nueva pestaña
 8. Elimina efectos utilizando el botón ×
    - Para efectos Section: Shift+clic en el botón × para eliminar secciones completas
-9. Haga clic en el botón de enrutamiento para configurar los canales que se procesarán y los buses de entrada y salida  
+9. Haz clic en el botón de enrutamiento para configurar los canales que se procesarán y los buses de entrada y salida
    - [Más información sobre las funciones de los buses](bus-function.md)
-   - [Controlar efectos mediante MIDI, mando o teclado](controller-mapping.md)
 10. Haz clic en el botón Preajustes de efecto de cada efecto para guardar o aplicar ajustes solo para ese efecto
-11. Para ajustar un control deslizante con precisión, mantenga pulsada la tecla Shift mientras lo arrastra; el valor cambiará de unidad mínima en unidad mínima
+
+### Buscar música en la Biblioteca musical
+
+Puedes organizar en una biblioteca los archivos de música guardados en tu dispositivo.
+
+1. En PC, ábrela con el botón **Biblioteca musical** del encabezado; en móvil, con la pestaña **Biblioteca**; en la aplicación de escritorio, desde **Ver > Biblioteca musical**.
+2. Selecciona **Añadir carpeta de música** para indexar una carpeta de archivos de música. Las hojas CUE externas pueden dividir en pistas individuales los álbumes en archivos WAV o FLAC de la misma carpeta.
+3. Explora **Pistas**, **Álbumes**, **Artistas**, **Géneros**, **Subcarpetas**, **Carpetas**, **Añadidas recientemente** o **Listas de reproducción**, y usa **Buscar en la biblioteca** para filtrar tu colección.
+4. Usa **Reproducir** para escuchar a través del pipeline de efectos actual, o **Reproducir a continuación**, **Añadir a la cola** y **Añadir a lista** para gestionar la reproducción.
+5. Usa **Volver a escanear** después de cambiar archivos, y **Reconectar** si se pierde un permiso del navegador o de una carpeta.
+   - [Más detalles sobre la Biblioteca musical](music-library.md)
+
+### Visualizer
+
+Puedes disfrutar de visualizaciones basadas en la música que se está reproduciendo.
+
+Abre **Visualizer** desde la cabecera en PC, la pestaña **Reproductor** en móvil o el menú **Ver** de la aplicación de escritorio. Elige un diseño incluido o selecciona **Edit** para organizar gráficos de audio, carátula y datos de la pista. Los cambios se aplican al instante y se conservan para el siguiente inicio; usa el diálogo de preajustes para guardar una copia con nombre. Pasa el puntero sobre la pantalla o tócala y selecciona **⛶** para que ocupe toda la ventana de la aplicación. Consulta la [guía de Visualizer](visualizer.md) para la edición, los efectos y las opciones de visualización.
+
+### Uso de preajustes
+
+Puedes guardar y cargar las cadenas de efectos que crees.
+
+Haz clic en el botón **Preajustes de cadena de efectos** del encabezado de Effect Pipeline para abrir el diálogo de preajustes.
+
+1. Carga un preajuste seleccionándolo en la lista de preajustes guardados. Se restaura la cadena de efectos completa, incluidos el orden de los efectos, los ajustes y los estados ON/OFF.
+2. Guarda la cadena de efectos actual introduciendo un nombre y seleccionando **Guardar**.
+3. Cambia el nombre de un preajuste guardado con su botón de cambio de nombre.
+4. Selecciona uno o más preajustes guardados, elige **Eliminar seleccionados** y confirma para quitarlos.
+5. Pulsa Ctrl+S (o Cmd+S en macOS) para abrir el diálogo con el nombre del preajuste actual listo para editar.
+
+Cada efecto también tiene su propio botón **Preajustes de efecto**. Abre los preajustes del sistema cuando el efecto los ofrece y te permite guardar, cambiar el nombre, cargar o eliminar tus propios ajustes para ese efecto. Los preajustes de efecto solo cambian los parámetros de ese efecto; no cambian su estado ON/OFF ni su enrutamiento.
+
+La importación, la exportación y el uso compartido de archivos `.effetune_preset` siguen usando preajustes de la cadena de efectos completa.
+
+### Controles comunes de los efectos
+
+- Para ajustar un control deslizante con precisión, mantén pulsada la tecla Shift mientras lo arrastras; el valor cambia de paso mínimo en paso mínimo
    - En los deslizadores que admiten valores negativos y positivos, el relleno va de 0 al valor actual. Los deslizadores Ratio toman 1.0 como punto de partida.
-12. En los gráficos compatibles con eje de frecuencia o notas, arrastra a lo largo del eje para escuchar la frecuencia seleccionada a través de la cadena de efectos. En **Configuración > General > Sonido de preescucha de frecuencia**, elige **Onda sinusoidal** (opción predeterminada, -12 dB) o **Ruido de banda limitada**, centrado en la frecuencia seleccionada. Note Spectrogram, Pitch Meter, Chroma Spiral y los teclados de piano siempre usan una onda sinusoidal. Cuando aparece el teclado, la frecuencia se ajusta al semitono más cercano; si arrastras sobre una tecla, escucharás su nota
+- En los gráficos compatibles de frecuencia y de notas, arrastra a lo largo del eje del gráfico para escuchar la frecuencia seleccionada a través de la cadena de efectos. En **Configuración > General > Sonido de preescucha de frecuencia**, elige **Onda sinusoidal** (predeterminado, -12 dB) o **Ruido de banda limitada**, que reproduce ruido centrado en esa frecuencia. Note Spectrogram, Pitch Meter, Chroma Spiral y las vistas con teclado de piano siempre usan una onda sinusoidal. Las vistas con teclado de piano se ajustan al semitono más cercano; al arrastrar sobre una tecla, se escucha la nota de esa tecla
 
-### Uso de Presets
-
-Haz clic en el botón **Preajustes de cadena de efectos** del encabezado de Effect Pipeline para abrir el cuadro de diálogo de presets.
-
-1. Carga un preset seleccionándolo en la lista de presets guardados. Se restaura la cadena completa, incluido el orden de los efectos, los ajustes y los estados ON/OFF.
-2. Guarda la cadena actual introduciendo un nombre y seleccionando Guardar.
-3. Cambia el nombre de un preset guardado con el botón de cambio de nombre de su fila.
-4. Selecciona uno o más presets guardados, elige Eliminar seleccionados y confirma para quitarlos.
-5. Pulsa Ctrl+S (o Cmd+S en macOS) para abrir el cuadro de diálogo con el nombre del preset actual listo para editar.
-
-Cada efecto también tiene su propio botón Preajustes de efecto. Abre los preajustes del sistema cuando el efecto los proporciona y permite guardar, cambiar el nombre, cargar o eliminar tus ajustes para ese efecto. Los preajustes de efecto cambian solo los parámetros de ese efecto; no cambian su estado ON/OFF ni el enrutamiento.
-
-La importación, exportación y uso compartido de archivos `.effetune_preset` sigue correspondiendo a presets de la cadena de efectos completa.
-
-### Copia de seguridad y restauración de datos guardados
-
-Abre **Settings > Copia de seguridad / Restaurar** para transferir presets de cadena, presets de efectos, respuestas al impulso y mediciones entre la aplicación web, la de escritorio y la extensión. Puedes seleccionar elementos o categorías completas. Al elegir un preset también se seleccionan sus datos necesarios; si quitas esos datos, el preset dependiente también se desmarca.
-
-Los backups de las aplicaciones web y de escritorio también incluyen los presets de Visualizer guardados y sus imágenes de fondo, pero no el diseño actual sin nombre.
-
-**Incluir datos de medición** e **Incluir datos de respuesta al impulso** están activados por defecto. Si desactivas una opción, solo se guardan referencias y en el destino deben existir los mismos datos. Las respuestas se restauran en **Impulse Response Library**. Los datos idénticos se reutilizan y los elementos distintos con el mismo nombre reciben un número. La cadena actual, el volumen, el preset seleccionado, los dispositivos y las reglas URL no cambian.
-
-Cada archivo `.effetune_backup` admite hasta 256 MB; divide una selección mayor en varios archivos. Si la restauración se detiene, se conservan los elementos terminados y puedes repetirla con seguridad. Antes de compartir, revisa la selección: puede contener nombres y comentarios, archivos de respuesta al impulso y detalles de medición. No incluye música, Music Library, preferencias, dispositivos, reglas URL, credenciales ni la cadena actual sin guardar. Los presets incompatibles con la extensión se conservan y pueden volver a copiarse, aunque no puedan aplicarse allí.
+[Controlar efectos mediante MIDI, mando o teclado](controller-mapping.md)
 
 ### Usando Secciones
+
+Puedes agrupar varios efectos y controlarlos juntos.
 
 1. Uso del Efecto de Sección:
    - Añade un efecto de Sección al principio de un grupo de efectos
@@ -178,6 +174,8 @@ Cada archivo `.effetune_backup` admite hasta 256 MB; divide una selección mayor
    - [Más sobre efectos de control](plugins/control.md)
 
 ### Usando Funciones de Pipeline AB
+
+Puedes alternar entre dos cadenas de efectos para comparar cómo suenan.
 
 1. Resumen de Pipeline AB:
    - EffeTune puede mantener dos pipelines de efectos separados: Pipeline A y Pipeline B
@@ -195,11 +193,11 @@ Cada archivo `.effetune_backup` admite hasta 256 MB; divide una selección mayor
    - "A → B": Copia la configuración del Pipeline A al Pipeline B y cambia al Pipeline B
    - "B → A": Copia la configuración del Pipeline B al Pipeline A y cambia al Pipeline A
 
-4. Double Blind Test:
+4. Prueba de doble ciego:
    - Compara Pipeline A y Pipeline B de oído sin saber cuál se está reproduciendo
-   - Ejecuta un ABX Test para comprobar si realmente puedes distinguir los dos pipelines, o un A/B Preference Test para saber cuál prefieres, con una comprobación de significación estadística
-   - Ábrelo desde el menú de pipeline **▼** situado a la derecha del botón de alternancia AB (también disponible desde el menú **Archivo** en la aplicación de escritorio)
-   - [Más información sobre Double Blind Test](double-blind-test.md)
+   - Ejecuta una prueba ABX para comprobar si realmente puedes distinguir los dos pipelines, o una prueba de preferencia A/B para saber cuál prefieres, con una comprobación de significación estadística
+   - Ábrela desde el menú de pipeline ▼ situado a la derecha del botón de alternancia AB (también disponible desde el menú Archivo en la aplicación de escritorio)
+   - [Más información sobre la prueba de doble ciego](double-blind-test.md)
 
 ### Selección de Efectos y Atajos de Teclado
 
@@ -238,69 +236,68 @@ Cada archivo `.effetune_backup` admite hasta 256 MB; divide una selección mayor
 
 ### Procesamiento de Archivos de Audio
 
+Puedes aplicar la cadena de efectos a archivos de música y guardar el audio procesado en archivos nuevos.
+
 1. Área de Arrastre o Especificación de Archivos:
-   - Un área de arrastre dedicada siempre es visible debajo de la **Effect Pipeline**
+   - Un área de arrastre dedicada siempre es visible debajo del **Effect Pipeline**
    - Soporta uno o múltiples archivos de audio
-   - Los archivos se procesan utilizando la configuración actual de la pipeline
-   - Los efectos se procesan a la tasa de muestreo de la pipeline; la conversión de la salida se realiza después
+   - Los archivos se procesan utilizando la configuración actual del pipeline
+   - Los efectos se procesan a la frecuencia de muestreo del pipeline; cualquier conversión de la frecuencia de muestreo de salida se realiza después
 
 2. Estado del Procesamiento:
    - La barra de progreso muestra el estado actual del procesamiento
    - El tiempo de procesamiento depende del tamaño del archivo y la complejidad de la cadena de efectos
 
 3. Opciones de Descarga o Guardado:
-   - En **Settings > Config > Salida de archivos sin conexión**, elige WAV o FLAC, además de la tasa de muestreo y la calidad. Para FLAC, elige codificación sin pérdida de 16 o 24 bits. El valor inicial es WAV a 96 kHz con PCM de 24 bits
+   - En **Configuración > Configuración... > Salida de archivos sin conexión**, elige WAV o FLAC, además de su frecuencia de muestreo y su calidad. Para FLAC, elige codificación sin pérdida de 16 o 24 bits. El valor inicial es WAV a 96 kHz con PCM de 24 bits
    - Cada formato tiene un límite de canales distinto. Si un archivo supera el límite elegido, EffeTune se detiene y muestra cómo resolverlo, sin mezclar canales automáticamente
-   - Para múltiples archivos, seleccione una carpeta de salida antes de procesar; cada archivo se guarda directamente en esa carpeta al completarse
+   - Para múltiples archivos, selecciona una carpeta de salida antes de procesar; cada archivo se guarda directamente en esa carpeta al completarse
    - En navegadores más antiguos sin soporte de selección de carpeta, los archivos múltiples se empaquetan en un ZIP para descargar
 
 ### Compartir Cadenas de Efectos
 
-Puedes compartir la configuración de tu cadena de efectos con otros usuarios:
-1. Después de configurar la cadena de efectos deseada, haz clic en el botón **Share** en la esquina superior derecha del área de **Effect Pipeline**
+Puedes compartir la configuración de tu cadena de efectos con otros usuarios.
+1. Después de configurar la cadena de efectos deseada, haz clic en el botón "Compartir" en la esquina superior derecha del área de **Effect Pipeline**
 2. La URL de la aplicación web se copiará automáticamente en tu portapapeles
 3. Comparte la URL copiada con otros: podrán recrear exactamente tu cadena de efectos al abrirla
-4. En la aplicación web, todos los ajustes de los efectos se almacenan en la URL, facilitando su guardado y compartición
-5. En la versión de aplicación de escritorio, exporta la configuración a un archivo effetune_preset desde el menú **Archivo**
-6. Comparte el archivo effetune_preset exportado. El archivo effetune_preset también puede cargarse arrastrándolo a la ventana de la aplicación web
+4. Las URL compartidas guardan los ajustes de efectos necesarios para su reproducción; la aplicación web también conserva tu estado habitual de trabajo en el navegador
+5. En la versión de aplicación de escritorio, exporta la configuración a un archivo `.effetune_preset` desde el menú **Archivo**
+6. Comparte el archivo `.effetune_preset` exportado. El archivo `.effetune_preset` también puede cargarse arrastrándolo a la ventana de la aplicación web
+
+### Copia de seguridad y restauración de datos guardados
+
+Abre **Configuración > Copia de seguridad / Restaurar** para transferir preajustes de cadena de efectos, preajustes de efecto, respuestas al impulso y mediciones guardados entre la aplicación web, la aplicación de escritorio y la extensión de navegador. En las aplicaciones web y de escritorio también puedes incluir los preajustes de Visualizer con nombre. Al seleccionar un preajuste, se seleccionan automáticamente los datos de medición o de respuesta al impulso que utiliza.
+
+**Incluir datos de medición** e **Incluir datos de respuesta impulsional** están activados de forma predeterminada para que las copias de seguridad sean autónomas. Desactiva cualquiera de las dos opciones solo cuando el destino ya tenga los archivos de medición o de respuesta al impulso correspondientes. Las respuestas al impulso restauradas se añaden a la **Biblioteca de respuestas al impulso** de EffeTune. Restaurar una copia de seguridad no cambia el pipeline actual, el volumen, el preajuste seleccionado, los ajustes de dispositivo, la Biblioteca musical ni las reglas de URL de la extensión. Cada archivo `.effetune_backup` admite hasta 256 MB; si es necesario, divide las copias de seguridad más grandes en varios archivos. Si la restauración se interrumpe, los elementos ya completados se conservan y puedes volver a restaurar el mismo archivo con seguridad.
+
+Antes de compartir una copia de seguridad, revisa la selección: puede contener nombres y comentarios de preajustes, los archivos originales de respuesta al impulso y detalles de las mediciones. No se incluyen archivos de música, datos de la Biblioteca musical, preferencias de la aplicación, dispositivos elegidos, reglas de URL, credenciales ni el pipeline actual sin guardar.
+
+### Configuración de la aplicación
+
+Abre **Configuración > Configuración...** para elegir el **Idioma**, ajustar **Vista al inicio:** (`Effect Pipeline (predeterminado)`, `Biblioteca musical` o `Visualizer`), configurar **Pipeline de efectos al inicio:** y seleccionar un **Tema** (`Graphite`, `Paper`, `Midnight`, `Ember` o `Mint`). Si **Vista al inicio:** es **Biblioteca musical**, también puedes elegir qué categoría de la biblioteca se abre primero.
+
+En **Columnas de la cadena de efectos**, elige **Manual** para ajustar el número de columnas con los botones +/−, o **Automático** (predeterminado) para que las columnas y la lista de efectos quepan en el ancho de la ventana. El modo automático ajusta el número de columnas al cambiar el tamaño de la ventana.
+
+### Medición y Corrección de Respuesta en Frecuencia
+
+Mide tu sistema de audio con un micrófono y crea un EQ de corrección que se puede importar en EffeTune; consulta [Medición y corrección de la respuesta en frecuencia](measurement.md) y la [guía de Pipeline Analyzer](pipeline-analyzer.md).
 
 ### Reinicio de Audio
 
 Si experimentas problemas de audio (interrupciones, fallos):
-1. Haz clic en el botón **Reset Audio** en la esquina superior izquierda de la aplicación web o selecciona **Recargar** desde el menú **Ver** en la aplicación de escritorio
-2. La pipeline de audio se reconstruirá automáticamente
+1. Elige **Reiniciar audio** en el menú **Configuración** o en el menú adicional en móvil. En la aplicación de escritorio también puedes seleccionar **Recargar** en el menú **Ver**
+2. El pipeline de audio se reconstruirá automáticamente
 3. La configuración de tu cadena de efectos se conservará
 
-### Medición y Corrección de Respuesta en Frecuencia
+### Control remoto OpenHome (aplicación de escritorio)
 
-Para medir la respuesta en frecuencia de tu sistema de audio y crear una corrección EQ plana:
-1. En la versión web, abre la [herramienta de medición de respuesta en frecuencia](https://effetune.frieve.com/features/measurement/measurement.html). En la versión de escritorio, selecciona **Medición de respuesta en frecuencia** desde el menú **Configuración**.
-2. Sigue la guía para configurar el micrófono de medición y el dispositivo de salida
-3. Mide la respuesta en frecuencia de tu sistema en una o varias posiciones de escucha
-4. Genera una corrección de EQ paramétrico que se puede importar directamente en EffeTune
-5. Aplica la corrección para lograr una reproducción más precisa y neutral
-
-Ajusta **Número de canales del dispositivo de salida** a la configuración del dispositivo: **6** para 5.1 u **8** para 7.1. Las opciones de canal de salida y de ancho de banda por canal se limitan a este rango. Las señales de prueba, las mediciones y la repetición de la medición de un canal usan este número aunque solo selecciones algunos canales. Por ejemplo, mantén **6** al medir solo Ch 3 (central) y Ch 4 (subwoofer) en un dispositivo 5.1.
-
-Para un sistema multicanal, selecciona **Todos los canales** para medir todas las salidas juntas, o selecciona elementos individuales de **Canal de salida** para medirlos uno a uno. En **Ajustes avanzados**, elige **Desactivado**, **El mismo para todos los canales** o **Por canal** para el ancho de banda del barrido. Con **Por canal**, usa **Canal que se configurará** para ajustar el rango de frecuencias de cada canal de salida seleccionado. Durante el ajuste de nivel, **Modo de canal** empieza en **Rotación automática**; selecciona un canal de señal de prueba o **Manual** cuando sea necesario.
-
-Si ya tienes un archivo WAV de respuesta impulsional, elige **Importar** y selecciónalo. EffeTune guarda cada canal del WAV como un resultado de medición, para que puedas seleccionarlo en Room EQ y en cualquier otra función que use mediciones guardadas.
-
-Para eliminar la respuesta propia de la interfaz de audio, conecta directamente su salida a su entrada y guarda ese bucle como una medición normal sin calibrar que incluya una respuesta impulsional. En la siguiente medición, elige ese punto en **Calibración de la interfaz de audio**. Usa la misma interfaz, los mismos canales de entrada y salida, la misma frecuencia de muestreo y las mismas ganancias, y no cambies las ganancias después de la medición en bucle. Elige **Ninguna (sin calibrar)** para medir sin esta corrección.
-
-Las mediciones que contienen datos de respuesta impulsional muestran un gráfico normalizado de **Respuesta impulsional** en los resultados. La vista inicial abarca de 0 a 10 ms desde el inicio detectado. Usa la rueda del ratón o los botones para ampliar o reducir el eje temporal, y arrastra el gráfico o usa el control deslizante para desplazarte. Al seleccionar un punto de medición se actualiza el gráfico; **Todos (promedio)** muestra el primer punto con una respuesta impulsional guardada y lo identifica sobre el gráfico. Usa **Exportar respuesta impulsional (WAV)** debajo del gráfico para guardar la respuesta completa y sin normalizar del punto mostrado como un WAV mono de coma flotante de 32 bits con la frecuencia de muestreo de la medición.
-
-Para consultar la frecuencia, fase, retardo de grupo mínimo, retardo de grupo excedente e impulso del pipeline activo, con hasta cuatro salidas y respuestas de altavoz guardadas, consulta la [guía de Pipeline Analyzer](pipeline-analyzer.md).
-
-### Reproducción sin pausas
-
-**Reproducción sin pausas** está activada de forma predeterminada y puede cambiarse en **Configuración de audio**. Cuando está activada, las pistas locales compatibles se enlazan sin pausa; la compatibilidad está limitada por el formato del archivo y el navegador o la aplicación actuales. Los formatos no compatibles y algunos entornos móviles usan automáticamente un modo alternativo que limita la memoria, por lo que aún puede haber una pausa breve. Al desactivarla se priorizan un menor uso de memoria y la estabilidad, y puede aparecer una pausa breve entre pistas. Cambiar esta opción no interrumpe la pista actual. La reproducción sin pausas no está disponible mientras la velocidad no sea 1x. Si cambias la velocidad durante una pista que se reproducía sin pausas, la reproducción se reanuda desde la misma posición tras una breve interrupción.
+Las versiones de escritorio compatibles pueden controlarse desde aplicaciones OpenHome en la misma red local. Esta función está desactivada de forma predeterminada; consulta [Control remoto OpenHome](openhome.md) para conocer la configuración, el acceso de red, la compatibilidad y las limitaciones.
 
 ### Controlar EffeTune con un asistente de IA (MCP)
 
 Puedes encargar a Codex o Claude Code la configuración de MCP y después pedirle que añada efectos, ajuste sus parámetros y cargue o guarde preajustes en EffeTune para escritorio. Utiliza un agente que pueda ejecutar comandos en tu ordenador.
 
-1. En EffeTune para escritorio, abre **Configuración > Remote Control...**, activa **Allow remote control** y pulsa **Copy link**.
+1. En EffeTune para escritorio, abre **Configuración > Control remoto...**, activa **Permitir control remoto** y pulsa **Copiar enlace**.
 2. Envía el siguiente texto a tu agente de IA, sustituyendo el marcador por el enlace que has copiado:
 
 ```text
@@ -309,41 +306,41 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 Enlace de conexión: <pega aquí el enlace copiado>
 ```
 
-Tras la configuración, reinicia el cliente si se te indica y prueba a pedir: «Muéstrame mis efectos actuales». Mantén el enlace de conexión en privado; si pulsas **New token** o cambias el puerto, repite la configuración con el nuevo enlace.
+Tras la configuración, reinicia el cliente si se te indica y prueba a pedir: «Muéstrame mis efectos actuales». Mantén el enlace de conexión en privado; si pulsas **Nuevo token** o cambias el puerto, repite la configuración con el nuevo enlace.
 
 ## Combinaciones Comunes de Efectos
 
 Aquí hay algunas combinaciones populares de efectos para mejorar tu experiencia de escucha:
 
 ### Mejora para Auriculares
-1. **Stereo Blend** -> **RS Reverb**
-   - **Stereo Blend:** Ajusta la anchura estéreo para mayor comodidad (60-100%)
-   - **RS Reverb:** Añade una sutil ambientación de sala (mix 10-20%)
-   - **Resultado:** Escucha con auriculares más natural y menos fatigante
+1. Stereo Blend -> RS Reverb
+   - Stereo Blend: Ajusta la anchura estéreo para mayor comodidad (60-100%)
+   - RS Reverb: Añade una sutil ambientación de sala (mix 10-20%)
+   - Resultado: Escucha con auriculares más natural y menos fatigante
 
 ### Simulación de Vinilo
-1. **Wow Flutter** -> **Noise Blender** -> **Saturation**
-   - **Wow Flutter:** Añade una suave variación de tono
-   - **Noise Blender:** Crea una atmósfera similar a la de un vinilo
-   - **Saturation:** Añade calidez analógica
-   - **Resultado:** Experiencia auténtica de un disco de vinilo
+1. Wow Flutter -> Noise Blender -> Saturation
+   - Wow Flutter: Añade una suave variación de tono
+   - Noise Blender: Crea una atmósfera similar a la de un vinilo
+   - Saturation: Añade calidez analógica
+   - Resultado: Experiencia auténtica de un disco de vinilo
 
 ### Estilo de Radio FM
-1. **Multiband Compressor** -> **Stereo Blend**
-   - **Multiband Compressor:** Crea ese sonido de "radio"
-   - **Stereo Blend:** Ajusta la anchura estéreo para mayor comodidad (100-150%)
-   - **Resultado:** Sonido pulido al estilo radio FM
+1. Multiband Compressor -> Stereo Blend
+   - Multiband Compressor: Crea ese sonido de "radio"
+   - Stereo Blend: Ajusta la anchura estéreo para mayor comodidad (100-150%)
+   - Resultado: Sonido pulido al estilo radio FM
 
 ### Carácter Lo-Fi
-1. **Bit Crusher** -> **Simple Jitter** -> **RS Reverb**
-   - **Bit Crusher:** Reduce la profundidad de bits para una sensación retro
-   - **Simple Jitter:** Añade imperfecciones digitales
-   - **RS Reverb:** Crea un espacio atmosférico
-   - **Resultado:** Estética clásica lo-fi
+1. Bit Crusher -> Simple Jitter -> RS Reverb
+   - Bit Crusher: Reduce la profundidad de bits para una sensación retro
+   - Simple Jitter: Añade imperfecciones digitales
+   - RS Reverb: Crea un espacio atmosférico
+   - Resultado: Estética clásica lo-fi
 
 ## Resolución de Problemas y Preguntas Frecuentes
 
-Si tienes algún inconveniente, consulta la [FAQ](faq.md).
+Si tienes algún inconveniente, consulta [Resolución de problemas y preguntas frecuentes](faq.md).
 Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.com/Frieve-A/effetune/issues).
 
 ## Efectos Disponibles
@@ -351,6 +348,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Categoría | Efecto             | Descripción                                                               | Documentación                                           |
 | --------- | ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------- |
 | Analyzer  | Analog Meter       | Muestra los niveles de canal en un medidor de aguja con escalas VU, PPM, pico y sonoridad | [Detalles](plugins/analyzer.md#analog-meter)            |
+| Analyzer  | Chroma Spiral      | Muestra los componentes de frecuencia por nota y octava en una espiral    | [Detalles](plugins/analyzer.md#chroma-spiral)           |
 | Analyzer  | Level Meter        | Muestra el nivel de audio con retención de pico                           | [Detalles](plugins/analyzer.md#level-meter)             |
 | Analyzer  | Note Spectrogram | Muestra las alturas estimadas a lo largo del tiempo en un piano roll      | [Detalles](plugins/analyzer.md#note-spectrogram)     |
 | Analyzer  | Oscilloscope       | Visualización de la forma de onda en tiempo real                          | [Detalles](plugins/analyzer.md#oscilloscope)            |
@@ -359,6 +357,7 @@ Si el problema persiste, repórtalo a través de [GitHub Issues](https://github.
 | Analyzer  | Spectrogram        | Muestra los cambios del espectro de frecuencias a lo largo del tiempo     | [Detalles](plugins/analyzer.md#spectrogram)             |
 | Analyzer  | Spectrum Analyzer  | Muestra en tiempo real la intensidad de graves, medios y agudos           | [Detalles](plugins/analyzer.md#spectrum-analyzer)       |
 | Analyzer  | Stereo Meter       | Visualiza el equilibrio estéreo y la correlación entre canales            | [Detalles](plugins/analyzer.md#stereo-meter)            |
+| Basics    | Bass Management    | Redirige las frecuencias bajas a uno o más subwoofers y suma el canal LFE con los graves de los canales principales | [Detalles](plugins/basics.md#bass-management) |
 | Basics    | Channel Divider    | Divide la señal estéreo en bandas de frecuencia y enruta cada banda a pares de salida estéreo separados | [Detalles](plugins/basics.md#channel-divider)      |
 | Basics    | DC Offset          | Ajuste de desplazamiento de corriente continua                             | [Detalles](plugins/basics.md#dc-offset)                 |
 | Basics    | FIR Crossover      | Crossover FIR que envía bandas de separación pronunciada a pares de salida estéreo | [Detalles](plugins/basics.md#fir-crossover) |
@@ -471,6 +470,7 @@ Frieve EffeTune ha sido probado y se ha verificado que funciona en Google Chrome
 - Audio Worklet
 - getUserMedia API
 - Drag and Drop API
+- Service Worker, para compatibilidad con aplicación web instalable y uso sin conexión
 
 ### Detalles de Soporte del Navegador
 1. **Chrome/Chromium**
@@ -479,16 +479,29 @@ Frieve EffeTune ha sido probado y se ha verificado que funciona en Google Chrome
 
 2. **Firefox/Safari**
    - Soporte limitado
-   - Algunas funciones pueden no funcionar como se espera
+   - Algunas funciones, como la selección del dispositivo de salida, Wake Lock, el comportamiento de instalación o los formatos de audio compatibles, pueden variar según el navegador
    - Considera usar Chrome para una mejor experiencia
 
 ### Tasa de Muestreo Recomendada
 
-Ajusta la **Tasa de muestreo** de EffeTune a 96 kHz. Esto reduce el aliasing que cae en la banda audible cuando los efectos no lineales tienen un filtrado antialiasing limitado. El ajuste controla la tasa de procesamiento interna de EffeTune y normalmente puede ser distinta de las tasas del sistema operativo, los dispositivos de audio y VB-CABLE, por lo que no es necesario cambiarlas. Comprueba la tasa efectiva que muestra la aplicación: antes de guardar el ajuste por primera vez puede usarse el valor predeterminado del sistema o del navegador, y la versión web puede recurrir a otra tasa si 96 kHz no está disponible. Si hay cortes, reduce primero los efectos exigentes o acorta la cadena; baja la tasa solo si sigue siendo necesario.
+Ajusta la **Tasa de muestreo** de EffeTune a 96 kHz. Así se reduce el aliasing audible que generan los efectos no lineales, como la saturación. Este ajuste controla la frecuencia de procesamiento interna de EffeTune y funciona con independencia de la frecuencia de muestreo del sistema operativo, de la interfaz de audio o del dispositivo de audio virtual. Comprueba la Tasa de muestreo efectiva que muestra la aplicación: hasta que guardes un ajuste, puede seguir el valor predeterminado del sistema operativo o del navegador, y la aplicación web puede recurrir a otra frecuencia si 96 kHz no está disponible. Si el sonido se corta, desactiva primero los efectos exigentes o acorta la cadena; baja la frecuencia de muestreo solo si es necesario.
 
 ## Guía de Desarrollo
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Frieve-A/effetune)
+
 ¿Quieres crear tus propios plugins de audio? Consulta nuestra [guía de desarrollo de plugins](../../plugin-development.md).
+
+## Biblioteca DSP
+
+El motor DSP de EffeTune también es una biblioteca independiente y determinista con licencia MIT para Python, JavaScript y AudioWorklet del navegador. Su esquema Chain público y el catálogo de efectos generado automáticamente pueden usarse sin la aplicación EffeTune. Consulta la [documentación de EffeTune DSP Library](https://effetune.frieve.com/dsp/).
+
+Las guías de inicio rápido de cada paquete explican la instalación e incluyen ejemplos completos listos para ejecutar:
+
+- [Paquete de Python](https://effetune.frieve.com/dsp/getting-started/python/)
+- [Paquete de JavaScript y AudioWorklet](https://effetune.frieve.com/dsp/getting-started/javascript/)
+
+La [guía de DSP Library](https://effetune.frieve.com/dsp/) describe los efectos, los esquemas, el comportamiento del procesamiento y los recursos necesarios.
 
 ## Enlaces
 

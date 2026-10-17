@@ -30,7 +30,7 @@ Un filtre de crossfeed pour casques qui simule la diaphonie acoustique naturelle
 
 ### Préréglages système
 
-Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essayer directement ces réglages complets.
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour choisir un dosage de crossfeed complet pour l'écoute au casque.
 
 - **Subtle Blend** - Un crossfeed très léger qui préserve l'essentiel de la largeur d'origine.
 - **Vintage Receiver** - Un crossfeed modéré rappelant un adaptateur de casque traditionnel.
@@ -47,25 +47,9 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
   - Valeurs plus basses (500-1000 Hz) : Diaphonie plus naturelle dépendante de la fréquence
   - Valeurs plus élevées (1000-20000 Hz) : Réponse en fréquence plus large
 
-### Réglages recommandés
+### Points de départ
 
-1. Écoute Naturelle au Casque
-   - Level : -12 dB
-   - Delay : 0.3 ms
-   - LPF Freq : 700 Hz
-   - Effet : Crossfeed subtil pour une écoute confortable à long terme
-
-2. Simulation de Haut-parleurs
-   - Level : -6 dB
-   - Delay : 0.5 ms
-   - LPF Freq : 1000 Hz
-   - Effet : Présentation plus prononcée similaire aux haut-parleurs
-
-3. Amélioration Subtile
-   - Level : -20 dB
-   - Delay : 0.2 ms
-   - LPF Freq : 500 Hz
-   - Effet : Crossfeed très doux pour les auditeurs sensibles
+Utilisez le préréglage système **Subtle Blend**, **Vintage Receiver** ou **Living Room Speakers** comme point de départ complet. Ajustez ensuite Level en premier : des valeurs plus basses préservent davantage la largeur stéréo, tandis que des valeurs plus élevées rendent le mélange de type haut-parleurs plus évident.
 
 ### Guide d'application
 
@@ -106,34 +90,36 @@ Rappel : Le Crossfeed Filter est conçu pour rendre l'écoute au casque plus nat
 
 ## Crosstalk Cancellation
 
-Crosstalk Cancellation emploie des réponses mesurées près de vos oreilles pour réduire le son de chaque enceinte stéréo qui atteint l'autre oreille. Utilisez-le avec deux enceintes, depuis une position mesurée, pour une image plus précise, proche du binaural. Il ne convient ni au casque ni au mono.
+Crosstalk Cancellation s'appuie sur des mesures prises au niveau de vos oreilles pour réduire le son de chaque enceinte stéréo qui atteint l'oreille opposée. Utilisez-le avec deux enceintes stéréo lorsque vous écoutez depuis une position mesurée et souhaitez une image stéréo plus nette, proche du binaural. Il n'est pas destiné à l'écoute au casque ni à la lecture mono.
 
-[Crossfeed Filter](#crossfeed-filter) ajoute une légère diaphonie de type enceintes au casque ; Crosstalk Cancellation réduit la diaphonie mesurée à l'écoute sur enceintes.
+Contrairement à [Crossfeed Filter](#crossfeed-filter), qui ajoute un peu de diaphonie de type enceintes pour l'écoute au casque, Crosstalk Cancellation réduit la diaphonie mesurée pour l'écoute sur enceintes.
 
 ### Mesurer et affecter
 
-1. Placez le microphone à l'oreille gauche et mesurez avec les sorties gauche et droite sélectionnées. Affectez le canal gauche à **LL: L Speaker → Left Ear** et le droit à **RL: R Speaker → Left Ear**.
-2. Recommencez à l'oreille droite : canal gauche vers **LR: L Speaker → Right Ear**, canal droit vers **RR: R Speaker → Right Ear**.
-3. Employez des mesures à point unique prises avec la même installation, et un canal différent dans chaque emplacement.
+1. Placez le microphone à la position de votre oreille gauche et effectuez une mesure avec les sorties des enceintes gauche et droite sélectionnées. Affectez le canal gauche de cette mesure à **LL: L Speaker → Left Ear** et son canal droit à **RL: R Speaker → Left Ear**.
+2. Déplacez le microphone à la position de votre oreille droite et répétez la même mesure sur les deux sorties. Affectez son canal gauche à **LR: L Speaker → Right Ear** et son canal droit à **RR: R Speaker → Right Ear**.
+3. Utilisez des mesures à point unique réalisées avec la même installation d'enceintes et la même position d'écoute. Affectez un canal de mesure différent à chaque emplacement, puis attendez que les filtres soient prêts.
 
-Commencez avec **Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB et **Latency** 128 samples. Comparez au bypass depuis la position mesurée.
+Commencez avec les valeurs par défaut : **Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB et **Latency** 128 échantillons. Comparez avec le bypass et procédez par petits réglages, assis à la position mesurée.
 
 ### Paramètres
 
-- **Taps** (1024–16384) : longueur du filtre. Plus de taps peut améliorer l'annulation, mais augmente calcul et délai ; augmentez-les d'abord si la queue semble tronquée.
-- **Regularization** (0–100%) : limite les corrections agressives. Augmentez-la si le son devient instable quand vous bougez ; baissez-la seulement pour davantage d'annulation à la position mesurée.
-- **Max Gain** (0–24 dB) : plafonne le boost du filtre. Une valeur basse est plus douce et garde de la marge ; une valeur haute peut annuler davantage mais est moins robuste.
-- **Freq Low** (20–2000 Hz) / **Freq High** (1000–20000 Hz) : bande de correction ; le reste passe tel quel. Commencez à 200–6000 Hz et resserrez-la si le mouvement de tête est trop sensible.
-- **Direct Window** (2–50 ms) : durée du son direct mesuré. Plus courte, elle réduit les réflexions mais peut relever la limite grave effective ; plus longue, elle garde plus de graves et de salle.
-- **Strength** (0–100%) : mélange de 0% sans correction retardée à 100% de correction. Partez de 70% et baissez si cela devient artificiel hors position.
-- **Output Gain** (-24–+24 dB) : niveau final ; gardez 0 dB au début puis baissez pour conserver de la marge.
-- **Latency** (0/128/256/512/1024 samples) : délai de bloc ; une valeur haute facilite le traitement, une basse aide le monitoring.
+- **Taps** (1024–16384) : Définit la longueur du filtre. Davantage de taps peut améliorer l'annulation, mais demande plus de calcul et allonge le retard modélisé. Si l'état signale que la queue du filtre risque d'être tronquée, augmentez d'abord Taps.
+- **Regularization** (0–100%) : Limite les corrections agressives là où les mesures sont difficiles à annuler. Augmentez-la si le résultat paraît instable ou coloré lorsque vous bougez légèrement ; ne la baissez que si la position mesurée a besoin de davantage d'annulation.
+- **Max Gain** (0–24 dB) : Plafonne le relèvement que les filtres de correction peuvent appliquer. Une valeur plus basse est plus douce et préserve la marge ; une valeur plus élevée peut annuler davantage, mais rendre le résultat moins robuste.
+- **Freq Low** (20–2000 Hz) et **Freq High** (1000–20000 Hz) : Définissent la bande de correction principale. Les fréquences situées sous cette bande et au-dessus passent sans correction. Commencez avec 200 Hz–6000 Hz ; resserrez la bande si l'effet est trop sensible aux mouvements de la tête.
+- **Direct Window** (2–50 ms) : Définit la part de chaque son direct mesuré qui est utilisée. Une fenêtre plus courte réduit les réflexions de la pièce mais peut relever la limite basse effective ; une fenêtre plus longue apporte davantage d'informations dans le grave, mais peut inclure davantage de son de la pièce.
+- **Strength** (0–100%) : Passe progressivement du signal non corrigé retardé à 0% à la correction complète à 100%. Commencez à 70% ; baissez-la si le son devient artificiel hors de la position mesurée.
+- **Output Gain** (-24 à +24 dB) : Règle le niveau final après correction. Laissez-le d'abord à 0 dB, puis baissez-le si nécessaire pour conserver de la marge.
+- **Latency** (0, 128, 256, 512 ou 1024 échantillons) : Sélectionne la latence des blocs de traitement. Des valeurs plus élevées peuvent faciliter le traitement des filtres ; des valeurs plus basses sont préférables lorsque la latence d'écoute de contrôle compte.
 
 ### État et latence
 
-L'état initial est **Assign all four measurements to begin.** ; pendant la conception il indique l'avancement et, prêt, le gain maximal. Un avertissement de queue conseille d'augmenter **Taps** ou **Regularization**. Si **Direct Window** a relevé la fréquence basse effective, la fenêtre est trop courte.
+L'état commence par **Assign all four measurements to begin.** Pendant la création des filtres, il indique que la conception est en cours ; une fois les filtres prêts, il affiche le gain maximal du filtre. Un avertissement concernant la queue signifie qu'augmenter **Taps** ou **Regularization** peut aider. Un avertissement indiquant que **Direct Window** a relevé la fréquence basse effective signifie que la fenêtre choisie est trop courte pour exploiter les fréquences les plus basses demandées.
 
-Resélectionnez une mesure introuvable. Si les filtres ne peuvent être préparés, essayez moins de **Taps** ou plus de **Latency**. Avant quatre mesures adéquates et des filtres prêts, le son passe sans changement ni latence ajoutée. Ensuite, le délai total est **Latency** plus le délai modélisé, compensé par l'application ; vérifiez **Total Delay** pour le monitoring ou la vidéo. Il n'y a ni graphe ni autre visualisation.
+Si une mesure affectée est introuvable, sélectionnez-la de nouveau. Si les filtres ne peuvent pas être préparés, essayez moins de **Taps** ou une **Latency** plus élevée. Tant que quatre mesures adaptées ne sont pas affectées et que les filtres ne sont pas prêts, le plugin laisse passer le son sans modification et n'annonce aucune latence de traitement supplémentaire.
+
+Une fois prêt, la latence ajoutée totale correspond à la **Latency** choisie plus le retard modélisé du filtre ; l'application applique sa compensation habituelle du retard de la chaîne. Vérifiez le **Délai total** si l'écoute de contrôle en temps réel ou la synchronisation audio/vidéo compte. Crosstalk Cancellation n'a ni graphique ni autre visualisation.
 
 ## MS Matrix
 
@@ -151,11 +137,11 @@ MS Matrix convertit un signal stéréo normal au format Mid/Side, ou reconvertit
 - **Swap L/R** (Off/On) : Échange les canaux gauche et droit avant l'encodage ou après le décodage  
 
 ### Paramètres recommandés
-1. **Élargissement subtil**  
+1. **Élargissement subtil d'une stéréo normale**
    - Premier MS Matrix : Mode: Encode, Mid Gain: 0 dB, Side Gain: +3 dB, Swap: Off
    - Second MS Matrix après lui : Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
    - Effet : Renforce légèrement la composante Side, puis ramène le résultat en stéréo normale
-2. **Focus central**  
+2. **Focus central sur une stéréo normale**
    - Premier MS Matrix : Mode: Encode, Mid Gain: +3 dB, Side Gain: -3 dB, Swap: Off
    - Second MS Matrix après lui : Mode: Decode, Mid Gain: 0 dB, Side Gain: 0 dB, Swap: Off
    - Effet : Met les voix et sons centrés plus en avant tout en réduisant l'ambiance latérale
@@ -282,93 +268,102 @@ N'oubliez pas : Le Multiband Balance est un outil puissant qui nécessite un aju
 
 ## Phase Select EQ
 
-Phase Select EQ accentue ou atténue les composantes stéréo sélectionnées par la fréquence, la différence de phase absolue et l'équilibre de niveau gauche/droite. Les trois conditions doivent être réunies. Il applique le même gain positif aux deux spectres et ne modifie donc pas leur différence de phase. Utilisez-le pour séparer un son centré d'un son plus large ou décalé d'un côté aux mêmes fréquences.
+Phase Select EQ accentue ou atténue les composantes fréquentielles stéréo sélectionnées simultanément par la **fréquence**, la **différence de phase gauche/droite absolue** et l'**équilibre de niveau gauche/droite**. Il applique le même multiplicateur de gain positif aux deux canaux : il agit donc sur le niveau des composantes spatiales visées sans faire tourner ni modifier la phase. Utilisez-le lorsqu'un EQ classique, qui ne s'appuie que sur la fréquence, ne permet pas de séparer une voix ou un instrument centré de sons plus larges ou fortement panoramiqués occupant la même bande de fréquences.
 
-Cinq Bands indépendants sont toujours disponibles. Chaque Band possède un **Core**, où le Gain est appliqué intégralement, et une **Transition**, où le multiplicateur revient progressivement à 100 %. Les Gains des Bands superposés se multiplient : par exemple, 150 % et 50 % donnent 75 %. Plusieurs accentuations peuvent dépasser 0 dBFS ; conservez donc une marge suffisante et comparez avec le bypass.
-
-La latence de traitement annoncée par Phase Select EQ est égale à la taille de la FFT plus la taille du pas (hop). À 48 kHz, cela représente 4 096 + 1 024 = 5 120 échantillons, soit environ 106,7 ms (environ 116,1 ms à 44,1 kHz). Vous pouvez vérifier le délai cumulé de la chaîne dans l'indication **Total Delay** de l'application. Cette latence peut affecter l'écoute de contrôle en temps réel et la synchronisation audio/vidéo.
-
-### Lecture de la carte de sélection
-
-- L'axe vertical représente la fréquence sur une échelle logarithmique : graves en bas, aigus en haut.
-- Les options **Phase** et **Balance** choisissent l'axe horizontal ; modifier un réglage Phase ou Balance ouvre automatiquement la vue correspondante. En vue Phase, 0° est au centre, tandis que -180° et +180° représentent le même point en opposition de phase. Comme la sélection utilise la différence **absolue**, le cadre est symétrique autour de 0° et traite +60° comme -60°. En vue Balance, 50:50 est au centre, le bord gauche correspond au canal gauche seul et le bord droit au canal droit seul. Balance vaut `(amplitude droite - amplitude gauche) / (amplitude gauche + amplitude droite) × 100%` : les valeurs négatives favorisent la gauche et les positives la droite. Le cadre est un rectangle unique, pas une image miroir.
-- Chaque point représente une composante d'entrée mesurée récemment. Les composantes fortes sont plus grandes et plus lumineuses ; les anciennes s'estompent.
-- Les composantes mesurées sont représentées par des points blancs. Seuls les cadres des Bands activés sont tracés : le Band en cours d'édition est vert vif, les autres vert clair. Le numéro en haut à gauche identifie le Band.
-- Le badge court à côté de chaque numéro de Core indique toute la sélection de ce Band sur l'axe masqué. Par exemple, `P 20°›40°–80°›100°` signifie limite extérieure basse › Core bas–haut › limite extérieure haute pour Phase. Pour Balance, le même ordre est affiché en rapports gauche:droite, par exemple `B 100:0›80:20–70:30›0:100`. `P full` ou `B full` signifie que ce Band ne limite pas l'axe masqué.
-- La sélection utilise la valeur **absolue** de la différence de phase. Une région logique est donc symétrique autour de 0° et traite +60° et -60° de la même façon. Inverser G/D reflète les points sans changer les composantes traitées.
-- La zone intérieure délimitée est le Core et la zone extérieure plus claire la Transition. Une région comprenant 0° se rejoint au centre ; une région atteignant 180° se prolonge d'un bord de la carte à l'autre.
-- Le badge près des options Graph affiche la plage Core de l'axe masqué et, si nécessaire, sa plage Transition. Les points rejetés par le Band sélectionné sur cet axe sont assombris. Une composante présente uniquement à gauche apparaît à -100% en Balance et -180° en Phase ; uniquement à droite, à +100% et +180°.
-
-La grille Balance affiche des rapports gauche:droite. Les valeurs Balance 0%, ±17%, ±33%, ±60%, ±82% et ±100% correspondent à 50:50 puis, vers l'un ou l'autre côté, à environ 59:41, 67:33, 80:20, 91:9 et 100:0. Les écarts de niveau G/D sont d'environ 0, ±3, ±6, ±12 et ±20 dB ; ±100% signifie qu'un seul canal contient le signal.
-
-### Affichage Visuel
-- Survolez la carte, ou touchez-la et faites glisser, pour lire la fréquence et la différence de phase ou la balance à cet endroit.
+Cinq Bands indépendants sont disponibles, chacun avec un **Core** intérieur (Gain appliqué intégralement) et une **Transition** extérieure (retour progressif vers 100%). Les gains des Bands superposés se multiplient : plusieurs accentuations peuvent donc porter le signal au-delà de 0 dBFS ; conservez une marge suffisante et comparez avec le bypass. Phase Select EQ ajoute une latence d'analyse FFT (5 120 échantillons, soit environ 106,7 ms à 48 kHz ; environ 116,1 ms à 44,1 kHz), qui est incluse dans le **Délai total** et peut affecter l'écoute de contrôle en temps réel et la synchronisation audio/vidéo.
 
 ### Guide d'amélioration sonore
 
-1. **Adoucir des aigus très larges** : réglez un Band vers 4–12 kHz et 90–180°. Commencez entre 70 et 90 % avec des transitions larges.
-2. **Donner de la présence à une voix centrée** : réglez un Band vers 1–4 kHz et 0–30°. Commencez entre 110 et 125 %.
-3. **Maîtriser une ambiance diffuse dans le bas-médium** : réglez un Band vers 150–600 Hz et 60–150°. Commencez entre 80 et 90 %, puis élargissez les transitions fréquentielles.
-4. **Atténuer un instrument fortement panoramiqué** : en vue Balance, sélectionnez -100% à -70% à gauche ou +70% à +100% à droite et limitez la fréquence. Réglez le Phase Core sur 150–180° afin d'inclure les points unilatéraux à -180° ou +180° ; si vous voulez que Balance soit le seul critère, utilisez tout le Phase Core de 0–180°. Commencez avec un Gain de 70 à 90%.
-5. **Accentuer une source centrée** : sélectionnez Balance de -17% à +17% et Phase de 0 à 30°, limitez la fréquence et commencez avec un Gain de 105 à 120%.
+1. **Adoucir l'éclat des aigus larges** : Réglez un Band vers 4–12 kHz et 90–180° de Phase, avec un Gain de 70 à 90% et des transitions larges, pour adoucir la dureté de l'extrême aigu en opposition de phase tout en préservant les détails centrés.
+2. **Donner de la présence à une voix centrée** : Réglez un Band vers 1–4 kHz et 0–30° de Phase (ou -17% à +17% de Balance), avec un Gain de 110 à 125%, pour faire ressortir les médiums proches du centre sans accentuer l'ambiance large.
+3. **Maîtriser une ambiance diffuse dans le bas-médium** : Réglez un Band vers 150–600 Hz et 60–150° de Phase, avec un Gain de 80 à 90%, pour nettoyer l'empâtement large du bas-médium tout en conservant le grave centré et le corps de la caisse claire.
+4. **Atténuer un instrument fortement panoramiqué** : En vue **Balance**, sélectionnez -100% à -70% (gauche) ou +70% à +100% (droite) avec un Phase Core de 150–180°, afin d'inclure les points unilatéraux situés à -180° et +180° (ou 0–180° si Balance doit être le seul critère), resserrez la plage de fréquences autour de l'instrument et réduisez le Gain à 70–90%.
 
-Ces plages de phase indiquent des tendances courantes, pas des positions fixes de sources sonores. Observez l'emplacement réel des points dans l'enregistrement, effectuez de petits réglages et vérifiez le résultat au casque comme sur enceintes.
+Ces plages de phase indiquent des tendances courantes, pas des positions fixes de sources sonores. Observez où les points apparaissent réellement, procédez par petits réglages et vérifiez le résultat au casque comme sur enceintes.
 
 ### Paramètres
 
-- **Band 1-5 / case à cocher** (Off/On) : Sélectionne un Band à modifier et l'active ou le désactive sans changer ses réglages.
-- **Gain** (0 % à 200 %) : Définit le multiplicateur de niveau dans le Core. 100 % ne change pas le niveau, 0 % supprime la composante sélectionnée et 200 % double son amplitude.
-- **Solo** (Off/On) : Permet d'écouter uniquement ce que sélectionnent les Band en Solo. Tant qu'un Band actif a Solo sur On, Gain n'est pas appliqué et tout ce qui se trouve hors de ces Band est coupé, avec le même fondu progressif du Transition sur les bords. Mettre plusieurs Band en Solo laisse entendre la combinaison de leurs zones. Désactiver tous les Solo rétablit le traitement normal.
-- **Core Low Freq / Core High Freq** (20 Hz à 40 kHz, selon la limite de la fréquence d'échantillonnage) : Définissent la plage de fréquences traitée à 100 %.
-- **Core Low Phase / Core High Phase** (0° à 180°) : Définissent la plage absolue de différence de phase G/D traitée à 100 %.
-- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% à +100%) : Définissent directement les quatre limites de Balance. La paire Core fixe la plage d'équilibre gauche/droite traitée à 100% ; la paire Outer fixe l'endroit où la Transition n'applique plus aucun traitement. Les valeurs négatives favorisent la gauche et les positives la droite.
-- **Low Freq Trans / High Freq Trans** : Définissent l'étendue du fondu sous et au-dessus du Core fréquentiel.
-- **Low Phase Trans / High Phase Trans** : Définissent l'étendue du fondu vers 0° et 180°.
+- **Band 1–5 / case à cocher** (Off/On) : Sélectionne un Band à modifier et l'active ou le désactive.
+- **Gain** (0% à 200%) : Multiplicateur de niveau dans le Core (100% = inchangé, 0% = coupé, 200% = +6 dB).
+- **Solo** (Off/On) : Permet d'écouter uniquement les composantes sélectionnées par le ou les Bands en Solo ; tant que Solo est activé, Gain est ignoré et tout ce qui se trouve hors des Bands en Solo est coupé.
+- **Core Low Freq / Core High Freq** (20 Hz à 40 kHz, dans la limite permise par la fréquence d'échantillonnage) : Plage de fréquences traitée intégralement.
+- **Low Freq Trans / High Freq Trans** : Largeurs du fondu fréquentiel sous et au-dessus du Core.
+- **Core Low Phase / Core High Phase** (0° à 180°) : Plage de différence de phase G/D absolue traitée intégralement.
+- **Low Phase Trans / High Phase Trans** : Largeurs du fondu de phase vers 0° et vers 180°.
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% à +100%) : Limites du Core et de la Transition extérieure pour l'équilibre d'amplitude gauche/droite.
+- **Poignées de la carte** : Faites glisser l'intérieur du cadre d'un Band pour le déplacer, les bords ou les coins du Core pour le redimensionner, ou les poignées extérieures en pointillés pour régler les transitions.
 
-Les poignées de la carte, les curseurs et les champs numériques modifient les mêmes valeurs. À la souris ou au toucher, faites glisser l'intérieur du cadre extérieur du Band sélectionné pour déplacer tout le Band, les bords ou les coins du Core pour le redimensionner, et les poignées du bord extérieur pour régler chaque Transition séparément. Une poignée de phase basse s'arrête au centre : Core Low Phase s'arrête à 0° et Low Phase Trans à sa largeur maximale. Si Core Low Phase vaut exactement 0°, la poignée centrale peut d'abord partir d'un côté ou de l'autre ; après le premier mouvement, elle reste verrouillée de ce côté jusqu'à la fin du glissement.
+### Lecture de la carte de sélection
+
+- **Axe vertical** : Fréquence sur une échelle logarithmique (graves en bas, aigus en haut).
+- **Axe horizontal** : Basculez entre **Phase** et **Balance** au-dessus de la carte ; modifier un réglage Phase ou Balance change automatiquement de vue.
+  - **Phase** : 0° (en phase) au centre ; -180° et +180° sur les bords représentent le même point en opposition de phase. La sélection utilisant la différence de phase absolue, le cadre est symétrique de part et d'autre de 0°, se rejoint au centre lorsqu'il touche 0° et se prolonge par-delà les deux bords lorsqu'il atteint 180°.
+  - **Balance** : 50:50 au centre, gauche seule sur le bord gauche, droite seule sur le bord droit. Balance vaut `(amplitude droite - amplitude gauche) / (amplitude gauche + amplitude droite) × 100%`.
+- **Sons unilatéraux** : Une composante présente dans un seul canal a une Balance de -100% ou +100% et apparaît à -180° (gauche) ou +180° (droite) en vue Phase ; les sons fortement panoramiqués peuvent donc être sélectionnés depuis l'une ou l'autre vue.
+- **Points et cadres** : Les points blancs représentent les composantes récentes de l'entrée (plus lumineux et plus grands = plus forts ; les points exclus par l'axe masqué sont assombris). Les rectangles intérieurs pleins montrent le **Core** de chaque Band activé et les rectangles extérieurs en pointillés sa **Transition** ; le Band en cours de modification est mis en évidence, et le numéro placé au coin de chaque Core identifie le Band.
+- **Badges** : Le badge à côté de chaque numéro de Band indique sa plage sur l'axe masqué sous la forme limite extérieure basse › Core bas–haut › limite extérieure haute, par exemple `P 20°›40°–80°›100°` ou `B 100:0›80:20–70:30›0:100` (rapports gauche:droite). `P full` ou `B full` signifie que cet axe n'est pas limité.
+- **Lecture des valeurs** : Survolez la carte, ou touchez-la et faites glisser, pour lire la fréquence et la différence de phase ou la balance à cet endroit.
+
+La grille Balance utilise des rapports de canaux courants ; les écarts de niveau G/D approximatifs sont indiqués à titre de repère :
+
+| Balance | 0% | ±17% | ±33% | ±60% | ±82% | ±100% |
+|---|---:|---:|---:|---:|---:|---:|
+| Rapport des canaux | 50:50 | 59:41 | 67:33 | 80:20 | 91:9 | 100:0 |
+| Écart de niveau G/D | 0 dB | ±3 dB | ±6 dB | ±12 dB | ±20 dB | un seul canal |
 
 ## Spatial Mapper
 
-Spatial Mapper analyse les relations entre les canaux d'entrée par bandes de fréquences, sépare progressivement le son en composantes Direct, Diffuse et Residual, puis achemine chaque composante dans le bus de canaux actuel. Il permet de maintenir les sons précis à l'avant, d'envoyer l'ambiance vers les canaux surround ou en hauteur, d'extraire le centre ou l'ambiance et de modifier la largeur stéréo. Le preset **Transparent**, sélectionné par défaut, conserve la disposition d'origine des canaux.
+Spatial Mapper analyse les relations entre les canaux d'entrée par bandes de fréquences, sépare en continu le son en composantes Direct, Diffuse et Residual, puis achemine chaque composante dans le bus de canaux actuel. Il permet de maintenir les sons précis à l'avant, d'envoyer l'ambiance vers les canaux surround ou en hauteur, d'extraire le centre ou l'ambiance et de modifier la largeur stéréo. Le preset **Transparent**, sélectionné par défaut, conserve la disposition d'origine des canaux.
 
-**Direct** contient le son cohérent dominant de chaque bande. **Diffuse** contient le son moins cohérent et réparti. **Residual** conserve ce qui n'est pas entièrement affecté aux deux autres composantes. La séparation est progressive : les sons ne basculent pas brutalement d'un routage à l'autre lorsque vous modifiez les réglages.
+Les trois composantes jouent des rôles différents. **Direct** contient le son cohérent dominant de chaque bande. **Diffuse** contient le son moins cohérent et réparti. **Residual** conserve ce qui n'est pas entièrement affecté à l'une ou l'autre de ces composantes. La séparation est progressive : les sons ne basculent pas brutalement d'un routage à l'autre lorsque vous modifiez les réglages.
 
-Spatial Mapper ajoute une latence liée à l'analyse fréquentielle. EffeTune l'inclut dans **Total Delay**. Tenez-en compte pour l'écoute de contrôle en temps réel et la synchronisation audio/vidéo.
+Spatial Mapper ajoute une latence liée à l'analyse fréquentielle. EffeTune l'inclut dans l'affichage **Délai total**. Tenez-en compte pour l'écoute de contrôle en temps réel et la synchronisation audio/vidéo.
 
-### Presets système
+### Préréglages système
 
-Cliquez sur **Effect Presets** dans l'en-tête de l'effet pour choisir une configuration de départ complète.
+Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour choisir une configuration de départ complète.
 
 - **Transparent** - Conserve la disposition d'origine des canaux et constitue le preset par défaut.
 - **Stereo Enhance** - Élargit une entrée stéréo par le routage Residual tout en conservant la position des sons précis et diffus.
-- **Center Extract** - Envoie Direct vers le canal 3. Utilisez un bus d'au moins trois canaux.
+- **Center Extract** - Envoie la composante Direct vers le canal 3. Utilisez un bus d'au moins trois canaux.
 - **5.1 Upmix** - Répartit la stéréo dans l'ordre L, R, C, LFE, Ls, Rs. Le canal LFE reste vide et le bus doit compter au moins six canaux.
 - **7.1.4 Upmix** - Répartit la stéréo dans l'ordre L, R, C, LFE, Ls, Rs, Lb, Rb, Ltf, Rtf, Ltb, Rtb. Le canal LFE reste vide et le bus doit compter au moins douze canaux.
-- **Ambience Extract** - Conserve Diffuse et supprime Direct et Residual.
+- **Ambience Extract** - Conserve la composante Diffuse et supprime les composantes Direct et Residual.
 
 ### Lecture et modification de la grille de routage
 
-Dans **Component Routing**, choisissez l'onglet **Direct**, **Diffuse** ou **Residual**. Les colonnes correspondent aux canaux d'entrée analysés et les lignes aux canaux du bus de sortie. Utilisez le petit curseur ou le champ numérique de chaque cellule pour régler le gain linéaire de -1,00 à +1,00 par pas de 0,01 : 0 désactive la liaison, +1,00 envoie la composante avec sa polarité positive complète, et une valeur négative inverse la polarité. Les valeurs négatives apparaissent en rouge.
+Dans **Component Routing**, choisissez l'onglet **Direct**, **Diffuse** ou **Residual**. Les colonnes correspondent aux canaux d'entrée analysés et les lignes aux canaux du bus de sortie. Utilisez le petit curseur ou le champ numérique de chaque cellule pour régler un gain linéaire de -1,00 à +1,00 par pas de 0,01 : 0 ne crée aucune liaison, +1,00 envoie la composante avec sa polarité positive complète, et une valeur négative l'envoie avec la polarité inversée. Les valeurs négatives apparaissent en rouge. Les valeurs intermédiaires donnent un niveau réduit en proportion.
 
-Une ligne de sortie routée remplace le canal correspondant du bus par le résultat. Un canal de sortie compris dans la plage **Input Channels** devient silencieux si aucune composante n'est dirigée vers sa ligne. Les canaux hors de cette plage traversent l'effet avec la même latence lorsqu'aucune composante n'y écrit.
+Une ligne de sortie routée remplace le canal correspondant du bus par le résultat. Un canal de sortie compris dans la plage **Input Channels** devient silencieux si aucune composante n'est dirigée vers sa ligne. Les canaux hors de la plage **Input Channels** traversent l'effet avec un retard identique lorsqu'aucune composante n'y écrit.
 
 ### Guide d'amélioration de l'écoute
 
-1. Pour élargir la stéréo sans déplacer autant les sons précis, commencez avec **Stereo Enhance**. Réduisez **Directness** ou **Diffuse Extraction** seulement si davantage de contenu doit rester dans Residual. Comparez avec **Transparent** et réduisez l'effet si le centre faiblit ou si trop d'éléments disparaissent en mono.
-2. Pour créer un canal central à partir d'une source stéréo, utilisez un bus d'au moins trois canaux et choisissez **Center Extract**. Augmentez **Directness** et **Separation** afin de concentrer davantage de contenu cohérent dans Direct.
-3. Pour étendre la stéréo aux canaux surround ou en hauteur, configurez le bus dans l'ordre indiqué, puis choisissez **5.1 Upmix** ou **7.1.4 Upmix**. Réglez **Diffuse Extraction** pour doser le son réparti envoyé à ces canaux. Les presets ne génèrent pas de signal LFE ; ajoutez une gestion des graves séparée si nécessaire.
-4. Pour isoler l'ambiance, commencez avec **Ambience Extract**. Augmentez **Diffuse Extraction** et utilisez **Phase Sensitivity** pour régler l'influence d'une opposition de phase sur la classification Direct.
+1. **Élargir la stéréo sans déplacer autant les sons précis**
+   - Commencez avec **Stereo Enhance**.
+   - Ne réduisez **Directness** ou **Diffuse Extraction** que si davantage de contenu doit rester dans Residual pour le routage d'élargissement.
+   - Comparez avec **Transparent** et réduisez la modification si les images centrales faiblissent ou si trop de contenu disparaît en lecture mono.
+2. **Créer un canal central à partir d'une source stéréo**
+   - Utilisez un bus d'au moins trois canaux et choisissez **Center Extract**.
+   - Augmentez **Directness** et **Separation** pour concentrer davantage de contenu cohérent dans Direct.
+   - Vérifiez que la voix et les autres éléments centrés restent stables, tandis que l'ambiance large reste principalement à gauche et à droite.
+3. **Étendre la stéréo aux canaux surround ou en hauteur**
+   - Configurez le bus dans l'ordre de canaux indiqué ci-dessus, puis choisissez **5.1 Upmix** ou **7.1.4 Upmix**.
+   - Réglez **Diffuse Extraction** pour doser la part de contenu réparti envoyée aux routages surround et en hauteur.
+   - Le preset ne génère pas de signal LFE ; ajoutez une gestion des graves séparée si nécessaire.
+4. **Isoler l'ambiance**
+   - Commencez avec **Ambience Extract**.
+   - Augmentez **Diffuse Extraction** pour une sélection diffuse plus marquée, et utilisez **Phase Sensitivity** pour décider dans quelle mesure une opposition de phase entre canaux réduit la classification Direct.
 
 ### Paramètres
 
-- **Input Channels** (1 à 16) : Définit le nombre de canaux analysés à partir du début du bus. Si le bus en possède moins, seuls les canaux disponibles sont utilisés.
+- **Input Channels** (1 à 16) : Définit le nombre de canaux analysés à partir du début du bus. Si le bus en possède moins, Spatial Mapper utilise les canaux disponibles.
 - **Analysis Bands** (8, 16, 24, 32 ou 48) : Définit la résolution fréquentielle de l'analyse spatiale. Un plus grand nombre de bandes suit plus précisément les variations de position selon la fréquence, mais demande davantage de calcul. La valeur par défaut est 24.
 - **Directness** (0 % à 100 %) : Règle la quantité de contenu cohérent dominant affectée à Direct. Une valeur élevée renforce l'extraction Direct.
 - **Separation** (0 % à 100 %) : Règle la sélectivité de l'affectation à Direct et Diffuse. Une valeur élevée laisse davantage de contenu ambigu dans Residual et accentue le contraste entre les routages.
-- **Diffuse Extraction** (0 % à 100 %) : Règle la quantité de contenu peu cohérent affectée à Diffuse. Une valeur élevée envoie davantage d'ambiance répartie vers ce routage.
-- **Phase Sensitivity** (0 % à 100 %) : Règle l'influence de l'opposition de phase entre canaux sur la classification Direct. Une valeur faible traite le contenu cohérent de polarité opposée comme les autres sons cohérents ; une valeur élevée en laisse davantage hors de Direct. Ce réglage n'affecte pas automatiquement les sons en opposition de phase aux canaux arrière.
-- **Temporal Smoothing** (0 % à 100 %, Fast à Stable) : Règle la vitesse de suivi des changements. Une valeur faible réagit plus vite ; une valeur élevée réduit les mouvements de l'image et le pompage, mais réagit plus lentement.
-- **Energy Preservation** (Off/On) : Normalise séparément les routages Direct, Diffuse et Residual afin d'éviter les variations de niveau involontaires dues aux matrices. Désactivez-le lorsque le gain de la matrice doit lui-même modifier le niveau d'une composante.
+- **Diffuse Extraction** (0 % à 100 %) : Règle la quantité de contenu peu cohérent affectée à Diffuse. Une valeur élevée envoie davantage d'ambiance répartie vers le routage Diffuse.
+- **Phase Sensitivity** (0 % à 100 %) : Règle l'influence de l'opposition de phase entre canaux sur la classification Direct. Une valeur faible traite le contenu cohérent de polarité opposée comme les autres sons cohérents ; une valeur élevée en laisse davantage hors de Direct. Ce réglage ne désigne pas automatiquement les sons en opposition de phase comme du contenu arrière.
+- **Temporal Smoothing** (0 % à 100 %, Fast à Stable) : Règle la vitesse à laquelle l'analyse et le routage suivent les changements. Une valeur faible réagit plus vite ; une valeur élevée réduit les mouvements de l'image et le pompage, mais réagit plus lentement.
+- **Energy Preservation** (Off/On) : Normalise séparément les routages Direct, Diffuse et Residual afin d'éviter les variations de niveau involontaires dues aux matrices de routage. Désactivez-le lorsque le gain de la matrice doit lui-même modifier le niveau d'une composante.
 - **Component Routing / Direct** : Sélectionne la grille Direct et règle ses gains de sortie.
 - **Component Routing / Diffuse** : Sélectionne la grille Diffuse et règle ses gains de sortie.
 - **Component Routing / Residual** : Sélectionne la grille Residual et règle ses gains de sortie.

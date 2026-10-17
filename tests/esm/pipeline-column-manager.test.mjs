@@ -126,6 +126,7 @@ async function withColumnGlobals(runtime, options, callback) {
     }
   };
   const windowRef = {
+    appConfig: { pipelineColumnMode: 'manual' },
     uiManager: options.uiManager,
     addEventListener(type, listener) {
       runtime.calls.push(['windowAddEventListener', type]);
@@ -335,7 +336,7 @@ test('distribution keeps order and minimizes the tallest column by measured heig
   assert.deepEqual(await placements([0, 0, 0, 0], 3), [[0, 1], [2], [3]]);
 });
 
-test('responsive resize debounce registers callbacks without changing column settings', async () => {
+test('responsive resizing leaves manual column settings unchanged', async () => {
   const runtime = createRuntime();
 
   await withColumnGlobals(runtime, {}, async ({ animationCallbacks, windowListeners }) => {
@@ -346,8 +347,7 @@ test('responsive resize debounce registers callbacks without changing column set
   });
 
   assert.ok(runtime.calls.some(call => call[0] === 'windowAddEventListener' && call[1] === 'resize'));
-  assert.ok(runtime.calls.some(call => call[0] === 'clearTimeout'));
-  assert.ok(runtime.calls.some(call => call[0] === 'setTimeout' && call[1] === 200));
+  assert.equal(runtime.calls.some(call => call[0] === 'setProperty'), false);
 });
 
 test('empty and non-empty pipeline state update columns, placeholders, and pull tab position', async () => {

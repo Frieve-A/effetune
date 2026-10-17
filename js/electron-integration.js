@@ -456,11 +456,14 @@ export class ElectronIntegration {
         }
         .about-dialog {
           position: relative;
-          overflow: hidden;
+          overflow: auto;
+          box-sizing: border-box;
+          max-width: calc(100% - 32px);
+          max-height: calc(100% - 32px);
           background-color: var(--et-surface-5);
           border-radius: 8px;
           padding: 20px;
-          width: 400px;
+          width: 440px;
           color: var(--et-text-primary);
           display: flex;
           flex-direction: column;
@@ -474,6 +477,7 @@ export class ElectronIntegration {
           pointer-events: none;
         }
         .about-dialog > :not(.about-canvas) {
+          flex-shrink: 0;
           position: relative;
         }
         .about-header {
@@ -541,11 +545,22 @@ export class ElectronIntegration {
       // Add event listener for close button
       let stopAnimation = null;
       const closeButton = document.getElementById('close-button');
-      closeButton.addEventListener('click', () => {
+      const previousFocus = document.activeElement;
+      const closeDialog = () => {
         stopAnimation?.();
         document.body.removeChild(dialogElement);
         document.head.removeChild(styleElement);
-      });
+        previousFocus?.focus?.();
+      };
+      closeButton.addEventListener('click', closeDialog);
+      dialogElement.tabIndex = -1;
+      dialogElement.onkeydown = event => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeDialog();
+      };
+      closeButton.focus();
 
       // The animation is decorative; the dialog stays usable if it cannot start.
       try {

@@ -102,6 +102,7 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
   const previousFocus = document.activeElement;
   const overlay = element('div', 'backup-restore-overlay');
   const dialog = element('section', 'backup-restore-dialog');
+  dialog.tabIndex = -1;
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-labelledby', 'backupRestoreTitle');
@@ -460,6 +461,8 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
   };
 
   const setBusy = value => {
+    // Disabling the focused control would otherwise send keyboard events to the page.
+    if (value && dialog.contains(document.activeElement)) dialog.focus();
     busy = value;
     dialog.setAttribute('aria-busy', String(value));
     backupTab.disabled = value;
@@ -637,6 +640,7 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
   });
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
+      event.stopPropagation?.();
       event.preventDefault();
       finishClose();
       return;

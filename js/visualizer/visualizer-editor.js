@@ -1,4 +1,4 @@
-import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
+import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, PICTURE_TYPES, VIDEO_FITS, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
@@ -576,7 +576,7 @@ export class VisualizerEditor {
         const addItem = this.button(addRow, this.t('visualizer.add', 'Add'), () => {
             if (layout.items.length >= MAX_ITEMS) return;
             const item = createItem(add.value);
-            if (item.type !== 'artwork') item.palette.color = DEFAULT_TRACE_COLOR;
+            if (!PICTURE_TYPES.includes(item.type)) item.palette.color = DEFAULT_TRACE_COLOR;
             layout.items.push(item); this.selection = new Set([item.id]); this.changed(true);
         });
         addItem.disabled = layout.items.length >= MAX_ITEMS;
@@ -648,12 +648,21 @@ export class VisualizerEditor {
             value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
         this.styleToggles(properties, item);
         if (VISUAL_TYPES.includes(item.type) || item.type === 'lyrics') this.parameters(properties, item);
-        if (item.type === 'artwork') this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
+        if (item.type === 'video') this.videoStyle(properties, item.style);
+        if (PICTURE_TYPES.includes(item.type)) this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
         else if (TEXT_STYLE_TYPES.includes(item.type)) this.textStyle(properties, item.style, item.type, item.params);
         else if (item.type === 'shape') this.shapeStyle(properties, item.style);
-        if (item.type !== 'artwork') this.palette(this.root, item.palette, item.type);
+        if (!PICTURE_TYPES.includes(item.type)) this.palette(this.root, item.palette, item.type);
         this.effects(this.root, item.effects, 'item', item.type);
+    }
+
+    videoStyle(parent, style) {
+        const labels = { contain: 'Fit inside', cover: 'Fill and crop', stretch: 'Stretch' };
+        this.field(parent, this.t('visualizer.style.fit', 'Fit'), 'select', style.fit, value => { style.fit = value; this.changed(); },
+            { values: VIDEO_FITS.map(fit => [fit, this.t(`visualizer.value.video-${fit}`, labels[fit])]) });
+        this.field(parent, this.t('visualizer.style.artworkFallback', 'Show artwork when there is no video'), 'checkbox',
+            style.artworkFallback, value => { style.artworkFallback = value; this.changed(); });
     }
 
     shapeStyle(parent, style) {
@@ -1096,7 +1105,7 @@ export class VisualizerEditor {
     effects(parent, effects, target, itemType) {
         const group = this.group(parent, this.t('visualizer.effects', 'Effects'));
         const types = byLabel(Object.entries(EFFECT_CATALOG)
-            .filter(([type, entry]) => entry.allowedOn.includes(target) && (type !== 'ken-burns' || target === 'background' || itemType === 'artwork'))
+            .filter(([type, entry]) => entry.allowedOn.includes(target) && (type !== 'ken-burns' || target === 'background' || PICTURE_TYPES.includes(itemType)))
             .map(([key, entry]) => [key, this.t(`visualizer.effect.${key}`, entry.label)]));
         const addRow = document.createElement('div');
         addRow.className = 'visualizer-select-action-row'; group.appendChild(addRow);

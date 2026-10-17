@@ -686,6 +686,26 @@ Application stylesheets in `css/` and root web assets such as `sw.js`, `sw-preca
    - Reinstall the application using the installer
    - Manually associate `.effetune_preset` files with the application
 
+## DSP Library documentation verification
+
+Generate the public library pages with `npm run docs:dsp`, then check them with
+`npm run docs:dsp:check`. The source prose and runnable examples live under
+`examples/dsp-library/`; do not edit generated pages directly.
+
+Run `node tools/verify-dsp-library-goldens.mjs` to check the frozen reference
+suites. The generator validates their coverage against the current catalog.
+The suites include JavaScript-derived, native direct-double, independent native,
+and production-native-promoted references. The independent filter reference uses
+RBJ biquads in direct form I and direct FIR convolution.
+
+The visual-editor acceptance test freezes `Date.now()` and compares its export
+with the committed fixture. It then copies that fixture into a temporary working
+directory as `listening.effetune_preset` and runs the public Python example there.
+
+CI acceptance summaries are temporary workflow artifacts, not public Release
+assets. The repository Chromium harness uses a special `file:` flag for testing;
+public browser integrations still require HTTPS or localhost.
+
 ## Distribution
 
 After building the application:

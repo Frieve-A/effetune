@@ -41,6 +41,7 @@ export function openAssetLibraryBrowser({
   const previousFocus = returnFocus ?? document.activeElement;
   const overlay = element('div', 'ir-library-overlay');
   const dialog = element('div', 'ir-library-dialog');
+  dialog.tabIndex = -1;
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-label', translate('aria.dialog', 'Impulse response library'));
@@ -264,6 +265,7 @@ export function openAssetLibraryBrowser({
   };
 
   const setDeleteUiActive = active => {
+    if (active && dialog.contains(document.activeElement)) dialog.focus();
     deleteInProgress = active;
     dialog.setAttribute('aria-busy', String(active));
     search.disabled = active;
@@ -521,6 +523,7 @@ export function openAssetLibraryBrowser({
       return;
     }
     if (event.key === 'Escape') {
+      event.stopPropagation?.();
       event.preventDefault?.();
       closeDialog();
       return;

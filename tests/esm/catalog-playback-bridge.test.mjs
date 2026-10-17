@@ -147,6 +147,20 @@ test('playback deadline terminates an unresponsive source/status request with it
   scenario.bridge.close();
 });
 
+test('ALAC provisional playback failure shows the dedicated macOS desktop message', async t => {
+  t.mock.method(console, 'error', () => {});
+  const scenario = stalledPlaybackBridge({
+    async install() {
+      throw Object.assign(new Error('ALAC requires macOS desktop'), { code: 'alacRequiresMacDesktop' });
+    }
+  });
+  t.after(() => scenario.bridge.close());
+  await scenario.bridge.start(playbackRequest());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await scenario.bridge.status('operation-stall')).terminalKind, 'failed');
+  assert.deepEqual(scenario.messages, ['error.alacRequiresMacDesktop']);
+});
+
 test('permission UI pauses the playback deadline and cancellation blocks a late source retry', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   let resolvePermission;

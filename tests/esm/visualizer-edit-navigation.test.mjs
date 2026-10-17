@@ -111,7 +111,7 @@ function setupViewport(bodyZoom = 1) {
         layout, stage, stageHost, canvas, history: new VisualizerHistory(),
         undoButton: {}, redoButton: {}, cutButton: {}, copyButton: {},
         root: { classList: classList(), contains: target => target?.inRoot === true },
-        sources: { setLayout() {} }, store: { saveCurrent: value => saved.push(snapshotLayout(value)) },
+        sources: { setLayout() {} }, video: { setEnabled() {}, setActive() {}, frame: () => null }, store: { saveCurrent: value => saved.push(snapshotLayout(value)) },
         uiManager: { showTransientMessage() {} }, warn() {}
     });
     view.t = (_key, fallback) => fallback;

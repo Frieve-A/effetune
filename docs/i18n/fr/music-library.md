@@ -6,162 +6,127 @@ lang: fr
 
 # Utiliser la Bibliothèque musicale
 
-La Bibliothèque musicale indexe les dossiers de musique que vous choisissez et vous permet de parcourir votre collection locale par morceaux, fichiers, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents et listes de lecture. Comme pour la lecture normale des fichiers musicaux, le son passe par le pipeline d'effets EffeTune actuel.
+La Bibliothèque musicale indexe les dossiers de musique que vous sélectionnez afin de parcourir votre collection locale par morceaux, fichiers, albums, artistes, genres, sous-dossiers, dossiers, ajouts récents ou listes de lecture. Comme pour la lecture normale de fichiers musicaux, le son passe par le pipeline d’effets EffeTune actif.
 
-La Bibliothèque musicale enregistre le catalogue interne de l'application, le cache des illustrations et les listes de lecture. Elle ne modifie, ne renomme, ne déplace et ne supprime jamais les fichiers musicaux eux-mêmes.
+La Bibliothèque musicale enregistre son catalogue, le cache des pochettes et les listes de lecture dans l’application. Elle ne modifie, ne renomme, ne déplace et ne supprime jamais vos fichiers audio.
 
-## Environnements disponibles
+## Environnements disponibles {#availability}
 
-- **Application de bureau :** utilise l'analyse complète des dossiers et peut conserver les dossiers sélectionnés entre les lancements. Elle peut aussi afficher un morceau dans son dossier.
-- **Navigateurs Chromium sur PC avec File System Access :** peuvent conserver l'accès aux dossiers sélectionnés après un rechargement. Le navigateur peut redemander l'autorisation.
-- **Navigateurs mobiles, Safari, Firefox et autres sans File System Access :** ne conservent l'accès aux fichiers sélectionnés que pendant la session en cours. Le catalogue reste enregistré, mais sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement pour qu'EffeTune puisse les rattacher.
+- **Application de bureau :** utilise l’analyse complète des dossiers et conserve les dossiers sélectionnés d’un lancement à l’autre. Elle permet aussi d’afficher un morceau dans son dossier.
+- **Navigateurs Chromium sur PC avec File System Access :** conservent l’accès aux dossiers sélectionnés après un rechargement. Le navigateur peut redemander l’autorisation.
+- **Navigateurs mobiles, Safari, Firefox et autres navigateurs sans File System Access :** ne conservent l’accès aux fichiers sélectionnés que pendant la session en cours. Le catalogue reste enregistré, mais sélectionnez de nouveau le dossier ou les fichiers après chaque rechargement pour qu’EffeTune puisse les rattacher.
 
-La Bibliothèque musicale indexe les extensions de fichiers multimédias courantes, notamment MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM et MP4. Elle peut aussi utiliser une feuille CUE externe pour diviser en morceaux un fichier d'album WAV ou FLAC placé dans le même dossier. Pour les fichiers MP4, EffeTune lit uniquement la piste audio et n'affiche pas la vidéo. La lecture effective, y compris la prise en charge du codec audio contenu dans le MP4, dépend aussi des capacités de décodage du navigateur et du système d'exploitation.
+La Bibliothèque musicale indexe les extensions de fichiers audio courantes telles que MP3, WAV, OGG, FLAC, Opus, M4A et AAC. Elle peut aussi utiliser une feuille CUE externe pour découper en pistes individuelles un fichier d’album WAV ou FLAC placé dans le même dossier.
+
+Pour inclure les fichiers MP4, WebM, M4V, MOV, MKV et 3GP, activez **Inclure les formats vidéo dans la Bibliothèque musicale** dans **Paramètres > Configuration... > Général**, puis ajoutez un dossier ou relancez son analyse. Cette option est désactivée par défaut ; sa modification ne change pas immédiatement le catalogue existant. La prise en charge effective de la lecture, y compris le codec audio d’un fichier vidéo, dépend du décodeur du navigateur ou du système d’exploitation. Pour l’affichage des vidéos, consultez le [guide du lecteur de musique](music-player.md#video).
 
 ## Ouvrir la Bibliothèque musicale
 
-- **Disposition ordinateur :** cliquez sur le bouton **Bibliothèque musicale** dans l'en-tête.
-- **Disposition mobile :** ouvrez l'onglet **Bibliothèque** dans la navigation en bas de l'écran.
-- **Application de bureau :** vous pouvez aussi l'ouvrir avec **Affichage > Bibliothèque musicale** ou **Ctrl+L** (**Command+L** sur macOS).
+- **Disposition ordinateur :** cliquez sur le bouton **Bibliothèque musicale** dans l’en-tête.
+- **Disposition mobile :** ouvrez l’onglet **Bibliothèque** dans la navigation en bas de l’écran.
+- **Application de bureau :** utilisez aussi **Affichage > Bibliothèque musicale** ou **Ctrl+L** (**Command+L** sur macOS).
 
-Pour revenir à l'édition des effets, cliquez sur le bouton **Effect Pipeline** en disposition ordinateur, ou revenez à l'onglet **Effets** en disposition mobile. Dans l'application de bureau, vous pouvez aussi utiliser **Affichage > Effect Pipeline** ou **Ctrl+E** (**Command+E** sur macOS).
+Pour revenir à l’édition des effets, cliquez sur le bouton **Effect Pipeline** en disposition ordinateur, revenez à l’onglet **Effets** en disposition mobile, ou utilisez **Affichage > Effect Pipeline** ou **Ctrl+E** (**Command+E** sur macOS) dans l’application de bureau.
 
-Si vous voulez afficher la Bibliothèque musicale en premier au démarrage, ouvrez **Paramètres > Configuration...** et réglez **Vue au démarrage :** sur **Bibliothèque musicale**. Dans la liste située à côté de **Bibliothèque musicale**, choisissez la section qui s'affichera en premier : **Morceaux**, **Fichiers**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers** ou **Listes de lecture**.
+Pour afficher la Bibliothèque musicale dès le démarrage, ouvrez **Paramètres > Configuration...**, puis réglez **Vue au démarrage :** sur **Bibliothèque musicale**. Utilisez la liste située à côté de Bibliothèque musicale pour choisir la vue ouverte en premier : **Morceaux**, **Fichiers**, **Albums**, **Artistes**, **Genres**, **Sous-dossiers**, **Dossiers** ou **Listes de lecture**.
 
 ## Ajouter un dossier de musique
 
 1. Ouvrez la Bibliothèque musicale.
 2. Sélectionnez **Ajouter un dossier de musique**.
-3. Choisissez le dossier qui contient vos fichiers musicaux. Sur mobile ou dans les navigateurs utilisant la méthode de repli, l'écran peut demander de sélectionner les fichiers du dossier au lieu d'accorder un accès permanent au dossier.
-4. Attendez la fin de l'analyse. La ligne d'état affiche le nombre de morceaux et d'albums, ainsi que la progression pendant l'indexation.
+3. Choisissez le dossier contenant votre musique. Sur mobile ou dans les navigateurs utilisant le mode de repli, le sélecteur peut demander de choisir le contenu du dossier au lieu d’accorder un accès persistant au dossier.
+4. Attendez la fin de l’analyse. La ligne d’état affiche le nombre de morceaux et d’albums ainsi que la progression de l’indexation.
 
-Si vous essayez d'ajouter un dossier qui se trouve déjà dans un dossier enregistré, EffeTune affiche un avertissement sans l'indexer en double. Si vous ajoutez un dossier parent qui contient des dossiers déjà enregistrés, vous pouvez fusionner les dossiers existants dans le nouveau dossier.
+Si vous ajoutez un dossier déjà inclus dans un dossier existant de la bibliothèque, EffeTune vous avertit au lieu d’indexer des doublons. Si vous ajoutez un dossier parent contenant des dossiers déjà indexés, EffeTune propose de les fusionner dans le nouveau dossier.
 
 ## Parcourir et rechercher
 
-Les onglets de navigation permettent de changer de catalogue.
+Utilisez les onglets de navigation pour parcourir votre collection :
 
-- **Morceaux** - affiche tous les morceaux indexés. La disposition ordinateur utilise un tableau triable, tandis que la disposition mobile utilise une liste compacte.
-- **Fichiers** - affiche les morceaux indexés selon l'emplacement de leur fichier pour les choisir directement. L'application de bureau affiche les chemins absolus ; les navigateurs Web affichent le nom du dossier racine de la bibliothèque et le chemin relatif. Les morceaux issus d'un même fichier audio CUE restent des entrées distinctes et peuvent être sélectionnés individuellement.
-- **Albums** - regroupe les morceaux par album à partir des métadonnées.
-- **Artistes** - regroupe les morceaux par artiste ou artiste de l'album dans les métadonnées.
-- **Genres** - regroupe les morceaux par genre dans les métadonnées.
-- **Sous-dossiers** - regroupe les morceaux selon le sous-dossier qui les contient.
-- **Dossiers** - affiche les dossiers racines enregistrés, leur état d’analyse et leur arborescence physique.
-- **Ajouts récents** - affiche les morceaux récemment indexés.
-- **Listes de lecture** - affiche les listes de lecture créées ou importées dans la Bibliothèque musicale.
+- **Morceaux :** tous les morceaux indexés (tableau triable sur PC, liste compacte sur mobile).
+- **Fichiers :** morceaux classés par chemin de fichier pour les choisir directement. Les pistes définies par une feuille CUE apparaissent comme des entrées distinctes.
+- **Albums :** albums regroupés à partir des métadonnées des morceaux.
+- **Artistes :** artistes et artistes d’album issus des métadonnées (les valeurs séparées par des points-virgules comme `Artist A; Artist B` sont indexées sous chaque artiste tout en conservant l’affichage complet).
+- **Genres :** genres regroupés à partir des métadonnées.
+- **Sous-dossiers :** morceaux regroupés selon leur sous-dossier parent direct dans chaque dossier racine indexé (par exemple `Artist/Album`).
+- **Dossiers :** dossiers racines enregistrés, état d’analyse et hiérarchie de dossiers.
+- **Ajouts récents :** morceaux récemment indexés.
+- **Listes de lecture :** listes de lecture créées ou importées dans la Bibliothèque musicale.
 
-Une valeur d'artiste de l'album séparée par des points-virgules, comme `Artist A; Artist B`, est indexée sous chaque artiste tout en conservant la mention complète à l'affichage. `&`, `/` et `feat.` ne sont pas considérés comme des séparateurs.
+Dans **Dossiers**, ouvrez une racine enregistrée pour parcourir ses dossiers en **Arborescence** ou passez en **Vue à plat** pour lister d’un coup tous les morceaux de cette racine. En **Arborescence**, les dossiers à sous-dossier unique qui ne contiennent aucun morceau direct sont regroupés sur une seule ligne (par exemple `Artist / Album`) pour accéder directement au dossier de l’album, tandis que le fil d’Ariane permet d’ouvrir tout dossier intermédiaire.
 
-Ouvrez une racine dans **Dossiers** pour la parcourir en mode **Arborescence**. Les sous-dossiers apparaissent au-dessus de la liste des morceaux : sélectionnez-en un pour y entrer, puis utilisez le fil d’Ariane ou **Précédent** pour remonter. La liste ne contient que les morceaux stockés directement au niveau actuel. La **Vue à plat** affiche au contraire tous les morceaux indexés de la racine enregistrée, y compris ceux de ses sous-dossiers. Le changement de vue conserve l’emplacement actuel, ce qui permet de revenir au même endroit dans **Arborescence**. **Rechercher dans la bibliothèque** porte toujours sur l’ensemble de la bibliothèque ; la liste des sous-dossiers est donc masquée pendant une recherche.
+Utilisez **Rechercher dans la bibliothèque** pour filtrer les morceaux, albums, artistes et listes de lecture. Les termes d’au moins trois caractères correspondent à n’importe quelle partie du titre, de l’artiste, de l’album, du genre, du nom de fichier ou du chemin ; les termes d’un ou deux caractères correspondent au début des mots. Sur PC, cliquez sur les en-têtes du tableau des morceaux (**N° de piste**, **Titre**, **Artiste**, **Album**, **Genre** ou **Durée**) ou utilisez la liste **Trier** dans les autres vues. Sur mobile, utilisez la liste **Trier** dans toutes les vues hors listes de lecture enregistrées.
 
-Lorsqu’un dossier ne contient directement aucun morceau et possède exactement un sous-dossier, **Arborescence** regroupe les niveaux consécutifs répondant à cette condition sur une seule ligne, par exemple `Artist / Album`. Sélectionnez la ligne pour accéder directement au dossier le plus profond ; le nombre affiché sur la ligne correspond également à ce dossier. Le fil d’Ariane permet d’ouvrir tout niveau intermédiaire, tandis que **Précédent** remonte d’un niveau à la fois sur ordinateur. Sur mobile, **Précédent** revient à la vue affichée auparavant et peut donc franchir en une seule fois les niveaux intermédiaires d’une chaîne regroupée.
+Lorsqu’un résultat de recherche, un niveau de dossier, un album, un artiste, un genre, un sous-dossier ou une liste de lecture contient 300 morceaux ou moins, tous les morceaux sont sélectionnés par défaut pour lancer la lecture immédiatement. À partir de 301 morceaux, rien n’est sélectionné automatiquement ; utilisez les cases à cocher des lignes, **Tout sélectionner** ou **Tout désélectionner** pour modifier la sélection. Sur mobile, maintenez le doigt sur une ligne de morceau pour afficher les cases à cocher et les commandes de sélection.
 
-L’arborescence de **Dossiers** respecte les chemins relatifs physiques exacts et inclut toutes les entrées de morceau découvertes dans le catalogue, même pendant l’analyse des métadonnées ou en cas d’échec de celle-ci. Le nombre associé à un dossier comprend les morceaux de ce dossier et de tous ses descendants. Les pistes CUE sont comptées séparément : plusieurs pistes logiques partageant une même source WAV ou FLAC comptent comme plusieurs morceaux, et non comme un seul fichier audio physique. **Sous-dossiers** répond à une autre logique : il regroupe les morceaux analysés avec succès selon l’identité normalisée de leur dossier parent direct. Des variantes qui ne diffèrent que par la casse ou la normalisation Unicode peuvent donc y être réunies.
-
-Par exemple, `Artist/Album/01 Song.flac` apparaît dans le groupe de sous-dossier `Artist/Album`, ainsi que sous `Artist` puis `Album` dans l’arborescence physique de **Dossiers**. Des chemins relatifs identiques dans des racines indexées différentes restent distincts. Les fichiers placés directement à la racine ne créent pas de groupe de sous-dossier, mais restent disponibles dans **Morceaux** et dans la liste des morceaux directs de cette racine sous **Dossiers**.
-
-**Rechercher dans la bibliothèque** permet de rechercher dans les morceaux, albums, artistes et listes de lecture. En disposition ordinateur, l'en-tête de la liste des morceaux permet de trier par numéro de piste, titre, artiste, album, genre ou durée. Les vues des albums, artistes, genres, sous-dossiers et listes de lecture proposent une liste **Trier** alimentée par le catalogue. Selon la vue, elle permet un tri croissant ou décroissant par nom, artiste, année, chemin, nombre de pistes, durée totale, date de mise à jour ou date de création. Chaque vue conserve son propre choix.
-
-En disposition mobile, les listes de morceaux hors des listes de lecture proposent une liste **Trier** avec un ordre croissant ou décroissant, y compris dans les sous-dossiers et les résultats de recherche. Les morceaux des listes de lecture conservent leur ordre enregistré. **Ajouts récents** affiche par défaut les derniers morceaux ajoutés en premier ; vous pouvez choisir un autre ordre dans la même liste.
-
-Pour les morceaux, les termes d’au moins trois caractères peuvent correspondre à n’importe quelle partie du titre, de l’artiste, de l’album, du genre, du nom de fichier ou du chemin. Les termes d’un ou deux caractères ne correspondent qu’au début d’un mot. Saisissez au moins trois caractères pour rechercher au milieu d’un mot.
-
-Dans les dispositions ordinateur et mobile, lorsqu’une recherche de morceaux, le niveau actuel d’**Arborescence** ou la fiche d’un album, d’un artiste, d’un genre, d’un sous-dossier ou d’une liste de lecture contient 300 morceaux ou moins, tous sont sélectionnés par défaut. Dans l’arborescence, seules les pistes directes du niveau actuel sont concernées. À partir de 301 morceaux, aucune sélection automatique n’est effectuée. Utilisez les cases des lignes, **Tout sélectionner** ou **Tout désélectionner** pour modifier la sélection.
-
-Sur mobile, la liste normale des titres s'affiche d'abord, sans colonnes d'artiste ni de durée. Seul un appui long sur un morceau ouvre le mode sélection ; les cases à cocher, **Tout sélectionner** et **Tout désélectionner** apparaissent alors, tandis que les actions habituelles des lignes restent disponibles. La sélection automatique et les modifications ultérieures — y compris **Tout sélectionner**, **Tout désélectionner** et les cases individuelles — ne changent que l’état de sélection ; elles n’ouvrent ni ne ferment le mode sélection.
-
-Quand les métadonnées sont absentes ou illisibles, EffeTune utilise le nom du fichier et les informations de dossier pour l'affichage. Les propriétés d'un morceau permettent de consulter le chemin du fichier, le format, la fréquence d'échantillonnage, la profondeur de bits, le débit binaire et les principaux champs de métadonnées. Pour un morceau CUE, elles indiquent aussi son type, le chemin du fichier CUE, le chemin du fichier audio source et sa plage dans ce fichier.
+Si les tags sont absents, EffeTune utilise le nom du fichier et du dossier. Les propriétés d’un morceau affichent le chemin du fichier, le format, la fréquence d’échantillonnage, la profondeur de bits, le débit binaire, les métadonnées et, pour les pistes CUE, le chemin de la feuille CUE et la plage du morceau.
 
 ## Fichiers d'album avec CUE
 
-Placez le fichier `.cue` externe à côté des fichiers WAV ou FLAC qu'il désigne, puis ajoutez ou analysez de nouveau ce dossier. Chaque entrée `TRACK ... AUDIO` valide apparaît comme un morceau distinct dans la Bibliothèque musicale. Le titre, l'interprète, la date, le genre et le numéro de piste du fichier CUE sont utilisés lorsqu'ils sont disponibles ; les informations audio techniques proviennent du fichier WAV ou FLAC source.
+Placez une feuille `.cue` externe dans le même dossier que les fichiers WAV ou FLAC qu’elle référence, puis ajoutez ou analysez de nouveau le dossier. Chaque entrée `TRACK ... AUDIO` valide apparaît comme un morceau distinct dans la Bibliothèque musicale.
 
-Pour les pistes ajoutées à la Bibliothèque musicale, EffeTune utilise d’abord la pochette intégrée au fichier audio source. S’il n’y en a pas, il recherche, à côté du fichier CUE et dans cet ordre, `cover.jpg`, `cover.png`, `front.jpg`, `front.png`, puis un fichier JPEG ou PNG portant le nom du fichier audio source, avec ou sans son extension audio. La lecture directe dans l’application de bureau utilise automatiquement ces mêmes images voisines ; ce mode de lecture n’extrait pas la pochette intégrée au fichier audio source. La lecture directe dans le navigateur utilise l’image correspondante accessible depuis les fichiers sélectionnés ou le dossier enregistré.
+Pour la pochette, la Bibliothèque musicale vérifie d’abord l’image intégrée au fichier audio source, puis recherche à côté du fichier `.cue` les fichiers `cover.jpg`, `cover.png`, `front.jpg`, `front.png` ou une image portant le nom du fichier audio.
 
-Vous pouvez aussi lire directement un album CUE avec **Open music files**, ou **Open Music** sur mobile. Dans l’application de bureau, vous pouvez également utiliser **File > Open music file...** ; sélectionnez uniquement le fichier `.cue`. Dans un navigateur Chromium sur PC, ajoutez d’abord le dossier de l’album à la Bibliothèque musicale et autorisez l’accès. Vous pourrez ensuite sélectionner uniquement le fichier `.cue` : EffeTune ouvrira les fichiers WAV ou FLAC référencés et la pochette correspondante depuis ce dossier enregistré, sans ajouter la sélection au catalogue. Les navigateurs sans File System Access doivent toujours recevoir le fichier `.cue` avec tous les fichiers WAV ou FLAC qu’il désigne, et la pochette correspondante si vous souhaitez l’utiliser. Une sélection valide remplace la file actuelle. Si la validation échoue, la file reste inchangée.
+Vous pouvez aussi ouvrir une feuille `.cue` directement depuis le lecteur (**Ouvrir des fichiers musicaux**, **Fichier > Ouvrir un fichier musical...** sur ordinateur, ou **Ouvrir la musique** sur mobile) :
+- **Application de bureau :** sélectionnez uniquement le fichier `.cue`.
+- **Navigateur Chromium sur PC :** si le dossier de l’album est déjà enregistré dans la Bibliothèque musicale avec l’autorisation accordée, sélectionnez uniquement le fichier `.cue`.
+- **Autres navigateurs :** sélectionnez le fichier `.cue` avec tous les fichiers WAV/FLAC qu’il référence, et uniquement ceux-là, ainsi qu’une image de pochette correspondante si vous le souhaitez.
 
-Si la feuille CUE n'est pas valide ou ne permet pas d'identifier ses fichiers sources de manière fiable, EffeTune explique le problème et importe les fichiers WAV ou FLAC comme des morceaux ordinaires couvrant tout le fichier. Corrigez la feuille CUE ou les noms de fichiers, puis analysez de nouveau le dossier.
+Si une feuille CUE n’est pas valide ou si ses fichiers audio ne peuvent pas être associés, EffeTune vous en informe et importe chaque fichier WAV ou FLAC comme un seul morceau couvrant tout le fichier. Corrigez la feuille CUE ou les noms de fichiers, puis réanalysez le dossier pour réessayer.
 
 ## Lire depuis la bibliothèque
 
-Sélectionnez des morceaux, albums, artistes, genres, sous-dossiers, dossiers, résultats de recherche ou listes de lecture, puis utilisez les actions suivantes.
+Sélectionnez un morceau, un album, un artiste, un genre, un sous-dossier, un dossier, un résultat de recherche ou une liste de lecture, puis choisissez :
 
-- **Lire** - remplace la file d'attente actuelle du lecteur et lance la lecture.
-- **Aléatoire** - lit les morceaux sélectionnés dans un ordre aléatoire.
-- **Lire ensuite** - insère les morceaux sélectionnés juste après le morceau actuel.
-- **Ajouter à la file** - ajoute les morceaux sélectionnés à la fin de la file.
-- **Ajouter à une liste** - enregistre les morceaux sélectionnés dans une liste de lecture de la Bibliothèque musicale.
+- **Lire** pour remplacer la file d’attente actuelle du lecteur et démarrer la lecture.
+- **Aléatoire** pour lire la sélection dans un ordre aléatoire.
+- **Lire ensuite** pour insérer la sélection juste après le morceau en cours.
+- **Ajouter à la file** pour ajouter la sélection à la fin de la file d’attente.
+- **Ajouter à une liste** pour enregistrer la sélection dans une liste de lecture de la Bibliothèque musicale.
 
-Sur ordinateur, vous pouvez double-cliquer sur la ligne d'un morceau pour lancer la lecture depuis cette position, ou ouvrir ses actions par clic droit ou depuis le menu **Plus**. Sur mobile, touchez un morceau dans la liste normale pour le lire ; un appui long active le mode sélection décrit ci-dessus.
-
-Les commandes habituelles du lecteur musical et les réglages de répétition/aléatoire restent disponibles. Sur les appareils avec clavier, les raccourcis clavier habituels du lecteur restent eux aussi disponibles. Si un dossier passe hors ligne et que les morceaux de la bibliothèque ne peuvent plus être ouverts, reconnectez ou réimportez ce dossier.
+Sur PC, double-cliquez sur une ligne de morceau pour lancer la lecture à partir de ce titre, ou faites un clic droit / ouvrez **Plus** pour accéder aux actions du morceau. Sur mobile, touchez un morceau pour le lire ou maintenez le doigt dessus pour sélectionner plusieurs morceaux.
 
 ## Mettre à jour et reconnecter les dossiers
 
-Après avoir ajouté, supprimé, renommé ou modifié les tags de fichiers dans un dossier de musique, utilisez **Analyser à nouveau**. La nouvelle analyse met à jour les morceaux modifiés, retire du catalogue les fichiers introuvables et tente aussi de résoudre à nouveau les entrées de listes de lecture qui n'étaient pas disponibles auparavant.
+Utilisez **Analyser à nouveau** après avoir ajouté, supprimé, renommé ou modifié les tags de fichiers dans vos dossiers de musique. La nouvelle analyse met à jour les morceaux modifiés, retire les fichiers supprimés du catalogue et rattache automatiquement les entrées de listes de lecture lorsque des fichiers correspondants sont trouvés.
 
-L'affichage d'état de l'écran **Dossiers** indique si le dossier est disponible.
+État des dossiers dans **Dossiers** :
+- **OK :** prêt à être parcouru et lu.
+- **Non analysé :** ajouté, mais pas encore indexé.
+- **Introuvable :** le chemin du dossier est introuvable.
+- **Reconnecter :** l’autorisation du navigateur ou du dossier est de nouveau requise ; cliquez sur **Reconnecter** et accordez l’accès au même dossier.
 
-- **OK** - le dossier est disponible.
-- **Non analysé** - le dossier n'a pas encore été indexé.
-- **Introuvable** - le dossier ou le chemin enregistré n'est pas disponible.
-- **Reconnecter** - EffeTune a besoin d'une nouvelle autorisation d'accès.
+Si un morceau de la bibliothèque ne peut pas être ouvert parce que son dossier est hors ligne, reconnectez ou réimportez ce dossier.
 
-Si un dossier affiche **Reconnecter**, sélectionnez **Reconnecter** et autorisez à nouveau l'accès au même dossier. Retirer un dossier ne fait que l'enlever du catalogue de la Bibliothèque musicale ; les fichiers sur le disque ne sont pas supprimés.
+Choisir **Retirer** enlève uniquement le dossier du catalogue d’EffeTune ; vos fichiers sur le disque ne sont jamais supprimés.
 
 ## Listes de lecture
 
-Les listes de lecture de la Bibliothèque musicale sont enregistrées dans EffeTune et peuvent contenir des morceaux situés dans des dossiers indexés.
+Les listes de lecture de la Bibliothèque musicale sont enregistrées dans EffeTune et peuvent regrouper des morceaux issus de n’importe quel dossier indexé :
 
-Vous pouvez effectuer les actions suivantes.
-
-- Créer une liste de lecture à partir des morceaux sélectionnés dans la bibliothèque.
-- Enregistrer la file actuelle du lecteur comme liste de lecture.
-- Renommer, dupliquer, supprimer et réordonner les listes de lecture.
-- Faire glisser les morceaux d'une liste de lecture pour modifier leur ordre. Dans les environnements où le glisser-déposer est difficile, utilisez **Monter** et **Descendre**.
-- Utiliser **Importer une liste** pour importer des listes de lecture aux formats M3U, M3U8, PLS et XSPF.
-- Ouvrir une liste de lecture précise et l'exporter avec **Exporter M3U8** ou **Exporter XSPF**.
+- Créez une liste de lecture à partir de morceaux sélectionnés dans la bibliothèque ou enregistrez la file d’attente actuelle du lecteur comme liste de lecture.
+- Utilisez **Renommer**, **Dupliquer** et **Supprimer** pour gérer vos listes de lecture, et faites glisser les morceaux (ou utilisez **Monter** / **Descendre**) pour modifier leur ordre.
+- Utilisez **Importer une liste** pour les fichiers M3U, M3U8, PLS et XSPF, et **Exporter M3U8** ou **Exporter XSPF** depuis une liste de lecture pour l’exporter.
 
 ### Titres récemment écoutés et Favoris
 
-EffeTune affiche deux listes spéciales aux côtés des listes ordinaires, dans la même grille de cartes. Elles ne sont créées qu'en cas de besoin : **Titres récemment écoutés** au démarrage d'un titre indexé, et **Favoris** lorsque vous marquez un titre d'une étoile pour la première fois.
+Deux listes de lecture automatiques apparaissent dans la grille des listes de lecture dès qu’elles sont utilisées :
 
-- **Titres récemment écoutés** conserve les 100 derniers titres distincts, le plus récent en tête. Réécouter un titre le replace en tête.
-- **Favoris** contient les titres marqués avec ☆. Sur PC, utilisez l'étoile à côté du titre ; sur mobile, ouvrez le menu **Plus** du titre. Ce même menu s'ouvre aussi d'un clic droit sur PC.
+- **Titres récemment écoutés :** conserve les 100 derniers morceaux distincts lus depuis la Bibliothèque musicale, du plus récent au plus ancien.
+- **Favoris :** regroupe les morceaux marqués avec l’**☆** affichée à côté d’un morceau sur PC, ou avec **Ajouter aux favoris** dans le menu **Plus** du morceau (également accessible par clic droit sur PC). Cliquez sur le bouton de lecture de la carte **Favoris** pour lancer la liste immédiatement.
 
-Leur nom est fixe et s'affiche dans la langue actuelle de l'interface ; il ne peut donc pas être modifié. Vous pouvez toutefois dupliquer, exporter ou supprimer ces listes comme les autres. Une liste supprimée est recréée vide la prochaine fois qu'une lecture ou une action sur les favoris en a besoin. Leurs cartes affichent une horloge ou une étoile dans la zone d'illustration ; le bouton de lecture en bas à droite de **Favoris** lance immédiatement la liste. Les listes spéciales sont exclues des résultats de recherche des listes ordinaires.
+Leur nom suit la langue de l’interface et ne peut pas être renommé, mais vous pouvez les dupliquer, les exporter ou les supprimer comme n’importe quelle liste de lecture.
 
-Lors de l’analyse d’un dossier, EffeTune importe automatiquement les fichiers de listes de lecture pris en charge après l’indexation des pistes et ignore ceux dont le contenu n’a pas changé. Si le contenu d’un fichier situé dans le même dossier et au même chemin relatif change, EffeTune remplace de façon atomique les éléments de la liste importée automatiquement, y compris les modifications apportées à ces éléments dans EffeTune. Une importation échouée ou annulée est retentée lors de l’analyse suivante. La suppression ou le renommage du fichier source ne supprime pas la liste existante, et un fichier renommé est importé comme une nouvelle liste.
+### Importer et exporter des listes de lecture
 
-Lors de l'importation, un aperçu indique combien d'éléments correspondent à des morceaux de la bibliothèque actuelle. Les éléments sans correspondance sont aussi conservés autant que possible comme éléments non résolus, afin de pouvoir être résolus si le dossier concerné est ajouté ou reconnecté plus tard.
+L’analyse d’un dossier importe automatiquement les fichiers de listes de lecture pris en charge trouvés dans vos dossiers de musique et les met à jour lors d’une nouvelle analyse si le fichier a changé sur le disque ; cette mise à jour remplace les modifications apportées à cette liste dans EffeTune. Les entrées sans correspondance sont conservées comme éléments non résolus afin d’être rattachées automatiquement lorsque le dossier correspondant est ajouté ou reconnecté.
 
-Lors de l'exportation, si vous choisissez **Chemins relatifs**, les chemins sont écrits, quand c'est possible, sous forme de chemins relatifs à partir de l'emplacement d'exportation. C'est utile si vous voulez déplacer une liste de lecture avec le dossier de musique. Les formats M3U8 et XSPF ne peuvent pas conserver la plage d'un morceau CUE dans le fichier de l'album. EffeTune exclut donc ces morceaux et indique leur nombre. Il ne les remplace jamais par le chemin physique du fichier d'album.
+Lors de l’exportation d’une liste de lecture, activez **Chemins relatifs** si vous souhaitez déplacer le fichier M3U8 ou XSPF exporté avec votre dossier de musique. Comme les formats M3U8 et XSPF standard ne stockent pas les plages de sous-pistes CUE, les pistes CUE sont omises à l’exportation et EffeTune indique combien ont été ignorées.
 
-## Sécurité et emplacement d'enregistrement
+## Sécurité et stockage
 
-- La Bibliothèque musicale lit les fichiers musicaux et les métadonnées, mais n'écrit aucune modification dans les fichiers musicaux.
-- Le cache des illustrations et les listes de lecture sont des données internes à l'application, pas des modifications intégrées aux fichiers musicaux.
-- Le classement par **Sous-dossiers** est déduit des chemins relatifs enregistrés dans le catalogue.
-- L'espace de stockage du navigateur peut être effacé par les paramètres du navigateur ou par une action de l'utilisateur. Exportez les listes de lecture importantes si nécessaire.
-- Dans les navigateurs avec File System Access, les autorisations déterminent si l'accès au dossier reste disponible après un rechargement. Dans les autres navigateurs, sélectionnez de nouveau les fichiers après chaque rechargement.
-
-## Grandes bibliothèques
-
-EffeTune charge progressivement les grandes collections au lieu de conserver toute la bibliothèque en mémoire. Le temps d'analyse et les limites pratiques dépendent de la vitesse du stockage, de la mémoire disponible, des métadonnées, des pochettes et des limites du navigateur ou du système d'exploitation.
-
-Les morceaux proches sont chargés à mesure que vous faites défiler la liste. Un déplacement exceptionnellement rapide peut afficher brièvement des lignes vides jusqu'au chargement des morceaux demandés, surtout avec un stockage lent.
-
-Utilisez la Bibliothèque musicale dans une seule fenêtre EffeTune à la fois.
-
-## Télécommande OpenHome (application de bureau)
-
-Dans les versions de bureau compatibles, EffeTune peut apparaître comme lecteur OpenHome auprès des applications de contrôle du même réseau local. Ouvrez **Paramètres > Configuration...**, activez **Autoriser les contrôleurs OpenHome sur ce réseau**, puis attendez que l'état indique qu'EffeTune est disponible. Le nom par défaut est `EffeTune (nom de l’ordinateur)` ; utilisez **Nom du lecteur** pour attribuer à chaque ordinateur un nom reconnaissable, par exemple `EffeTune Living Room`. Cette option est désactivée par défaut.
-
-OpenHome ne demande aucune connexion. Tant que l'option est active, les autres appareils du réseau local peuvent consulter les métadonnées de lecture, remplacer ou modifier la file d'attente du Player et commander la lecture. Si le Pare-feu Windows demande une autorisation, autorisez EffeTune uniquement sur les **réseaux privés**, jamais sur les **réseaux publics**. Désactivez l'option lorsque la télécommande n'est pas nécessaire.
-
-Les paquets pris en charge sont Windows x64, macOS sur processeur Intel ou Apple silicon et Linux x64. Cette fonction n'est pas disponible dans l'application web ni dans les navigateurs mobiles. Les opérations de base sur la file et la lecture ont été vérifiées avec BubbleUPnP sur Android ; d'autres contrôleurs OpenHome peuvent présenter différemment les services et commandes non pris en charge. EffeTune est une source OpenHome Playlist, pas un UPnP AV MediaRenderer, et ne revendique aucune compatibilité ni certification.
-
-Les contrôleurs peuvent ajouter des sources audio HTTP ou HTTPS et gérer une file distante avec lecture, pause, arrêt, saut, recherche, répétition et lecture aléatoire. L'audio distant passe toujours par le pipeline d'effets actuel. La modification des effets EffeTune, les chemins de fichiers locaux, le volume principal, Radio, Songcast et la lecture multiroom synchronisée ne sont pas pris en charge. La lecture sans interruption n'est pas garantie et certaines données techniques peuvent rester inconnues jusqu'à ce que la source les fournisse. La veille, le réveil, un VPN ou un changement d'interface réseau peuvent faire disparaître brièvement le lecteur pendant sa reconnexion.
+- La Bibliothèque musicale lit les fichiers audio et les métadonnées sans jamais modifier vos fichiers sur le disque.
+- Effacer les données de site du navigateur supprime le catalogue et les listes de lecture de l’application web ; exportez vos listes importantes pour les conserver.
+- Les grandes collections sont chargées progressivement au fil du défilement. Utilisez la Bibliothèque musicale dans une seule fenêtre EffeTune à la fois.
 
 [← Retour au README](README.md)

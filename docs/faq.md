@@ -13,7 +13,7 @@ For audio from a Chrome or Edge tab, see the [Browser Extension guide](browser-e
 ## Contents
 1. Initial Setup for Streaming
    1. Installing VB-CABLE and the optional 96 kHz aliasing fix
-   2. Streaming service input (Spotify example)
+   2. Streaming service routing (Spotify example)
    3. EffeTune audio settings
    4. Operation check
 2. Troubleshooting
@@ -22,6 +22,7 @@ For audio from a Chrome or Edge tab, see the [Browser Extension guide](browser-e
    3. Echo
    4. Input, output, or effect issues
    5. Multichannel output mismatch
+   6. Display troubleshooting
 3. Multichannel & Hardware Connections
    1. HDMI + AV receiver
    2. Interfaces without multichannel drivers
@@ -52,7 +53,7 @@ On macOS, use Rogue Amoeba's **SoundSource** to assign Spotify output to **CABLE
 Open EffeTune and choose **Audio Configuration** from the Settings menu.
 - **Input Device:** CABLE Output (VB-Audio Virtual Cable)
 - **Output Device:** Physical DAC/Speakers
-- **Sample Rate:** Select 96 kHz. This is EffeTune's internal processing rate and normally does not require changing the OS, audio-device, or VB-CABLE rates. It reduces audible-band aliasing from nonlinear effects whose anti-aliasing is limited. Confirm the effective Sample Rate shown in the app. If playback drops out, first reduce demanding effects or the number of active effects, then lower the rate if needed. This setting is separate from the VB-CABLE-specific fix above.
+- **Sample Rate:** Select 96 kHz. This sets EffeTune's internal processing rate to reduce audible aliasing in nonlinear effects and works independently of your OS, DAC, or VB-CABLE sample rate. Confirm the effective Sample Rate shown in the app; if playback drops out, reduce heavy effects or lower the sample rate.
 
 ### 1.4. Operation check
 With Spotify playing, toggle the master **ON/OFF** in EffeTune and confirm the sound changes.
@@ -89,6 +90,10 @@ Effects that require WebAssembly show a notice at the top of their controls when
 ### 2.5. Multichannel output mismatch
 EffeTune outputs channels in numeric order, up to 16 channels. Match **Output Channels** to the layout configured for your device. For a 7.1ch setup, set both the device and EffeTune to 8ch and use the device's channel labels when routing rear audio. For a 16-channel setup, select 16 channels in both places and confirm the device's channel mapping.
 
+### 2.6. Display troubleshooting
+
+In the desktop app, **Use hardware acceleration** is on by default. If the window flickers or stops updating, turn it off in **Settings > Config...** and restart EffeTune. After repeated display failures, EffeTune turns it off and restarts automatically. To try it again, turn the setting on and restart.
+
 ---
 
 ## 3. Multichannel & Hardware Connections
@@ -122,7 +127,7 @@ EffeTune currently supports up to 16 output channels.
 | Can EffeTune play DRM-protected content? | Not directly. EffeTune processes audio, while protected content is designed to play only in environments authorized by its provider and may not be available to third-party audio processing apps. Use the provider's official app or website, following its terms and supported audio-output methods. EffeTune does not remove or bypass content protection. |
 | Can I use only the music file player without an audio input? | Yes. If microphone audio bleeds into your headphones or earphones after startup, open **Audio Configuration** and set **Input Device:** to **None (music file player only)**. EffeTune uses a silent source so the effect pipeline remains active for the player and signal-generating effects such as **Oscillator**. If you select an audio input instead, you can process sound from external equipment through a USB audio interface or monitor the input with **Spectrum Analyzer**. |
 | Can the mobile web app process audio from other apps? | Usually no. Mobile browsers do not provide a general loopback input from other apps, so mobile use is centered on EffeTune's music player. |
-| Which music file formats are supported? | Support depends on the browser and OS audio decoder. As a practical baseline, MP3, WAV, and AAC/M4A work in many environments, while FLAC, OGG/Vorbis, and Opus/WebM vary by environment. EffeTune can also play the audio track in an MP4 file without displaying video; MP4 playback depends on its internal audio codec, with AAC being the most common compatible choice. If a file does not play, try MP3, AAC/M4A, or WAV. |
+| Which music file formats are supported? | Support depends on the browser and OS audio decoder. As a practical baseline, MP3, WAV, and AAC/M4A work in many environments, while FLAC, OGG/Vorbis, and Opus/WebM vary by environment. The macOS desktop app automatically converts Apple Lossless (ALAC) files in M4A/MP4 for playback. EffeTune can also play the audio in MP4, M4V, MOV, MKV, WebM, and 3GP video files, and Visualizer's **Video** item can show their picture; playback depends on the audio codec inside, with AAC being the most common compatible choice. If a file does not play, try MP3, AAC/M4A, or WAV. |
 | Can I play multiple music files? | Yes. Use **Open music files** and select multiple files in the device's standard file picker before opening them; EffeTune loads them as a playlist. Multiple selection and selecting all files in a folder depend on the device, browser, and file picker. |
 | What does Music Library do? | It indexes selected music folders so you can browse and search by track, album, artist, genre, or direct parent subfolder, then play results through EffeTune. It stores library metadata and playlists in the app, not in the audio files. |
 | Where is Music Library available? | The desktop app has the full folder scanner. Chromium browsers use File System Access when available. Safari and Firefox use an import fallback, so folder or file access may need to be selected again after reload or permission loss. |
@@ -134,11 +139,11 @@ EffeTune currently supports up to 16 output channels.
 | Why did the sample-rate and channel indicator turn red? | EffeTune detected that enabled effect processing could not finish in real time. The red warning disappears about 10 seconds after processing recovers. Reduce the number of enabled effects. |
 | Does the web player remember my playlist? | Repeat/shuffle settings are saved, but the selected music files are not restored after reload because browsers do not keep normal file selections. |
 | Does mobile playback continue when the screen turns off? | Not reliably on all browsers, especially iOS. EffeTune uses Wake Lock where available, but background playback is browser-dependent. |
-| How do EffeTune's power-saving modes differ? | They are available in the Web/PWA and Electron desktop apps. Open **Config** → **Power saving**. **Background processing priority** keeps external-input processing active during silence. **Balanced power saving (Default)** reduces DSP and visual updates during silence while normally retaining the selected audio input. **Maximum power saving** can also stop an unused or background-silent input after the selected delay. Playback can remain active while DSP is bypassed or held at zero when the current routing proves that this is safe. There is no separate state indicator; **Resume audio processing** or **Resume audio input** appears in the menu only when user action is required. |
-| What does Skip display-only DSP when hidden do? | It is on by default. When graphs cannot be shown, EffeTune bypasses Analyzer effects to reduce processing load. This includes when the Effect Pipeline is not displayed—for example, in the Music Library, on the mobile Player tab, or during a Double Blind Test—as well as when EffeTune is minimized or in Mini Player, or when its browser page is hidden. Audio passes through the bypassed effects unchanged, and analysis resumes when graphs can be shown. Turn it off if analysis must continue in the background. |
-| What does Sync Visuals to Audio do? | It aligns graphs and meters with the sound you hear. It is off by default because it can add audio delay. It is not available in the browser extension, and Bluetooth or similar devices may still leave the visuals slightly out of sync. |
-| What do Silence threshold and Stop audio input after change? | **Silence threshold** (-90 to -20 dBFS in 10 dB steps) controls the measured input/output power below which EffeTune treats audio as silent; a lower value is less likely to classify quiet audio as silence. In **Maximum power saving**, **Stop audio input after** (1/5/15 minutes or **Never**) controls only microphone/input release. It is independent of the shorter delay used to suspend an idle no-route audio graph, so the graph may suspend while the input is still retained. |
-| Will Background processing priority guarantee processing while the Web/PWA app is hidden? | No. It asks EffeTune to prefer continued processing and avoids EffeTune's automatic silence suspension for an external-input route, but the browser and OS may still freeze, suspend, or discard a hidden page. If **Maximum power saving** stopped the input, returning to the page or receiving a signal does not silently request microphone permission again; use **Resume audio processing** from an explicit user action. |
+| How do EffeTune's power-saving modes differ? | Open **Config > Power saving** (Web/PWA and desktop apps). **Background processing priority** keeps external-input processing active during silence. **Balanced power saving (Default)** reduces DSP and visual updates during silence while keeping the selected audio input connected. **Maximum power saving** also releases the audio input after it stays silent in the background or unused in Player mode for the configured delay. The input does not restart when a signal returns; open the app and choose **Resume audio processing** (or **Resume audio input**) from the menu. |
+| What does Skip display-only DSP when hidden do? | Enabled by default. When analyzer graphs are not visible (for example, while browsing Music Library, using Mini Player, during a Double Blind Test, or when the window is minimized), EffeTune bypasses Analyzer effects to save CPU without changing the sound. Turn it off if analyzer history must continue updating in the background. |
+| What does Sync Visuals to Audio do? | Aligns graphs and meters with the sound you hear. Off by default because it can add audio latency (unavailable in the browser extension). Bluetooth or similar devices may still leave the visuals slightly out of sync. |
+| What do Silence threshold and Stop audio input after change? | **Silence threshold** (-90 to -20 dBFS in 10 dB steps) sets the level below which audio is treated as silent; a lower value is less likely to treat quiet passages as silence. In **Maximum power saving**, **Stop audio input after** (1/5/15 minutes or **Never**) sets how long the input must stay silent in the background or unused in Player mode before EffeTune releases it. |
+| Will Background processing priority guarantee processing while the Web/PWA app is hidden? | No. It prevents EffeTune from suspending external-input processing during silence, but the browser or OS may still throttle or suspend background tabs. |
 | AV receiver vs. interface cost? | Reusing an AV receiver with HDMI is simple. For PC-centric setups, a multichannel interface plus small amps offers good cost and quality. |
 | No sound from other apps right after installing VB-CABLE | The OS default output was switched to **CABLE Input**. Change it back in sound settings. |
 | Only channels 3+4 change volume after splitting | Place a **Volume** effect after the splitter and set **Channel** to 3+4. If placed before, all channels change. |
@@ -177,3 +182,5 @@ Use **Copy Channel PEQ Settings** when you want to paste a static frequency-resp
 * VB-CABLE: <https://vb-audio.com/Cable/>
 * Voicemeeter: <https://vb-audio.com/Voicemeeter/>
 * ASIO Link Pro (unofficial fixed version): search for "ASIO Link Pro 2.4.1"
+
+[← Back to README](../README.md)

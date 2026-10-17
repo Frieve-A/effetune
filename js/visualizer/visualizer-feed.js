@@ -38,7 +38,7 @@ export class VisualizerFeed {
         const cw = Math.max(1, Math.round(width * dpr)), ch = Math.max(1, Math.round(height * dpr));
         if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
         if (sources.getStatus() === 'ready') {
-            this.renderer.draw(layout, sources, this.view.metadata(), milliseconds / 1000, { quality: this.view.quality, lyrics: this.view.lyrics() });
+            this.renderer.draw(layout, sources, this.view.metadata(), milliseconds / 1000, { quality: this.view.quality, lyrics: this.view.lyrics(), video: this.view.video.frame() });
         } else {
             this.canvas.getContext('2d').clearRect(0, 0, cw, ch);
         }

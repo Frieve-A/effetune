@@ -2,6 +2,8 @@
  * PipelineColumnManager - Manages column layout for the pipeline
  * Handles column count, distribution of plugins, and responsive adjustments
  */
+const PIPELINE_COLUMN_WIDTH = 1064;
+
 export class PipelineColumnManager {
     /**
      * Create a new PipelineColumnManager instance
@@ -37,7 +39,7 @@ export class PipelineColumnManager {
         
         // Decrease button event listener
         decreaseBtn.addEventListener('click', () => {
-            if (this.currentColumns > 1) {
+            if (!this.isAutomatic() && this.currentColumns > 1) {
                 this.currentColumns--;
                 this.updatePipelineColumns(this.currentColumns);
                 this.updateColumnButtonStates(this.currentColumns);
@@ -46,7 +48,7 @@ export class PipelineColumnManager {
         
         // Increase button event listener
         increaseBtn.addEventListener('click', () => {
-            if (this.currentColumns < 8) {
+            if (!this.isAutomatic() && this.currentColumns < 8) {
                 this.currentColumns++;
                 this.updatePipelineColumns(this.currentColumns);
                 this.updateColumnButtonStates(this.currentColumns);
@@ -64,19 +66,60 @@ export class PipelineColumnManager {
     updateColumnButtonStates(columns) {
         const decreaseBtn = document.getElementById('decreaseColumnsButton');
         const increaseBtn = document.getElementById('increaseColumnsButton');
-        const isMobile = window.uiManager?.layoutMode?.isMobile;
+        const controlsDisabled = window.uiManager?.layoutMode?.isMobile || this.isAutomatic();
         
         if (decreaseBtn) {
-            decreaseBtn.disabled = isMobile || columns <= 1;
+            decreaseBtn.hidden = this.isAutomatic();
+            decreaseBtn.disabled = controlsDisabled || columns <= 1;
         }
         
         if (increaseBtn) {
-            increaseBtn.disabled = isMobile || columns >= 8;
+            increaseBtn.hidden = this.isAutomatic();
+            increaseBtn.disabled = controlsDisabled || columns >= 8;
         }
     }
 
     getEffectiveColumnCount(columns = this.currentColumns) {
-        return window.uiManager?.layoutMode?.isMobile ? 1 : columns;
+        if (window.uiManager?.layoutMode?.isMobile) return 1;
+        return this.isAutomatic() ? this.getAutomaticColumnCount() : columns;
+    }
+
+    isAutomatic() {
+        return window.appConfig?.pipelineColumnMode !== 'manual';
+    }
+
+    getColumnGap() {
+        return typeof getComputedStyle === 'function' && this.pipelineList
+            ? parseFloat(getComputedStyle(this.pipelineList).columnGap) || 10
+            : 10;
+    }
+
+    getAvailablePipelineWidth() {
+        const pipeline = document.getElementById('pipeline');
+        const pluginList = document.getElementById('pluginList');
+        if (!pipeline || !pluginList) return 0;
+        const bodyStyle = getComputedStyle(document.body);
+        const pipelineStyle = getComputedStyle(pipeline);
+        const containerStyle = getComputedStyle(pipeline.parentElement);
+        const sidebarStyle = getComputedStyle(pluginList);
+        const pixels = value => parseFloat(value) || 0;
+        // Reserve the full effect list even when collapsed or in a hidden view.
+        const reservedWidth = pixels(bodyStyle.paddingLeft) + pixels(bodyStyle.paddingRight) +
+            pixels(sidebarStyle.width) + pixels(containerStyle.columnGap) +
+            pixels(pipelineStyle.paddingLeft) + pixels(pipelineStyle.paddingRight) +
+            pixels(pipelineStyle.borderLeftWidth) + pixels(pipelineStyle.borderRightWidth);
+        const zoom = pixels(bodyStyle.zoom) || 1;
+        return document.documentElement.clientWidth / zoom - reservedWidth;
+    }
+
+    canFitWithPluginList() {
+        return this.getAvailablePipelineWidth() >= PIPELINE_COLUMN_WIDTH;
+    }
+
+    getAutomaticColumnCount() {
+        const availableWidth = this.getAvailablePipelineWidth();
+        const gap = this.getColumnGap();
+        return Math.max(1, Math.min(8, Math.floor((availableWidth + gap) / (PIPELINE_COLUMN_WIDTH + gap))));
     }
 
     /**
@@ -84,16 +127,16 @@ export class PipelineColumnManager {
      * @param {number} columns - Number of columns to set (1-8)
      */
     updatePipelineColumns(columns) {
-        if (columns < 1 || columns > 8) return; // Check valid range (1-8)
+        if (!Number.isInteger(columns) || columns < 1 || columns > 8) return;
         const effectiveColumns = this.getEffectiveColumnCount(columns);
+        this.renderedColumns = effectiveColumns;
         
         // Update CSS variable for tracking number of columns
         document.documentElement.style.setProperty('--pipeline-columns', effectiveColumns);
         
         // Calculate and set pipeline width
-        const baseWidth = 1064; // Base width per column
-        const gap = 10; // Gap between columns (must match CSS gap value)
-        const pipelineWidth = (baseWidth * effectiveColumns) + (gap * (effectiveColumns - 1));
+        const gap = this.getColumnGap();
+        const pipelineWidth = (PIPELINE_COLUMN_WIDTH * effectiveColumns) + (gap * (effectiveColumns - 1));
         
         const pipeline = document.getElementById('pipeline');
         if (pipeline) {
@@ -114,7 +157,8 @@ export class PipelineColumnManager {
         });
         
         // Save column count to localStorage for persistence
-        if (!window.uiManager?.layoutMode?.isMobile) {
+        if (!window.uiManager?.layoutMode?.isMobile && !this.isAutomatic()) {
+            this.currentColumns = columns;
             localStorage.setItem('pipelineColumns', columns);
         }
         this.updateColumnButtonStates(columns);
@@ -234,46 +278,15 @@ export class PipelineColumnManager {
 
     /**
      * Set up responsive column adjustment based on window size
-     * NOTE: This functionality is currently disabled to maintain user-set column count regardless of window size.
-     * The pipeline will horizontally overflow if it exceeds viewport width.
      */
     setupResponsiveColumnAdjustment() {
-        // Use debounce technique to limit resize event frequency
-        let resizeTimeout;
-        
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                // --- Automatic column adjustment logic is disabled ---            
-                /*
-                // Get window width
-                const windowWidth = window.innerWidth;
-                
-                // Minimum width per column (base width + padding)
-                // Consider adjusting this if baseWidth or padding changes
-                const minColumnWidth = 1064 + 40; 
-                
-                // Calculate maximum possible columns based on window size
-                // Avoid division by zero or negative width
-                const maxPossibleColumns = minColumnWidth > 0 ? Math.max(1, Math.floor(windowWidth / minColumnWidth)) : 1;
-                
-                // Get current column setting
-                const currentSetting = parseInt(localStorage.getItem('pipelineColumns') || '1');
-                
-                // Adjust column count to fit within screen, up to the max of 8
-                const newColumns = Math.min(currentSetting, maxPossibleColumns, 8);
-                
-                // Only update if column count changes and is valid
-                if (newColumns > 0 && newColumns !== currentSetting) {
-                    console.log(`Window resized. Adjusting columns from ${currentSetting} to ${newColumns} based on available width.`);
-                    this.updatePipelineColumns(newColumns);
-                    this.updateColumnButtonStates(newColumns);
-                }
-                */
-               // Re-enable if automatic adjustment is desired in the future.
-               // Currently, we prioritize keeping the user's column setting.
-            }, 200); // 200ms delay to prevent excessive updates
-        });
+        window.addEventListener('resize', () => this.adjustColumnsToWindow());
+    }
+
+    adjustColumnsToWindow() {
+        if (this.isAutomatic() && this.getEffectiveColumnCount() !== this.renderedColumns) {
+            this.updatePipelineColumns(this.currentColumns);
+        }
     }
 
     /**

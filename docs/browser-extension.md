@@ -38,36 +38,35 @@ You can close the extension popup or the editor while processing continues. When
 
 ## Edit the Effect Pipeline and use presets
 
-Choose **Edit pipeline** to open **EffeTune Pipeline Editor**, then select the tab in the header. Add effects, change their order, enable or disable individual effects, and adjust their parameters as you would in EffeTune. Analysis displays show the selected tab. With no active sessions, **Offline pipeline** edits the default pipeline for the next start.
+Choose **Edit pipeline** to open **EffeTune Pipeline Editor**, then select the target tab in the header. Add, reorder, toggle, and adjust effects just as in EffeTune; analyzer displays follow the selected tab. When no tab is active, **Offline pipeline** edits the default pipeline used for the next tab you start.
 
-Select **Visualizer** in the editor header to show the selected tab's processed audio in [Visualizer](visualizer.md); select it again to return to the pipeline. If that tab is not being processed, Visualizer shows "Start EffeTune on a tab to show Visualizer." Track titles and artwork are not shown in the extension. **Share** and **Import Link** work as in the web app, and shared links open in the web version. Visualizer layouts and presets stay in the extension and do not sync with the web app or desktop app.
+Select **Visualizer** in the editor header to view the selected tab's processed audio in [Visualizer](visualizer.md), or click it again to return to the pipeline. Track titles and artwork are not shown in the extension, and **Share** / **Import Link** work as in the web app.
 
-Select a tab in the popup, then use **Saved preset** and **Apply to selected tab** to change its complete pipeline without opening the editor. In the editor, open **Pipeline Presets** to save a complete pipeline preset with **Save as**. Open **Settings** and choose **Import preset…** or **Export preset** to import or export complete pipeline presets. Extension presets and saved settings stay in the extension; they do not automatically sync with the web app or desktop app.
+To switch presets quickly from the popup, select a tab, choose a **Saved preset**, and click **Apply to selected tab**. In the editor, use **Pipeline Presets > Save as** to save a preset, or **Settings > Import preset…** / **Export preset** to exchange `.effetune_preset` files. If a preset requires unsupported multichannel routing, effects, or missing external assets, the current pipeline is left unchanged.
 
-If a preset needs an unsupported routing, effect, or unavailable external asset, it is not applied and the current pipeline remains unchanged.
+To use a room or speaker measurement from the web or desktop app with **Room EQ** or **Crosstalk Cancellation**:
 
-To use a measurement from the web app or desktop app with Room EQ or Crosstalk Cancellation, export the measurement as JSON there. In the extension editor, open **Settings**, choose **Import measurement…**, then select that JSON file. Include impulse responses in the export when using Crosstalk Cancellation or Room EQ's phase correction. Imported measurements appear immediately in Room EQ's **Measurement** list, remain in the extension's browser storage, and do not sync automatically. To remove an imported copy, select it in that list and choose **Delete** beside the list. After confirmation, every Room EQ and Crosstalk Cancellation assignment that uses it is cleared before the copy is deleted.
+1. Export the measurement as JSON from the web or desktop app (include impulse responses when using **Crosstalk Cancellation** or **Room EQ** phase correction).
+2. In the extension editor, open **Settings > Import measurement…** and select the JSON file.
+3. Select the imported measurement in **Room EQ** or **Crosstalk Cancellation**. To remove an imported copy, select it in Room EQ's **Measurement** list and choose **Delete**; after confirmation, every Room EQ and Crosstalk Cancellation assignment that uses it is cleared.
 
-For a selective transfer of all supported saved data, open **Settings > Backup / Restore** in the editor. The same `.effetune_backup` file works with the web and desktop apps and can contain saved pipeline presets, effect presets, Visualizer presets, impulse responses, and imported measurements. A pipeline that uses unsupported extension routing or effects remains saved and can be backed up again, although it cannot be applied in the extension. URL rules and the extension sample-rate setting are not included.
+To move presets, effect presets, Visualizer presets, impulse responses, and imported measurements together between the web app, desktop app, and extension, use **Settings > Backup / Restore** (`.effetune_backup`). Extension presets, layouts, and imported measurements are stored locally inside the extension and do not sync automatically with the web or desktop app. Backups do not include URL rules or the extension's sample-rate setting.
 
 ## URL presets and sample rate
 
-In **Settings**, open **URL rules…** to add a pattern, choose a saved preset, and enable the rule. Patterns use `host/path`, such as `example.com/music/*`; `*` matches any text. The first enabled matching rule wins. Host names ignore letter case; the scheme, query string, and fragment are ignored. Reorder rules to set their priority, or disable or delete rules you no longer need.
+Open **Settings > URL rules…** to automatically load a saved preset when a tab's URL matches a `host/path` pattern (such as `example.com/music/*`, where `*` matches any text). You still start each tab yourself; rules only choose its preset at startup and when its URL changes. The first enabled matching rule in the list wins; if no rule matches, the default pipeline is used. Rule changes take effect at the next start or page navigation. Editing a pipeline that was loaded by a URL rule updates that rule's saved preset, whereas other edits, including those after applying a preset manually, update the default pipeline. Deleting a preset disables its rules and returns tabs using those rules to the default pipeline.
 
-You still start each tab yourself. Its preset is selected automatically at startup and when its URL changes. If no rule matches, the default pipeline is used. Saving rule changes affects the next start or navigation. Editing a pipeline selected by a URL rule updates that saved preset; other edits update the default pipeline. Applying a preset manually leaves subsequent edits assigned to the default pipeline. Deleting a preset disables its rules and returns tabs using those rules to the default pipeline.
-
-**Sample rate** in **Settings** applies to every active tab: **Auto**, **44.1 kHz**, **48 kHz**, **96 kHz**, or **192 kHz**. Auto lets the browser choose. Changing it briefly restarts audio processing for all active tabs while keeping their captures. If a tab cannot process at the new rate, it returns to normal playback; choose another rate and start that tab again.
+**Sample rate** in **Settings** applies to all active tabs (**Auto**, **44.1 kHz**, **48 kHz**, **96 kHz**, or **192 kHz**). **Auto** lets the browser choose. Changing the rate briefly restarts processing on active tabs while keeping their captures. If a tab cannot run at the new rate, it returns to normal playback; select another rate and start the tab again.
 
 ## Permissions and limits
 
-The extension captures audio only from tabs where you explicitly start processing. It reads those tabs' URLs to choose saved presets, including after navigation. It does not read page content, insert scripts into websites, require microphone access, record audio, or send your audio elsewhere.
+The extension captures audio only from tabs where you click **Start on this tab** and reads those tabs' URLs only to match URL preset rules. It never reads page content, injects scripts, uses the microphone, or sends audio over the network.
 
-Stereo pipelines support Bus Routing with Main and Bus 1–4, including parallel effect paths. More than two channels, taking measurements and device control, Music Library, batch file conversion, and desktop-only device or file-path features are unavailable in the extension.
-
-Some protected content may not be available for capture. The extension does not bypass content protection. If capture cannot start, the tab returns to normal playback. Make sure the tab is playing audio, then choose **Start on this tab** again.
+Each tab runs a stereo pipeline supporting **Main** and **Bus 1–4**. Multichannel output (>2ch), running acoustic measurements, Music Library, batch offline file conversion, and desktop-only hardware features are not available in the extension. Protected (DRM) streams that block browser capture return to normal playback.
 
 ## If something goes wrong
 
-- If the status shows **Needs attention**, make sure the selected tab is playing audio, then choose **Start on this tab** again.
-- If a tab cannot be captured, make sure that tab is playing audio, then try again.
-- If a preset cannot be applied, the editor keeps your current pipeline. Change the preset or make the required assets available before trying again.
+- **Status shows "Needs attention" or capture does not start:** Make sure the tab is actively playing audio, then click **Start on this tab** again.
+- **A preset cannot be applied:** The editor keeps your current pipeline. Check that any required measurement or impulse-response assets have been imported into the extension first.
+
+[← Back to README](../README.md)

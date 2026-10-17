@@ -145,220 +145,155 @@ A visual display that shows your music's digital signal level in real time. It h
 
 ## Note Spectrogram
 
-Shows estimated fundamental pitches (F0s) in a selectable range from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, changing vocal and melodic lines, bass lines, and notes that overlap across octaves. Instrument colors and highlighting help you follow estimated voices and instrument groups within that display.
-
-### Visualization Guide
-
-- **Vertical** shows time from left to right, with the keyboard and current sound at the right edge. Higher notes appear toward the top.
-- **Horizontal** places the keyboard at the bottom, with low notes on the left and high notes on the right. New sound appears just above the keyboard, and history scrolls upward.
-- New sound is shown with an immediate pitch estimate. About 40, 80, and 160 ms later, that part of the history is updated using the sounds that follow, so recent marks just behind the newest sound may change. This adds no display delay and leaves **Sync Visuals to Audio** alignment unchanged.
-- Lines at each C mark octave boundaries.
-- Pitch rows corresponding to black piano keys use a nearly black gray background so they remain distinguishable when no note is detected.
-- **Normal** uses the theme’s graph trace color; **Note Colors** uses a different color for each note, repeated across octaves. **Instrument (3)** and **Instrument (9)** mix group colors in proportion to their estimated probabilities; Instrument (3) first combines the probabilities into Vocal, Bass, and Other. The legend shows the selected groups and their colors. The guide lines between E and F remain visible in every mode.
-- Instrument colors appear after the estimate is ready and update the corresponding history. In Instrument views, notes awaiting an estimate, or without one, appear in neutral gray. Changing between the 3-group and 9-group views uses the available estimates.
-- Instrument estimation adds 20 ms before the result is shown; the pitch display continues to update immediately.
-- Instrument estimation uses earlier notes in the music as clues, so estimates are less reliable just after it is enabled or playback is moved to another position. Once an instrument estimate is ready, it is not revised.
-- Every completed instrument estimate supplies group probabilities, even when confidence is low. Weak pitch candidates and sounds already playing when instrument estimation is enabled may remain gray because they have no instrument estimate.
-- **Highlight** makes the selected group easier to follow by shifting other notes toward neutral gray. A higher estimated probability of the selected group preserves more of the original color. Notes awaiting an estimate, or without one, also appear in neutral gray; they remain visible. The selected target is shown beside the legend and marked within it. Hover over a group in the legend to highlight it temporarily; moving away restores your Highlight selection.
-- **1/12 Octave** shows one row per semitone. **High** places each pitch at its estimated cent value so that small pitch movements are easier to follow. Note Colors blends neighboring note colors according to pitch; instrument views use colors based on the instrument estimate.
-- Color strength indicates confidence in each pitch estimate; candidates fade into the background as confidence approaches zero.
-- With **Onsets** on, triangles in the selected **Color** mark estimated note starts: ▼ in Horizontal and ▶ in Vertical. The center of each triangle's base marks the start time and pitch. Separate marks help you see when the same pitch is played again, even when its sound continues between attacks.
-- With **Volume** on, each detected pitch becomes a bar whose opaque core thickness shows its frequency-corrected relative volume, from 1/60 octave at the bottom of the scale to 1/12 octave at the top. A fade extends 1/120 octave beyond each side of that core, adding 1/60 octave to the total footprint. **Pitch Resolution** changes the bar’s center position, not its core thickness.
-- At the keyboard edge, a soft-edged semicircle extends into the graph and shows the current volume. It responds immediately to increases and falls at 20 dB per second; there is no separate visible peak hold.
-- The volume scale covers 24 dB. Its top follows the louder of a recent reference used to stabilize the history scale (over about one second) and -36 dB, so quieter material remains readable without making louder passages fill the display continuously. This reference is separate from the current-volume semicircle.
-- Octave and E–F guide lines are drawn behind the volume bars so the pitch grid remains a visual reference.
-- The keys blend from their normal color toward the display color as confidence in the latest frame increases, reaching that color at 1. With Normal or Note Colors, Highlight affects the graph but leaves the keyboard colors unchanged.
-- Changing **Color** recolors the existing history.
-
-### Visual Display
-- Hover over the history, or touch and drag on it, to read the note, time, **Salience** (pitch confidence), and **Level** (frequency-corrected volume in dB) at that point.
-- When instrument estimation is active, the readout also lists instrument probabilities for the note at that point in history: Vocal, Bass, and Other with **Instrument (3)**, and all nine groups with the other Color settings. Notes without an estimate show **Not classified**.
-- With **Highlight** selected, the readout also shows the estimated probability of that target when an estimate is available. This is separate from Salience.
+Shows estimated fundamental pitches (F0s) from A0 to C8 in a scrolling piano roll without changing the audio. Use it to follow chord tones, vocal and melodic lines, bass lines, and overlapping notes across octaves, with optional instrument color-coding and highlighting.
 
 ### Listening Guide
 
-- Chords appear as several bright rows at the same time
-- Melodies and bass lines form paths that move between note rows
-- To follow vocals or bass, start with **Instrument (3)**, or keep **Note Colors** and choose **Vocal** or **Bass** in **Highlight**. Use **Instrument (9)** for a more detailed grouping.
-- Pitch and instrument estimates can be wrong, especially when sounds overlap. Instrument colors are a listening aid, not a reliable identification of every instrument. Drums are not classified. The display does not create MIDI or notation or fully separate simultaneous sounds; percussion, noise, and unclear repeating patterns can also produce incorrect pitches.
+- **Chords & Melodies**: Chords appear as simultaneous bright rows; melodies and bass lines trace paths across note rows.
+- **Follow Vocals or Bass**: Choose **Instrument (3)**, or keep **Note Colors** and select **Vocal** or **Bass** in **Highlight**. Use **Instrument (9)** for finer instrument grouping.
+- **Estimate Accuracy**: Pitch and instrument estimates are a visual listening aid rather than exact transcription. Overlapping sounds, percussion, or noise can produce ambiguous estimates, and drums are not classified. Instrument estimates use earlier notes as clues, so they are less reliable just after enabling them or moving the playback position; once ready, an estimate is not revised.
 
 ### Instrument Groups
 
-**Instrument (3)** uses **Vocal**, **Bass**, and **Other**. Other combines all groups except Vocal and Bass; it is broader than Other in the 9-group view.
+**Instrument (3)** groups pitches into **Vocal**, **Bass**, and **Other** (all groups below except Vocal and Bass).
 
-**Instrument (9)** uses the following groups:
-
-- **Vocal**: recorded human singing, including solo voices and choirs.
-- **Bass**: acoustic, electric, and synth bass.
-- **Guitar**: acoustic, clean electric, and distorted guitars.
-- **Piano**: acoustic and electric pianos, harpsichord, and clavinet.
-- **Strings**: solo and ensemble strings, pizzicato, harp, and synth strings.
-- **Wind**: brass and woodwinds, including saxophones and flutes.
-- **Synth**: synth leads and pads.
-- **Organ**: organs, accordion, and harmonica.
-- **Other**: pitched percussion such as celesta and vibraphone, synthesized choir and voice patches, orchestral hits, synth effects, ethnic instruments, and sound effects.
+**Instrument (9)** separates pitches into nine groups:
+- **Vocal**: Recorded human singing, including solo voices and choirs.
+- **Bass**: Acoustic, electric, and synth bass.
+- **Guitar**: Acoustic, clean electric, and distorted guitars.
+- **Piano**: Acoustic and electric pianos, harpsichord, and clavinet.
+- **Strings**: Solo and ensemble strings, pizzicato, harp, and synth strings.
+- **Wind**: Brass and woodwinds, including saxophones and flutes.
+- **Synth**: Synth leads and pads.
+- **Organ**: Organs, accordion, and harmonica.
+- **Other**: Pitched percussion (celesta, vibraphone), synthesized choir/voice patches, synth effects, orchestral hits, ethnic instruments, and sound effects.
 
 ### Parameters
 
-- **Color** - Selects the display colors without changing the pitch estimates.
-  - **Normal** (default): the theme’s graph trace color.
-  - **Note Colors**: a separate color for each note, repeated across octaves.
-  - **Instrument (3)**: colors for Vocal, Bass, and Other.
-  - **Instrument (9)**: colors for the nine instrument groups listed above.
-- **Highlight** - Emphasizes an estimated group with any Color setting while preserving volume thickness. **None** (default) leaves the display without highlighting. Choose **Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ**, or **Other (9)**. Other (3) covers everything except Vocal and Bass; Other (9) covers only the narrower Other group above. Highlighting changes the display, not the sound.
-- Onset and instrument analysis increases CPU use. To avoid that extra processing, turn off **Onsets**, choose Normal or Note Colors, and set Highlight to None.
-- **Pitch Resolution** - Selects the vertical pitch detail without clearing the existing history.
-  - **1/12 Octave** (default): one row per semitone, using the strongest estimate within that note.
-  - **High**: displays pitches at their estimated cent values, preserving fine pitch movement.
-- **Layout** - Selects **Horizontal** (default) or **Vertical**. Switching layout preserves the existing history.
-- **Volume** - Shows relative volume in bar thickness and semicircle meters. It is on by default; turning it off keeps the thickness fixed and shows pitch confidence through color strength.
-- **Onsets** - Shows estimated note starts in either layout, with Volume on or off. It is off by default. Turning it off hides the marks; instrument analysis continues if an Instrument color mode or Highlight requires it.
-- **Time Span** (1 to 10 s) - Sets how much time the piano roll shows
-  - Shorter values make timing changes easier to see
-  - Longer values show a longer musical passage at once
-  - Default: 2 s
-- **Lowest Note** - Sets the bottom of both the displayed and analyzed pitch range. Default: E1.
-- **Highest Note** - Sets the top of both the displayed and analyzed pitch range. Default: G6.
-- When input is too low for analysis, the piano roll remains dark rather than showing extremely small input as pitches. This suppression does not determine whether a sound would be audible or perceptually masked.
+- **Color** - Selects display colors without changing pitch detection (switching recolors existing history):
+  - **Normal** (default): Theme graph trace color.
+  - **Note Colors**: Distinct color per pitch class, repeated across octaves.
+  - **Instrument (3)**: Colors for Vocal, Bass, and Other.
+  - **Instrument (9)**: Colors for the nine instrument groups above.
+- **Highlight** - Emphasizes a specific group (**Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ**, or **Other (9)**) by shifting notes toward neutral gray the less likely they are to belong to that group, while preserving volume thickness. **None** (default) disables highlighting.
+  - Onset and instrument analysis use additional CPU. To minimize CPU usage, turn off **Onsets**, choose **Normal** or **Note Colors**, and set **Highlight** to **None**.
+- **Pitch Resolution** - Selects vertical pitch detail without clearing history:
+  - **1/12 Octave** (default): One row per semitone.
+  - **High**: Places pitches at their estimated cent positions to show vibrato and pitch bends.
+- **Layout** - **Horizontal** (default, keyboard at bottom, history scrolls up) or **Vertical** (keyboard at right, history scrolls left).
+- **Volume** - Encodes relative volume in bar thickness and keyboard-edge semicircle meters (on by default). When off, bar thickness is fixed.
+- **Onsets** - Marks estimated note attacks with triangles (▼ in Horizontal, ▶ in Vertical; off by default). The center of each triangle's base marks the attack time and pitch, so repeated attacks of a sustained pitch get separate marks. Turning it off does not stop instrument analysis while an Instrument **Color** or **Highlight** needs it.
+- **Time Span** (1 to 10 s; default 2 s) - Duration of visible history on the piano roll.
+- **Lowest Note** / **Highest Note** - Sets the analyzed and displayed pitch range (defaults: E1 to G6).
+
+### Visualization Guide
+
+- **Pitch Updates**: New sound appears immediately and is refined about 40, 80, and 160 ms later using subsequent audio context, without adding display latency or affecting **Sync Visuals to Audio**.
+- **Grid & Keyboard**: Lines at each C mark octave boundaries, E–F guides remain visible in all modes, and black-key rows use a darker background. Piano keys light up with current pitch confidence.
+- **Color Strength**: Color strength always shows pitch confidence. When the input is too quiet for analysis, the piano roll stays dark.
+- **Instrument Colors & Highlight**: Instrument colors blend the group colors by their estimated probabilities. Colors appear at the corresponding positions in the history once the instrument estimate is ready; notes awaiting classification appear in neutral gray. The legend lists the shown groups, followed by **Highlight:** and the selected group while highlighting is active. Hover over any group in the legend to highlight it temporarily.
+- **Volume Bars**: With **Volume** on, bar thickness spans a 24 dB relative range, and a soft semicircle at the keyboard edge rises immediately with the current volume and falls at 20 dB/s.
+
+### Visual Display
+- Hover over the history, or touch and drag on it, to read the note, time, **Salience** (pitch confidence), **Level** (dB), and—when instrument analysis is active—the estimated group probabilities: **Vocal**, **Bass**, and **Other** in **Instrument (3)**, the nine groups otherwise, plus the **Highlight** group when it is not among them (**Not classified** for notes without an estimate).
 
 ## Oscilloscope
 
-Shows the shape of the sound wave in real time, so you can see beats, sharp hits, and changes in loudness while listening. Trigger settings can steady the display when the waveform repeats.
-
-### Visualization Guide
-- Horizontal axis shows time in milliseconds or seconds
-- Vertical axis shows normalized amplitude; the visible range changes with Display Level and Vertical Offset
-- A line shows waveform detail at short display times; a filled band shows the minimum and maximum amplitudes over each interval at long display times
-- Grid lines help measure time and amplitude values
-- Trigger settings determine where the waveform capture begins; no separate marker is shown
-
-### Visual Display
-- Hover over the graph, or touch and drag on it, to read the values at that point.
+Shows the shape of the sound wave in real time, so you can see beats, sharp hits, and changes in loudness while listening. Trigger settings steady the display when a waveform repeats.
 
 ### Usage Guide
-- Set Display Time to 1–20 ms and Trigger Mode to Auto to inspect a repeating waveform.
-- Set Display Time to 1,000–10,000 ms and Trigger Mode to Off to follow beats and changes in loudness. The newest audio appears at the right edge and the waveform scrolls smoothly to the left.
-- In Auto and Normal modes, a new capture appears after the selected Display Time has been collected.
+- Set **Display Time** to 1–20 ms and **Trigger Mode** to **Auto** to inspect a repeating waveform cycle.
+- Set **Display Time** to 1,000–10,000 ms and **Trigger Mode** to **Off** to follow beats and loudness envelopes scrolling smoothly from right to left.
+- In **Auto** and **Normal** modes, the trace updates once the full **Display Time** interval has been collected.
 
 ### Parameters
-- **Display Time** - How much time to show (1 to 10,000 ms, or 10 seconds)
-  - Lower values: See more detail in shorter events
-  - Higher values: View longer patterns
-- **Trigger Mode**
-  - Auto: Continuous updates even without trigger
-  - Normal: Freezes display until next trigger
-  - Off: No trigger; the latest audio appears at the right edge while the waveform scrolls left. Trigger Level, Trigger Edge, and Holdoff have no effect
-- Trigger detection uses the averaged left/right waveform. Mono input is used directly.
-- **Trigger Level** - Amplitude level that starts capture
-  - Range: -1 to 1 (normalized amplitude)
-- **Trigger Edge**
-  - Rising: Trigger when signal goes up
-  - Falling: Trigger when signal goes down
-- **Holdoff** - Minimum time between triggers (0.1 to 10 ms)
-- **Display Level** - Vertical scale in dB (-96 to 0 dB)
-- **Vertical Offset** - Shifts waveform up/down (-1 to 1)
+- **Display Time** (1 to 10,000 ms) - Visible time span. Short values show individual waveform cycles; long values show overall envelope patterns.
+- **Trigger Mode**:
+  - **Auto**: Updates continuously even without a trigger event.
+  - **Normal**: Updates only when a trigger occurs and holds the last capture until the next trigger.
+  - **Off**: Scrolls continuously from right to left; trigger settings have no effect.
+- **Trigger Level** (-1 to 1) - Normalized amplitude threshold that starts capture (detected from the mono or averaged L/R signal).
+- **Trigger Edge** - **Rising** (triggers on upward crossing) or **Falling** (triggers on downward crossing).
+- **Holdoff** (0.1 to 10 ms) - Minimum wait time between triggers.
+- **Display Level** (-96 to 0 dB; default 0 dB) - Sets the level shown at the top and bottom edges of the display. 0 dB shows the full ±1 range; lower values zoom in on quieter signals.
+- **Vertical Offset** (-1 to 1) - Shifts the waveform vertically; positive values move the waveform up.
 
-### Note on Waveform Display
-At long display times, the filled band preserves the smallest and largest amplitudes within each interval, so brief peaks remain visible when many samples share the same screen position. The cursor shows Minimum and Maximum for that interval; at short display times it shows Amplitude along the waveform. Use the display as a visual guide rather than an exact measurement tool.
+### Visualization Guide
+- **Horizontal axis**: Time in milliseconds or seconds.
+- **Vertical axis**: Normalized amplitude, scaled by **Display Level** and shifted by **Vertical Offset**.
+- **Line vs. Envelope Band**: Short display times draw a continuous waveform line; long display times draw a filled min/max band so brief peaks remain visible when many samples share a single pixel column.
+
+### Visual Display
+- Hover over the graph, or touch and drag on it, to read the time and amplitude (or Minimum/Maximum at long display times).
 
 ## Pitch Meter
 
 Tracks one fundamental pitch (F0) at a time in a two-second scrolling piano roll without changing the audio. Use it to check the tuning and pitch movement of a solo voice or instrument.
 
+### Listening Guide
+
+- Play or sing a single sustained note and watch whether the trace stays centered on the note row or drifts sharp or flat.
+- Vibrato, slides, and pitch bends appear as smooth curves across the note rows.
+- Because Pitch Meter tracks a single dominant pitch, chords, dense mixes, or percussion can interrupt the trace or jump octaves; use [Note Spectrogram](#note-spectrogram) for polyphonic material.
+- Stereo input is analyzed by averaging the first two channels (mono input is used directly), so a sound with opposite polarity in the two channels can cancel out and leave no trace.
+
+### Parameters
+
+- **Color** - Changes trace color without affecting detection: **Normal** (default theme trace color), **Heatmap** (relative volume over a 24 dB range), or **Note Colors** (pitch class colors).
+- **Layout** - **Horizontal** (default, keyboard at bottom, history scrolls up) or **Vertical** (keyboard at right, history scrolls left).
+- **Reference A4** (400 to 480 Hz; default 440 Hz) - Tuning reference used for note names and cent offsets.
+- **Lowest Note** / **Highest Note** - Sets the analyzed and displayed pitch range (defaults: C2 to C7; full range: A0 to C8).
+
 ### Visualization Guide
 
-- **Horizontal** (default) places low notes on the left and high notes on the right. The newest estimate appears above the keyboard and history scrolls upward.
-- **Vertical** places low notes at the bottom and high notes at the top. The newest estimate appears beside the keyboard at the right and history moves left.
-- The line position shows pitch between semitones. A more confident estimate appears more strongly; the line breaks when the input is too quiet or no stable single pitch is found. **Heatmap** uses line color to show relative volume, while **Note Colors** follows pitch.
-- The current label shows the nearest note and the difference in cents. A positive value is above the note and a negative value is below it. The label disappears when there is no reliable estimate.
-- The note name uses the same note colors as Note Spectrogram. The large readout fits the available width and keeps the cents decimal point in a fixed position.
+- The trace position shows continuous pitch between semitones; higher confidence draws a brighter line, and silence or unpitched sound breaks the line.
+- The readout displays the nearest note name (colored by pitch class) and the tuning offset in cents (`+` sharp, `-` flat; for example, `+3.5 cent`).
 
 ### Visual Display
 - Hover over the display, or touch and drag on it, to read the values at that point.
 
-### Listening Guide
-
-- Start with a single sustained note, then watch whether the line stays centered on a note or moves sharp or flat.
-- Vibrato and pitch bends appear as smooth movement across the note rows.
-- This analyzer follows one dominant pitch. Chords, dense mixes, percussion, noise, or unclear repeating sounds can interrupt the line or produce an incorrect octave.
-
-### Parameters
-
-- **Color** - Changes the line color without changing pitch detection. **Normal** (default) uses the theme’s graph trace color; **Heatmap** follows relative volume on the same 24 dB scale as Note Spectrogram; **Note Colors** follows pitch between the note colors.
-- **Layout** - Selects **Horizontal** (default) or **Vertical**.
-- **Reference A4** (400 to 480 Hz) - Sets the tuning reference used for note names and cents. Default: 440 Hz.
-- **Lowest Note** - Sets the bottom of the displayed and analyzed range. Default: C2. The lowest available setting is A0.
-- **Highest Note** - Sets the top of the displayed and analyzed range. Default: C7. The highest available setting is C8.
-- Stereo input is analyzed by averaging the first two channels; mono input is used directly. Strong opposite-polarity content can cancel in the average and leave no pitch trace.
-
 ## Rhythm Analyzer
 
-Finds the tempo of your music and shows, beat by beat, where the drum and instrument hits land and how early or late each part plays, without changing the sound unless **Metronome Click** is on. Use it to find a track's BPM, check how much swing a groove has, see whether the snare sits behind the beat, or spot where a fill comes in or a pattern changes.
+Finds the tempo of your music and shows, beat by beat, where drum and instrument hits land and how early or late each part plays, without changing the sound unless **Metronome Click** is on. Use it to find a track's BPM, measure swing, see whether the snare sits behind the beat, or spot drum fills and section changes.
 
 ### Listening Guide
 
-- **Check the tempo**: Play a track with a clear, steady beat. The BPM and **adopted** line follow the analysis history, which appears about 1–2 seconds after the sound. **LOCKED** means the analyzer is showing beat ticks for the lamp and click. If the tempo differs from the beat you tap your foot to, compare **×½**, **×2**, and **strongest**: one may match the beat level you feel.
-- **Hear where the beat falls**: Turn on **Metronome Click** to hear a click on each detected beat. If the clicks fall on the beat you tap your foot to, the analyzer has found the beat. If they fall between your taps, or at twice or half your tapping speed, the analyzer is following a different beat position or level; see **Fix a lock at double or half speed** below and **Limitations**.
-- **Place it last when using the click**: The click is mixed into the audio that leaves the analyzer, so any effect after it also processes the click. Put Rhythm Analyzer at the end of the effect chain while you listen with the click.
-- **Turn the click off before processing files**: With **Metronome Click** on, the clicks are written into any file you process. Turn it off first.
-- **Fix a lock at double or half speed**: If a slow ballad locks at twice its tempo, lower **Max BPM** below that value (for example, to 100 for a 60 BPM ballad). If a fast track locks at half speed, raise **Min BPM** above that value. The analysis starts over with the new range.
-- **Read a steady groove**: With programmed music or music played to a click, the dots sit close to the center of their lanes, and **jitter** stays near 0 ms. When one part plays consistently behind or ahead of the others, its dots sit above or below the lane center at the same positions every time. A snare that is 15 ms behind the kick and hi-hat, for example, shows as Mid dots raised above the lane center on beats 2 and 4, and as a Mid mark labelled +15 in the **1** column of the beat lens.
-- **Read the swing**: **swing** shows how far the off-beat is delayed: 1.00:1 is straight, 2.00:1 is a full triplet shuffle, and values in between are a lighter swing. In clearly swung music, the beat lens places off-beat hits in the **⅔** column instead of **&**.
-- **Spot fills and section changes**: A ring marks a hit that the same band did not play at the same position one or two spans earlier. While a pattern repeats, few rings appear; a fill or the first bars of a new section show many. The echo rows below the main lanes let you compare the new pattern with the previous ones.
-- **When it shows searching**: The analyzer stops showing new beat ticks, but continues analyzing the music. Tempo, timing lanes, and the beat lens can remain visible and grow fainter as confidence falls. A beat already detected may still flash or click. Silence clears the current beat readings; the analysis starts again when sound returns. Fades and background sound can take longer to stop the ticks.
+- **Check the tempo**: Play a track with a steady beat. Confirmed BPM and the **adopted** line appear about 1–2 seconds after the sound, while **LOCKED** indicates active beat ticks for the lamp and click. Compare **×½**, **×2**, and **strongest** if the analyzer locks to double or half the tempo you feel.
+- **Hear where the beat falls**: Enable **Metronome Click** to hear a click on each detected beat. Place Rhythm Analyzer at the end of the effect chain while listening with the click, and turn **Metronome Click** off before exporting processed audio files.
+- **Fix double- or half-tempo locks**: If a slow ballad locks at double tempo, lower **Max BPM** below that value; if a fast track locks at half tempo, raise **Min BPM** above it.
+- **Read groove and micro-timing**: Programmed beats sit near the lane center with **jitter** near 0 ms. A snare consistently 15 ms behind the kick shows as **Mid** dots above the lane center on beats 2 and 4, and as a **+15** mark in the beat lens.
+- **Read swing**: **swing** reports the off-beat delay ratio (1.00:1 is straight, 2.00:1 is a triplet shuffle). In swung grooves, off-beat hits cluster in the **⅔** column of the beat lens rather than **&**.
+- **Spot fills and changes**: Rings (**◎**) highlight hits that were not played at the same beat position one or two cycles ago, making drum fills and section transitions stand out across the **Echo rows**.
+- **When it shows searching**: New beat ticks and clicks stop, but analysis continues; tempo, lanes, and the beat lens stay visible and grow fainter as confidence falls. Silence clears the current beat readings and tempogram column; analysis starts again when sound returns.
 
 ### Parameters
 
-- **Min BPM** (40 to 192; default 40) - Sets the lowest tempo considered in the analysis. Raise it when the analyzer follows half of the tempo you feel.
-- **Max BPM** (50 to 240; default 240) - Sets the highest tempo considered in the analysis. Lower it when the analyzer follows double the tempo you feel. Max BPM stays at least 1.25 times Min BPM; if a change breaks this relation, the other limit moves. Changing either limit restarts the analysis. The tempogram always covers 30–480 BPM, and the **×½** and **×2** lines may lie outside the selected range.
-- **Metronome Click** (on or off; default off) - Adds a short, high-pitched click on each shown beat tick, matching the beat lamp. New clicks stop during **searching**, though a beat already detected can still play. The fixed level is about −10 dBFS, added to channels 1 and 2 (channel 1 for mono); other channels are unchanged. When it is off, audio passes through unchanged. Toggling the click does not restart analysis.
-- **Span (beats)** (4, 6, 8, 12, or 16; default 8) - Sets how many beats the main lanes and each echo row show, and how far back the rings compare. It changes only the display, not the analysis. A span that covers whole bars lines up a repeating pattern across the echo rows, for example 8 for two bars of 4/4 or 6 for two bars of 3/4.
-- **Tempogram**, **Timing lanes**, **Echo rows**, **Beat lens** (on or off; Timing lanes and Beat lens are on by default) - Show or hide the tempogram strip, the main lanes, the echo rows, and the beat lens. The remaining panels grow to fill the space, and the header is always shown. Hiding a panel changes only the display: the analysis continues, and the panel shows its full history again when you turn it back on.
+- **Min BPM** (40 to 192; default 40) / **Max BPM** (50 to 240; default 240) - Tempo search range (Max BPM stays at least 1.25× Min BPM; changing either restarts analysis).
+- **Metronome Click** (default off) - Mixes a short −10 dBFS click into channels 1 and 2 (channel 1 for mono) on each detected beat tick; other channels are unchanged.
+- **Span (beats)** (4, 6, 8, 12, or 16; default 8) - Number of beats shown across the timing lanes and each echo row (e.g., 8 for two bars of 4/4, 6 for two bars of 3/4).
+- **Tempogram**, **Timing lanes**, **Echo rows**, **Beat lens** - Show or hide individual display panels (Timing lanes and Beat lens start on; hiding a panel does not stop analysis).
 
 ### Visualization Guide
 
-The display has five parts: the header, the tempogram strip, the main lanes, the echo rows, and the beat lens. On a wide display the beat lens sits to the right of the lanes, and with only these two shown, as by default, its rows line up with the lane rows so each band reads across one line; on a tall display all parts are stacked from top to bottom. When you hide panels with their checkboxes, the remaining panels fill the space; the header always stays. Hits are sorted into three bands: **Low** (kick drum and bass), **Mid** (snare, voices, and most instruments), and **High** (hi-hats and cymbals). All bands share one color; in the lanes, echo rows, and beat lens each band has its own row, with **High** at the top and **Low** at the bottom. Axis names, tick values, and the **High**, **Mid**, and **Low** row labels are drawn over the graphs. The display counts beats only; it does not detect bars or beat 1.
-
-- **Header**:
-  - The beat lamp flashes once for each shown beat tick and fades quickly; **Metronome Click** follows those same ticks. The flash is weaker when confidence is lower. During **searching** the lamp is hollow, though an already detected beat may still flash. The lamp and click respond sooner than the delayed analysis history.
-  - The BPM comes from the confirmed analysis beats. **LOCKED** means new beat ticks are shown; **searching** means they are hidden. Searching does not erase an available tempo or timing analysis.
-  - **×½** and **×2** - Half and double the tempo shown.
-  - **strongest** - The tempo with the strongest current support in the tempogram. It can differ from the tempo of the delayed analysis history.
-  - **swing** - The ratio between the first and second half of a beat, from the typical off-beat position in the last 32 beats. 1.00:1 is straight and 2.00:1 is a triplet shuffle.
-  - **jitter** - The typical random scatter of hits around their average position in the beat lens, in ms. Tight, programmed parts read near 0; loose playing reads higher.
-  - A key to the symbols: **○ timing unavailable**, **◎ new vs N / 2N beats ago**, and **beat re-aligned** for the dashed line.
-  - A value that is not available yet shows —.
-- **Tempogram strip**: Shows the last 20 seconds. **Time** runs left to right; **Tempo (BPM)** covers 30–480 on a logarithmic scale. Brightness shows relative support for each tempo, not the probability that it is correct. Half- or double-tempo bands can suggest other plausible beat levels. A solid **adopted** line shows tempo from confirmed analysis beats; dashed **×2** and **×½** lines show its multiples. The history follows the audio time it describes, while the lines extend to the right edge at the latest confirmed tempo. Lower confidence makes them fainter. Silence clears the current tempo column.
-- **Main lanes**: Show the most recent beats, including the newest estimates, with the latest on the right; **Span (beats)** sets their width and the caption reads **Last N beats**. There is one row per band, with **Beats** horizontally and **Timing (ms)** vertically. Vertical guides mark beats and eighth notes where analysis is available. Each dot is a detected hit, joined to the lane center by a stem; a larger dot means a more certain hit. Points appear as soon as hits are detected. The newest positions are estimates, updated continuously as more sound arrives. They move smoothly toward the current estimate and become fixed when the analysis confirms them about 1–2 seconds later. The lanes and echo rows scroll smoothly with the sound. They continue scrolling at the last available tempo during silence or stopped playback, so older hits leave the visible windows.
-  - The height of a dot in its lane shows its timing: above the lane center (0 ms) is late, below is early. Dotted lines labelled **+20** and **−20** mark ±20 ms, and hits beyond ±30 ms stay at the lane edge. Timing is measured from the nearest sixteenth-note or triplet position, whichever grid the music follows, and is shown relative to the typical timing of the preceding 16 beats. A constant delay shared by all parts therefore does not show; the lanes show how each hit differs from the recent average.
-  - A hollow circle is a hit without an available beat analysis. It sits at the lane center because its timing is unknown.
-  - A ring marks a hit absent at the same position in the same band one or two spans earlier. Rings begin one span after analysis starts or the grid is re-aligned.
-  - A shaded area marks unavailable timing analysis; **searching** in the header alone does not remove timing.
-  - A dashed line marks a re-aligned beat grid, after a change of beat position or beat level. The beat lens, swing, and jitter begin a new summary there.
-- **Echo rows**: Cycles of as many beats as **Span (beats)** sets, stacked with the newest on top and separated by lines. The horizontal axis is **Beats**, and the vertical axis, **Cycles ago**, numbers each row. While the main lanes are shown, the rows start one cycle back, at 1, and the caption reads **Previous N-beat cycles**. With the main lanes hidden, the top row is the current cycle, at 0, the caption reads **Recent N-beat cycles**, and the top row carries the band labels when it has room. Because beats line up vertically, a pattern that repeats every cycle forms vertical columns, and a change breaks them. The echo rows show the band of each hit, **High** at the top of a row and **Low** at the bottom, but not its timing. Hollow circles, rings, shading, and dashed lines have the same meaning as in the main lanes.
-- **Beat lens**: Summarizes up to the last 32 confirmed beats since analysis started or the grid was re-aligned. Columns show positions within a beat along **Position in beat**: **1**, sixteenth-note **e**, **&**, **a**, and triplet **⅓**, **⅔**. Each band has a labelled row; beside the main lanes, the rows line up with their corresponding bands.
-  - The vertical mark shows how early (left) or late (right) that band plays at that position on average. The scale at the top covers ±30 ms, with ticks at ±20 ms. The shaded bar around the mark shows the scatter (± one standard deviation). A more opaque mark means the position is played more often; a position needs at least four hits to appear.
-  - As values update, the marks and bar widths move smoothly toward the new values, slowing as they approach them.
-  - Offsets are measured relative to the ensemble as a whole, so if everything plays together, every mark sits at the center. The lens shows how the parts differ from one another.
-  - Offsets of 3 ms or more are labelled in ms. Smaller offsets are drawn without a label, because timing differences between bands below about 3 ms cannot be measured reliably.
-  - Until beat analysis is available, the lens shows **waiting for a steady beat**. It remains available during **searching** when confirmed analysis is still present.
-- Confidence shades the tempo text and lines, timing lanes, echo rows, beat lens, swing, and jitter. Dimmer readings mean less confidence in the analysis, not looser playing. Timing looseness is shown by dot heights, **jitter**, and lens bars. **LOCKED** controls whether new lamp and click ticks are shown.
-- When EffeTune's player starts a new track, the analysis starts over automatically at the start of the track, and the display keeps its history. The **Reset** button clears the display and starts the analysis over, for example when another app switches tracks.
-- Stereo input is analyzed by averaging the first two channels; mono input is used directly.
+On a wide display the **Beat lens** sits to the right of the lanes; on a tall display all panels are stacked. Hits are separated into **High** (hi-hats, cymbals), **Mid** (snare, vocals, instruments), and **Low** (kick, bass) rows:
+- **Header**: Shows the beat flash lamp (weaker at lower confidence, hollow during **searching**), confirmed BPM (**LOCKED** or **searching**), **×½**, **×2**, **strongest** tempogram candidate, **swing** ratio (from the last 32 beats), **jitter** (typical scatter of hits around their average position, in ms), and symbol legend. Values not yet available show —.
+- **Tempogram**: 20-second history of tempo support, with **Time** running left to right and **Tempo (BPM)** from 30 to 480 on a logarithmic scale, overlaid with the solid **adopted** tempo line and dashed **×2** / **×½** lines. Brightness shows relative support for each tempo, not the probability that it is correct.
+- **Timing lanes**: Shows hits over the last *N* beats (**Span (beats)**; caption **Last N beats**); a larger dot means a more certain hit, and the newest positions are estimates that settle about 1–2 seconds later. Vertical stem height shows micro-timing relative to the nearest 16th-note or triplet grid, compared with the typical timing of the preceding 16 beats (**+20** / **−20** ms dotted guides; above center = late, below = early; hits beyond ±30 ms stay at the lane edge). Hollow circles (**○**) are hits whose timing is unavailable (drawn at the lane center), shaded areas mark periods without timing analysis, rings (**◎**) mark new hits compared with 1–2 cycles ago, and dashed vertical lines mark beat-grid re-alignments.
+- **Echo rows**: Stacks previous *N*-beat cycles vertically, newest on top, so repeating bar patterns align in columns and fills or variations stand out. **Cycles ago** numbers the rows from 1; with **Timing lanes** hidden, the top row is the current cycle (0). Each hit shows its band but not its timing.
+- **Beat lens**: Summarizes, for each band, how early (mark to the left) or late (mark to the right) it plays on average (±30 ms scale) and its scatter (shaded bar, ± one standard deviation) across beat subdivisions (**1**, **e**, **&**, **a**, **⅓**, **⅔**) over the last 32 confirmed beats. Offsets are relative to the whole ensemble, a more opaque mark means the position is played more often, positions need at least four hits to appear, and offsets of 3 ms or more are labelled. Until beat analysis is available, the lens shows **waiting for a steady beat**.
+- **Confidence**: Dimmer readings mean less confidence in the analysis, not looser playing.
+- **Reset**: The **Reset** button below the display clears it and restarts the analysis, for example when another app switches tracks. When EffeTune's player starts a new track, the analysis restarts automatically.
 
 ### Visual Display
-- Hover over the display, or touch and drag, to read values. Lanes and echo rows show beats ago, band, and timing of the nearest hit (— when unavailable). The tempogram shows tempo and time, **Tempo support** (relative support, with 100% for the strongest tempo), and **Adopted** tempo. The beat lens shows each band's offset and scatter.
+- Hover over the display, or touch and drag, to read values: beats ago, band, and timing of the nearest hit in the lanes and echo rows (— when unavailable); tempo, **Tempo support**, and **Adopted** tempo in the tempogram; and each band's offset and scatter in the beat lens.
 
 ### Limitations
 
-- Accuracy can be lower with large tempo fluctuations, sparse rhythm, acoustic performances, or solo piano. Ambient sound, noise, and sustained tones can produce incorrect beat ticks; **LOCKED** is not a guarantee of a correct beat. Compare the click with the rhythm you hear and turn it off when it is unhelpful.
-- The analyzer can settle on a different beat level than a listener would choose, so the lamp and the click may run at twice, half, two-thirds, or one and a half times the tempo you feel. On classical music, music played with rubato, and some other music, it also takes longer to lock and jumps briefly to another level more often than on music with a steady beat. **×½**, **×2**, and **strongest** show likely alternative tempos. If the detected tempo or beat position seems wrong, try narrowing **Min BPM** and **Max BPM** around the expected tempo and listen again.
-- With sparse, clave-like rhythm patterns, the beat can lock on the off-beat.
-- When the tempo changes continuously, as in a gradual speed-up or free rubato, the beat follows with a short delay, so the click can run slightly early or late until the tempo settles.
-- On some steady tracks the beat position is occasionally re-aligned, shown by the dashed line, even though the music did not change.
-- In dense mixes and noisy recordings, the **Mid** and **High** lanes show more dots where no instrument actually struck. The **Low** lane misses some low piano notes.
-- There is no bar or meter detection: the display is organized by beats only and does not show where a bar starts.
-- Analysis is available at 8, 11.025, 16, 22.05, 24, 32, 44.1, 48, 88.2, 96, 176.4, 192, 352.8, and 384 kHz. At other rates, such as 64 kHz, audio still passes through but rhythm analysis and clicks are unavailable. Choose a supported sample rate to use them.
+- Tempo and beat tracking are less certain on rubato, classical music, solo piano, or ambient/beatless passages, and the beat may lock at twice, half, two-thirds, or one and a half times the tempo you feel, or on the off-beat (use **Min BPM** / **Max BPM** to constrain the range). **LOCKED** does not guarantee a correct beat.
+- When the tempo changes continuously, the beat follows with a short delay, so the click can run slightly early or late.
+- In dense mixes and noisy recordings, the **Mid** and **High** lanes can show extra dots, and the **Low** lane misses some low piano notes.
+- The analyzer tracks beats rather than bar lines or time signatures (it does not identify beat 1).
+- Supported sample rates: 8, 11.025, 16, 22.05, 24, 32, 44.1, 48, 88.2, 96, 176.4, 192, 352.8, and 384 kHz. At other rates, audio passes through unchanged, but analysis and clicks are unavailable.
 
 ## Spectrogram
 
@@ -441,23 +376,6 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - **Keyboard** - Shows a static keyboard guide below the graph that relates musical notes to frequencies. It does not change the analysis or audio. The keys follow **Log**, **Log (HQ)**, or **Linear**; **Log (HQ)** uses the same logarithmic spacing as **Log**, while with **Linear**, low-frequency keys look narrower.
 - The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
-### Fun Ways to Use These Tools
-
-1. Exploring Your Music
-   - Watch how different genres create different patterns
-   - See the difference between acoustic and electronic music
-   - Observe how instruments occupy different frequency ranges
-
-2. Learning About Sound
-   - See the bass in electronic music
-   - Watch vocal melodies move across the display
-   - Observe how drums create sharp patterns
-
-3. Enhancing Your Experience
-   - Use the Level Meter to check signal peaks after adding effects
-   - Watch the Spectrum Analyzer dance with the music
-   - Create a visual light show with the Spectrogram
-
 ## Stereo Meter
 
 A fascinating visualization tool that lets you see how your music creates a sense of space through stereo sound. Watch how different instruments and sounds move between your speakers or headphones, adding an exciting visual dimension to your listening experience.
@@ -511,5 +429,22 @@ A fascinating visualization tool that lets you see how your music creates a sens
    - Try different headphones to see how they show stereo
    - Compare old and new recordings of your favorite songs
    - Watch how different listening positions change the display
+
+## Fun Ways to Use These Tools
+
+1. Exploring Your Music
+   - Watch how different genres create different patterns
+   - See the difference between acoustic and electronic music
+   - Observe how instruments occupy different frequency ranges
+
+2. Learning About Sound
+   - See the bass in electronic music
+   - Watch vocal melodies move across the display
+   - Observe how drums create sharp patterns
+
+3. Enhancing Your Experience
+   - Use the Level Meter to check signal peaks after adding effects
+   - Watch the Spectrum Analyzer dance with the music
+   - Create a visual light show with the Spectrogram
 
 Remember: These tools are meant to enhance your enjoyment of music by adding a visual dimension to your listening experience. Have fun exploring and discovering new ways to see your favorite music!

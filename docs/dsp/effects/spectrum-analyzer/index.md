@@ -71,21 +71,4 @@ Creates a real-time visual display of your music's frequencies, from deep bass t
 - **Keyboard** - Shows a static keyboard guide below the graph that relates musical notes to frequencies. It does not change the analysis or audio. The keys follow **Log**, **Log (HQ)**, or **Linear**; **Log (HQ)** uses the same logarithmic spacing as **Log**, while with **Linear**, low-frequency keys look narrower.
 - The analyzer uses the average of the left and right channels. Mono input is analyzed directly.
 
-### Fun Ways to Use These Tools
-
-1. Exploring Your Music
-   - Watch how different genres create different patterns
-   - See the difference between acoustic and electronic music
-   - Observe how instruments occupy different frequency ranges
-
-2. Learning About Sound
-   - See the bass in electronic music
-   - Watch vocal melodies move across the display
-   - Observe how drums create sharp patterns
-
-3. Enhancing Your Experience
-   - Use the Level Meter to check signal peaks after adding effects
-   - Watch the Spectrum Analyzer dance with the music
-   - Create a visual light show with the Spectrogram
-
 [Back to all effects](/dsp/effects/)

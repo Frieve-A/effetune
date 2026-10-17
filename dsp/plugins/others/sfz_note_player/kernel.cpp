@@ -225,9 +225,10 @@ public:
     analysis_ = std::make_unique<analyzer::SpectralAnalysis>();
     analysis_->prepare(info);
     latency_ = analysis_->latencySamples();
+    event_latency_ = analysis_->eventLatencySamples();
     maximum_shift_ = static_cast<std::uint32_t>(std::round(rate_ * .1F));
     hop_ = analysis_->hopSamples();
-    dry_length_ = latency_ + hop_ / 2u + maximum_shift_ + 1u;
+    dry_length_ = event_latency_ + hop_ / 2u + maximum_shift_ + 1u;
     wet_length_ = maximum_shift_ + 1u;
     voices_ = std::make_unique<std::array<Voice, kVoices>>();
     filters_ = std::make_unique<std::array<SampleFilter, kVoices>>();
@@ -255,7 +256,7 @@ public:
   bool preparedSuccessfully() const noexcept override { return prepared_; }
   std::uint32_t latencySamples() const noexcept override {
     const auto timing = bounded(params_.timingOffsetMs, -100, 100, 0);
-    return latency_ + hop_ / 2u +
+    return (params_.detection == 1.0F ? event_latency_ : latency_) + hop_ / 2u +
            static_cast<std::uint32_t>(std::round((timing < 0 ? -timing : 0) * rate_ * .001F));
   }
   void reset() noexcept override {
@@ -270,6 +271,8 @@ public:
     timing_fade_ = 0u;
     sample_clock_ = last_detection_ = 0u;
     linked_ = false;
+    event_source_ = nullptr;
+    event_generation_ = 0u;
     random_ = seed_ ^ (salt_ * 0x9e3779b9u);
     if (random_ == 0u)
       random_ = 1u;
@@ -328,6 +331,12 @@ public:
                const ProcessInfo &info) noexcept override {
     if (!prepared_ || !audio || !channels || channels > max_channels_)
       return;
+    const bool event_detection = params_.detection == 1.0F;
+    if (event_detection_ != event_detection) {
+      event_detection_ = event_detection;
+      analysis_->setEventEnabled(event_detection_);
+      reset();
+    }
     const auto minimum =
         static_cast<std::uint32_t>(std::round(bounded(params_.minimumMidi, 21, 108, 28)));
     const auto maximum = std::max(
@@ -344,10 +353,11 @@ public:
         clearNotes();
     }
     const auto *view = info.noteAnalysis;
-    const bool valid = view && view->timeSeconds == info.timeSeconds &&
-                       view->blockFrames == frames && view->minimumMidi == minimum &&
-                       view->maximumMidi == maximum && view->channels == channels &&
-                       view->latencySamples == latency_;
+    const bool valid =
+        view && view->timeSeconds == info.timeSeconds && view->blockFrames == frames &&
+        view->minimumMidi == minimum && view->maximumMidi == maximum &&
+        view->channels == channels && view->latencySamples == latency_ &&
+        (!event_detection_ || (view->eventFrames && view->eventLatencySamples == event_latency_));
     if (!valid) {
       if (linked_)
         analysis_->reset(1u);
@@ -355,6 +365,16 @@ public:
       view = &analysis_->view();
     }
     linked_ = valid;
+    if (event_detection_ &&
+        (event_source_ != view->eventSource || event_generation_ != view->eventGeneration)) {
+      // A new boundary stream cannot end notes admitted by the previous stream.
+      for (auto &voice : *voices_)
+        if (!voice.preview)
+          release(voice);
+      clearDetectionState();
+      event_source_ = view->eventSource;
+      event_generation_ = view->eventGeneration;
+    }
     voice_limit_ =
         static_cast<std::uint32_t>(std::round(bounded(params_.maxVoices, 1, kVoices, 32)));
     for (auto v = voice_limit_; v < kVoices; ++v)
@@ -379,10 +399,11 @@ public:
       timing_fade_ = fade_length_;
     }
     auto event = 0u;
+    const auto *detection_frames = event_detection_ ? view->eventFrames : view->frames;
     for (auto frame = 0u; frame <= frames; ++frame) {
-      while (event < view->count && view->frames[event].sampleOffset <= frame) {
+      while (event < view->count && detection_frames[event].sampleOffset <= frame) {
         if (bank() && bank()->state_ == ET_ASSET_STATE_ACTIVE)
-          detect(view->frames[event], minimum, maximum, sample_clock_ + frame);
+          detect(detection_frames[event], minimum, maximum, sample_clock_ + frame);
         ++event;
       }
       if (frame == frames)
@@ -464,12 +485,17 @@ private:
     notes_reset_pending_ = false;
     if (voices_)
       voices_->fill({});
+    clearDetectionState();
+    wet_.clear();
+    wet_position_ = 0u;
+    age_ = 0u;
+    preview_midi_ = -1;
+  }
+  void clearDetectionState() noexcept {
     onset_rules_.fill({});
     roles_.fill(0u);
     register_valid_ = false;
     silent_frames_ = 0u;
-    wet_.clear();
-    wet_position_ = 0u;
     trough_.fill(0.0F);
     onset_peak_.fill(0.0F);
     retrigger_armed_.fill(false);
@@ -480,8 +506,6 @@ private:
     released_at_.fill(0u);
     note_on_level_.fill(0.0F);
     next_note_event_ = 0u;
-    age_ = 0u;
-    preview_midi_ = -1;
   }
   void release(Voice &v, bool preview = false) noexcept {
     if (!v.region || v.released || (!preview && v.region[LoopMode] == 1.0F))
@@ -596,8 +620,10 @@ private:
           analyzer::harmnet_weights::kOnsetProminence,
           analyzer::harmnet_weights::kOnsetGate,
           onset_range ? analyzer::harmnet_weights::kOnsetRefractoryFrames : 0u};
-      const auto decision =
-          rule.step(frame.probabilities[pitch], onset_range ? frame.onsets[pitch] : 0.0F, settings);
+      const auto decision = event_detection_
+                                ? rule.stepEvent(frame.starts[pitch], frame.ends[pitch])
+                                : rule.step(frame.probabilities[pitch],
+                                            onset_range ? frame.onsets[pitch] : 0.0F, settings);
       if (decision.released && roles_[pitch]) {
         released_at_[pitch] = sample_time;
         const auto extension = std::max(hold_frames, rule.cooldown() * hop_);
@@ -610,7 +636,8 @@ private:
         }
       }
       trigger[pitch] = decision.fire != OnsetFire::None;
-      delta[pitch] = decision.delta;
+      // Only the classic onset head was trained with the triangular sub-frame target.
+      delta[pitch] = event_detection_ ? 0.0 : decision.delta;
       if (decision.fire == OnsetFire::Fallback && roles_[pitch] && note_off_at_[pitch] &&
           hold_frames && sample_time <= released_at_[pitch] + hold_frames) {
         // Only Note Hold, rather than a refractory extension, continues a fallback.
@@ -620,7 +647,7 @@ private:
                  roles_[pitch] && note_off_at_[pitch] && sample_time <= note_off_at_[pitch]) {
         note_off_at_[pitch] = 0u;
       }
-      if (!onset_range) {
+      if (!event_detection_ && !onset_range) {
         if (retrigger_cooldown_[pitch])
           --retrigger_cooldown_[pitch];
         if (decision.fire != OnsetFire::None)
@@ -645,8 +672,9 @@ private:
           }
         }
       }
-      eligible[pitch] = rule.latched() && rule.active() &&
-                        (frame.probabilities[pitch] >= threshold || trigger[pitch]);
+      eligible[pitch] =
+          rule.latched() && rule.active() &&
+          (event_detection_ || frame.probabilities[pitch] >= threshold || trigger[pitch]);
       if (eligible[pitch]) {
         if (lowest < 0)
           lowest = static_cast<int>(midi);
@@ -717,10 +745,10 @@ private:
       if (roles_[pitch]) {
         if (trigger[pitch])
           scheduleNoteOn(pitch, frame.levels[pitch], sample_time, delta[pitch]);
-      } else if (candidates[pitch]) {
+      } else if (candidates[pitch] && (!event_detection_ || trigger[pitch])) {
         roles_[pitch] = candidates[pitch];
         scheduleNoteOn(pitch, frame.levels[pitch], sample_time, delta[pitch]);
-        if (midi > analyzer::harmnet_weights::kOnsetMaximumMidi)
+        if (!event_detection_ && midi > analyzer::harmnet_weights::kOnsetMaximumMidi)
           startOnset(pitch, frame.levels[pitch]);
       }
       if (roles_[pitch] & 1u)
@@ -1061,8 +1089,8 @@ private:
       released_at_{};
   std::array<float, 88> note_on_level_{};
   float rate_ = 48000.0F;
-  std::uint32_t max_channels_ = 0u, latency_ = 0u, hop_ = 0u, dry_position_ = 0u,
-                fade_length_ = 96u;
+  std::uint32_t max_channels_ = 0u, latency_ = 0u, event_latency_ = 0u, hop_ = 0u,
+                dry_position_ = 0u, fade_length_ = 96u;
   std::uint32_t maximum_shift_ = 0u, dry_length_ = 0u, wet_length_ = 0u, wet_position_ = 0u;
   std::uint32_t dry_delay_ = 0u, old_dry_delay_ = 0u, wet_delay_ = 0u, old_wet_delay_ = 0u,
                 timing_fade_ = 0u, selection_mask_ = 7u;
@@ -1074,6 +1102,9 @@ private:
   float low_register_ = 0.0F, high_register_ = 0.0F;
   std::uint32_t note_serial_ = 0u;
   bool notes_reset_pending_ = false;
+  bool event_detection_ = false;
+  const void *event_source_ = nullptr;
+  std::uint64_t event_generation_ = 0u;
   bool prepared_ = false, linked_ = false, register_valid_ = false, delay_initialized_ = false;
 };
 static_assert(sizeof(SFZNotePlayerKernel) <= 8192u);

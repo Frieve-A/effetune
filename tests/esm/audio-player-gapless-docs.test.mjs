@@ -6,17 +6,17 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-// Each README section is located by its localized heading (which must match
+// Each player-guide section is located by its localized heading (which must match
 // the dialog label), and must contain the same four explanation elements:
 // default ON, limited support, unsupported/mobile fallback, and the short gap
 // when OFF. The locale list is derived from js/locales so a new locale cannot
-// ship without both the dialog label and the README section.
+// ship without both the dialog label and the player-guide section.
 //
 // Owner decision (2026-09-04): the Audio Configuration dialog shows only the
-// Gapless Playback label. The explanation lives in the README sections only;
+// Gapless Playback label. The explanation lives in the player guides only;
 // a `dialog.audioConfig.gaplessPlaybackHelp` string must not come back in any
 // locale.
-const readmeMarkers = {
+const guideMarkers = {
   en: {
     defaultOn: ['on by default'],
     limitedSupport: ['support is limited by the file format'],
@@ -91,8 +91,8 @@ async function listLocales() {
   return locales;
 }
 
-function readmePathOf(locale) {
-  return locale === 'en' ? 'README.md' : path.posix.join('docs', 'i18n', locale, 'README.md');
+function guidePathOf(locale) {
+  return locale === 'en' ? 'docs/music-player.md' : path.posix.join('docs', 'i18n', locale, 'music-player.md');
 }
 
 function extractLocaleString(source, key) {
@@ -140,14 +140,14 @@ test('Gapless Playback label exists in every locale and the dialog help string s
   }
 });
 
-test('Gapless Playback README sections share the same structure and explanation elements', async () => {
+test('Gapless Playback player-guide sections share the same structure and explanation elements', async () => {
   for (const locale of await listLocales()) {
-    const markers = readmeMarkers[locale];
-    assert.ok(markers, `${locale} has no README marker contract in this test`);
-    const readme = readmePathOf(locale);
+    const markers = guideMarkers[locale];
+    assert.ok(markers, `${locale} has no player-guide marker contract in this test`);
+    const readme = guidePathOf(locale);
     await assert.doesNotReject(
       access(path.join(repoRoot, readme)),
-      `${locale} README is missing at ${readme}`
+      `${locale} player guide is missing at ${readme}`
     );
     const label = extractLocaleString(
       await readLocaleSource(locale),

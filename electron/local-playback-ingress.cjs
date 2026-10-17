@@ -11,7 +11,7 @@ const CUE_COVER_MAX_BYTES = 20 * 1024 * 1024;
 const CUE_EXTENSION = '.cue';
 const CUE_AUDIO_EXTENSIONS = new Set(['.flac', '.wav']);
 const PLAYBACK_AUDIO_EXTENSIONS = new Set([
-  '.aac', '.flac', '.m4a', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
+  '.3gp', '.aac', '.flac', '.m4a', '.m4v', '.mkv', '.mov', '.mp3', '.mp4', '.ogg', '.opus', '.wav', '.webm'
 ]);
 
 class LocalPlaybackIngress {

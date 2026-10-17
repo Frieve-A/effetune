@@ -1,6 +1,7 @@
 const clamp = value => Math.max(0, Math.min(1, value));
 const wrap = value => (value % 1 + 1) % 1;
 const glowRadius = amount => 2 + clamp(amount) * 12;
+const blurSigma = amount => 1 + clamp(amount) * 12;
 const GRADIENT_STEPS = 24;
 
 export function createLayer(width, height) {
@@ -189,7 +190,7 @@ export class VisualizerEffects {
         const inputX = centerX - width / 2, inputY = centerY - height / 2;
         let state = this.states.get(id);
         if (!state || state.a.width !== workWidth || state.a.height !== workHeight || state.padding !== padding) {
-            state = { a: createLayer(workWidth, workHeight), b: createLayer(workWidth, workHeight), small: createLayer(1, 1), history: new Map(), particles: [], lastTime: time, bass: 0, padding };
+            state = { a: createLayer(workWidth, workHeight), b: createLayer(workWidth, workHeight), small: createLayer(1, 1), edge: createLayer(1, 1), history: new Map(), particles: [], lastTime: time, bass: 0, padding };
             this.states.set(id, state);
             changed = true;
         }
@@ -224,6 +225,7 @@ export class VisualizerEffects {
         let current = state.a, next = state.b;
         let ctx = current.getContext('2d');
         ctx.clearRect(0, 0, workWidth, workHeight);
+        let inputTransform;
         if (affine || transform.scale !== 1 || transform.x || transform.y) {
             ctx.save();
             if (!affine) { ctx.beginPath(); ctx.rect(inputX, inputY, width, height); ctx.clip(); }
@@ -241,9 +243,13 @@ export class VisualizerEffects {
                 if (effect.skewY) ctx.transform(1, Math.tan(effect.skewY * amount * Math.PI / 180) * direction, 0, 1, 0, 0);
                 ctx.scale(1 + (effect.scaleX / 100 - 1) * amount, 1 + (effect.scaleY / 100 - 1) * amount);
             }
+            inputTransform = ctx.getTransform().translate(-width / 2, -height / 2).scale(ratioX, ratioY);
             ctx.drawImage(input, -width / 2, -height / 2, width, height);
             ctx.restore();
-        } else ctx.drawImage(input, inputX, inputY, width, height);
+        } else {
+            inputTransform = ctx.getTransform().translate(inputX, inputY).scale(ratioX, ratioY);
+            ctx.drawImage(input, inputX, inputY, width, height);
+        }
         const dt = Math.min(.1, Math.max(0, time - state.lastTime));
         state.lastTime = time;
         for (let index = 0; index < active.length; index++) {
@@ -276,23 +282,36 @@ export class VisualizerEffects {
                 ctx.globalCompositeOperation = 'lighter';
                 ctx.drawImage(small, 0, 0, workWidth, workHeight);
                 ctx.drawImage(current, 0, 0);
-            } else if (effect.type === 'blur' || effect.type === 'outline') {
+            } else if (effect.type === 'blur') {
+                // The canvas Gaussian already rescales internally for large radii, which is
+                // cheaper than mipmapped downscaling here. The edge-extended margin keeps
+                // opaque layer edges from fading to transparent.
+                const sigma = blurSigma(amount) * scale, margin = Math.ceil(sigma * 3);
+                const edge = state.edge;
+                edge.width = workWidth + margin * 2;
+                edge.height = workHeight + margin * 2;
+                const edgeCtx = edge.getContext('2d');
+                edgeCtx.drawImage(current, margin, margin);
+                edgeCtx.imageSmoothingEnabled = false;
+                edgeCtx.drawImage(edge, margin, margin, 1, workHeight, 0, margin, margin, workHeight);
+                edgeCtx.drawImage(edge, margin + workWidth - 1, margin, 1, workHeight, margin + workWidth, margin, margin, workHeight);
+                edgeCtx.drawImage(edge, 0, margin, edge.width, 1, 0, 0, edge.width, margin);
+                edgeCtx.drawImage(edge, 0, margin + workHeight - 1, edge.width, 1, 0, margin + workHeight, edge.width, margin);
+                ctx.filter = `blur(${sigma}px)`;
+                ctx.drawImage(edge, -margin, -margin);
+            } else if (effect.type === 'outline') {
                 const small = state.small;
                 small.width = Math.max(1, Math.round(workWidth / (2 + amount * 24)));
                 small.height = Math.max(1, Math.round(workHeight / (2 + amount * 24)));
                 const scratch = small.getContext('2d');
                 scratch.drawImage(current, 0, 0, small.width, small.height);
-                if (effect.type !== 'blur') {
-                    scratch.globalCompositeOperation = 'source-in';
-                    scratch.fillStyle = color;
-                    scratch.fillRect(0, 0, small.width, small.height);
-                    scratch.globalCompositeOperation = 'source-over';
-                }
-                if (effect.type === 'outline') {
-                    const offset = (1 + amount * 6) * scale;
-                    for (let angle = 0; angle < 8; angle++) ctx.drawImage(small, Math.cos(angle * Math.PI / 4) * offset, Math.sin(angle * Math.PI / 4) * offset, workWidth, workHeight);
-                } else ctx.drawImage(small, 0, 0, workWidth, workHeight);
-                if (effect.type !== 'blur') { ctx.drawImage(current, 0, 0); }
+                scratch.globalCompositeOperation = 'source-in';
+                scratch.fillStyle = color;
+                scratch.fillRect(0, 0, small.width, small.height);
+                scratch.globalCompositeOperation = 'source-over';
+                const offset = (1 + amount * 6) * scale;
+                for (let angle = 0; angle < 8; angle++) ctx.drawImage(small, Math.cos(angle * Math.PI / 4) * offset, Math.sin(angle * Math.PI / 4) * offset, workWidth, workHeight);
+                ctx.drawImage(current, 0, 0);
             } else if (effect.type === 'trail' || effect.type === 'trail-feedback') {
                 let history = state.history.get(index);
                 if (!history) { history = createLayer(workWidth, workHeight); state.history.set(index, history); }
@@ -342,7 +361,7 @@ export class VisualizerEffects {
             [current, next] = [next, current];
         }
         state.bass = modulators.bass;
-        state.result = { canvas: current, opacity: transform.opacity, scale: 1, x: 0, y: 0,
+        state.result = { canvas: current, inputTransform, opacity: transform.opacity, scale: 1, x: 0, y: 0,
             paddingX: padding * input.width / width, paddingY: padding * input.height / height,
             ...(affine && scene ? { bounds: { x: -centerX / ratioX, y: -centerY / ratioY,
                 w: workWidth / ratioX, h: workHeight / ratioY } } : {}) };

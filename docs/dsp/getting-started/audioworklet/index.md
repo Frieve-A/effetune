@@ -106,8 +106,8 @@ beside the mapped `dist/worklet.js`. If a deployment rebases them, pass
 `EffeTuneNode.create` options argument; each accepts a string or `URL`.
 
 The example starts a 440 Hz oscillator after a user click and routes it through a
--6 dB Volume effect. Use [Verification](/dsp/reference/verification/) for the
-candidate-package browser checks.
+-6 dB Volume effect. [Verification](/dsp/reference/verification/) describes how the
+AudioWorklet path is tested in Chromium.
 
 ## API
 

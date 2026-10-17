@@ -34,8 +34,6 @@ Limits waveform amplitude abruptly at a configurable threshold.
 
 A digital clipping effect that limits peaks above a set threshold. Use it when you want extra edge, density, or creative distortion; keep the threshold high for light peak control and lower it gradually for stronger character.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x, 16x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 16x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - Subtle Enhancement:
   - Adds a little edge and density when Threshold stays high
@@ -51,6 +49,8 @@ A digital clipping effect that limits peaks above a set threshold. Use it when y
   - Perfect for experimental listening
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x, 16x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 16x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Threshold** - Controls how much of the sound is affected (-60dB to 0dB)
   - Higher values (-6dB to 0dB): Light peak control or subtle edge
   - Middle values (-24dB to -6dB): Notable clipping character and density

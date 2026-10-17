@@ -931,13 +931,16 @@ body.view-library:not(.layout-mobile) .library-empty-icon {
   z-index: 10030;
   display: grid;
   place-items: center;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   padding: 24px;
   background: rgba(0, 0, 0, 0.62);
 }
 
 .library-properties-dialog {
+  box-sizing: border-box;
+  min-width: 0;
   width: min(620px, 100%);
-  max-height: min(720px, calc(100vh - 48px));
+  max-height: min(720px, 100%);
   overflow: auto;
   color: var(--library-text);
   background: var(--library-panel);
@@ -949,7 +952,7 @@ body.view-library:not(.layout-mobile) .library-empty-icon {
 .library-properties-dialog-scrollable {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .library-properties-body {

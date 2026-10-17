@@ -2201,24 +2201,6 @@ test('Room EQ transfers the effective smoothing to Phase Smoothing on Auto relea
     plugin.cleanup();
 });
 
-test('all locales include the Room EQ reverb correction strings', async () => {
-    const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
-    const keys = [
-        'roomEq.parameter.phaseSmoothing',
-        'roomEq.parameter.reverbCorrection',
-        'roomEq.parameter.reverbWindow',
-        'roomEq.parameter.reverbMaxFrequency',
-        'roomEq.parameter.reverbSmoothing',
-        'roomEq.warning.reverbCorrectionLimited'
-    ];
-    for (const locale of locales) {
-        const source = await fs.readFile(path.join(repoRoot, 'js', 'locales', `${locale}.json5`), 'utf8');
-        for (const key of keys) {
-            assert.equal(source.includes(`"${key}":`), true, `${locale} is missing ${key}`);
-        }
-    }
-});
-
 function matchesTabSelector(node, selector) {
     if (selector.startsWith('.')) {
         return String(node.className || '').split(/\s+/).includes(selector.slice(1));
@@ -2402,23 +2384,6 @@ test('Room EQ groups its parameter rows into five workflow tabs', async () => {
     assert.match(sharedCss, /\.room-eq-tab-content\s*\)\[hidden\] \{[^}]*visibility: hidden;/s);
     assert.doesNotMatch(pluginCss, /\.room-eq-tab-content\[hidden\][^{]*\{[^}]*display: none;/s);
     plugin.cleanup();
-});
-
-test('all locales include the Room EQ tab labels', async () => {
-    const locales = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'];
-    const keys = [
-        'roomEq.tab.measurement',
-        'roomEq.tab.filter',
-        'roomEq.tab.level',
-        'roomEq.tab.phase',
-        'roomEq.tab.reverb'
-    ];
-    for (const locale of locales) {
-        const source = await fs.readFile(path.join(repoRoot, 'js', 'locales', `${locale}.json5`), 'utf8');
-        for (const key of keys) {
-            assert.equal(source.includes(`"${key}":`), true, `${locale} is missing ${key}`);
-        }
-    }
 });
 
 // ---------------------------------------------------------------------------

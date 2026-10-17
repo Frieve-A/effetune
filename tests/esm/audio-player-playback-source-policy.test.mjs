@@ -8,6 +8,22 @@ import {
 } from '../../js/ui/audio-player/playback-source-policy.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('video sources stream even when their complete bytes fit the buffer budget', () => {
+  for (const source of [
+    { path: 'clip.MP4?token=1' },
+    { name: 'clip.webm', mediaSource: 'blob:video' },
+    { type: 'video/mp4', mediaSource: 'blob:video' }
+  ]) {
+    const descriptor = normalizePlaybackSourceDescriptor({
+      ...source, byteLength: 1024, readBytes() { throw new Error('Video must not be decoded as audio'); }
+    });
+    assert.equal(descriptor.isVideo, true);
+    assert.deepEqual(choosePlaybackMode(descriptor), {
+      mode: 'media', allowMediaFallback: false, reason: 'video-must-stream'
+    });
+  }
+});
+
 class FakeFile {
   constructor(size) {
     this.size = size;

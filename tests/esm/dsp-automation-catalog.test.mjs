@@ -139,7 +139,7 @@ test('production schemas expose the audited automation population', async () => 
     },
     reconfiguresTemporalState: {
       PitchShifterPlugin: ['windowSize', 'crossfadeTime'],
-      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices', 'previewMidi', 'previewVelocity']
+      SFZNotePlayerPlugin: ['minimumMidi', 'maximumMidi', 'maxVoices', 'previewMidi', 'previewVelocity', 'detection']
     },
     resetsLearningState: {
       AdaptivePredictionEffectPlugin: ['resetToken']

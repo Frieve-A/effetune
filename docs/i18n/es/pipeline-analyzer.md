@@ -6,38 +6,47 @@ lang: es
 
 # Pipeline Analyzer
 
-Pipeline Analyzer mide la respuesta del Effect Pipeline activo sin modificar el audio que escuchas. Permanece junto al pipeline en ventanas anchas y pasa debajo de su encabezado en ventanas estrechas, para que puedas ajustar un efecto mientras observas cómo cambia el resultado.
+Pipeline Analyzer mide la respuesta del Effect Pipeline activo sin modificar el audio que escuchas. Se sitúa junto al pipeline en ventanas anchas o debajo de su encabezado en ventanas estrechas, lo que permite ajustar efectos mientras observas cómo se actualiza la respuesta.
 
-Ábrelo con el botón de gráfico del encabezado de Effect Pipeline o con **View > Pipeline Analyzer** en la aplicación de escritorio. Con **Auto** seleccionado, los cambios del pipeline inician automáticamente una nueva medición. Desactiva **Auto** para medir los cambios del pipeline solo al seleccionar **Refresh measurements**. Los cambios de los ajustes de medición siempre inician una nueva medición.
+Ábrelo con el botón de gráfico del encabezado de Effect Pipeline o con **Ver > Pipeline Analyzer** en la aplicación de escritorio. Cuando **Auto** está activado, los cambios en el pipeline inician automáticamente una nueva medición. Desactiva **Auto** para que los cambios en el pipeline solo se vuelvan a medir cuando hagas clic en **Refresh measurements**; cambiar los canales, las respuestas de altavoz o los ajustes de medición siempre inicia una nueva medición.
 
-## Canales y respuestas de altavoz
+## Elección de canales y respuestas de altavoz
 
-Selecciona un canal de entrada del pipeline activo, que puede tener hasta 16 canales. Al principio aparece una salida; usa **+ Añadir salida** para agregar hasta cuatro canales distintos disponibles en el dispositivo actual. Los cuatro espacios de salida siguen siendo el límite del analizador incluso con un pipeline de 16 canales. Al eliminar una salida también se elimina su respuesta de altavoz. La última salida no se puede eliminar.
+Selecciona un canal de entrada del pipeline activo (hasta 16 canales) y hasta cuatro canales de salida mediante **+ Add Output**. Siempre queda al menos una salida, por lo que la última no se puede eliminar. Al eliminar una salida, también se elimina su respuesta de altavoz.
 
-Cada salida puede usar **Sin IR de altavoz** o un punto de medición guardado del tweeter, woofer u otra unidad conectada. Elegir una medición sin seleccionar un punto se considera **Sin IR de altavoz**. Cuando ninguna salida usa una IR de altavoz, **Antes** es el impulso unitario ideal: 1,0 a 0 ms y 0 en el resto. Con IR de altavoz, **Antes** es la suma con signo de las respuestas alineadas y **Después** es la suma con signo tras procesar cada salida con el pipeline elegido. Así puedes comprobar un FIR Crossover junto con sus altavoces. Una respuesta guardada que falte seguirá indicada como tal hasta que la sustituyas o la quites.
+Cada salida puede usar **No speaker IR** o un punto de medición guardado del altavoz o transductor conectado:
 
-Las respuestas guardadas se alinean por su inicio detectado. Las mediciones independientes no conservan la diferencia acústica de llegada entre unidades; ajusta el retardo relativo y la polaridad en el pipeline antes de evaluar Total.
+- **Sin IR de altavoces:** **Before** es un impulso de referencia plano ideal y **After** muestra únicamente la respuesta del pipeline de efectos.
+- **Con IR de altavoces:** **Before** es la respuesta combinada de las mediciones de altavoz seleccionadas y **After** es la respuesta combinada tras procesar cada salida con el pipeline. Esto permite verificar un **Channel Divider** o **FIR Crossover** junto con las mediciones reales de cada unidad.
+
+Una respuesta guardada que ya no está disponible sigue seleccionada, pero aparece como — hasta que la sustituyas o la quites.
+
+Dado que las mediciones independientes de altavoz se alinean por su inicio detectado y no conservan las diferencias físicas de tiempo de llegada entre unidades, configura el retardo relativo y la polaridad de cada unidad en el pipeline antes de evaluar la respuesta sumada.
 
 ## Ajustes de medición
 
-Abre **Ajustes de medición** para cambiar:
+Abre **Measurement settings** para configurar cómo se mide el pipeline:
 
-- **Señal** usa **MLS** de forma predeterminada. **TSP** es una señal de prueba periódica alternativa y **Impulso unitario** captura directamente la respuesta temporal. Cada opción puede medir el pipeline de forma distinta cuando los efectos son no lineales o varían con el tiempo.
-- **Nivel** establece el pico de la señal de prueba y vale -12 dBFS de forma predeterminada. Los efectos lineales suelen dar la misma respuesta normalizada a cualquier nivel; los no lineales o dependientes del nivel pueden cambiar.
-- **Longitud de secuencia** determina cuánta respuesta se puede medir sin solapamiento: en MLS y TSP es el periodo de la señal de prueba y en Impulso unitario es el número de muestras capturadas tras el impulso. Los valores mayores requieren más tiempo y memoria. Auméntala para delays, reverbs u otros efectos con cola larga, sobre todo si el analizador lo recomienda.
-- **Periodos de estabilización** vale 12 de forma predeterminada y deja que el pipeline se estabilice antes de capturar. Auméntalo si un efecto lento aún no ha alcanzado un estado estable.
-- **Promedios** vale 2 de forma predeterminada. Auméntalo para reducir las diferencias entre mediciones cuando el gráfico sea inestable; la medición tardará más.
+- **Signal:** **MLS** (predeterminado), **TSP** o **Unit Impulse**. MLS y TSP utilizan señales de prueba periódicas (`2^n - 1` y `2^n` muestras), mientras que **Unit Impulse** captura directamente la respuesta al impulso en el dominio temporal (`2^n` muestras).
+- **Level:** Nivel de pico de la señal de prueba (`-12 dBFS` de forma predeterminada). Los filtros lineales miden igual a cualquier nivel, mientras que compresores, saturadores y otros efectos dependientes del nivel cambian según **Level**.
+- **Sequence Length:** Duración de la ventana de medición. Auméntala al medir reverberación, retardo o filtros pronunciados de baja frecuencia con cola larga, especialmente cuando el analizador recomiende una longitud mayor.
+- **Stabilization Periods:** Número de periodos reproducidos antes de capturar (`12` de forma predeterminada, usado por MLS y TSP) para que los efectos de evolución lenta se estabilicen.
+- **Averages:** Número de periodos capturados que se promedian (`2` de forma predeterminada, usado por MLS y TSP) para reducir la variación.
 
-Los detalles indican si la longitud actual es suficiente, la longitud y estabilización recomendadas y el tiempo total de medición. Con Impulso unitario muestran la longitud de captura en muestras y segundos a la frecuencia de muestreo actual. Son recomendaciones: aplícalas cuando correspondan a los efectos que estás midiendo.
+## Lectura de los gráficos
 
-Periodos de estabilización y Promedios solo se desactivan con Impulso unitario. MLS usa longitudes de 2^n-1 muestras, mientras que TSP e Impulso unitario usan longitudes de 2^n muestras; al cambiar de señal se conserva la longitud más cercana. Cambiar Frequency, Phase, Min Group Delay, Excess Group Delay o Impulse solo cambia el gráfico y no repite la medición.
+Usa el selector **Graph** situado sobre la gráfica para cambiar de vista sin volver a medir:
 
-## Lectura y método
+- **Frequency:** Respuesta de magnitud (dB) frente a frecuencia, referenciada a 0 dB.
+- **Phase:** Respuesta de fase (grados) frente a frecuencia.
+- **Min Group Delay:** Retardo de grupo implícito en la respuesta de magnitud de fase mínima.
+- **Excess Group Delay:** Retardo de grupo restante tras eliminar la parte de fase mínima (la gráfica se limita a ±100 ms, mientras que las lecturas del cursor muestran el valor real), lo que facilita distinguir el retardo puro y el comportamiento temporal de fase lineal o paso todo.
+- **Impulse:** Respuesta al impulso en el dominio temporal desde `-2 ms` hasta **Impulse Range (ms)**, normalizada a su pico.
 
-Elige la vista con los botones **Graph** situados fuera del gráfico. **Frequency** muestra el nivel, **Phase** la fase, **Min Group Delay** el retardo que implica la parte de fase mínima de la respuesta de magnitud, **Excess Group Delay** el retardo restante tras eliminarla e **Impulse** la respuesta temporal. El gráfico siempre muestra **Antes** y **Después**. Mueve el puntero para leer ambos valores; al pasar por **Antes**, **Después** se oculta temporalmente. Frequency, Phase y las dos vistas de Group Delay comparten **Suavizado (oct)**. Para facilitar la lectura, el gráfico Excess Group Delay se limita a ±100 ms, pero el puntero conserva el valor original fuera de ese intervalo. Cada curva de frecuencia se referencia por separado a 0 dB; cada impulso se normaliza con su propio pico completo y se muestra desde -2 ms hasta el **Rango del impulso (ms)** elegido.
+Pasa el cursor sobre la gráfica para leer los valores de **Before** y **After** en la posición del cursor; pasa el cursor sobre la etiqueta **Before** de la leyenda para ocultar temporalmente **After**. Usa **Smoothing (oct)** en las gráficas de frecuencia, fase y retardo de grupo, e **Impulse Range (ms)** en la gráfica de impulso.
 
-Cada medición captura el pipeline activo, sus ajustes y rutas actuales, y las respuestas de altavoz seleccionadas. Los gráficos muestran las respuestas de frecuencia, fase, retardo de grupo mínimo, retardo de grupo excedente e impulso; **Después** compensa la latencia indicada por el pipeline.
+## Cómo funciona la medición
 
-MLS y TSP son adecuados para la medición general. Si un delay, reverb u otra cola supera la ventana seleccionada, la respuesta puede solaparse consigo misma; aumenta **Longitud de secuencia**. **Impulso unitario** registra exactamente la **Longitud de secuencia** seleccionada de muestras, por lo que las colas más largas que esa ventana se cortan; auméntala cuando la cola siga sonando al final de la captura.
+Pipeline Analyzer captura el pipeline activo, su enrutamiento y las respuestas de altavoz seleccionadas, y compensa automáticamente en **After** la latencia comunicada por el pipeline. Si una cola de reverberación o la resonancia de un filtro supera **Sequence Length**, aumenta **Sequence Length** para evitar solapamiento (MLS/TSP) o recorte (**Unit Impulse**). En efectos no lineales, modulados o aleatorios, interpreta la gráfica como una instantánea con los ajustes y el **Level** actuales.
 
-Los efectos no lineales, variables en el tiempo, aleatorios, ruidosos o generadores de sonido pueden dar resultados distintos según el nivel o entre mediciones. Considera los gráficos como instantáneas de los ajustes seleccionados, no como características fijas.
+[← Volver al README](README.md)

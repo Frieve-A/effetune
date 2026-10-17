@@ -1,11 +1,10 @@
 import json
-import os
 from pathlib import Path
 
 import numpy as np
 import effetune as et
 
-exported = json.loads(Path(os.environ["DSP_VISUAL_GOLDEN"]).read_text("utf-8"))
+exported = json.loads(Path("listening.effetune_preset").read_text("utf-8"))
 chain, report = et.Chain.from_legacy_preset(exported)
 assert isinstance(report.warnings, tuple)
 audio = np.ones((2, 256), dtype=np.float32) * np.float32(0.25)

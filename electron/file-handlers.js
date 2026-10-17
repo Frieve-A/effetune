@@ -8,8 +8,8 @@ const {
   admitLocalPlaybackPaths: admitLocalPlaybackPathsImpl
 } = require('./local-playback-ingress.cjs');
 
-const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4'];
-const PLAYBACK_AUDIO_FILTER_NAME = 'Audio Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4)';
+const PLAYBACK_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp'];
+const PLAYBACK_AUDIO_FILTER_NAME = 'Audio and Video Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4, M4V, MOV, MKV, 3GP)';
 const PLAYBACK_SELECTION_FILTER_NAME = 'Music and CUE Files';
 const PLAYBACK_SELECTION_EXTENSIONS = [...PLAYBACK_AUDIO_EXTENSIONS, 'cue'];
 const PLAYBACK_AUDIO_EXTENSION_PATTERN = new RegExp(`\\.(${PLAYBACK_AUDIO_EXTENSIONS.join('|')})$`, 'i');

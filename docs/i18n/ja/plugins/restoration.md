@@ -10,10 +10,10 @@ lang: ja
 
 ## プラグイン一覧
 
-- [Click Remover](#click-remover) - 短いクリック、パチパチ音、ポップノイズ、音切れを修復します
-- [Clip Restorer](#clip-restorer) - ハードクリップで平らになったピークを復元します
-- [Hum Remover](#hum-remover) - 一定した電気的ハムとその倍音を取り除きます
-- [Noise Reduction](#noise-reduction) - 音楽を保ちながら、一定して続くヒスノイズやハムノイズを抑えます
+- [Click Remover](#click-remover) - 短いクリック、パチパチ音、ポップノイズ、音切れを修復します。
+- [Clip Restorer](#clip-restorer) - ハードクリップで平らになったピークを復元します。
+- [Hum Remover](#hum-remover) - 一定した電気的ハムとその倍音を取り除きます。
+- [Noise Reduction](#noise-reduction) - 音楽を保ちながら、一定して続くヒスノイズやハムノイズを抑えます。
 
 ## Click Remover
 

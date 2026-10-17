@@ -53,6 +53,7 @@
     z-index: 10000;
     inset: 0;
     display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
     padding: 16px;
     background: rgba(0, 0, 0, 0.62);
@@ -60,8 +61,8 @@
 
 .ir-library-dialog {
     box-sizing: border-box;
-    width: min(900px, calc(100vw - 32px));
-    max-height: min(760px, calc(100svh - 32px));
+    width: min(900px, 100%);
+    max-height: min(760px, 100%);
     overflow: auto;
     padding: 20px;
     border: 1px solid var(--et-border-strong);
@@ -284,8 +285,8 @@
     }
 
     .ir-library-dialog {
-        width: calc(100vw - 16px);
-        max-height: calc(100svh - 16px);
+        width: 100%;
+        max-height: 100%;
         padding: 12px;
     }
 

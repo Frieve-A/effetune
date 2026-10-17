@@ -20,6 +20,7 @@ class SFZNotePlayerPlugin extends PluginBase {
         this.tm = 0;
         this.og = 0;
         this.cl = 'Normal';
+        this.dt = 'Classic';
         this.temporalCapability = 'reset-on-resume';
         this._generation = 0;
         this._pending = null;
@@ -51,7 +52,8 @@ class SFZNotePlayerPlugin extends PluginBase {
     getParameters() {
         return { ...super.getParameters(), sf: this.sf, th: this.th, rd: this.rd, nh: this.nh, vf: this.vf,
             vc: this.vc, mn: this.mn, mx: this.mx, pl: this.pl, dm: this.dm, wm: this.wm,
-            os: this.os, ss: this.ss, lo: this.lo, md: this.md, hi: this.hi, tm: this.tm, og: this.og, cl: this.cl };
+            os: this.os, ss: this.ss, lo: this.lo, md: this.md, hi: this.hi, tm: this.tm, og: this.og, cl: this.cl,
+            dt: this.dt };
     }
 
     getWorkletPluginData(parameters = this.getParameters()) {
@@ -75,6 +77,8 @@ class SFZNotePlayerPlugin extends PluginBase {
             if (typeof params[key] === 'boolean') this[key] = params[key];
         }
         if (params.cl === 'Normal' || params.cl === 'Rainbow') this.cl = params.cl;
+        if (params.dt === 'Classic' || params.dt === 'Event') this.dt = params.dt;
+        this._syncDetectionControls();
         if (this.mn > this.mx) this.mx = this.mn;
         if (this.vc < this.vf + 1) this.vc = this.vf + 1;
         if (typeof params.sf === 'string') {
@@ -688,6 +692,14 @@ class SFZNotePlayerPlugin extends PluginBase {
         }
     }
 
+    _syncDetectionControls() {
+        for (const control of [this._thresholdControl, this._retriggerControl]) {
+            for (const input of control?.querySelectorAll('input') ?? []) {
+                input.disabled = this.dt === 'Event';
+            }
+        }
+    }
+
     createUI() {
         this._disposePreview?.();
         this.stopAnimation();
@@ -721,6 +733,9 @@ class SFZNotePlayerPlugin extends PluginBase {
         const controls = document.createElement('div');
         controls.className = 'sfz-controls analyzer-parameters';
         controls.append(bankRow, this._status);
+        controls.appendChild(this.createRadioGroup('Detection', [
+            { value: 'Classic', label: 'Classic (Low Latency)' }, { value: 'Event', label: 'Event (+140 ms)' }
+        ], this.dt, value => this.setParameters({ dt: value }), 'dt'));
         controls.appendChild(this.createRadioGroup('Color', [
             { value: 'Normal', label: 'Normal' }, { value: 'Rainbow', label: 'Note Colors' }
         ], this.cl, value => this.setParameters({ cl: value }), 'cl'));
@@ -740,8 +755,14 @@ class SFZNotePlayerPlugin extends PluginBase {
             ['ss', 'Sample Shift', -6, 6, 1, ''],
             ['og', 'Output Gain', -60, 12, 0.1, 'dB'],
             ['tm', 'Timing', -100, 100, 1, 'ms']
-        ]) controls.appendChild(this.createParameterControl(labelText, min, max, step, this[key],
-            value => this.setParameters({ [key]: value }), unit, key));
+        ]) {
+            const control = this.createParameterControl(labelText, min, max, step, this[key],
+                value => this.setParameters({ [key]: value }), unit, key);
+            if (key === 'rd') this._retriggerControl = control;
+            if (key === 'th') this._thresholdControl = control;
+            controls.appendChild(control);
+        }
+        this._syncDetectionControls();
         controls.append(this._noteControl('Lowest Note', 'mn'), this._noteControl('Highest Note', 'mx'));
         container.appendChild(controls);
         const display = document.createElement('div');
@@ -802,6 +823,8 @@ class SFZNotePlayerPlugin extends PluginBase {
         this._libraryBrowser?.dispose();
         this._libraryBrowser = null;
         this._libraryButton = this._selectedBankName = this._status = this._clearButton = null;
+        this._retriggerControl = null;
+        this._thresholdControl = null;
         super.cleanup();
     }
 }

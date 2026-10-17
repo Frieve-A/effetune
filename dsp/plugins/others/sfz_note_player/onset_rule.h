@@ -23,6 +23,19 @@ public:
   // The latch started with a fire.
   bool active() const noexcept { return active_; }
   std::uint32_t cooldown() const noexcept { return cool_; }
+  // Consume the analyzer's confirmed boundaries without a second confidence gate.
+  OnsetDecision stepEvent(bool start, bool end) noexcept {
+    OnsetDecision result;
+    if (end && latched_ && !start) {
+      latched_ = active_ = false;
+      result.released = true;
+    }
+    if (start) {
+      latched_ = active_ = true;
+      result.fire = OnsetFire::Onset;
+    }
+    return result;
+  }
   OnsetDecision step(float probability, float onset, const OnsetRuleSettings &s) noexcept {
     OnsetDecision result;
     if (cool_)

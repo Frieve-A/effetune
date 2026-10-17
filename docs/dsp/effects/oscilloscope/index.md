@@ -39,36 +39,28 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 ## Oscilloscope
 
-Shows the shape of the sound wave in real time, so you can see beats, sharp hits, and changes in loudness while listening. Trigger settings can steady the display when the waveform repeats.
-
-### Visualization Guide
-- Horizontal axis shows time in milliseconds or seconds
-- Vertical axis shows normalized amplitude; the visible range changes with Display Level and Vertical Offset
-- A line shows waveform detail at short display times; a filled band shows the minimum and maximum amplitudes over each interval at long display times
-- Grid lines help measure time and amplitude values
-- Trigger settings determine where the waveform capture begins; no separate marker is shown
+Shows the shape of the sound wave in real time, so you can see beats, sharp hits, and changes in loudness while listening. Trigger settings steady the display when a waveform repeats.
 
 ### Usage Guide
-- Set Display Time to 1–20 ms and Trigger Mode to Auto to inspect a repeating waveform.
-- Set Display Time to 1,000–10,000 ms and Trigger Mode to Off to follow beats and changes in loudness. The newest audio appears at the right edge and the waveform scrolls smoothly to the left.
-- In Auto and Normal modes, a new capture appears after the selected Display Time has been collected.
+- Set **Display Time** to 1–20 ms and **Trigger Mode** to **Auto** to inspect a repeating waveform cycle.
+- Set **Display Time** to 1,000–10,000 ms and **Trigger Mode** to **Off** to follow beats and loudness envelopes scrolling smoothly from right to left.
+- In **Auto** and **Normal** modes, the trace updates once the full **Display Time** interval has been collected.
 
 ### Parameters
-- **Display Time** - How much time to show (1 to 10,000 ms, or 10 seconds)
-  - Lower values: See more detail in shorter events
-  - Higher values: View longer patterns
-- **Trigger Mode**
-  - Auto: Continuous updates even without trigger
-  - Normal: Freezes display until next trigger
-  - Off: No trigger; the latest audio appears at the right edge while the waveform scrolls left. Trigger Level, Trigger Edge, and Holdoff have no effect
-- Trigger detection uses the averaged left/right waveform. Mono input is used directly.
-- **Trigger Level** - Amplitude level that starts capture
-  - Range: -1 to 1 (normalized amplitude)
-- **Trigger Edge**
-  - Rising: Trigger when signal goes up
-  - Falling: Trigger when signal goes down
-- **Holdoff** - Minimum time between triggers (0.1 to 10 ms)
-- **Display Level** - Vertical scale in dB (-96 to 0 dB)
-- **Vertical Offset** - Shifts waveform up/down (-1 to 1)
+- **Display Time** (1 to 10,000 ms) - Visible time span. Short values show individual waveform cycles; long values show overall envelope patterns.
+- **Trigger Mode**:
+  - **Auto**: Updates continuously even without a trigger event.
+  - **Normal**: Updates only when a trigger occurs and holds the last capture until the next trigger.
+  - **Off**: Scrolls continuously from right to left; trigger settings have no effect.
+- **Trigger Level** (-1 to 1) - Normalized amplitude threshold that starts capture (detected from the mono or averaged L/R signal).
+- **Trigger Edge** - **Rising** (triggers on upward crossing) or **Falling** (triggers on downward crossing).
+- **Holdoff** (0.1 to 10 ms) - Minimum wait time between triggers.
+- **Display Level** (-96 to 0 dB; default 0 dB) - Sets the level shown at the top and bottom edges of the display. 0 dB shows the full ±1 range; lower values zoom in on quieter signals.
+- **Vertical Offset** (-1 to 1) - Shifts the waveform vertically; positive values move the waveform up.
+
+### Visualization Guide
+- **Horizontal axis**: Time in milliseconds or seconds.
+- **Vertical axis**: Normalized amplitude, scaled by **Display Level** and shifted by **Vertical Offset**.
+- **Line vs. Envelope Band**: Short display times draw a continuous waveform line; long display times draw a filled min/max band so brief peaks remain visible when many samples share a single pixel column.
 
 [Back to all effects](/dsp/effects/)

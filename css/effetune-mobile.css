@@ -1413,7 +1413,7 @@ body.layout-mobile .ai-dialog {
     border-radius: 10px 10px 0 0;
     padding: 16px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    max-height: 70vh;
+    max-height: 70%;
     overflow-y: auto;
     box-sizing: border-box;
     transform: none !important;
@@ -1503,8 +1503,8 @@ body.layout-mobile .plugin-parameter-ui select {
    so the mobile sizing is unified here. */
 body.layout-mobile .audio-config-dialog,
 body.layout-mobile .config-dialog {
-    width: min(400px, calc(100vw - 32px));
-    max-height: calc(100svh - 32px);
+    width: min(400px, calc(100% - 32px));
+    max-height: calc(100% - 32px);
     overflow-y: auto;
     box-sizing: border-box;
 }

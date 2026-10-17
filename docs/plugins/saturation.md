@@ -8,11 +8,6 @@ lang: en
 
 A collection of plugins for harmonic shaping and bandwidth restoration. They can add warmth or distortion, or generate restrained high-frequency content where a recording has a clear bandwidth limit.
 
-<!-- spectrum-overlay -->
-## Spectrum Overlay
-
-Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. The input and output spectra are aligned to the same point in playback, so the filled differences compare matching audio. Normal applies 1/12-octave smoothing; HQ provides finer analysis at low frequencies. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. In Config, choose **Normal** or **HQ** for Overlay spectrum quality, and **Instantaneous** or **Peak Hold** for Overlay spectrum display. Peak Hold keeps recent peaks visible and lets them fall gradually. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
-
 ## Plugin List
 
 - [Bandwidth Extender](#bandwidth-extender) - Generates high-frequency content above a detected or specified cutoff
@@ -25,6 +20,11 @@ Press the spectrum icon on a compatible graph to cycle through After, Before + A
 - [Saturation](#saturation) - Adds warmth and richness like vintage equipment
 - [Sub Synth](#sub-synth) - Adds a filtered low-frequency signal for bass enhancement
 - [Tube Simulator](#tube-simulator) - Models tube line stages and push-pull or single-ended power amplifiers
+
+<!-- spectrum-overlay -->
+## Spectrum Overlay
+
+Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. The input and output spectra are aligned to the same point in playback, so the filled differences compare matching audio. Normal applies 1/12-octave smoothing; HQ provides finer analysis at low frequencies. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. In Config, choose **Normal** or **HQ** for Overlay spectrum quality, and **Instantaneous** or **Peak Hold** for Overlay spectrum display. Peak Hold keeps recent peaks visible and lets them fall gradually. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
 
 ## Bandwidth Extender
 
@@ -72,8 +72,6 @@ Bass Extender reinforces bass-light recordings by generating content about one o
 
 A physics-based effect that simulates the nonlinear displacement of speaker cones under different conditions. By modeling the mechanical behavior of a speaker and then applying saturation to that displacement, it creates a unique form of distortion that responds dynamically to your music.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - **Subtle Enhancement:**
   - Adds gentle warmth and slight rounded-peak behavior
@@ -97,6 +95,8 @@ Click **Effect Presets** in the effect header to compare complete cone-motion se
 - **Ragged Cone** - The most pronounced, deliberately rough cone character.
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Speaker Drive** (0.0-10.0) - Controls how strongly the audio signal moves the cone
   - Low values: Subtle movement and gentle effect
   - High values: Dramatic movement and stronger character
@@ -167,8 +167,6 @@ Click **Effect Presets** in the effect header to compare complete cone-motion se
 
 An effect that adds harmonic content to enhance clarity and presence. By filtering the high-frequency content and applying saturation, it creates additional harmonics that brighten and enhance your music.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - **Subtle Enhancement:**
   - Adds clarity and air to voices and high-frequency details
@@ -184,6 +182,8 @@ An effect that adds harmonic content to enhance clarity and presence. By filteri
   - Useful when you want a brighter, more forward sound, but best used sparingly
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **HPF Freq** (500-10000Hz) - Sets the cutoff frequency for high-pass filtering
   - Low values (500-2000Hz): Affects more of the signal
   - Mid values (2000-5000Hz): Targets presence frequencies
@@ -244,8 +244,6 @@ An effect that adds harmonic content to enhance clarity and presence. By filteri
 
 A digital clipping effect that limits peaks above a set threshold. Use it when you want extra edge, density, or creative distortion; keep the threshold high for light peak control and lower it gradually for stronger character.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x, 16x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 16x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - Subtle Enhancement:
   - Adds a little edge and density when Threshold stays high
@@ -261,6 +259,8 @@ A digital clipping effect that limits peaks above a set threshold. Use it when y
   - Perfect for experimental listening
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x, 16x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 16x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Threshold** - Controls how much of the sound is affected (-60dB to 0dB)
   - Higher values (-6dB to 0dB): Light peak control or subtle edge
   - Middle values (-24dB to -6dB): Notable clipping character and density
@@ -290,8 +290,6 @@ A digital clipping effect that limits peaks above a set threshold. Use it when y
 
 The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-order nonlinear terms. It lets you tune even- and odd-order distortion character from subtle warmth to stronger coloration, which can help music that sounds too clean, thin, or flat feel more vivid.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - **Subtle Effect:**
   - Adds a gentle layer of harmonic warmth
@@ -311,6 +309,8 @@ The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-o
   - Odd-order terms mainly change the symmetric distortion character
 
 ### Parameters
+
+- **Oversampling:** Chooses the processing rate multiplier (1x, 2x, 4x, 8x, default: 1x). Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **2nd Harm (%):** Sets the second-order distortion term (-30 to 30%, default: 2%)
 - **3rd Harm (%):** Sets the third-order distortion term (-30 to 30%, default: 3%)
 - **4th Harm (%):** Sets the fourth-order distortion term (-30 to 30%, default: 0.5%)
@@ -335,8 +335,6 @@ The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-o
 
 A versatile effect that lets you add warmth and character to specific frequency ranges of the whole playback signal. By splitting the sound into low, mid, and high bands, you can shape each range independently for precise sound enhancement.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - Low-Frequency Warmth:
   - Add warmth and punch to low frequencies
@@ -354,6 +352,8 @@ A versatile effect that lets you add warmth and character to specific frequency 
 Because this processes frequency bands, it affects all sounds in the selected range, not isolated instruments or vocals.
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Crossover Frequencies**
   - Freq 1 (20Hz-2kHz): Sets where low band ends and mid band begins
   - Freq 2 (200Hz-20kHz, always kept at or above Freq 1): Sets where mid band ends and high band begins
@@ -417,8 +417,6 @@ Because this processes frequency bands, it affects all sounds in the selected ra
 
 An effect that simulates the warm, pleasant sound of vintage tube equipment. It can add richness and character to your music, making it sound more "analog" and less "digital."
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - Adding Warmth:
   - Makes digital music sound more natural
@@ -434,6 +432,8 @@ An effect that simulates the warm, pleasant sound of vintage tube equipment. It 
   - Ideal for experimental listening
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **Drive** - Controls the amount of warmth and character (0.0 to 10.0)
   - Light (0.0-3.0): Subtle analog warmth
   - Medium (3.0-6.0): Rich, vintage character
@@ -562,7 +562,7 @@ The controls are arranged in five tabs.
 
 - **Input** - Input Volume, Input Reference, Source Z
 - **Driver** - Driver Type, Bias, Plate, Supply, Negative Feedback
-- **Power** - Output Circuit; Push-Pull Power Tube, Output B+, and Cathode Resistor; SE Triode, SE B+, and SE Cathode Resistor
+- **Power** - Output Circuit; Power Tubes, Output B+, and Cathode Resistor; SE Triode, SE B+, and SE Cathode Resistor
 - **Transformer** - Screen Tap, Push-Pull Primary, SE Primary, Assumed Speaker Load, Actual Speaker Load
 - **Output** - Output Trim, Output Safety Trim, Auto Gain Reduction, Wet/Dry Mix
 

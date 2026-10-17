@@ -8,12 +8,11 @@ lang: hi
 
 आपके संगीत की ध्वनि के विभिन्न पहलुओं को समायोजित करने के लिए प्लगइन्स का एक संग्रह, गहरे बास से लेकर साफ़ हाईज़ तक। ये उपकरण विशिष्ट ध्वनि तत्वों को बढ़ाकर या घटाकर आपके सुनने के अनुभव को व्यक्तिगत बनाने में मदद करते हैं।
 
-<!-- spectrum-overlay -->
-## स्पेक्ट्रम ओवरले
-
-किसी समर्थित ग्राफ़ में स्पेक्ट्रम आइकन दबाकर After, Before + After और Off के बीच क्रम से बदलें। After में केवल प्रोसेसिंग के बाद का स्पेक्ट्रम नीली लाइन के रूप में दिखता है। Before + After में प्रोसेसिंग से पहले और बाद के स्पेक्ट्रम के बीच का बदलाव भरा जाता है: प्रोसेसिंग के बाद जिन फ़्रीक्वेंसी का स्तर बढ़ा है वे गर्म रंग में, जिनका स्तर घटा है वे नीले रंग में दिखती हैं, और ग्रे लाइन After स्पेक्ट्रम दिखाती है। इनपुट और आउटपुट स्पेक्ट्रम प्लेबैक के एक ही क्षण से लिए जाते हैं, इसलिए तुलना में वही ऑडियो मेल खाता है। **सामान्य** मोड में 1/12-ऑक्टेव स्मूदिंग लागू होती है; **उच्च गुणवत्ता** मोड कम फ़्रीक्वेंसी का अधिक बारीकी से विश्लेषण करता है। सुनते समय इस तुलना से देखें कि हर समायोजन बास, मिड्स और हाईज़ को कैसे बदलता है। स्पेक्ट्रम के स्तर ग्राफ़ के दाईं ओर dBFS स्केल पर पढ़ें। यह ग्राफ़ के gain scale से अलग है; 0 dBFS डिजिटल full-scale reference है और कम मान शांत स्तर दिखाते हैं। विन्यास में ओवरले स्पेक्ट्रम गुणवत्ता के लिए **सामान्य** या **उच्च गुणवत्ता**, और प्रदर्शन के लिए **तात्कालिक मान** या **पीक होल्ड** चुनें। पीक होल्ड हाल के अधिकतम स्तरों को दिखाता रहता है और फिर उन्हें धीरे-धीरे कम करता है। After में केवल प्रोसेसिंग के बाद का स्पेक्ट्रम लिया जाता है; Off में डेटा लेना और चित्रण दोनों बंद हो जाते हैं।
+## ग्राफ़ के नियंत्रण
 
 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ और Room EQ के Additional EQ में खींचे जा सकने वाले पॉइंट ग्राफ़ पर किसी पॉइंट को सामान्य रूप से खींचने से दोनों अक्ष बदलते हैं। गति को एक अक्ष पर सीमित करने के लिए खींचते समय Shift दबाए रखें: केवल Frequency बदलने के लिए शुरुआत में पॉइंट को मुख्यतः दाएँ या बाएँ ले जाएँ, या केवल Level बदलने के लिए मुख्यतः ऊपर या नीचे ले जाएँ (Group Delay PEQ में Delay)। फिर से स्वतंत्र रूप से चलाने के लिए Shift छोड़ दें। किसी पॉइंट पर माउस पॉइंटर रखें और Q बढ़ाने के लिए व्हील ऊपर, या Q घटाने के लिए नीचे स्क्रॉल करें।
+
+## मोबाइल पर बैंड चुनना
 
 मोबाइल पर 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ का Additional EQ और Tonal Balance EQ का Target Adjust एक समय में केवल चुने हुए बैंड की सेटिंग दिखाते हैं। जिस बैंड को बदलना है, उसके नंबर वाले बटन पर टैप करें। बैंड बदलने पर सभी बैंड की सेटिंग बनी रहती हैं।
 
@@ -22,7 +21,7 @@ lang: hi
 - [15Band GEQ](#15band-geq) - 15 सटीक नियंत्रणों के साथ विस्तृत ध्वनि समायोजन
 - [15Band PEQ](#15band-peq) - music playback के लिए detailed 15-band tone shaping
 - [5Band Dynamic EQ](#5band-dynamic-eq) - डायनेमिक्स-आधारित इक्वलाइज़र जो आपकी संगीत पर प्रतिक्रिया करता है
-- [5Band FIR PEQ](#5band-fir-peq) - तीखे और स्थिर adjustments के लिए five-band FIR equalizer
+- [5Band FIR PEQ](#5band-fir-peq) - minimum-phase या linear-phase FIR filtering के साथ five-band tone shaping
 - [5Band PEQ](#5band-peq) - bass, mids और treble shape करने के लिए flexible equalizer
 - [Band Pass Filter](#band-pass-filter) - विशिष्ट आवृत्तियों पर ध्यान केंद्रित करें
 - [Comb Filter](#comb-filter) - फेज़िंग जैसी, खोखली या metallic sound coloration
@@ -34,9 +33,14 @@ lang: hi
 - [Loudness Equalizer](#loudness-equalizer) - कम वॉल्यूम पर सुनने के लिए आवृत्ति संतुलन सुधार
 - [Narrow Range](#narrow-range) - ध्वनि के विशिष्ट हिस्सों पर ध्यान केंद्रित करें
 - [Room EQ](#room-eq) - सेव की गई room measurements पर आधारित FIR correction
-- [Tilt EQ](#tilt-eq) - झुकाव EQ - ध्वनि स्पेक्ट्रम को झुकाने वाला सरल इक्वलाइज़र
+- [Tilt EQ](#tilt-eq) - ध्वनि स्पेक्ट्रम को झुकाने वाला सरल इक्वलाइज़र
 - [Tonal Balance EQ](#tonal-balance-eq) - लंबी अवधि के tonal balance को music style के target की ओर अपने-आप correct करता है
 - [Tone Control](#tone-control) - सरल बास, मिड और ट्रेबल समायोजन
+
+<!-- spectrum-overlay -->
+## स्पेक्ट्रम ओवरले
+
+किसी समर्थित ग्राफ़ में स्पेक्ट्रम आइकन दबाकर After, Before + After और Off के बीच क्रम से बदलें। After में केवल प्रोसेसिंग के बाद का स्पेक्ट्रम नीली लाइन के रूप में दिखता है। Before + After में प्रोसेसिंग से पहले और बाद के स्पेक्ट्रम के बीच का बदलाव भरा जाता है: प्रोसेसिंग के बाद जिन फ़्रीक्वेंसी का स्तर बढ़ा है वे गर्म रंग में, जिनका स्तर घटा है वे नीले रंग में दिखती हैं, और ग्रे लाइन After स्पेक्ट्रम दिखाती है। इनपुट और आउटपुट स्पेक्ट्रम प्लेबैक के एक ही क्षण से लिए जाते हैं, इसलिए तुलना में वही ऑडियो मेल खाता है। **सामान्य** मोड में 1/12-ऑक्टेव स्मूदिंग लागू होती है; **उच्च गुणवत्ता** मोड कम फ़्रीक्वेंसी का अधिक बारीकी से विश्लेषण करता है। सुनते समय इस तुलना से देखें कि हर समायोजन बास, मिड्स और हाईज़ को कैसे बदलता है। स्पेक्ट्रम के स्तर ग्राफ़ के दाईं ओर dBFS स्केल पर पढ़ें। यह ग्राफ़ के gain scale से अलग है; 0 dBFS डिजिटल full-scale reference है और कम मान शांत स्तर दिखाते हैं। विन्यास में ओवरले स्पेक्ट्रम गुणवत्ता के लिए **सामान्य** या **उच्च गुणवत्ता**, और प्रदर्शन के लिए **तात्कालिक मान** या **पीक होल्ड** चुनें। पीक होल्ड हाल के अधिकतम स्तरों को दिखाता रहता है और फिर उन्हें धीरे-धीरे कम करता है। After में केवल प्रोसेसिंग के बाद का स्पेक्ट्रम लिया जाता है; Off में डेटा लेना और चित्रण दोनों बंद हो जाते हैं।
 
 ## 15Band GEQ
 
@@ -99,7 +103,7 @@ listening के दौरान bass, vocals, presence और treble को fin
   - narrow Q (4.0-8.0) cuts केवल तब लगाएं जब कोई specific resonance परेशान कर रहा हो
   - 10kHz high shelf के साथ हल्की हवा जोड़ें (+2 से +4dB)
 - बास गुणवत्ता नियंत्रण:
-  - 100Hz peaking filter के साथ मूल ध्वनियों को आकार दें
+  - 100Hz peaking filter से bass की भरपूरता को आकार दें
   - कोई bass note या room boom बहुत उभर रहा हो तो narrow cut इस्तेमाल करें
   - low shelf के साथ स्मूथ बास एक्सटेंशन बनाएं
 - सूक्ष्म श्रवण समायोजन:
@@ -156,7 +160,7 @@ listening के दौरान bass, vocals, presence और treble को fin
   - मध्यम Threshold (-24dB) और तेज़ Attack (10ms) सेट करें
   - जब वोकल्स बहुत आक्रामक हो जाएँ, तो ही यह स्वतः कठोरता को कम करता है
 - स्पष्टता और चमक बढ़ाएँ:
-  - BBE-शैली का उच्च-आवृत्ति संवर्धन उपयोग करें (Filter Type: Highshelf, SC Freq: 1200Hz, Ratio: 0.5, Attack: 1ms)
+  - Band 5 को Filter Type: Highshelf, Frequency: लगभग 10000Hz, SC Freq: लगभग 1200Hz, Ratio: 0.5, Attack: 1ms के साथ उपयोग करें
   - मिड्स प्राकृतिक ध्वनि वाली स्पष्टता के लिए उच्च आवृत्तियाँ ट्रिगर करती हैं
   - स्थायी चमक के बिना संगीत में चमक जोड़ता है
 - अत्यधिक बेस को नियंत्रित करें:
@@ -191,16 +195,16 @@ listening के दौरान bass, vocals, presence और treble को fin
   - Sidechain Q: डिटेक्शन बैंडविड्थ (0.1-10.0)
 
 ### विज़ुअल डिस्प्ले
-- आपके ध्वनि समायोजन दिखाने वाला रीयल-टाइम ग्राफ
-- सटीक नियंत्रण के साथ उपयोग में आसान स्लाइडर्स
-- वन-क्लिक डिफ़ॉल्ट सेटिंग्स रीसेट
+- रीयल-टाइम frequency response graph
+- मौजूदा boosts और cuts दिखाने वाला dynamic response curve
+- इंटरैक्टिव frequency और gain controls
 - Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## 5Band FIR PEQ
 
 5Band FIR PEQ, 5Band PEQ जैसी परिचित पाँच-band controls को बनाए रखते हुए सभी bands की संयुक्त response को एक FIR filter के रूप में बनाता है। इसका उपयोग playback की सटीक correction, बहुत narrow cuts या तीखे shelf transitions के लिए करें, जब आप recursive filters की stability limits से बचना चाहते हों। Minimum Phase processing delay कम रखता है, जबकि Linear Phase सभी frequencies को एक समान निश्चित समय से delay करता है। इसके लिए WASM DSP engine आवश्यक है; उसके बिना signal बिना बदलाव के गुजरता है।
 
-### Sound enhancement guide
+### ध्वनि सुधार गाइड
 
 - **Minimum Phase**, 32768 Taps और 128 samples की Latency से शुरू करें। सामान्य bass, midrange और treble adjustment के लिए लगभग 0.7 से 2 तक के broad Q values उपयोग करें।
 - Measurement में दिखी narrow peak को घटाने के लिए Peaking चुनें, center frequency को peak पर रखें और Q को धीरे-धीरे बढ़ाएँ। 10 से अधिक values सटीक correction के लिए हैं; बहुत narrow response को अधिक Taps चाहिए हो सकते हैं, इसलिए status देखें।
@@ -209,7 +213,7 @@ listening के दौरान bass, vocals, presence और treble को fin
 - जब पूरे spectrum में स्थिर phase delay महत्वपूर्ण हो और अतिरिक्त latency स्वीकार्य हो, तो **Linear Phase** चुनें। खासकर तीखी settings में transient से पहले energy आ सकती है, इसलिए तेज़ attacks वाली music पर Minimum Phase से भी तुलना करें।
 - FIR design feedback poles से होने वाली instability से बचता है, लेकिन अधिक boost या बहुत ऊँचा Q फिर भी लंबी और अधिक selective impulse response बनाता है। अलग-थलग resonance के लिए boost की जगह cut को प्राथमिकता दें और playback के लिए पर्याप्त headroom रखें।
 
-### Parameters
+### पैरामीटर
 
 - **Phase**
   - **Minimum Phase** - Causal minimum-phase response बनाता है और FIR की आधी लंबाई के बराबर delay नहीं जोड़ता। चुनी हुई Latency फिर भी लागू होती है।
@@ -223,7 +227,7 @@ listening के दौरान bass, vocals, presence और treble को fin
 - **Q** - Response width को 0.1 से 100 तक set करता है। बड़ी values बदलाव को narrow और छोटी values broad बनाती हैं। Slider logarithmic scale का उपयोग करता है।
 - **Slope** - LowPass या HighPass की cutoff rate को 0.1 से 384 dB/oct तक set करता है। Slider logarithmic scale का उपयोग करता है और यह control केवल इन दो Type values के लिए उपलब्ध है।
 
-### Display को समझना
+### दृश्य प्रदर्शन
 
 - धूसर curve मौजूदा band settings से बनी संयुक्त «लक्ष्य» response दिखाती है।
 - हरी curve designed FIR की वास्तविक magnitude response दिखाती है। दोनों curves के बीच दिखाई देने वाला अंतर बताता है कि चुने गए Taps target को ठीक से reproduce नहीं कर पा रहे हैं।
@@ -236,16 +240,16 @@ listening के दौरान bass, vocals, presence और treble को fin
 
 music playback shape करने के लिए flexible 5-band equalizer। bass boomy लगे, vocals harsh लगें, या highs में थोड़ी sparkle चाहिए लेकिन detailed 15-band version खोलना न चाहें, तब उपयोगी है।
 
-### ध्वनि सुधार के लिए मार्गदर्शन
+### ध्वनि सुधार गाइड
 - वोकल और वाद्य यंत्रों की स्पष्टता:
   - natural presence के लिए 3.16kHz band को moderate Q (1.0-2.0) के साथ इस्तेमाल करें
   - narrow Q (4.0-8.0) cuts केवल तब लगाएं जब कोई specific resonance परेशान कर रहा हो
   - 10kHz high shelf के साथ हल्की हवा जोड़ें (+2 से +4dB)
 - बास गुणवत्ता नियंत्रण:
-  - 100Hz peaking filter के साथ मूल ध्वनियों को आकार दें
+  - 100Hz peaking filter से bass की भरपूरता को आकार दें
   - कोई bass note या room boom बहुत उभर रहा हो तो narrow cut इस्तेमाल करें
   - low shelf के साथ स्मूथ बास एक्सटेंशन बनाएं
-- Everyday Sound Tuning:
+- रोज़मर्रा की ध्वनि ट्यूनिंग:
   - natural tone changes के लिए broad, small adjustments इस्तेमाल करें
   - harshness, boominess या dullness को कान से घटाएं
   - bypass से बार-बार तुलना करें ताकि music balanced रहे
@@ -379,14 +383,6 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 
 वास्तविक केबल प्रतिरोध/इंडक्टेंस और शून्य से अलग एम्पलीफायर आउटपुट प्रतिबाधा के साथ ईयरफोन चलाने पर जो छोटे आवृत्ति-प्रतिक्रिया बदलाव पैदा होते हैं, यह प्लगइन उन्हें पुनः बनाता है। ईयरफोन की प्रतिबाधा आवृत्ति के साथ बदलती है (ड्राइवर रेज़ोनेंस और वॉइस-कॉइल इंडक्टेंस के कारण), इसलिए स्रोत और केबल प्रतिबाधा हर ईयरफोन में अलग-अलग स्तर बदलाव पैदा करती हैं। यह एक वास्तविकता-जांच के रूप में भी उपयोगी है: सामान्य बनावट और गुणवत्ता वाली केबलों, सामान्य एम्पलीफायर आउटपुट प्रतिबाधा, और ऐसे ईयरफोन जो असामान्य रूप से कम प्रतिबाधा वाले या किसी और तरह असामान्य न हों, उनके साथ सामान्य ईयरफोन-केबल अंतर से सुनाई देने वाला बदलाव आम तौर पर नगण्य रहने जितना छोटा होता है। यह प्रभाव बड़े प्रतिबाधा शिखर वाले कम-प्रतिबाधा ईयरफोन में सबसे मजबूत होता है, और आधुनिक कम-आउटपुट-प्रतिबाधा एम्पलीफायरों के साथ आम तौर पर सूक्ष्म रहता है।
 
-### सिस्टम प्रीसेट
-
-स्रोत और केबल के अलग-अलग संयोजनों की पूरी सेटिंग की तुलना करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
-
-- **High Impedance Source** - अधिक आउटपुट इम्पीडेंस वाला स्रोत, जो कम इम्पीडेंस के ईयरफ़ोन को चलाता है।
-- **Long Thin Cable** - केबल का अधिक रेज़िस्टेंस और इंडक्टेंस।
-- **Vintage Portable Out** - अधिक इम्पीडेंस वाला पोर्टेबल आउटपुट और 32 Ω का ईयरफ़ोन।
-
 ### सुनने में सुधार के लिए मार्गदर्शन
 - स्रोत प्रतिबाधा के प्रभाव का मूल्यांकन करें:
   - ट्यूब एम्पलीफायर या उच्च-प्रतिबाधा हेडफोन आउटपुट का अनुकरण करने के लिए Output Z बढ़ाएं
@@ -401,6 +397,14 @@ music playback shape करने के लिए flexible 5-band equalizer। 
 - सामान्य केबल अंतर की सुनाई देने वाली मात्रा जांचें:
   - यथार्थवादी Cable R और Cable L मान सेट करें, फिर bypass से तुलना करके अनुमान लगाएं कि सामान्य केबल अंतर कितने छोटे हैं
   - यदि बदलाव केवल बहुत अधिक Output Z, Cable R या बहुत कम Base Z settings पर ही स्पष्ट होता है, तो वही तुलना बताती है कि उस ईयरफोन और एम्पलीफायर संयोजन में सामान्य केबलों का अंतर सुनाई देने योग्य रूप से महत्वपूर्ण होने की संभावना कम है
+
+### सिस्टम प्रीसेट
+
+स्रोत और केबल के अलग-अलग संयोजनों की पूरी सेटिंग की तुलना करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **High Impedance Source** - अधिक आउटपुट इम्पीडेंस वाला स्रोत, जो कम इम्पीडेंस के ईयरफ़ोन को चलाता है।
+- **Long Thin Cable** - केबल का अधिक रेज़िस्टेंस और इंडक्टेंस।
+- **Vintage Portable Out** - अधिक इम्पीडेंस वाला पोर्टेबल आउटपुट और 32 Ω का ईयरफ़ोन।
 
 ### पैरामीटर
 - **Output Z (Ω)** - एम्पलीफायर आउटपुट प्रतिबाधा (0 से 20)। आधुनिक एम्पलीफायरों में 1Ω से कम मान सामान्य हैं; अधिक मान प्रतिबाधा-जनित रंगत को मजबूत बनाते हैं।
@@ -436,7 +440,7 @@ Group Delay EQ सामान्य equalizer का समकक्ष है:
 
 - **Speaker और subwoofer की timing**: यदि bass बाकी संगीत से देर से पहुँचता है, तो crossover के ऊपर की bands को उतनी ही मात्रा में delay करें जब तक graph उस हिस्से में सपाट न हो जाए। सामान्य सुधार 2 से 10 ms के होते हैं और kick drum तथा bass पर सबसे आसानी से पहचाने जाते हैं।
 - **Ported speakers और room modes**: Port वाला cabinet अपनी tuning frequency के आसपास group delay बढ़ाता है। प्रभावित low band को घटाएं, या बाकी सभी को बढ़ाएं, ताकि curve अधिक सपाट हो जाए। 50 Hz से नीचे थोड़ा अंतर बचा रहना सामान्य है।
-- **Phase distortion का श्रवण परीक्षण**: एक band को +10 ms पर रखें, effect बंद होने से तुलना करें, फिर मान तब तक घटाएं जब तक अंतर सुनाई देना बंद न हो जाए। इस परिणाम को केवल phase की तुलना तभी मानें जब status line में Ripple पर्याप्त रूप से छोटी हो और हरी «वास्तविक» curve धूसर «लक्ष्य» curve के बहुत पास हो। अन्यथा magnitude में बदलाव या delay का ठीक से साकार न होना भी आपकी सुनाई देने वाली चीज़ों को प्रभावित कर सकता है।
+- **Phase distortion का श्रवण परीक्षण**: एक band को +10 ms पर रखें, effect बंद होने से तुलना करें, फिर मान तब तक घटाएं जब तक अंतर सुनाई देना बंद न हो जाए। इस परिणाम को केवल phase की तुलना तभी मानें जब status line में Ripple पर्याप्त रूप से छोटी हो और हरी Realized curve धूसर Target curve के बहुत पास हो। अन्यथा magnitude में बदलाव या delay का ठीक से साकार न होना भी आपकी सुनाई देने वाली चीज़ों को प्रभावित कर सकता है।
 - **एक-एक band पर काम करें**: एक बार में एक slider बदलें और सुनें। केवल phase के बदलाव अधिकांश संगीत में सूक्ष्म होते हैं और मुख्यतः drums, plucked strings और piano के attack जैसे transients पर दिखते हैं।
 - **दोनों curves देखें**: यदि हरी curve धूसर curve का अनुसरण करना छोड़ दे, तो वर्तमान Taps से वह आकार नहीं बन सकता। Taps बढ़ाएं या पड़ोसी bands के बीच अंतर घटाएं।
 
@@ -445,7 +449,7 @@ Group Delay EQ सामान्य equalizer का समकक्ष है:
 - **Taps** - FIR की लंबाई: 4096, 8192, 16384 या 32768। कम frequencies को लंबा filter चाहिए: 96 kHz पर 16384 taps लगभग 60 Hz तक बड़े delay अंतर भी बनाए रखते हैं, जबकि छोटी settings में सबसे पहले bass की सटीकता घटती है। Taps यह भी तय करता है कि filter कितनी delay संभाल सकता है, यानी sliders की सीमा भी। अधिक taps का अर्थ अधिक latency और अधिक processing भी है।
 - **Latency** - Convolution engine की आरंभिक latency: 0, 128, 256, 512 या 1024 samples। कम मान delay घटाते हैं पर processing बढ़ाते हैं।
 - **Band sliders (25 Hz से 16 kHz)** - पंद्रह sliders हर band की group delay तय करते हैं। धनात्मक मान उस range को बाद में पहुँचाते हैं, ऋणात्मक पहले। सीमा उतनी ही है जितनी delay filter संभाल सकता है: 96 kHz पर 4096 taps के साथ ±18.6 ms और 32768 taps के साथ ±149.3 ms। सबसे ऊँची band इन मानों को पूरी तरह साकार करती है, जबकि नीची bands को बड़ी setting का अनुसरण करने के लिए अधिक taps चाहिए; कहाँ तक पहुँचा, यह graph दिखाता है। मान frequency के साथ सहजता से interpolate होते हैं, इसलिए पड़ोसी bands हमेशा एक-दूसरे में मिल जाती हैं।
-- **Phase angle** - हर millisecond मान के नीचे slider उसी delay को उस band की केंद्र frequency पर phase के घुमाव के रूप में दिखाता है। एक पूरे चक्कर (360°) से आगे इसे «पूरे cycles + शेष कोण» में बाँटकर दिखाया जाता है, इसलिए `+2c180°` का अर्थ है दो पूरे cycles और आधा चक्कर।
+- **Phase angle** - हर millisecond मान के नीचे slider उसी delay को उस band की केंद्र frequency पर phase के घुमाव के रूप में दिखाता है। एक पूरे चक्कर से आगे इसे «पूरे cycles + शेष कोण» में बाँटकर दिखाया जाता है, इसलिए `+2c180°` का अर्थ है दो पूरे cycles और आधा चक्कर।
 - **Reset** - किसी slider पर double-click करने से वह band 0 ms पर लौट आती है। Graph का Reset बटन सभी bands को एक साथ रीसेट करता है।
 
 कुल latency, Latency की setting और Taps के आधे का योग है। sliders हिलाने पर यह नहीं बदलती, इसलिए पूरी chain की delay केवल Taps या Latency बदलने पर बदलती है।
@@ -548,9 +552,9 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
   - सूक्ष्म गर्माहट प्रभाव के लिए -12dB/oct के हल्के ढलान का उपयोग करें
   - एक अधिक एनालॉग जैसा ध्वनि चरित्र बनाता है
 - विशेष प्रभाव बनाएं:
-  - vintage radio effect के लिए 1-3kHz के बीच आवृत्ति सेट करें
+  - दबी हुई, narrow-band ध्वनि के लिए आवृत्ति 1-3kHz के बीच रखें और तीव्र ढलान चुनें
   - नाटकीय filtering के लिए -48dB/oct या उससे अधिक तीव्र ढलान का उपयोग करें
-  - band-pass effects के लिए Hi Pass Filter के साथ संयोजन करें
+  - vintage radio effect के लिए Hi Pass Filter के साथ मिलाकर निम्न आवृत्तियाँ भी हटाएं
 - शोर और हिस्स को नियंत्रित करें:
   - संगीत सामग्री के ठीक ऊपर की आवृत्ति सेट करें (आमतौर पर 14-18kHz)
   - प्रभावी शोर नियंत्रण के लिए -36dB/oct या उससे अधिक तीव्र ढलान का उपयोग करें
@@ -578,14 +582,6 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 
 ## Loudness Equalizer
 
-### सिस्टम प्रीसेट
-
-लाउडनेस कम्पेन्सेशन की पूरी कर्व से शुरुआत करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
-
-- **Late Night Listening** - कम आवाज़ में सुनने के लिए अधिक कम्पेन्सेशन।
-- **Quiet Background** - रोज़मर्रा के उपयोग के लिए मध्यम कम्पेन्सेशन कर्व।
-- **Near Reference Level** - ऊँचे संदर्भ स्तर के आसपास न्यूनतम कम्पेन्सेशन।
-
 यह विशेष इक्वलाइज़र वॉल्यूम समायोजन को आवृत्ति-संतुलन सुधार से जोड़ता है। Relative Volume के 0dB पर अनुमानित औसत श्रवण ध्वनि-दाब स्तर को Average SPL में सेट करें और सामान्य वॉल्यूम बदलावों के लिए Relative Volume का उपयोग करें। वॉल्यूम घटाने पर सुधार अपने-आप बढ़ता है और वॉल्यूम बढ़ाने पर घटता है।
 
 ### सुनने में सुधार के लिए मार्गदर्शन
@@ -604,6 +600,14 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
   - बास वृद्धि के लिए Low shelf (100-300Hz)
   - ट्रेबल वृद्धि के लिए High shelf (3-6kHz)
   - आवृत्ति श्रेणियों के बीच सहज संक्रमण
+
+### सिस्टम प्रीसेट
+
+लाउडनेस कम्पेन्सेशन की पूरी कर्व से शुरुआत करने के लिए इफ़ेक्ट के शीर्षक में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+
+- **Late Night Listening** - कम आवाज़ में सुनने के लिए अधिक कम्पेन्सेशन।
+- **Quiet Background** - रोज़मर्रा के उपयोग के लिए मध्यम कम्पेन्सेशन कर्व।
+- **Near Reference Level** - ऊँचे संदर्भ स्तर के आसपास न्यूनतम कम्पेन्सेशन।
 
 ### पैरामीटर
 - **Average SPL** - Relative Volume के 0dB पर अनुमानित औसत श्रवण ध्वनि-दाब स्तर (60dB से 96dB)
@@ -646,7 +650,7 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 - अनचाही आवाजें हटाएं:
   - निम्न-आवृत्ति गड़गड़ाहट को कम करें
   - अत्यधिक उच्च-आवृत्ति hiss को हटाएं
-  - संगीत के सबसे महत्वपूर्ण हिस्सों पर ध्यान केंद्रित करें
+  - उस range पर ध्यान केंद्रित करें जिसे आप सबसे स्पष्ट सुनना चाहते हैं
 
 ### पैरामीटर
 - **HPF Frequency** - यह नियंत्रित करता है कि निम्न ध्वनियाँ कहाँ से कम होना शुरू होती हैं (20Hz से 4000Hz)
@@ -672,142 +676,116 @@ Group Delay PEQ, Group Delay EQ का parametric रूप है। पंद�
 
 ## Room EQ
 
-Room EQ, EffeTune में सेव की गई frequency-response measurements से FIR correction filters बनाता है। Default रूप से यह एक साझा measurement से एक filter design करता है और उसे plugin को route किए गए सभी channels पर लागू करता है; किसी एक channel को अलग measurement assign करने पर उस channel को अपना खुद का filter मिलता है, जबकि बाकी सभी settings पूरे instance में साझा रहती हैं। Standard plugin bus selector तय करता है कि कौन-से channels process होंगे। यह चुनी गई measurement के सभी points का औसत लेता है, परिणाम को smooth करता है और चुनी हुई correction range में विचलन घटाता है। इसका उपयोग तब करें जब speaker और room के परस्पर प्रभाव से listening area में बार-बार आने वाले peaks या व्यापक tonal imbalance बनें। यह linear-phase magnitude correction के साथ-साथ minimum-phase magnitude correction और मापी गई excess phase की correction को जोड़ने वाला mixed-phase correction भी कर सकता है: Phase Correction direct sound पर काम करता है, और Reverb Correction उसके बाद आने वाली room reverberation को counteract करता है। Consensus में phase target, measurement points का reliability-weighted average होता है। Room EQ को WASM DSP engine चाहिए; यह उपलब्ध न हो तो signal बिना बदले pass होता है।
+Room EQ, EffeTune में सेव की गई frequency-response measurements से FIR correction filters बनाता है। Default रूप से यह एक साझा filter design करता है और उसे plugin से route होने वाले हर channel पर लागू करता है; अलग-अलग channels को अलग सेव की गई measurement भी assign की जा सकती है, जबकि बाकी correction settings पूरे instance में साझा रहती हैं। Filter चुनी गई measurement के सभी points का औसत लेता है, curve को smooth करता है और चुनी गई frequency range में peaks और dips घटाता है। इसका उपयोग तब करें जब speakers और room के आपसी असर से आपकी listening position पर बार-बार दिखने वाले peaks या व्यापक tonal असंतुलन पैदा हो। Minimum-phase या linear-phase magnitude correction के अलावा, **Correction** mode direct sound (**Phase Correction**) और room reverberation (**Reverb Correction**) की मापी गई excess phase भी correct कर सकता है। Room EQ को WASM DSP engine चाहिए; यह उपलब्ध न हो तो signal बिना बदले pass होता है।
 
 ### ध्वनि सुधार गाइड
 
-- जिस speaker group को ठीक करना है, उसे listening area में पास-पास की कई microphone positions से मापें और वह measurement Room EQ में चुनें। कई points से correction केवल एक सटीक स्थान पर कम निर्भर रहता है।
-- शुरुआत **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** और **Level Correction: 100%** से करें। Plugin के मुख्य on/off control से तुलना करके देखें कि balance अधिक समान हो, पर ध्वनि अस्वाभाविक रूप से पतली या बहुत चमकीली न बने।
-- यदि filter ऐसे संकरे dips भरने की कोशिश करे जो microphone position के साथ बदलते हैं, तो Smoothing बढ़ाएँ या Max Boost घटाएँ। Max Boost को 0 dB रखने पर automatic boost रुकता है, लेकिन peaks घटाने वाले cuts जारी रहते हैं।
-- यदि पूरी level correction बहुत अधिक लगे, तो Level Correction घटाएँ। यह हर automatic correction value को dB में समान अनुपात से बदलता है, इसलिए 50% पर +6 dB की correction +3 dB और -8 dB की correction -4 dB हो जाती है।
-- Correction Low और Correction High को speaker तथा measurement microphone की भरोसेमंद range तक सीमित रखें। अविश्वसनीय measurement range के बाहर correction करने से परिणाम बिगड़ सकता है।
-- Room correction स्थिर होने के बाद अतिरिक्त EQ से हल्का listening target बनाएँ, जैसे 100 Hz के पास चौड़ा +2 dB Low shelf या 10 kHz के पास छोटा High shelf adjustment। ये bands target बदलते हैं और FIR filter में शामिल होते हैं।
-- कम latency के लिए **Minimum** चुनें। Frequency response के साथ excess phase भी correct करना हो तो **Correction** चुनें। Reference Point को **सहमति (सभी बिंदु)** पर रखकर, Direct Window के default और **Phase Correction: 100%** से शुरुआत करें। किसी एक microphone position के लिए excess phase optimize करनी हो तभी अलग point चुनें। यदि phase correction बहुत अधिक लगे, तो Phase Correction को अलग से घटाएँ।
-- **Low-frequency Phase Extension** default रूप से बंद रहती है। Phase Low के नीचे excess phase correct करनी हो तभी इसे चालू करें। Frequency कम होने पर analysis windows लगातार लंबी होती जाती हैं और room response का बाद का हिस्सा भी शामिल हो सकता है, इसलिए सहमति से शुरुआत करना सबसे सुरक्षित है। एक से अधिक listening positions पर तुलना करें और bass timing कम consistent लगे तो extension बंद कर दें।
-- **Reverb Correction** default रूप से 0% है। Correction mode में default **Reverb Max Freq: 250 Hz** बनाए रखते हुए इसे थोड़ा-थोड़ा बढ़ाएँ; इससे low-frequency reverberation counteract होती है और परिणाम पूरे listening area में उपयोगी रहता है। Reverb Max Freq को ऊँची frequencies की ओर तभी बढ़ाएँ जब यह समझ लें कि परिणाम तब एक ही listening position के लिए optimization बन जाता है।
-- Room EQ speaker-distance alignment अपने-आप नहीं निकालता। **Delay** पूरे instance में साझा रहता है, भले ही channels अलग-अलग measurements उपयोग करें; अलग channel groups को अलग manual delay values चाहिए हों तभी अलग Room EQ instances उपयोग करें।
+- **कई points पर measurement**: Speaker या channel group को अपनी listening seat के आसपास पास-पास की कई microphone positions से मापें, फिर वह सेव की गई measurement चुनें, ताकि correction किसी एक microphone position पर ज़रूरत से ज़्यादा निर्भर न हो।
+- **शुरुआती settings**: **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB** और **Level Correction: 100%** से शुरू करें। Effect को on/off करके जाँचें कि tonal balance अधिक समान हुआ है और ध्वनि पतली या कर्कश नहीं लगती।
+- **Dips को ज़्यादा boost न करें**: यदि filter संकरे acoustic cancellations को भरने की कोशिश करे, तो **Smoothing** बढ़ाएँ या **Max Boost** घटाएँ (0 dB पर automatic boosts बंद हो जाते हैं, जबकि peak cuts बने रहते हैं)।
+- **Correction की strength**: 100% बहुत ज़्यादा लगे तो **Level Correction** घटाएँ (50% पर +6 dB का boost +3 dB और −8 dB का cut −4 dB हो जाता है)।
+- **केवल भरोसेमंद range**: **Correction Low** और **Correction High** को उसी range में रखें जिसे आपका speaker और measurement microphone भरोसेमंद ढंग से reproduce करते हैं; उसके बाहर correction करने से परिणाम कम सटीक होता है।
+- **Target shaping**: Room peaks नियंत्रित हो जाने के बाद, हल्की tonal पसंद के लिए **Additional EQ** (सीधे FIR filter में शामिल) का उपयोग करें, जैसे 100 Hz के आसपास चौड़ा +2 dB low shelf।
+- **Excess-phase और reverb correction**: सबसे कम latency के लिए **Phase: Minimum**, और excess phase भी align करने के लिए **Phase: Correction** चुनें। शुरुआत **Reference Point: Consensus (all points)**, default **Direct Window** और **Phase Correction: 100%** से करें। **Low-frequency Phase Extension** तभी चालू करें जब **Phase Low** से नीचे भी excess-phase correction चाहिए, और listening positions के बीच bass timing कम consistent लगे तो इसे बंद कर दें। Listening area में low-frequency reverberation counteract करने के लिए **Reverb Max Freq: 250 Hz** रखते हुए **Reverb Correction** धीरे-धीरे बढ़ाएँ; **Reverb Max Freq** बढ़ाने पर परिणाम केवल मापी गई position के लिए optimization बन जाता है।
+- **Manual delay**: Room EQ speaker-distance alignment नहीं निकालता। **Delay** instance के सभी channels पर लागू होता है; अलग channel groups को अलग manual delays चाहिए हों तो अलग Room EQ instances उपयोग करें।
 
-Measurement एक device-local reference है। URL या preset में उसका नाम और identifier रहता है, measurement data नहीं। दूसरे device पर measurement उपयोग करने के लिए export से पहले measurement screen पर **Measurement JSON export में impulse responses शामिल करें** चालू करें, फिर दूसरे device पर import करके उसे चुनें। यह option default रूप से off होता है, और impulse responses शामिल करने से file का आकार दसियों megabytes तक बढ़ सकता है। Measurement न मिलने पर warning दिखती है और Room EQ पुराने correction data की जगह time-aligned bypass उपयोग करता है।
+> **दूसरे device पर measurement उपयोग करना**: Presets और URLs में measurement का नाम और ID सेव होते हैं, acoustic data नहीं। Measurement को दूसरे device पर ले जाने के लिए export से पहले फ्रीक्वेंसी रिस्पॉन्स मापन tool में **Measurement JSON export में impulse responses शामिल करें** चालू रखें (default रूप से चालू; इससे file दसियों megabytes बड़ी हो सकती है), फिर target device पर वह JSON file import करें। चुनी गई measurement न मिले तो Room EQ warning दिखाता है और signal को बिना correction pass करता है।
 
 ### पैरामीटर
 
-- **Measurement** - उस साझा सेव की गई frequency-response measurement को चुनता है जिसे कोई भी channel उपयोग करता है जिसके लिए per-channel override सेट नहीं है। सूची में नाम, points की संख्या और impulse-response data होने पर `IR` दिखता है। Measurement जोड़ने या बदलने के बाद **Refresh measurements** उपयोग करें।
-- **Measurement ChN** - instance की bus selection द्वारा handle किए जाने वाले हर channel के लिए एक वैकल्पिक override selector। इसे default **(Shared)** पर छोड़ने पर ऊपर वाली Measurement उपयोग होती है; कोई अलग सेव की गई measurement assign करने पर उस channel को अपना खुद का filter मिलता है। सभी channels को **(Shared)** पर छोड़ने से बिल्कुल वही व्यवहार मिलता है जो एक ही साझा filter से मिलता।
-- **Delay** - सभी processed channels में 0 से 20 ms manual delay जोड़ता है। यह plugin की दिखाई गई processing latency में शामिल नहीं होता।
-- **Phase** - FIR filter का phase व्यवहार चुनता है।
-  - **Minimum** - सबसे कम अतिरिक्त latency वाला minimum-phase magnitude correction।
-  - **Linear** - Linear-phase magnitude correction। यह input की relative phase बनाए रखता है, लेकिन चुने गए taps की आधी delay जोड़ता है।
-  - **Correction** - Minimum-phase magnitude correction के साथ सेव की गई impulse response की excess phase correction करता है: Phase Correction, Direct Window में analyze हुए direct-sound component को नियंत्रित करता है, और Reverb Correction, Reverb Window में analyze हुई बाद की reverberation को अतिरिक्त रूप से counteract कर सकता है। Mixed-phase filter के लिए `Taps / 2` samples की delay बनाए रखते हुए यह group-delay variation घटाता है। Design के समय main impulse की energy position को उसी Level Correction setting वाली Minimum response के साथ align रखा जाता है। जब सभी channels साझा measurement उपयोग करते हैं, तब उसी से एक filter design किया जाता है और उसे बिना बदले सभी routed channels पर लगाया जाता है, इसलिए Level Correction, Phase Correction या Reverb Correction बदलने से channels के बीच अलग-अलग timing difference नहीं आता। किसी channel को उसकी अपनी measurement assign करने पर उस channel के लिए अलग filter design होता है। इसके लिए Reference Point, Direct Window और impulse-response data चाहिए।
-- **Taps** - FIR length: 8192, 16384, 32768, 65536 या 131072। अधिक taps low-frequency resolution बढ़ाते हैं, लेकिन delay, memory और filter-design time भी बढ़ाते हैं। Linear और Correction में `Taps / 2` samples की delay जुड़ती है।
-- **Latency** - Convolution engine की head latency: 0, 128, 256, 512 या 1024 samples। कम value delay घटाती है लेकिन processing बढ़ाती है; Linear और Correction में FIR की half-length delay आम तौर पर अधिक होती है।
-- **Smoothing** - 0.02 से 1.00 octave तक Gaussian smoothing। बड़ी value व्यापक और अधिक conservative correction देती है; छोटी value बारीक response variations को अधिक follow करती है।
-- **Phase Smoothing** - Correction mode में direct sound की मापी गई excess-phase correction पर लागू होने वाली 0.02 से 1.00 octave की Gaussian smoothing। Default **Auto** में यह Smoothing के बराबर रहती है, जिससे magnitude और phase corrections एक जैसी smooth होती हैं। Phase correction को अलग से smooth करने के लिए Auto हटाएँ; मौजूदा effective value शुरुआती बिंदु के रूप में बनी रहती है। छोटी value बारीक timing detail follow करती है, बड़ी value अधिक conservative phase correction देती है। यह Reverb Correction को प्रभावित नहीं करती; वह Reverb Smoothing का उपयोग करती है।
-- **Correction Low / Correction High** - Automatic magnitude correction की निचली और ऊपरी transition boundaries सेट करते हैं। Gaussian smoothing से पहले इन boundaries पर और इनके बाहर automatic correction को 0 dB माना जाता है। इसलिए Smoothing तय करता है कि correction कितनी धीरे कम हो और हर boundary के बाहर कितनी दूर तक फैले। ऊपरी boundary को Nyquist frequency के नीचे margin रखने के लिए भीतर से भी सीमित किया जाता है।
-- **Direct Window** - Correction में direct-sound onset के बाद उपयोग होने वाली measurement response की 1 से 50 ms लंबाई। यह Phase Low और उससे ऊपर fixed analysis window है और Low-frequency Phase Extension चालू होने पर सबसे छोटी analysis window है। लंबी window Auto के Phase Low को नीचे ला सकती है, पर अधिक room reflections भी शामिल करती है।
-- **Phase Low** - Low-frequency Phase Extension बंद होने पर Correction mode में measured excess-phase correction की निचली frequency 20 से 20000 Hz तक सेट करता है। Extension चालू होने पर Phase Low, fixed Direct Window और नीचे की ओर लगातार लंबी होती low-frequency windows के बीच की boundary बन जाता है। Default **Auto** में Room EQ, Correction Low और Direct Window में तीन cycles समाने वाली frequency में से अधिक मान का उपयोग करता है (6 ms पर 500 Hz)। Boundary को manually सेट करने के लिए Auto हटाएँ। Manual value Correction Low से independent होती है और Direct Window में एक cycle समाने वाली frequency (6 ms पर 167 Hz) से कम नहीं हो सकती। Automatic boundary से कम values time-window truncation और room reflections से अधिक प्रभावित होती हैं।
-- **Low-frequency Phase Extension** - Phase Low के नीचे frequency कम होने के साथ लंबी होती frequency-dependent analysis windows का उपयोग करके measured excess-phase correction को Phase Low से Correction Low की ओर बढ़ाती है। Phase Low और उससे ऊपर fixed analysis window का उपयोग होता है। यह setting default रूप से बंद रहती है। यह केवल Correction में उपलब्ध है; Minimum और Linear में चुना गया value बना रहता है लेकिन control disabled होता है। यदि measured impulse response माँगी गई low-frequency window से छोटी हो, तो Room EQ उपलब्ध छोटी measurement window का उपयोग करके warning दिखाता है। Correction केवल तभी घटाई या छोड़ी जाती है जब तैयार FIR अपनी time limit के पास पहुँच जाए; Room EQ filter का बाकी हिस्सा सक्रिय रहता है। यह extension केवल तभी काम करती है जब Phase Correction 0% से अधिक हो; 0% पर यह Reverb Correction उपयोग में होने पर भी निष्क्रिय रहती है।
-- **Max Boost** - Automatic response inversion से बने boost को 0 से 18 dB तक सीमित करता है। यह limit Gaussian smoothing से पहले लागू होती है, इसलिए limit तक पहुँचे हिस्से आसपास के correction curve में smoothly blend होते हैं। Cuts सीमित नहीं होते।
-- **Level Correction** - Automatic magnitude correction को 0% से 100% तक 1% के steps में, dB में linearly सेट करता है। 0% पर automatic level correction बंद रहती है; Phase Correction, Additional EQ, Delay और Gain सक्रिय रहते हैं।
-- **Phase Correction** - Direct sound की मापी गई excess-phase correction को 0% से 100% तक 1% के steps में सेट करता है और केवल Correction में काम करता है। Minimum और Linear modes में इसके controls disabled रहते हैं। यह Reverb Correction से independent है: 0% पर direct sound की excess-phase correction बंद रहती है, जबकि Level Correction और उपयोग में ली गई Reverb Correction सक्रिय रहती हैं। Level Correction की magnitude response के साथ स्वाभाविक रूप से जुड़ा minimum-phase बदलाव बना रहता है, इसलिए Phase Correction केवल direct sound के मापे गए अतिरिक्त excess-phase component को नियंत्रित करता है।
-- **Reverb Correction** - मापी गई reverberation की excess phase correction को 0% से 100% तक सेट करता है और केवल Correction mode में काम करता है। 0% से ऊपर यह Reverb Window से response का analysis करता है और Reverb Max Freq तक late phase को Phase Correction से independent रूप से correct करता है। यह magnitude target नहीं बदलता; पूरे IR की frequency-response correction अब भी Smoothing और Level Correction से तय होती है। Consensus में delays का reliability-weighted average उपयोग होता है। correction FIR में न समाए तो Room EQ उसे घटाता या छोड़ता है और warning दिखाता है।
-- **Reverb Window** - direct-sound onset के बाद की मापी गई response का 20 से 1000 ms तक कितना हिस्सा reverb analysis में उपयोग हो, यह तय करता है। उपलब्ध impulse-response length प्रभावी window को छोटा कर सकती है। केवल Taps कम होने के कारण analysis window छोटा नहीं किया जाता; बाद में Room EQ अलग से जाँचता है कि phase correction FIR में समाती है या नहीं। उपलब्ध window, Direct Window से अधिक न हो या Reverb Window को उसके बराबर या कम रखा जाए तो correction छोड़ दी जाती है और warning दिखती है।
-- **Reverb Max Freq** - Reverb correction की ऊपरी frequency limit 20 से 20000 Hz तक सेट करता है। Default 250 Hz correction को उस low-frequency range में रखता है जहाँ room reverberation पास-पास की positions में एक जैसा व्यवहार करती है। Phase वाला हिस्सा वास्तव में Reverb Max Freq, Correction High और sample rate के 45% में से सबसे कम value तक सीमित रहता है, इसलिए Correction High सारी correction की ceiling बना रहता है और Reverb Max Freq उसके भीतर reverb limit चुनता है। इसे बढ़ाने पर reverb correction ऊँची frequencies तक फैलती है, जहाँ reverberant field हर seat पर अलग होता है और हवा के तापमान के साथ बदल भी जाता है, इसलिए परिणाम केवल मापी गई listening position पर ही टिकता है। यदि प्रभावी limit के नीचे कोई frequency band न बचे — जैसे Correction Low उसी limit पर या उससे ऊपर सेट हो — तो reverb correction पूरी तरह छोड़ दी जाती है और warning दिखती है; filter का बाकी हिस्सा सक्रिय रहता है।
-- **Reverb Smoothing** - 0.02 से 1.00 octave की Gaussian smoothing, जो केवल Reverb Window से analyze की गई excess-phase delay पर लागू होती है। छोटी values finer timing structure को follow करती हैं; बड़ी values phase correction को व्यापक और conservative बनाती हैं। यह frequency correction नहीं बदलता, जो Smoothing उपयोग करती है।
-- **Reference Point** - Correction में direct-sound और reverb analyses के excess phase का source चुनता है। **सहमति (सभी बिंदु)** points को समय में align करती है और गहरे nulls के पास अविश्वसनीय phase को कम weight देकर excess delays का reliability-weighted average लेती है। किसी नामित point को चुनने पर केवल उसी की excess phase उपयोग होती है। Magnitude correction हमेशा सभी points का उपयोग करता है।
-- **अतिरिक्त EQ (FIR में शामिल)** - 5Band PEQ के समान पाँच-band interface और graph का उपयोग करता है। हर band को enable करके Peak, Low shelf या High shelf चुन सकते हैं और 20 Hz से 20 kHz, -20 से +20 dB तथा Q 0.1 से 10 तक सेट कर सकते हैं। Response अलग IIR stage में नहीं, FIR में शामिल होती है। Linear में इसकी phase zero और Minimum तथा Correction में minimum-phase होती है। Max Boost automatic room-response inversion को सीमित करता है, इस EQ के जानबूझकर दिए boost को नहीं।
-- **Gain** - Corrected और bypass paths को मिलाने के बाद सभी channels पर -12 से +12 dB लागू करता है।
+- **Measurement** - साझा सेव की गई measurement चुनता है (नाम, points की संख्या, और impulse data होने पर `IR` दिखता है)। Measurements जोड़ने या edit करने के बाद **Refresh measurements** पर click करें।
+- **Measurement ChN** - हर routed bus channel के लिए वैकल्पिक per-channel measurement override। साझा **Measurement** उपयोग करने के लिए इसे **(Shared)** पर छोड़ें।
+- **Delay** (0 से 20 ms) - सभी routed channels पर लागू manual delay; यह दिखाई गई processing latency में शामिल नहीं होता।
+- **Phase** - FIR का phase व्यवहार चुनता है:
+  - **Minimum**: सबसे कम latency वाला minimum-phase magnitude correction।
+  - **Linear**: Linear-phase magnitude correction (`Taps / 2` samples की delay जोड़ता है)।
+  - **Correction**: Minimum-phase magnitude correction के साथ direct sound की excess-phase correction (**Direct Window** के भीतर **Phase Correction**) और वैकल्पिक रूप से room decay की correction (**Reverb Window** के भीतर **Reverb Correction**)। यह `Taps / 2` samples की delay जोड़ता है और impulse-response (`IR`) data माँगता है। **Phase Smoothing**, **Phase Low**, **Low-frequency Phase Extension**, **Phase Correction**, चारों Reverb settings और **Reference Point** केवल इसी mode में काम करते हैं; Minimum और Linear में ये disabled रहते हैं और अपने values बनाए रखते हैं।
+- **Taps** (8192, 16384, 32768, 65536 या 131072) - FIR filter length। अधिक values low-frequency resolution सुधारती हैं, पर memory, design time और Linear/Correction modes में delay बढ़ाती हैं।
+- **Latency** (0, 128, 256, 512 या 1024 samples) - Convolution head latency। कम values delay घटाती हैं, पर processing load बढ़ाती हैं।
+- **Smoothing** (0.02 से 1.00 oct) - Magnitude correction के लिए Gaussian frequency smoothing। अधिक values व्यापक और अधिक conservative correction देती हैं; कम values response के बारीक बदलावों को follow करती हैं।
+- **Phase Smoothing** (0.02 से 1.00 oct, या **Auto**) - Correction mode में direct-sound excess-phase correction के लिए Gaussian smoothing (**Auto** चालू होने पर यह **Smoothing** के अनुसार चलता है)।
+- **Correction Low / Correction High** - Automatic correction की निचली और ऊपरी frequency boundaries।
+- **Direct Window** (1 से 50 ms) - Direct-sound phase correction के लिए analyze किया जाने वाला onset के बाद का time window। लंबा window automatic **Phase Low** को नीचे लाता है, पर अधिक room reflections शामिल करता है।
+- **Phase Low** (20 से 20000 Hz, या **Auto**) - Fixed-window direct-sound phase correction की निचली frequency limit (default: **Correction Low** और **Direct Window** में तीन cycles समाने वाली frequency में से जो अधिक हो, जैसे 6 ms पर 500 Hz)। **Low-frequency Phase Extension** चालू होने पर यह इसके बजाय वह बिंदु दिखाता है जहाँ fixed window की जगह लंबी low-frequency windows ले लेती हैं।
+- **Low-frequency Phase Extension** (default off) - Frequency के अनुसार लगातार लंबी होती windows का उपयोग करके excess-phase correction को **Phase Low** से नीचे **Correction Low** की ओर बढ़ाता है।
+- **Max Boost** (0 से 18 dB) - Smoothing से पहले automatic correction के boosts को सीमित करता है; cuts और **Additional EQ** के जानबूझकर दिए गए boosts सीमित नहीं होते।
+- **Level Correction** (0% से 100%) - Automatic magnitude correction को dB में linearly scale करता है। 0% पर केवल automatic correction रुकता है; **Phase Correction**, **Additional EQ**, **Delay** और **Gain** सक्रिय रहते हैं।
+- **Phase Correction** (0% से 100%) - Correction mode में direct-sound excess-phase correction को scale करता है, **Reverb Correction** से स्वतंत्र रूप से।
+- **Reverb Correction** (0% से 100%; default 0%) - **Reverb Window** के भीतर **Reverb Max Freq** तक analyze की गई बाद की room reverberation की excess-phase correction को scale करता है। यह magnitude correction नहीं बदलता।
+- **Reverb Window** (20 से 1000 ms) - **Reverb Correction** द्वारा analyze किया जाने वाला onset के बाद का time window। यदि यह **Direct Window** से लंबा न हो (या measurement बहुत छोटी हो), तो warning के साथ reverb correction छोड़ दिया जाता है, जबकि filter का बाकी हिस्सा सक्रिय रहता है।
+- **Reverb Max Freq** (20 से 20000 Hz; default 250 Hz) - **Reverb Correction** की ऊपरी frequency limit, जो **Correction High** से ऊपर नहीं जाती (इसे लगभग 250 Hz पर रखने से correction उस low-frequency room decay पर केंद्रित रहता है जो पास-पास की seats पर एक जैसा व्यवहार करता है)।
+- **Reverb Smoothing** (0.02 से 1.00 oct) - Reverb की excess-phase delay पर लागू Gaussian smoothing।
+- **Reference Point** - Excess-phase analysis के लिए **Consensus (all points)** (सभी measurement points का reliability-weighted average) या कोई एक measurement point चुनता है। चुना गया point हटा दिया जाए तो यह Consensus पर लौट आता है।
+- **Additional EQ (FIR में शामिल)** - Target को आकार देने वाले पाँच parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए 2 तक), जो सीधे FIR filter में बनते हैं। Linear mode में इनकी phase zero होती है, और Minimum तथा Correction modes में minimum-phase।
+- **Gain** (-12 से +12 dB) - Output level trim।
 
 ### दृश्य प्रदर्शन
 
-- Graph के बाहर दिए **Graph** radio buttons से **Frequency**, **Phase**, **Min Group Delay**, **Excess Group Delay** और **Impulse** views के बीच बदल सकते हैं।
-- **Phase** view में horizontal axis logarithmic frequency और vertical axis -180° से 180° तक phase दिखाता है। धूसर line correction से पहले की phase और हरी line वास्तविक FIR लगाने के बाद की calculated phase दिखाती है। दोनों से measured onset हटाया जाता है और corrected result से FIR का ज्ञात fixed delay भी हटाया जाता है, इसलिए graph इन fixed timing offsets के बिना filter से आया phase change दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
-- **Min Group Delay** magnitude response के minimum-phase हिस्से से बनने वाला delay दिखाता है। **Excess Group Delay** उस हिस्से को हटाने के बाद बचा delay अलग से दिखाता है, जिससे reflections और अन्य non-minimum-phase timing को समझना आसान होता है। दोनों views में horizontal axis logarithmic frequency और vertical axis milliseconds दिखाता है। हर line measured onset को हटाने के बाद उसके सापेक्ष absolute group delay दिखाती है; corrected result से FIR का known fixed delay भी हटाया जाता है। इन्हें 1kHz पर दोबारा reference नहीं किया जाता, इसलिए वहाँ value का 0 ms होना जरूरी नहीं है। धूसर line correction से पहले की और हरी line वास्तविक FIR लगाने के बाद की calculated स्थिति है। Group-delay analysis दिखाए गए points की spacing से स्वतंत्र है और phase unwrapping पर निर्भर नहीं करता। Smoothing एक fixed logarithmic-frequency analysis grid पर लागू होता है, इसलिए कम Smoothing अधिक detail दिखाता है। **Min Group Delay** का vertical range दिखाई गई curves के अनुसार अपने आप बदलता है। **Excess Group Delay** का range -100 से +100 ms पर fixed रहता है, लेकिन curve के इससे बाहर जाने पर readout unclipped value ही दिखाता है। Impulse response न होने पर unavailable message दिखाई देता है।
-- **Impulse** चुना हुआ point दिखाता है; Reference Point को सहमति पर रखने पर यह समय में align की गई औसत waveform दिखाता है। Range मापे गए onset से 2 ms पहले से 5 ms, Direct Window और Reverb Correction 0% से अधिक होने पर 50 ms तक सीमित Reverb Window में से जो सबसे अधिक हो, वहाँ तक रहती है। धूसर line correction से पहले की response और हरी line वास्तविक FIR लगाने के बाद का calculated result दिखाती है। मापा गया onset दोनों के लिए साझा 0 ms reference है और corrected waveform से केवल FIR का ज्ञात fixed delay हटाया जाता है, इसलिए peak की relative timing और pre-ringing दिखाई देते रहते हैं। दोनों एक ही normalized amplitude scale का उपयोग करती हैं। Low-frequency Phase Extension और Reverb Correction इस view की सीमा से बाद की response का भी analysis कर सकती हैं। केवल display के लिए, 20 kHz और उससे ऊपर के components हटा दिए जाते हैं; इससे correction filter या audio processing प्रभावित नहीं होती। Impulse-response data न होने पर unavailable message दिखाई देता है।
-- **Frequency** view में horizontal axis logarithmic frequency और vertical axis dB level दिखाता है।
-- **Graph Preview Ch** selector तभी Graph के बाहर दिखता है जब एक से अधिक channels के लिए filters design हुए हों; यह चुनता है कि graph और अतिरिक्त EQ की base response किस channel की दिखाई जाए, और यह audio को प्रभावित नहीं करता।
-- Graph पर माउस घुमाएं या टच करके ड्रैग करें; उस बिंदु पर हर curve पर एक dot दिखेगा और उसका value legend में नाम के दाईं ओर दिखेगा, और उनके ऊपर frequency (Impulse view में समय) दिखेगी।
-- दो सफेद खड़ी dotted lines, Correction Low और Correction High से सेट की गई frequencies दिखाती हैं।
-- Markers से हर band की frequency और gain बदली जा सकती है।
-- हल्की धूसर curve graph का common display offset लागू की गई smoothed measured frequency response दिखाती है।
-- पतली हल्की हरी curve चुनी हुई measurement और मौजूदा Room EQ correction settings से निकली automatic correction को अतिरिक्त EQ लागू होने से पहले दिखाती है।
-- चमकीली हरी curve उसी correction पर अतिरिक्त EQ लागू होने के बाद की response दिखाती है। यही combined magnitude response FIR में शामिल होती है।
-- सफेद curve हल्की धूसर measured response में चमकीली हरी combined correction जोड़कर मिली estimated corrected response दिखाती है। धूसर और सफेद curves पर एक ही offset लगाया जाता है, जो 100% automatic correction के destination level को 0 dB पर रखता है; Max Boost की सीमा कुछ deviation छोड़ सकती है, जबकि Additional EQ इस reference के आसपास response को जानबूझकर बदलता है। यह calculated preview है, कोई नई acoustic measurement नहीं।
-- Controls के नीचे status total processing latency, FIR resolution और filter की bypass, staged, preparing, active या error अवस्था दिखाता है।
+- **Graph**: **Frequency** (smoothed measurement हल्के धूसर में, automatic correction हल्के हरे में, Additional EQ सहित combined correction चमकीले हरे में, और estimated corrected response सफेद में; सफेद curve नई measurement नहीं, बल्कि calculated preview है), **Phase** (FIR से पहले और बाद −180° से +180°), **Min Group Delay**, **Excess Group Delay** और **Impulse** (FIR से पहले और बाद का normalized waveform) के बीच बदलें। Impulse, measured onset से 2 ms पहले से लेकर 5 ms, **Direct Window** और **Reverb Window** (केवल जब **Reverb Correction** 0% से अधिक हो, अधिकतम 50 ms) में से सबसे लंबे तक दिखाता है। Phase, group-delay और Impulse views में धूसर **Before** line correction से पहले का response है और हरी **After** line FIR के बाद का calculated result। दो सफेद dotted खड़ी lines **Correction Low** और **Correction High** दिखाती हैं।
+- Frequency view में धूसर और सफेद curves को इस तरह खिसकाया जाता है कि पूरे (100%) automatic correction का target level 0 dB पर रहे; सफेद curve में बचे deviations **Max Boost** या 100% से कम **Level Correction** जैसी सीमाओं से, या **Additional EQ** की जानबूझकर की गई shaping से आते हैं।
+- Phase, group-delay और Impulse views में measured onset हटाया जाता है, और corrected result से FIR की fixed delay हटाई जाती है। Group delay को 1 kHz पर दोबारा reference नहीं किया जाता, इसलिए वहाँ value का 0 ms होना ज़रूरी नहीं। **Min Group Delay** अपनी range अपने-आप scale करता है; **Excess Group Delay** −100 से +100 ms पर रहता है, जबकि readout इस range से बाहर के values भी दिखाता है। Impulse-response data न होने पर ये views unavailable message दिखाते हैं।
+- **Graph Preview Ch**: एक से अधिक channel के लिए filters design होने पर दिखता है; यह चुनता है कि किस channel की curves दिखें, और audio को प्रभावित नहीं करता।
+- **इंटरैक्टिव नियंत्रण**: Numbered markers को horizontally drag करने पर **Additional EQ** band की frequency और vertically drag करने पर उसका gain बदलता है (disabled bands धुंधले दिखते हैं), और किसी भी बिंदु के values पढ़ने के लिए graph पर hover करें या drag करें।
+- Controls के नीचे status line कुल processing latency, FIR resolution, और filter की bypassed, staged, preparing, active या error अवस्था दिखाती है।
+
+## Tilt EQ
+
+Pivot frequency के आसपास shelving filters की मिलान वाली जोड़ी से पूरे frequency balance को झुकाता है: spectrum का एक हिस्सा ऊपर उठता है और दूसरा नीचे जाता है। इसका उपयोग एक ही control से व्यापक रूप से warmer या brighter adjustment के लिए करें, जैसे जब कोई recording या headphones लगातार बहुत bright या बहुत dull लगें।
+
+### ध्वनि सुधार गाइड
+- **Warmer**: छोटा negative **Slope** (जैसे -1 dB/oct) उपयोग करें, ताकि treble घटे और bass बढ़े; यह bright recordings या headphones के लिए उपयुक्त है।
+- **Brighter**: छोटा positive **Slope** (जैसे +1 dB/oct) उपयोग करें, ताकि treble बढ़े और bass घटे; यह dull recordings या speakers के लिए उपयुक्त है।
+- **बदलाव कहाँ से शुरू हो**: **Pivot Freq (Hz)** घटाने पर treble की ओर का बदलाव midrange तक फैलता है; बढ़ाने पर वह बदलाव सबसे ऊपरी octaves तक सीमित रहता है।
+
+### पैरामीटर
+- **Pivot Freq (Hz)** (20 Hz से ~20 kHz; default लगभग 1 kHz) - वह frequency जिसके आसपास balance झुकता है।
+- **Slope** (-12 से +12 dB/oct; default 0) - Tilt की मात्रा और दिशा। Positive values ध्वनि को brighter, negative values warmer बनाती हैं, और 0 पर कोई बदलाव नहीं होता।
+
+### दृश्य प्रदर्शन
+- Graph परिणामी frequency response दिखाता है।
+- **Reset** दोनों parameters को उनके defaults पर लौटाता है।
+- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
 
 ## Tonal Balance EQ
 
-यह चल रहे music का लंबी अवधि का tonal balance मापता है और उसे चुनी गई style की released music के सामान्य balance की ओर धीरे-धीरे correct करता है। इसका उपयोग तब करें जब recordings, playlists या streams लगातार बहुत dark, बहुत bright, boomy या पतले लगें, और आप हर एक के लिए EQ हाथ से adjust किए बिना उन्हें एक जैसा करना चाहें। यह recording को correct करता है, आपके speakers या room को नहीं; उनके लिए Room EQ का उपयोग करें।
+यह चल रहे music का लंबी अवधि का tonal balance मापता है और उसे चुनी गई style की released music के typical spectral balance की ओर धीरे-धीरे ले जाता है। इसका उपयोग तब करें जब किसी playlist, album या stream के tracks लगातार बहुत dark, बहुत bright, boomy या पतले लगें, और आप हर track के लिए EQ हाथ से adjust किए बिना उन्हें अपने-आप एक जैसा करना चाहें। (यह recording का balance correct करता है, आपके speakers या room को नहीं; acoustic correction के लिए [Room EQ](#room-eq) का उपयोग करें।)
 
-Plugin मापे गए spectrum और target के overall levels को बराबर करके उनकी तुलना करता है, इसलिए केवल balance का आकार मायने रखता है, recording कितनी loud है यह नहीं। यह ज़रूरत से ज़्यादा तेज़ regions को घटाता है और फिर पूरे signal को एक ही make-up gain से ऊपर उठाता है, इसलिए loudness वही रहती है और कमज़ोर regions उभरकर आते हैं। जिन regions में वास्तविक musical content नहीं होता, जैसे band-limited recording का खाली ऊपरी हिस्सा या लगातार बनी रहने वाली hiss, उन्हें यह ऊपर नहीं उठाता; न बदलने वाले synth pad जैसी स्थिर, noise जैसी आवाज़ और शांत breaks में भी उसी level पर बजती रहने वाली आवाज़ के साथ भी यही होता है, क्योंकि इन्हें background noise से अलग नहीं पहचाना जा सकता। Silence और शांत breaks measurement में नहीं गिने जाते। सभी channels को एक ही correction मिलता है, इसलिए stereo image नहीं बदलती, और plugin कोई delay नहीं जोड़ता।
-
-Targets ऐसे music collection के long-term spectra से सीखे गए हैं जो free reuse की अनुमति देने वाले licenses के तहत प्रकाशित है। हर style का एक typical curve होता है और tracks के बीच एक typical spread भी। इसके विपरीत **Tilt** एक निश्चित reference है: bass में flat, फिर तय slope से गिरता हुआ। किसी भी target को पाँच Target Adjust bands से अपनी पसंद के अनुसार नया आकार दिया जा सकता है।
+Plugin overall loudness को align करने के बाद मापे गए spectrum की target से तुलना करता है, ज़रूरत से ज़्यादा तेज़ regions को घटाता है, और एक ही make-up gain लगाता है, ताकि perceived loudness बदले बिना कमज़ोर regions उभरकर आएँ। यह silence और pauses को measurement से बाहर रखता है, और hiss तथा स्थिर, noise जैसे bands (लगातार बजते synth pad सहित) को ऊपर नहीं उठाता, ताकि खाली frequency सिरों को कृत्रिम रूप से boost न किया जाए। सभी channels को एक ही zero-latency correction मिलता है, इसलिए stereo image बनी रहती है।
 
 ### ध्वनि सुधार गाइड
-- **Mixed playlists और streaming**: Defaults (Target **All**, Amount 100%, Averaging Time 30 s) से शुरुआत करें। measurement के भरोसेमंद होने के साथ correction दसियों सेकंड में धीरे-धीरे लागू होता है, इसलिए लगभग आधे मिनट music चलने के बाद plugin बंद करके तुलना करें।
-- **पूरे album के लिए एक स्थिर correction**: Album शुरू होते ही **Reset** दबाएँ और Averaging Time को **∞** पर रखें। तब plugin Reset के बाद से सुनी गई हर चीज़ का औसत लेता है, इसलिए correction स्थिर होता जाता है और उसमें बदलाव घटते जाते हैं।
-- **एक ही style का music**: आप जो सुन रहे हैं उसके सबसे करीब वाला Target चुनें, जैसे orchestral recordings के लिए **Classical** या dance music के लिए **Electronic**। Styles मिली-जुली हों तो All अच्छा विकल्प है।
-- **हल्का परिणाम**: Amount को लगभग 50% या Range को लगभग 3 dB तक घटाएँ। बारीक shaping के बिना केवल चौड़े tilts correct करने हों, तो Smoothing को लगभग 1 oct तक बढ़ाएँ।
-- **गाने के भीतर के बदलावों के साथ चलना**: Averaging Time को लगभग 0.5 से 1 s तक छोटा करें, ताकि dark verse और bright chorus दोनों अलग-अलग correct हों। अगर tone हिलता-डुलता सुनाई दे, तो Averaging Time फिर से बढ़ाएँ।
-- **सिरों को न छेड़ना**: Deep bass का आकार न बदले, इसके लिए Low बढ़ाएँ; सबसे ऊपरी octave का आकार न बदले, इसके लिए High घटाएँ।
-- **अपना house curve**: Target Adjust से target को आकार दें। उदाहरण के लिए, 8 kHz पर Q 0.7 वाला +1.5 dB का High shelf थोड़ा अधिक bright balance माँगता है, और 300 Hz के आसपास Q 0.7 वाला चौड़ा -2 dB का Peak low-mid का वज़न घटाने को कहता है। तब हर recording को सबको एक ही EQ देने के बजाय, उतना ही इस आकार की ओर correct किया जाता है जितनी उसे ज़रूरत है।
-- **एक यांत्रिक reference**: Target **Tilt** चुनें। Slope का default -6 dB/oct अधिकांश released music से थोड़ा dark balance माँगता है; ज़्यादा सामान्य balance के लिए Slope को लगभग -4.5 से -5 dB/oct पर रखें, और ज़्यादा bright balance के लिए -3 dB/oct पर, जो pink-noise reference है।
+- **Mixed playlists और streaming**: Defaults (**Target: All**, **Amount: 100%**, **Averaging Time: 30 s**) से शुरुआत करें। Measurement भरोसेमंद होने के साथ correction दसियों सेकंड में धीरे-धीरे बनता है, इसलिए bypass से तुलना करने से पहले music को लगभग 30 सेकंड चलने दें।
+- **पूरे album के लिए एक स्थिर correction**: Album की शुरुआत में **Reset** पर click करें और **Averaging Time** को **∞** पर सेट करें, ताकि correction पूरे playback session का औसत ले और एक fixed curve पर स्थिर हो जाए।
+- **Genre के अनुसार targets**: किसी खास style से मिलाने के लिए **Classical**, **Electronic**, **Pop** या **Rock** चुनें, या मिली-जुली listening के लिए **All**।
+- **हल्की shaping**: व्यापक, सूक्ष्म tilts के लिए **Amount** घटाएँ (जैसे 50%), **Range** कम करें (जैसे 3 dB), या **Smoothing** बढ़ाएँ (जैसे 1 oct)।
+- **अपना house curve**: Graph के नीचे के पाँच **Target Adjust** bands से target को अपनी पसंद के अनुसार झुकाएँ या आकार दें (जैसे 8 kHz पर +1.5 dB High shelf)। तब हर recording को आपके custom target की ओर उतना ही correct किया जाता है जितनी ज़रूरत है।
+- **Fixed slope reference**: **Target: Tilt** चुनें; इसमें **Corner** से नीचे response flat रहता है और उसके बाद एक स्थिर **Slope** से गिरता है (−5 dB/oct typical commercial masters के करीब है; −3 dB/oct pink noise के बराबर है)।
 
-Make-up gain loudness को बनाए रखता है, peak level को नहीं, इसलिए peaks बढ़ सकती हैं। अगर बाद के किसी stage में clipping हो, तो इस plugin के बाद level घटाएँ या limiter जोड़ें।
+Make-up gain loudness को बनाए रखता है, peak level को नहीं, इसलिए peaks बढ़ सकती हैं; अगर बाद के किसी stage में clipping हो, तो इस plugin के बाद level घटाएँ या limiter जोड़ें।
 
 ### पैरामीटर
-- **Target** - लक्ष्य के रूप में चुना गया tonal balance: **All**, **Classical**, **Electronic**, **Pop**, **Rock** या **Tilt** (default All)
-  - All चारों styles का बराबर वज़न वाला मिश्रण है
-  - Tilt सीखा हुआ style नहीं, बल्कि एक निश्चित reference है: Corner से नीचे flat, उससे ऊपर Slope के अनुसार गिरता हुआ
-- **Slope** - केवल तब दिखता है जब Target Tilt हो। Corner से ऊपर target कितनी तेज़ी से गिरे (-18 dB/oct से 0 dB/oct, default -6 dB/oct)
-  - -3 dB/oct pink noise है, जिसमें हर octave में बराबर energy होती है; 0 dB/oct white noise और -6 dB/oct brown noise के बराबर है
-  - सामान्य commercial recordings का औसत लगभग -5 dB/oct है (Pestana et al.), इसलिए default सामान्य music से थोड़ा dark balance माँगता है। हल्का Slope ज़्यादा treble माँगता है; Slope जितना तीखा (अधिक negative) हो, balance उतना ही bass की ओर झुकता है
-- **Corner** - केवल तब दिखता है जब Target Tilt हो। वह frequency जिसके नीचे target flat रहता है (20 Hz से 1000 Hz, default 250 Hz)
-  - कम मान slope को deep bass में और आगे तक ले जाते हैं, यानी ज़्यादा deep bass माँगते हैं
-  - अधिक मान bass का और बड़ा हिस्सा flat रखते हैं, यानी कम bass माँगते हैं
-- **Amount** - Correction कितना लागू हो (0% से 100%, default 100%)
-  - कम मान पूरे correction को छोटा करते हैं; 0% पर sound नहीं बदलता
-  - 0% पर भी measurement और graph चलते रहते हैं, और Range, Smoothing, Low और High disabled हो जाते हैं
-- **Range** - किसी भी band को ऊपर या नीचे मिलने वाला अधिकतम correction (0 dB से 12 dB, default 6 dB)
-  - कम मान बदलावों को हल्का रखते हैं; 0 dB पर correction बंद हो जाता है
-  - अधिक मान target से बहुत दूर की recordings को उसके और करीब ला सकते हैं
-- **Smoothing** - Correction curve की बनावट कितनी चौड़ी हो (0.1667 oct से 2 oct, default 0.5 oct)
-  - अधिक मान चौड़े, हल्के tilts देते हैं
-  - कम मान संकरे peaks और dips सहित target को अधिक बारीकी से follow करते हैं
-- **Averaging Time** - Measurement कितने समय का औसत लेता है (0.1 s से ∞, default 30 s)
-  - छोटे मानों पर tone गाने के भीतर के बदलावों के साथ चलता है
-  - लंबे मान स्थिर correction देते हैं, जो गानों के बीच धीरे-धीरे बदलता है
-  - Slider का दायाँ सिरा **∞** है: plugin पिछले Reset के बाद से सुनी गई हर चीज़ का औसत लेता है। Value box में ∞ टाइप भी कर सकते हैं
-- **Low** - Correct की जाने वाली range का निचला सिरा (20 Hz से 200 Hz, default 20 Hz)
-  - इसके नीचे correction उसी मान पर रहता है जो Low पर है
-  - Deep bass का आकार न बदले, इसके लिए इसे बढ़ाएँ
-- **High** - Correct की जाने वाली range का ऊपरी सिरा (2000 Hz से 20000 Hz, default 16000 Hz)
-  - इसके ऊपर correction उसी मान पर रहता है जो High पर है
-  - सबसे ऊपरी octave का आकार न बदले, इसके लिए इसे घटाएँ
-- **Average SPL** - Listening position पर आपका अनुमानित औसत sound level, Loudness Equalizer की तरह (60 dB से 96 dB, default 83 dB)
-  - यह केवल यह तय करता है कि कौन-से धीमे bands सुनाई देने लायक तेज़ हैं और इसलिए ऊपर उठाए जा सकते हैं; यह output level नहीं बदलता
-  - कम मान अधिक धीमे bands को inaudible मानते हैं, इसलिए उन्हें ऊपर नहीं उठाया जाता
-  - अधिक मान अधिक धीमे bands को audible content मानते हैं
-- **Target Adjust** - Graph के नीचे पाँच bands जो target को नया आकार देते हैं; इनके controls Room EQ के अतिरिक्त EQ और 5Band PEQ जैसे ही हैं
-  - हर band को चालू या बंद किया जा सकता है और Peak, Low shelf या High shelf पर सेट किया जा सकता है
-  - Frequency: 20 Hz से 20 kHz (defaults 100 Hz, 316 Hz, 1 kHz, 3.16 kHz और 10 kHz)
-  - Gain: -20 dB से +20 dB (default 0 dB)। धनात्मक मान उस क्षेत्र को अधिक माँगते हैं, ऋणात्मक मान कम; 0 dB पर target नहीं बदलता
-  - Q: 0.1 से 10, shelves के लिए 2 तक सीमित (default 0.7)। अधिक मान संकरी range पर असर डालते हैं
+- **Target** - लक्ष्य tonal balance: **All** (default; चारों styles का बराबर मिश्रण), **Classical**, **Electronic**, **Pop**, **Rock** या **Tilt** (fixed slope reference)।
+- **Slope** (-18 से 0 dB/oct; default -6 dB/oct; केवल Tilt mode) - **Corner** से ऊपर roll-off की दर (-3 dB/oct = pink noise, ~-5 dB/oct = typical commercial releases)। हल्के slope अधिक treble माँगते हैं; default सामान्य music से थोड़ा dark balance माँगता है।
+- **Corner** (20 से 1000 Hz; default 250 Hz; केवल Tilt mode) - वह frequency जिसके नीचे **Tilt** target flat रहता है। कम values अधिक deep bass माँगती हैं; अधिक values कम bass माँगती हैं।
+- **Amount** (0% से 100%; default 100%) - कुल correction strength। 0% पर ध्वनि नहीं बदलती, पर measurement और graph चलते रहते हैं, और **Range**, **Smoothing**, **Low** व **High** disabled हो जाते हैं।
+- **Range** (0 से 12 dB; default 6 dB) - किसी भी band में ऊपर या नीचे अनुमत अधिकतम gain adjustment। कम values बदलाव को हल्का रखती हैं (0 dB पर correction बंद हो जाता है); अधिक values target से दूर की recordings को भी उसके करीब ले आती हैं।
+- **Smoothing** (0.1667 से 2 oct; default 0.5 oct) - Correction curve की बनावट की चौड़ाई (अधिक values चौड़े tilts देती हैं)।
+- **Averaging Time** (0.1 s से ∞; default 30 s) - Measurement integration window। छोटे values (जैसे 0.5 से 1 s) गाने के भीतर के बदलावों को follow करते हैं, जैसे dark verse और bright chorus; लंबे values स्थिर correction देते हैं (**∞** पिछले **Reset** के बाद से लगातार औसत लेता है)।
+- **Low** (20 से 200 Hz; default 20 Hz) / **High** (2000 से 20000 Hz; default 16000 Hz) - Active reshaping की निचली और ऊपरी frequency सीमाएँ (इनके बाहर correction स्थिर रहता है)। Deep bass को न छेड़ने के लिए **Low** बढ़ाएँ, या सबसे ऊपरी octave को न छेड़ने के लिए **High** घटाएँ।
+- **Average SPL** (60 से 96 dB; default 83 dB) - अनुमानित listening level, जिससे तय होता है कि कौन-से धीमे frequency bands इतने सुनाई देते हैं कि उन्हें ऊपर उठाया जा सके; यह output level नहीं बदलता। कम values अधिक धीमे bands को inaudible मानती हैं, इसलिए वे ऊपर नहीं उठाए जाते; अधिक values उनमें से अधिक को audible मानती हैं।
+- **Target Adjust** - Target curve को नया आकार देने वाले पाँच parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, shelves के लिए 2 तक; default Q 0.7)। Positive gain उस region को अधिक माँगता है, negative gain कम।
 
-Target Adjust केवल target बदलता है। Plugin अब भी हर recording को मापता है और उसी Amount, Range, Smoothing, Low और High के साथ उसे समायोजित target की ओर correct करता है; यह ऊपर से लगाया गया कोई अतिरिक्त EQ नहीं है। इसलिए पूरे target को एक ही मान से ऊपर या नीचे करने पर कुछ नहीं बदलता, क्योंकि तुलना से पहले overall levels बराबर किए जाते हैं और loudness मिली रहती है। जिन regions में वास्तविक musical content नहीं है, उन्हें अब भी ऊपर नहीं उठाया जाता, और Low से नीचे तथा High से ऊपर correction पहले की तरह स्थिर रहता है। Target को कान की चौड़ाई वाले bands में follow किया जाता है और फिर smooth किया जाता है, इसलिए संकरा peak या notch फैल जाता है और छोटा निकलता है, जैसा graph दिखाता है; संकरे सुधारों के लिए 5Band PEQ का उपयोग करें। Range अब भी हर band में correction को सीमित करता है, इसलिए बड़े adjustment के लिए Range भी बढ़ाना पड़ सकता है।
+**Target Adjust** केवल target बदलता है; हर recording अब भी **Amount** और **Range** के भीतर उसकी ओर correct की जाती है, इसलिए बड़े adjustment के लिए बड़ा **Range** चाहिए हो सकता है। पूरे target को एक ही मात्रा से ऊपर उठाने पर कुछ नहीं बदलता, क्योंकि तुलना से पहले overall levels align किए जाते हैं। संकरे peaks और dips smooth हो जाते हैं; संकरे सुधारों के लिए 5Band PEQ का उपयोग करें।
 
 ### दृश्य प्रदर्शन
-- Horizontal axis लगभग 26 Hz से 18.6 kHz तक frequency और vertical axis dB में level दिखाता है। Vertical range इतनी बढ़ जाती है कि target band, EQ response, correct की जाने वाली range के भीतर का measured level, तथा Target Adjust के handles और curve उसमें समा जाएँ, और Reset या Target बदलने पर ±12 dB पर लौट आती है। Target से बहुत दूर के measured points graph के किनारे से बाहर जा सकते हैं।
-- **Target** लक्ष्य balance की line है, जिसमें Target Adjust भी शामिल है, और इसे इस तरह खींचा जाता है कि उसका औसत 0 dB हो। किसी style के लिए उसके चारों ओर का shaded band उस style के tracks के बीच का typical spread दिखाता है; Tilt निश्चित reference है, इसलिए उसमें यह band नहीं होता। Levels प्रति hertz (spectral density) में दिखाए जाते हैं, इसलिए Tilt target Corner से नीचे सपाट और उसके ऊपर Slope के अनुसार गिरती सीधी line के रूप में खींचा जाता है; pink noise -3 dB/oct की सीधी line होता है।
-- **Measured** dots वाली line है: मापा गया long-term spectrum, जिसे target के साथ align करने के लिए खिसकाया गया है। जहाँ यह target band के नीचे हो, वहाँ recording सामान्य से कमज़ोर है; जहाँ ऊपर हो, वहाँ ज़्यादा तेज़। किसी फ़्रीक्वेंसी का परीक्षण स्वर सुनते समय माप रुक जाता है और परीक्षण समाप्त होने पर फिर शुरू होता है।
-- **EQ response** मोटी line है: plugin जो gain लगाता है, make-up gain सहित। 0 dB का अर्थ है कोई बदलाव नहीं।
-- **Withheld lift** EQ response line से ऊपर की ओर उठा हुआ भरा हुआ area है। इसकी ऊँचाई, जो readout में dB के अनुमानित मान के रूप में दिखती है, मोटे तौर पर बताती है कि band को musical content के रूप में ठीक से न पहचाने जाने के कारण रोका न गया होता, तो उसे कितना अतिरिक्त lift मिलता (ऊपर देखें)। यह अनुमानित मान है, सटीक gain नहीं, और Amount तथा Range के साथ बदलता है।
-- **Target adjust** 0 dB के आसपास की पतली curve है: Target Adjust bands की वह combined response, जैसी आपने उसे सेट किया है। क्रमांकित handles हर band को उसकी frequency और gain पर दिखाते हैं, जहाँ 0 dB का अर्थ है कोई बदलाव नहीं; वे Target line पर नहीं बैठते। Frequency बदलने के लिए handle को क्षैतिज रूप से और gain बदलने के लिए ऊर्ध्वाधर रूप से drag करें, उस पर माउस व्हील घुमाने से Q बदलता है, और राइट-क्लिक करने से band चालू या बंद होता है। बंद bands धुंधले दिखते हैं।
-- Audio चलते समय Target line handles के साथ तुरंत बदलती है; जहाँ वह Target adjust curve से ज़्यादा smooth है, वहाँ आपके अनुरोध का वह हिस्सा औसत में दब रहा है। रुके होने पर Target line अपना आख़िरी मापा हुआ आकार बनाए रखती है और Target adjust curve दिखाती है कि आपने क्या माँगा है। रुके होने पर बदले गए Slope और Corner, playback फिर शुरू होने पर Target line पर दिखते हैं।
-- Low से नीचे और High से ऊपर के regions धुंधले दिखते हैं।
-- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें। curves के अलावा readout में **Presence** (मापे गए समय का वह हिस्सा जिसमें उस band को audible musical content के रूप में पहचाना गया), मौजूदा **Make-up gain**, और पिछले Reset के बाद से मापी गई हर चीज़ की **Loudness** LKFS में दिखती है।
-- जब तक कोई audio मापा नहीं गया हो, graph पर "Play audio to start measuring" दिखता है। फिर भी Target Adjust के handles और Target adjust curve दिखते रहते हैं और उन्हें edit किया जा सकता है।
-- **Reset** measurement साफ़ करके मौजूदा audio से फिर शुरू करता है; Target Adjust नहीं बदलता। Silence के दौरान power-saving pause के बाद processing दोबारा शुरू होने पर भी measurement फिर से शुरू होता है।
-- **Copy as PEQ** graph पर दिख रहे EQ response को 5Band PEQ settings के रूप में copy करता है। Effect Pipeline में Ctrl+V दबाने पर उसी curve वाला 5Band PEQ चुने गए effect से पहले जुड़ जाता है, और कोई effect चुना न हो तो सबसे अंत में। मौजूदा correction को वैसे ही स्थिर रखने के लिए Tonal Balance EQ को बंद करें या हटा दें। 5Band PEQ, Low से High के बीच curve का आकार दोहराता है, पर उसका कुल level नहीं, इसलिए loudness थोड़ी बदल सकती है। यह बटन तब उपलब्ध होता है जब graph पर EQ response दिख रहा हो और Amount 0% से ज़्यादा हो।
+- Horizontal axis लगभग 26 Hz से 18.6 kHz तक की frequency और vertical axis dB में level है, जो प्रति hertz दिखाया जाता है, इसलिए pink noise -3 dB/oct से गिरती line के रूप में दिखता है। Vertical range curves के अनुसार फैलती है और **Reset** या **Target** बदलने पर ±12 dB पर लौट आती है। **Low** से नीचे और **High** से ऊपर के regions धुंधले दिखते हैं।
+- **Target**, **Target Adjust** सहित लक्ष्य balance है। किसी style के लिए shaded band tracks के बीच का typical spread दिखाता है, जिसे एक music collection के long-term spectra से सीखा गया है; **Tilt** में यह band नहीं होता।
+- **Measured** dots वाली line है: target के साथ align किया गया मापा हुआ long-term spectrum। जहाँ यह target band के नीचे हो, वहाँ recording सामान्य से कमज़ोर है; ऊपर हो, तो ज़्यादा तेज़। किसी frequency का preview करते समय measurement रुका रहता है।
+- **EQ response** मोटी line है: make-up gain सहित लगाया गया gain (0 dB = कोई बदलाव नहीं)।
+- **Withheld lift** shaded area है, जो मोटे तौर पर दिखाता है कि अगर band को noise जैसे या non-musical content के रूप में रोका न गया होता, तो उसे कितना अधिक lift मिलता।
+- **Target adjust** 0 dB के आसपास numbered handles वाली पतली curve है, जो bands को वैसे ही दिखाती है जैसे आपने सेट किए हैं; handles **Target** line पर नहीं होते। Frequency और gain बदलने के लिए handle drag करें, Q बदलने के लिए उस पर माउस व्हील घुमाएँ, और band चालू या बंद करने के लिए उस पर राइट-क्लिक करें। Audio चलते समय **Target** line कुछ ही पल में handles के अनुसार बदल जाती है; रुके होने पर वह अपना आखिरी आकार बनाए रखती है।
+- Band values, **Presence** (समय का वह % जिसमें band को musical content के रूप में पहचाना गया), **Make-up gain** और integrated **Loudness** (LKFS) देखने के लिए graph पर hover करें या drag करें। कोई audio मापे जाने से पहले graph पर "Play audio to start measuring" दिखता है।
+- **Reset** जमा हुई measurement साफ़ करता है; **Target Adjust** नहीं बदलता। Power-saving pause के बाद processing फिर शुरू होने पर भी measurement नए सिरे से शुरू होती है।
+- **Copy as PEQ** EQ response को 5Band PEQ settings के रूप में copy करता है। Effect Pipeline में **Ctrl+V** दबाकर इसे चुने गए effect से पहले (या कोई effect चुना न हो तो अंत में) जोड़ें, फिर correction को स्थिर रखने के लिए Tonal Balance EQ बंद करें। Copy **Low** और **High** के बीच curve का आकार दोहराता है, पर उसका overall level नहीं, इसलिए loudness थोड़ी अलग हो सकती है। यह तब उपलब्ध होता है जब graph पर EQ response दिख रहा हो और **Amount** 0% से अधिक हो।
 
 ## Tone Control
 
@@ -848,34 +826,4 @@ Target Adjust केवल target बदलता है। Plugin अब भी
 ### दृश्य प्रदर्शन
 - आपके समायोजनों को दिखाने वाला आसानी से पढ़ा जाने वाला ग्राफ
 - प्रत्येक नियंत्रण के लिए सरल स्लाइडर्स
-- त्वरित रीसेट बटन
-- Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।
-## Tilt EQ
-
-एक सरल पर प्रभावी इक्वलाइज़र जो संगीत की फ्रीक्वेंसी बैलेंस को धीरे से झुकाता है। यह सूक्ष्म समायोजन के लिए डिज़ाइन किया गया है जो बिना जटिल कंट्रोल्स के संगीत को गर्म या चमकदार बना सकता है। समग्र टोन को अपनी पसंद के अनुसार जल्दी से एडजस्ट करने के लिए आदर्श।
-
-### संगीत संवर्धन गाइड
-- संगीत को गर्म बनाएं:
-  - high frequencies घटाने और low frequencies बढ़ाने के लिए negative slope values इस्तेमाल करें
-  - तेज रिकॉर्डिंग या अत्यधिक तीखे हेडफ़ोन के लिए उपयुक्त
-  - आरामदायक और गर्मजोशी भरी सुनने का अनुभव बनाएं
-- संगीत को चमकदार बनाएं:
-  - high frequencies बढ़ाने और low frequencies घटाने के लिए positive slope values इस्तेमाल करें
-  - मफल्ड रिकॉर्डिंग या सुस्त स्पीकर के लिए आदर्श
-  - संगीत में स्पष्टता और चमक जोड़ें
-- सूक्ष्म टोन समायोजन:
-  - gentle overall tone shaping के लिए small slope values इस्तेमाल करें
-  - अपने सुनने के वातावरण या मूड के अनुसार बैलेंस एडजस्ट करें
-
-### पैरामीटर्स
-- **Pivot Frequency** - टिल्ट का सेंट्रल फ़्रीक्वेंसी पॉइंट कंट्रोल करें (20Hz से ~20kHz)
-  - टिल्ट इफेक्ट के केंद्र बिंदु को सेट करने के लिए एडजस्ट करें
-- **Slope** - Pivot Frequency के आसपास tilt की steepness control करता है (-12 dB/oct से +12 dB/oct)
-  - positive values sound को brighter बनाती हैं; negative values warmer बनाती हैं
-  - smaller values gentler changes करती हैं
-
-### विजुअल डिस्प्ले
-- आसान slope adjustment के लिए simple slider
-- रियल-टाइम फ़्रीक्वेंसी रिस्पांस कर्व
-- current slope value की clear indication
 - Graph पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु के values पढ़े जा सकें।

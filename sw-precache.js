@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.14.0-30c16180d5169fc7";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.15.0-15fb9fd2b7011593";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -351,6 +351,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/visualizer/visualizer-renderer.js",
   "./js/visualizer/visualizer-sources.js",
   "./js/visualizer/visualizer-text.js",
+  "./js/visualizer/visualizer-video.js",
   "./js/visualizer/visualizer-view.js",
   "./manifest.json",
   "./package.json",

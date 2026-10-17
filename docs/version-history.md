@@ -6,6 +6,11 @@ lang: en
 
 # Version History
 
+### Version 2.15.0 (TBD, 2026)
+- Added video playback and a Video item to the Visualizer
+- Added Apple Lossless (ALAC) playback in the macOS desktop app
+- Various minor improvements
+
 ### Version 2.14.0 (Oct 16, 2026)
 - Added Lyrics and Edge Fade effect to the Visualizer
 - Added Custom mode to Analog Meter

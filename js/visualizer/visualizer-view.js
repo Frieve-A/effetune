@@ -4,6 +4,7 @@ import { copyTextToClipboard, readTextFromClipboard } from '../utils/clipboard-u
 import { VisualizerPresetStore } from './visualizer-preset-store.js';
 import { VisualizerSources } from './visualizer-sources.js';
 import { VisualizerRenderer } from './visualizer-renderer.js';
+import { VisualizerVideo } from './visualizer-video.js';
 import { VisualizerFeed } from './visualizer-feed.js';
 import { VisualizerEditor } from './visualizer-editor.js';
 import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-history.js';
@@ -20,6 +21,7 @@ export class VisualizerView {
         this.hasLyrics = false;
         this.store = new VisualizerPresetStore({ onError: () => this.notice('visualizer.saveFailed', 'Your layout could not be saved. Check that browser storage is available and try again.') });
         this.sources = new VisualizerSources(uiManager.audioManager);
+        this.video = new VisualizerVideo(uiManager);
         this.currentPresetName = '';
         this.quality = localStorage.getItem('effetune_visualizer_quality') || 'auto';
         this.historyDepth = 0;
@@ -58,8 +60,12 @@ export class VisualizerView {
         this.expandButton = this.root.querySelector('.visualizer-expand');
         this.stageHost.appendChild(this.expandButton);
         this.expandButton.addEventListener('click', () => this.setExpanded(!this.expanded));
-        this.stage.addEventListener('pointermove', () => this.showControls());
+        this.stage.addEventListener('pointermove', event => {
+            this.showControls();
+            this.stage.classList.toggle('lyrics-seekable', this.lyricsSeekTime(event) !== null);
+        });
         this.stage.addEventListener('pointerdown', () => this.showControls());
+        this.stage.addEventListener('click', event => this.seekToLyrics(event));
         this.stageHost.addEventListener('pointermove', () => this.showControls());
         this.stageHost.addEventListener('pointerdown', () => this.showControls());
         this.toolbar = this.root.querySelector('.visualizer-toolbar');
@@ -206,6 +212,7 @@ export class VisualizerView {
     }
     applyLayout() {
         this.hasLyrics = this.layout.items.some(item => item.type === 'lyrics');
+        this.video.setEnabled(this.layout.items.some(item => item.type === 'video'));
         this.sources.setLayout(this.layout);
         this.store.saveCurrent(this.layout);
         this.stage.style.aspectRatio = this.layout.aspect.replace(':', '/');
@@ -270,6 +277,7 @@ export class VisualizerView {
         clearTimeout(this.controlsTimer);
         cancelAnimationFrame(this.frameRequest); this.frameRequest = null;
         this.sources.setVisible(!!this.feed?.visible);
+        this.video.setActive(!!this.feed?.visible);
         if (!mini && this.historyDepth && !fromHistory) {
             const depth = this.historyDepth; this.historyDepth = 0; this.ignorePopState = true; history.go(-depth);
         }
@@ -324,6 +332,7 @@ export class VisualizerView {
         const visible = document.body.classList.contains('view-visualizer') && !document.hidden && !hostHidden && !this.uiManager.isDoubleBlindActive();
         this.visible = visible;
         this.sources.setVisible(visible || !!this.feed?.visible);
+        this.video.setActive(visible || !!this.feed?.visible);
         if (visible && !this.frameRequest) this.frameRequest = requestAnimationFrame(time => this.frame(time));
         if (!visible && this.frameRequest) { cancelAnimationFrame(this.frameRequest); this.frameRequest = null; }
     }
@@ -350,6 +359,20 @@ export class VisualizerView {
         const position = snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
         return { data, time: this.uiManager.audioManager.getAudiblePlaybackPosition(position, snapshot.playbackSpeed),
             duration: snapshot.currentTrackDuration, isStopped: snapshot.isStopped };
+    }
+    // Click-to-seek uses the renderer that drew the visible pixels; Edit keeps clicks for item selection.
+    lyricsSeekTime(event) {
+        if (this.editor.open || !this.hasLyrics || event.target.closest?.('button')) return null;
+        const rect = this.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        const renderer = this.feed?.visible ? this.feed.renderer : this.renderer;
+        return renderer.lyricsSeekTime(this.layout, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+    }
+    seekToLyrics(event) {
+        const time = this.lyricsSeekTime(event), player = this.uiManager.audioPlayer;
+        if (time === null || !player?.contextManager || !player.stateManager.getStateSnapshot().seekBarEnabled) return;
+        player.resumeAudioContextInGesture?.();
+        player.contextManager.seek(Math.max(0, time));
     }
     frame(milliseconds) {
         this.frameRequest = null;
@@ -389,7 +412,7 @@ export class VisualizerView {
                 ctx.clearRect(0, 0, cw, ch);
                 ctx.drawImage(feed, 0, 0);
             } else {
-                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, lyrics: this.lyrics() });
+                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, lyrics: this.lyrics(), video: this.video.frame() });
             }
         } else {
             this.canvas.getContext('2d').clearRect(0, 0, cw, ch);

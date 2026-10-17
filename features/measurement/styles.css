@@ -807,8 +807,11 @@ canvas {
     background-color: var(--et-surface-10);
     border-radius: 8px;
     padding: var(--content-padding);
+    box-sizing: border-box;
     max-width: 500px;
-    width: 100%;
+    width: calc(100% - 32px);
+    max-height: calc(100% - 32px);
+    overflow: auto;
 }
 
 #confirmationCheckbox {

@@ -783,9 +783,13 @@ function verifyVisualFixture(python) {
   } finally {
     Date.now = nativeNow;
   }
-  runPython(python, 'visual-editor-to-code.py', {
-    DSP_VISUAL_GOLDEN: goldenPath
-  });
+  const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-docs-preset-')));
+  try {
+    fs.copyFileSync(goldenPath, path.join(temporary, 'listening.effetune_preset'));
+    runPython(python, 'visual-editor-to-code.py', {}, temporary);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 }
 
 function verifyCli(python) {

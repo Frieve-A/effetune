@@ -218,6 +218,33 @@ test('direct localized docs pages follow their URL before stored or browser pref
   assert.deepEqual(englishHarness.replaced, ['https://example.test/docs/i18n/ja/plugins/lofi.html']);
 });
 
+test('standalone listening guides preserve their page when switching languages', () => {
+  for (const guide of [
+    'music-player',
+    'music-library',
+    'visualizer',
+    'measurement',
+    'pipeline-analyzer',
+    'controller-mapping',
+    'browser-extension',
+    'openhome'
+  ]) {
+    for (const language of languageCodes) {
+      const pathname = language === 'en'
+        ? `/base/docs/${guide}.html`
+        : `/base/docs/i18n/${language}/${guide}.html`;
+      const harness = createSiteHarness({ pathname, basePath: '/base', hash: '#guide' });
+      assert.equal(harness.select.value, language);
+      harness.changeLanguage('ja');
+      harness.changeLanguage('en');
+      assert.deepEqual(harness.assigned, [
+        `https://example.test/base/docs/i18n/ja/${guide}.html#guide`,
+        `https://example.test/base/docs/${guide}.html#guide`
+      ]);
+    }
+  }
+});
+
 test('DSP subroutes without localized pages do not invent locale routes', () => {
   const harness = createSiteHarness({
     pathname: '/dsp/effects/bit-crusher/',

@@ -4,7 +4,7 @@ description: "Crossfeed Filter, Crosstalk Cancellation, MS Matrix, Multiband Bal
 lang: hi
 ---
 
-# स्पेशल ऑडियो प्लगइन
+# स्पैशियल ऑडियो प्लगइन
 
 स्टीरियो (बायां और दायां) संतुलन को समायोजित करके आपके हेडफ़ोन या स्पीकर में संगीत कैसा सुनाई देता है, इसे बढ़ाने वाले प्लगइन का संग्रह। ये प्रभाव आपके संगीत को अधिक विस्तृत और प्राकृतिक बना सकते हैं, विशेष रूप से हेडफ़ोन के साथ सुनते समय।
 
@@ -30,7 +30,7 @@ lang: hi
 
 ### सिस्टम प्रीसेट
 
-इन तैयार सेटिंग्स को सीधे आज़माने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
+हेडफ़ोन पर सुनने के लिए पूरी crossfeed मात्रा चुनने हेतु इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
 
 - **Subtle Blend** - बहुत हल्का क्रॉसफीड, जो मूल चौड़ाई का अधिकांश भाग बनाए रखता है।
 - **Vintage Receiver** - पारंपरिक हेडफ़ोन अडैप्टर जैसा मध्यम क्रॉसफीड।
@@ -47,25 +47,9 @@ lang: hi
   - कम मान (500-1000 Hz): अधिक प्राकृतिक आवृत्ति-निर्भर क्रॉसटॉक
   - उच्च मान (1000-20000 Hz): व्यापक आवृत्ति प्रतिक्रिया
 
-### अनुशंसित सेटिंग्स
+### शुरुआती बिंदु
 
-1. प्राकृतिक हेडफोन सुनना
-   - Level: -12 dB
-   - Delay: 0.3 ms
-   - LPF Freq: 700 Hz
-   - प्रभाव: आरामदायक दीर्घकालिक सुनने के लिए सूक्ष्म क्रॉसफीड
-
-2. स्पीकर सिमुलेशन
-   - Level: -6 dB
-   - Delay: 0.5 ms
-   - LPF Freq: 1000 Hz
-   - प्रभाव: अधिक स्पष्ट स्पीकर जैसी प्रस्तुति
-
-3. सूक्ष्म सुधार
-   - Level: -20 dB
-   - Delay: 0.2 ms
-   - LPF Freq: 500 Hz
-   - प्रभाव: संवेदनशील श्रोताओं के लिए बहुत नरम क्रॉसफीड
+पूरी शुरुआती सेटिंग के लिए **Subtle Blend**, **Vintage Receiver** या **Living Room Speakers** system preset चुनें। फिर सबसे पहले Level समायोजित करें: कम मान अधिक stereo width बनाए रखते हैं, जबकि अधिक मान स्पीकर-जैसे मिश्रण को अधिक स्पष्ट बनाते हैं।
 
 ### अनुप्रयोग गाइड
 
@@ -114,7 +98,7 @@ Crosstalk Cancellation आपके कानों के पास माप�
 
 1. माइक्रोफ़ोन को बाएँ कान की स्थिति पर रखकर left और right speaker outputs के साथ मापें। उसका left channel **LL: L Speaker → Left Ear** और right channel **RL: R Speaker → Left Ear** को दें।
 2. माइक्रोफ़ोन को दाएँ कान पर ले जाकर दोहराएँ: left channel **LR: L Speaker → Right Ear**, right channel **RR: R Speaker → Right Ear** को दें।
-3. उसी speaker/listening setup में बनी single-point measurements लें और हर slot में अलग measurement channel दें।
+3. उसी speaker/listening setup में बनी single-point measurements लें और हर slot में अलग measurement channel दें, फिर filters के तैयार होने की प्रतीक्षा करें।
 
 **Taps** 4096, **Regularization** 50%, **Max Gain** 12 dB, **Freq Low** 200 Hz, **Freq High** 6000 Hz, **Direct Window** 8 ms, **Strength** 70%, **Output Gain** 0 dB और **Latency** 128 samples से शुरू करें। मापी गई स्थिति पर बैठकर bypass से तुलना करें और छोटे बदलाव करें।
 
@@ -131,9 +115,11 @@ Crosstalk Cancellation आपके कानों के पास माप�
 
 ### स्थिति और लेटेंसी
 
-शुरुआत में **Assign all four measurements to begin.** दिखता है; design के समय progress और ready होने पर maximum filter gain दिखता है। tail warning का अर्थ **Taps** या **Regularization** बढ़ाना है। **Direct Window** द्वारा effective low frequency बढ़ने की चेतावनी का अर्थ है कि window बहुत छोटा है।
+स्थिति की शुरुआत **Assign all four measurements to begin.** से होती है। filters बनते समय यह design प्रगति पर होने की सूचना देती है; तैयार होने पर maximum filter gain दिखाती है। tail warning का अर्थ है कि **Taps** या **Regularization** बढ़ाने से मदद मिल सकती है। **Direct Window** द्वारा effective low frequency बढ़ाए जाने की चेतावनी का अर्थ है कि चुनी गई window इतनी छोटी है कि माँगी गई सबसे कम frequencies उपयोग नहीं हो सकतीं।
 
-न मिलने वाली measurement फिर चुनें। filters तैयार न हों तो कम **Taps** या अधिक **Latency** आज़माएँ। चार उपयुक्त measurements और ready filters होने तक audio बिना बदलाव और बिना added latency के pass होता है। बाद में कुल delay **Latency** और modeled delay का योग है, जिसे app compensate करता है; monitoring या video sync के लिए **Total Delay** देखें। कोई graph या अन्य visualization नहीं है।
+यदि कोई assigned measurement नहीं मिलता, तो उसे फिर से चुनें। यदि filters तैयार नहीं हो पाते, तो कम **Taps** या अधिक **Latency** आज़माएँ। जब तक चार उपयुक्त measurements assign न हों और filters तैयार न हों, plugin audio को बिना बदलाव के pass करता है और कोई अतिरिक्त processing latency नहीं बताता।
+
+तैयार होने के बाद कुल अतिरिक्त latency चुनी गई **Latency** और filter की modeled delay का योग होती है; app अपना सामान्य pipeline delay compensation लागू करता है। real-time monitoring या audio/video synchronization मायने रखता हो तो **कुल विलंब** देखें। Crosstalk Cancellation में कोई graph या अन्य visualization नहीं है।
 
 ## MS Matrix
 
@@ -165,7 +151,7 @@ MS Matrix normal stereo audio को Mid/Side format में बदलता �
    - Side Gain: 0 dB
    - Swap: Off
    - केवल तब उपयोग करें जब incoming signal पहले से Mid/Side format में हो
-4. **Channel Swap Utility**
+4. **Creative Flip**
    - Mode: Encode  
    - Mid Gain: 0 dB  
    - Side Gain: 0 dB  
@@ -187,6 +173,7 @@ MS Matrix normal stereo audio को Mid/Side format में बदलता �
 - उच्च-गुणवत्ता वाले Linkwitz-Riley क्रॉसओवर फिल्टर
 - सटीक स्टीरियो समायोजन के लिए रैखिक संतुलन नियंत्रण
 - बाएं और दाएं चैनल का स्वतंत्र प्रसंस्करण
+- crossover filters reset होने पर स्वचालित fade handling
 
 ### पैरामीटर
 
@@ -242,13 +229,12 @@ MS Matrix normal stereo audio को Mid/Side format में बदलता �
    - ऐसी frequency ranges rebalance करें जो बहुत left या right लगती हैं
    - निम्न आवृत्तियों को केंद्रित करके अस्पष्ट बास को कसें
    - उच्च आवृत्तियों में कठोर स्टीरियो आर्टिफैक्ट्स को कम करें
-   - खराब रिकॉर्ड किए गए स्टीरियो ट्रैक को ठीक करें
+   - ऐसी रिकॉर्डिंग सुधारें जिनमें ध्वनि के अलग-अलग हिस्से अलग-अलग तरफ झुके हों
 
-3. रचनात्मक संतुलन प्रभाव
-   - frequency-dependent left/right motion बनाएं
-   - unusual spatial balance effects आज़माएं
-   - selected ranges को हल्का अलग direction में रखें
-   - extreme settings को special effect की तरह इस्तेमाल करें
+3. रचनात्मक सुनने के प्रभाव
+   - असामान्य frequency-dependent placement बनाएं
+   - low frequencies को centered रखते हुए high frequencies को एक तरफ झुकाएं
+   - upper bands में छोटे balance shifts करके अधिक चौड़ा महसूस होने वाला ambience बनाएं
 
 4. स्टीरियो क्षेत्र समायोजन
    - प्रत्येक आवृत्ति बैंड के लिए स्टीरियो संतुलन का सूक्ष्म समायोजन
@@ -282,50 +268,48 @@ MS Matrix normal stereo audio को Mid/Side format में बदलता �
 
 ## Phase Select EQ
 
-Phase Select EQ frequency, absolute L/R phase difference और L/R level balance के आधार पर stereo components को boost या cut करता है। केवल वे components process होते हैं जो तीनों ranges में आते हैं। यह दोनों spectra पर एक जैसा positive gain लगाता है, इसलिए phase difference नहीं बदलता। समान frequencies पर centered sound को wide या एक ओर panned sound से सामान्य EQ अलग न कर पाए, तब इसका उपयोग करें।
+Phase Select EQ उन stereo frequency components को boost या cut करता है जिन्हें **frequency**, **absolute left/right phase difference** और **left/right level balance**, तीनों से एक साथ चुना गया हो। यह दोनों channels पर एक ही positive gain multiplier लगाता है, इसलिए phase को घुमाए या बदले बिना केवल चुने गए spatial components का level बदलता है। जब सामान्य, केवल frequency पर आधारित EQ किसी centered vocal या instrument को उसी frequency band में मौजूद wide या hard-panned sounds से अलग न कर पाए, तब इसका उपयोग करें।
 
-पाँच स्वतंत्र Bands हमेशा उपलब्ध रहते हैं। हर Band में **Core** होता है, जहाँ Gain पूरी तरह लागू होता है, और **Transition**, जहाँ multiplier धीरे-धीरे 100% पर लौटता है। overlap होने वाले Bands के Gains गुणा होते हैं; उदाहरण के लिए 150% और 50% मिलकर 75% देते हैं। कई boosts signal को 0 dBFS से ऊपर ले जा सकते हैं, इसलिए पर्याप्त headroom रखें और bypass से तुलना करें।
+पाँच स्वतंत्र Bands उपलब्ध हैं। हर Band में भीतरी **Core** (जहाँ पूरा Gain लगता है) और बाहरी **Transition** (जहाँ multiplier धीरे-धीरे 100% की ओर लौटता है) होता है। overlap होने वाले Bands के gains गुणा होते हैं, इसलिए कई boosts signal को 0 dBFS से ऊपर ले जा सकते हैं; पर्याप्त headroom रखें और bypass से तुलना करें। Phase Select EQ FFT analysis की latency जोड़ता है (48 kHz पर 5,120 samples या लगभग 106.7 ms; 44.1 kHz पर लगभग 116.1 ms)। यह **कुल विलंब** में दिखाई देती है और real-time monitoring तथा audio/video synchronization को प्रभावित कर सकती है।
 
-Phase Select EQ द्वारा बताई गई processing latency, FFT size और Hop size का योग है। 48 kHz पर यह 4,096 + 1,024 = 5,120 samples, यानी लगभग 106.7 ms होती है (44.1 kHz पर लगभग 116.1 ms)। पूरी chain की delay ऐप के **Total Delay** में देखी जा सकती है। यह latency real-time monitoring और audio/video synchronization को प्रभावित कर सकती है।
+### सुनने में सुधार के लिए मार्गदर्शन
+
+1. **चौड़े high frequencies की चुभन कम करें**: Band को लगभग 4–12 kHz और 90–180° Phase पर रखें, Gain 70–90% और transitions चौड़े करें। इससे centered detail वैसा ही रहता है और out-of-phase upper treble की कठोरता नरम होती है।
+2. **centered vocals में presence जोड़ें**: Band को लगभग 1–4 kHz और 0–30° Phase (या −17% से +17% Balance) पर रखें, Gain 110–125% करें। इससे wide ambience को boost किए बिना center के पास का midrange आगे आता है।
+3. **फैले हुए low-mid ambience को नियंत्रित करें**: Band को लगभग 150–600 Hz और 60–150° Phase पर रखें, Gain 80–90% करें। इससे centered bass और snare की body बनी रहती है और wide low-mid का धुंधलापन साफ होता है।
+4. **hard-panned instrument को दबाएँ**: **Balance** view में −100% से −70% (left) या +70% से +100% (right) चुनें। Phase Core को 150–180° रखें ताकि -180° और +180° पर मौजूद एक-channel वाले points शामिल हों (यदि केवल Balance से चुनना हो तो 0–180°)। frequency range को instrument के आसपास सीमित करें और Gain 70–90% तक घटाएँ।
+
+ये phase ranges सामान्य रुझान हैं, sources की तय positions नहीं। dots वास्तव में जहाँ दिखते हैं उसे देखते हुए छोटे बदलाव करें, और परिणाम headphones व speakers दोनों पर जाँचें।
+
+### पैरामीटर
+
+- **Band 1–5 / checkbox** (Off/On) - edit करने के लिए Band चुनता है और उसे on या off करता है।
+- **Gain** (0% से 200%) - Core के भीतर level multiplier (100% = कोई बदलाव नहीं, 0% = mute, 200% = +6 dB)।
+- **Solo** (Off/On) - केवल soloed Band(s) द्वारा चुने गए components सुनाता है; Solo on रहते हुए Gain अनदेखा होता है और soloed Bands के बाहर की हर चीज़ mute हो जाती है।
+- **Core Low Freq / Core High Freq** (20 Hz से 40 kHz, sample rate द्वारा सीमित) - पूरी तरह processed frequency range।
+- **Low Freq Trans / High Freq Trans** - Core के नीचे और ऊपर frequency fade की चौड़ाई।
+- **Core Low Phase / Core High Phase** (0° से 180°) - पूरी तरह processed absolute L/R phase-difference range।
+- **Low Phase Trans / High Phase Trans** - 0° और 180° की ओर phase fade की चौड़ाई।
+- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% से +100%) - left/right amplitude balance के लिए Core और बाहरी Transition की सीमाएँ।
+- **Map पर handles**: Band के frame के अंदर drag करके उसे ले जाएँ, Core के edges/corners drag करके Core का आकार बदलें, या बाहरी dashed handles drag करके transitions समायोजित करें।
 
 ### Selection map को कैसे पढ़ें
 
-- vertical axis logarithmic frequency दिखाता है: कम frequencies नीचे और अधिक frequencies ऊपर होती हैं।
-- **Phase** और **Balance** options horizontal axis बदलते हैं; Phase या Balance control edit करने पर संबंधित view अपने-आप खुलता है। Phase view में 0° बीच में है, जबकि -180° और +180° एक ही opposite-phase point हैं। selection **absolute** difference का उपयोग करता है, इसलिए frame 0° के दोनों ओर mirror होता है और +60° तथा -60° को एक जैसा process करता है। Balance view में 50:50 बीच में, बायाँ सिरा केवल left channel और दायाँ सिरा केवल right channel है। Balance का सूत्र `(right amplitude - left amplitude) / (left amplitude + right amplitude) × 100%` है; negative values left और positive values right को favor करती हैं। frame एक rectangle है, mirrored pair नहीं।
-- हर dot हाल में मापे गए input component को दिखाता है। मजबूत components बड़े और चमकीले दिखते हैं; पुराने dots धीरे-धीरे मिटते हैं।
-- मापे गए components सफेद dots के रूप में दिखते हैं। केवल enabled Bands के frames दिखते हैं; edit हो रहा Band चमकीला हरा और अन्य enabled Bands हल्के हरे होते हैं। Core के ऊपर-बाएँ का अंक Band number बताता है।
-- हर Core number के पास छोटा badge उस Band की hidden-axis selection की चारों सीमाएँ दिखाता है। उदाहरण के लिए `P 20°›40°–80°›100°` का अर्थ Phase outer low › Core low–high › outer high है। Balance में यही क्रम left:right ratio के रूप में दिखता है, जैसे `B 100:0›80:20–70:30›0:100`। `P full` या `B full` का अर्थ है कि वह Band hidden axis को सीमित नहीं करता।
-- selection phase difference के **absolute value** पर आधारित है। इसलिए एक logical region 0° के दोनों ओर mirror होता है और +60° तथा -60° को एक जैसा process करता है। L/R बदलने पर dots mirror होते हैं, पर processing target नहीं बदलता।
-- स्पष्ट सीमा वाला अंदरूनी भाग Core और हल्का बाहरी भाग Transition है। 0° को शामिल करने वाला region बीच में जुड़ता है; 180° तक पहुँचने वाला region map के दोनों किनारों से जारी रहता है।
-- Graph options के पास badge hidden axis की Core range और जरूरत होने पर Transition range दिखाता है। selected Band जिस dot को hidden axis पर reject करता है वह dim दिखता है। केवल left channel में मौजूद component Balance -100% और Phase -180° पर, जबकि केवल right channel वाला component Balance +100% और Phase +180° पर दिखता है।
+- **ऊर्ध्वाधर अक्ष**: logarithmic frequency (नीचे low, ऊपर high)।
+- **क्षैतिज अक्ष**: map के ऊपर **Phase** और **Balance** के बीच बदलें; किसी Phase या Balance control को edit करने पर view अपने-आप बदल जाता है।
+  - **Phase**: बीच में 0° (in-phase); किनारों पर -180° और +180° एक ही opposite-phase बिंदु हैं। चयन absolute phase difference पर होता है, इसलिए frame 0° के दोनों ओर दर्पण की तरह दिखता है, 0° को छूने पर बीच में जुड़ जाता है, और 180° तक पहुँचने पर दोनों किनारों के पार जारी रहता है।
+  - **Balance**: बीच में 50:50, बाएँ किनारे पर केवल left, दाएँ किनारे पर केवल right। Balance `(right amplitude - left amplitude) / (left amplitude + right amplitude) × 100%` है।
+- **एक तरफ़ की ध्वनियाँ**: जो component केवल एक channel में हो, उसका Balance -100% या +100% होता है और Phase view में वह -180° (left) या +180° (right) पर दिखता है, इसलिए hard-panned sounds को किसी भी view से चुना जा सकता है।
+- **Dots और frames**: सफ़ेद dots हाल के input components हैं (जितने चमकीले/बड़े, उतने प्रबल; छिपे अक्ष द्वारा अस्वीकृत dots धुंधले दिखते हैं)। भीतरी ठोस आयत हर enabled Band का **Core** और बाहरी dashed आयत उसका **Transition** दिखाते हैं; edit हो रहा Band highlight होता है, और हर Core के कोने पर लिखा नंबर Band की पहचान बताता है।
+- **Badges**: हर Band नंबर के पास वाला badge छिपे अक्ष की range को outer low › Core low–high › outer high के रूप में दिखाता है, जैसे `P 20°›40°–80°›100°` या `B 100:0›80:20–70:30›0:100` (left:right अनुपात)। `P full` या `B full` का अर्थ है कि वह अक्ष सीमित नहीं है।
+- **Readout**: map पर माउस घुमाएँ, या टच करके ड्रैग करें, ताकि उस बिंदु की frequency और phase difference या Balance पढ़ी जा सके।
 
-Balance grid left:right ratio दिखाता है। Balance 0%, ±17%, ±33%, ±60%, ±82% और ±100% क्रमशः 50:50 और किसी भी दिशा में लगभग 59:41, 67:33, 80:20, 91:9 तथा 100:0 के बराबर हैं। L/R level difference लगभग 0, ±3, ±6, ±12 और ±20 dB है; ±100% का अर्थ केवल एक channel में signal है।
+Balance ग्रिड परिचित channel अनुपात इस्तेमाल करता है; संदर्भ के लिए L/R स्तर का अनुमानित अंतर दिखाया गया है:
 
-### दृश्य प्रदर्शन
-- मैप पर माउस घुमाएं, या टच करके ड्रैग करें, ताकि उस बिंदु की frequency और phase difference या Balance पढ़ी जा सके।
-
-### ध्वनि सुधार गाइड
-
-1. **बहुत फैले हुए high frequencies की तीक्ष्णता कम करें**: Band को लगभग 4–12 kHz और 90–180° पर रखें। 70–90% और चौड़े transitions से शुरू करें।
-2. **केंद्रित vocals को अधिक presence दें**: Band को लगभग 1–4 kHz और 0–30° पर रखें। 110–125% से शुरू करें।
-3. **फैले हुए low-mid ambience को नियंत्रित करें**: Band को लगभग 150–600 Hz और 60–150° पर रखें। 80–90% से शुरू करें और transitions चौड़े करें।
-4. **hard-panned instrument कम करें**: Balance में left के लिए -100% से -70% या right के लिए +70% से +100% चुनें और frequency range सीमित करें। एक-channel points -180° या +180° को शामिल करने के लिए Phase Core को 150–180° रखें; यदि selection केवल Balance से करनी हो तो पूरा 0–180° Phase Core चुनें। 70–90% Gain से शुरू करें।
-5. **centered source बढ़ाएँ**: Balance -17% से +17% और Phase 0–30° चुनें, frequency range सीमित करें और 105–120% Gain से शुरू करें।
-
-ये phase ranges सामान्य रुझान हैं, sound sources की तय positions नहीं। recording में dots जहाँ वास्तव में दिखाई दें वहाँ देखकर छोटे बदलाव करें, फिर headphones और speakers दोनों पर परिणाम जाँचें।
-
-### Parameters
-
-- **Band 1-5 / checkbox** (Off/On): edit करने के लिए Band चुनता है और settings बदले बिना उसे चालू या बंद करता है।
-- **Gain** (0% से 200%): Core के भीतर level multiplier तय करता है। 100% level नहीं बदलता, 0% selected component हटाता है और 200% amplitude दोगुना करता है।
-- **Solo** (Off/On): Solo चालू किए गए Band जिस हिस्से को चुनते हैं, केवल वही सुनाई देता है। किसी भी चालू Band पर Solo On रहते हुए Gain लागू नहीं होता और उन Band के बाहर की हर चीज़ म्यूट हो जाती है; किनारों पर Transition का वही smooth fade बना रहता है। एक साथ कई Band पर Solo चालू करने पर उनके चुने हुए क्षेत्रों का संयोजन सुनाई देता है। सभी Solo बंद करते ही सामान्य processing लौट आती है।
-- **Core Low Freq / Core High Freq** (20 Hz से 40 kHz, current sample rate की सीमा के अनुसार): 100% processed frequency range तय करते हैं।
-- **Core Low Phase / Core High Phase** (0° से 180°): 100% processed absolute L/R phase-difference range तय करते हैं।
-- **Outer Low Bal / Core Low Bal / Core High Bal / Outer High Bal** (-100% से +100%): Balance की चारों boundaries सीधे तय करते हैं। Core pair पूरी तरह processed L/R amplitude-balance range तय करता है; Outer pair वह जगह तय करता है जहाँ Transition में processing शून्य हो जाती है। negative values left और positive values right चुनती हैं।
-- **Low Freq Trans / High Freq Trans**: frequency Core के नीचे और ऊपर effect के fade की दूरी तय करते हैं।
-- **Low Phase Trans / High Phase Trans**: 0° और 180° की ओर effect के fade की दूरी तय करते हैं।
-
-Map handles, sliders और numeric inputs वही values बदलते हैं। mouse या touch से selected Band के outer frame के अंदर drag करके पूरा Band ले जाएँ, Core के edges या corners drag करके उसका आकार बदलें, और outer-edge handles से हर Transition अलग-अलग बदलें। low-phase handle center पर रुकता है: Core Low Phase 0° पर और Low Phase Trans अपनी maximum width पर रुकता है। Core Low Phase ठीक 0° हो तो center handle शुरू में किसी भी तरफ जा सकता है; पहली movement के बाद drag समाप्त होने तक उसी तरफ lock रहता है।
+| Balance | 0% | ±17% | ±33% | ±60% | ±82% | ±100% |
+|---|---:|---:|---:|---:|---:|---:|
+| प्रबल:कमज़ोर channel अनुपात | 50:50 | 59:41 | 67:33 | 80:20 | 91:9 | 100:0 |
+| L/R level अंतर | 0 dB | ±3 dB | ±6 dB | ±12 dB | ±20 dB | केवल एक channel |
 
 ## Spatial Mapper
 
@@ -333,11 +317,11 @@ Spatial Mapper frequency bands में input channels के संबंध �
 
 **Direct** में हर band की dominant coherent ध्वनि होती है। **Diffuse** में कम coherent और फैली हुई ध्वनि होती है। **Residual** वह सामग्री रखता है जो बाकी दोनों में पूरी तरह नहीं आती। विभाजन धीरे-धीरे होता है, इसलिए settings बदलते समय ध्वनि routes के बीच अचानक switch नहीं होती।
 
-Frequency analysis के कारण Spatial Mapper कुछ latency जोड़ता है। EffeTune इसे **Total Delay** में शामिल करता है। Real-time monitoring और audio/video synchronization में इस मान को ध्यान में रखें।
+Frequency analysis के कारण Spatial Mapper कुछ latency जोड़ता है। EffeTune इसे **कुल विलंब** में शामिल करता है। Real-time monitoring और audio/video synchronization में इस मान को ध्यान में रखें।
 
-### System Presets
+### सिस्टम प्रीसेट
 
-पूरी शुरुआती configuration चुनने के लिए effect header में **Effect Presets** पर क्लिक करें।
+पूरी शुरुआती configuration चुनने के लिए इफ़ेक्ट हेडर में **इफ़ेक्ट प्रीसेट** पर क्लिक करें।
 
 - **Transparent** - मूल channel placement बनाए रखता है और डिफ़ॉल्ट preset है।
 - **Stereo Enhance** - स्पष्ट और diffuse ध्वनि की जगह बनाए रखते हुए Residual route से stereo input को चौड़ा करता है।
@@ -348,18 +332,29 @@ Frequency analysis के कारण Spatial Mapper कुछ latency जो�
 
 ### Routing Grid पढ़ना और बदलना
 
-**Component Routing** में **Direct**, **Diffuse** या **Residual** tab चुनें। Columns analyzed input channels हैं और rows output bus channels हैं। हर cell में छोटे स्लाइडर या संख्या दर्ज करने के फ़ील्ड से linear gain को -1.00 से +1.00 तक 0.01 के चरणों में समायोजित करें: 0 connection हटाता है, +1.00 पूरे positive polarity स्तर पर भेजता है और negative value polarity उलटकर भेजती है। Negative values लाल दिखाई देती हैं।
+**Component Routing** में **Direct**, **Diffuse** या **Residual** tab चुनें। Columns analyzed input channels हैं और rows output bus channels हैं। हर cell में छोटे स्लाइडर या संख्या दर्ज करने के फ़ील्ड से linear gain को -1.00 से +1.00 तक 0.01 के चरणों में समायोजित करें: 0 connection हटाता है, +1.00 पूरे positive polarity स्तर पर भेजता है और negative value polarity उलटकर भेजती है। Negative values लाल दिखाई देती हैं। इनके बीच की values अनुपात में कम level देती हैं।
 
 Route वाली output row उस bus channel को mapped result से बदल देती है। **Input Channels** की range में आने वाला output channel तब silent हो जाता है जब उसकी row में कोई component route न हो। इस range के बाहर के channels, जब उनमें कोई component नहीं लिखा जाता, समान delay के साथ pass through होते हैं।
 
-### सुनने के लिए समायोजन गाइड
+### सुनने में सुधार के लिए मार्गदर्शन
 
-1. स्पष्ट ध्वनि को कम हिलाते हुए stereo चौड़ा करने के लिए **Stereo Enhance** से शुरू करें। Residual में अधिक सामग्री रखने की जरूरत हो तभी **Directness** या **Diffuse Extraction** घटाएँ। **Transparent** से तुलना करें और center image कमजोर होने या mono में बहुत सामग्री खोने पर बदलाव कम करें।
-2. Stereo से center channel बनाने के लिए कम से कम तीन-channel bus पर **Center Extract** चुनें। अधिक coherent सामग्री को Direct में केंद्रित करने के लिए **Directness** और **Separation** बढ़ाएँ।
-3. Stereo को surround या height channels में फैलाने के लिए bus को ऊपर दिए क्रम में सेट करके **5.1 Upmix** या **7.1.4 Upmix** चुनें। उन channels में जाने वाली फैली ध्वनि की मात्रा **Diffuse Extraction** से बदलें। Presets LFE signal नहीं बनाते; जरूरत हो तो bass management अलग से जोड़ें।
-4. Ambience अलग करने के लिए **Ambience Extract** से शुरू करें। **Diffuse Extraction** बढ़ाएँ और **Phase Sensitivity** से तय करें कि opposite phase Direct classification को कितना कम करे।
+1. **स्पष्ट ध्वनि को ज़्यादा हिलाए बिना stereo चौड़ा करें**
+   - **Stereo Enhance** से शुरू करें।
+   - widening route के लिए Residual में अधिक सामग्री रखनी हो, तभी **Directness** या **Diffuse Extraction** घटाएँ।
+   - **Transparent** से तुलना करें; center images कमजोर हों या mono playback में बहुत सामग्री खो जाए तो बदलाव कम करें।
+2. **stereo से center channel बनाएँ**
+   - कम से कम तीन channels वाला bus इस्तेमाल करें और **Center Extract** चुनें।
+   - अधिक coherent सामग्री को Direct में केंद्रित करने के लिए **Directness** और **Separation** बढ़ाएँ।
+   - जाँचें कि vocals और अन्य centered सामग्री स्थिर रहे, जबकि wide ambience मुख्य रूप से left और right में रहे।
+3. **stereo को surround या height channels तक फैलाएँ**
+   - bus को ऊपर दिखाए channel क्रम पर सेट करें, फिर **5.1 Upmix** या **7.1.4 Upmix** चुनें।
+   - surround और height routes तक कितनी फैली हुई सामग्री पहुँचे, यह **Diffuse Extraction** से नियंत्रित करें।
+   - preset LFE signal नहीं बनाता; जरूरत हो तो bass management अलग से जोड़ें।
+4. **ambience अलग करें**
+   - **Ambience Extract** से शुरू करें।
+   - अधिक मजबूत diffuse चयन के लिए **Diffuse Extraction** बढ़ाएँ, और **Phase Sensitivity** से तय करें कि channels का विपरीत phase Direct classification को कितना कम करे।
 
-### Parameters
+### पैरामीटर
 
 - **Input Channels** (1 से 16): Bus की शुरुआत से analyze होने वाले channels की संख्या। Bus में कम channels हों तो उपलब्ध channels इस्तेमाल होते हैं।
 - **Analysis Bands** (8, 16, 24, 32 या 48): Spatial analysis का frequency resolution। अधिक bands frequency के अनुसार placement को अधिक बारीकी से follow करते हैं, पर processing भी बढ़ती है। डिफ़ॉल्ट 24 है।
@@ -389,6 +384,7 @@ Route वाली output row उस bus channel को mapped result से ब
 - ध्वनि क्षेत्र नियंत्रण:
   - प्राकृतिक, यथार्थवादी प्रस्तुति पर ध्यान केंद्रित करें
   - अत्यधिक चौड़ाई से बचें जो कृत्रिम लग सकती है
+  - negative width केवल सुधार या रचनात्मक side-polarity inversion के लिए उपयोग करें
   - अपने विशिष्ट श्रवण वातावरण के लिए अनुकूलित करें
 
 ### पैरामीटर

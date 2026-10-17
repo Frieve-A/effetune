@@ -13,6 +13,7 @@ const { registerSfzLibraryIpc } = require('./sfz-library-ipc');
 const { registerMeasurementBackupIpc } = require('./measurement-backup-ipc.cjs');
 const { readFileBytes } = require('./bounded-file-reader');
 const { MetadataWorkerPool } = require('./library-metadata-worker-pool.cjs');
+const { ArtworkWorkerPool } = require('./library-artwork-worker-pool.cjs');
 const { queueAutoRestart } = require('./relaunch');
 const {
   canPersistAudioPreferencesWithoutReload,
@@ -629,7 +630,7 @@ function refreshMenu() {
 }
 
 // Register all IPC handlers
-function registerIpcHandlers({ onConfigSaved } = {}) {
+function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   registerSfzLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath,
     showOpenDialog: fileHandlers.showOpenDialog });
@@ -739,6 +740,10 @@ function registerIpcHandlers({ onConfigSaved } = {}) {
     return await fileHandlers.openPlaybackSelection();
   });
 
+  ipcMain.handle('prepare-local-playback-source', async (event, filePath) => {
+    return await alacPlaybackSource.prepare(filePath);
+  });
+
   // File operations
   ipcMain.handle('save-file', async (event, filePath, content) => {
     const denialReason = getSaveFileDenialReason(filePath);
@@ -834,6 +839,27 @@ function registerIpcHandlers({ onConfigSaved } = {}) {
       return result.lyrics ?? null;
     } finally {
       await pool.close();
+    }
+  });
+  ipcMain.handle('read-track-tags', async (event, filePath) => {
+    const metadataPool = new MetadataWorkerPool({ workerCount: 2 });
+    const artworkPool = new ArtworkWorkerPool({ workerCount: 1 });
+    try {
+      // The metadata parse validates the path before the artwork worker opens the file.
+      const metadata = await metadataPool.parse({
+        path: filePath,
+        relativePath: typeof filePath === 'string' ? path.basename(filePath) : '',
+        skipCovers: true
+      });
+      const artwork = await artworkPool.extract({ filePath }).catch(() => null);
+      return {
+        title: metadata.title,
+        artist: metadata.artist,
+        album: metadata.album,
+        picture: artwork ? { data: artwork.bytes, format: artwork.mimeType } : null
+      };
+    } finally {
+      await Promise.all([metadataPool.close(), artworkPool.close()]);
     }
   });
   ipcMain.handle('read-file-bytes', async (event, filePath, expectedByteLength) => {

@@ -12,21 +12,22 @@ Para procesar el audio de una pestaña de Chrome o Edge, consulta la [guía de l
 
 ## Contenido
 1. Configuración inicial para streaming
-   1.1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
-   1.2. Entrada de servicio de streaming (ejemplo con Spotify)
-   1.3. Configuración de audio de EffeTune
-   1.4. Comprobación de funcionamiento
+   1. Instalación de VB-CABLE y corrección opcional de aliasing a 96 kHz
+   2. Enrutamiento del servicio de streaming (ejemplo con Spotify)
+   3. Configuración de audio de EffeTune
+   4. Comprobación de funcionamiento
 2. Solución de problemas
-   2.1. Calidad de reproducción de audio
-   2.2. Uso de CPU
-   2.3. Eco
-   2.4. Problemas de entrada, salida o efectos
-   2.5. Discrepancia de salida multicanal
+   1. Calidad de reproducción de audio
+   2. Uso de CPU
+   3. Eco
+   4. Problemas de entrada, salida o efectos
+   5. Discrepancia de salida multicanal
+   6. Solución de problemas de visualización
 3. Conexiones multicanal y hardware
-   3.1. HDMI + receptor AV
-   3.2. Interfaces sin controladores multicanal
-   3.3. Retardo de canal y alineación temporal
-   3.4. Límite de 16 canales y expansión
+   1. HDMI + receptor AV
+   2. Interfaces sin controladores multicanal
+   3. Retardo de canal y alineación temporal
+   4. Límite de 16 canales y expansión
 4. Preguntas frecuentes
 5. Respuesta de frecuencia y corrección de sala
 6. Consejos para la operación de efectos
@@ -43,18 +44,18 @@ Descarga el paquete de controladores VB-CABLE, ejecuta `VBCABLE_Setup_x64.exe` c
 
 Si con VB-CABLE aparece ruido de aliasing por encima de 20 kHz, la causa es su funcionamiento interno a 48 kHz. Solo para este problema, configura **CABLE Input** y **CABLE Output** en 24 bits, 96.000 Hz. Después abre `VBCABLE_ControlPanel.exe` como administrador, elige **Menu▸Internal Sample Rate = 96000 Hz** y pulsa **Restart Audio Engine**. Se requieren permisos de administrador para que este ajuste se conserve después de reiniciar el equipo. Este cambio afecta al propio VB-CABLE y no suele ser necesario para usar EffeTune a 96 kHz.
 
-### 1.2. Enrutamiento del servicio de streaming (ejemplo de Spotify)
-Abra **Configuración▸Sistema▸Sonido▸Mezclador de volumen**, y configure la salida de `Spotify.exe` a **CABLE Input**. Reproduzca una pista para confirmar que no hay sonido desde los altavoces.
-En macOS, utilice **SoundSource** de Rogue Amoeba para asignar la salida de Spotify a **CABLE Input** del mismo modo.
+### 1.2. Enrutamiento del servicio de streaming (ejemplo con Spotify)
+Abre **Configuración▸Sistema▸Sonido▸Mezclador de volumen** y asigna la salida de `Spotify.exe` a **CABLE Input**. Reproduce una pista para confirmar que no sale sonido por los altavoces.
+En macOS, usa **SoundSource** de Rogue Amoeba para asignar del mismo modo la salida de Spotify a **CABLE Input**.
 
 ### 1.3. Configuración de audio de EffeTune
-Inicie la aplicación de escritorio y abra **Configurar audio**.
+Abre EffeTune y elige **Configuración de audio** en el menú Configuración.
 - **Dispositivo de entrada:** CABLE Output (VB-Audio Virtual Cable)
-- **Dispositivo de salida:** DAC/Altavoces físicos
-- **Frecuencia de muestreo:** selecciona 96 kHz. Es la tasa de procesamiento interna de EffeTune y normalmente no requiere cambiar las tasas del sistema operativo, los dispositivos de audio ni VB-CABLE. Reduce el aliasing que cae en la banda audible cuando el filtrado antialiasing de los efectos no lineales es limitado. Comprueba la tasa efectiva que muestra la aplicación. Si hay cortes, reduce primero los efectos exigentes o el número de efectos activos y baja la tasa solo si sigue siendo necesario. Este ajuste es independiente de la corrección específica de VB-CABLE descrita arriba.
+- **Dispositivo de salida:** DAC/altavoces físicos
+- **Tasa de muestreo:** selecciona 96 kHz. Así se fija la frecuencia de procesamiento interna de EffeTune para reducir el aliasing audible en los efectos no lineales, y funciona con independencia de la frecuencia de muestreo del sistema operativo, del DAC o de VB-CABLE. Comprueba la Tasa de muestreo efectiva que muestra la aplicación; si el sonido se corta, reduce los efectos exigentes o baja la frecuencia de muestreo.
 
 ### 1.4. Comprobación de funcionamiento
-Con Spotify reproduciendo, alterne el **ON/OFF** principal en EffeTune y confirme que el sonido cambia.
+Con Spotify en reproducción, activa y desactiva el **ON/OFF** principal de EffeTune y confirma que el sonido cambia.
 
 ---
 
@@ -64,44 +65,48 @@ Con Spotify reproduciendo, alterne el **ON/OFF** principal en EffeTune y confirm
 
 | Síntoma | Solución |
 | ------ | ------ |
-| Cortes o fallos | Elija **Reiniciar audio** desde el menú **Configuración** o el menú de desbordamiento en móvil para reconstruir el pipeline de audio. En la aplicación de escritorio también puede usar **Ver▸Recargar**. Si es necesario, reduzca el número de efectos activos o aumente **Latencia:** en **Configuración de audio** para mejorar la estabilidad (puede afectar la sincronización con video). |
-| Distorsión o recorte | Inserte **Level Meter** al final de la cadena y mantenga los niveles por debajo de 0 dBFS. Añada **Brickwall Limiter** antes del Level Meter si es necesario. |
+| Cortes o fallos | Elige **Reiniciar audio** en el menú **Configuración** o en el menú adicional en móvil. En la aplicación de escritorio también puedes elegir **Recargar** en el menú **Ver**. Si es necesario, reduce el número de efectos activos. |
+| Distorsión o recorte | Inserta **Level Meter** al final de la cadena y mantén los niveles por debajo de 0 dBFS. Si es necesario, añade **Brickwall Limiter** antes de Level Meter. |
 | Ruido de aliasing por encima de 20 kHz al usar VB-CABLE | Su frecuencia interna puede seguir en 48 kHz. Aplica la configuración opcional de 96 kHz de la sección 1.1. |
 
 ### 2.2. Alto uso de CPU
-Desactive los efectos que no esté utilizando o elimínelos del **Effect Pipeline**.
+Desactiva los efectos que no estés usando o elimínalos del **Effect Pipeline**.
 
 ### 2.3. Eco
-Es posible que sus dispositivos de entrada y salida estén en bucle. Asegúrese de que la salida de EffeTune no vuelve a su entrada.
+Es posible que tus dispositivos de entrada y salida formen un bucle. Asegúrate de que la salida de EffeTune no vuelva a su entrada.
 
 ### 2.4. Problemas de entrada, salida o efectos
 
 | Síntoma | Solución |
 | ------ | ------ |
-| No hay entrada de audio | Asegúrese de que el reproductor envía la salida a **CABLE Input**. Permita el permiso de micrófono en el navegador y seleccione **CABLE Output** como dispositivo de entrada. |
-| El efecto no funciona | Confirme que el maestro, cada efecto y cualquier **Section** están **ON**. Restablezca los parámetros si es necesario. |
-| No hay salida de audio | Para la aplicación web, compruebe que las salidas del sistema operativo y del navegador apuntan a su DAC/AMP. Para la aplicación de escritorio, compruebe el dispositivo de salida en **Configurar audio**. |
-| Otros reproductores informan "CABLE Input en uso" | Asegúrese de que ninguna otra aplicación está utilizando **CABLE Input**. |
+| No hay entrada de audio | Asegúrate de que el reproductor envía su salida a **CABLE Input**. Concede el permiso de micrófono en el navegador y selecciona **CABLE Output** en **Configuración de audio**. |
+| El efecto no funciona | Confirma que el interruptor principal, cada efecto y cualquier **Section** están en **ON**. Restablece los parámetros si es necesario. |
+| No hay salida de audio | Revisa **Configuración de audio**. Si tu navegador no permite seleccionar un dispositivo de salida, comprueba que la salida predeterminada del sistema operativo y del navegador apunta a tu DAC/AMP. |
+| Otros reproductores indican "CABLE Input en uso" | Asegúrate de que ninguna otra aplicación esté usando **CABLE Input**. |
 
-Los efectos que requieren WebAssembly muestran un aviso en la parte superior de su panel cuando no pueden funcionar. Activa **Usar el procesamiento de audio WebAssembly** en **Configuración de audio**. Si ya está activado, restablece el audio o vuelve a cargar EffeTune. El aviso desaparece cuando el efecto vuelve a funcionar.
+Los efectos que requieren WebAssembly muestran un aviso en la parte superior de su panel cuando no pueden funcionar. Activa **Usar el procesamiento de audio WebAssembly** en **Configuración de audio**. Si ya está activado, elige **Reiniciar audio** o vuelve a cargar EffeTune. El aviso desaparece cuando el efecto vuelve a funcionar.
 
 ### 2.5. Discrepancia de salida multicanal
-EffeTune envía los canales en orden numérico, hasta 16 canales. Haz coincidir **Canales de salida:** con la configuración del dispositivo. Para una instalación de 7.1ch, configura tanto el dispositivo como EffeTune en 8ch y usa las etiquetas de canal del dispositivo al enrutar los canales traseros. Para una instalación de 16 canales, selecciona 16 canales en ambos lugares y confirma el mapeo del dispositivo.
+EffeTune envía los canales en orden numérico, hasta 16 canales. Haz coincidir **Canales de salida:** con la configuración del dispositivo. Para una instalación de 7.1ch, configura tanto el dispositivo como EffeTune en 8ch y usa las etiquetas de canal del dispositivo al enrutar los canales traseros. Para una instalación de 16 canales, selecciona 16 canales en ambos lugares y confirma el mapeo de canales del dispositivo.
+
+### 2.6. Solución de problemas de visualización {#display-troubleshooting}
+
+En la aplicación de escritorio, **Usar aceleración por hardware** está activado de forma predeterminada. Si la ventana parpadea o deja de actualizarse, desactívalo en **Configuración > Configuración...** y reinicia EffeTune. Si los problemas de visualización se repiten, EffeTune lo desactiva y se reinicia automáticamente. Para volver a probarlo, activa la opción y reinicia la aplicación.
 
 ---
 
 ## 3. Conexiones multicanal y hardware
 
 ### 3.1. HDMI + receptor AV
-Configure la salida HDMI del PC según la disposición de altavoces del receptor y conéctela a un receptor AV. EffeTune puede enviar hasta 16 canales por un solo cable cuando el PC, el receptor y la conexión HDMI los admiten. Los receptores más antiguos pueden degradar la calidad del sonido o reasignar canales de manera inesperada.
+Configura la salida HDMI del PC según la disposición de altavoces del receptor y conéctala a un receptor AV. EffeTune puede enviar hasta 16 canales por un solo cable cuando el PC, el receptor y la conexión HDMI los admiten. Los receptores más antiguos pueden degradar la calidad del sonido o reasignar canales de manera inesperada.
 
 ### 3.2. Interfaces sin controladores multicanal (p.ej., MOTU M4)
 Out 1‑2 y Out 3‑4 aparecen como dispositivos separados, impidiendo la salida de 4 canales. Soluciones alternativas:
-- Use **Voicemeeter** para combinar canales a través de ASIO.
-- Use **ASIO Link Pro** para exponer un dispositivo virtual de 4 canales (avanzado).
+- Usa **Voicemeeter** para combinar canales a través de ASIO.
+- Usa **ASIO Link Pro** para exponer un dispositivo virtual de 4 canales (avanzado).
 
 ### 3.3. Retardo de canal y alineación temporal
-Use **MultiChannel Panel** o **Time Alignment** para retrasar canales en pasos de 10 µs (mínimo 1 muestra). Para alinear los altavoces frontales con altavoces traseros Bluetooth o inalámbricos cuya latencia medida sea mucho mayor, retrase los canales frontales entre 100-400 ms; no es un valor habitual para corregir la distancia entre altavoces. La sincronización de video debe ajustarse en el reproductor.
+Usa **MultiChannel Panel** o **Time Alignment** para retrasar canales en pasos de 10 µs (mínimo 1 muestra). Para alinear los altavoces frontales con altavoces traseros Bluetooth o inalámbricos cuya latencia medida sea mucho mayor, retrasa los canales frontales entre 100-400 ms; no es un valor habitual para corregir la distancia entre altavoces. La sincronización con el vídeo debe ajustarse en el reproductor.
 
 ### 3.4. Límite de 16 canales y expansión
 Actualmente, EffeTune admite hasta 16 canales de salida.
@@ -113,62 +118,59 @@ Actualmente, EffeTune admite hasta 16 canales de salida.
 | Pregunta | Respuesta |
 | ------ | ------ |
 | ¿En qué dispositivos se puede usar la versión PWA? | Se puede usar en los principales entornos móviles y de escritorio, incluidos teléfonos y tablets Android, iPhone/iPad, Windows, macOS, Linux y ChromeOS. Al ser una PWA, no es una aplicación nativa específica de cada dispositivo, sino que funciona en el navegador; el método de instalación, la selección de dispositivos de entrada/salida de audio y los formatos de música compatibles dependen del navegador y del sistema operativo. |
-| No puedo instalar la versión PWA | Use el botón **Instalar versión PWA** del sitio de EffeTune o, en la versión web, abra el menú de engranaje de la esquina superior derecha y elija **Instalar aplicación**. Si la opción no aparece, en Android o PC abra EffeTune con Chrome, Edge u otro navegador basado en Chrome. En iPhone/iPad, ábralo con Safari y use el menú Compartir para añadirlo a la pantalla de inicio. En navegadores integrados en otras aplicaciones, navegación privada o navegadores antiguos, puede que la opción de instalación no aparezca. |
+| No puedo instalar la versión PWA | Usa el botón **Instalar versión PWA** del sitio de EffeTune o, en la versión web, abre el menú de engranaje de la esquina superior derecha y elige **Instalar aplicación**. Si la opción no aparece, en Android o PC abre EffeTune con Chrome o Edge. En iPhone/iPad, ábrelo con Safari y usa el menú Compartir para añadirlo a la pantalla de inicio. En navegadores integrados en otras aplicaciones, navegación privada o navegadores antiguos, puede que la opción de instalación no aparezca. |
 | ¿Entrada surround (5.1ch, etc.)? | La API Web Audio limita la entrada a 2 canales. La salida y los efectos admiten hasta 16 canales. |
-| ¿Longitud recomendada de la cadena de efectos? | Use tantos efectos como su CPU permita sin causar cortes o alta latencia. |
+| ¿Longitud recomendada de la cadena de efectos? | Usa tantos efectos como permita tu CPU sin causar cortes o alta latencia. |
 | ¿Cómo obtener la mejor calidad de sonido? | Ajusta la **Tasa de muestreo** de EffeTune a 96 kHz, empieza con ajustes de efectos sutiles y vigila el margen con **Level Meter**. Si hay cortes, reduce primero los efectos exigentes o el número de efectos activos y baja la tasa solo si sigue siendo necesario. Añade **Brickwall Limiter** si hace falta. |
-| ¿Funciona con cualquier fuente? | Sí. Con un dispositivo de audio virtual puede procesar streaming, archivos locales o equipos físicos. |
-| ¿Puede EffeTune reproducir contenido protegido por DRM? | No de forma directa. EffeTune procesa audio, mientras que el contenido protegido está pensado para reproducirse únicamente en entornos autorizados por su proveedor y puede no estar disponible para aplicaciones de procesamiento de audio de terceros. Utilice la aplicación o el sitio web oficial del proveedor y respete sus condiciones y los métodos de salida de audio admitidos. EffeTune no elimina ni elude la protección del contenido. |
-| ¿Puedo usar solo el reproductor de archivos de música, sin entrada de audio? | Sí. Si al iniciar EffeTune el sonido del micrófono se filtra a los auriculares, elija **Ninguno (solo reproductor de archivos de música)** en **Dispositivo de entrada:** dentro de **Configuración de audio**. EffeTune mantiene la cadena de efectos activa con una fuente silenciosa, por lo que el reproductor y los efectos generadores de señal como **Oscillator** siguen funcionando. Si selecciona una entrada de audio, puede procesar el sonido de equipos externos conectados mediante una interfaz de audio USB o comprobar la señal de entrada con **Spectrum Analyzer**. |
+| ¿Funciona con cualquier fuente? | Sí. Con un dispositivo de audio virtual puedes procesar streaming, archivos locales o equipos físicos. |
+| ¿Puede EffeTune reproducir contenido protegido por DRM? | No de forma directa. EffeTune procesa audio, mientras que el contenido protegido está pensado para reproducirse únicamente en entornos autorizados por su proveedor y puede no estar disponible para aplicaciones de procesamiento de audio de terceros. Usa la aplicación o el sitio web oficial del proveedor y respeta sus condiciones y los métodos de salida de audio admitidos. EffeTune no elimina ni elude la protección del contenido. |
+| ¿Puedo usar solo el reproductor de archivos de música, sin entrada de audio? | Sí. Si al iniciar EffeTune el sonido del micrófono se filtra a los auriculares, elige **Ninguno (solo reproductor de archivos de música)** en **Dispositivo de entrada:** dentro de **Configuración de audio**. EffeTune mantiene la cadena de efectos activa con una fuente silenciosa, por lo que el reproductor y los efectos generadores de señal como **Oscillator** siguen funcionando. Si seleccionas una entrada de audio, puedes procesar el sonido de equipos externos conectados mediante una interfaz de audio USB o comprobar la señal de entrada con **Spectrum Analyzer**. |
 | ¿La aplicación web móvil puede procesar el audio de otras aplicaciones? | Normalmente no. Los navegadores móviles no ofrecen una entrada de loopback general para el audio de otras aplicaciones, por lo que en móvil EffeTune se usa principalmente con el reproductor integrado. |
-| ¿Qué formatos de archivo de música admite? | Depende de la capacidad de decodificación de audio del navegador y del sistema operativo. Como referencia, MP3, WAV y AAC/M4A suelen funcionar en muchos entornos; FLAC, OGG/Vorbis y Opus/WebM varían según el entorno. EffeTune también puede reproducir la pista de audio de un archivo MP4 sin mostrar el vídeo; su reproducción depende del códec de audio interno, y AAC es la opción compatible más habitual. Si un archivo no se reproduce, pruebe con MP3, AAC/M4A o WAV. |
-| ¿Puedo reproducir varios archivos de música? | Sí. Use **Abrir archivos de música** y, en el selector de archivos estándar del dispositivo, elija varios archivos antes de abrirlos; se cargarán como una lista de reproducción. Que sea posible seleccionar varios archivos o todos los archivos de una carpeta depende del dispositivo, el navegador y el selector de archivos. |
-| ¿Qué hace la Biblioteca musical? | Indexa las carpetas de música seleccionadas para que pueda explorar y buscar por pista, álbum, artista, género o subcarpeta, y reproducir los resultados en EffeTune. Guarda los metadatos de la biblioteca y las listas de reproducción en la aplicación, no en los archivos de audio. |
+| ¿Qué formatos de archivo de música admite? | Depende de la capacidad de decodificación de audio del navegador y del sistema operativo. Como referencia, MP3, WAV y AAC/M4A suelen funcionar en muchos entornos; FLAC, OGG/Vorbis y Opus/WebM varían según el entorno. La aplicación de escritorio para macOS convierte automáticamente los archivos Apple Lossless (ALAC) en formato M4A/MP4 para reproducirlos. EffeTune también puede reproducir el audio de archivos de vídeo MP4, M4V, MOV, MKV, WebM y 3GP, y el elemento **Video** de Visualizer puede mostrar su imagen; la reproducción depende del códec de audio interno, y AAC es la opción compatible más habitual. Si un archivo no se reproduce, prueba con MP3, AAC/M4A o WAV. |
+| ¿Puedo reproducir varios archivos de música? | Sí. Usa **Abrir archivos de música** y, en el selector de archivos estándar del dispositivo, elige varios archivos antes de abrirlos; se cargarán como una lista de reproducción. Que sea posible seleccionar varios archivos o todos los archivos de una carpeta depende del dispositivo, el navegador y el selector de archivos. |
+| ¿Qué hace la Biblioteca musical? | Indexa las carpetas de música seleccionadas para que puedas explorar y buscar por pista, álbum, artista, género o subcarpeta directa, y reproducir los resultados en EffeTune. Guarda los metadatos de la biblioteca y las listas de reproducción en la aplicación, no en los archivos de audio. |
 | ¿Dónde está disponible la Biblioteca musical? | La aplicación de escritorio incluye el escáner completo de carpetas. Los navegadores Chromium usan File System Access cuando está disponible. Safari y Firefox usan una importación alternativa, por lo que puede ser necesario volver a seleccionar carpetas o archivos tras recargar o perder permisos. |
-| ¿Cómo actualizo o reconecto carpetas de la Biblioteca musical? | Use **Volver a escanear** después de añadir, eliminar o editar archivos. Si una carpeta indica que falta el acceso, use su botón **Reconectar** y conceda de nuevo acceso a la misma carpeta. |
+| ¿Cómo actualizo o reconecto carpetas de la Biblioteca musical? | Usa **Volver a escanear la biblioteca musical** después de añadir, eliminar o editar archivos. Si una carpeta indica que falta el acceso, usa su botón **Reconectar** y concede de nuevo acceso a la misma carpeta. |
 | ¿Qué formatos de listas de reproducción puede importar o exportar la Biblioteca musical? | La Biblioteca musical puede importar listas M3U, M3U8, PLS y XSPF, y exportar listas M3U8 o XSPF. |
 | ¿La Biblioteca musical modifica mis archivos de audio? | No. El escaneo, la lectura de metadatos, la caché de carátulas, la edición de listas y la reproducción se mantienen dentro de la aplicación y nunca modifican los archivos de audio en disco. |
-| No puedo seleccionar el dispositivo de salida en la aplicación web | Depende de la compatibilidad del navegador y de los permisos. Pruebe en un contexto seguro con Chrome/Chromium o configure el DAC/AMP que quiere usar como salida predeterminada en el sistema operativo o el navegador. |
-| ¿Por qué **Tasa de muestreo:** o **Canales de salida:** no quedan en el valor elegido? | La pantalla de ajustes muestra 96 kHz como valor predeterminado de la tasa, pero antes de guardarla por primera vez la aplicación puede iniciar con el valor predeterminado del sistema o del navegador. En la versión web, si el navegador o el dispositivo rechazan 96 kHz u otro valor no admitido, EffeTune usa una tasa disponible. Comprueba la tasa efectiva que muestra la aplicación. Los canales de salida disponibles también dependen del navegador y del dispositivo. |
-| ¿Por qué se ha puesto rojo el indicador de tasa de muestreo y canales? | EffeTune detectó que el procesamiento de los efectos activados no terminó a tiempo para funcionar en tiempo real. El aviso rojo desaparece unos 10 segundos después de que el procesamiento se recupere. Reduzca el número de efectos activados. |
+| No puedo seleccionar el dispositivo de salida en la aplicación web | Depende de la compatibilidad del navegador y de los permisos. Usa Chrome/Chromium en una página segura o configura el DAC/AMP que quieras usar como salida predeterminada en el sistema operativo o el navegador. |
+| ¿Por qué la Tasa de muestreo o los Canales de salida cambiaron a otro valor? | La pantalla de ajustes muestra 96 kHz como valor predeterminado de la Tasa de muestreo, pero antes de que guardes un ajuste la aplicación puede iniciarse con el valor predeterminado del sistema operativo o del navegador. En la versión web, si el navegador o el dispositivo rechazan 96 kHz u otro valor no admitido, EffeTune usa una tasa disponible. Comprueba la tasa efectiva que muestra la aplicación. Los canales de salida disponibles también dependen del navegador y del dispositivo. |
+| ¿Por qué se ha puesto rojo el indicador de tasa de muestreo y canales? | EffeTune detectó que el procesamiento de los efectos activados no terminó a tiempo para funcionar en tiempo real. El aviso rojo desaparece unos 10 segundos después de que el procesamiento se recupere. Reduce el número de efectos activados. |
 | ¿El reproductor web recuerda la lista de reproducción? | Se guardan los ajustes de repetición y aleatorio, pero la selección normal de archivos no se restaura tras recargar debido a las restricciones del navegador. |
 | ¿Se puede reproducir en móvil con la pantalla apagada? | Depende del navegador y no se puede garantizar, especialmente en iOS. En entornos compatibles se usa Wake Lock, pero la reproducción en segundo plano no está garantizada. |
-| ¿En qué se diferencian los modos de ahorro de energía de EffeTune? | Están disponibles tanto en la versión Web/PWA como en la aplicación de escritorio Electron. Se eligen en **Configuración** → **Ahorro de energía**. **Prioridad al procesamiento en segundo plano** mantiene el procesamiento de la entrada externa durante el silencio. **Ahorro de energía equilibrado (Predeterminado)** suele conservar la entrada seleccionada, pero reduce el DSP y las actualizaciones visuales durante el silencio. **Máximo ahorro de energía** también puede detener una entrada sin uso o silenciosa en segundo plano después del intervalo elegido. Cuando la ruta actual permite comprobar que es seguro, la reproducción puede seguir avanzando mientras se omite el DSP o se mantiene la salida a cero. No hay un indicador de estado independiente; **Reanudar el procesamiento de audio** o **Reanudar la entrada de audio** solo aparece en el menú cuando se requiere una acción del usuario. |
-| ¿Qué hace “Omitir el DSP de visualización cuando esté oculto”? | Está activado de forma predeterminada. Cuando los gráficos no pueden mostrarse, EffeTune omite los efectos Analyzer para reducir la carga de procesamiento. Esto ocurre cuando el Effect Pipeline no se muestra, por ejemplo, en la Biblioteca musical, en la pestaña Reproductor en móviles o durante un Double Blind Test, y también con EffeTune minimizado, en el minirreproductor o con la página del navegador oculta. El audio pasa sin cambios y el análisis se reanuda cuando los gráficos pueden volver a mostrarse. Desactívalo si necesitas que el análisis continúe en segundo plano. |
-| ¿Qué hace “Sincronizar elementos visuales con el audio”? | Alinea los gráficos y medidores con el sonido que escucha. Está desactivado de forma predeterminada porque puede añadir retardo al audio. No está disponible en la extensión del navegador, y los dispositivos Bluetooth o similares pueden dejar los visuales ligeramente desincronizados. |
-| ¿Qué cambian “Umbral de silencio” y “Detener la entrada de audio después de”? | **Umbral de silencio** (de -90 a -20 dBFS, en incrementos de 10 dB) fija el nivel de potencia medido en la entrada y la salida por debajo del cual el audio se considera silencioso; un valor más bajo reduce la probabilidad de confundir audio tenue con silencio. En **Máximo ahorro de energía**, **Detener la entrada de audio después de** (1/5/15 minutos o **Nunca**) controla únicamente la liberación del micrófono o de la entrada. Es independiente del retardo más corto que suspende un grafo sin ruta, por lo que el grafo puede quedar en Suspended mientras la entrada sigue retenida. |
-| ¿“Prioridad al procesamiento en segundo plano” garantiza el procesamiento con la versión Web/PWA oculta? | No. EffeTune da prioridad a la continuidad y evita su propia suspensión automática por silencio en una ruta de entrada externa, pero el navegador y el sistema operativo aún pueden congelar, suspender o descartar una página oculta. Si **Máximo ahorro de energía** detuvo la entrada, volver a la página o recibir de nuevo una señal no solicita el permiso del micrófono de forma automática; usa **Reanudar el procesamiento de audio** mediante una acción explícita. |
+| ¿En qué se diferencian los modos de ahorro de energía de EffeTune? | Abre **Configuración > Ahorro de energía** (aplicaciones Web/PWA y de escritorio). **Prioridad al procesamiento en segundo plano** mantiene activo el procesamiento de la entrada externa durante el silencio. **Ahorro de energía equilibrado (Predeterminado)** reduce el DSP y las actualizaciones visuales durante el silencio y mantiene conectada la entrada de audio seleccionada. **Máximo ahorro de energía** además libera la entrada de audio cuando permanece en silencio en segundo plano, o sin usar en el modo Reproductor, durante el tiempo configurado. La entrada no se reinicia cuando vuelve la señal; abre la aplicación y elige **Reanudar el procesamiento de audio** (o **Reanudar la entrada de audio**) en el menú. |
+| ¿Qué hace “Omitir el DSP de visualización cuando esté oculto”? | Está activado de forma predeterminada. Cuando los gráficos del analizador no están visibles (por ejemplo, al explorar la Biblioteca musical, usar el Reproductor mini, durante una prueba de doble ciego o con la ventana minimizada), EffeTune omite los efectos Analyzer para ahorrar CPU sin cambiar el sonido. Desactívalo si el historial del analizador debe seguir actualizándose en segundo plano. |
+| ¿Qué hace “Sincronizar elementos visuales con el audio”? | Alinea los gráficos y medidores con el sonido que escuchas. Está desactivado de forma predeterminada porque puede añadir latencia de audio (no disponible en la extensión de navegador). Con dispositivos Bluetooth o similares, los gráficos pueden seguir algo desfasados. |
+| ¿Qué cambian “Umbral de silencio” y “Detener la entrada de audio después de”? | **Umbral de silencio** (-90 a -20 dBFS en pasos de 10 dB) establece el nivel por debajo del cual el audio se trata como silencio; con un valor más bajo es menos probable que los pasajes suaves se traten como silencio. En **Máximo ahorro de energía**, **Detener la entrada de audio después de** (1/5/15 minutos o **Nunca**) define cuánto tiempo debe permanecer la entrada en silencio en segundo plano, o sin usar en el modo Reproductor, antes de que EffeTune la libere. |
+| ¿“Prioridad al procesamiento en segundo plano” garantiza el procesamiento con la versión Web/PWA oculta? | No. Evita que EffeTune suspenda el procesamiento de la entrada externa durante el silencio, pero el navegador o el sistema operativo aún pueden limitar o suspender pestañas en segundo plano. |
 | ¿Costo de receptor AV vs. interfaz? | Reutilizar un receptor AV con HDMI es simple. Para configuraciones centradas en PC, una interfaz multicanal más amplificadores pequeños ofrece buen costo y calidad. |
-| No hay sonido de otras aplicaciones justo después de instalar VB-CABLE | La salida predeterminada del sistema operativo se cambió a **CABLE Input**. Cámbiela de nuevo en la configuración de sonido. |
-| Solo los canales 3+4 cambian de volumen después de dividir | Coloque un efecto **Volume** después del divisor y configure **Channel** a 3+4. Si se coloca antes, todos los canales cambian. |
+| No hay sonido de otras aplicaciones justo después de instalar VB-CABLE | La salida predeterminada del sistema operativo se cambió a **CABLE Input**. Vuelve a cambiarla en la configuración de sonido. |
+| Solo los canales 3+4 cambian de volumen después de dividir | Coloca un efecto **Volume** después del divisor y ajusta **Channel** en 3+4. Si se coloca antes, todos los canales cambian. |
+| ¿Por qué un IR Reverb compartido suena seco o indica que falta la IR? | Las URL y los preajustes guardan solo el ID de contenido de la IR, no el archivo de audio. Importa el archivo original exacto para volver a enlazarlo automáticamente, o elige un sustituto en **Biblioteca de respuestas al impulso**. Comprueba también **Dry** y **Dry Level**: si falta la IR, no se genera señal wet. |
+| ¿Cómo puede otra persona reproducir mi resultado de IR Reverb? | Comparte el preajuste o la URL junto con el archivo IR original y su información de fuente/licencia. El destinatario debe importar el archivo sin cambios; bytes idénticos producen el mismo ID. Iguala también la frecuencia de muestreo, la selección de canales de salida y los ajustes de IR Reverb. |
 
 ---
-
-### Compartir y reproducir resultados de IR Reverb
-
-Las URL y los presets contienen solo el ID de la IR, no el audio. Si la IR figura como ausente o no hay señal wet, importa el mismo archivo original para volver a enlazarlo, o elige un sustituto en **Impulse Response Library**, y revisa **Dry** y **Dry Level**.
-
-Para reproducir el resultado en otro equipo, entrega el archivo IR sin modificar junto con la URL o preset y los datos de fuente/licencia; iguala también sample rate, selección de canales y ajustes de IR Reverb. En un send/return multicanal, usa **Matrix** para copiar canales a un bus libre, desactiva **Dry**, ajusta **Wet Level** a 0 dB y devuelve el bus wet solo a las salidas deseadas.
 
 ## 5. Respuesta de frecuencia y corrección de sala
 
 ### 5.1. Importación de ajustes de AutoEQ a 15Band PEQ
-Puede importar ajustes de ecualizador AutoEQ directamente desde el botón en la parte superior derecha.
+Puedes importar ajustes de ecualizador AutoEQ directamente desde el botón en la parte superior derecha.
 
 ### 5.2. Pegado de ajustes de corrección de medición
-Copie los ajustes de 5Band PEQ desde la página de medición y péguelos en la vista **Effect Pipeline** usando **Ctrl+V** o el menú.
+Copia los ajustes de 5Band PEQ desde la página de medición y pégalos en la vista **Effect Pipeline** usando **Ctrl+V** o el menú.
 
 ### 5.3. Uso de una medición multicanal con Room EQ
-En la página de medición, seleccione los canales individuales que quiera en **Canal de salida** para medirlos en una sola sesión. Después de guardar, Room EQ muestra una entrada independiente para cada canal, como `Nombre de la medición [Ch 1]`, en las listas **Measurement Ch 1**, **Measurement Ch 2** y las demás listas específicas de canal. En cada lista **Measurement Ch**, seleccione la entrada que corresponda a ese canal de salida. Room EQ no asigna canales automáticamente.
+En la página de medición, selecciona los canales individuales que quieras en **Canal de salida** para medirlos en una sola sesión. Después de guardar, Room EQ muestra una entrada independiente para cada canal, como `Nombre de la medición [Ch 1]`, en las listas **Measurement Ch 1**, **Measurement Ch 2** y las demás listas específicas de canal. En cada lista **Measurement Ch**, selecciona la entrada que corresponda a ese canal de salida. Room EQ no asigna canales automáticamente.
 
-Use **Copiar ajustes PEQ por canal** cuando quiera pegar una corrección estática de la respuesta de frecuencia en **Effect Pipeline**. Use Room EQ cuando quiera una corrección de sala por canal basada en respuestas de impulso.
+Usa **Copiar ajustes PEQ por canal** cuando quieras pegar una corrección estática de la respuesta de frecuencia en **Effect Pipeline**. Usa Room EQ cuando quieras una corrección de sala por canal basada en respuestas al impulso.
 
 ---
 
 ## 6. Consejos para la operación de efectos
 * El flujo de señal es de arriba a abajo.
-* Use el efecto **Matrix** para conversiones como 2→4ch o 16→2ch (configure **Channel = All** en el enrutamiento de bus).
-* Gestione el nivel, silencio y retardo para hasta 16 canales con **MultiChannel Panel**.
+* Usa el efecto **Matrix** para conversiones como 2→4ch o 16→2ch (ajusta **Channel = All** en el enrutamiento de bus).
+* Gestiona el nivel, el silencio y el retardo para hasta 16 canales con **MultiChannel Panel**.
+* Para un envío/retorno de reverberación multicanal, usa **Matrix** para copiar los canales de origen deseados a un bus libre, coloca **IR Reverb** en ese bus con **Dry** desactivado y **Wet Level** en 0 dB, y usa las ganancias de Matrix como niveles de envío. Enruta el bus wet de vuelta solo a los canales de salida deseados para no duplicar la señal dry original.
 
 ---
 
@@ -178,4 +180,6 @@ Use **Copiar ajustes PEQ por canal** cuando quiera pegar una corrección estáti
 * Medición de respuesta en frecuencia: <https://effetune.frieve.com/features/measurement/measurement.html>
 * VB-CABLE: <https://vb-audio.com/Cable/>
 * Voicemeeter: <https://vb-audio.com/Voicemeeter/>
-* ASIO Link Pro (versión fija no oficial): busque "ASIO Link Pro 2.4.1"
+* ASIO Link Pro (versión fija no oficial): busca "ASIO Link Pro 2.4.1"
+
+[← Volver al README](README.md)

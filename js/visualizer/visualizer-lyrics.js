@@ -89,6 +89,8 @@ export function drawLyrics(ctx, item, frame, w, h, scale, fill, glyphMask, measu
         mask.globalCompositeOperation = 'source-over';
         ctx.drawImage(glyphMask, 0, 0);
     } : undefined;
+    // Rows drawn with a cue time, in item pixels, for click-to-seek hit testing.
+    const hits = measurements.hits = [];
     if (frame.placeholder) {
         drawStyledText(ctx, 'Lyrics', item.style, w, h, scale, fill, undefined, undefined, 0, paintFill);
         return;
@@ -149,6 +151,8 @@ export function drawLyrics(ctx, item, frame, w, h, scale, fill, glyphMask, measu
         if (frame.horizontal && (x + rowWidth < 0 || x > w)) continue;
         const y = frame.horizontal ? anchor : anchor + (index - frame.p) * lineAdvance;
         const rowTop = y - rowHeight / 2;
+        if (frame.synced && frame.rows[index].text) hits.push({ left: x, top: rowTop, right: x + rowWidth,
+            bottom: rowTop + rowHeight, time: frame.rows[index].time + item.params.lyricsOffset });
         const active = frame.synced && index === frame.current;
         ctx.save();
         // Keep paint coordinates in the item box; translating a row also translates its gradient.

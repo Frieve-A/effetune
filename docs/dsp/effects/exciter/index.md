@@ -37,8 +37,6 @@ Generates controlled high-frequency harmonics to emphasize detail.
 
 An effect that adds harmonic content to enhance clarity and presence. By filtering the high-frequency content and applying saturation, it creates additional harmonics that brighten and enhance your music.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - **Subtle Enhancement:**
   - Adds clarity and air to voices and high-frequency details
@@ -54,6 +52,8 @@ An effect that adds harmonic content to enhance clarity and presence. By filteri
   - Useful when you want a brighter, more forward sound, but best used sparingly
 
 ### Parameters
+
+- **Oversampling** (1x, 2x, 4x, 8x; default 1x) - Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **HPF Freq** (500-10000Hz) - Sets the cutoff frequency for high-pass filtering
   - Low values (500-2000Hz): Affects more of the signal
   - Mid values (2000-5000Hz): Targets presence frequencies

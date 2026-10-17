@@ -226,14 +226,14 @@ test('Electron catalog client starts the first scan when an older add response h
   const client = createElectronCatalogClient({ api });
   const languageHints = { language: 'ja', browserLanguage: 'ja-JP' };
 
-  const result = await client.addFolder({ languageHints });
+  const result = await client.addFolder({ languageHints, includeVideo: true });
   assert.deepEqual(calls.slice(-2), [
-    ['addFolder', { languageHints }],
-    ['scanFolders', { folderIds: ['folder-new'], scanReason: 'automatic', languageHints }]
+    ['addFolder', { languageHints, includeVideo: true }],
+    ['scanFolders', { folderIds: ['folder-new'], scanReason: 'automatic', languageHints, includeVideo: true }]
   ]);
   assert.deepEqual(result.scan, {
     method: 'scanFolders',
-    value: { folderIds: ['folder-new'], scanReason: 'automatic', languageHints }
+    value: { folderIds: ['folder-new'], scanReason: 'automatic', languageHints, includeVideo: true }
   });
 });
 

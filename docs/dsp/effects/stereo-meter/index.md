@@ -85,6 +85,4 @@ A fascinating visualization tool that lets you see how your music creates a sens
    - Compare old and new recordings of your favorite songs
    - Watch how different listening positions change the display
 
-Remember: These tools are meant to enhance your enjoyment of music by adding a visual dimension to your listening experience. Have fun exploring and discovering new ways to see your favorite music!
-
 [Back to all effects](/dsp/effects/)

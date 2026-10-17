@@ -853,6 +853,11 @@ test('showConfigDialog opens in Web and hides Electron-only settings', async () 
     assert.equal(harness.document.getElementById('power-silence-threshold').value, '-80');
     assert.equal(harness.document.getElementById('power-full-suspend-delay').value, '300');
     assert.equal(harness.document.getElementById('language-select').value, 'ja');
+    const libraryIncludeVideo = harness.document.getElementById('library-include-video');
+    assert.equal(libraryIncludeVideo.checked, false);
+    libraryIncludeVideo.checked = true;
+    await libraryIncludeVideo.dispatchEvent('change');
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).libraryIncludeVideo, true);
     const visualSync = harness.document.getElementById('visual-sync');
     assert.equal(visualSync.checked, true);
     visualSync.checked = false;
@@ -1287,6 +1292,11 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
     hardwareAcceleration.checked = true;
     await hardwareAcceleration.dispatchEvent('change');
     assert.equal(harness.window.appConfig.hardwareAcceleration, true);
+    const libraryIncludeVideo = harness.document.getElementById('library-include-video');
+    assert.equal(libraryIncludeVideo.checked, false);
+    libraryIncludeVideo.checked = true;
+    await libraryIncludeVideo.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.libraryIncludeVideo, true);
 
     const pipelineDefault = harness.document.getElementById('pl-default');
     await pipelineDefault.dispatchEvent('change');
@@ -1871,7 +1881,7 @@ test('all locales include matching IR Reverb, IR library, and external asset key
     .map(match => match[1])
     .sort();
   const english = readIrEntries('en');
-  assert.equal(english.size, 122);
+  assert.equal(english.size, 58);
   for (const locale of locales) {
     const entries = readIrEntries(locale);
     assert.deepEqual([...entries.keys()].sort(), [...english.keys()].sort(), `${locale} IR key parity`);
@@ -1907,6 +1917,53 @@ test('all locales include matching offline output setting and error keys', () =>
   }
 });
 
+
+test('pipeline column mode defaults to automatic, persists, and applies only after a successful save', async () => {
+  for (const success of [true, false]) {
+    const applied = [];
+    const harness = createConfigHarness({
+      saveConfigResult: { success },
+      uiManager: { pipelineManager: { core: { columnManager: {
+        getCurrentColumns: () => 4,
+        updatePipelineColumns: count => applied.push([count, harness.window.appConfig.pipelineColumnMode])
+      } } } }
+    });
+    await withGlobals({ window: harness.window, document: harness.document }, async () => {
+      await showConfigDialog(true, {});
+      const select = harness.document.getElementById('pipeline-column-mode');
+      assert.equal(select.value, 'auto');
+      assert.deepEqual(select.children.map(option => option.value), ['manual', 'auto']);
+      select.value = 'manual';
+      await withMutedConsole('error', () => select.dispatchEvent('change'));
+      assert.equal(harness.calls.filter(call => call[0] === 'saveConfig').at(-1)[1].pipelineColumnMode, 'manual');
+      assert.deepEqual(applied, success ? [[4, 'manual']] : []);
+      assert.equal(select.value, success ? 'manual' : 'auto');
+    });
+  }
+});
+
+test('Web pipeline column mode restores from saved configuration', async () => {
+  const localStorage = createLocalStorage();
+  const harness = createConfigHarness({ window: { localStorage } });
+  setWebAppConfigRuntimeForTests(new WebAppConfigRuntime({
+    store: new PowerConfigStore({ backend: new SerializedMemoryPowerConfigBackend() }),
+    storage: localStorage,
+    windowRef: harness.window
+  }));
+  try {
+    await withGlobals({ window: harness.window, document: harness.document, localStorage }, async () => {
+      await saveConfig(false, { pipelineColumnMode: 'auto' });
+      await showConfigDialog(false, {});
+      const select = harness.document.getElementById('pipeline-column-mode');
+      assert.equal(select.value, 'auto');
+      select.value = 'manual';
+      await select.dispatchEvent('change');
+      assert.equal((await loadConfig(false)).pipelineColumnMode, 'manual');
+    });
+  } finally {
+    resetWebAppConfigRuntimeForTests();
+  }
+});
 
 test('theme settings use registry order, apply after persistence and restore failed saves', async () => {
   for (const success of [true, false]) {

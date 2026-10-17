@@ -16,7 +16,9 @@ Music Library stores its catalog, artwork cache, and playlists inside the app. I
 - **PC Chromium browsers with File System Access:** Can keep access to selected folders after a reload. The browser may ask for permission again.
 - **Mobile browsers, Safari, Firefox, and other browsers without File System Access:** Keep access to selected files only for the current page session. The catalog remains stored, but select the folder or files again after every reload so EffeTune can reconnect them.
 
-Music Library indexes common media file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, AAC, WebM, and MP4. It can also use an external CUE sheet to divide a WAV or FLAC album file in the same folder into individual tracks. For MP4 files, EffeTune plays only the audio track and does not display video. Actual playback support, including the audio codec inside an MP4 file, still depends on the browser or OS decoder.
+Music Library indexes common audio file extensions such as MP3, WAV, OGG, FLAC, Opus, M4A, and AAC. It can also use an external CUE sheet to divide a WAV or FLAC album file in the same folder into individual tracks.
+
+To include MP4, WebM, M4V, MOV, MKV, and 3GP files, enable **Include video file formats in Music Library** under **Settings > Config... > General**, then add or rescan a folder. This setting is off by default; changing it does not immediately change the existing catalog. Actual playback support, including the audio codec inside a video file, depends on the browser or OS decoder. See the [Music Player guide](music-player.md#video) for video display.
 
 ## Opening Music Library
 
@@ -39,128 +41,92 @@ If you add a folder that is already inside an existing library folder, EffeTune 
 
 ## Browsing and Searching
 
-Use the navigation tabs to browse the catalog:
+Use the navigation tabs to browse your collection:
 
-- **Tracks** - All indexed tracks. PC layout shows a sortable table; mobile layout shows a compact list.
-- **Files** - Indexed tracks listed by their file locations, so you can choose a track directly. The desktop app shows absolute paths; web browsers show the library root name and relative path. Tracks from the same CUE audio file remain separate entries and can be selected individually.
-- **Albums** - Albums grouped from metadata.
-- **Artists** - Artists and album artists from metadata.
-- **Genres** - Genre groups from metadata.
-- **Subfolders** - Tracks grouped by the direct parent subfolder path relative to each indexed music folder.
-- **Folders** - Registered music folder roots, their scan status, and their physical directory trees.
-- **Recently Added** - Recently indexed tracks.
-- **Playlists** - Playlists created or imported inside Music Library.
+- **Tracks:** All indexed tracks (a sortable table on PC; a compact list on mobile).
+- **Files:** Tracks listed by file path so you can pick a file directly. Tracks defined by a CUE sheet appear as separate entries.
+- **Albums:** Albums grouped from track metadata.
+- **Artists:** Artists and album artists from metadata (semicolon-separated values such as `Artist A; Artist B` are indexed under each artist while keeping the full credit displayed).
+- **Genres:** Genre groups from metadata.
+- **Subfolders:** Tracks grouped by their direct parent subfolder inside each indexed root folder (for example, `Artist/Album`).
+- **Folders:** Registered root folders, their scan status, and their folder hierarchy.
+- **Recently Added:** Recently indexed tracks.
+- **Playlists:** Playlists created or imported inside Music Library.
 
-An Album Artist value separated with semicolons, such as `Artist A; Artist B`, is indexed under each artist while the full credit remains displayed. `&`, `/`, and `feat.` are not treated as separators.
+In **Folders**, open a registered root to browse its folders in **Tree view** or switch to **Flat view** to list all tracks inside that root at once. In **Tree view**, single-child folders that contain no direct tracks are combined into one row (such as `Artist / Album`) so you can jump straight to the album folder, while the breadcrumb path lets you open any intermediate folder.
 
-Open a root in **Folders** to browse it in **Tree view**. Subfolders appear above the track list; select one to descend into it, and use the breadcrumb path or **Previous** to move back up. The track list contains only tracks stored directly at the current level. **Flat view** instead shows every indexed track from the registered root, including tracks in all of its subfolders. Switching views keeps the current breadcrumb location so you can return to the same place in **Tree view**. **Search library** remains a library-wide search, so the subfolder list is hidden while a search is active.
+Use **Search library** to filter across tracks, albums, artists, and playlists. Search terms of three or more characters match anywhere in the title, artist, album, genre, file name, or path; one- or two-character terms match word starts. On PC, click track table headers (**Track No.**, **Title**, **Artist**, **Album**, **Genre**, or **Time**) or use the **Sort** list in other views. On mobile, use the **Sort** list to change order in any view outside saved playlists.
 
-When a folder contains no tracks directly and has exactly one subfolder, **Tree view** combines consecutive levels of that kind into one row, such as `Artist / Album`. Select the row to go directly to the deepest folder; the count shown for the row is also based on that folder. You can use the breadcrumb to open any intermediate level, while **Previous** on desktop moves back one level at a time. On mobile, **Previous** returns to the view you were on before, so it can skip past the intermediate levels of a combined chain in a single step.
+When a search result, folder level, album, artist, genre, subfolder, or playlist contains 300 tracks or fewer, all tracks are selected by default so you can start playback immediately. Results with 301 tracks or more are not selected automatically; use the row checkboxes, **Select All**, or **Deselect All** to change the selection. On mobile, long-press any track row to show checkboxes and selection controls.
 
-The **Folders** tree follows exact physical relative paths and includes every discovered catalog track entry, even while metadata is being analyzed or when analysis fails. Its folder count includes track entries in that folder and all descendants. CUE tracks count individually, so several logical tracks that share one WAV or FLAC source count as several tracks, not as one physical audio file. **Subfolders** is different: it is a metadata-derived grouping of successfully analyzed tracks by normalized direct-parent identity, so case or Unicode-normalization variants can be combined there.
-
-For example, `Artist/Album/01 Song.flac` appears in the `Artist/Album` subfolder group and under `Artist` then `Album` in the physical **Folders** tree. Identical relative paths in different indexed roots remain separate. Files stored directly in a root do not create a subfolder group; they remain available in **Tracks** and in that root's direct track list in **Folders**.
-
-Use **Search library** to search across tracks, albums, artists, and playlists. In the PC layout, track table headers sort by **Track No.**, **Title**, **Artist**, **Album**, **Genre**, or **Time**. Album, artist, genre, subfolder, and playlist views provide a **Sort** list backed by the catalog. Depending on the view, it can order by name, artist, year, path, track count, total duration, updated time, or created time, in either direction. Each view keeps its own selection.
-
-In mobile layout, track lists outside playlists provide a **Sort** list with ascending and descending choices, including tracks within a subfolder and search results. Tracks within playlists keep their saved order. **Recently Added** starts in newest-first order; you can choose another order from the same list.
-
-For tracks, search terms of three or more characters match anywhere in the title, artist, album, genre, file name, or path. One- or two-character terms match only the beginning of a word. Enter at least three characters when you need a match in the middle of a word.
-
-In both the PC and mobile layouts, track search results, tracks shown directly at the current folder level in **Tree view**, and tracks in an album, artist, genre, subfolder, or playlist detail are all selected by default when the result contains 300 tracks or fewer. Results with 301 tracks or more are not selected automatically. Use the row checkboxes, **Select All**, or **Deselect All** to change the selection.
-
-Mobile starts with the normal title list and does not show artist or duration columns. Only long-pressing a track enters selection mode; checkboxes, **Select All**, and **Deselect All** then appear while the usual row actions remain available. Automatic selection and later selection changes—including **Select All**, **Deselect All**, and individual checkboxes—change only the selection state; they do not enter or leave selection mode.
-
-If metadata is missing or unreadable, EffeTune falls back to the file name and folder information. Track properties show the file path, format, sample rate, bit depth, bitrate, and main metadata fields. For a CUE track, they also show that it is a CUE track, the CUE path, the source audio path, and the track's region within that source.
+If tags are missing, EffeTune falls back to the file and folder names. Track properties display the file path, format, sample rate, bit depth, bitrate, metadata, and (for CUE tracks) the CUE sheet path and track region.
 
 ## CUE Album Files
 
-Place an external `.cue` file beside the WAV or FLAC files it names, then add or rescan that folder. Each valid `TRACK ... AUDIO` entry appears as an individual Music Library track. CUE title, performer, date, genre, and track numbering are used where available, while technical audio details come from the source WAV or FLAC file.
+Place an external `.cue` sheet in the same folder as the WAV or FLAC files it references, then add or rescan the folder. Each valid `TRACK ... AUDIO` entry appears as an individual track in Music Library.
 
-For tracks added to Music Library, EffeTune uses artwork embedded in the source audio first. If none is available, it looks beside the CUE file for `cover.jpg`, `cover.png`, `front.jpg`, `front.png`, then a JPEG or PNG named after the source audio file, with or without its audio extension. Direct desktop playback automatically uses the same neighboring image candidates; this playback path does not extract embedded artwork from the source audio. Direct browser playback uses a matching image available through the selected files or registered folder.
+For cover art, Music Library checks embedded artwork in the source audio first, then looks beside the `.cue` file for `cover.jpg`, `cover.png`, `front.jpg`, `front.png`, or an image matching the audio file name.
 
-You can also play a CUE album directly with **Open music files**, or **Open Music** on mobile. In the desktop app, **File > Open music file...** is also available; select the `.cue` file by itself. In a PC Chromium browser, first add the album's folder to Music Library and allow folder access. You can then select the `.cue` file by itself, and EffeTune opens the referenced WAV or FLAC files and matching cover from that registered folder without adding the selection to the catalog. Browsers without File System Access must still receive the `.cue` file together with all and only the WAV or FLAC files it names, plus any matching cover image. A valid selection replaces the current playback queue. If validation fails, the current queue is left unchanged.
+You can also open a `.cue` sheet directly from the player (**Open music files**, **File > Open music file...** on desktop, or **Open Music** on mobile):
+- **Desktop app:** Select the `.cue` file by itself.
+- **PC Chromium browser:** If the album folder is already registered in Music Library with permission granted, select the `.cue` file by itself.
+- **Other browsers:** Select the `.cue` file together with all and only the WAV/FLAC files it references, plus a matching cover image if you want one.
 
-If a CUE sheet is invalid or cannot safely identify its source files, EffeTune explains the problem and imports the WAV or FLAC files as ordinary whole-file tracks instead. Correct the CUE sheet or its file names, then rescan the folder to try again.
+If a CUE sheet is invalid or its audio files cannot be matched, EffeTune notifies you and imports the WAV or FLAC files as single whole-file tracks instead. Correct the CUE sheet or its file names, then rescan the folder to try again.
 
 ## Playing from the Library
 
-Select a track, album, artist, genre, subfolder, folder, search result, or playlist, then use:
+Select a track, album, artist, genre, subfolder, folder, search result, or playlist, then choose:
 
 - **Play** to replace the current player queue and start playback.
-- **Shuffle** to play the selected group in random order.
-- **Play Next** to insert the selected tracks after the current track.
-- **Add to Queue** to append the selected tracks.
-- **Add to Playlist** to save selected tracks into a Music Library playlist.
+- **Shuffle** to play the selection in random order.
+- **Play Next** to insert the selection after the current track.
+- **Add to Queue** to append the selection to the queue.
+- **Add to Playlist** to add the selection to a Music Library playlist.
 
-On PC, you can double-click a track row to play from that point and use right-click or the **More** menu for track actions. On mobile, tap a track in the normal list to play it; long-press enters selection mode as described above.
-
-The normal music player controls and repeat/shuffle settings still apply. On devices with a keyboard, the usual player shortcuts also work. If a library track cannot be opened because the folder is offline, reconnect or re-import the folder.
+On PC, double-click a track row to play from that track, or right-click / open **More** for track actions. On mobile, tap a track to play it or long-press to select multiple tracks.
 
 ## Folder Maintenance
 
-Use **Rescan** after you add, remove, rename, or retag files in your music folders. Rescanning updates changed tracks, removes files no longer found, and tries to resolve playlist items that were previously unavailable.
+Use **Rescan** after adding, removing, renaming, or retagging files in your music folders. Rescanning updates modified tracks, removes deleted files from the catalog, and relinks playlist entries when matching files are found.
 
-Folder statuses in the **Folders** view indicate whether a folder is ready:
+Folder status in **Folders**:
+- **OK:** Ready to browse and play.
+- **Not scanned:** Added, but not yet indexed.
+- **Missing:** The folder path is no longer found.
+- **Reconnect:** Browser or folder permission is needed again; click **Reconnect** and grant access to the same folder.
 
-- **OK** - The folder is available.
-- **Not scanned** - The folder has not been indexed yet.
-- **Missing** - The folder or stored path is no longer available.
-- **Reconnect** - EffeTune needs permission again.
+If a library track cannot be opened because its folder is offline, reconnect or re-import the folder.
 
-When a folder shows **Reconnect**, select **Reconnect** and grant access to the same folder. Choosing **Remove** only removes the folder from the Music Library catalog; files on disk are not deleted.
+Choosing **Remove** only removes the folder from EffeTune's catalog; your files on disk are never deleted.
 
 ## Playlists
 
-Music Library playlists are stored inside EffeTune and can contain tracks from your indexed folders.
+Music Library playlists are saved inside EffeTune and can hold tracks from any indexed folder:
 
-You can:
-
-- Create a playlist from selected library tracks.
-- Save the current player queue as a playlist.
-- Use **Rename**, **Duplicate**, **Delete**, and **Reorder** for playlists.
-- Drag tracks inside a playlist to change order, or use **Move Up** and **Move Down** where drag is not convenient.
-- Use **Import Playlist** for M3U, M3U8, PLS, and XSPF playlist files.
-- Open an individual playlist and export it with **Export M3U8** or **Export XSPF**.
+- Create a playlist from selected library tracks or save the current player queue as a playlist.
+- Use **Rename**, **Duplicate**, and **Delete** to manage playlists, and drag tracks (or use **Move Up** / **Move Down**) to reorder them.
+- Use **Import Playlist** for M3U, M3U8, PLS, and XSPF files, and **Export M3U8** or **Export XSPF** inside a playlist to export it.
 
 ### Recently Played and Favorites
 
-EffeTune shows two special playlists alongside your regular playlists in the same card grid. They are created only when needed: **Recently Played** when an indexed library track starts playing, and **Favorites** when you first mark a track with the star button.
+Two automatic playlists appear in the Playlists grid once used:
 
-- **Recently Played** keeps the latest 100 distinct tracks, with the newest at the top. Playing a track again moves it back to the top.
-- **Favorites** contains the tracks you mark with ☆. On PC, use the star beside a track; on mobile, open the track's **More** menu. The same menu is also available by right-clicking a track on PC.
+- **Recently Played:** Keeps the last 100 distinct tracks played from Music Library, ordered from newest to oldest.
+- **Favorites:** Collects tracks marked with the **☆** beside a track on PC, or with **Add to Favorites** in the track's **More** menu (also available by right-clicking on PC). Click the Play button on the **Favorites** card to start it immediately.
 
-These playlist names are fixed and appear in the current UI language, so they cannot be renamed. You can duplicate, export, or delete them like other playlists. If you delete one, it is recreated empty the next time playback or a favorite action needs it. Their cards show a clock or star in the artwork area; the Play button at the lower right of Favorites starts it immediately. Special playlists are not included in regular playlist search results.
+Their names follow the current UI language and cannot be renamed, though you can duplicate, export, or delete them like any other playlist.
 
-Folder scans automatically import supported playlist files after their tracks are indexed. An unchanged file is skipped. When the content at the same folder and relative path changes, EffeTune atomically replaces the items in its automatically imported playlist; this also replaces item edits made to that playlist in EffeTune. A failed or canceled import is retried on the next rescan. Deleting or renaming the source file leaves the existing playlist in place, and a renamed source is imported as a new playlist.
+### Importing and Exporting Playlists
 
-When importing, EffeTune previews how many playlist entries match tracks in the current library. Unmatched entries are kept as unresolved items when possible, so they can be resolved later after adding or reconnecting the matching folder.
+Folder scans automatically import supported playlist files found inside your music folders and update them on rescan when the playlist file changes on disk; this update replaces any edits you made to that playlist in EffeTune. Unmatched entries are kept as unresolved items so they can link automatically once the matching folder is added or reconnected.
 
-When exporting, choosing **Relative paths** writes paths relative to the export location when possible. Use this when you want the playlist to move together with the music folder. M3U8 and XSPF cannot preserve a CUE track's region within an album file, so EffeTune leaves CUE tracks out of these exports and reports how many were omitted. It never substitutes the physical album-file path for an omitted CUE track.
+When exporting a playlist, enable **Relative paths** if you want the exported M3U8 or XSPF file to move together with your music folder. Because standard M3U8 and XSPF files do not store CUE sub-track ranges, CUE tracks are omitted during export and EffeTune reports how many were skipped.
 
 ## Safety and Storage
 
-- Music Library reads audio files and metadata but does not write changes to audio files.
-- Artwork caching and playlists are app data, not embedded file changes.
-- Browser storage can be cleared by the browser or user settings. Export important playlists if you need a portable copy.
-- In browsers with File System Access, permission controls whether folder access remains available after a reload. In other browsers, select the files again after every reload.
-
-## Large Libraries
-
-EffeTune loads large collections in stages instead of holding the entire library in memory. Scan time and practical limits depend on storage speed, available memory, metadata, artwork, and browser or OS limits.
-
-Nearby tracks load as you scroll. An exceptionally fast jump can briefly show blank rows until the requested tracks load, especially on slow storage.
-
-Use Music Library in one EffeTune window at a time.
-
-## OpenHome Remote Control (Desktop App)
-
-On supported desktop builds, EffeTune can appear as an OpenHome player to controller apps on the same local network. Open **Settings > Config...**, enable **Allow OpenHome controllers on this network**, and wait until the status says that EffeTune is available. The default player name is `EffeTune (computer name)`; use **Player name** to give each computer a recognizable name such as `EffeTune Living Room`. The setting is off by default.
-
-OpenHome does not require a sign-in. While this setting is enabled, other devices on the local network can view playback metadata, replace or edit the Player queue, and control playback. If Windows Firewall asks for permission, allow EffeTune only on **Private networks**, not **Public networks**. Turn the setting off when remote control is not needed.
-
-Supported packages are Windows x64, macOS on Intel or Apple silicon, and Linux x64. This feature is not available in the web app or mobile browsers. Basic queue and playback operation has been verified with BubbleUPnP on Android; other OpenHome controllers can differ in how they display services and unsupported controls. EffeTune is an OpenHome Playlist source, not a UPnP AV MediaRenderer, and no compatibility or certification claim is made.
-
-Controllers can add HTTP or HTTPS audio, manage one remote queue, play, pause, stop, skip, seek, repeat, and shuffle. Remote audio still passes through the current EffeTune effect pipeline. OpenHome control does not provide EffeTune effect editing, local file-path access, master volume, Radio, Songcast, or synchronized multi-room playback. Gapless playback is not guaranteed, and technical metadata can remain unknown until the source provides it. Sleep, wake, VPN, or network-interface changes can make the player disappear briefly while it reconnects.
+- Music Library reads audio files and metadata without modifying your files on disk.
+- Clearing browser site data removes the web app's catalog and playlists; export important playlists to keep them.
+- Large collections load progressively as you scroll. Use Music Library in one EffeTune window at a time.
 
 [← Back to README](../README.md)

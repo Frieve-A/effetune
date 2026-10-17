@@ -286,7 +286,11 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         background-color: var(--et-surface-5);
         border-radius: 8px;
         padding: 20px;
-        width: 400px;
+        width: 440px;
+        max-width: calc(100% - 32px);
+        max-height: calc(100% - 32px);
+        box-sizing: border-box;
+        overflow: auto;
         color: var(--et-text-primary);
       }
       .device-section {

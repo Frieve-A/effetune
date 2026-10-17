@@ -1142,7 +1142,7 @@ function landingPage(catalog, version, convenienceExports) {
       'Ten analyzers and Tonal Balance EQ expose opt-in decoded observations, including Analog Meter ' +
       'loudness and true-peak readings; all other catalog ' +
       'telemetry remains metadata-only. ' +
-      'MCP is planned only after its implementation and acceptance exist.',
+      'MCP is not available for the DSP Library.',
     '',
     'See [Compatibility and boundaries](/dsp/reference/compatibility/) for supported runtimes, ' +
       'channel behavior, and the precise current surface.',
@@ -1169,7 +1169,7 @@ function landingPage(catalog, version, convenienceExports) {
 
 function staticPages(sources) {
   const {
-    catalog, convenienceExports, graphContract, npmPackage, referenceOrigin, routes
+    catalog, convenienceExports, graphContract, npmPackage, routes
   } = sources;
   const version = npmPackage.version;
   const pythonSnippet = read(path.join(docsDataRoot, 'snippets', 'python-start.py'));
@@ -1213,9 +1213,6 @@ function staticPages(sources) {
   ));
   const bundlePackSnippet = read(path.join(
     docsDataRoot, 'snippets', 'bundle-pack.py'
-  ));
-  const visualInput = read(path.join(
-    docsDataRoot, 'fixtures', 'visual-editor-input-v0.1.json'
   ));
   const visualGolden = read(path.join(
     docsDataRoot, 'fixtures', 'visual-editor-golden-v0.1.json'
@@ -1351,8 +1348,8 @@ beside the mapped \`dist/worklet.js\`. If a deployment rebases them, pass
 \`EffeTuneNode.create\` options argument; each accepts a string or \`URL\`.
 
 The example starts a 440 Hz oscillator after a user click and routes it through a
--6 dB Volume effect. Use [Verification](/dsp/reference/verification/) for the
-candidate-package browser checks.
+-6 dB Volume effect. [Verification](/dsp/reference/verification/) describes how the
+AudioWorklet path is tested in Chromium.
 
 ## API
 
@@ -1505,20 +1502,20 @@ such an effect directly and supply its asset.
 
 ## Visual editor to code
 
-The example below exports an asset-free stereo app pipeline, imports it explicitly, and
+The example below imports an asset-free stereo app preset and
 processes a fixed stereo input through the canonical Chain. The import report identifies
 editor-only metadata that is intentionally discarded; unsupported fields are not
 silently dropped.
 
-Input exported by the visual editor:
-
-${codeBlock('json', visualInput)}
-
-Golden long-format export with \`Date.now()\` frozen to \`1710000000000\`:
+In the desktop app, build a pipeline containing only Volume at -6 dB, choose
+**File > Export Preset...**, and save it as \`listening.effetune_preset\` in your
+working directory (the export is named after the preset by default). Alternatively,
+save the following example under that name:
 
 ${codeBlock('json', visualGolden)}
 
-Import and process that exact golden:
+Run this Python example from the same directory. It checks that the imported
+preset applies the expected gain to a short stereo signal:
 
 ${codeBlock('python', visualSnippet)}
 `);
@@ -2717,15 +2714,20 @@ are not part of this API.
 `);
 
   add('verification', `
-The frozen wrapper reference origin is ${referenceOrigin.javascriptDerived} JavaScript-derived effect suites,
-${referenceOrigin.nativeDirectDouble} native direct-double suites, ${referenceOrigin.nativeIndependent} independent native-reference suites, and ${referenceOrigin.productionNativePromoted} production-native-promoted suites. The independent native reference validates IIR filtering with RBJ biquads in direct form I and linear-phase filtering with direct FIR convolution. Maintainers run:
+Each test case processes a fixed input and compares the output with a frozen
+reference output under that case's tolerance. The same cases run on the native
+Python package, the JavaScript package's baseline and SIMD WebAssembly modules, and
+the AudioWorklet in Chromium. These comparisons check processing behavior; they do
+not promise byte-identical output across backends. See [Determinism](/dsp/concepts/determinism/)
+for the conditions needed to reproduce a result.
 
-${codeBlock('console', 'node tools/verify-dsp-library-goldens.mjs')}
+Package checks also exercise installation and the documented examples. See the
+[DSP Library Release workflow results](https://github.com/Frieve-A/effetune/actions/workflows/dsp-library-release.yml)
+for the verification status of published releases and [Release integrity](/dsp/reference/release-integrity/)
+for published package checksums and provenance.
 
-See the stable [DSP Library workflow and runs](https://github.com/Frieve-A/effetune/actions/workflows/dsp-library-ci.yml).
-CI acceptance summaries are temporary workflow artifacts, not public Release assets.
-The repository Chromium harness uses a special \`file:\` flag; that exception is not a
-public browser-support claim.
+Use [Compatibility](/dsp/reference/compatibility/) to check supported runtimes
+and browser requirements before integrating the library.
 `);
 
   add('release-integrity', `

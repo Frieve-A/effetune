@@ -30,6 +30,7 @@ export class TrackLyrics {
     }
 
     async load(track) {
+        track = track.presentationTrack ?? track;
         const playbackRegion = getPlaybackRegion(track);
         const region = playbackRegion
             ? { start: getRegionStartTime(playbackRegion), end: getRegionEndTime(playbackRegion) }

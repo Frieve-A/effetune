@@ -90,6 +90,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['showSaveDialog', ['save-options'], ['show-save-dialog', 'save-options']],
     ['showOpenDialog', ['open-options'], ['show-open-dialog', 'open-options']],
     ['openPlaybackSelection', [], ['open-playback-selection']],
+    ['prepareLocalPlaybackSource', ['song.m4a'], ['prepare-local-playback-source', 'song.m4a']],
     ['saveFile', ['a.txt', 'content'], ['save-file', 'a.txt', 'content']],
     ['readFile', ['a.txt'], ['read-file', 'a.txt']],
     ['readFileBytes', ['a.wav'], ['read-file-bytes', 'a.wav']],

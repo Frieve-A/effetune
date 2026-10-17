@@ -37,8 +37,6 @@ Adds configurable harmonic components derived from the input.
 
 The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-order nonlinear terms. It lets you tune even- and odd-order distortion character from subtle warmth to stronger coloration, which can help music that sounds too clean, thin, or flat feel more vivid.
 
-**Oversampling**: Choose 1x (default), 2x, 4x, 8x. Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
-
 ### Listening Enhancement Guide
 - **Subtle Effect:**
   - Adds a gentle layer of harmonic warmth
@@ -58,6 +56,8 @@ The Harmonic Distortion plugin shapes the waveform with adjustable 2nd- to 5th-o
   - Odd-order terms mainly change the symmetric distortion character
 
 ### Parameters
+
+- **Oversampling:** Chooses the processing rate multiplier (1x, 2x, 4x, 8x, default: 1x). Higher settings reduce unwanted tones caused by high-frequency harmonics folding back into the audible range, but use more CPU. Start with 2x or 4x; use 8x for stronger suppression at 48 kHz. 1x preserves the original processing. Settings above 1x add 64 samples of delay (about 1.33 ms at 48 kHz).
 - **2nd Harm (%):** Sets the second-order distortion term (-30 to 30%, default: 2%)
 - **3rd Harm (%):** Sets the third-order distortion term (-30 to 30%, default: 3%)
 - **4th Harm (%):** Sets the fourth-order distortion term (-30 to 30%, default: 0.5%)

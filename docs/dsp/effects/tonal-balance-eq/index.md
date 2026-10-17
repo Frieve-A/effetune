@@ -48,63 +48,32 @@ Use the opt-in decoded telemetry callback or subscription API to observe this ef
 
 ## Tonal Balance EQ
 
-Measures the long-term tonal balance of whatever is playing and gradually corrects it toward the typical balance of released music in a chosen style. Use it when recordings, playlists, or streams sound consistently too dark, too bright, too boomy, or too thin, and you want them evened out without adjusting an EQ by hand for each one. It corrects the recording, not your speakers or room; use Room EQ for those.
+Measures the long-term tonal balance of whatever is playing and gently steers it toward the typical spectral balance of released music in a chosen style. Use it when tracks across a playlist, album, or stream sound consistently too dark, too bright, too boomy, or too thin, and you want them evened out automatically without adjusting an EQ by hand for every track. (It corrects the recording's balance rather than your speakers or room; use [Room EQ](/dsp/effects/room-eq/) for acoustic correction.)
 
-The plugin compares the measured spectrum with the target after lining up their overall levels, so only the shape of the balance matters, not how loud the recording is. It reduces the regions that are too strong and then raises the whole signal by one make-up gain, so the loudness stays the same and the weaker regions come forward. It does not raise regions that hold no real music content, such as the empty top of a band-limited recording or steady hiss; a steady, noise-like sound such as an unchanging synth pad is treated the same way, and so is a sound that keeps playing at the same level through the quiet breaks, because it cannot be told apart from background noise. Silence and quiet breaks do not count toward the measurement. All channels receive the same correction, so the stereo image is unchanged, and the plugin adds no delay.
-
-The style targets are learned from the long-term spectra of a permissively licensed music collection. Each style has a typical curve and a typical spread between tracks. **Tilt** is a fixed reference instead: flat in the bass, then falling at a set slope. Any target can be reshaped to your taste with the five Target Adjust bands.
+The plugin compares the measured spectrum with the target after aligning overall loudness, attenuates overly strong regions, and applies a single make-up gain so weaker regions come forward without changing perceived loudness. It excludes silence and pauses from the measurement and withholds lift on hiss and on steady, noise-like bands (including a sustained synth pad), so empty frequency extremes are not artificially boosted. All channels receive the same zero-latency correction, preserving the stereo image.
 
 ### Sound Enhancement Guide
-- **Mixed playlists and streaming**: Start with the defaults (Target **All**, Amount 100%, Averaging Time 30 s). The correction fades in over tens of seconds as the measurement becomes reliable, so compare with the plugin turned off after about half a minute of music.
-- **One steady correction for an album**: Press **Reset** when the album starts and set Averaging Time to **∞**. The plugin then averages everything it has heard since the Reset, so the correction settles and changes less and less.
-- **Music of one style**: Choose the Target closest to what you are playing, such as **Classical** for orchestral recordings or **Electronic** for dance music. All is a good choice when styles are mixed.
-- **A gentler result**: Lower Amount to about 50% or Range to about 3 dB. For only broad tilts without narrower shaping, raise Smoothing to about 1 oct.
-- **Following changes within a song**: Shorten Averaging Time to about 0.5 to 1 s so a dark verse and a bright chorus are each corrected. If you hear the tone moving, lengthen it again.
-- **Leaving the extremes alone**: Raise Low so the deep bass is not reshaped, or lower High so the top octave is not reshaped.
-- **Your own house curve**: Shape the target with Target Adjust. For example, a High shelf of +1.5 dB at 8 kHz with Q 0.7 asks for a slightly brighter balance, and a broad Peak of -2 dB around 300 Hz with Q 0.7 asks for less low-mid weight. Each recording is then corrected toward that shape only as far as it needs, instead of every recording receiving the same EQ.
-- **A mechanical reference**: Choose Target **Tilt**. The default Slope of -6 dB/oct asks for a balance slightly darker than most released music; set Slope to about -4.5 to -5 dB/oct for a more typical balance, or to -3 dB/oct, the pink-noise reference, for a brighter one.
+- **Mixed playlists and streaming**: Start with the defaults (**Target: All**, **Amount: 100%**, **Averaging Time: 30 s**). The correction builds up over tens of seconds as the measurement becomes reliable, so let the music play for about 30 seconds before comparing with bypass.
+- **One steady correction for an album**: Click **Reset** at the start of the album and set **Averaging Time** to **∞** so the correction averages the entire playback session and settles into a fixed curve.
+- **Genre-specific targets**: Choose **Classical**, **Electronic**, **Pop**, or **Rock** to match a specific style, or **All** for mixed listening.
+- **Gentler shaping**: Lower **Amount** (e.g., 50%), reduce **Range** (e.g., 3 dB), or raise **Smoothing** (e.g., 1 oct) for broad, subtle tilts.
+- **Custom house curve**: Use the five **Target Adjust** bands below the graph to tilt or shape the target to your taste (for example, +1.5 dB High shelf at 8 kHz). Each recording is then corrected toward your custom target only as much as needed.
+- **Fixed slope reference**: Select **Target: Tilt** for a flat response below **Corner** followed by a constant roll-off **Slope** (−5 dB/oct approximates typical commercial masters; −3 dB/oct matches pink noise).
 
-The make-up gain keeps the loudness, not the peak level, so peaks can rise. If a later stage clips, lower the level after this plugin or add a limiter.
+The make-up gain keeps loudness, not peak level, so peaks can rise; if a later stage clips, lower the level after this plugin or add a limiter.
 
 ### Parameters
-- **Target** - The tonal balance that is the goal: **All**, **Classical**, **Electronic**, **Pop**, **Rock**, or **Tilt** (default All)
-  - All is an equal-weight mixture of the four styles
-  - Tilt is a fixed reference, not a learned style: flat below Corner, then falling at Slope
-- **Slope** - Shown only while Target is Tilt. How steeply the target falls above Corner (-18 dB/oct to 0 dB/oct, default -6 dB/oct)
-  - -3 dB/oct is pink noise, which has equal energy in every octave; 0 dB/oct is white noise and -6 dB/oct is brown noise
-  - Typical commercial recordings average roughly -5 dB/oct (Pestana et al.), so the default asks for a slightly darker balance than typical music. A shallower Slope asks for more treble; steeper (more negative) settings tilt the balance further toward the bass
-- **Corner** - Shown only while Target is Tilt. The frequency below which the target stays flat (20 Hz to 1000 Hz, default 250 Hz)
-  - Lower values continue the slope further into the deep bass, asking for more deep bass
-  - Higher values keep more of the bass flat, asking for less bass
-- **Amount** - How much of the correction is applied (0% to 100%, default 100%)
-  - Lower values scale the whole correction down; at 0% the sound is unchanged
-  - At 0% the measurement and the graph keep running, and Range, Smoothing, Low, and High are disabled
-- **Range** - The largest correction any band can receive, up or down (0 dB to 12 dB, default 6 dB)
-  - Lower values keep changes subtle; 0 dB turns the correction off
-  - Higher values let recordings that are far from the target move closer to it
-- **Smoothing** - How wide the features of the correction curve are (0.1667 oct to 2 oct, default 0.5 oct)
-  - Higher values give broad, gentle tilts
-  - Lower values follow the target more closely, including narrower peaks and dips
-- **Averaging Time** - How long the measurement averages (0.1 s to ∞, default 30 s)
-  - Short values make the tone follow changes within a song
-  - Long values give a steady correction that changes slowly between songs
-  - The right end of the slider is **∞**: the plugin averages everything since the last Reset. You can also type ∞ in the value box
-- **Low** - The lower edge of the corrected range (20 Hz to 200 Hz, default 20 Hz)
-  - Below it, the correction stays at the value it has at Low
-  - Raise it so the deep bass is not reshaped
-- **High** - The upper edge of the corrected range (2000 Hz to 20000 Hz, default 16000 Hz)
-  - Above it, the correction stays at the value it has at High
-  - Lower it so the top octave is not reshaped
-- **Average SPL** - Your estimated average listening level at the listening position, as in Loudness Equalizer (60 dB to 96 dB, default 83 dB)
-  - It only decides which quiet bands are loud enough to hear and may therefore be raised; it does not change the output level
-  - Lower values treat more faint bands as inaudible, so they are not raised
-  - Higher values count more faint bands as audible content
-- **Target Adjust** - Five bands below the graph that reshape the target, with the same controls as Room EQ's Additional EQ and 5Band PEQ
-  - Each band can be turned on or off and set to Peak, Low shelf, or High shelf
-  - Frequency: 20 Hz to 20 kHz (defaults 100 Hz, 316 Hz, 1 kHz, 3.16 kHz, and 10 kHz)
-  - Gain: -20 dB to +20 dB (default 0 dB). Positive values ask for more of that region, negative values for less; 0 dB leaves the target unchanged
-  - Q: 0.1 to 10, limited to 2 for shelves (default 0.7). Higher values affect a narrower range
+- **Target** - Goal tonal balance: **All** (default equal mix of the four styles), **Classical**, **Electronic**, **Pop**, **Rock**, or **Tilt** (fixed slope reference).
+- **Slope** (-18 to 0 dB/oct; default -6 dB/oct; Tilt mode only) - Roll-off rate above **Corner** (-3 dB/oct = pink noise, ~-5 dB/oct = typical commercial releases). Shallower values ask for more treble; the default asks for a slightly darker balance than typical music.
+- **Corner** (20 to 1000 Hz; default 250 Hz; Tilt mode only) - Frequency below which the **Tilt** target remains flat. Lower values ask for more deep bass; higher values ask for less bass.
+- **Amount** (0% to 100%; default 100%) - Overall correction strength. At 0% the sound is unchanged, but the measurement and graph keep running, and **Range**, **Smoothing**, **Low**, and **High** are disabled.
+- **Range** (0 to 12 dB; default 6 dB) - Maximum gain adjustment allowed in any band, up or down. Lower values keep changes subtle (0 dB turns the correction off); higher values let recordings far from the target move closer to it.
+- **Smoothing** (0.1667 to 2 oct; default 0.5 oct) - Width of the correction curve features (higher values produce broader tilts).
+- **Averaging Time** (0.1 s to ∞; default 30 s) - Measurement integration window. Short values (e.g., 0.5 to 1 s) follow changes within a song, such as a dark verse and a bright chorus; long values give a steady correction (**∞** averages continuously since the last **Reset**).
+- **Low** (20 to 200 Hz; default 20 Hz) / **High** (2000 to 20000 Hz; default 16000 Hz) - Lower and upper frequency bounds of active reshaping (outside these bounds, correction holds constant). Raise **Low** to leave the deep bass alone, or lower **High** to leave the top octave alone.
+- **Average SPL** (60 to 96 dB; default 83 dB) - Estimated listening level used to determine which quiet frequency bands are audible enough to be lifted; it does not change the output level. Lower values treat more faint bands as inaudible, so they are not lifted; higher values count more of them as audible.
+- **Target Adjust** - Five parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves; default Q 0.7) that reshape the target curve. Positive gain asks for more of that region, negative gain for less.
 
-Target Adjust changes only the target. The plugin still measures each recording and corrects it toward the adjusted target with the same Amount, Range, Smoothing, Low, and High; it is not an extra EQ applied on top. Lifting the whole target by the same amount therefore changes nothing, because overall levels are lined up before the comparison and the loudness stays matched. Regions with no real music content are still not raised, and below Low and above High the correction is held as usual. The target is followed in hearing-sized bands and then smoothed, so a narrow peak or notch is spread out and comes out smaller, as the graph shows; use 5Band PEQ for narrow fixes. Range still limits the correction in every band, so a large adjustment may need a larger Range.
+**Target Adjust** changes only the target; each recording is still corrected toward it within **Amount** and **Range**, so a larger adjustment may need a larger **Range**. Raising the whole target by the same amount changes nothing, because overall levels are aligned before comparison. Narrow peaks and dips are smoothed out; use 5Band PEQ for narrow fixes.
 
 [Back to all effects](/dsp/effects/)

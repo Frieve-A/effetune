@@ -3,6 +3,7 @@
     z-index: 10000;
     inset: 0;
     display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
     padding: 16px;
     background: rgba(0, 0, 0, 0.62);
@@ -12,10 +13,10 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    width: min(940px, calc(100vw - 32px));
-    max-height: min(820px, calc(100svh - 32px));
+    width: min(940px, 100%);
+    max-height: min(820px, 100%);
     padding: 20px;
-    overflow: hidden;
+    overflow: auto;
     color: var(--et-text-primary);
     border: 1px solid var(--et-border-strong);
     border-radius: 10px;
@@ -277,8 +278,8 @@
     }
 
     .backup-restore-dialog {
-        width: calc(100vw - 16px);
-        max-height: calc(100svh - 16px);
+        width: 100%;
+        max-height: 100%;
         padding: 12px;
     }
 

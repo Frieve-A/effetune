@@ -32,5 +32,7 @@ test('native chrome uses the selected theme scheme and the registry default', ()
   const startup = source.slice(source.indexOf('async function initializeApp()'));
   assert.ok(startup.indexOf('constants.setAppConfig(cfg)') < startup.indexOf('applyNativeTheme(cfg)'));
   assert.ok(startup.indexOf('applyNativeTheme(cfg)') < startup.indexOf('createWindow()'));
-  assert.ok(startup.includes('ipcHandlers.registerIpcHandlers({ onConfigSaved: applyNativeTheme })'));
+  const registration = startup.match(/ipcHandlers\.registerIpcHandlers\(\{([^}]*)\}\)/);
+  assert.ok(registration);
+  assert.match(registration[1], /(?:^|,)\s*onConfigSaved:\s*applyNativeTheme\s*(?:,|$)/);
 });

@@ -8,11 +8,6 @@ lang: en
 
 A collection of essential tools for adjusting the fundamental aspects of your music playback. These plugins help you control volume, balance, and other basic aspects of your listening experience.
 
-<!-- spectrum-overlay -->
-## Spectrum Overlay
-
-Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. The input and output spectra are aligned to the same point in playback, so the filled differences compare matching audio. Normal applies 1/12-octave smoothing; HQ provides finer analysis at low frequencies. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. In Config, choose **Normal** or **HQ** for Overlay spectrum quality, and **Instantaneous** or **Peak Hold** for Overlay spectrum display. Peak Hold keeps recent peaks visible and lets them fall gradually. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
-
 ## Plugin List
 
 - [Bass Management](#bass-management) - Routes managed bass and LFE to selected subwoofer outputs
@@ -25,6 +20,11 @@ Press the spectrum icon on a compatible graph to cycle through After, Before + A
 - [Polarity Inversion](#polarity-inversion) - Flips signal polarity for correction or special routing cases
 - [Stereo Balance](#stereo-balance) - Adjusts the left-right balance of your music
 - [Volume](#volume) - Controls how loud the music plays
+
+<!-- spectrum-overlay -->
+## Spectrum Overlay
+
+Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. The input and output spectra are aligned to the same point in playback, so the filled differences compare matching audio. Normal applies 1/12-octave smoothing; HQ provides finer analysis at low frequencies. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. In Config, choose **Normal** or **HQ** for Overlay spectrum quality, and **Instantaneous** or **Peak Hold** for Overlay spectrum display. Peak Hold keeps recent peaks visible and lets them fall gradually. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
 
 ## Bass Management
 

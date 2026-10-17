@@ -47,6 +47,7 @@ function createElement(documentRef, tagName, id = '') {
     checked: false,
     disabled: false,
     parentNode: null,
+    get parentElement() { return this.parentNode; },
     children: [],
     childNodes: [],
     dataset: {},
@@ -162,6 +163,7 @@ function createDocument() {
       return documentRef.elementsById.get(id);
     },
     querySelector(selector) {
+      if (selector === '.main-container') return documentRef.getElementById('mainContainer');
       if (selector === '.whats-this') return documentRef.getElementById('whatsThis');
       if (selector === '.toggle-button.master-toggle') {
         const toggle = documentRef.getElementById('masterToggle');
@@ -188,6 +190,17 @@ function createDocument() {
   documentRef.head = createElement(documentRef, 'head', 'head');
   documentRef.body = createElement(documentRef, 'body', 'body');
   documentRef.documentElement = createElement(documentRef, 'html', 'html');
+  documentRef.documentElement.clientWidth = 1920;
+  const container = documentRef.getElementById('mainContainer');
+  const pipeline = documentRef.getElementById('pipeline');
+  documentRef.body.appendChild(container);
+  container.append(documentRef.getElementById('pluginList'), pipeline);
+  pipeline.appendChild(documentRef.getElementById('pipelineList'));
+  Object.assign(documentRef.body.style, { paddingLeft: '20px', paddingRight: '20px' });
+  Object.assign(pipeline.style, { paddingLeft: '20px', paddingRight: '20px' });
+  container.style.columnGap = '20px';
+  documentRef.getElementById('pluginList').style.width = '300px';
+  documentRef.getElementById('pipelineList').style.columnGap = '10px';
   return documentRef;
 }
 
@@ -270,6 +283,13 @@ const electronAPI = new Proxy(electronTarget, {
 });
 const windowRef = {
   electronAPI,
+  innerWidth: 1920,
+  getComputedStyle(element) {
+    assert.ok(element, 'Computed styles require an element');
+    return { width: 'auto', zoom: '1', columnGap: 'normal', paddingLeft: '0px', paddingRight: '0px',
+      borderLeftWidth: '0px', borderRightWidth: '0px', ...element.style,
+      getPropertyValue(name) { return this[name] || ''; } };
+  },
   appConfig: {},
   location: {
     search: '',
@@ -292,6 +312,7 @@ const windowRef = {
 
 setGlobal('window', windowRef);
 setGlobal('document', documentRef);
+setGlobal('getComputedStyle', windowRef.getComputedStyle);
 setGlobal('navigator', {
   language: 'en-US',
   userAgent: 'Mozilla/5.0',

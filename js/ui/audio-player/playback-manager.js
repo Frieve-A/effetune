@@ -391,6 +391,8 @@ export class PlaybackManager {
     const currentStateTrack = state?.currentTrack ?? currentTrack;
     if (currentTrack && currentStateTrack && !samePlaybackEntry(currentStateTrack, currentTrack)) return null;
     const transportCommandGeneration = state?.transportCommandGeneration ?? 0;
+    const playbackGeneration = this.playbackGeneration;
+    const shuffleState = captureShuffleState(sequence);
     let nextTrack;
     let nextEntry;
     let rawNextTrack = null;
@@ -404,32 +406,42 @@ export class PlaybackManager {
     } else {
       rawNextTrack = this.getTrack(nextOrdinal);
       if (!rawNextTrack) return null;
-      nextTrack = typeof this.audioPlayer.contextManager?.resolveTrackProvider === 'function'
-        ? await this.audioPlayer.contextManager.resolveTrackProvider(rawNextTrack)
-        : rawNextTrack;
+      nextTrack = rawNextTrack;
       nextEntry = sequence.peekEntry?.(nextOrdinal) ?? null;
     }
-    const preparedRequest = typeof this.audioPlayer.contextManager?.createPlaybackRequestSnapshot === 'function'
-      ? this.audioPlayer.contextManager.createPlaybackRequestSnapshot(nextTrack, nextOrdinal)
-      : null;
-
-    const plan = Object.freeze({
+    const plan = {
       sequence,
-      playbackGeneration: this.playbackGeneration,
+      playbackGeneration,
       transportCommandGeneration,
       currentOrdinal,
       currentTrack: currentStateTrack,
       currentEntryInstanceId: currentStateTrack?.entryInstanceId ?? null,
       repeatMode,
       shuffleMode,
-      shuffleState: captureShuffleState(sequence),
+      shuffleState,
       nextOrdinal,
       nextEntryInstanceId: nextEntry?.entryInstanceId ?? nextTrack?.entryInstanceId ?? null,
       rawNextTrack,
       nextTrack,
-      preparedRequest
-    });
-    return this.isPlannedAutomaticMoveCurrent(plan) ? plan : null;
+      preparedRequest: null
+    };
+    if (!this.isPlannedAutomaticMoveCurrent(plan)) return null;
+    const contextManager = this.audioPlayer.contextManager;
+    try {
+      let playableTrack = contextManager?.resolveTrackProvider?.(nextTrack) ?? nextTrack;
+      if (playableTrack instanceof Promise) playableTrack = await playableTrack;
+      if (!this.isPlannedAutomaticMoveCurrent(plan)) return null;
+      plan.nextTrack = playableTrack.presentationTrack ?? playableTrack;
+      plan.preparedRequest = contextManager?.createPlaybackRequestSnapshot?.(playableTrack, nextOrdinal) ?? null;
+      return Object.freeze(plan);
+    } catch (error) {
+      if (!this.isPlannedAutomaticMoveCurrent(plan)) return null;
+      if (error?.code === 'alacRequiresMacDesktop') {
+        contextManager?.reportPlaybackSourceFailure?.(error);
+        return null;
+      }
+      throw error;
+    }
   }
 
   isPlannedAutomaticMoveCurrent(plan) {
@@ -704,6 +716,7 @@ export class PlaybackManager {
         return failures.length > 0 ? { ...result, skippedCount: failures.length } : result;
       }
       if (!['source-unavailable', 'media-load-failed'].includes(result.reason)) return result;
+      if (result.error?.code === 'alacRequiresMacDesktop') return result;
       if (!skipUnavailable) {
         if (userInitiated) {
           globalThis.window?.uiManager?.setError?.('error.playbackCommandFailed', true);
@@ -2428,12 +2441,14 @@ export class PlaybackManager {
     try {
       return Promise.resolve(command()).catch(error => {
         console.error('[PlaybackManager] Playback command failed:', error);
-        globalThis.window?.uiManager?.setError?.('error.playbackCommandFailed', true);
+        globalThis.window?.uiManager?.setError?.(error?.code === 'alacRequiresMacDesktop'
+          ? 'error.alacRequiresMacDesktop' : 'error.playbackCommandFailed', true);
         return false;
       });
     } catch (error) {
       console.error('[PlaybackManager] Playback command failed:', error);
-      globalThis.window?.uiManager?.setError?.('error.playbackCommandFailed', true);
+      globalThis.window?.uiManager?.setError?.(error?.code === 'alacRequiresMacDesktop'
+        ? 'error.alacRequiresMacDesktop' : 'error.playbackCommandFailed', true);
       return Promise.resolve(false);
     }
   }
@@ -2792,7 +2807,7 @@ function createResolvedSequenceTrack(entry, source) {
     libraryTrackId: entry.trackUid ?? entry.libraryTrackId ?? null,
     meta: {
       ...(entry.meta ?? {}),
-      title: entry.meta?.title || entry.title || entry.name || '',
+      title: entry.meta?.title || entry.title || '',
       artist: entry.meta?.artist || entry.artist || entry.albumArtist || '',
       album: entry.meta?.album || entry.album || ''
     },

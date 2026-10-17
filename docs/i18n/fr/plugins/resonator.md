@@ -79,12 +79,12 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
 - **Horn Length (cm)** - Ajuste la longueur du pavillon simulé. Les pavillons plus longs déplacent les résonances vers le bas et les rapprochent ; les plus courts les déplacent vers le haut et les espacent davantage pour un son plus serré. (20–120 cm)
 - **Throat Diameter (cm)** - Contrôle la taille de l'ouverture du goulot du pavillon (input). Des valeurs plus petites tendent à augmenter la brillance et l'accentuation des médiums supérieurs, des valeurs plus grandes ajoutent de la chaleur. (0.5–50 cm)
 - **Mouth Diameter (cm)** - Contrôle la taille de l'ouverture à la sortie du pavillon (output). Cela affecte l'adaptation d'impédance avec l'air environnant et influence la réflexion dépendante de la fréquence à la sortie. Des valeurs plus grandes élargissent généralement la perception du son et réduisent la réflexion des basses, des valeurs plus petites concentrent le son et augmentent cette réflexion. (5–200 cm)
-- **Curve (%)** - Ajuste la forme de la corne (flare) du pavillon (comment le rayon augmente du goulot à la sortie).
+- **Curve (%)** - Ajuste la forme de l'évasement (flare) du pavillon (comment le rayon augmente du goulot à la sortie).
     - `0 %` : crée un pavillon conique (rayon augmentant linéairement).
     - Valeurs positives (`> 0 %`) : créent des flares qui s'élargissent plus rapidement vers la sortie (ex. exponentiel). Des valeurs plus élevées signifient une expansion plus lente près du goulot et plus rapide près de la sortie.
     - Valeurs négatives (`< 0 %`) : créent des flares qui s'élargissent très rapidement près du goulot, puis plus lentement vers la sortie (ex. paraboliques ou de type tractrix). Des valeurs plus négatives signifient une expansion initiale plus rapide. (-100–100 %)
 - **Damping (dB/m)** - Définit l'atténuation interne (absorption sonore) par mètre dans le guide d'onde du pavillon. Des valeurs plus élevées réduisent les pics de résonance et créent un son plus lisse et amorti. (0–10 dB/m)
-- **Throat Reflection** - Ajuste le coefficient de réflexion au niveau du goulot du pavillon (input). Des valeurs plus élevées augmentent la quantité de son renvoyée dans la corne depuis la frontière du goulot, ce qui peut éclaircir la réponse et souligner certaines résonances. (0–0.99)
+- **Throat Reflection** - Ajuste le coefficient de réflexion au niveau du goulot du pavillon (input). Des valeurs plus élevées augmentent la quantité de son renvoyée dans le pavillon depuis la frontière du goulot, ce qui peut éclaircir la réponse et souligner certaines résonances. (0–0.99)
 - **Output Gain (dB)** - Contrôle le niveau de sortie global du chemin du signal traité (haute fréquence) avant de le mélanger avec le chemin basse fréquence retardé. Utilisez-le pour égaliser ou augmenter le niveau de l'effet. (-36–36 dB)
 
 ### Démarrage rapide
@@ -94,7 +94,7 @@ Cliquez sur **Préréglages d’effet** dans l’en-tête de l’effet pour essa
 3.  Ajustez **Throat Diameter** et **Mouth Diameter** pour façonner le timbre central (brillance vs chaleur, focalisation vs largeur).
 4.  Utilisez **Curve** pour affiner le caractère résonant (essayez 0 % pour conique, positif pour exponentiel, négatif pour type tractrix).
 5.  Réglez **Damping** et **Throat Reflection** pour adoucir ou accentuer les résonances du pavillon.
-6.  Utilisez **Output Gain** pour équilibrer le niveau du son de la corne avec les basses fréquences bypassées.
+6.  Utilisez **Output Gain** pour équilibrer le niveau du son du pavillon avec les basses fréquences bypassées.
 
 ## Horn Resonator Plus
 

@@ -8,12 +8,11 @@ lang: en
 
 A collection of plugins that let you adjust different aspects of your music's sound, from deep bass to crisp highs. These tools help you personalize your listening experience by enhancing or reducing specific sound elements.
 
-<!-- spectrum-overlay -->
-## Spectrum Overlay
-
-Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. The input and output spectra are aligned to the same point in playback, so the filled differences compare matching audio. Normal applies 1/12-octave smoothing; HQ provides finer analysis at low frequencies. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. In Config, choose **Normal** or **HQ** for Overlay spectrum quality, and **Instantaneous** or **Peak Hold** for Overlay spectrum display. Peak Hold keeps recent peaks visible and lets them fall gradually. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
+## Graph Controls
 
 On the draggable point graphs in 5Band PEQ, 15Band PEQ, 5Band FIR PEQ, Group Delay PEQ, and Room EQ's Additional EQ, drag a point normally to change both axes. Hold Shift while dragging to lock the movement: start mostly sideways to change only Frequency, or mostly vertically to change only Level (Delay in Group Delay PEQ). Release Shift to return to free movement. Place the pointer over a point and scroll up to increase Q or down to decrease it.
+
+## Mobile Band Selection
 
 On mobile, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ's Additional EQ, and Tonal Balance EQ's Target Adjust show one band's settings at a time. Tap a numbered band button to switch bands. All band settings are retained.
 
@@ -37,6 +36,11 @@ On mobile, 5Band PEQ, 5Band FIR PEQ, Group Delay PEQ, Room EQ's Additional EQ, a
 - [Tilt EQ](#tilt-eq) - Simple EQ that tilts the sound spectrum
 - [Tonal Balance EQ](#tonal-balance-eq) - Automatically corrects the long-term tonal balance toward a music-style target
 - [Tone Control](#tone-control) - Simple bass, mid, and treble adjustment
+
+<!-- spectrum-overlay -->
+## Spectrum Overlay
+
+Press the spectrum icon on a compatible graph to cycle through After, Before + After, and Off. After shows only the processed spectrum as a blue line. Before + After fills the change from the unprocessed spectrum to the processed spectrum: warm color marks frequencies whose level is higher after processing, blue marks frequencies whose level is lower, and a gray line marks the After spectrum. The input and output spectra are aligned to the same point in playback, so the filled differences compare matching audio. Normal applies 1/12-octave smoothing; HQ provides finer analysis at low frequencies. Use the comparison to see how each adjustment changes bass, mids, and treble while listening. Read spectrum levels on the dBFS scale at the right of the graph. It is separate from the graph's gain scale; 0 dBFS is the full-scale digital reference, and lower values are quieter. In Config, choose **Normal** or **HQ** for Overlay spectrum quality, and **Instantaneous** or **Peak Hold** for Overlay spectrum display. Peak Hold keeps recent peaks visible and lets them fall gradually. Only the processed spectrum is collected in After mode; collection and drawing stop in Off.
 
 ## 15Band GEQ
 
@@ -672,142 +676,116 @@ A tool that lets you focus on specific parts of the music by filtering out unwan
 
 ## Room EQ
 
-Room EQ creates FIR correction filters from frequency-response measurements saved by EffeTune. By default it designs one filter from a shared measurement and applies it to every channel routed through the plugin; assign a different measurement to an individual channel to give that channel its own filter, while every other setting stays common to the whole instance. Use the plugin's standard bus selector to choose which channels it receives. The filter averages all points in the selected measurement, smooths the result, and reduces deviations inside the selected correction range. Use it when loudspeaker and room interactions cause repeatable peaks or broad tonal imbalance at the listening area. It can also apply linear-phase magnitude correction or mixed-phase correction that combines minimum-phase magnitude correction with correction of the measured excess phase: Phase Correction addresses the direct sound, and Reverb Correction can additionally counteract the measured room reverberation that follows it. With Consensus, the phase target is the reliability-weighted average of the measurement points. Room EQ requires the WASM DSP engine; without it, the signal passes through unchanged.
+Room EQ builds FIR correction filters from frequency-response measurements saved by EffeTune. By default, it designs one shared filter and applies it to every channel routed through the plugin; you can also assign a separate saved measurement to individual channels while keeping the remaining correction settings shared across the instance. The filter averages all points in the selected measurement, smooths the curve, and reduces peaks and dips within the selected frequency range. Use it when loudspeaker and room interactions cause repeatable peaks or a broad tonal imbalance at your listening position. In addition to minimum-phase or linear-phase magnitude correction, **Correction** mode can correct measured excess phase in the direct sound (**Phase Correction**) and room reverberation (**Reverb Correction**). Room EQ requires the WASM DSP engine; without it, the signal passes through unchanged.
 
 ### Sound Enhancement Guide
 
-- Measure the loudspeaker or channel group that you will route through one Room EQ instance from several nearby microphone positions, then select that saved measurement. Multiple points make the correction less dependent on one exact microphone position.
-- Start with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Compare with the plugin's main on/off control to confirm that the result is more even without becoming unnaturally thin or bright.
-- If the filter tries to fill narrow dips that change with microphone position, increase Smoothing or lower Max Boost. A value of 0 dB for Max Boost prevents automatic boosts while still allowing cuts to reduce peaks.
-- If full level correction sounds too strong, lower Level Correction. Because it scales each automatic correction value in dB, 50% changes a +6 dB correction to +3 dB and a -8 dB correction to -4 dB.
-- Limit Correction Low and Correction High to the range your loudspeaker and measurement microphone reproduce reliably. Correcting outside a trustworthy measurement range can make the result less accurate.
-- After the room correction is stable, use Additional EQ for a gentle listening target, such as a broad +2 dB Low shelf around 100 Hz or a small High shelf adjustment around 10 kHz. These bands reshape the target and are built into the FIR filter.
-- Use **Minimum** when low latency matters. Use **Correction** when you want to correct excess phase as well as frequency response. Start with Reference Point set to **Consensus (all points)**, the default Direct Window, and **Phase Correction: 100%**. Select an individual point only when you want to optimize the excess-phase correction for that microphone position. Lower Phase Correction independently if the phase result sounds too strong.
-- **Low-frequency Phase Extension** is off by default. Enable it only when you want excess-phase correction below Phase Low. Lower frequencies use progressively longer analysis windows and can include later room response, so Consensus is the safest starting point. Compare more than one listening position and turn the extension off if bass timing becomes less consistent.
-- **Reverb Correction** is 0% by default. In Correction mode, raise it little by little while keeping the default **Reverb Max Freq: 250 Hz**; this counteracts low-frequency reverberation while remaining useful across the listening area. Extend Reverb Max Freq toward higher frequencies only with the understanding that the result then becomes an optimization for a single listening position.
-- Room EQ does not calculate speaker-distance alignment. **Delay** is shared across the whole instance, even when channels use different measurements; use separate Room EQ instances only when different channel groups need different manual delay values.
+- **Multi-Point Measurement**: Measure the loudspeaker or channel group from several nearby microphone positions around your listening seat, then select that saved measurement so the correction does not overfit a single microphone location.
+- **Starting Settings**: Begin with **Phase: Minimum**, **Smoothing: 0.17 oct**, **Correction Low: 80 Hz**, **Correction High: 16000 Hz**, **Max Boost: 6 dB**, and **Level Correction: 100%**. Toggle the effect on and off to verify that the tonal balance becomes more even without sounding thin or harsh.
+- **Avoid Over-Boosting Dips**: If the filter tries to fill narrow acoustic cancellations, increase **Smoothing** or lower **Max Boost** (0 dB disables automatic boosts while keeping peak cuts).
+- **Scale Correction Strength**: Lower **Level Correction** if 100% feels too strong (50% scales a +6 dB boost to +3 dB and a −8 dB cut to −4 dB).
+- **Trusted Range Only**: Keep **Correction Low** and **Correction High** within the range your loudspeaker and measurement microphone reproduce reliably; correcting outside it makes the result less accurate.
+- **Target Shaping**: Once room peaks are controlled, use **Additional EQ** (folded directly into the FIR filter) for gentle tonal preferences such as a broad +2 dB low shelf around 100 Hz.
+- **Excess-Phase & Reverb Correction**: Choose **Phase: Minimum** for lowest latency, or **Phase: Correction** to align excess phase as well. Start with **Reference Point: Consensus (all points)**, the default **Direct Window**, and **Phase Correction: 100%**. Enable **Low-frequency Phase Extension** only if you want excess-phase correction below **Phase Low**, and turn it off if bass timing becomes less consistent between listening positions. Raise **Reverb Correction** gradually with **Reverb Max Freq: 250 Hz** to counteract low-frequency reverberation across the listening area; raising **Reverb Max Freq** makes the result an optimization for the measured position only.
+- **Manual Delay**: Room EQ does not calculate speaker-distance alignment. **Delay** applies to all channels in the instance; use separate Room EQ instances if different channel groups need different manual delays.
 
-Measurements are device-local references. A URL or preset stores the selected measurement's name and identifier, but not the measured data. To use a measurement on another device, enable **Include impulse responses in measurement JSON exports** on the measurement screen before exporting it, then import it on the other device before selecting it. This option is off by default, and including impulse responses can make the file tens of megabytes larger. A missing measurement is shown as a warning and Room EQ uses aligned bypass instead of stale correction data.
+> **Sharing Measurements Across Devices**: Presets and URLs store the measurement name and ID, not the acoustic data. To move a measurement to another device, export it from the Measurement tool with **Include impulse responses in measurement JSON exports** enabled (the default; it can make the file tens of megabytes larger), then import the JSON file on the target device. If the selected measurement is missing, Room EQ shows a warning and passes the signal without correction.
 
 ### Parameters
 
-- **Measurement** - Selects the shared saved frequency-response measurement used by any channel that has no per-channel override. The list shows its name, number of points, and `IR` when impulse-response data is available. Use **Refresh measurements** after adding or changing measurements.
-- **Measurement ChN** - One optional override selector per channel handled by the instance's bus selection. Leave it at **(Shared)**, the default, to use Measurement above; assign a different saved measurement to give that channel its own filter. Leaving every channel at **(Shared)** reproduces the single shared-filter behavior exactly.
-- **Delay** - Adds 0 to 20 ms of manual delay to every channel routed through the instance. It is not included in the plugin's reported processing latency.
-- **Phase** - Selects how the FIR filter handles phase.
-  - **Minimum** - Minimum-phase magnitude correction with the lowest added latency.
-  - **Linear** - Linear-phase magnitude correction. It preserves the input's relative phase but adds half the selected tap count as delay.
-  - **Correction** - Minimum-phase magnitude correction plus correction of excess phase in the stored impulse response: Phase Correction controls the direct-sound component analyzed within Direct Window, and Reverb Correction can additionally counteract the later reverberation analyzed within Reverb Window. This reduces group-delay variation while retaining `Taps / 2` samples of delay for the mixed-phase filter. During design, it keeps the main impulse-energy position aligned with the Minimum response at the same Level Correction setting. When every channel uses the shared measurement, one filter is designed from it and applied unchanged to every routed channel, so changing Level Correction, Phase Correction, or Reverb Correction introduces no channel-specific timing differences. When a channel is given its own measurement, a separate filter is designed for that channel. It uses Reference Point and Direct Window and requires impulse-response data.
-- **Taps** - FIR length: 8192, 16384, 32768, 65536, or 131072. More taps improve low-frequency resolution but increase delay, memory use, and filter-design time. Linear and Correction add `Taps / 2` samples of delay.
-- **Latency** - Convolution-engine head latency: 0, 128, 256, 512, or 1024 samples. Lower values reduce delay but require more processing; in Linear and Correction, the FIR's half-length delay is usually much larger.
-- **Smoothing** - Gaussian frequency smoothing from 0.02 to 1.00 octaves. Higher values produce broader, more conservative correction; lower values follow finer response variations.
-- **Phase Smoothing** - Gaussian frequency smoothing from 0.02 to 1.00 octaves applied to the direct sound's measured excess-phase correction in Correction mode. With **Auto** selected by default it follows Smoothing, so magnitude and phase corrections are smoothed identically. Clear Auto to smooth the phase correction independently; the current effective value is kept as the starting point. Lower values follow finer timing detail, higher values give a more conservative phase correction. Reverb Correction is not affected; it uses Reverb Smoothing instead.
-- **Correction Low / Correction High** - Set the lower and upper transition boundaries for automatic magnitude correction. Before Gaussian smoothing, automatic correction is treated as 0 dB at and outside these boundaries. Smoothing therefore controls how gradually correction fades and how far it extends beyond each boundary. The high boundary is also limited internally to leave headroom below the audio sample rate's Nyquist frequency.
-- **Direct Window** - 1 to 50 ms of the measured response after the direct-sound onset used by Correction. It is the fixed analysis window at and above Phase Low and, with Low-frequency Phase Extension enabled, the shortest analysis window. A longer window can move the automatic Phase Low lower but includes more room reflections.
-- **Phase Low** - Sets the lower frequency for measured excess-phase correction in Correction mode from 20 to 20000 Hz when Low-frequency Phase Extension is off. When the extension is on, Phase Low instead marks the boundary between the fixed Direct Window and the progressively longer low-frequency windows. With **Auto** selected by default, Room EQ uses the higher of Correction Low and the frequency that fits three cycles inside Direct Window (500 Hz at 6 ms). Clear Auto to set the boundary manually. The manual value is independent of Correction Low and cannot be set below the frequency of one cycle inside Direct Window (167 Hz at 6 ms). Values below the automatic boundary are more sensitive to time-window truncation and room reflections.
-- **Low-frequency Phase Extension** - Extends measured excess-phase correction from Phase Low toward Correction Low by using progressively longer, frequency-dependent analysis windows below Phase Low. Phase Low and higher frequencies use a fixed analysis window. This setting is off by default. It is available only in Correction; the control is disabled in Minimum and Linear while its selected value is retained. If the measured impulse response is too short for a requested low-frequency window, Room EQ uses the available shorter measurement window and shows a warning. It reduces or skips the correction only when the realized FIR approaches its time limits; the rest of the Room EQ filter remains active. The extension works only while Phase Correction is above 0%; at 0% it stays inactive even when Reverb Correction is in use.
-- **Max Boost** - 0 to 18 dB limit for boosts created by automatic response inversion. The limit is applied before Gaussian smoothing so capped regions blend smoothly into the surrounding correction curve. It does not limit cuts.
-- **Level Correction** - Scales automatic magnitude correction from 0% to 100% in 1% steps, linearly in dB. At 0%, automatic level correction is disabled; Phase Correction, Additional EQ, Delay, and Gain remain active.
-- **Phase Correction** - Scales the direct sound's measured excess-phase correction from 0% to 100% in 1% steps and affects only the Correction mode. Its controls are disabled in Minimum and Linear modes. It is independent of Reverb Correction: at 0%, direct-sound excess-phase correction is disabled while Level Correction and any Reverb Correction remain active. Level Correction still carries the minimum-phase shift inherently associated with its magnitude response, so Phase Correction controls only the direct sound's additional measured excess-phase component.
-- **Reverb Correction** - Scales correction of the measured room reverberation's excess phase from 0% to 100% in 1% steps and affects only the Correction mode; its controls are disabled in Minimum and Linear while the values are retained. At the default 0%, reverb correction is fully off and Room EQ behaves exactly as without this control. Above 0%, Room EQ analyzes the response through Reverb Window and, up to Reverb Max Freq, corrects later excess phase independently of Phase Correction. It does not change the magnitude-correction target: Smoothing and Level Correction continue to control the full-IR frequency-response correction. With Consensus, Room EQ uses the reliability-weighted average delay across the measurement points. When the usable reverb window or frequency band is too small, or when the synthesized phase correction does not fit safely within the time limits of the realized FIR, Room EQ reduces or skips the reverb correction and shows a warning; the rest of the filter remains active.
-- **Reverb Window** - Sets how much of the measured response after the direct-sound onset, from 20 to 1000 ms, reverb correction analyzes. Longer windows include later reverberation. The effective window can be shortened by the measured impulse response's available length after its onset. The requested observation window is not shortened merely because Taps is smaller; after analysis, Room EQ separately checks whether the requested phase correction fits the realized FIR and reduces or skips only the part that does not. If the available window does not exceed Direct Window, or Reverb Window is set at or below Direct Window, reverb correction is skipped and a warning is shown; the rest of the filter remains active.
-- **Reverb Max Freq** - Sets the upper frequency limit of reverb correction from 20 to 20000 Hz. The default 250 Hz keeps correction in the low-frequency range where room reverberation behaves consistently across nearby positions. The phase part is effectively limited to the lowest of Reverb Max Freq, Correction High, and 45% of the sample rate, so Correction High remains the ceiling for all correction and Reverb Max Freq selects the reverb limit inside it. Raising it extends reverb correction to higher frequencies where the reverberant field differs from seat to seat and even shifts with air temperature, so the result holds only at the measured listening position. If no frequency band remains below the effective limit — for example when Correction Low is set at or above it — reverb correction is skipped entirely and a warning is shown; the rest of the filter remains active.
-- **Reverb Smoothing** - Gaussian frequency smoothing from 0.02 to 1.00 octaves applied only to the excess-phase delay analyzed through Reverb Window. Lower values follow finer timing structure; higher values make the phase correction broader and more conservative. It does not change the frequency-response correction, which uses Smoothing instead. With multiple measurement points it also sets the frequency scale used for the agreement diagnostic.
-- **Reference Point** - Selects the source of excess phase in Correction mode for both the direct-sound and reverb analyses. **Consensus (all points)** is the default and fallback: it time-aligns the points, combines their excess delay using a reliability-weighted average, and gives less weight to unreliable phase around deep response nulls. Selecting a named point uses only that point's excess phase. Magnitude correction always uses all points. If the selected point is later removed, this setting returns to Consensus.
-- **Additional EQ (folded into FIR)** - Five shared target-shaping bands using the same graph and controls as 5Band PEQ. Each band can be enabled, set to Peak, Low shelf, or High shelf, and adjusted from 20 Hz to 20 kHz, -20 to +20 dB, and Q 0.1 to 10. The response is built into the FIR rather than processed by a separate IIR stage. Its phase is zero in Linear mode and minimum-phase in Minimum and Correction modes. Max Boost limits automatic room-response inversion, not intentional boosts from Additional EQ.
-- **Gain** - Applies -12 to +12 dB to all channels after corrected and bypass paths are combined.
+- **Measurement** - Selects the shared saved measurement (showing name, point count, and `IR` when impulse data is present). Click **Refresh measurements** after adding or editing measurements.
+- **Measurement ChN** - Optional per-channel measurement override for each routed bus channel. Leave at **(Shared)** to use the shared **Measurement**.
+- **Delay** (0 to 20 ms) - Manual delay applied to all routed channels; it is not included in the reported processing latency.
+- **Phase** - Selects FIR phase behavior:
+  - **Minimum**: Minimum-phase magnitude correction with the lowest latency.
+  - **Linear**: Linear-phase magnitude correction (adds `Taps / 2` samples of delay).
+  - **Correction**: Minimum-phase magnitude correction plus excess-phase correction for the direct sound (**Phase Correction** within **Direct Window**) and optional room decay (**Reverb Correction** within **Reverb Window**). Adds `Taps / 2` samples of delay and requires impulse-response (`IR`) data. **Phase Smoothing**, **Phase Low**, **Low-frequency Phase Extension**, **Phase Correction**, the four Reverb settings, and **Reference Point** work only in this mode; in Minimum and Linear they are disabled and keep their values.
+- **Taps** (8192, 16384, 32768, 65536, or 131072) - FIR filter length. Higher values improve low-frequency resolution at the cost of memory, design time, and delay in Linear/Correction modes.
+- **Latency** (0, 128, 256, 512, or 1024 samples) - Convolution head latency. Lower values reduce delay but increase processing load.
+- **Smoothing** (0.02 to 1.00 oct) - Gaussian frequency smoothing for magnitude correction. Higher values give broader, more conservative correction; lower values follow finer response variations.
+- **Phase Smoothing** (0.02 to 1.00 oct, or **Auto**) - Gaussian smoothing for direct-sound excess-phase correction in Correction mode (follows **Smoothing** when **Auto** is checked).
+- **Correction Low / Correction High** - Lower and upper frequency boundaries for automatic correction.
+- **Direct Window** (1 to 50 ms) - Post-onset time window analyzed for direct-sound phase correction. A longer window lowers the automatic **Phase Low** but includes more room reflections.
+- **Phase Low** (20 to 20000 Hz, or **Auto**) - Lower frequency limit for fixed-window direct-sound phase correction (defaults to the higher of **Correction Low** and three cycles inside **Direct Window**, e.g. 500 Hz at 6 ms). With **Low-frequency Phase Extension** on, it instead marks where the fixed window gives way to longer low-frequency windows.
+- **Low-frequency Phase Extension** (default off) - Extends excess-phase correction below **Phase Low** down toward **Correction Low** using progressively longer frequency-dependent windows.
+- **Max Boost** (0 to 18 dB) - Caps automatic correction boosts before smoothing without limiting cuts or intentional boosts from **Additional EQ**.
+- **Level Correction** (0% to 100%) - Scales automatic magnitude correction linearly in dB. At 0%, only the automatic correction stops; **Phase Correction**, **Additional EQ**, **Delay**, and **Gain** stay active.
+- **Phase Correction** (0% to 100%) - Scales direct-sound excess-phase correction in Correction mode, independently of **Reverb Correction**.
+- **Reverb Correction** (0% to 100%; default 0%) - Scales excess-phase correction of later room reverberation analyzed within **Reverb Window** up to **Reverb Max Freq**. It does not change the magnitude correction.
+- **Reverb Window** (20 to 1000 ms) - Post-onset time window analyzed by **Reverb Correction**. If it is not longer than **Direct Window** (or the measurement is too short), reverb correction is skipped with a warning while the rest of the filter stays active.
+- **Reverb Max Freq** (20 to 20000 Hz; default 250 Hz) - Upper frequency limit for **Reverb Correction**, capped by **Correction High** (keeping it around 250 Hz focuses on low-frequency room decay that behaves consistently across nearby seats).
+- **Reverb Smoothing** (0.02 to 1.00 oct) - Gaussian smoothing applied to the reverb excess-phase delay.
+- **Reference Point** - Selects **Consensus (all points)** (reliability-weighted average across measurement points) or a single measurement point for excess-phase analysis. If the selected point is removed, it returns to Consensus.
+- **Additional EQ (folded into FIR)** - Five parametric target-shaping bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves) built directly into the FIR filter. Their phase is zero in Linear mode and minimum-phase in Minimum and Correction modes.
+- **Gain** (-12 to +12 dB) - Output level trim.
 
 ### Visual Display
 
-- Use the **Graph** radio buttons above the graph to switch between **Frequency**, **Phase**, **Min Group Delay**, **Excess Group Delay**, and **Impulse**.
-- **Phase** uses a logarithmic frequency axis and a vertical phase axis from -180° to 180°. The gray line is the phase before correction and the green line is the calculated phase after the actual FIR. The measured onset is removed from both, and the FIR's known fixed delay is also removed from the corrected result, so the graph shows the phase change introduced by the filter without those fixed timing offsets. A measurement without impulse-response data shows an unavailable message instead.
-- **Min Group Delay** shows the delay implied by the minimum-phase part of the magnitude response. **Excess Group Delay** separately shows the remaining delay after that minimum-phase part is removed, making reflections and other non-minimum-phase timing easier to inspect. Both views use a logarithmic frequency axis and a vertical axis in milliseconds. Values retain the absolute group delay after removing the measured onset and, from the corrected result, the FIR's known fixed delay. They are not re-referenced at 1 kHz, so the value there is not necessarily 0 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. Group-delay analysis is independent of the displayed point spacing and does not rely on phase unwrapping. Smoothing is applied on a fixed logarithmic-frequency analysis grid, so a lower Smoothing setting shows finer detail. **Min Group Delay** automatically adjusts its vertical range to the displayed curves. **Excess Group Delay** keeps a fixed -100 to +100 ms range, while the readout retains the unclipped value when a curve extends beyond it. A measurement without impulse-response data shows an unavailable message instead.
-- **Impulse** shows the selected point, or the time-aligned average waveform when Reference Point is Consensus, from 2 ms before the measured onset through the largest of 5 ms, Direct Window, and — when Reverb Correction is above 0% — Reverb Window limited to 50 ms. The gray line is before correction and the green line is the calculated result after the actual FIR. The measured onset is the shared 0 ms reference, and only the FIR's known fixed delay is removed from the corrected waveform, so relative peak timing and pre-ringing remain visible. Both lines use the same normalized amplitude scale. Low-frequency Phase Extension and Reverb Correction can analyze later response than this view displays. For this display only, components at and above 20 kHz are removed; this does not affect the correction filter or audio processing. A measurement without impulse-response data shows an unavailable message instead.
-- **Frequency** uses a logarithmic frequency axis and a vertical gain axis in dB.
-- The **Graph Preview Ch** selector above the graph appears only when filters have been designed for more than one channel; it selects which channel's response the graph and the Additional EQ base curve show, and does not affect the audio.
-- Hover over the graph, or touch and drag on it, to mark each curve with a dot at that point and show its value beside its name in the legend, with the frequency — or time in the Impulse view — above them.
-- The two white dotted vertical lines mark the frequencies set by Correction Low and Correction High.
-- Numbered markers correspond to the five bands. Drag a marker horizontally to change frequency and vertically to change gain; disabled bands appear dimmed.
-- The light gray curve shows the smoothed measured frequency response with the graph's common display offset applied.
-- The thin, pale green curve shows the automatic correction calculated from the selected measurement and the current Room EQ correction settings, before Additional EQ.
-- The bright green curve shows that correction with Additional EQ applied. This is the combined magnitude response folded into the FIR.
-- The white curve shows the estimated corrected response obtained by adding the bright green combined correction to the light gray measured response. The gray and white curves share an offset that maps the automatic correction's 100% destination level to 0 dB; Max Boost limits can leave residual deviations, while Additional EQ intentionally reshapes the response around that reference. It is a calculated preview, not a new acoustic measurement.
-- The status below the controls shows total processing latency, FIR resolution, and whether the filter asset is bypassed, staged, preparing, active, or in error.
+- **Graph**: Switch between **Frequency** (smoothed measurement in light gray, automatic correction in pale green, combined correction with Additional EQ in bright green, and estimated corrected response in white, which is a calculated preview rather than a new measurement), **Phase** (−180° to +180° before and after FIR), **Min Group Delay**, **Excess Group Delay**, and **Impulse** (normalized waveform before and after FIR, from 2 ms before the measured onset to the longest of 5 ms, **Direct Window**, and—when **Reverb Correction** is above 0%—**Reverb Window** up to 50 ms). In the Phase, group-delay, and Impulse views, the gray **Before** line is the response before correction and the green **After** line the calculated result after the FIR. Two white dotted vertical lines mark **Correction Low** and **Correction High**.
+- In the Frequency view, the gray and white curves are offset so that the full (100%) automatic correction's target level sits at 0 dB; deviations left in the white curve come from limits such as **Max Boost** or a **Level Correction** below 100%, or from intentional **Additional EQ** shaping.
+- The Phase, group-delay, and Impulse views remove the measured onset, and the FIR's fixed delay is removed from the corrected result. Group delay is not re-referenced at 1 kHz, so it is not necessarily 0 ms there. **Min Group Delay** scales its range automatically; **Excess Group Delay** stays at −100 to +100 ms, while the readout shows values beyond that range. Without impulse-response data, these views show an unavailable message.
+- **Graph Preview Ch**: Appears when filters are designed for more than one channel; selects which channel's curves are displayed and does not affect the audio.
+- **Interactive Controls**: Drag numbered markers horizontally to change an **Additional EQ** band's frequency and vertically to change its gain (disabled bands appear dimmed), and hover or drag across the graph to read values at any point.
+- The status line below the controls shows the total processing latency, the FIR resolution, and whether the filter is bypassed, staged, preparing, active, or in error.
+
+## Tilt EQ
+
+Tilts the overall frequency balance around a pivot frequency with a matched pair of shelving filters: one side of the spectrum is raised and the other lowered. Use it for broad warmer or brighter adjustments with a single control, for example when a recording or a pair of headphones sounds consistently too bright or too dull.
+
+### Sound Enhancement Guide
+- **Warmer**: Use a small negative **Slope** (for example, -1 dB/oct) to lower the treble and raise the bass, such as for bright recordings or headphones.
+- **Brighter**: Use a small positive **Slope** (for example, +1 dB/oct) to raise the treble and lower the bass, such as for dull recordings or speakers.
+- **Where the change starts**: Lower **Pivot Freq (Hz)** to extend the treble-side change into the midrange; raise it to confine that change to the top octaves.
+
+### Parameters
+- **Pivot Freq (Hz)** (20 Hz to ~20 kHz; default about 1 kHz) - The frequency around which the balance tilts.
+- **Slope** (-12 to +12 dB/oct; default 0) - The amount and direction of the tilt. Positive values make the sound brighter, negative values warmer, and 0 leaves it unchanged.
+
+### Visual Display
+- The graph shows the resulting frequency response.
+- **Reset** returns both parameters to their defaults.
+- Hover over the graph, or touch and drag on it, to read the values at that point.
 
 ## Tonal Balance EQ
 
-Measures the long-term tonal balance of whatever is playing and gradually corrects it toward the typical balance of released music in a chosen style. Use it when recordings, playlists, or streams sound consistently too dark, too bright, too boomy, or too thin, and you want them evened out without adjusting an EQ by hand for each one. It corrects the recording, not your speakers or room; use Room EQ for those.
+Measures the long-term tonal balance of whatever is playing and gently steers it toward the typical spectral balance of released music in a chosen style. Use it when tracks across a playlist, album, or stream sound consistently too dark, too bright, too boomy, or too thin, and you want them evened out automatically without adjusting an EQ by hand for every track. (It corrects the recording's balance rather than your speakers or room; use [Room EQ](#room-eq) for acoustic correction.)
 
-The plugin compares the measured spectrum with the target after lining up their overall levels, so only the shape of the balance matters, not how loud the recording is. It reduces the regions that are too strong and then raises the whole signal by one make-up gain, so the loudness stays the same and the weaker regions come forward. It does not raise regions that hold no real music content, such as the empty top of a band-limited recording or steady hiss; a steady, noise-like sound such as an unchanging synth pad is treated the same way, and so is a sound that keeps playing at the same level through the quiet breaks, because it cannot be told apart from background noise. Silence and quiet breaks do not count toward the measurement. All channels receive the same correction, so the stereo image is unchanged, and the plugin adds no delay.
-
-The style targets are learned from the long-term spectra of a permissively licensed music collection. Each style has a typical curve and a typical spread between tracks. **Tilt** is a fixed reference instead: flat in the bass, then falling at a set slope. Any target can be reshaped to your taste with the five Target Adjust bands.
+The plugin compares the measured spectrum with the target after aligning overall loudness, attenuates overly strong regions, and applies a single make-up gain so weaker regions come forward without changing perceived loudness. It excludes silence and pauses from the measurement and withholds lift on hiss and on steady, noise-like bands (including a sustained synth pad), so empty frequency extremes are not artificially boosted. All channels receive the same zero-latency correction, preserving the stereo image.
 
 ### Sound Enhancement Guide
-- **Mixed playlists and streaming**: Start with the defaults (Target **All**, Amount 100%, Averaging Time 30 s). The correction fades in over tens of seconds as the measurement becomes reliable, so compare with the plugin turned off after about half a minute of music.
-- **One steady correction for an album**: Press **Reset** when the album starts and set Averaging Time to **∞**. The plugin then averages everything it has heard since the Reset, so the correction settles and changes less and less.
-- **Music of one style**: Choose the Target closest to what you are playing, such as **Classical** for orchestral recordings or **Electronic** for dance music. All is a good choice when styles are mixed.
-- **A gentler result**: Lower Amount to about 50% or Range to about 3 dB. For only broad tilts without narrower shaping, raise Smoothing to about 1 oct.
-- **Following changes within a song**: Shorten Averaging Time to about 0.5 to 1 s so a dark verse and a bright chorus are each corrected. If you hear the tone moving, lengthen it again.
-- **Leaving the extremes alone**: Raise Low so the deep bass is not reshaped, or lower High so the top octave is not reshaped.
-- **Your own house curve**: Shape the target with Target Adjust. For example, a High shelf of +1.5 dB at 8 kHz with Q 0.7 asks for a slightly brighter balance, and a broad Peak of -2 dB around 300 Hz with Q 0.7 asks for less low-mid weight. Each recording is then corrected toward that shape only as far as it needs, instead of every recording receiving the same EQ.
-- **A mechanical reference**: Choose Target **Tilt**. The default Slope of -6 dB/oct asks for a balance slightly darker than most released music; set Slope to about -4.5 to -5 dB/oct for a more typical balance, or to -3 dB/oct, the pink-noise reference, for a brighter one.
+- **Mixed playlists and streaming**: Start with the defaults (**Target: All**, **Amount: 100%**, **Averaging Time: 30 s**). The correction builds up over tens of seconds as the measurement becomes reliable, so let the music play for about 30 seconds before comparing with bypass.
+- **One steady correction for an album**: Click **Reset** at the start of the album and set **Averaging Time** to **∞** so the correction averages the entire playback session and settles into a fixed curve.
+- **Genre-specific targets**: Choose **Classical**, **Electronic**, **Pop**, or **Rock** to match a specific style, or **All** for mixed listening.
+- **Gentler shaping**: Lower **Amount** (e.g., 50%), reduce **Range** (e.g., 3 dB), or raise **Smoothing** (e.g., 1 oct) for broad, subtle tilts.
+- **Custom house curve**: Use the five **Target Adjust** bands below the graph to tilt or shape the target to your taste (for example, +1.5 dB High shelf at 8 kHz). Each recording is then corrected toward your custom target only as much as needed.
+- **Fixed slope reference**: Select **Target: Tilt** for a flat response below **Corner** followed by a constant roll-off **Slope** (−5 dB/oct approximates typical commercial masters; −3 dB/oct matches pink noise).
 
-The make-up gain keeps the loudness, not the peak level, so peaks can rise. If a later stage clips, lower the level after this plugin or add a limiter.
+The make-up gain keeps loudness, not peak level, so peaks can rise; if a later stage clips, lower the level after this plugin or add a limiter.
 
 ### Parameters
-- **Target** - The tonal balance that is the goal: **All**, **Classical**, **Electronic**, **Pop**, **Rock**, or **Tilt** (default All)
-  - All is an equal-weight mixture of the four styles
-  - Tilt is a fixed reference, not a learned style: flat below Corner, then falling at Slope
-- **Slope** - Shown only while Target is Tilt. How steeply the target falls above Corner (-18 dB/oct to 0 dB/oct, default -6 dB/oct)
-  - -3 dB/oct is pink noise, which has equal energy in every octave; 0 dB/oct is white noise and -6 dB/oct is brown noise
-  - Typical commercial recordings average roughly -5 dB/oct (Pestana et al.), so the default asks for a slightly darker balance than typical music. A shallower Slope asks for more treble; steeper (more negative) settings tilt the balance further toward the bass
-- **Corner** - Shown only while Target is Tilt. The frequency below which the target stays flat (20 Hz to 1000 Hz, default 250 Hz)
-  - Lower values continue the slope further into the deep bass, asking for more deep bass
-  - Higher values keep more of the bass flat, asking for less bass
-- **Amount** - How much of the correction is applied (0% to 100%, default 100%)
-  - Lower values scale the whole correction down; at 0% the sound is unchanged
-  - At 0% the measurement and the graph keep running, and Range, Smoothing, Low, and High are disabled
-- **Range** - The largest correction any band can receive, up or down (0 dB to 12 dB, default 6 dB)
-  - Lower values keep changes subtle; 0 dB turns the correction off
-  - Higher values let recordings that are far from the target move closer to it
-- **Smoothing** - How wide the features of the correction curve are (0.1667 oct to 2 oct, default 0.5 oct)
-  - Higher values give broad, gentle tilts
-  - Lower values follow the target more closely, including narrower peaks and dips
-- **Averaging Time** - How long the measurement averages (0.1 s to ∞, default 30 s)
-  - Short values make the tone follow changes within a song
-  - Long values give a steady correction that changes slowly between songs
-  - The right end of the slider is **∞**: the plugin averages everything since the last Reset. You can also type ∞ in the value box
-- **Low** - The lower edge of the corrected range (20 Hz to 200 Hz, default 20 Hz)
-  - Below it, the correction stays at the value it has at Low
-  - Raise it so the deep bass is not reshaped
-- **High** - The upper edge of the corrected range (2000 Hz to 20000 Hz, default 16000 Hz)
-  - Above it, the correction stays at the value it has at High
-  - Lower it so the top octave is not reshaped
-- **Average SPL** - Your estimated average listening level at the listening position, as in Loudness Equalizer (60 dB to 96 dB, default 83 dB)
-  - It only decides which quiet bands are loud enough to hear and may therefore be raised; it does not change the output level
-  - Lower values treat more faint bands as inaudible, so they are not raised
-  - Higher values count more faint bands as audible content
-- **Target Adjust** - Five bands below the graph that reshape the target, with the same controls as Room EQ's Additional EQ and 5Band PEQ
-  - Each band can be turned on or off and set to Peak, Low shelf, or High shelf
-  - Frequency: 20 Hz to 20 kHz (defaults 100 Hz, 316 Hz, 1 kHz, 3.16 kHz, and 10 kHz)
-  - Gain: -20 dB to +20 dB (default 0 dB). Positive values ask for more of that region, negative values for less; 0 dB leaves the target unchanged
-  - Q: 0.1 to 10, limited to 2 for shelves (default 0.7). Higher values affect a narrower range
+- **Target** - Goal tonal balance: **All** (default equal mix of the four styles), **Classical**, **Electronic**, **Pop**, **Rock**, or **Tilt** (fixed slope reference).
+- **Slope** (-18 to 0 dB/oct; default -6 dB/oct; Tilt mode only) - Roll-off rate above **Corner** (-3 dB/oct = pink noise, ~-5 dB/oct = typical commercial releases). Shallower values ask for more treble; the default asks for a slightly darker balance than typical music.
+- **Corner** (20 to 1000 Hz; default 250 Hz; Tilt mode only) - Frequency below which the **Tilt** target remains flat. Lower values ask for more deep bass; higher values ask for less bass.
+- **Amount** (0% to 100%; default 100%) - Overall correction strength. At 0% the sound is unchanged, but the measurement and graph keep running, and **Range**, **Smoothing**, **Low**, and **High** are disabled.
+- **Range** (0 to 12 dB; default 6 dB) - Maximum gain adjustment allowed in any band, up or down. Lower values keep changes subtle (0 dB turns the correction off); higher values let recordings far from the target move closer to it.
+- **Smoothing** (0.1667 to 2 oct; default 0.5 oct) - Width of the correction curve features (higher values produce broader tilts).
+- **Averaging Time** (0.1 s to ∞; default 30 s) - Measurement integration window. Short values (e.g., 0.5 to 1 s) follow changes within a song, such as a dark verse and a bright chorus; long values give a steady correction (**∞** averages continuously since the last **Reset**).
+- **Low** (20 to 200 Hz; default 20 Hz) / **High** (2000 to 20000 Hz; default 16000 Hz) - Lower and upper frequency bounds of active reshaping (outside these bounds, correction holds constant). Raise **Low** to leave the deep bass alone, or lower **High** to leave the top octave alone.
+- **Average SPL** (60 to 96 dB; default 83 dB) - Estimated listening level used to determine which quiet frequency bands are audible enough to be lifted; it does not change the output level. Lower values treat more faint bands as inaudible, so they are not lifted; higher values count more of them as audible.
+- **Target Adjust** - Five parametric bands (Peak, Low shelf, High shelf; 20 Hz–20 kHz, ±20 dB, Q 0.1–10, up to 2 for shelves; default Q 0.7) that reshape the target curve. Positive gain asks for more of that region, negative gain for less.
 
-Target Adjust changes only the target. The plugin still measures each recording and corrects it toward the adjusted target with the same Amount, Range, Smoothing, Low, and High; it is not an extra EQ applied on top. Lifting the whole target by the same amount therefore changes nothing, because overall levels are lined up before the comparison and the loudness stays matched. Regions with no real music content are still not raised, and below Low and above High the correction is held as usual. The target is followed in hearing-sized bands and then smoothed, so a narrow peak or notch is spread out and comes out smaller, as the graph shows; use 5Band PEQ for narrow fixes. Range still limits the correction in every band, so a large adjustment may need a larger Range.
+**Target Adjust** changes only the target; each recording is still corrected toward it within **Amount** and **Range**, so a larger adjustment may need a larger **Range**. Raising the whole target by the same amount changes nothing, because overall levels are aligned before comparison. Narrow peaks and dips are smoothed out; use 5Band PEQ for narrow fixes.
 
 ### Visual Display
-- The horizontal axis is frequency from about 26 Hz to 18.6 kHz, and the vertical axis is level in dB. The vertical range grows to fit the target band, the EQ response, the measured level in the corrected range, and the Target Adjust handles and curve, and returns to ±12 dB on Reset or a Target change. Measured points far from the target can run past the edge of the graph.
-- **Target** is the line of the target balance, including Target Adjust, drawn so that its average is 0 dB. For a style, the shaded band around it shows the typical spread between tracks of that style; Tilt, a fixed reference, has none. Levels are shown per hertz (spectral density), so a Tilt target is drawn flat below Corner and then as a straight line falling at Slope; pink noise is a -3 dB/oct line.
-- **Measured** is the line with dots: the measured long-term spectrum, shifted to line up with the target. Where it lies below the target band, the recording is weaker than typical there; where it lies above, it is stronger. Measurement pauses while you preview a frequency and resumes when the preview ends.
-- **EQ response** is the bold line: the gain the plugin applies, including the make-up gain. 0 dB means unchanged.
-- **Withheld lift** is the filled area rising from the EQ response line. Its height, shown in the readout as an approximate value in dB, is about how much more lift the band would have received if it had not been held back for being poorly recognized as music content (see above). It is an approximate size, not an exact gain, and it follows Amount and Range.
-- **Target adjust** is the thin curve around 0 dB: the combined response of the Target Adjust bands exactly as you set them. The numbered handles show each band at its frequency and gain, where 0 dB means no change; they do not sit on the Target line. Drag a handle horizontally to change frequency and vertically to change gain, turn the mouse wheel over it to change Q, and right-click it to turn the band on or off. Disabled bands appear dimmed.
-- While audio plays, the Target line follows the handles within a moment; where it is smoother than the Target adjust curve, that part of the request is being averaged out. While stopped, the Target line keeps its last measured shape and the Target adjust curve shows what you have asked for. Slope and Corner changes made while stopped show on the Target line once playback resumes.
-- The regions below Low and above High are dimmed.
-- Hover over the graph, or touch and drag on it, to read the values at that point. Besides the curves, the readout shows **Presence**, the share of the measured time in which that band was recognized as audible music content, the current **Make-up gain**, and the **Loudness** of everything measured since the last Reset in LKFS.
-- Before any audio has been measured, the graph shows "Play audio to start measuring". The Target Adjust handles and the Target adjust curve are still shown and can be edited.
-- **Reset** clears the measurement and starts again from the current audio; Target Adjust is not changed. The measurement also starts over when processing resumes after a power-saving pause in silence.
-- **Copy as PEQ** copies the EQ response on the graph as 5Band PEQ settings. Press Ctrl+V in the Effect Pipeline to add a 5Band PEQ with that curve before the selected effect, or at the end if none is selected. Turn Tonal Balance EQ off, or remove it, to keep the current correction fixed. The 5Band PEQ follows the shape of the curve between Low and High but not its overall level, so the loudness can differ slightly. The button is available once the graph shows an EQ response and Amount is above 0%.
+- The horizontal axis is frequency from about 26 Hz to 18.6 kHz, and the vertical axis is level in dB, shown per hertz, so pink noise appears as a line falling at -3 dB/oct. The vertical range grows to fit the curves and returns to ±12 dB on **Reset** or a **Target** change. The regions below **Low** and above **High** are dimmed.
+- **Target** is the target balance including **Target Adjust**. For a style, the shaded band shows the typical spread between tracks, learned from the long-term spectra of a music collection; **Tilt** has none.
+- **Measured** is the line with dots: the measured long-term spectrum aligned to the target. Where it lies below the target band, the recording is weaker than typical there; above it, stronger. Measurement pauses while you preview a frequency.
+- **EQ response** is the bold line: the applied gain including the make-up gain (0 dB = unchanged).
+- **Withheld lift** is the shaded area showing roughly how much more lift a band would get if it were not held back as noise-like or non-musical content.
+- **Target adjust** is the thin curve around 0 dB with numbered handles showing the bands as you set them; the handles do not sit on the **Target** line. Drag a handle to change frequency and gain, turn the mouse wheel over it to change Q, and right-click it to turn the band on or off. While audio plays, the **Target** line follows the handles within a moment; while stopped, it keeps its last shape.
+- Hover or drag across the graph to inspect band values, **Presence** (% of time recognized as musical content), **Make-up gain**, and integrated **Loudness** (LKFS). Before any audio is measured, the graph shows "Play audio to start measuring".
+- **Reset** clears the accumulated measurement; **Target Adjust** is not changed. The measurement also starts over when processing resumes after a power-saving pause.
+- **Copy as PEQ** copies the EQ response as 5Band PEQ settings. Press **Ctrl+V** in the Effect Pipeline to insert it before the selected effect (or at the end), then turn Tonal Balance EQ off to keep the correction fixed. The copy follows the curve's shape between **Low** and **High** but not its overall level, so loudness can differ slightly. It is available once the graph shows an EQ response and **Amount** is above 0%.
 
 ## Tone Control
 
@@ -848,36 +826,4 @@ A simple three-band sound adjuster for quick and easy sound personalization. Per
 ### Visual Display
 - Easy-to-read graph showing your adjustments
 - Simple sliders for each control
-- Hover over the graph, or touch and drag on it, to read the values at that point.
-
-## Tilt EQ
-
-A simple yet effective equalizer that gently tilts the frequency balance of your music. It's designed for subtle adjustments, making your music sound warmer or brighter without complex controls. Ideal for quickly tailoring the overall tone to your preference.
-
-### Listening Enhancement Guide
-- Make Music Warmer:
-  - Use negative slope values to reduce high frequencies and increase low frequencies.
-  - Perfect for bright recordings or headphones that sound too sharp.
-  - Creates a cozy and relaxed listening experience.
-- Make Music Brighter:
-  - Use positive slope values to increase high frequencies and reduce low frequencies.
-  - Ideal for dull recordings or speakers that sound muffled.
-  - Adds clarity and sparkle to your music.
-- Subtle Tone Adjustments:
-  - Use small slope values for gentle overall tone shaping.
-  - Fine-tune the balance to match your listening environment or mood.
-
-### Parameters
-- **Pivot Frequency** - Controls the center frequency of the tilt (20Hz to ~20kHz)
-  - Adjust to set the frequency point around which the tilt occurs.
-- **Slope** - Controls the steepness of the tilt around the Pivot Frequency (-12 dB/oct to +12 dB/oct)
-  - Positive values make the sound brighter; negative values make it warmer.
-  - Smaller values make gentler changes.
-
-### Visual Display
-- Simple slider for easy slope adjustment
-- Real-time frequency response curve to show the tilt effect
-- Clear indication of current slope value
-
-- Quick reset button
 - Hover over the graph, or touch and drag on it, to read the values at that point.

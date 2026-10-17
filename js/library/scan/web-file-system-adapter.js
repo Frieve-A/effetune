@@ -1,5 +1,5 @@
 import {
-  isSupportedAudioPath,
+  isSupportedLibraryPath,
   isSupportedCuePath,
   isSupportedPlaylistPath,
   normalizeRelativePath
@@ -8,10 +8,11 @@ import { assertRepositoryContract, createRepositoryError } from '../repository/c
 import { assertDirectoryHandle } from './web-folder-handle-store.js';
 
 export class WebFileSystemScanAdapter {
-  constructor({ rootHandle, onPlaylistFile = () => {} }) {
+  constructor({ rootHandle, onPlaylistFile = () => {}, includeVideo = false }) {
     this.rootHandle = assertDirectoryHandle(rootHandle);
     if (typeof onPlaylistFile !== 'function') throw new TypeError('onPlaylistFile must be a function');
     this.onPlaylistFile = onPlaylistFile;
+    this.includeVideo = includeVideo === true;
   }
 
   async *enumerateDirectory({ relativeDirectory = '', signal } = {}) {
@@ -36,7 +37,7 @@ export class WebFileSystemScanAdapter {
       const relativePath = joinRelative(relativeDirectory, handle?.name);
       if (handle?.kind === 'directory') {
         yield { kind: 'directory', name: handle.name, relativePath, path: relativePath };
-      } else if (handle?.kind === 'file' && isSupportedAudioPath(relativePath)) {
+      } else if (handle?.kind === 'file' && isSupportedLibraryPath(relativePath, this.includeVideo)) {
         yield { kind: 'file', name: handle.name, relativePath, path: relativePath };
       } else if (handle?.kind === 'file' && isSupportedCuePath(relativePath)) {
         yield { kind: 'cue', name: handle.name, relativePath, path: relativePath };

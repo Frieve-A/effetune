@@ -60,7 +60,7 @@ test('Clean Feed passes ready lyrics and immediate absence to its renderer uncha
         visible: true, canvas,
         window: { closed: false, innerWidth: 128, innerHeight: 72, devicePixelRatio: 1, requestAnimationFrame: () => 1 },
         view: { layout: { aspect: '16:9' }, sources: { getStatus: () => 'ready' },
-            metadata: () => null, lyrics: () => descriptor, quality: 'auto' },
+            metadata: () => null, lyrics: () => descriptor, quality: 'auto', video: { frame: () => null } },
         renderer: { draw(...args) { rendered = args; } }
     });
     feed.frame(1000);

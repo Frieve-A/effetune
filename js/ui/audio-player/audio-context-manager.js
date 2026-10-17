@@ -17,6 +17,7 @@ import {
 } from './playback-region.js';
 import {
   choosePlaybackMode,
+  isVideoPlaybackSource,
   normalizePlaybackSourceDescriptor
 } from './playback-source-policy.js';
 import { PCM16_STEREO_44100_TO_96000_PROFILE } from './rolling-pcm-core.js';
@@ -168,6 +169,15 @@ export class AudioContextManager {
   }
 
   // ===== CORE AUDIO METHODS =====
+
+  createPlaybackMediaElement(track) {
+    if (!isVideoPlaybackSource(track)) return new Audio();
+    const element = document.createElement('video');
+    element.playsInline = true;
+    element.preload = 'auto';
+    element.className = 'player-video';
+    return element;
+  }
 
   getPlaybackBackendAdapter(mode = this.getCurrentState()?.playbackMode) {
     return PLAYBACK_BACKEND_ADAPTERS[mode] ?? PLAYBACK_BACKEND_ADAPTERS.audioElement;
@@ -1088,6 +1098,7 @@ export class AudioContextManager {
   }
 
   getDisplayTrackName(track) {
+    track = track?.presentationTrack ?? track;
     const title = track?.meta?.title;
     const artist = track?.meta?.artist;
     if (title && artist) return `${artist} - ${title}`;
@@ -1335,9 +1346,8 @@ export class AudioContextManager {
       const isStale = typeof revalidation?.isCurrent === 'function'
         ? () => !isGraphRebuildCurrent() || !revalidation.isCurrent()
         : () => !isGraphRebuildCurrent();
-      const playableTrack = revalidation?.track ?? (this.needsTrackProviderResolution(currentTrack)
-        ? await this.resolveTrackProvider(currentTrack)
-        : currentTrack);
+      let playableTrack = this.resolveTrackProvider(revalidation?.track ?? currentTrack);
+      if (playableTrack instanceof Promise) playableTrack = await playableTrack;
       rebuildTrack = playableTrack;
       if (isStale()) return;
       const descriptor = this.createPlaybackSourceDescriptor(playableTrack);
@@ -1483,7 +1493,7 @@ export class AudioContextManager {
       this.currentBuffer = buffer;
       this.activeSourceGeneration = ++this.sourceGenerationSequence;
       this.updateState({
-        currentTrack: playableTrack,
+        currentTrack: playableTrack.presentationTrack ?? playableTrack,
         currentTrackName: this.getDisplayTrackName(playableTrack),
         currentBuffer: buffer,
         nextBuffer: null,
@@ -1534,6 +1544,11 @@ export class AudioContextManager {
       backendCommitted = true;
     } catch (error) {
       if (!isGraphRebuildCurrent()) return;
+      if (error?.localPlaybackSourceFailure) {
+        settleGraphRebindFailure();
+        this.reportPlaybackSourceFailure(error);
+        return;
+      }
       const playableTrack = rebuildTrack;
       const descriptor = rebuildDescriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
       const decisionRecord = rebuildDecisionRecord ??
@@ -1657,7 +1672,7 @@ export class AudioContextManager {
       commitIntent = applyTransportIntent();
 
       const statePatch = {
-        currentTrack: playableTrack,
+        currentTrack: playableTrack.presentationTrack ?? playableTrack,
         currentTrackName: this.getDisplayTrackName(playableTrack),
         artworkUrl: '',
         currentBuffer: null,
@@ -1884,6 +1899,9 @@ export class AudioContextManager {
   }
 
   invalidateAutomaticMoveForManualCommand() {
+    void this.disposeRollingPreparationsForOwner(this.activeLoadRequest);
+    this.loadRequestToken++;
+    this.activeLoadRequest = null;
     this.clearNextTrackBuffer();
     this.invalidatePendingTransitionRequests();
   }
@@ -2138,7 +2156,7 @@ export class AudioContextManager {
     if (hasRegion) getPlaybackRegion(track);
     
     if (!this.audioPlayer.audioElement) {
-      this.audioPlayer.audioElement = new Audio();
+      this.audioPlayer.audioElement = this.createPlaybackMediaElement(track);
       this.setupEventHandlers();
     }
     
@@ -2167,7 +2185,7 @@ export class AudioContextManager {
     this.setupMediaSessionHandlers();
     
     this.updateState({
-      currentTrack: track,
+      currentTrack: track.presentationTrack ?? track,
       currentTrackName: this.getDisplayTrackName(track),
       artworkUrl: '',
       currentTrackIndex: currentIndex,
@@ -2274,6 +2292,7 @@ export class AudioContextManager {
     this.eventHandlers.loadedmetadata = (event) => {
       if (!isCurrentAudioElementEvent(event)) return;
       if (this.pendingMediaActivation?.element === audioElement) return;
+      this.audioPlayer.ui?.updateVideoPresentation?.();
       if (this.handleRegionLoadedMetadata(audioElement)) {
         this.updateTrackNameFromMetadata();
         return;
@@ -2316,7 +2335,7 @@ export class AudioContextManager {
 
           this.detachAudioElement(oldAudioElement, { clearSource: true });
           
-          this.audioPlayer.audioElement = new Audio();
+          this.audioPlayer.audioElement = this.createPlaybackMediaElement(this.getCurrentState()?.currentTrack);
           this.setupEventHandlers();
           
           if (oldSrc) {
@@ -3363,7 +3382,8 @@ export class AudioContextManager {
         isTransitioning: false,
         transitionType: null
       }, 'Track loading failed without replacing current playback');
-      window.uiManager?.setError?.('error.playbackCommandFailed', true);
+      this.reportPlaybackSourceFailure(error);
+      if (error?.code === 'alacRequiresMacDesktop') throw error;
       return false;
     } finally {
       if (this.isActiveLoadRequest(loadRequest)) this.convergePlaybackSpeedBackend();
@@ -3534,8 +3554,56 @@ export class AudioContextManager {
     }
   }
 
-  async resolveTrackProvider(track) {
-    if (!this.needsTrackProviderResolution(track)) return track;
+  resolveTrackProvider(track) {
+    if (this.needsTrackProviderResolution(track)) {
+      return this.resolveProviderTrack(track).then(resolved => this.resolveLocalPlaybackSource(resolved));
+    }
+    return this.resolveLocalPlaybackSource(track);
+  }
+
+  resolveLocalPlaybackSource(track) {
+    const integration = window.electronIntegration;
+    if (!track || !(integration?.isElectronEnvironment?.() || integration?.isElectron === true)) {
+      return track;
+    }
+    const api = window.electronAPI;
+    const path = track.path || (track.file && /\.(m4a|mp4)$/i.test(track.file.name) &&
+      api?.getPathForFile?.(track.file));
+    if (!this.shouldUseElectronFileRead(path) || !/\.(m4a|mp4)$/i.test(path)) return track;
+    return api.prepareLocalPlaybackSource(path).then(result => {
+      if (!result?.success) {
+        const error = new Error('Local playback source preparation failed');
+        error.code = result?.code;
+        error.localPlaybackSourceFailure = true;
+        throw error;
+      }
+      if (!result.converted) return track;
+      const fileName = result.path.split(/[\\/]/).pop();
+      const playableTrack = {
+        ...track,
+        presentationTrack: track,
+        path: result.path,
+        name: fileName,
+        fileName,
+        sourceFileName: fileName,
+        type: 'audio/wav',
+        mimeType: 'audio/wav',
+        meta: { ...track.meta, fileName, mimeType: 'audio/wav' },
+        byteLength: result.byteLength,
+        fileSize: result.byteLength,
+        size: result.byteLength,
+        physicalSourceKey: result.path,
+        canonicalSourceKey: result.path,
+        sourceKey: result.path
+      };
+      for (const key of ['file', 'bytes', 'data', 'readBytes', 'provider', 'mediaSource']) {
+        delete playableTrack[key];
+      }
+      return playableTrack;
+    });
+  }
+
+  async resolveProviderTrack(track) {
     const resolved = await track.provider();
     const playableTrack = {
       ...track,
@@ -3561,6 +3629,12 @@ export class AudioContextManager {
     }
     this.resolvedProviderTracks.add(playableTrack);
     return playableTrack;
+  }
+
+  reportPlaybackSourceFailure(error) {
+    window.uiManager?.setError?.(error?.code === 'alacRequiresMacDesktop'
+      ? 'error.alacRequiresMacDesktop'
+      : 'error.playbackCommandFailed', true);
   }
 
   createPlaybackSourceDescriptor(track) {
@@ -3594,7 +3668,7 @@ export class AudioContextManager {
     const policyMode = this.rollingLegacyFallbackLock
       ? RollingPolicyMode.RESOURCE_SAFE_LEGACY
       : this.rollingPolicyMode;
-    const selectedDecision = selectPlaybackBackend({
+    const selectedDecision = descriptor.isVideo ? decision : selectPlaybackBackend({
       snapshot,
       metadata,
       audioContext: this.audioPlayer.audioContext,
@@ -3627,7 +3701,7 @@ export class AudioContextManager {
       descriptor,
       choosePlaybackMode(descriptor)
     );
-    if (!this.isGaplessPlaybackEnabled()) return record;
+    if (descriptor.isVideo || !this.isGaplessPlaybackEnabled()) return record;
     const preflightContext = this.audioPlayer.audioContext;
     const preflightRuntime = detectRollingRuntime();
     const preflightCapability = {
@@ -4001,7 +4075,7 @@ export class AudioContextManager {
   createPlaybackRequestSnapshot(playableTrack, targetIndex = null) {
     const descriptor = this.createPlaybackSourceDescriptor(playableTrack);
     return Object.freeze({
-      track: playableTrack,
+      track: playableTrack.presentationTrack ?? playableTrack,
       playableTrack,
       descriptor,
       decisionRecord: this.createPlaybackDecisionRecord(
@@ -4077,6 +4151,10 @@ export class AudioContextManager {
     }, 'Track loading failed');
 
     const playbackManager = this.audioPlayer.playbackManager;
+    if (error?.code === 'alacRequiresMacDesktop') {
+      this.reportPlaybackSourceFailure(error);
+      return false;
+    }
     if (playbackManager?.catalogSequence) {
       return false;
     }
@@ -4176,9 +4254,8 @@ export class AudioContextManager {
       if (this.hasPendingRollingCleanup()) await this.waitForRollingCleanupBarrier();
       if (isStale()) return;
       const planSnapshot = automaticMovePlan?.preparedRequest ?? null;
-      const playableTrack = planSnapshot?.playableTrack ?? (this.needsTrackProviderResolution(track)
-        ? await this.resolveTrackProvider(track)
-        : track);
+      let playableTrack = planSnapshot?.playableTrack ?? this.resolveTrackProvider(track);
+      if (playableTrack instanceof Promise) playableTrack = await playableTrack;
       if (isStale()) return;
       const descriptor = planSnapshot?.descriptor ?? this.createPlaybackSourceDescriptor(playableTrack);
       let decisionRecord = planSnapshot?.decisionRecord?.committedMode === 'rolling'
@@ -4291,6 +4368,7 @@ export class AudioContextManager {
     } catch (error) {
       if (this.isActiveNextBufferRequest(request)) {
         console.warn('[AudioContextManager] Next track buffer preparation failed:', error);
+        if (error?.code === 'alacRequiresMacDesktop') this.reportPlaybackSourceFailure(error);
       }
     }
   }
@@ -4649,11 +4727,15 @@ export class AudioContextManager {
       
     } catch (error) {
       console.error('[AudioContextManager] Transition failed:', error);
+      if (error?.localPlaybackSourceFailure &&
+          (!this.isActiveTransitionRequest(transitionRequest) || transitionOptions?.signal?.aborted === true ||
+           (plan && this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(plan) !== true))) return false;
       if (this.isActiveTransitionRequest(transitionRequest)) {
         this.updateState({
           isTransitioning: false,
           transitionType: null
         }, 'Transition failed');
+        if (error?.localPlaybackSourceFailure) this.reportPlaybackSourceFailure(error);
       }
       throw error;
     } finally {
@@ -4670,8 +4752,9 @@ export class AudioContextManager {
     preparationOwner = null
   ) {
     const planSnapshot = plan?.preparedRequest ?? null;
-    const playableTrack = preparedRequest?.playableTrack ?? planSnapshot?.playableTrack ??
-      (this.needsTrackProviderResolution(track) ? await this.resolveTrackProvider(track) : track);
+    let playableTrack = preparedRequest?.playableTrack ?? planSnapshot?.playableTrack ??
+      this.resolveTrackProvider(track);
+    if (playableTrack instanceof Promise) playableTrack = await playableTrack;
     if (isStale() || !playableTrack) return null;
     const descriptor = preparedRequest?.descriptor ?? planSnapshot?.descriptor ??
       this.createPlaybackSourceDescriptor(playableTrack);
@@ -4895,7 +4978,7 @@ export class AudioContextManager {
   async prepareMediaTransitionCandidate(prepared, sourceGeneration, isStale) {
     const sourceValue = prepared.descriptor?.mediaSource ?? prepared.playableTrack?.mediaSource ??
       prepared.playableTrack?.file ?? prepared.playableTrack?.path ?? null;
-    const element = new Audio();
+    const element = this.createPlaybackMediaElement(prepared.playableTrack);
     let objectURL = null;
     if (isBlobObject(sourceValue)) {
       objectURL = URL.createObjectURL(sourceValue);
@@ -5190,7 +5273,7 @@ export class AudioContextManager {
       return false;
     }
 
-    const track = prepared.playableTrack;
+    const track = prepared.playableTrack.presentationTrack ?? prepared.playableTrack;
     const mediaDuration = Number.isFinite(candidate.element?.duration) ? candidate.element.duration : 0;
     const statePatch = {
       currentTrackDuration: candidate.mode === 'bufferSource'
@@ -5407,7 +5490,7 @@ export class AudioContextManager {
         this.bufferStartTime = currentTime;
         this.bufferDuration = buffer.duration;
         const trackState = activationIntent?.track ? {
-          currentTrack: activationIntent.track,
+          currentTrack: activationIntent.track.presentationTrack ?? activationIntent.track,
           currentTrackName: this.getDisplayTrackName(activationIntent.track),
           artworkUrl: '',
           currentTrackIndex: activationIntent.targetIndex,
@@ -5428,7 +5511,7 @@ export class AudioContextManager {
           : 'Buffer source playback started');
         if (activationIntent?.track && this.audioPlayer.stateManager) {
           this.audioPlayer.stateManager.updateState({
-            currentTrack: activationIntent.track,
+            currentTrack: activationIntent.track.presentationTrack ?? activationIntent.track,
             currentTrackIndex: activationIntent.targetIndex
           }, 'AudioContextManager transition source committed');
         }
@@ -5803,6 +5886,8 @@ function getTrackPlaybackMetadata(track) {
 }
 
 function samePlaybackEntry(left, right) {
+  left = left?.presentationTrack ?? left;
+  right = right?.presentationTrack ?? right;
   if (!left || !right) return false;
   if (left === right) return true;
   if (left.entryInstanceId && right.entryInstanceId) {

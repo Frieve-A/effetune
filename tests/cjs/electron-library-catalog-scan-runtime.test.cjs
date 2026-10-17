@@ -21,6 +21,35 @@ async function waitForTerminal(runtime, scanId, timeoutMs = 5000) {
   throw new Error(`Timed out waiting for scan ${scanId}`);
 }
 
+test('Electron library scans apply the video format preference on add and rescan', async t => {
+  const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-video-scan-')));
+  const libraryRoot = path.join(temporary, 'Music');
+  await fs.mkdir(libraryRoot);
+  for (const name of ['song.m4a', 'clip.mp4', 'clip.webm', 'clip.m4v', 'clip.mov', 'clip.mkv', 'clip.3gp']) {
+    await fs.writeFile(path.join(libraryRoot, name), Buffer.from('media'));
+  }
+  const host = await LibraryCatalogHost.open({ dbPath: path.join(temporary, 'catalog.sqlite') });
+  const runtime = await LibraryCatalogScanRuntime.open({
+    host,
+    dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [libraryRoot] }) },
+    metadataParser: { parse: async () => ({ durationSec: 1 }) }
+  });
+  t.after(async () => {
+    await runtime.close();
+    await host.close();
+    await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+  const added = await runtime.addFolder({ includeVideo: true });
+  assert.equal((await waitForTerminal(runtime, added.scan.scanId)).status, 'completed');
+  assert.equal((await host.getCounts()).tracks, 7);
+  const audioOnly = await runtime.scanFolders({ folderIds: [added.folder.id] });
+  assert.equal((await waitForTerminal(runtime, audioOnly.scanId)).status, 'completed');
+  assert.equal((await host.getCounts()).tracks, 1);
+  const videos = await runtime.scanFolders({ folderIds: [added.folder.id], includeVideo: true });
+  assert.equal((await waitForTerminal(runtime, videos.scanId)).status, 'completed');
+  assert.equal((await host.getCounts()).tracks, 7);
+});
+
 test('Electron scan runtime adds a picked folder and makes an unchanged million-scale path a metadata no-op', async t => {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-catalog-scan-'));
   const libraryRoot = path.join(temporary, 'Music');

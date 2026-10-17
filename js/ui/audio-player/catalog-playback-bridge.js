@@ -516,9 +516,11 @@ export class CatalogPlaybackBridge {
 
   #reportError(error) {
     console.error('Music Library playback failed:', error);
-    const message = String(error?.code).includes('Timeout')
-      ? 'library.error.playbackStartTimeout'
-      : 'library.error.playbackStartFailed';
+    const message = error?.code === 'alacRequiresMacDesktop'
+      ? 'error.alacRequiresMacDesktop'
+      : String(error?.code).includes('Timeout')
+        ? 'library.error.playbackStartTimeout'
+        : 'library.error.playbackStartFailed';
     if (typeof this.uiManager.showTransientMessage === 'function') {
       this.uiManager.showTransientMessage(message, true);
     } else {

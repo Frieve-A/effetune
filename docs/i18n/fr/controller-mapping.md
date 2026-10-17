@@ -1,56 +1,79 @@
 ---
-title: "Affectation des contrôleurs - Contrôle par MIDI, manette et clavier - EffeTune"
-description: "Contrôlez les paramètres d'EffeTune par MIDI, manette ou clavier."
+title: "Affectation des contrôleurs - MIDI, manette et clavier - EffeTune"
+description: "Pilotez les paramètres des effets d’EffeTune depuis un contrôleur MIDI, une manette ou le clavier."
 lang: fr
 ---
 
 # Affectation des contrôleurs
 
-Cette fonction permet de régler les paramètres sans faire glisser les commandes à l'écran. Vous pouvez utiliser un contrôleur MIDI, une manette ou des touches lorsque EffeTune a le focus ; les modifications sont également visibles dans l'interface.
+L’affectation des contrôleurs permet de régler les paramètres d’effet sans faire glisser leurs commandes à l’écran. Vous pouvez utiliser un contrôleur MIDI, une manette ou le clavier tant qu’EffeTune a le focus. Les modifications respectent les mêmes plages de paramètres que l’interface de l’effet et sont répercutées à l’écran.
 
 ## Ajouter une affectation
 
-1. Ouvrez **Settings**, puis **Affectation des contrôleurs...**.
-2. Choisissez **Ajouter (Learn)** et actionnez la commande, la touche ou la manette.
-3. Sélectionnez l'effet, la règle d'instance et le paramètre.
-4. Réglez au besoin Min, Max, Sensitivity, le sens ou le mode. Chaque modification est enregistrée immédiatement.
+1. Ouvrez **Paramètres**, puis sélectionnez **Affectation des contrôleurs...**.
+2. Cliquez sur **Ajouter (Learn)**.
+3. Actionnez une commande MIDI, appuyez sur une touche ou manipulez un bouton ou un axe de manette.
+4. Choisissez l’effet cible, la règle d’instance et le paramètre.
+5. Ajustez au besoin Min., Max., Sensibilité, le sens ou le mode d’entrée. Les modifications sont enregistrées immédiatement.
 
-Pour des boutons d'augmentation et de diminution séparés, créez deux affectations, l'une en **+**, l'autre en **−**. Si une touche correspond à un raccourci EffeTune, un avertissement apparaît et l'affectation est prioritaire lorsque l'application a le focus.
+Pour attribuer l’augmentation et la diminution à deux boutons ou touches distincts, créez deux affectations : réglez **Sens** sur **Augmenter (+)** pour l’une et sur **Diminuer (−)** pour l’autre. Si une touche apprise correspond déjà à un raccourci d’EffeTune, un avertissement s’affiche ; l’affectation reste prioritaire tant que l’application a le focus.
 
-Pour une affectation de bouton, choisissez le **Mode du bouton** : **Bascule** change l'état à chaque pression, tandis que **Momentané** ne reste actif que pendant l'appui.
+Pour les affectations de bouton, choisissez le **Mode du bouton** : **Bascule** inverse l’état à chaque appui, tandis que **Momentané** ne maintient l’action que tant que la commande est enfoncée.
 
-## Automatiser selon l'heure ou de façon aléatoire
+## Choisir la cible
 
-Choisissez **Ajouter une automatisation** pour faire varier un paramètre numérique sans contrôleur physique. La nouvelle affectation utilise d'abord un **Minuteur** d'une seconde. Avec **Horloge**, choisissez **Heure**, **Minute** ou **Seconde**, puis une onde **Montante**, **Sinus** ou **Cosinus**. L'heure locale est lue une fois par seconde et reportée entre Min. et Max.
+- **Premier** pilote le premier effet correspondant dans la chaîne actuelle.
+- **Dernier** pilote le dernier effet correspondant.
+- **Tous** applique la même valeur à tous les effets correspondants, en prenant le premier comme référence pour les variations relatives.
+- **Activé** active ou désactive l’effet.
 
-Avec Minuteur, réglez **Intervalle (secondes)** sur 1 ou plus. **Modifier de la quantité** ajoute ou retranche la **Quantité** à chaque événement ; **Valeur aléatoire dans la plage** choisit une nouvelle valeur entre Min. et Max. ; **Pas aléatoire depuis la valeur actuelle** monte ou descend depuis la valeur en cours.
+**Global** pilote l’application et le lecteur de musique plutôt qu’un effet : **Bypass général**, **Basculer A/B**, **Lecture/Pause**, **Arrêter**, **Piste suivante/précédente**, **Avancer/reculer de 10 s**, **Vitesse de lecture**, **Conserver la hauteur**, **Répétition**, **Aléatoire** et **Préréglage suivant/précédent**.
 
-La **Planification** propose **Intervalle**, **Une fois** et **Tous les jours**. L'intervalle va de 1 à 2 147 483,647 secondes et mesure le temps écoulé pendant l'exécution de l'application. En cas de retard, une seule modification est appliquée, puis l'intervalle suivant repart de cet instant, sans rejouer les événements manqués. Une fois utilise la **Date** et l'**Heure** locales ; Tous les jours utilise l'heure locale et attend le lendemain si l'heure du jour est passée. Les deux suivent le calendrier et l'horloge locaux de l'ordinateur, y compris les changements manuels et l'heure d'été ; Tous les jours ne s'exécute qu'une fois au maximum par date locale. Une échéance passée apparaît comme **Expiré** et n'est pas rattrapée ; placez la date ou l'heure dans le futur pour la réarmer.
+- Pour **Piste suivante/précédente**, **Avancer/reculer de 10 s** et **Préréglage suivant/précédent**, **Sens** définit **Augmenter (+)** (avancer) ou **Diminuer (−)** (reculer). Un encodeur sans fin ou une molette jog suit le sens de rotation.
+- **Vitesse de lecture** varie en continu avec un fader ou un potentiomètre (`1x` au centre), ou passe d’une vitesse standard à la suivante avec un bouton ou une touche.
+- **Préréglage suivant/précédent** parcourt les préréglages utilisateur dans l’ordre de leur nom et boucle d’une extrémité à l’autre.
+- Les actions du lecteur nécessitent que le lecteur de musique soit ouvert. Si le navigateur bloque le démarrage automatique de l’audio, lancez d’abord la lecture depuis l’interface du lecteur.
 
-Horloge et Minuteur ne contrôlent que les paramètres numériques des effets, pas Activé, les listes ni les opérations de Global, y compris Vitesse de lecture. Les actions aléatoires sont aussi disponibles pour un bouton ou une touche physique affecté à un paramètre numérique. Si l'application ou l'ordinateur retarde un événement, une seule modification est appliquée à la reprise, sans rejouer les événements manqués. Une même configuration ne reproduit pas toujours la même suite aléatoire.
+**Min.** et **Max.** délimitent la plage active du paramètre (dans son unité) ; inversez-les pour inverser le sens d’action. **Sensibilité** ajuste l’amplitude des pas relatifs (commencez à `1`).
 
-**Premier** et **Dernier** choisissent la première ou la dernière instance correspondante. **Tous** applique la même valeur à toutes et prend la première comme valeur de départ des réglages relatifs. **Activé** active ou désactive l'effet.
+## Automatiser selon l’heure ou de façon aléatoire
 
-**Global** commande l'application et le lecteur de musique plutôt qu'un effet : **Bypass général**, **Basculer A/B**, **Lecture/Pause**, **Arrêter**, **Piste suivante/précédente**, **Avancer/reculer de 10 s**, **Vitesse de lecture**, **Conserver la hauteur**, **Répétition**, **Aléatoire** et **Préréglage suivant/précédent**.
+Cliquez sur **Ajouter une automatisation** pour faire évoluer automatiquement un paramètre numérique sans contrôleur physique. Sélectionnez d’abord l’effet et le paramètre cibles, puis configurez les options suivantes :
 
-- Pour Piste suivante/précédente, Avancer/reculer de 10 s et Préréglage suivant/précédent, le **Sens** détermine la direction : **+** avance et **−** recule. Avec un encodeur sans fin ou une molette jog, le déplacement suit le sens de rotation.
-- **Vitesse de lecture** varie en continu avec un fader ou un potentiomètre, 1x se trouvant au centre. Un bouton ou une touche passe à la vitesse standard suivante dans son Sens.
-- **Préréglage suivant/précédent** parcourt vos préréglages utilisateur par ordre de nom et repart de l'autre extrémité une fois arrivé au bout.
-- Les opérations du lecteur sont sans effet tant que le lecteur de musique est fermé. Si le navigateur n'autorise pas le démarrage de l'audio, la lecture ne peut pas être lancée depuis le contrôleur ; lancez-la avec le bouton Lecture du lecteur.
+- **Source** : choisissez **Minuteur** (par défaut, intervalle de 1 seconde) ou **Horloge**.
+- **Horloge** : **Partie de l'heure** sélectionne **Heure**, **Minute** ou **Seconde**, et **Onde** sélectionne **Montante**, **Sinus** ou **Cosinus**. L’heure locale est lue chaque seconde et projetée entre **Min.** et **Max.**.
+- **Minuteur** : **Planification** propose **Intervalle**, **Une fois** et **Tous les jours**. **Intervalle** utilise **Intervalle (secondes)** de `1` à `2 147 483,647` secondes. **Une fois** se déclenche aux **Date** et **Heure** locales choisies ; **Tous les jours** se déclenche chaque jour à l’**Heure** locale indiquée.
+- **Action** (minuteur et boutons ou touches affectés à un paramètre numérique) : **Modifier de la quantité** ajoute ou retranche **Quantité** à chaque déclenchement, **Valeur aléatoire dans la plage** tire une nouvelle valeur entre **Min.** et **Max.**, et **Pas aléatoire depuis la valeur actuelle** monte ou descend aléatoirement de **Quantité**.
 
-Min et Max limitent la course et se saisissent dans l'unité affichée pour le paramètre ; inversez-les pour inverser le sens. Commencez avec Sensitivity 1.
+Les automatisations par horloge ou minuteur ne s’appliquent qu’aux paramètres numériques des effets (ni **Activé**, ni les listes de choix, ni les actions **Global**) et s’exécutent au plus une fois par seconde. Si l’application ou l’ordinateur est en pause ou en veille à l’échéance d’un **Intervalle**, EffeTune applique un seul pas à la reprise puis relance l’intervalle suivant. Une échéance **Une fois** dépassée pendant la fermeture d’EffeTune est marquée **Expiré** ; choisissez une **Date** ou une **Heure** future pour la réarmer.
 
-## Sources de commande
+### Exemples pratiques
 
-- **MIDI :** CC, notes et pitch bend via Web MIDI. Les CC sont absolus par défaut ; choisissez le mode relatif adapté à un encodeur sans fin. Chromium et Firefox prennent en charge Web MIDI, contrairement à Safari. BLE-MIDI et MIDI réseau fonctionnent si le système les expose comme ports MIDI.
-- **Mackie Control (MCU) :** choisissez **MCU** comme protocol. Les faders motorisés et leur toucher, les V-Pot et anneaux LED, ainsi que les LED des boutons sont pris en charge. Le texte LCD, les vumètres, l'affichage temporel et le handshake ne le sont pas. Après un passage de Generic à MCU ou inversement, recommencez le Learn.
-- **Manette :** les boutons avancent ou basculent un réglage et peuvent se répéter lorsqu'ils sont maintenus pour les valeurs continues ou les listes. Les axes sont relatifs par défaut, ce qui convient aux sticks à rappel central ; utilisez le mode absolu pour les commandes sans rappel.
-- **Clavier :** il fonctionne uniquement lorsque EffeTune a le focus et reste inactif dans les champs de texte. Les bascules ignorent la répétition du système ; les actions d'augmentation et de diminution peuvent se répéter.
+- Rayon de Vinyl Simulator : utilisez **Minuteur** avec **Intervalle (secondes)** réglé sur `1`, choisissez **Modifier de la quantité**, réglez **Sens** sur **Diminuer (−)** et **Quantité** sur `1 mm`, puis réglez **Min.** et **Max.** sur `60` et `146 mm` pour faire avancer la pointe du bord extérieur vers le sillon intérieur jusqu’à l’arrêt sur **Min.**.
+- Variation tonale selon l’heure : utilisez **Horloge** avec **Minute** et **Sinus** pour faire évoluer en douceur un paramètre numérique de Radio Simulator entre **Min.** et **Max.**.
+- Dérive aléatoire lente : utilisez **Minuteur** avec un intervalle plus long et **Pas aléatoire depuis la valeur actuelle**, en commençant par une petite **Quantité** pour garder des transitions progressives.
+- Changement programmé : sélectionnez **Une fois** pour une date et une heure locales précises, ou **Tous les jours** pour répéter l’action chaque jour à la même heure locale.
+
+## Types d’entrée
+
+### MIDI
+
+EffeTune prend en charge les messages MIDI CC, les notes et le pitch bend via Web MIDI (disponible dans les navigateurs Chromium, Firefox et l’application de bureau ; non pris en charge dans Safari). Les appareils génériques utilisent par défaut le mode CC absolu ; choisissez un mode relatif pour les encodeurs sans fin. Le BLE-MIDI et le MIDI réseau fonctionnent lorsqu’ils apparaissent comme ports MIDI du système.
+
+### Mackie Control (MCU)
+
+Réglez le protocole de l’appareil sur **MCU** pour les surfaces de contrôle compatibles. Les faders motorisés, la détection de toucher, les encodeurs V-Pot, les couronnes de LED et les LED de boutons sont pris en charge (l’affichage LCD, les vumètres, le timecode et le handshake matériel ne sont pas utilisés). Réapprenez les affectations après avoir basculé un appareil entre **Generic** et **MCU**.
+
+### Manette
+
+Les boutons peuvent basculer un état ou incrémenter un paramètre, avec répétition en cas d’appui maintenu. Les axes utilisent par défaut le mode relatif afin qu’un stick à retour au centre laisse le paramètre à sa nouvelle valeur lorsqu’on le relâche ; passez en mode absolu pour les axes de type manette des gaz qui restent en position.
+
+### Clavier
+
+Les affectations clavier fonctionnent tant qu’EffeTune a le focus et sont ignorées pendant la saisie dans un champ de texte. Les commandes en bascule ignorent la répétition automatique des touches, tandis que les commandes d’augmentation ou de diminution se répètent au rythme de répétition des touches de votre système d’exploitation tant que la touche est maintenue.
 
 ## Connexion et dépannage
 
-L’état de connexion de chaque appareil MIDI apparaît sous son nom : **Connecté** dans la couleur de réussite du thème ou **Déconnecté** dans sa couleur d’avertissement.
+Chaque appareil MIDI affiche **Connecté** ou **Déconnecté** sous son nom. Les affectations restent enregistrées lorsqu’un contrôleur est débranché et se reconnectent automatiquement dès qu’un appareil portant le même nom de port MIDI ou de manette réapparaît. Si une mise à jour du système ou d’un pilote modifie ce nom, réapprenez les affectations concernées. Les manettes portant le même nom partagent leurs affectations, et les ports MIDI portant le même nom ne sont distingués que par leur ordre de connexion. Si aucun appareil MIDI n’apparaît, accordez l’autorisation MIDI puis rouvrez **Affectation des contrôleurs...**. Sous Safari, les affectations au clavier et à la manette restent utilisables.
 
-Les affectations restent enregistrées après une déconnexion et reprennent au retour d'un périphérique de même nom. Si une mise à jour du système ou du pilote modifie ce nom, recommencez le Learn pour les affectations concernées. Les manettes identiques partagent leurs affectations et les ports MIDI de même nom ne sont distingués que par leur ordre de connexion.
-
-Si aucun périphérique MIDI n'apparaît, autorisez l'accès MIDI pour EffeTune et rouvrez la fenêtre. Sur Safari, le clavier et la manette restent disponibles.
+[← Retour au README](README.md)

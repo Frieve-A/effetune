@@ -129,8 +129,8 @@ test('showOpenDialog normalizes playback audio filters and leaves unrelated filt
     filters: [{ name: 'Audio Files', extensions: ['mp3'] }]
   });
   assert.deepEqual(playback.calls[0][2].filters, [{
-    name: 'Audio Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4)',
-    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4']
+    name: 'Audio and Video Files (MP3, WAV, OGG, FLAC, OPUS, M4A, AAC, WEBM, MP4, M4V, MOV, MKV, 3GP)',
+    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp']
   }]);
 
   const offline = createHarness();
@@ -162,7 +162,7 @@ test('openPlaybackSelection owns its CUE-aware dialog without changing generic d
   assert.deepEqual(dialogOptions.properties, ['openFile', 'multiSelections']);
   assert.deepEqual(dialogOptions.filters[0], {
     name: 'Music and CUE Files',
-    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'cue']
+    extensions: ['mp3', 'wav', 'ogg', 'flac', 'opus', 'm4a', 'aac', 'webm', 'mp4', 'm4v', 'mov', 'mkv', '3gp', 'cue']
   });
 });
 

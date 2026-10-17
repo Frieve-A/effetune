@@ -67,17 +67,24 @@
           </div>
           <nav class="sidebar-nav" data-doc-nav>
             <div class="nav-section">
-              <h2>{{ ui.nav_start }}</h2>
+              <h2>{{ ui.nav_guides }}</h2>
               <a href="{{ overview_url | relative_url }}">{{ ui.overview }}</a>
               <a href="{{ docs_prefix | append: 'faq.html' | relative_url }}">{{ ui.faq_troubleshooting }}</a>
+              <a href="{{ docs_prefix | append: 'music-player.html' | relative_url }}">{{ ui.music_player }}</a>
+              <a href="{{ docs_prefix | append: 'music-library.html' | relative_url }}">{{ ui.music_library }}</a>
+              <a href="{{ docs_prefix | append: 'visualizer.html' | relative_url }}">{{ ui.visualizer }}</a>
               <a href="{{ docs_prefix | append: 'bus-function.html' | relative_url }}">{{ ui.bus_function }}</a>
+              <a href="{{ docs_prefix | append: 'controller-mapping.html' | relative_url }}">{{ ui.controller_mapping }}</a>
+              <a href="{{ docs_prefix | append: 'measurement.html' | relative_url }}">{{ ui.measurement }}</a>
+              <a href="{{ docs_prefix | append: 'pipeline-analyzer.html' | relative_url }}">{{ ui.pipeline_analyzer }}</a>
               <a href="{{ docs_prefix | append: 'double-blind-test.html' | relative_url }}">{{ ui.double_blind_test }}</a>
-              <a href="{{ '/docs/plugin-development.html' | relative_url }}">{{ ui.plugin_development }}</a>
+              <a href="{{ docs_prefix | append: 'browser-extension.html' | relative_url }}">{{ ui.browser_extension }}</a>
+              <a href="{{ docs_prefix | append: 'openhome.html' | relative_url }}">{{ ui.openhome }}</a>
               <a href="{{ '/docs/version-history.html' | relative_url }}">{{ ui.version_history }}</a>
             </div>
             <div class="nav-section">
               <h2>{{ ui.plugin_categories }}</h2>
-              {% assign plugin_category_order = "analyzer|basics|delay|dynamics|eq|lofi|modulation|others|resonator|restoration|reverb|saturation|spatial|control" | split: "|" %}
+              {% assign plugin_category_order = "analyzer|basics|delay|dynamics|eq|lofi|modulation|resonator|restoration|reverb|saturation|spatial|others|control" | split: "|" %}
               {% for category_slug in plugin_category_order %}
                 {% assign plugin_page_path = plugin_source_prefix | append: category_slug | append: '.md' %}
                 {% assign nav_page = site.pages | where: "path", plugin_page_path | first %}
@@ -85,6 +92,11 @@
                   <a href="{{ nav_page.url | relative_url }}">{{ nav_page.title | split: ' - ' | first }}</a>
                 {% endif %}
               {% endfor %}
+            </div>
+            <div class="nav-section">
+              <h2>{{ ui.nav_developers }}</h2>
+              <a href="{{ '/docs/plugin-development.html' | relative_url }}">{{ ui.plugin_development }}</a>
+              <a href="{{ '/dsp/' | relative_url }}">{{ ui.dsp_library }}</a>
             </div>
             <div class="nav-section nav-section-languages">
               <h2>{{ ui.languages }}</h2>

@@ -49,7 +49,8 @@ test('Web folder services select an FSA directory and reconnect its persisted pe
   await services.folderService.addFolder({
     scan: false,
     scanReason: 'manual',
-    languageHints: { language: 'ja' }
+    languageHints: { language: 'ja' },
+    includeVideo: true
   });
   const store = new WebFolderHandleStore({ indexedDB });
   await store.put({ folderId: 'folder-fsa', handle });
@@ -70,7 +71,8 @@ test('Web folder services select an FSA directory and reconnect its persisted pe
       displayName: 'Music',
       scan: false,
       scanReason: 'manual',
-      languageHints: { language: 'ja' }
+      languageHints: { language: 'ja' },
+      includeVideo: true
     }],
     ['requestFolderAccess', { folderId: 'folder-fsa', handle, displayName: 'Music' }]
   ]);

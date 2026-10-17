@@ -156,6 +156,8 @@ export async function runControllerMappingDialogBrowserSmoke({ browser, baseURL 
       const results = [];
       for (const zoom of ['0.3', '1', '3']) {
         document.body.style.zoom = zoom;
+        select.scrollIntoView({ block: 'nearest' });
+        await new Promise(resolve => requestAnimationFrame(resolve));
         select.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
         await new Promise(resolve => requestAnimationFrame(resolve));
         const list = document.querySelector('.standard-select-list:not([hidden])');
