@@ -28,6 +28,15 @@ Si solo vas a usar el reproductor, ajusta **Dispositivo de entrada:** en **Ningu
 
 ## Vídeo {#video}
 
-El vídeo aparece en la zona de la carátula del reproductor. Selecciona **⛶** para que ocupe toda el área de visualización de la aplicación; mueve el puntero sobre el vídeo o tócalo para mostrar los controles de reproducción en la parte inferior. También puedes añadir un elemento **Video** en Visualizer. Para incluir archivos de vídeo en la Biblioteca musical, consulta la [guía de la Biblioteca musical](music-library.md#availability).
+El vídeo aparece en la zona de la carátula del reproductor. En el diseño de escritorio, al iniciar un vídeo se expande automáticamente el panel del reproductor. Puedes volver a contraerlo durante la reproducción actual. Mueve el puntero sobre el vídeo o tócalo para mostrar el botón de ampliación; se oculta tras un breve período de inactividad. Selecciona **⛶** para que ocupe toda el área de visualización de la aplicación; mueve el puntero sobre el vídeo o tócalo para mostrar los controles de reproducción en la parte inferior. También puedes añadir un elemento **Video** en Visualizer. Para incluir archivos de vídeo en la Biblioteca musical, consulta la [guía de la Biblioteca musical](music-library.md#availability).
+
+En el diseño móvil, el vídeo ampliado y sus controles giran juntos cuando así el vídeo aprovecha mejor la pantalla. **Girar el vídeo ampliado en móviles**, en **Configuración > Configuración... > Visualización**, está activado de forma predeterminada; desactívalo para que la imagen no gire. Al volver al reproductor pequeño se restaura la vista normal. No se modifican el diseño de escritorio ni los ajustes de orientación del dispositivo.
+
+Fuera de Mini Player, puedes usar estos gestos sobre el vídeo o sus bordes negros:
+
+- **Ratón:** Haz clic para reproducir o pausar. Haz doble clic para ampliar o restaurar el vídeo sin cambiar su estado de reproducción o pausa.
+- **Pantalla táctil:** Toca para mostrar los controles. Con el vídeo ampliado, toca dos veces la mitad izquierda para retroceder 10 segundos o la derecha para avanzar 10 segundos. El doble toque en la vista previa pequeña no cambia la posición de reproducción.
+
+Los botones y deslizadores mantienen su funcionamiento habitual.
 
 [← Volver al README](README.md)

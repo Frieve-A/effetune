@@ -195,7 +195,7 @@ SOFTWARE.
 ---
 
 music-metadata
-Version: 12.2.1
+Version: 12.2.3
 License: MIT
 
 LICENSE.txt
@@ -212,7 +212,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ---
 
 strtok3
-Version: 10.5.0
+Version: 10.6.2
 License: MIT
 
 LICENSE.txt

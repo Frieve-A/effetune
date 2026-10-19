@@ -28,6 +28,15 @@ Para usar apenas o player, defina **Dispositivo de Entrada:** como **Nenhum (som
 
 ## Vídeo {#video}
 
-O vídeo aparece na área da capa do player. Selecione **⛶** para ocupar toda a área de exibição do aplicativo; mova o ponteiro sobre o vídeo ou toque nele para mostrar os controles de reprodução na parte inferior. Você também pode adicionar um item **Video** no Visualizer. Para incluir arquivos de vídeo na Biblioteca de música, consulte o [guia da Biblioteca de música](music-library.md#availability).
+O vídeo aparece na área da capa do player. No layout de desktop, iniciar um vídeo expande automaticamente o painel do player. Você pode recolhê-lo novamente durante a reprodução atual. Mova o ponteiro sobre o vídeo ou toque nele para mostrar o botão de expansão; ele desaparece após um breve período sem interação. Selecione **⛶** para ocupar toda a área de exibição do aplicativo; mova o ponteiro sobre o vídeo ou toque nele para mostrar os controles de reprodução na parte inferior. Você também pode adicionar um item **Video** no Visualizer. Para incluir arquivos de vídeo na Biblioteca de música, consulte o [guia da Biblioteca de música](music-library.md#availability).
+
+No layout móvel, o vídeo expandido e seus controles giram juntos quando isso permite aproveitar melhor a tela. **Girar vídeo expandido no celular**, em **Configurações > Configuração... > Exibição**, fica ativado por padrão; desative para impedir a rotação. Ao voltar ao player pequeno, a exibição normal é restaurada. O layout de desktop e as configurações de orientação do dispositivo não mudam.
+
+Fora do Mini Player, use estes gestos no vídeo ou nas bordas pretas ao redor dele:
+
+- **Mouse:** Clique para reproduzir ou pausar. Clique duas vezes para expandir ou restaurar o vídeo sem alterar seu estado de reprodução ou pausa.
+- **Toque:** Toque para mostrar os controles. Com o vídeo expandido, toque duas vezes na metade esquerda para voltar 10 segundos ou na metade direita para avançar 10 segundos. Tocar duas vezes na prévia pequena não muda a posição de reprodução.
+
+Os botões e controles deslizantes continuam funcionando normalmente.
 
 [← Voltar para o README](README.md)

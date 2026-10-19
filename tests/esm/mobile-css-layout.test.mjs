@@ -295,7 +295,7 @@ test('mobile player places the queue list below the primary play pause control',
   const playerButtonRule = getRule(css, 'body.layout-mobile .player-button');
   assert.match(playerButtonRule, /align-self:\s*center;/);
 
-  const playPauseRule = getRule(css, 'body.layout-mobile .play-pause-button');
+  const playPauseRule = getRule(css, 'body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button');
   assert.match(playPauseRule, /grid-area:\s*play;/);
   assert.match(playPauseRule, /justify-self:\s*center;/);
   assert.match(playPauseRule, /align-self:\s*center;/);
@@ -304,7 +304,7 @@ test('mobile player places the queue list below the primary play pause control',
   assert.match(playPauseRule, /min-height:\s*var\(--et-mobile-player-primary-button-size\);/);
   assert.match(playPauseRule, /border-radius:\s*50%;/);
 
-  const iconRule = getRule(css, 'body.layout-mobile .play-pause-button svg');
+  const iconRule = getRule(css, 'body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button svg');
   assert.match(iconRule, /width:\s*24px;/);
   assert.match(iconRule, /height:\s*24px;/);
 

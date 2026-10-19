@@ -7,7 +7,8 @@ lang: en
 # Version History
 
 ### Version 2.15.0 (TBD, 2026)
-- Added video playback and a Video item to the Visualizer
+- Supports video file playback
+- Added Video and Counter to the Visualizer
 - Added Apple Lossless (ALAC) playback in the macOS desktop app
 - Various minor improvements
 

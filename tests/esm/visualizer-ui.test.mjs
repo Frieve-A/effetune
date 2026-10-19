@@ -6,7 +6,7 @@ import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { VisualizerHistory } from '../../js/visualizer/visualizer-history.js';
 import { VisualizerPresetStore } from '../../js/visualizer/visualizer-preset-store.js';
-import { createDefaultLayout, createItem, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
+import { createDefaultLayout, createItem, normalizeEffect, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
 import { UIManager } from '../../js/ui-manager.js';
 import { lyricsFrame, drawLyrics, lyricsOpacity } from '../../js/visualizer/visualizer-lyrics.js';
 import { parseLrc } from '../../js/library/metadata/lyrics.js';
@@ -136,6 +136,40 @@ test('Notes and Chroma range edits preserve the requested endpoint for every sel
                 assert.equal(validateLayout(layout), true);
                 assert.deepEqual(saved[0].items.map(item => item.params), layout.items.map(item => item.params), 'Saving preserves both ranges');
             }
+        }
+    });
+});
+
+test('Item and background modulation dropdowns select audio sources and reserve Speed for Time', async () => {
+    const element = () => ({ appendChild() {}, insertBefore() {}, setAttribute() {}, classList: classes(), firstElementChild: {} });
+    await withGlobals({ document: { createElement: element } }, () => {
+        const fields = new Map(), changes = [];
+        const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+            t: (_key, fallback) => fallback, group: element, button: element, iconButton: element,
+            field(_parent, label, kind, value, change, options) {
+                fields.set(label, { kind, value, change, options }); return { value };
+            },
+            changed: render => changes.push(render)
+        });
+        for (const target of ['item', 'background']) {
+            const effect = normalizeEffect({ type: 'opacity' }, target);
+            const render = () => editor.effects({}, [effect], target, 'text');
+            render();
+            assert.equal(fields.get('Modulation').kind, 'select');
+            assert.deepEqual(fields.get('Modulation').options.values.map(([value]) => value),
+                ['none', 'time', 'level', 'bass', 'mid', 'treble', 'beat', 'width']);
+            for (const source of ['mid', 'treble', 'beat', 'width', 'time', 'none']) {
+                fields.get('Modulation').change(source);
+                render();
+                assert.equal(effect.mod.source, source);
+                assert.equal(fields.get('Modulation').value, source);
+                assert.equal(fields.get('Depth').options.disabled, source === 'none');
+                assert.equal(fields.get('Speed').options.disabled, source !== 'time');
+                assert.equal(changes.at(-1), true);
+            }
+            effect.enabled = false;
+            render();
+            assert.equal(fields.get('Modulation').options.disabled, true);
         }
     });
 });
@@ -772,7 +806,7 @@ test('Clicking a drawn synced Lyrics row returns its cue time plus the item offs
     drawLyrics(ctx, item, frame, 400, 300, 1, '#fff', null, measurements);
     const renderer = new VisualizerRenderer({ width: 800, height: 300 });
     renderer.layers.set('lyrics', { canvas: { width: 400, height: 300 }, lyricsMeasurements: measurements,
-        lyricsClipped: true, lyricsTransform: { transformPoint: ({ x, y }) => ({ x: 800 - x, y }) } });
+        hitClipped: true, hitTransform: { transformPoint: ({ x, y }) => ({ x: 800 - x, y }) } });
     const layout = { items: [item] };
     assert.equal(renderer.lyricsSeekTime(layout, .9, .5), 3.5);
     assert.equal(renderer.lyricsSeekTime(layout, .6, .5), 3.5); // Flip X mirrors the item box.
@@ -1275,6 +1309,30 @@ test('Mobile Visualizer reload reuses normal and expanded history entries for Ba
             assert.deepEqual(calls, [['hide', { fromHistory: true }], ['view', 'player']]);
         });
     }
+});
+
+test('Visualizer video keeps track selection and audible timing when using the shared decoder', () => {
+    const loads = [], frames = [];
+    const state = { currentTrack: { path: '/music/movie.mp4' }, currentTrackPosition: 4, playbackSpeed: 2, isPlaying: true };
+    const player = { ui: { container: {} }, stateManager: { getStateSnapshot: () => state },
+        contextManager: { getCurrentPlaybackTime: () => 8, getMediaElementSourceUrl: path => `file://${path}` } };
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        uiManager: { audioPlayer: player, audioManager: { getAudiblePlaybackPosition: (time, speed) => time - 0.4 * speed } },
+        video: { enabled: true, active: true, load: source => loads.push(source), frame: (...args) => { frames.push(args); return loads.at(-1) ? 'picture' : null; } }
+    });
+    assert.equal(view.videoFrame(), 'picture');
+    assert.equal(loads.at(-1), 'file:///music/movie.mp4');
+    assert.deepEqual(frames.at(-1), [7.2, 2, true]);
+    state.isPlaying = false;
+    view.videoFrame();
+    assert.deepEqual(frames.at(-1), [3.2, 2, false]);
+    state.currentTrack = { path: '/music/audio.mp3' };
+    assert.equal(view.videoFrame(), null);
+    assert.equal(loads.at(-1), null);
+    state.currentTrack = { path: '/music/movie.mp4' };
+    player.ui.container = null;
+    assert.equal(view.videoFrame(), null);
+    assert.equal(loads.at(-1), null);
 });
 
 test('Visualizer stops sources and animation when host visibility changes', async () => {

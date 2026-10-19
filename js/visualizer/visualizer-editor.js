@@ -1,4 +1,4 @@
-import { ASPECTS, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, PICTURE_TYPES, VIDEO_FITS, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
+import { ASPECTS, MOD_SOURCES, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, COLOR_ADJUST_PARAMETERS, FONT_FAMILIES, COUNTER_FONT_FAMILIES, COUNTER_APPEARANCES, applyCounterAppearance, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, PICTURE_TYPES, VIDEO_FITS, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
@@ -647,7 +647,7 @@ export class VisualizerEditor {
         if (item.type === 'text') this.field(properties, this.t('visualizer.textContent', 'Text'), 'textarea', item.params.text,
             value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
         this.styleToggles(properties, item);
-        if (VISUAL_TYPES.includes(item.type) || item.type === 'lyrics') this.parameters(properties, item);
+        if (VISUAL_TYPES.includes(item.type) || item.type === 'lyrics' || item.type === 'counter') this.parameters(properties, item);
         if (item.type === 'video') this.videoStyle(properties, item.style);
         if (PICTURE_TYPES.includes(item.type)) this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
@@ -685,11 +685,12 @@ export class VisualizerEditor {
     }
 
     textStyle(parent, style, type = null, params = null) {
+        if (type === 'counter') parent = this.group(parent, this.t('visualizer.counterGroup.text', 'Text'));
         const value = key => style[key] ?? TEXT_DECORATION_DEFAULTS[key] ?? RHYTHM_BEAT_STYLE_DEFAULTS[key];
         const set = key => next => { style[key] = next; this.changed(); };
         const label = (key, fallback) => this.t(`visualizer.style.${key}`, fallback);
         const select = (group, key, fallback, values) => this.field(group, label(key, fallback), 'select', value(key), set(key),
-            { values: values.map(([entry, name]) => [entry, this.t(`visualizer.value.${entry}`, name)]) });
+            { values: values.map(([entry, name, key]) => [entry, this.t(key || `visualizer.value.${entry}`, name)]) });
         const range = (group, key, fallback, min, max, step = 1, unit = '', scale = 1) => this.field(group, label(key, fallback), 'range', value(key), set(key),
             { min, max, step, unit, scale });
         if (type === 'rhythm-analyzer') {
@@ -708,7 +709,7 @@ export class VisualizerEditor {
             }
             this.field(circle, label('beatFitBpm', 'Fit BPM inside circle'), 'checkbox', value('beatFitBpm'), set('beatFitBpm'));
         }
-        select(parent, 'fontFamily', 'Font', FONT_FAMILIES);
+        select(parent, 'fontFamily', 'Font', type === 'counter' ? COUNTER_FONT_FAMILIES : FONT_FAMILIES);
         range(parent, 'fontSize', 'Text size', 8, 200, 1, 'px');
         if (type !== 'lyrics' || params?.lyricsView !== 'list' || params?.lyricsMotion !== 'smooth-horizontal') {
             select(parent, 'align', 'Alignment', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]);
@@ -717,7 +718,7 @@ export class VisualizerEditor {
             select(parent, 'verticalAlign', 'Vertical alignment', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]);
         }
         range(parent, 'letterSpacing', 'Letter spacing', -20, 100, 1, 'px');
-        select(parent, 'textCase', 'Case', [['none', 'None'],['upper', 'UPPERCASE'], ['lower', 'lowercase']]);
+        if (type !== 'counter') select(parent, 'textCase', 'Case', [['none', 'None'],['upper', 'UPPERCASE'], ['lower', 'lowercase']]);
         const outline = this.group(parent, this.t('visualizer.style.outline', 'Outline'));
         range(outline, 'outlineWidth', 'Width', 0, 20, 0.5, 'px');
         this.field(outline, this.t('visualizer.color', 'Color'), 'color', value('outlineColor'), set('outlineColor'));
@@ -732,6 +733,60 @@ export class VisualizerEditor {
 
     parameters(parent, item) {
         const params = item.params;
+        if (item.type === 'counter') {
+            this.field(parent, this.t('visualizer.counterAppearance', 'Preset'), 'select', '', value => {
+                applyCounterAppearance(item, value); this.changed(true);
+            }, { values: [['', this.t('visualizer.counterPreset.custom', 'Choose a preset')],
+                ...COUNTER_APPEARANCES.map(([key, label]) => [key, this.t(`visualizer.counterPreset.${key}`, label)])] });
+            const field = (group, key, label, kind, options = {}) => this.field(group, this.t(`visualizer.param.${key}`, label), kind, params[key], value => {
+                params[key] = value;
+                this.changed(['counterFraction', 'counterSubsecond', 'counterMotion', 'counterBackgroundGlyphs', 'counterBoxes'].includes(key));
+            }, options);
+            const display = this.group(parent, this.t('visualizer.counterGroup.display', 'Display'));
+            for (const [key, label] of [['counterIndex', 'Playlist index'], ['counterHours', 'Hours'], ['counterMinutes', 'Minutes'],
+                ['counterSeconds', 'Seconds'], ['counterFraction', 'Subseconds']]) field(display, key, label, 'checkbox');
+            field(display, 'counterSubsecond', 'Subsecond format', 'select', { disabled: !params.counterFraction, values: [
+                ['milliseconds', this.t('visualizer.paramChoice.counterMilliseconds', 'Decimal')],
+                ['frames', this.t('visualizer.paramChoice.counterFrames', 'Frames')]
+            ] });
+            field(display, 'counterDigits', 'Fraction digits', 'range', { min: 1, max: 4, step: 1,
+                disabled: !params.counterFraction || params.counterSubsecond === 'frames' });
+            field(display, 'counterFps', 'Frame rate', 'range', { min: 1, max: 120, step: 1,
+                disabled: !params.counterFraction || params.counterSubsecond !== 'frames' });
+            field(display, 'counterWholeDigits', 'Minimum digits', 'range', { min: 1, max: 8, step: 1 });
+            field(display, 'counterZeroPad', 'Leading zeros', 'checkbox');
+            const separators = this.group(parent, this.t('visualizer.counterGroup.separators', 'Separators'));
+            for (const [key, label] of [['counterTimeSeparator', 'Time'], ['counterFractionSeparator', 'Subseconds'],
+                ['counterIndexSeparator', 'Index']]) field(separators, key, label, 'text', { maxLength: 8 });
+            const transition = this.group(parent, this.t('visualizer.counterGroup.transition', 'Transition'));
+            field(transition, 'counterMotion', 'Style', 'select', { values: [
+                ['static', this.t('visualizer.paramChoice.counterStatic', 'None')],
+                ['tape', this.t('visualizer.paramChoice.counterTape', 'Roll')],
+                ['flip', this.t('visualizer.paramChoice.counterFlip', 'Flip')],
+                ['crossfade', this.t('visualizer.paramChoice.counterCrossfade', 'Crossfade')]
+            ] });
+            field(transition, 'counterDuration', 'Duration', 'range', { min: 0, max: 1000, step: 10, unit: 'ms',
+                disabled: !['flip', 'crossfade'].includes(params.counterMotion) });
+            const background = this.group(parent, this.t('visualizer.counterGroup.background', 'Background'));
+            field(background, 'counterBackgroundGlyphs', 'Pattern', 'select', { values: [
+                ['none', this.t('visualizer.counterBackground.none', 'None')],
+                ['full', this.t('visualizer.counterBackground.full', 'Full pattern')],
+                ['all', this.t('visualizer.counterBackground.all', 'All digits')]
+            ] });
+            field(background, 'counterBackgroundOpacity', 'Opacity', 'range', { min: 0, max: 1, step: .01, unit: '%', scale: 100,
+                disabled: params.counterBackgroundGlyphs === 'none' });
+            field(background, 'counterBackgroundColor', 'Color', 'color', { disabled: params.counterBackgroundGlyphs === 'none' });
+            const windows = this.group(parent, this.t('visualizer.counterGroup.windows', 'Digit windows'));
+            field(windows, 'counterBoxes', 'Show', 'checkbox');
+            for (const [key, label] of [['counterBoxColor', 'Border color'], ['counterBoxFill', 'Fill color']]) {
+                field(windows, key, label, 'color', { disabled: !params.counterBoxes });
+            }
+            field(windows, 'counterBoxWidth', 'Border width', 'range', { min: 0, max: 10, step: .5, unit: 'px', disabled: !params.counterBoxes });
+            field(windows, 'counterBoxOpacity', 'Fill opacity', 'range', { min: 0, max: 1, step: .01, unit: '%', scale: 100, disabled: !params.counterBoxes });
+            field(windows, 'counterBoxRadius', 'Corner radius', 'range', { min: 0, max: 20, step: 1, unit: 'px', disabled: !params.counterBoxes });
+            field(windows, 'counterWindowShading', 'Inset shading', 'checkbox', { disabled: !params.counterBoxes });
+            return;
+        }
         const analogMeter = item.type === 'analog-meter';
         const rhythm = item.type === 'rhythm-analyzer';
         const guitar = item.type === 'guitar';
@@ -1018,7 +1073,7 @@ export class VisualizerEditor {
         range(face, 'vignette', 'Vignette', 0, 1, 0.01, '%', 100);
     }
 
-    palette(parent, palette, itemType = null) {
+    palette(parent, palette, itemType = null, disabled = false) {
         const group = this.group(parent, this.t('visualizer.palette', 'Palette'));
         const octave = itemType === 'notes' || itemType === 'guitar' || itemType === 'chroma';
         if (itemType) {
@@ -1100,6 +1155,7 @@ export class VisualizerEditor {
         if (palette.motion.mode !== 'none') this.field(group, this.t('visualizer.reverseMotion', 'Reverse color motion'), 'checkbox', palette.motion.reverse === true,
             value => { palette.motion.reverse = value; this.changed(); });
         this.field(group, this.t('visualizer.speed', 'Speed'), 'range', palette.motion.speed, value => { palette.motion.speed = value; this.changed(); }, { min: 0, max: 4, step: .05, disabled: palette.motion.mode === 'none' });
+        if (disabled) for (const control of group.querySelectorAll('input, select, button')) control.disabled = true;
     }
 
     effects(parent, effects, target, itemType) {
@@ -1134,6 +1190,53 @@ export class VisualizerEditor {
             down.disabled = index === effects.length - 1;
             this.iconButton(actions, 'delete', this.t('visualizer.delete', 'Delete'), () => { effects.splice(index, 1); this.changed(true); });
             this.field(block, this.t('visualizer.amount', 'Amount'), 'range', effect.amount, value => { effect.amount = value; this.changed(); }, { min: 0, max: 1, step: .01, disabled: !effect.enabled });
+            if (effect.type === 'color-adjust') {
+                const sliders = {};
+                const addParameters = (parent, group) => {
+                    for (const { key, label, initial: _initial, group: section, ...options } of COLOR_ADJUST_PARAMETERS) {
+                        if (section !== group) continue;
+                        sliders[key] = this.field(parent, this.t(`visualizer.colorAdjust.${key}`, label), 'range', effect[key], value => {
+                            effect[key] = value;
+                            if (key === 'inputBlack' && effect.inputWhite < round(value + .01)) {
+                                effect.inputWhite = round(value + .01);
+                                this.syncRangeField(sliders.inputWhite, effect.inputWhite);
+                            } else if (key === 'inputWhite' && effect.inputBlack > round(value - .01)) {
+                                effect.inputBlack = round(value - .01);
+                                this.syncRangeField(sliders.inputBlack, effect.inputBlack);
+                            }
+                            this.changed();
+                        }, { ...options, disabled: !effect.enabled });
+                    }
+                };
+                addParameters(block);
+                const details = document.createElement('details');
+                const summary = document.createElement('summary');
+                summary.className = 'visualizer-section-title';
+                summary.textContent = this.t('visualizer.colorAdjust.advanced', 'Advanced');
+                details.appendChild(summary); block.appendChild(details);
+                this.expandedColorAdjust ||= new WeakSet();
+                details.open = this.expandedColorAdjust.has(effect);
+                summary.addEventListener('click', () => {
+                    if (!details.open) this.expandedColorAdjust.add(effect);
+                    else this.expandedColorAdjust.delete(effect);
+                });
+                addParameters(this.group(details, this.t('visualizer.colorAdjust.levels', 'Levels')), 'levels');
+                addParameters(this.group(details, this.t('visualizer.colorAdjust.whiteBalance', 'White balance')), 'whiteBalance');
+                this.field(details, this.t('visualizer.colorAdjust.invert', 'Invert'), 'checkbox', effect.invert,
+                    value => { effect.invert = value; this.changed(); }, { disabled: !effect.enabled });
+            }
+            if (effect.type === 'color-map') {
+                this.field(block, this.t('visualizer.colorMap.steps', 'Steps'), 'select', effect.steps,
+                    value => { effect.steps = Number(value); this.changed(true); }, {
+                        values: [[0, this.t('visualizer.colorMap.continuous', 'Continuous')],
+                            ...Array.from({ length: 15 }, (_, index) => [index + 2, String(index + 2)])],
+                        disabled: !effect.enabled
+                    });
+                this.field(block, this.t('visualizer.colorMap.threshold', 'Threshold'), 'range', effect.threshold,
+                    value => { effect.threshold = value; this.changed(); },
+                    { min: 0, max: 1, step: .01, unit: '%', scale: 100, disabled: !effect.enabled || effect.steps !== 2 });
+                this.palette(block, effect.palette, null, !effect.enabled);
+            }
             if (effect.type === 'edge-fade') {
                 const note = document.createElement('p');
                 note.className = 'visualizer-bulk-note';
@@ -1184,7 +1287,7 @@ export class VisualizerEditor {
                 this.field(block, this.t('visualizer.backplateMargin', 'Margin'), 'range', effect.margin, set('margin'),
                     { min: -200, max: 200, step: 1, unit: 'px', disabled: !effect.enabled });
             }
-            this.field(block, this.t('visualizer.modulation', 'Modulation'), 'radio', effect.mod.source, value => { effect.mod.source = value; this.changed(true); }, { values: ['none', 'time', 'level', 'bass'].map(value => [value, this.t(`visualizer.value.${value}`, value)]), disabled: !effect.enabled });
+            this.field(block, this.t('visualizer.modulation', 'Modulation'), 'select', effect.mod.source, value => { effect.mod.source = value; this.changed(true); }, { values: MOD_SOURCES.map(value => [value, this.t(`visualizer.value.${value}`, value)]), disabled: !effect.enabled });
             this.field(block, this.t('visualizer.depth', 'Depth'), 'range', effect.mod.depth, value => { effect.mod.depth = value; this.changed(); }, { min: 0, max: 1, step: .01, disabled: !effect.enabled || effect.mod.source === 'none' });
             this.field(block, this.t('visualizer.speed', 'Speed'), 'range', effect.mod.speed, value => { effect.mod.speed = value; this.changed(); }, { min: 0, max: 8, step: .1, disabled: !effect.enabled || effect.mod.source !== 'time' });
             if (['glow', 'outline', 'particles', 'flash'].includes(effect.type)) this.palette(block, effect.palette);

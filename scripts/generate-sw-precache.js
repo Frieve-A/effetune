@@ -28,8 +28,8 @@ const explicit = [
   'sw.js',
   'plugins/plugins.txt'
 ];
-const allowedExtensions = new Set(['.js', '.mjs', '.css', '.json', '.json5', '.png', '.ico', '.jpg', '.jpeg', '.svg', '.txt', '.wasm', '.effetune_preset']);
-const binaryExtensions = new Set(['.ico', '.jpeg', '.jpg', '.png', '.wasm']);
+const allowedExtensions = new Set(['.js', '.mjs', '.css', '.json', '.json5', '.png', '.ico', '.jpg', '.jpeg', '.svg', '.txt', '.wasm', '.woff2', '.effetune_preset']);
+const binaryExtensions = new Set(['.ico', '.jpeg', '.jpg', '.png', '.wasm', '.woff2']);
 const excludedPathPatterns = [
   /^images\/_vizaudio_tmp\//,
   /^images\/screenshot(?:-[^/]+)?\.png$/,

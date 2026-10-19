@@ -87,6 +87,7 @@ export class AudioContextManager {
     this.originalSourceNode = null;
     this.currentObjectURL = null;
     this.currentArtworkURL = null;
+    this.videoPresentation = { generation: 0, source: null, resetToken: 0, naturalEnd: null };
     
     // Store event handler references for proper removal
     this.eventHandlers = {
@@ -177,6 +178,44 @@ export class AudioContextManager {
     element.preload = 'auto';
     element.className = 'player-video';
     return element;
+  }
+
+  getVideoPresentation() {
+    const contextTime = this.audioPlayer.audioContext?.currentTime ?? 0;
+    const end = this.videoPresentation.naturalEnd;
+    if (end && contextTime >= end.contextTimeAtEnd +
+        Math.max(0, end.endPosition - end.targetAtEnd) / end.playbackSpeed) {
+      this.videoPresentation.naturalEnd = null;
+    }
+    return { ...this.videoPresentation, contextTime };
+  }
+
+  setVideoPresentationSource(source) {
+    this.videoPresentation.source = source;
+    this.videoPresentation.generation += 1;
+  }
+
+  cancelVideoNaturalEnd() {
+    this.videoPresentation.naturalEnd = null;
+    this.videoPresentation.resetToken += 1;
+  }
+
+  captureVideoNaturalEnd() {
+    const presentation = this.videoPresentation;
+    const element = this.audioPlayer.audioElement;
+    if (!presentation.source || !element ||
+        presentation.naturalEnd?.generation === presentation.generation) return;
+    const endPosition = getRegionEndTime(this.getActivePlaybackRegion()) ?? element.duration;
+    if (!Number.isFinite(endPosition)) return;
+    const playbackSpeed = this.getCurrentState()?.playbackSpeed || 1;
+    presentation.naturalEnd = {
+      generation: presentation.generation,
+      source: presentation.source,
+      endPosition,
+      playbackSpeed,
+      targetAtEnd: this.audioManager.getAudiblePlaybackPosition?.(endPosition, playbackSpeed) ?? endPosition,
+      contextTimeAtEnd: this.audioPlayer.audioContext?.currentTime ?? 0
+    };
   }
 
   getPlaybackBackendAdapter(mode = this.getCurrentState()?.playbackMode) {
@@ -694,10 +733,12 @@ export class AudioContextManager {
     return this.getPlaybackBackendAdapter(state?.playbackMode).getTime(this, state);
   }
 
-  async restartAudioElementPlayback() {
+  async restartAudioElementPlayback(userInitiated = true) {
+    if (userInitiated) this.cancelVideoNaturalEnd();
     this.invalidateAutomaticMoveForManualCommand();
     const audioElement = this.audioPlayer.audioElement;
     if (!audioElement) return false;
+    this.setVideoPresentationSource(this.videoPresentation.source);
 
     const previousRegion = this.activeRegion;
     if (previousRegion?.sourceGeneration === this.activeSourceGeneration) {
@@ -996,6 +1037,7 @@ export class AudioContextManager {
       return true;
     }
 
+    this.captureVideoNaturalEnd();
     try {
       audioElement.pause();
       audioElement.currentTime = endTime;
@@ -2174,6 +2216,10 @@ export class AudioContextManager {
       return false;
     }
 
+    this.setVideoPresentationSource(this.audioPlayer.audioElement.tagName === 'VIDEO'
+      ? (isBlobObject(mediaSource) ? mediaSource : this.getMediaElementSourceUrl(mediaSource))
+      : null);
+
     this.activeSourceGeneration = nextSourceGeneration;
     if (hasRegion) {
       this.beginActiveRegion(track, nextSourceGeneration);
@@ -2744,6 +2790,7 @@ export class AudioContextManager {
    * Pause current track
    */
   async pause() {
+    this.cancelVideoNaturalEnd();
     this.pauseRequestToken++;
     if (this.pendingPause) return this.pendingPause;
     this.rollingSeekRequestToken++;
@@ -2874,7 +2921,8 @@ export class AudioContextManager {
   /**
    * Stop current track
    */
-  async stop() {
+  async stop({ preserveVideoTail = false } = {}) {
+    if (!preserveVideoTail) this.cancelVideoNaturalEnd();
     const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
     this.invalidatePendingPlaybackOperationsForStop();
     if (graphRebuildRequest) {
@@ -2969,6 +3017,7 @@ export class AudioContextManager {
    * Seek to position
    */
   async seek(time) {
+    this.cancelVideoNaturalEnd();
     if (this.pendingPause) {
       const stopToken = this.stopRequestToken;
       await this.pendingPause;
@@ -3168,6 +3217,7 @@ export class AudioContextManager {
   handleTrackEnded() {
     const state = this.getCurrentState();
     if (this.pendingPause || state?.isStopped || state?.isTransitioning) return;
+    this.captureVideoNaturalEnd();
     const region = this.activeRegion;
     const regionPlan = region?.transportPlanPending !== true &&
       this.audioPlayer.playbackManager?.isPlannedAutomaticMoveCurrent?.(region?.transportPlan) === true
@@ -3335,7 +3385,8 @@ export class AudioContextManager {
   /**
    * Load track and prepare buffer
    */
-  async loadTrack(track, targetIndex = null, preparedRequest = null) {
+  async loadTrack(track, targetIndex = null, preparedRequest = null, { preserveVideoTail = false } = {}) {
+    if (!preserveVideoTail) this.cancelVideoNaturalEnd();
     const trackIndex = this.getTrackIndexForPlaybackEntry(track, targetIndex);
     if (this.rollingLegacyFallbackLock && this.rollingFallbackLockTrack &&
         !this.playbackEntriesMatch(this.rollingFallbackLockTrack, track, trackIndex)) {
@@ -4673,6 +4724,7 @@ export class AudioContextManager {
     automaticMovePlan = null,
     transitionOptions = null
   ) {
+    if (userInitiated) this.cancelVideoNaturalEnd();
     const nextTrackIndex = this.getTrackIndexForPlaybackEntry(nextTrack, targetIndex, -1);
     const plan = automaticMovePlan ?? preparedRequest?.automaticMovePlan ?? null;
     if (!plan) this.invalidateAutomaticMoveForManualCommand();
@@ -5011,6 +5063,7 @@ export class AudioContextManager {
         source,
         element,
         objectURL,
+        videoSource: element.tagName === 'VIDEO' ? (objectURL ? sourceValue : element.src) : null,
         region,
         sourceGeneration,
         ended: false,
@@ -5370,6 +5423,7 @@ export class AudioContextManager {
       this.setupMediaSessionHandlers();
     }
 
+    this.setVideoPresentationSource(candidate.videoSource ?? null);
     if (plan && startPlayback) {
       if (!playbackManager.commitPlannedAutomaticMove(plan, statePatch)) return false;
     } else {
@@ -5565,6 +5619,8 @@ export class AudioContextManager {
    * Disconnect and clean up audio connections
    */
   disconnect() {
+    this.cancelVideoNaturalEnd();
+    this.setVideoPresentationSource(null);
     this.invalidatePendingPlaybackOperationsForDisconnect();
     this.clearActiveRegion();
     try {

@@ -1240,12 +1240,16 @@ test('showConfigDialog renders settings, saves changes, and closes from the butt
       return categories.findLast(category => dialogMarkup.indexOf(`id="config-panel-${category}"`) < index);
     };
     assert.deepEqual(
-      ['language-select', 'hardware-acceleration', 'auto-launch', 'preset-select', 'visual-sync',
+      ['language-select', 'hardware-acceleration', 'auto-launch', 'preset-select', 'visual-sync', 'video-auto-rotate', 'visualizer-hdr',
         'power-saving-section', 'offline-output-section', 'controller-mapping-btn', 'openhome-section']
         .map(panelOf),
-      ['general', 'general', 'startup', 'startup', 'display',
+      ['general', 'general', 'startup', 'startup', 'display', 'display', 'display',
         'powerSaving', 'offlineOutput', 'controllers', 'remoteControl']
     );
+    const displayControls = ['pipeline-column-mode', 'visual-sync', 'spectrum-overlay-quality',
+      'spectrum-overlay-display', 'video-auto-rotate', 'visualizer-hdr'];
+    assert.ok(displayControls.every((id, index) => index === 0 ||
+      dialogMarkup.indexOf(`id="${displayControls[index - 1]}"`) < dialogMarkup.indexOf(`id="${id}"`)));
     assert.equal(
       harness.document.getElementById('config-category-controllers').textContent,
       'label:dialog.config.physicalControl'
@@ -1984,6 +1988,127 @@ test('theme settings use registry order, apply after persistence and restore fai
       assert.equal(select.value, success ? 'paper' : 'midnight');
     });
   }
+});
+
+test('Visualizer HDR defaults off and persists locally before applying in Web and Electron Config', async () => {
+  for (const isElectron of [false, true]) {
+    const localStorage = createLocalStorage();
+    const applied = [];
+    const harness = createConfigHarness({ window: { localStorage } });
+    const exercise = async () => {
+      await showConfigDialog(isElectron, {});
+      let input = harness.document.getElementById('visualizer-hdr');
+      assert.equal(input.checked, false);
+      assert.equal(input.getAttribute('aria-describedby'), 'visualizer-hdr-help');
+      assert.equal(harness.document.getElementById('visualizer-hdr-label').textContent,
+        'label:dialog.config.visualizerHdr');
+      assert.equal(harness.document.getElementById('visualizer-hdr-help').textContent,
+        'label:dialog.config.visualizerHdrHelp');
+      input.checked = true;
+      await input.dispatchEvent('change');
+      assert.equal(localStorage.getItem('effetune_visualizer_hdr'), 'true');
+      await harness.document.getElementById('close-btn').dispatchEvent('click');
+
+      harness.window.uiManager.visualizerView = { setHdrEnabled(enabled) {
+        assert.equal(localStorage.getItem('effetune_visualizer_hdr'), String(enabled));
+        applied.push(enabled);
+      } };
+      await showConfigDialog(isElectron, {});
+      input = harness.document.getElementById('visualizer-hdr');
+      assert.equal(input.checked, true);
+      input.checked = false;
+      await input.dispatchEvent('change');
+      assert.deepEqual(applied, [false]);
+      assert.equal(localStorage.getItem('effetune_visualizer_hdr'), 'false');
+      await harness.document.getElementById('close-btn').dispatchEvent('click');
+      await showConfigDialog(isElectron, {});
+      assert.equal(harness.document.getElementById('visualizer-hdr').checked, false);
+      await harness.document.getElementById('close-btn').dispatchEvent('click');
+    };
+    if (isElectron) await withGlobals({ window: harness.window, document: harness.document }, exercise);
+    else await withWebConfigRuntime({ windowObject: harness.window, document: harness.document, localStorage }, exercise);
+  }
+});
+
+test('Visualizer HDR restores its checkbox and leaves the output unchanged when local saving fails', async () => {
+  const localStorage = createLocalStorage({ effetune_visualizer_hdr: 'true' });
+  localStorage.setItem = () => { throw new Error('Storage unavailable'); };
+  const applied = [], errors = [];
+  const harness = createConfigHarness({ window: { localStorage }, uiManager: {
+    visualizerView: { setHdrEnabled: enabled => applied.push(enabled) },
+    setError: (...args) => errors.push(args)
+  } });
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('visualizer-hdr');
+    assert.equal(input.checked, true);
+    input.checked = false;
+    await withMutedConsole('error', () => input.dispatchEvent('change'));
+    assert.equal(input.checked, true);
+    assert.equal(localStorage.getItem('effetune_visualizer_hdr'), 'true');
+    assert.deepEqual(applied, []);
+    assert.deepEqual(errors, [['Failed to save settings.', true]]);
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+});
+
+test('mobile video rotation defaults on and applies only after a successful Electron save', async () => {
+  for (const success of [true, false]) {
+    const applied = [];
+    const harness = createConfigHarness({
+      saveConfigResult: { success },
+      uiManager: { audioPlayer: { ui: {
+        refreshVideoRotation() { applied.push(harness.window.appConfig.videoAutoRotate); }
+      } } }
+    });
+    await withGlobals({ window: harness.window, document: harness.document }, async () => {
+      await showConfigDialog(true, {});
+      const input = harness.document.getElementById('video-auto-rotate');
+      assert.equal(input.checked, true);
+      assert.equal(harness.document.getElementById('video-auto-rotate-label').textContent,
+        'label:dialog.config.videoAutoRotate');
+      assert.equal(harness.document.getElementById('video-auto-rotate-help').textContent,
+        'label:dialog.config.videoAutoRotateHelp');
+      input.checked = false;
+      await withMutedConsole('error', () => input.dispatchEvent('change'));
+      assert.equal(harness.calls.filter(call => call[0] === 'saveConfig').at(-1)[1].videoAutoRotate, false);
+      assert.equal(input.checked, !success);
+      assert.deepEqual(applied, success ? [false] : []);
+      await harness.document.getElementById('close-btn').dispatchEvent('click');
+      if (success) {
+        harness.window.electronAPI.loadConfig = async () => ({ success: true, config: harness.window.appConfig });
+        await showConfigDialog(true, {});
+        assert.equal(harness.document.getElementById('video-auto-rotate').checked, false);
+        await harness.document.getElementById('close-btn').dispatchEvent('click');
+      }
+    });
+  }
+});
+
+test('Web mobile video rotation preserves an explicit false and can be enabled again', async () => {
+  const localStorage = createLocalStorage();
+  const applied = [];
+  const harness = createConfigHarness({ uiManager: { audioPlayer: { ui: {
+    refreshVideoRotation() { applied.push(harness.window.appConfig.videoAutoRotate); }
+  } } } });
+  await withWebConfigRuntime({ windowObject: harness.window, document: harness.document, localStorage }, async () => {
+    await showConfigDialog(false, {});
+    const input = harness.document.getElementById('video-auto-rotate');
+    assert.equal(input.checked, true);
+    input.checked = false;
+    await input.dispatchEvent('change');
+    assert.equal((await loadConfig(false)).videoAutoRotate, false);
+    assert.equal(JSON.parse(localStorage.snapshot().effetune_app_config).videoAutoRotate, false);
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+    await showConfigDialog(false, {});
+    const restored = harness.document.getElementById('video-auto-rotate');
+    assert.equal(restored.checked, false);
+    restored.checked = true;
+    await restored.dispatchEvent('change');
+    assert.equal((await loadConfig(false)).videoAutoRotate, true);
+    assert.deepEqual(applied, [false, true]);
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
 });
 
 test('Visual Sync renders, applies after persistence, and restores failed saves', async () => {

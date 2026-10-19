@@ -144,7 +144,7 @@ test('Edge Fade composites every item including analyzer underlays, axes, labels
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
-        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-counter', 'visualizer-renderer']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
@@ -197,7 +197,7 @@ test('Edge Fade composites every item including analyzer underlays, axes, labels
             }
             return results;
         });
-        assert.equal(results.length, 19);
+        assert.equal(results.length, 20);
         for (const result of results) {
             assert.ok(result.checked > 100, result.type);
             assert.equal(result.mismatches, 0, JSON.stringify(result));

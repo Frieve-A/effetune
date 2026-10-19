@@ -325,6 +325,19 @@ test('precache cache version preserves binary byte differences', t => {
   assert.notEqual(lf.cacheVersion, crlf.cacheVersion);
 });
 
+test('precache includes Counter fonts and hashes WOFF2 bytes without text normalization', t => {
+  const root = createPrecacheFixture(t);
+  const font = 'css/fonts/effetune-seven-segment.woff2';
+  writeFixtureFile(root, font, Buffer.from([0xff, 0x0d, 0x0a]));
+  const first = buildPrecacheSource({ root });
+  assert.ok(first.urls.includes(font));
+  writeFixtureFile(root, font, Buffer.from([0xff, 0x0a]));
+  assert.notEqual(buildPrecacheSource({ root }).digest, first.digest);
+  for (const name of ['seven-segment', 'dot-matrix', 'wire-digits']) {
+    assert.ok(buildPrecacheSource().urls.includes(`css/fonts/effetune-${name}.woff2`));
+  }
+});
+
 test('precache check succeeds for fresh output and rejects stale output without rewriting it', t => {
   const root = createPrecacheFixture(t);
   const fixtureScript = path.join(root, 'scripts', 'generate-sw-precache.js');

@@ -28,6 +28,15 @@ Pour utiliser uniquement le lecteur, réglez **Périphérique d'entrée :** sur 
 
 ## Vidéo {#video}
 
-La vidéo s’affiche dans la zone de pochette du lecteur. Sélectionnez **⛶** pour qu’elle occupe tout l’affichage de l’application ; survolez la vidéo avec le pointeur ou touchez-la pour afficher les commandes de lecture en bas. Vous pouvez aussi ajouter un élément **Video** dans Visualizer. Pour inclure les fichiers vidéo dans la Bibliothèque musicale, consultez le [guide de la Bibliothèque musicale](music-library.md#availability).
+La vidéo s’affiche dans la zone de pochette du lecteur. Dans l’interface de bureau, le panneau du lecteur se développe automatiquement au démarrage d’une vidéo. Vous pouvez le réduire à nouveau pendant la lecture en cours. Déplacez le pointeur sur la vidéo ou touchez-la pour afficher le bouton d’agrandissement ; il disparaît après un court moment sans interaction. Sélectionnez **⛶** pour qu’elle occupe tout l’affichage de l’application ; survolez la vidéo avec le pointeur ou touchez-la pour afficher les commandes de lecture en bas. Vous pouvez aussi ajouter un élément **Video** dans Visualizer. Pour inclure les fichiers vidéo dans la Bibliothèque musicale, consultez le [guide de la Bibliothèque musicale](music-library.md#availability).
+
+Dans l’interface mobile, la vidéo agrandie et ses commandes pivotent ensemble si cela permet de mieux occuper l’écran. **Faire pivoter la vidéo agrandie sur mobile**, dans **Paramètres > Configuration... > Affichage**, est activé par défaut ; désactivez cette option pour empêcher la rotation. Le retour au petit lecteur rétablit l’affichage normal. L’interface de bureau et les réglages d’orientation de l’appareil restent inchangés.
+
+Hors de Mini Player, utilisez ces gestes sur la vidéo ou les bandes noires qui l’entourent :
+
+- **Souris :** Cliquez pour lire ou mettre en pause. Double-cliquez pour agrandir la vidéo ou rétablir sa taille sans modifier son état de lecture ou de pause.
+- **Écran tactile :** Touchez la vidéo pour afficher les commandes. Lorsqu’elle est agrandie, touchez deux fois la moitié gauche pour reculer de 10 secondes ou la moitié droite pour avancer de 10 secondes. Un double toucher sur le petit aperçu ne change pas la position de lecture.
+
+Les boutons et curseurs conservent leur fonctionnement habituel.
 
 [← Retour au README](README.md)

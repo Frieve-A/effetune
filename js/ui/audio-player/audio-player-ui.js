@@ -7,6 +7,7 @@
 import { validateSelectionDescriptor } from '../../library/repository/selection-descriptor.js';
 import { updateRangeFill } from '../range-fill.js';
 import { escapeHtml } from '../../utils/escape-html.js';
+import { SynchronizedVideo } from './synchronized-video.js';
 import {
   PLAYBACK_SPEED_MAX,
   PLAYBACK_SPEED_MIN,
@@ -14,6 +15,9 @@ import {
   PLAYBACK_SPEED_STEPS,
   normalizePlaybackSpeed
 } from './playback-speed.js';
+
+const VIDEO_GESTURE_INTERVAL = 500;
+const VIDEO_GESTURE_MOVEMENT = 10;
 
 const SPEED_SLIDER_MAX = 4000;
 const SPEED_SLIDER_RATIO = PLAYBACK_SPEED_MAX / PLAYBACK_SPEED_MIN;
@@ -87,10 +91,24 @@ export class AudioPlayerUI {
     this.restoreButton = null;
     this.pinButton = null;
     this.desktopQueueExpanded = readStoredQueueExpanded();
+    this.lastAutoExpandedVideoSource = null;
     this.artworkImage = null;
     this.videoElement = null;
+    this.video = new SynchronizedVideo();
+    this.videoRaf = null;
+    this.onVideoLoaded = () => {
+      this.refreshVideoPlayback();
+      this.refreshVideoRotation();
+    };
     this.videoExpanded = false;
+    this.videoRotated = false;
+    this.videoViewportWidth = 0;
+    this.videoViewportHeight = 0;
+    this.onVideoViewportChange = () => this.refreshVideoRotation();
     this.videoControlsTimer = null;
+    this.videoGestureTimer = null;
+    this.videoGesture = null;
+    this.videoPointer = null;
     this.onVideoKeyDown = event => {
       if (event.key === 'Escape' && this.videoExpanded) {
         event.preventDefault();
@@ -109,12 +127,14 @@ export class AudioPlayerUI {
     this.playerPopupCleanup = null;
     this.playerPopupReturnFocus = null;
     this.queueRenderGeneration = 0;
-    this.updateInterval = null;
     this.positionRaf = null;
     this._powerUiEnabled = true;
     this.isDisposed = false;
     this.documentRef = globalThis.document || null;
-    this.onVisibilityChange = () => this.refreshPowerUiScheduling();
+    this.onVisibilityChange = () => {
+      this.refreshPowerUiScheduling();
+      this.refreshVideoPlayback();
+    };
     this.documentRef?.addEventListener?.('visibilitychange', this.onVisibilityChange);
     
     // State change listeners
@@ -143,6 +163,7 @@ export class AudioPlayerUI {
     
     // Listen to specific state changes
     addStateListener('currentTrack', (track) => {
+      this.resetVideoGestures();
       this.updateVideoPresentation();
       this.handleCurrentTrackChange(track);
       this.notifyLibraryNowPlaying(track);
@@ -183,7 +204,12 @@ export class AudioPlayerUI {
     });
     
     addStateListener('currentTrackPosition', (position) => {
-      this.schedulePositionUpdate();
+      if (stateManager.getStateSnapshot().isPlaying) {
+        this.schedulePositionUpdate();
+      } else {
+        this.updateTimeDisplay();
+      }
+      this.refreshVideoPlayback();
     });
     
     addStateListener('currentTrackDuration', (duration) => {
@@ -192,9 +218,13 @@ export class AudioPlayerUI {
     
     addStateListener('isPlaying', (isPlaying) => {
       this.updatePlayPauseButton();
+      this.updateTimeDisplay();
       this.refreshPowerUiScheduling();
+      this.updateVideoPresentation();
     });
     
+    addStateListener('playbackSpeed', () => this.refreshVideoPlayback());
+
     addStateListener('isPaused', (isPaused) => {
       this.updatePlayPauseButton();
     });
@@ -219,20 +249,21 @@ export class AudioPlayerUI {
       if (!this.canRunPlayerUi()) return;
       this.audioPlayer.audioManager?.incrementPowerDiagnostic?.('playerPositionRafCallbacks');
       this.updateTimeDisplay();
+      this.schedulePositionUpdate();
     });
   }
 
   setPowerUiEnabled(enabled) {
     this._powerUiEnabled = enabled !== false;
     this.refreshPowerUiScheduling();
+    this.refreshVideoPlayback();
   }
 
   refreshPowerUiScheduling() {
     if (this.canRunPlayerUi()) {
-      if (!this.updateInterval) this.startUpdateInterval();
+      this.schedulePositionUpdate();
       return;
     }
-    this.stopUpdateInterval();
     if (this.positionRaf !== null) {
       cancelAnimationFrame(this.positionRaf);
       this.positionRaf = null;
@@ -262,6 +293,7 @@ export class AudioPlayerUI {
   createPlayerUI() {
     this.isDisposed = false;
     this.initStateMonitoring();
+    window.addEventListener?.('resize', this.onVideoViewportChange);
 
     // Create container
     const container = document.createElement('div');
@@ -330,7 +362,7 @@ export class AudioPlayerUI {
     this.videoExpandButton.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>';
     this.artworkImage.parentNode.appendChild(this.videoExpandButton);
     this.videoExpandButton.addEventListener('click', () => this.setVideoExpanded(!this.videoExpanded));
-    for (const eventName of ['pointermove', 'pointerdown', 'focusin']) {
+    for (const eventName of ['pointerenter', 'pointermove', 'pointerdown', 'focusin', 'keydown']) {
       container.addEventListener(eventName, () => this.showVideoControls());
     }
     this.documentRef?.addEventListener?.('keydown', this.onVideoKeyDown, true);
@@ -384,6 +416,18 @@ export class AudioPlayerUI {
         return Promise.resolve(false);
       }
     };
+
+    container.addEventListener('pointerdown', event => this.beginVideoGesture(event));
+    container.addEventListener('pointermove', event => {
+      const start = this.videoPointer;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > VIDEO_GESTURE_MOVEMENT) {
+        this.resetVideoGestures();
+      }
+    });
+    container.addEventListener('pointerup', event => this.finishVideoGesture(event, runPlaybackCommand));
+    for (const eventName of ['pointercancel', 'dragstart']) {
+      container.addEventListener(eventName, () => this.resetVideoGestures());
+    }
 
     // Add event listeners
     this.playPauseButton.addEventListener('click', () => {
@@ -464,8 +508,8 @@ export class AudioPlayerUI {
 
     this.mountContainerForLayout();
 
-    // Start update interval for time display
-    this.startUpdateInterval();
+    this.updateTimeDisplay();
+    this.refreshPowerUiScheduling();
 
     return container;
   }
@@ -483,13 +527,16 @@ export class AudioPlayerUI {
       : null;
 
     if (useMobile && mobilePlayerView) {
-      if (this.container.parentNode !== mobilePlayerView) {
-        mobilePlayerView.appendChild(this.container);
+      // Expanded video must remain visible even when another mobile tab hides the player view.
+      const parent = this.videoExpanded ? document.body : mobilePlayerView;
+      if (this.container.parentNode !== parent) {
+        parent.appendChild(this.container);
       }
       window.uiManager?.releaseAudioPlayerLayoutPlaceholder?.();
       this.applyDesktopQueueExpansion();
       this.updateArtwork();
       window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
+      this.refreshVideoRotation();
       return;
     }
 
@@ -512,6 +559,7 @@ export class AudioPlayerUI {
     this.updateTrackDisplay();
     this.updateArtwork();
     window.uiManager?.mobileNav?.updatePlayerPlaceholder?.();
+    this.refreshVideoRotation();
   }
 
   /**
@@ -526,8 +574,12 @@ export class AudioPlayerUI {
   setMiniMode(enabled) {
     if (!this.container) return;
     const miniMode = enabled === true;
-    if (miniMode) this.setVideoExpanded(false);
+    this.resetVideoGestures();
     this.container.setAttribute('data-mini-player', miniMode ? 'true' : 'false');
+    if (miniMode) {
+      this.setVideoExpanded(false);
+      this.hideVideoControls();
+    }
     this.setMiniPlayerAlwaysOnTop(window.uiManager?.miniPlayerAlwaysOnTop === true);
     this.applyDesktopQueueExpansion();
     this.updateArtwork();
@@ -924,15 +976,54 @@ export class AudioPlayerUI {
     if (!this.artworkImage) return;
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const element = this.audioPlayer.audioElement;
-    const video = state?.playbackMode === 'audioElement' && element?.tagName === 'VIDEO' &&
-      element.videoWidth > 0 ? element : null;
+    const hasVideo = !this.isDisposed && state?.playbackMode === 'audioElement' &&
+      element?.tagName === 'VIDEO' && element.videoWidth > 0;
+    this.video.setEnabled(!this.isDisposed);
+    const presentation = this.audioPlayer.contextManager?.getVideoPresentation?.();
+    if (presentation) this.video.setPresentation(presentation);
+    else this.video.load(hasVideo ? element.currentSrc || element.src : null);
+    this.applyVideoElement(state, true);
+    const contextManager = this.audioPlayer.contextManager;
+    const rebuildingGraph = !!contextManager?.activeGraphRebuildRequest;
+    if (rebuildingGraph || (hasVideo && state.isPlaying)) {
+      const playbackSource = contextManager?.activeSourceGeneration || element;
+      if (this.lastAutoExpandedVideoSource !== playbackSource) {
+        // Rebind notifications precede clearing the rebuild flag; consume even before video metadata or resume.
+        this.lastAutoExpandedVideoSource = playbackSource;
+        if (!rebuildingGraph && !this.isMobileLayout() &&
+            this.container?.getAttribute('data-mini-player') !== 'true' &&
+            window.uiManager?.miniPlayerMode !== true && !this.desktopQueueExpanded) {
+          this.setDesktopQueueExpanded(true);
+        }
+      }
+    }
+    this.refreshVideoPlayback();
+    this.refreshVideoRotation();
+  }
+
+  applyVideoElement(state, refresh = false) {
+    const video = this.video.element;
     const changed = this.videoElement !== video;
+    if (!changed && !refresh) return;
     if (changed) {
+      this.resetVideoGestures();
+      this.videoElement?.removeEventListener('loadeddata', this.onVideoLoaded);
+      this.videoElement?.removeEventListener('seeked', this.onVideoLoaded);
+      this.videoElement?.removeEventListener('resize', this.onVideoLoaded);
       this.videoElement?.parentNode?.removeChild(this.videoElement);
       this.videoElement = video;
-      if (video) this.artworkImage.parentNode.appendChild(video);
+      if (video) {
+        video.className = 'player-video';
+        video.addEventListener('loadeddata', this.onVideoLoaded);
+        video.addEventListener('seeked', this.onVideoLoaded);
+        video.addEventListener('resize', this.onVideoLoaded);
+        this.artworkImage.parentNode.appendChild(video);
+      }
     }
-    if (!video) this.setVideoExpanded(false);
+    if (!video) {
+      this.setVideoExpanded(false);
+      this.hideVideoControls();
+    }
     this.container?.setAttribute('data-video', video ? 'true' : 'false');
     if (this.videoExpandButton) {
       this.videoExpandButton.hidden = !video;
@@ -942,28 +1033,149 @@ export class AudioPlayerUI {
       this.videoExpandButton.setAttribute('aria-pressed', String(this.videoExpanded));
     }
     if (changed || video) this.applyArtwork(state?.artworkUrl || '');
+    if (changed) this.refreshVideoRotation();
+  }
+
+  refreshVideoPlayback() {
+    if (this.videoRaf !== null) {
+      cancelAnimationFrame(this.videoRaf);
+      this.videoRaf = null;
+    }
+    const state = this.audioPlayer.stateManager?.getStateSnapshot();
+    const presentation = this.audioPlayer.contextManager?.getVideoPresentation?.();
+    if (presentation) this.video.setPresentation(presentation);
+    const active = !this.isDisposed && !!this.videoElement && !this.documentRef?.hidden &&
+      (!state.isPlaying || this._powerUiEnabled);
+    this.video.setActive(active);
+    if (!active) return;
+    const target = this.audioPlayer.audioManager.getAudiblePlaybackPosition(
+      this.audioPlayer.audioElement?.currentTime ?? state.currentTrackPosition, state.playbackSpeed);
+    this.video.frame(target, state.playbackSpeed, state.isPlaying);
+    this.applyVideoElement(state);
+    if (state.isPlaying || this.video.needsFrame) {
+      this.videoRaf = requestAnimationFrame(() => {
+        this.videoRaf = null;
+        this.refreshVideoPlayback();
+      });
+    }
+  }
+
+  refreshVideoRotation() {
+    if (!this.container) return;
+    const width = window.innerWidth || 0;
+    const height = window.innerHeight || 0;
+    const media = this.video.ready ? this.videoElement : this.audioPlayer.audioElement;
+    const videoWidth = media?.videoWidth || 0;
+    const videoHeight = media?.videoHeight || 0;
+    const eligible = !this.isDisposed && this.videoExpanded && !!this.videoElement &&
+      this.isMobileLayout() && this.container.getAttribute('data-mini-player') !== 'true' &&
+      window.appConfig?.videoAutoRotate !== false;
+    const rotated = eligible && width > 0 && height > 0 && videoWidth > 0 && videoHeight > 0 &&
+      Math.min(height / videoWidth, width / videoHeight) > Math.min(width / videoWidth, height / videoHeight);
+    if (rotated !== this.videoRotated || width !== this.videoViewportWidth || height !== this.videoViewportHeight) {
+      this.resetVideoGestures();
+      if (rotated !== this.videoRotated) this.closePlayerPopup();
+    }
+    this.videoRotated = rotated;
+    this.videoViewportWidth = width;
+    this.videoViewportHeight = height;
+    this.container.setAttribute('data-video-rotated', String(rotated));
+    this.container.style.setProperty('--video-rotated-width', rotated ? `${height}px` : '');
+    this.container.style.setProperty('--video-rotated-height', rotated ? `${width}px` : '');
+  }
+
+  resetVideoGestures() {
+    clearTimeout(this.videoGestureTimer);
+    this.videoGestureTimer = null;
+    this.videoGesture = null;
+    this.videoPointer = null;
+  }
+
+  isVideoGestureSurface(event) {
+    return !this.isDisposed && !!this.videoElement && event.target === this.videoElement &&
+      this.container?.getAttribute('data-mini-player') !== 'true';
+  }
+
+  beginVideoGesture(event) {
+    if (this.videoPointer) this.resetVideoGestures();
+    if (!this.isVideoGestureSurface(event) || event.button !== 0 || event.isPrimary === false) {
+      this.resetVideoGestures();
+      return;
+    }
+    // Freeze the first click's decision while the second press is in progress.
+    clearTimeout(this.videoGestureTimer);
+    this.videoGestureTimer = null;
+    this.videoPointer = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY };
+  }
+
+  finishVideoGesture(event, runPlaybackCommand) {
+    const start = this.videoPointer;
+    if (!start) return;
+    const pending = this.videoGesture;
+    this.resetVideoGestures();
+    if (!this.isVideoGestureSurface(event) || event.pointerId !== start.id ||
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) > VIDEO_GESTURE_MOVEMENT) return;
+
+    if (start.type === 'touch') {
+      // Touch compatibility clicks are deliberately unused; tapping never toggles playback.
+      if (!this.videoExpanded) return;
+      const bounds = this.videoElement.getBoundingClientRect();
+      // A clockwise turn maps the video's local horizontal axis onto viewport Y.
+      const fraction = this.videoRotated
+        ? (event.clientY - bounds.top) / bounds.height
+        : (event.clientX - bounds.left) / bounds.width;
+      const side = fraction < 0.5 ? 'left' : 'right';
+      if (pending?.type === 'touch' && pending.side === side) {
+        const state = this.audioPlayer.stateManager.getStateSnapshot();
+        if (!state.seekBarEnabled || !Number.isFinite(state.currentTrackDuration) || state.currentTrackDuration <= 0) return;
+        void runPlaybackCommand(() => side === 'left'
+          ? this.audioPlayer.playbackManager.rewind()
+          : this.audioPlayer.playbackManager.fastForward());
+        return;
+      }
+      this.videoGesture = { type: 'touch', side };
+      this.videoGestureTimer = setTimeout(() => this.resetVideoGestures(), VIDEO_GESTURE_INTERVAL);
+      return;
+    }
+
+    if (pending?.type === 'mouse' &&
+        Math.hypot(event.clientX - pending.x, event.clientY - pending.y) <= VIDEO_GESTURE_MOVEMENT) {
+      this.setVideoExpanded(!this.videoExpanded);
+      return;
+    }
+    // Resume in the actual user gesture, before the single-click decision timer.
+    this.audioPlayer.resumeAudioContextInGesture?.();
+    this.videoGesture = { type: 'mouse', x: event.clientX, y: event.clientY };
+    this.videoGestureTimer = setTimeout(() => {
+      this.resetVideoGestures();
+      void runPlaybackCommand(() => this.audioPlayer.togglePlayPause());
+    }, VIDEO_GESTURE_INTERVAL);
   }
 
   setVideoExpanded(expanded) {
     const next = expanded === true && !!this.videoElement;
     if (this.videoExpanded === next) return;
+    this.resetVideoGestures();
     this.videoExpanded = next;
     this.closePlayerPopup();
     this.container?.setAttribute('data-video-expanded', String(next));
+    this.mountContainerForLayout();
     this.updateVideoPresentation();
-    clearTimeout(this.videoControlsTimer);
-    this.videoControlsTimer = null;
-    if (next) this.showVideoControls();
+    this.hideVideoControls();
+    this.showVideoControls();
   }
 
   showVideoControls() {
-    if (!this.videoExpanded) return;
+    if (!this.videoElement || this.container?.getAttribute('data-mini-player') === 'true') return;
     this.container?.setAttribute('data-video-controls', 'true');
     clearTimeout(this.videoControlsTimer);
-    this.videoControlsTimer = setTimeout(() => {
-      this.videoControlsTimer = null;
-      this.container?.setAttribute('data-video-controls', 'false');
-    }, 2500);
+    this.videoControlsTimer = setTimeout(() => this.hideVideoControls(), 2500);
+  }
+
+  hideVideoControls() {
+    clearTimeout(this.videoControlsTimer);
+    this.videoControlsTimer = null;
+    this.container?.setAttribute('data-video-controls', 'false');
   }
 
   updateLoadingState() {
@@ -1106,9 +1318,11 @@ export class AudioPlayerUI {
     popup.setAttribute('role', 'dialog');
     popup.setAttribute('aria-label', this.speedButton.title);
     popup.setAttribute('data-kind', 'speed');
-    const rect = this.speedButton.getBoundingClientRect?.() || { left: 16, bottom: 48 };
-    popup.style.left = `${Math.max(4, rect.left)}px`;
-    popup.style.top = `${Math.max(4, rect.bottom + 4)}px`;
+    if (!this.videoRotated) {
+      const rect = this.speedButton.getBoundingClientRect?.() || { left: 16, bottom: 48 };
+      popup.style.left = `${Math.max(4, rect.left)}px`;
+      popup.style.top = `${Math.max(4, rect.bottom + 4)}px`;
+    }
     const currentSpeed = this.audioPlayer.stateManager?.getStateSnapshot?.()?.playbackSpeed ?? 1;
     const presets = document.createElement('div');
     presets.className = 'player-speed-presets';
@@ -1186,13 +1400,13 @@ export class AudioPlayerUI {
     custom.appendChild(pitch);
     popup.appendChild(presets);
     popup.appendChild(custom);
-    document.body.appendChild(popup);
+    (this.videoRotated ? this.container : document.body).appendChild(popup);
     this.playerPopup = popup;
     this.playerPopupReturnFocus = this.speedButton;
     this.speedButton.setAttribute('aria-expanded', 'true');
     this.syncSpeedPopup(currentSpeed);
     this.attachPlayerPopupDismiss(popup, this.speedButton);
-    clampMenuToViewport(popup);
+    if (!this.videoRotated) clampMenuToViewport(popup);
     (selectedPreset || slider).focus?.();
   }
 
@@ -1527,10 +1741,12 @@ export class AudioPlayerUI {
     let currentTime = 0;
     let duration = 0;
     
-    // Get state from StateManager (single source of truth)
+    // Read the live clock while playing; state position notifications are less frequent than frames.
     if (this.audioPlayer.stateManager) {
       const state = this.audioPlayer.stateManager.getStateSnapshot();
-      currentTime = state.currentTrackPosition || 0;
+      currentTime = (state.isPlaying
+        ? this.audioPlayer.contextManager?.getCurrentPlaybackTime?.() ?? state.currentTrackPosition
+        : state.currentTrackPosition) || 0;
       duration = state.currentTrackDuration || 0;
     } else {
       console.warn('[AudioPlayerUI] StateManager not available for updateTimeDisplay');
@@ -1543,7 +1759,9 @@ export class AudioPlayerUI {
     
     // Format time display
     const timeText = `${this.formatTime(currentTime)} / ${this.formatTime(duration)}`;
-    this.timeDisplay.textContent = timeText;
+    if (this.timeDisplay.textContent !== timeText) {
+      this.timeDisplay.textContent = timeText;
+    }
     
     // Update seek bar position
     if (duration > 0) {
@@ -1556,11 +1774,6 @@ export class AudioPlayerUI {
       this.seekBar.value = 0;
     }
     window.uiManager?.refreshRangeFillStyling?.(this.seekBar);
-    
-    // Force UI update by triggering a reflow
-    this.seekBar.style.display = 'none';
-    this.seekBar.offsetHeight; // Force reflow
-    this.seekBar.style.display = '';
   }
 
   /**
@@ -1576,49 +1789,25 @@ export class AudioPlayerUI {
   }
 
   /**
-   * Start interval for updating time display
-   */
-  startUpdateInterval() {
-    // Clear any existing interval
-    this.stopUpdateInterval();
-    
-    if (!this.canRunPlayerUi()) return;
-    // Update every 250ms
-    this.updateInterval = setInterval(() => {
-      if (!this.canRunPlayerUi()) {
-        this.refreshPowerUiScheduling();
-        return;
-      }
-      this.audioPlayer.audioManager?.incrementPowerDiagnostic?.('playerUiTicks');
-      this.updateTimeDisplay();
-    }, 250);
-  }
-
-  /**
-   * Stop time display update interval
-   */
-  stopUpdateInterval() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
-  }
-
-  /**
    * Remove player UI from DOM
    */
   removeUI() {
+    this.resetVideoGestures();
     this.setVideoExpanded(false);
-    clearTimeout(this.videoControlsTimer);
-    this.videoControlsTimer = null;
+    this.hideVideoControls();
+    this.videoElement?.removeEventListener('loadeddata', this.onVideoLoaded);
+    this.videoElement?.removeEventListener('seeked', this.onVideoLoaded);
+    this.videoElement?.removeEventListener('resize', this.onVideoLoaded);
+    window.removeEventListener?.('resize', this.onVideoViewportChange);
+    this.video.setEnabled(false);
     this.videoElement = null;
+    this.refreshVideoPlayback();
     this.videoExpandButton = null;
     this.documentRef?.removeEventListener?.('keydown', this.onVideoKeyDown, true);
     this.isDisposed = true;
     this.cancelArtworkPreload();
     this.trackPresentationGeneration += 1;
     this.lastAppliedArtworkUrl = null;
-    this.stopUpdateInterval();
     if (this.positionRaf !== null) {
       cancelAnimationFrame(this.positionRaf);
       this.positionRaf = null;

@@ -20,7 +20,7 @@ const SOURCE_TYPES = Object.freeze({
     chroma: { type: 'ChromaSpiralPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM },
     phase: { type: 'PhaseSelectEqPlugin', frameType: 20 },
     'analog-meter': { type: 'AnalogMeterPlugin', frameType: TelemetryFrameType.TAP_ANALOG_METER },
-    'rhythm-analyzer': { type: 'RhythmAnalyzerPlugin', frameType: 28 }
+    'rhythm-analyzer': { type: 'RhythmAnalyzerPlugin', frameType: 28, parse: 'parseTelemetryFrame' }
 });
 
 const usesAudioModulation = (effects, modulator) => Array.isArray(effects) &&
@@ -31,10 +31,11 @@ const usesAudioModulation = (effects, modulator) => Array.isArray(effects) &&
 const MODULATION_RANGE_DB = 24;
 const MODULATION_REFERENCE_HOLD_SECONDS = 1;
 const MODULATION_REFERENCE_RELEASE_DB_PER_SECOND = 20;
-const MODULATION_FLOOR_DB = { level: -60, bass: -66 };
-const MODULATION_RELEASE_SECONDS = { level: 0.18, bass: 0.25 };
-const BASS_MIN_HZ = 20;
-const BASS_MAX_HZ = 150;
+const MODULATION_FLOOR_DB = { level: -60, bass: -66, mid: -66, treble: -66 };
+const MODULATION_RELEASE_SECONDS = { level: 0.18, bass: 0.25, mid: 0.25, treble: 0.25 };
+const MODULATION_ANALYZERS = { level: 'level-meter', bass: 'spectrum', mid: 'spectrum',
+    treble: 'spectrum', beat: 'rhythm-analyzer', width: 'stereo' };
+const MODULATION_BANDS = { bass: [20, 150], mid: [150, 2000], treble: [2000, 20000] };
 const createModulator = () => ({ value: 0, reference: null, hold: 0, lastTime: null });
 
 function updateModulator(state, rms, type, now) {
@@ -99,7 +100,8 @@ export class VisualizerSources {
         this.sources = new Map();
         this.itemKeys = new Map();
         this.itemSubscribers = new Map();
-        this.modulators = { level: createModulator(), bass: createModulator() };
+        this.modulators = Object.fromEntries(Object.keys(MODULATION_ANALYZERS).map(type => [type, createModulator()]));
+        this.modulatorKeys = {};
         this.hostHidden = null;
         this._onVisibilityChange = () => this._publish();
         this._onDspReady = () => { if (this.active) this._publish(true); };
@@ -134,22 +136,13 @@ export class VisualizerSources {
         }
         const needsModulator = type => usesAudioModulation(layout?.background?.effects, type) ||
             (layout?.items || []).some(item => usesAudioModulation(item.effects, type));
-        const levelSettings = analysisSettings('level-meter');
-        const levelKey = sourceKey('level-meter', null, levelSettings.params, levelSettings.gainDb);
-        const nextLevelKey = needsModulator('level') ? levelKey : null;
-        if (nextLevelKey) wanted.set(levelKey, {
-            definition: SOURCE_TYPES['level-meter'], channel: null, ...levelSettings
-        });
-        const bassSettings = analysisSettings('spectrum');
-        const bassKey = sourceKey('spectrum', null, bassSettings.params, bassSettings.gainDb);
-        const nextBassKey = needsModulator('bass') ? bassKey : null;
-        if (nextBassKey) wanted.set(bassKey, {
-            definition: SOURCE_TYPES.spectrum, channel: null, ...bassSettings
-        });
-        if (this.levelKey !== nextLevelKey) this.modulators.level = createModulator();
-        if (this.bassKey !== nextBassKey) this.modulators.bass = createModulator();
-        this.levelKey = nextLevelKey;
-        this.bassKey = nextBassKey;
+        for (const [modulator, type] of Object.entries(MODULATION_ANALYZERS)) {
+            const settings = analysisSettings(type);
+            const key = needsModulator(modulator) ? sourceKey(type, null, settings.params, settings.gainDb) : null;
+            if (key) wanted.set(key, { definition: SOURCE_TYPES[type], channel: null, ...settings });
+            if (this.modulatorKeys[modulator] !== key) this.modulators[modulator] = createModulator();
+            this.modulatorKeys[modulator] = key;
+        }
         this.itemKeys = itemKeys;
         for (const [key, source] of this.sources) {
             if (wanted.has(key)) continue;
@@ -219,8 +212,7 @@ export class VisualizerSources {
         })) : []);
         if (!this.active || workletRestarted) {
             for (const source of this.sources.values()) source.frame = null;
-            this.modulators.level = createModulator();
-            this.modulators.bass = createModulator();
+            for (const type of Object.keys(this.modulators)) this.modulators[type] = createModulator();
         }
     }
 
@@ -230,23 +222,37 @@ export class VisualizerSources {
         const definition = source.definition;
         const snapshot = window[definition.type]?.prototype?.[definition.parse]?.(delivered);
         if (snapshot) source.frame = snapshot;
-        if (snapshot && this.levelKey && this.sources.get(this.levelKey) === source) {
+        const now = performance.now() / 1000;
+        const modulates = type => snapshot && this.modulatorKeys[type] === source.key;
+        if (modulates('level')) {
             let rms = 0;
             for (const channel of snapshot.channels || []) if (channel.rms > rms) rms = channel.rms;
-            updateModulator(this.modulators.level, rms, 'level', performance.now() / 1000);
+            updateModulator(this.modulators.level, rms, 'level', now);
         }
-        if (snapshot && this.bassKey && this.sources.get(this.bassKey) === source) {
+        for (const [type, [minimum, maximum]] of Object.entries(MODULATION_BANDS)) {
+            if (!modulates(type)) continue;
             const bins = snapshot.current;
             if (bins?.length) {
                 const binWidth = (snapshot.sampleRate || 48000) / (2 ** (snapshot.points || 12));
-                const first = Math.max(1, Math.ceil(BASS_MIN_HZ / binWidth));
-                const end = Math.min(bins.length, Math.floor(BASS_MAX_HZ / binWidth) + 1);
+                const first = Math.max(1, type === 'bass' ? Math.ceil(minimum / binWidth) : Math.floor(minimum / binWidth) + 1);
+                const end = Math.min(bins.length, Math.floor(maximum / binWidth) + 1);
                 let power = 0;
                 for (let index = first; index < end; index++) power += 10 ** (bins[index] / 10);
                 // The analyzer's Hann-window correction makes summed bin power
                 // about three times the corresponding time-domain mean square.
-                updateModulator(this.modulators.bass, Math.sqrt(power / 3), 'bass', performance.now() / 1000);
+                updateModulator(this.modulators[type], Math.sqrt(power / 3), type, now);
             }
+        }
+        if (modulates('width')) this.modulators.width.value = 1 - Math.abs(snapshot.correlation);
+        if (modulates('beat')) {
+            const state = this.modulators.beat;
+            // Forward detections track the current beat grid ahead of committed history.
+            const beat = snapshot.previewBeats?.at(-1) || snapshot.forwardBeats?.at(-1);
+            state.period = beat?.periodSeconds || snapshot.periodSeconds;
+            if (snapshot.confidence === 0 && snapshot.strongestBpm === 0) state.period = 0;
+            const anchor = beat?.time ?? (snapshot.anchorFrame + snapshot.anchorFraction) * snapshot.hopSeconds;
+            state.phase = state.period > 0 ? (snapshot.frameCount * snapshot.hopSeconds - anchor) / state.period : 0;
+            state.lastTime = now;
         }
         for (const itemId of source.itemIds) {
             for (const callback of this.itemSubscribers.get(itemId) || []) callback(delivered, producer);
@@ -258,7 +264,11 @@ export class VisualizerSources {
     }
 
     getModulators() {
-        return { level: this.modulators.level.value, bass: this.modulators.bass.value };
+        const beat = this.modulators.beat;
+        // Evaluate the beat between telemetry frames so every rendered frame moves smoothly.
+        beat.value = beat.period > 0 ? (1 + Math.cos(2 * Math.PI *
+            (beat.phase + Math.max(0, performance.now() / 1000 - beat.lastTime) / beat.period))) / 2 : 0;
+        return Object.fromEntries(Object.entries(this.modulators).map(([type, state]) => [type, state.value]));
     }
 
     getStatus() {

@@ -557,6 +557,21 @@ test('visualizer layouts normalize unknown and out-of-range settings', () => {
     assert.equal(createItem('title', 'name').style.fontFamily, 'sans-serif');
 });
 
+test('Audio modulation sources persist in item and background layout shares', () => {
+    for (const source of ['mid', 'treble', 'beat', 'width']) {
+        const layout = createDefaultLayout();
+        const effect = { type: 'opacity', amount: .4, mod: { source, depth: .8, speed: 2 } };
+        layout.items[0].effects = [normalizeEffect(effect, 'item')];
+        layout.background.effects = [normalizeEffect(effect, 'background')];
+        assert.equal(layout.items[0].effects[0].mod.source, source);
+        assert.equal(layout.background.effects[0].mod.source, source);
+        assert.equal(validateLayout(layout), true);
+        const restored = decodeLayoutShare(encodeLayoutShare(layout));
+        assert.deepEqual(restored.items[0].effects, layout.items[0].effects);
+        assert.deepEqual(restored.background.effects, layout.background.effects);
+    }
+});
+
 test('Trail Feedback zoom, rotation, and flow persist without invalidating older layouts', () => {
     const layout = createDefaultLayout();
     layout.items[0].effects = [normalizeEffect({ type: 'trail-feedback' })];
@@ -597,6 +612,37 @@ test('Edge Fade widths default, clamp, preserve both shapes, and persist in layo
     assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].effects, layout.items[0].effects);
     layout.items[0].effects[0].circleWidth = 2;
     assert.equal(validateLayout(layout), false);
+});
+
+test('Color effects normalize their controls and round-trip on items and backgrounds', () => {
+    const defaults = normalizeEffect({ type: 'color-adjust' });
+    const keys = ['brightness', 'contrast', 'saturation', 'hue', 'inputBlack', 'inputWhite', 'gamma',
+        'outputBlack', 'outputWhite', 'temperature', 'tint', 'invert', 'amount'];
+    assert.deepEqual(keys.map(key => defaults[key]), [0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, false, 1]);
+    const adjusted = normalizeEffect({ type: 'color-adjust', brightness: -2, contrast: 4, saturation: -1,
+        hue: 200, inputBlack: 2, inputWhite: -1, gamma: 0, outputBlack: 1, outputWhite: 0,
+        temperature: -2, tint: 2, invert: true, amount: .6 });
+    assert.deepEqual(keys.map(key => adjusted[key]), [-1, 3, 0, 180, .99, 1, .1, 1, 0, -1, 1, true, .6]);
+    const map = normalizeEffect({ type: 'color-map' });
+    assert.deepEqual([map.steps, map.threshold, map.amount], [0, .5, 1]);
+    assert.deepEqual(map.palette.stops, [{ pos: 0, color: '#000000' }, { pos: 1, color: '#ffffff' }]);
+    assert.deepEqual([0, 1, 2.6, 30, NaN].map(steps => normalizeEffect({ type: 'color-map', steps }).steps), [0, 2, 3, 16, 0]);
+    assert.equal(normalizeEffect({ type: 'color-map', threshold: 2 }).threshold, 1);
+    for (const target of ['item', 'background']) {
+        const layout = createDefaultLayout();
+        const effects = [normalizeEffect({ ...adjusted, inputBlack: .28, inputWhite: .29 }, target),
+            normalizeEffect({ ...map, steps: 2, threshold: .35, palette: { stops: [
+                { pos: 0, color: '#f0e0d0' }, { pos: 1, color: '#102030' }
+            ], motion: { mode: 'scroll', speed: .5, reverse: true } }, mod: { source: 'bass', depth: .8, speed: 1 } }, target)];
+        if (target === 'item') layout.items[0].effects = effects;
+        else layout.background.effects = effects;
+        assert.equal(validateLayout(layout), true);
+        assert.deepEqual(normalizeLayout(layout), layout);
+        const shared = decodeLayoutShare(encodeLayoutShare(layout));
+        assert.deepEqual(target === 'item' ? shared.items[0].effects : shared.background.effects, effects);
+        effects[0].inputWhite = .1;
+        assert.equal(validateLayout(layout), false);
+    }
 });
 
 test('Backplate settings default, clamp, and stay item-only', () => {
@@ -682,7 +728,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
     const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope', 'Hi-Fi Deck', 'Vintage VU',
         'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala'];
     // Featured designs ship only in the aspect ratios they were composed for, after the shared set.
-    const featured = { '21:9': ['Fretboard', 'Power Amp', 'Cinema Strip', 'Meter Bridge'], '16:9': ['Power Amp', 'Beat Stage', 'Lyric Stage'],
+    const featured = { '21:9': ['Fretboard', 'Power Amp', 'Cinema Strip', 'Meter Bridge'], '16:9': ['Power Amp', 'Beat Stage', 'Lyric Stage', 'Counter Gallery'],
         '4:3': ['Meter Bridge'], '1:1': ['Round Dials'], '9:16': ['Fretboard', 'Round Dials', 'Beat Stage', 'Lyric Stage'] };
     for (const aspect of ASPECTS) {
         const presets = JSON.parse(readFileSync(new URL(`../../presets/visualizer/${ASPECT_FILES[aspect]}`, import.meta.url)));
@@ -714,7 +760,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 63);
+    assert.equal(count, 64);
     for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase', 'guitar', 'rhythm-analyzer', 'oscilloscope', 'lyrics'])
         assert.equal(types.has(type), true);
 });

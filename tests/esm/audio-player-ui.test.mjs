@@ -2,49 +2,525 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioPlayerUI } from '../../js/ui/audio-player/audio-player-ui.js';
+import { StateManager } from '../../js/ui/audio-player/state-manager.js';
+import { SynchronizedVideo } from '../../js/ui/audio-player/synchronized-video.js';
+import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
-test('video preview reuses playback, expands, and restores on audio track change', async () => {
+test('starting a selected video unfolds once, preserving a later manual fold through maintenance and resume', async () => {
   await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
-    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement' } });
-    const video = documentRef.createElement('video');
-    video.videoWidth = 640;
-    player.audioElement = video;
+    const track = { name: 'Movie.mp4', path: '/movie.mp4' };
+    const contextManager = { activeSourceGeneration: 1 };
+    const player = createAudioPlayer(calls, {
+      contextManager, state: { playbackMode: 'audioElement', currentTrack: track }
+    });
+    player.audioManager = { getAudiblePlaybackPosition: () => 0 };
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 0, src: 'blob:movie' });
+    player.audioElement = master;
     const ui = new AudioPlayerUI(player);
     const container = ui.createPlayerUI();
     try {
-      assert.equal(ui.videoElement, video);
-      assert.equal(video.parentNode, ui.artworkImage.parentNode);
-      assert.equal(ui.artworkImage.hidden, true);
-      assert.equal(ui.videoExpandButton.hidden, false);
-      const controls = container.querySelector('.player-controls');
-      ui.videoExpandButton.click();
-      assert.equal(container.getAttribute('data-video-expanded'), 'true');
-      assert.equal(container.getAttribute('data-video-controls'), 'true');
-      assert.equal(container.querySelector('.player-controls'), controls);
-      container.setAttribute('data-video-controls', 'false');
-      container.dispatchEvent('pointerdown');
-      assert.equal(container.getAttribute('data-video-controls'), 'true');
-      ui.onVideoKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
-      assert.equal(ui.videoExpanded, false);
-      assert.equal(documentRef.activeElement, ui.videoExpandButton);
-      ui.setVideoExpanded(true);
-      player.audioElement = null;
-      player.stateManager.emit('playbackMode', 'bufferSource');
-      assert.equal(ui.videoExpanded, false);
-      assert.equal(ui.videoElement, null);
-      assert.equal(video.parentNode, null);
-      assert.equal(ui.videoExpandButton.hidden, true);
-      assert.equal(ui.videoControlsTimer, null);
+      ui.setDesktopQueueExpanded(false);
+      player.stateManager.setState({ isPlaying: true });
+      player.stateManager.emit('isPlaying', true);
+      assert.equal(container.getAttribute('data-expanded'), 'false', 'wait for actual video metadata');
+      master.videoWidth = 640;
+      ui.updateVideoPresentation();
+      assert.equal(container.getAttribute('data-expanded'), 'true');
+      assert.equal(ui.videoExpanded, false, 'ordinary panel expansion does not enter full screen');
+      ui.expandButton.click();
+      assert.equal(container.getAttribute('data-expanded'), 'false');
+      player.stateManager.emit('currentTrack', track);
+      player.stateManager.emit('currentTrackPosition', 10);
+      ui.updateVideoPresentation();
+      player.stateManager.setState({ isPlaying: false });
+      player.stateManager.emit('isPlaying', false);
+      player.stateManager.setState({ isPlaying: true });
+      player.stateManager.emit('isPlaying', true);
+      assert.equal(container.getAttribute('data-expanded'), 'false');
+
+      // An audio-device rebuild replaces even a paused media source without a new selection.
+      player.stateManager.setState({ isPlaying: false });
+      contextManager.activeGraphRebuildRequest = {};
+      contextManager.activeSourceGeneration = 2;
+      const replacement = documentRef.createElement('video');
+      Object.assign(replacement, { videoWidth: 0, src: 'blob:rebound-movie' });
+      player.audioElement = replacement;
+      player.stateManager.emit('currentTrack', track);
+      contextManager.activeGraphRebuildRequest = null;
+      replacement.videoWidth = 640;
+      ui.updateVideoPresentation();
+      player.stateManager.setState({ isPlaying: true });
+      player.stateManager.emit('isPlaying', true);
+      assert.equal(container.getAttribute('data-expanded'), 'false');
+
+      contextManager.activeSourceGeneration = 3;
+      player.stateManager.emit('currentTrack', track);
+      assert.equal(container.getAttribute('data-expanded'), 'true', 'reselecting the same video is a new playback');
+      ui.expandButton.click();
+      contextManager.activeSourceGeneration = 4;
+      player.stateManager.setState({ isPlaying: false, currentTrack: { name: 'Next.mp4', path: '/next.mp4' } });
+      player.stateManager.emit('currentTrack', player.stateManager.state.currentTrack);
+      assert.equal(container.getAttribute('data-expanded'), 'false', 'loading alone does not unfold');
+      player.stateManager.setState({ isPlaying: true });
+      player.stateManager.emit('isPlaying', true);
+      assert.equal(container.getAttribute('data-expanded'), 'true', 'next video playback can unfold again');
     } finally {
       ui.removeUI();
     }
   });
 });
 
+test('video auto-unfold leaves audio, mini mode, and the already expanded mobile layout unchanged', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef, windowRef }) => {
+    const contextManager = { activeSourceGeneration: 1 };
+    const player = createAudioPlayer(calls, { contextManager, state: { playbackMode: 'audioElement' } });
+    player.audioManager = { getAudiblePlaybackPosition: () => 0 };
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 0, src: 'blob:audio-only' });
+    player.audioElement = master;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    try {
+      ui.setDesktopQueueExpanded(false);
+      player.stateManager.setState({ isPlaying: true });
+      player.stateManager.emit('isPlaying', true);
+      assert.equal(container.getAttribute('data-expanded'), 'false', 'audio-only media remains folded');
+      ui.setMiniMode(true);
+      contextManager.activeSourceGeneration = 2;
+      master.videoWidth = 640;
+      ui.updateVideoPresentation();
+      assert.equal(container.getAttribute('data-mini-player'), 'true');
+      assert.equal(ui.desktopQueueExpanded, false);
+      ui.setMiniMode(false);
+      ui.updateVideoPresentation();
+      assert.equal(container.getAttribute('data-expanded'), 'false', 'leaving mini does not replay auto-unfold');
+      windowRef.uiManager.layoutMode = { isMobile: true };
+      contextManager.activeSourceGeneration = 3;
+      ui.updateVideoPresentation();
+      assert.equal(ui.desktopQueueExpanded, false, 'mobile playback does not change the desktop preference');
+      windowRef.uiManager.layoutMode.isMobile = false;
+      ui.updateVideoPresentation();
+      assert.equal(container.getAttribute('data-expanded'), 'false');
+    } finally {
+      ui.removeUI();
+    }
+  });
+});
+
+test('video preview reveals controls on activity, hides when idle, and cleans up across modes', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement', playbackSpeed: 1 } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time - 0.4 };
+    const video = documentRef.createElement('video');
+    video.videoWidth = 640;
+    video.src = 'blob:audio-master';
+    video.currentTime = 5;
+    player.audioElement = video;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    try {
+      assert.notEqual(ui.videoElement, video);
+      assert.equal(ui.videoElement.muted, true);
+      assert.equal(ui.videoElement.src, video.src);
+      assert.equal(video.parentNode, null);
+      assert.equal(ui.videoElement.parentNode, ui.artworkImage.parentNode);
+      ui.videoElement.videoWidth = 640;
+      ui.videoElement.dispatchEvent('loadeddata');
+      assert.equal(ui.videoElement.currentTime, 4.6);
+      assert.equal(video.currentTime, 5);
+      assert.equal(ui.artworkImage.hidden, true);
+      assert.equal(ui.videoExpandButton.hidden, false);
+      assert.notEqual(container.getAttribute('data-video-controls'), 'true');
+      container.dispatchEvent('pointerenter');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      t.mock.timers.tick(2000);
+      container.dispatchEvent('pointermove');
+      t.mock.timers.tick(2499);
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      t.mock.timers.tick(1);
+      assert.equal(container.getAttribute('data-video-controls'), 'false');
+      assert.equal(ui.videoControlsTimer, null);
+      container.dispatchEvent('pointerdown');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      t.mock.timers.tick(2500);
+      assert.equal(container.getAttribute('data-video-controls'), 'false');
+      ui.videoExpandButton.focus();
+      container.dispatchEvent('focusin');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      t.mock.timers.tick(2500);
+      assert.equal(documentRef.activeElement, ui.videoExpandButton);
+      assert.equal(container.getAttribute('data-video-controls'), 'false');
+      container.dispatchEvent('keydown', { key: 'Shift' });
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      const controls = container.querySelector('.player-controls');
+      ui.videoExpandButton.click();
+      assert.equal(container.getAttribute('data-video-expanded'), 'true');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      assert.equal(container.querySelector('.player-controls'), controls);
+      t.mock.timers.tick(2000);
+      container.dispatchEvent('keydown', { key: 'Shift' });
+      t.mock.timers.tick(2499);
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      t.mock.timers.tick(1);
+      assert.equal(documentRef.activeElement, ui.videoExpandButton);
+      assert.equal(container.getAttribute('data-video-controls'), 'false');
+      container.dispatchEvent('pointerdown');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      ui.onVideoKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+      assert.equal(ui.videoExpanded, false);
+      assert.equal(documentRef.activeElement, ui.videoExpandButton);
+      t.mock.timers.tick(2500);
+      assert.equal(container.getAttribute('data-video-controls'), 'false');
+      container.dispatchEvent('pointerdown');
+      ui.setMiniMode(true);
+      assert.equal(ui.videoControlsTimer, null);
+      assert.equal(container.getAttribute('data-video-controls'), 'false');
+      container.dispatchEvent('pointermove');
+      assert.equal(ui.videoControlsTimer, null);
+      ui.setMiniMode(false);
+      container.dispatchEvent('pointerdown');
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      ui.setVideoExpanded(true);
+      const detachedDisplay = ui.videoElement;
+      player.audioElement = null;
+      player.stateManager.emit('playbackMode', 'bufferSource');
+      assert.equal(ui.videoExpanded, false);
+      assert.equal(ui.videoElement, null);
+      assert.equal(ui.video.source, null);
+      assert.equal(ui.video.element, null);
+      assert.equal(detachedDisplay.src, undefined);
+      assert.equal(video.src, 'blob:audio-master');
+      assert.equal(video.parentNode, null);
+      assert.equal(ui.videoExpandButton.hidden, true);
+      assert.equal(ui.videoControlsTimer, null);
+      player.audioElement = video;
+      player.stateManager.emit('playbackMode', 'audioElement');
+      container.dispatchEvent('pointerdown');
+      assert.notEqual(ui.videoControlsTimer, null);
+    } finally {
+      ui.removeUI();
+      assert.equal(ui.videoControlsTimer, null);
+    }
+  });
+});
+
+test('video mouse gestures distinguish a single click from expansion and cancel pending actions on lifecycle changes', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement', playbackSpeed: 1 } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time };
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 640, src: 'blob:gesture-master' });
+    player.audioElement = master;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    const pointer = (type, overrides = {}) => container.dispatchEvent(type, {
+      target: ui.videoElement, pointerId: 1, pointerType: 'mouse', isPrimary: true,
+      button: 0, clientX: 50, clientY: 50, ...overrides
+    });
+    const click = () => { pointer('pointerdown'); pointer('pointerup'); };
+    const toggles = () => calls.filter(call => call[0] === 'togglePlayPause').length;
+    try {
+      click();
+      assert.equal(toggles(), 0);
+      assert.equal(calls.some(call => call[0] === 'resumeAudioContextInGesture'), true);
+      t.mock.timers.tick(500);
+      assert.equal(toggles(), 1);
+      click();
+      t.mock.timers.tick(200);
+      click();
+      assert.equal(ui.videoExpanded, true);
+      t.mock.timers.tick(1000);
+      assert.equal(toggles(), 1);
+      click(); click();
+      assert.equal(ui.videoExpanded, false);
+      t.mock.timers.tick(1000);
+      assert.equal(toggles(), 1);
+      pointer('pointerdown');
+      pointer('pointermove', { clientX: 80 });
+      pointer('pointerup');
+      t.mock.timers.tick(1000);
+      assert.equal(toggles(), 1, 'dragging out and back must not count as a click');
+      pointer('pointerdown', { button: 2 }); pointer('pointerup', { button: 2 });
+      t.mock.timers.tick(1000);
+      assert.equal(toggles(), 1);
+      for (const target of [ui.videoExpandButton, ui.seekBar, ui.playPauseButton, ui.playlistDisplay]) {
+        pointer('pointerdown', { target }); pointer('pointerup', { target });
+      }
+      t.mock.timers.tick(1000);
+      assert.equal(toggles(), 1, 'controls and queue must not trigger video gestures');
+      for (const cancel of [
+        () => ui.setMiniMode(true),
+        () => player.stateManager.emit('currentTrack', { name: 'next.webm' }),
+        () => { master.src = 'blob:next'; ui.updateVideoPresentation(); },
+        () => { player.audioElement = null; ui.updateVideoPresentation(); },
+        () => pointer('pointercancel'),
+        () => container.dispatchEvent('dragstart')
+      ]) {
+        click(); cancel(); t.mock.timers.tick(1000);
+        assert.equal(toggles(), 1);
+        ui.setMiniMode(false);
+        player.audioElement = master;
+        ui.updateVideoPresentation();
+      }
+      ui.setMiniMode(true);
+      click(); click(); t.mock.timers.tick(1000);
+      assert.equal(toggles(), 1);
+      assert.equal(ui.videoExpanded, false);
+      ui.setMiniMode(false);
+      click();
+    } finally {
+      ui.removeUI();
+    }
+    t.mock.timers.tick(1000);
+    assert.equal(toggles(), 1);
+    assert.equal(ui.videoGestureTimer, null);
+  });
+});
+
+test('video touch taps reveal controls and seek only with expanded same-side double taps', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement', playbackSpeed: 1, currentTrackDuration: 60 } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time };
+    player.playbackManager.fastForward = () => calls.push(['forward']);
+    player.playbackManager.rewind = () => calls.push(['rewind']);
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 640, src: 'blob:touch-master' });
+    player.audioElement = master;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    ui.videoElement.rect = { left: 0, width: 400 };
+    const tap = x => {
+      const event = { target: ui.videoElement, pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, clientX: x, clientY: 50 };
+      container.dispatchEvent('pointerdown', event);
+      container.dispatchEvent('pointerup', event);
+      container.dispatchEvent('click', event);
+    };
+    const seeks = () => calls.filter(call => call[0] === 'forward' || call[0] === 'rewind');
+    try {
+      tap(50); tap(50);
+      assert.equal(container.getAttribute('data-video-controls'), 'true');
+      assert.deepEqual(seeks(), []);
+      assert.equal(ui.videoExpanded, false);
+      ui.setVideoExpanded(true);
+      tap(50); tap(50);
+      tap(350); tap(350);
+      assert.deepEqual(seeks(), [['rewind'], ['forward']]);
+      tap(50); tap(350);
+      t.mock.timers.tick(1000);
+      tap(350); t.mock.timers.tick(501); tap(350);
+      assert.equal(seeks().length, 2);
+      t.mock.timers.tick(501);
+      player.stateManager.setState({ seekBarEnabled: false });
+      tap(50); tap(50);
+      assert.equal(seeks().length, 2);
+      player.stateManager.setState({ seekBarEnabled: true, currentTrackDuration: Infinity });
+      tap(50); tap(50);
+      assert.equal(seeks().length, 2);
+      player.stateManager.setState({ currentTrackDuration: 60 });
+      tap(50);
+      player.stateManager.emit('currentTrack', { name: 'other.webm' });
+      tap(50);
+      assert.equal(seeks().length, 2, 'track changes must reset double-tap pairing');
+      ui.setMiniMode(true);
+      tap(50); tap(50);
+      t.mock.timers.tick(1000);
+      assert.equal(seeks().length, 2);
+      assert.equal(calls.some(call => call[0] === 'togglePlayPause'), false);
+    } finally {
+      ui.removeUI();
+    }
+  });
+});
+
+test('video rotation follows mobile expanded fit, live preference, metadata and exit lifecycle', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withAudioPlayerGlobals({ windowOptions: { uiManager: { layoutMode: { isMobile: true } } } }, async ({ calls, documentRef, windowRef }) => {
+    Object.assign(windowRef, { innerWidth: 390, innerHeight: 720, appConfig: {} });
+    const resizeListeners = new Set();
+    windowRef.addEventListener = (type, callback) => { if (type === 'resize') resizeListeners.add(callback); };
+    windowRef.removeEventListener = (type, callback) => { if (type === 'resize') resizeListeners.delete(callback); };
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement', playbackSpeed: 1 } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time };
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 1920, videoHeight: 1080, src: 'blob:rotation' });
+    player.audioElement = master;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    try {
+      assert.equal(ui.videoRotated, false, 'normal mobile preview stays unrotated');
+      ui.setVideoExpanded(true);
+      assert.equal(ui.videoRotated, true);
+      assert.equal(container.getAttribute('data-video-rotated'), 'true');
+      assert.equal(container.style['--video-rotated-width'], '720px');
+      assert.equal(container.style['--video-rotated-height'], '390px');
+      const event = { target: ui.videoElement, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 30, clientY: 30 };
+      container.dispatchEvent('pointerdown', event); container.dispatchEvent('pointerup', event);
+      windowRef.appConfig.videoAutoRotate = false;
+      ui.refreshVideoRotation();
+      assert.equal(ui.videoRotated, false);
+      t.mock.timers.tick(1000);
+      assert.equal(calls.some(call => call[0] === 'togglePlayPause'), false);
+      windowRef.appConfig.videoAutoRotate = true;
+      ui.refreshVideoRotation();
+      assert.equal(ui.videoRotated, true);
+      Object.assign(windowRef, { innerWidth: 720, innerHeight: 390 });
+      for (const listener of resizeListeners) listener();
+      assert.equal(ui.videoRotated, false, 'landscape video fits landscape viewport without turning');
+      Object.assign(master, { videoWidth: 1080, videoHeight: 1920 });
+      ui.updateVideoPresentation();
+      assert.equal(ui.videoRotated, true, 'portrait video turns within landscape mobile viewport');
+      Object.assign(master, { videoWidth: 1000, videoHeight: 1000 });
+      ui.updateVideoPresentation();
+      assert.equal(ui.videoRotated, false, 'equal fits do not rotate');
+      Object.assign(master, { videoWidth: 1080, videoHeight: 1920 });
+      ui.updateVideoPresentation();
+      windowRef.uiManager.layoutMode.isMobile = false;
+      ui.mountContainerForLayout('desktop');
+      assert.equal(ui.videoRotated, false, 'desktop layout never rotates');
+      windowRef.uiManager.layoutMode.isMobile = true;
+      ui.mountContainerForLayout('mobile');
+      assert.equal(ui.videoRotated, true);
+      ui.setMiniMode(true);
+      assert.equal(ui.videoRotated, false);
+      assert.equal(container.style['--video-rotated-width'], '');
+      ui.setMiniMode(false);
+      ui.setVideoExpanded(true);
+      player.audioElement = null;
+      ui.updateVideoPresentation();
+      assert.equal(ui.videoRotated, false);
+      player.audioElement = master;
+      ui.updateVideoPresentation();
+      ui.setVideoExpanded(true);
+      assert.equal(ui.videoRotated, true);
+    } finally {
+      ui.removeUI();
+    }
+    assert.equal(ui.videoRotated, false);
+    assert.equal(resizeListeners.size, 0);
+  });
+});
+
+test('rotated video uses local left/right tap coordinates and contains its speed popup', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withAudioPlayerGlobals({ windowOptions: { uiManager: { layoutMode: { isMobile: true } } } }, async ({ calls, documentRef, windowRef }) => {
+    Object.assign(windowRef, { innerWidth: 390, innerHeight: 720 });
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement', playbackSpeed: 1, currentTrackDuration: 60 } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time };
+    player.playbackManager.fastForward = () => calls.push(['forward']);
+    player.playbackManager.rewind = () => calls.push(['rewind']);
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 1920, videoHeight: 1080, src: 'blob:rotation' });
+    player.audioElement = master;
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    try {
+      ui.setVideoExpanded(true);
+      ui.videoElement.rect = { left: 0, top: 0, width: 390, height: 720 };
+      const tap = y => {
+        const event = { target: ui.videoElement, pointerId: 1, pointerType: 'touch', button: 0, clientX: 200, clientY: y };
+        container.dispatchEvent('pointerdown', event); container.dispatchEvent('pointerup', event);
+      };
+      tap(100); tap(100);
+      tap(600); tap(600);
+      assert.deepEqual(calls.filter(call => ['forward', 'rewind'].includes(call[0])), [['rewind'], ['forward']]);
+      ui.openSpeedPopup(command => command());
+      assert.equal(ui.playerPopup.parentNode, container);
+      ui.setVideoExpanded(false);
+      assert.equal(ui.playerPopup, null);
+      ui.openSpeedPopup(command => command());
+      assert.equal(ui.playerPopup.parentNode, documentRef.body);
+    } finally {
+      ui.removeUI();
+    }
+  });
+});
+
+test('video follows audible time without moving the audio master, and wakes only for playback or paused changes', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames }) => {
+    const player = createAudioPlayer(calls, { state: { playbackMode: 'audioElement', playbackSpeed: 1, isPlaying: true } });
+    player.audioManager = { getAudiblePlaybackPosition: (time, speed) => Math.max(0, time - 0.4 * speed) };
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 640, src: 'blob:master', currentTime: 5, paused: false });
+    player.audioElement = master;
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    const display = ui.videoElement;
+    try {
+      display.videoWidth = 640;
+      display.dispatchEvent('loadeddata');
+      assert.equal(display.currentTime, 4.6);
+      assert.equal(display.paused, false);
+      assert.equal(master.currentTime, 5);
+      assert.equal(master.paused, false);
+      assert.notEqual(ui.videoRaf, null);
+      master.currentTime = 8;
+      frames.at(-1)();
+      assert.equal(display.currentTime, 7.6);
+      assert.equal(master.currentTime, 8);
+
+      master.pause();
+      player.stateManager.setState({ isPlaying: false });
+      player.stateManager.emit('isPlaying', false);
+      assert.equal(display.paused, true);
+      assert.equal(ui.videoRaf, null);
+      ui.setPowerUiEnabled(false);
+      master.currentTime = 12;
+      player.stateManager.setState({ currentTrackPosition: 12 });
+      player.stateManager.emit('currentTrackPosition', 12);
+      assert.equal(display.currentTime, 11.6);
+      assert.equal(ui.videoRaf, null);
+      display.seeking = true;
+      master.currentTime = 13;
+      player.stateManager.emit('currentTrackPosition', 13);
+      display.seeking = false;
+      display.dispatchEvent('seeked');
+      assert.equal(display.currentTime, 12.6);
+
+      ui.setPowerUiEnabled(true);
+      player.stateManager.setState({ isPlaying: true, playbackSpeed: 2 });
+      player.stateManager.emit('isPlaying', true);
+      assert.equal(display.currentTime, 12.2);
+      documentRef.hidden = true;
+      documentRef.dispatchEvent('visibilitychange');
+      assert.equal(display.paused, true);
+      assert.equal(ui.videoRaf, null);
+      documentRef.hidden = false;
+      documentRef.dispatchEvent('visibilitychange');
+      assert.equal(display.paused, false);
+      assert.notEqual(ui.videoRaf, null);
+
+      master.src = 'blob:next-master';
+      player.stateManager.emit('currentTrack', { name: 'next.webm' });
+      assert.notEqual(ui.videoElement, display);
+      assert.equal(ui.videoElement.src, master.src);
+      assert.equal(display.src, undefined);
+      assert.equal(ui.video.ready, false);
+      assert.equal(master.currentTime, 13);
+    } finally {
+      ui.removeUI();
+    }
+    assert.equal(ui.videoRaf, null);
+    assert.equal(display.paused, true);
+    assert.equal(display.src, undefined);
+    assert.equal(master.src, 'blob:next-master');
+    assert.equal((display.eventListeners.get('seeked') || []).length, 0);
+  });
+});
+
 class FakeElement {
   constructor(tagName, ownerDocument, calls = []) {
     this.tagName = tagName.toUpperCase();
+    if (this.tagName === 'VIDEO') {
+      this.currentTime = 0;
+      this.duration = 100;
+      this.paused = true;
+      this.seeking = false;
+    }
     this.ownerDocument = ownerDocument;
     this.calls = calls;
     this.children = [];
@@ -151,6 +627,16 @@ class FakeElement {
     this[name] = String(value);
   }
 
+  hasAttribute(name) { return name === 'src' ? !!this.src : this.attributes.has(name); }
+
+  removeAttribute(name) { this.attributes.delete(name); delete this[name]; }
+
+  pause() { this.paused = true; }
+
+  play() { this.paused = false; return Promise.resolve(); }
+
+  load() {}
+
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
   }
@@ -160,6 +646,10 @@ class FakeElement {
       this.eventListeners.set(type, []);
     }
     this.eventListeners.get(type).push(listener);
+  }
+
+  removeEventListener(type, listener) {
+    this.eventListeners.set(type, (this.eventListeners.get(type) || []).filter(item => item !== listener));
   }
 
   dispatchEvent(type, event = {}) {
@@ -370,6 +860,170 @@ function createWindow(calls, options = {}) {
   };
 }
 
+test('video tail survives real stop-state notifications and keeps its RAF after the master resets', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames }) => {
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 640, src: 'blob:audio-master', currentTime: 0, duration: 10 });
+    const presentation = { generation: 1, source: 'file:///movie.webm', resetToken: 0, naturalEnd: null, contextTime: 0 };
+    const player = createAudioPlayer(calls, { audioElement: master, contextManager: { getVideoPresentation: () => presentation } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time - 0.8 };
+    player.stateManager = new StateManager(player);
+    player.stateManager.updateState({ currentTrack: { name: 'movie.webm' }, currentTrackDuration: 10, isPlaying: true, isStopped: false });
+    const ui = player.ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    const display = ui.videoElement;
+    try {
+      Object.assign(display, { videoWidth: 640, duration: 10 });
+      display.dispatchEvent('loadeddata');
+      assert.equal(display.currentTime, 0);
+      assert.equal(display.paused, true, 'the first frame waits for audible playback');
+      master.currentTime = 2;
+      frames.at(-1)();
+      assert.equal(display.paused, false);
+      assert.equal(display.currentTime, 1.2);
+
+      presentation.contextTime = 10;
+      presentation.naturalEnd = { generation: 1, source: presentation.source, endPosition: 10,
+        playbackSpeed: 1, targetAtEnd: 9.2, contextTimeAtEnd: 10 };
+      master.currentTime = 0;
+      master.pause();
+      player.stateManager.updateState({ isPlaying: false, isStopped: true, currentTrackPosition: 0 });
+      assert.equal(ui.videoElement, display);
+      assert.equal(display.currentTime, 9.2);
+      assert.equal(display.paused, false);
+      assert.notEqual(ui.videoRaf, null, 'tail animation must outlive the transport playing state');
+      presentation.contextTime = 10.4;
+      frames.at(-1)();
+      assert.ok(Math.abs(display.currentTime - 9.6) < 1e-10);
+      presentation.contextTime = 10.9;
+      frames.at(-1)();
+      assert.equal(display.currentTime, 10);
+      assert.equal(display.paused, true);
+      assert.equal(ui.videoRaf, null);
+      assert.equal(master.currentTime, 0, 'display timing never moves the audio master');
+
+      presentation.resetToken++;
+      presentation.naturalEnd = null;
+      player.stateManager.updateState({ currentTrackPosition: 0 });
+      assert.equal(display.currentTime, 0, 'an explicit reset clears the retained final frame');
+    } finally {
+      ui.removeUI();
+    }
+    assert.equal(display.src, undefined);
+    assert.equal(display.paused, true);
+    assert.equal(ui.videoRaf, null);
+  });
+});
+
+test('player and Visualizer retain independent outgoing decoders until the next audible decoded frame', async t => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames }) => {
+    const created = [], revoked = [];
+    t.mock.method(URL, 'createObjectURL', () => `blob:display-${created.push(created.length + 1)}`);
+    t.mock.method(URL, 'revokeObjectURL', url => revoked.push(url));
+    const elements = [];
+    const createElement = documentRef.createElement.bind(documentRef);
+    documentRef.createElement = tag => {
+      const element = createElement(tag);
+      if (tag === 'video') elements.push(element);
+      return element;
+    };
+    const master = documentRef.createElement('video');
+    Object.assign(master, { videoWidth: 640, src: 'blob:master-only', currentTime: 9.5, duration: 10 });
+    const first = new Blob(['first']), next = new Blob(['next']);
+    const presentation = { generation: 1, source: first, resetToken: 0, naturalEnd: null, contextTime: 9.5 };
+    const player = createAudioPlayer(calls, { audioElement: master, contextManager: {
+      getVideoPresentation: () => presentation, getCurrentPlaybackTime: () => master.currentTime
+    } });
+    player.audioManager = { getAudiblePlaybackPosition: time => time - 0.8 };
+    player.stateManager = new StateManager(player);
+    player.stateManager.updateState({ currentTrack: { name: 'first.webm', mediaSource: first }, currentTrackDuration: 10,
+      isPlaying: true, isStopped: false });
+    const ui = player.ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    const visualizerVideo = new SynchronizedVideo();
+    visualizerVideo.setEnabled(true);
+    visualizerVideo.setActive(true);
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+      uiManager: { audioPlayer: player, audioManager: player.audioManager }, video: visualizerVideo
+    });
+    view.videoFrame();
+    const oldPlayer = ui.videoElement, oldVisualizer = visualizerVideo.element;
+    for (const element of [oldPlayer, oldVisualizer]) {
+      Object.assign(element, { videoWidth: 640, duration: 10 });
+      element.dispatchEvent('loadeddata');
+    }
+    view.videoFrame();
+    const oldUrls = [oldPlayer.src, oldVisualizer.src];
+    assert.notEqual(...oldUrls);
+    try {
+      Object.assign(presentation, { contextTime: 10, naturalEnd: { generation: 1, source: first, endPosition: 10,
+        playbackSpeed: 1, targetAtEnd: 9.2, contextTimeAtEnd: 10 } });
+      master.currentTime = 0;
+      player.stateManager.updateState({ isPlaying: false, isStopped: true, currentTrackPosition: 0 });
+      view.videoFrame();
+      Object.assign(presentation, { generation: 2, source: next });
+      player.stateManager.updateState({ currentTrack: { name: 'next.webm', mediaSource: next }, isPlaying: true, isStopped: false });
+      view.videoFrame();
+      const pending = elements.filter(element => ![master, oldPlayer, oldVisualizer].includes(element));
+      assert.equal(pending.length, 2, 'each presentation owns only one pending decoder');
+      assert.equal(ui.videoElement, oldPlayer);
+      assert.equal(view.videoFrame(), oldVisualizer);
+      assert.deepEqual(revoked, []);
+
+      presentation.contextTime = 11;
+      master.currentTime = 0.2;
+      frames.at(-1)();
+      assert.equal(view.videoFrame(), oldVisualizer);
+      assert.equal(oldPlayer.currentTime, 10, 'the final frame remains visible across loading and audible gaps');
+      for (const element of pending) {
+        Object.assign(element, { videoWidth: 640, duration: 10 });
+        element.dispatchEvent('loadeddata');
+      }
+      frames.at(-1)();
+      assert.equal(ui.videoElement, oldPlayer, 'decoded next video still waits for its audible start');
+      master.currentTime = 1.2;
+      frames.at(-1)();
+      assert.equal(ui.videoElement, oldPlayer, 'the player retains its final frame while the next decoder seeks');
+      assert.equal(view.videoFrame(), oldVisualizer, 'Visualizer also waits for the requested decoded frame');
+      for (const element of pending) {
+        assert.ok(Math.abs(element.currentTime - 0.4) < 1e-10);
+        Object.assign(element, { seeking: false, readyState: 4 });
+        element.dispatchEvent('seeked');
+      }
+      frames.at(-1)();
+      const nextVisualizer = view.videoFrame();
+      assert.notEqual(ui.videoElement, oldPlayer);
+      assert.notEqual(nextVisualizer, oldVisualizer);
+      assert.equal(ui.videoElement.parentNode, ui.artworkImage.parentNode);
+      assert.equal(oldPlayer.parentNode, null);
+      assert.equal((oldPlayer.eventListeners.get('seeked') || []).length, 0);
+      assert.deepEqual(revoked.sort(), oldUrls.sort());
+      assert.equal(master.src, 'blob:master-only');
+
+      presentation.contextTime = 20;
+      presentation.naturalEnd = { generation: 2, source: next, endPosition: 10,
+        playbackSpeed: 1, targetAtEnd: 9.2, contextTimeAtEnd: 20 };
+      player.stateManager.updateState({ isPlaying: false, isStopped: true });
+      view.videoFrame();
+      Object.assign(presentation, { generation: 3, source: first });
+      player.stateManager.updateState({ currentTrack: { name: 'first.webm', mediaSource: first } });
+      view.videoFrame();
+      const interrupted = elements.slice(-2);
+      Object.assign(presentation, { resetToken: 1, naturalEnd: null, source: null });
+      player.stateManager.updateState({ currentTrack: null, currentTrackPosition: 0 });
+      assert.equal(view.videoFrame(), null);
+      assert.equal(ui.videoElement, null);
+      assert.equal(ui.videoRaf, null);
+      assert.ok(interrupted.every(element => !element.src && element.paused));
+      assert.equal(new Set(revoked).size, created.length, 'manual cancellation releases current and pending URLs exactly once');
+      assert.equal(revoked.length, created.length);
+    } finally {
+      ui.removeUI();
+      visualizerVideo.setEnabled(false);
+    }
+  });
+});
+
 function createStateManager(initialState, calls) {
   const listeners = new Map();
   const manager = {
@@ -488,6 +1142,7 @@ async function withAudioPlayerGlobals(options, callback) {
       frames.push(fn);
       return frames.length;
     },
+    cancelAnimationFrame(id) { calls.push(['cancelAnimationFrame', id]); },
     setInterval(fn, delay) {
       calls.push(['setInterval', delay]);
       const id = nextTimer++;
@@ -554,6 +1209,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'isPlaying',
       'isStopped',
       'playbackMode',
+      'playbackSpeed',
       'playlist',
       'queueWindow'
     ].sort());
@@ -1447,7 +2103,6 @@ test('display updates handle fallbacks, invalid values, and warning paths', asyn
     ui.updateTimeDisplay();
     assert.equal(ui.timeDisplay.textContent, '00:30 / 02:00');
     assert.equal(ui.seekBar.value, 25);
-    assert.equal(ui.seekBar.style.display, '');
 
     player.stateManager.setState({ currentTrackPosition: 150, currentTrackDuration: 120 });
     ui.seekBar.value = 25;
@@ -1945,31 +2600,105 @@ test('Save Queue passes the active disk-backed sequence descriptor without mater
   });
 });
 
-test('interval management and removeUI clean up timers, DOM nodes, and references', async () => {
+test('the seek bar follows the live playback clock between state updates and freezes at pause', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, frames }) => {
+    let playbackTime = 0;
+    const player = createAudioPlayer(calls, {
+      state: { isPlaying: true, currentTrackDuration: 2 },
+      contextManager: { getCurrentPlaybackTime: () => playbackTime }
+    });
+    player.audioContext = { state: 'running' };
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    try {
+      for (let frame = 1; frame <= 60; frame++) {
+        playbackTime = frame / 60;
+        frames[ui.positionRaf - 1]();
+        assert.equal(ui.seekBar.value, playbackTime / 2 * 100);
+      }
+      assert.equal(player.stateManager.state.currentTrackPosition, 0, 'rendering does not broadcast state changes');
+      assert.equal(ui.timeDisplay.textContent, '00:01 / 00:02');
+
+      frames[ui.positionRaf - 1]();
+      assert.equal(ui.seekBar.value, 50, 'a stalled clock must not be extrapolated');
+      playbackTime = 0.25;
+      frames[ui.positionRaf - 1]();
+      assert.equal(ui.seekBar.value, 12.5, 'a backward seek is reflected on the next frame');
+
+      player.stateManager.setState({ isPlaying: false, currentTrackPosition: 0.75 });
+      player.stateManager.emit('isPlaying', false);
+      assert.equal(ui.positionRaf, null);
+      assert.equal(ui.seekBar.value, 37.5);
+      playbackTime = 1.5;
+      ui.updateTimeDisplay();
+      assert.equal(ui.seekBar.value, 37.5, 'paused playback uses its saved position');
+
+      player.stateManager.setState({ currentTrackPosition: 0.5 });
+      player.stateManager.emit('currentTrackPosition', 0.5);
+      assert.equal(ui.seekBar.value, 25, 'seeking while paused updates the display without an animation loop');
+      player.stateManager.setState({ isPlaying: true });
+      player.stateManager.emit('isPlaying', true);
+      frames[ui.positionRaf - 1]();
+      assert.equal(ui.seekBar.value, 75);
+    } finally {
+      ui.removeUI();
+    }
+  });
+});
+
+test('position animation stops while hidden, power-disabled, or suspended and resumes without duplicate frames', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames }) => {
+    const player = createAudioPlayer(calls, { state: { isPlaying: true, currentTrackDuration: 2 } });
+    player.audioContext = { state: 'running' };
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    try {
+      const initialFrame = ui.positionRaf;
+      ui.refreshPowerUiScheduling();
+      player.stateManager.emit('currentTrackPosition', 0);
+      assert.equal(ui.positionRaf, initialFrame);
+      assert.equal(frames.length, 1);
+
+      documentRef.hidden = true;
+      ui.onVisibilityChange();
+      assert.equal(ui.positionRaf, null);
+      assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === initialFrame));
+      documentRef.hidden = false;
+      ui.onVisibilityChange();
+      assert.notEqual(ui.positionRaf, null);
+
+      ui.setPowerUiEnabled(false);
+      assert.equal(ui.positionRaf, null);
+      player.stateManager.emit('currentTrackPosition', 1);
+      assert.equal(ui.positionRaf, null);
+      ui.setPowerUiEnabled(true);
+      assert.notEqual(ui.positionRaf, null);
+
+      player.audioContext.state = 'suspended';
+      frames[ui.positionRaf - 1]();
+      assert.equal(ui.positionRaf, null);
+      player.audioContext.state = 'running';
+      ui.setPowerUiEnabled(true);
+      assert.notEqual(ui.positionRaf, null);
+    } finally {
+      ui.removeUI();
+    }
+  });
+});
+
+test('removeUI cancels position animation and cleans up DOM nodes and references', async () => {
   await withAudioPlayerGlobals({}, async ({ calls, documentRef, frames, timers }) => {
     const player = createAudioPlayer(calls, { state: { isPlaying: true } });
     player.audioContext = { state: 'running' };
     const ui = new AudioPlayerUI(player);
     const container = ui.createPlayerUI();
-    const firstInterval = ui.updateInterval;
-
-    assert.equal(timers.has(firstInterval), true);
-
-    ui.updateTimeDisplay = () => calls.push(['manualTick']);
-    ui.startUpdateInterval();
-    assert.ok(calls.some(call => call[0] === 'clearInterval' && call[1] === firstInterval));
-    assert.notEqual(ui.updateInterval, firstInterval);
-
-    timers.get(ui.updateInterval)();
-    assert.ok(calls.some(call => call[0] === 'manualTick'));
-
-    ui.stopUpdateInterval();
-    assert.equal(ui.updateInterval, null);
-
-    ui.stopUpdateInterval();
-    assert.equal(ui.updateInterval, null);
+    const pendingFrame = ui.positionRaf;
+    assert.notEqual(pendingFrame, null);
+    assert.equal(timers.size, 0, 'position animation needs no polling interval');
 
     ui.removeUI();
+    assert.equal(ui.positionRaf, null);
+    assert.ok(calls.some(call => call[0] === 'cancelAnimationFrame' && call[1] === pendingFrame));
     const frameCountAfterRemove = frames.length;
     const warningCountAfterRemove = calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
@@ -1980,7 +2709,7 @@ test('interval management and removeUI clean up timers, DOM nodes, and reference
     assert.equal(calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
     ).length, warningCountAfterRemove);
-    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 15);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 16);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

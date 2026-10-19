@@ -28,6 +28,15 @@ For player-only use, set **Input Device:** to **None (music file player only)** 
 
 ## Video
 
-Video appears in the player's artwork area. Select **⛶** to fill the app display; move the pointer over the video or tap it to show the playback controls along the bottom. You can also add a **Video** item in Visualizer. To include video files in Music Library, see the [Music Library guide](music-library.md#availability).
+Video appears in the player's artwork area. In the desktop layout, starting a video automatically expands the player panel. You can collapse it again for the current playback. Move the pointer over the video or tap it to show the expand button; it hides after a short period of inactivity. Select **⛶** to fill the app display; move the pointer over the video or tap it to show the playback controls along the bottom. You can also add a **Video** item in Visualizer. To include video files in Music Library, see the [Music Library guide](music-library.md#availability).
+
+In the mobile layout, expanded video and its controls rotate together when this makes the video fit the screen better. **Rotate expanded video on mobile** in **Settings > Config... > Display** is on by default; turn it off to keep the display unrotated. Returning to the small player restores the normal display. Desktop layout and the device’s orientation settings are unchanged.
+
+Use these gestures on the video or its surrounding black borders, outside Mini Player:
+
+- **Mouse:** Click to play or pause. Double-click to expand or restore the video without changing whether it is playing or paused.
+- **Touch:** Tap to show the controls. While expanded, double-tap the left half to go back 10 seconds or the right half to go forward 10 seconds. Double-tapping the small preview does not seek.
+
+Buttons and sliders keep their usual behavior.
 
 [← Back to README](../README.md)

@@ -56,6 +56,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   config.libraryIncludeVideo = config.libraryIncludeVideo === true;
+  config.videoAutoRotate = config.videoAutoRotate !== false;
+  let visualizerHdr = false;
+  try {
+    visualizerHdr = window.localStorage?.getItem('effetune_visualizer_hdr') === 'true';
+  } catch (error) {
+    console.warn('Failed to load Visualizer HDR setting:', error);
+  }
   config.frequencyPreviewSound = config.frequencyPreviewSound === 'bandpassNoise' ? 'bandpassNoise' : 'sine';
   config.sfzMaxSizeMiB = normalizeSfzSizeLimitMiB(config.sfzMaxSizeMiB);
   config.spectrumOverlayQuality = config.spectrumOverlayQuality === 'hq' ? 'hq' : 'normal';
@@ -289,6 +296,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <label for="spectrum-overlay-display" id="spectrum-overlay-display-label"></label>
               <select id="spectrum-overlay-display" class="config-select"></select>
             </div>
+          </div>
+          <div class="device-section">
+            <div class="checkbox-container">
+              <input type="checkbox" id="video-auto-rotate" aria-describedby="video-auto-rotate-help" ${config.videoAutoRotate ? 'checked' : ''}>
+              <label for="video-auto-rotate" id="video-auto-rotate-label"></label>
+            </div>
+            <div class="power-mode-help" id="video-auto-rotate-help"></div>
+          </div>
+          <div class="device-section">
+            <div class="checkbox-container">
+              <input type="checkbox" id="visualizer-hdr" aria-describedby="visualizer-hdr-help" ${visualizerHdr ? 'checked' : ''}>
+              <label for="visualizer-hdr" id="visualizer-hdr-label"></label>
+            </div>
+            <div class="power-mode-help" id="visualizer-hdr-help"></div>
           </div>`,
     powerSaving: powerSavingSection,
     offlineOutput: offlineOutputSection,
@@ -1032,6 +1053,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
     document.getElementById('library-include-video-label').textContent = t('dialog.config.libraryIncludeVideo');
     document.getElementById('library-include-video-help').textContent = t('dialog.config.libraryIncludeVideoHelp');
+    document.getElementById('video-auto-rotate-label').textContent = t('dialog.config.videoAutoRotate');
+    document.getElementById('video-auto-rotate-help').textContent = t('dialog.config.videoAutoRotateHelp');
+    document.getElementById('visualizer-hdr-label').textContent = t('dialog.config.visualizerHdr');
+    document.getElementById('visualizer-hdr-help').textContent = t('dialog.config.visualizerHdrHelp');
     document.getElementById('config-theme-label').textContent = t('dialog.config.theme');
     document.getElementById('pipeline-column-mode-label').textContent = t('dialog.config.pipelineColumns');
     document.getElementById('pipeline-column-mode-help').textContent = t('dialog.config.pipelineColumns.help');
@@ -1127,6 +1152,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (visualSync) visualSync.checked = isVisualSyncEnabled(config);
     const libraryIncludeVideo = document.getElementById('library-include-video');
     if (libraryIncludeVideo) libraryIncludeVideo.checked = config.libraryIncludeVideo === true;
+    const videoAutoRotate = document.getElementById('video-auto-rotate');
+    if (videoAutoRotate) videoAutoRotate.checked = config.videoAutoRotate !== false;
+    const visualizerHdrInput = document.getElementById('visualizer-hdr');
+    if (visualizerHdrInput) visualizerHdrInput.checked = visualizerHdr;
 
     const startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
     const startupEffects = document.getElementById('startup-view-effects');
@@ -1310,6 +1339,23 @@ export async function showConfigDialog(isElectron, currentConfig) {
   });
   document.getElementById('library-include-video').addEventListener('change', async e => {
     await save({ libraryIncludeVideo: e.target.checked });
+  });
+  document.getElementById('video-auto-rotate').addEventListener('change', async e => {
+    if (!await save({ videoAutoRotate: e.target.checked })) return;
+    window.uiManager?.audioPlayer?.ui?.refreshVideoRotation?.();
+  });
+  document.getElementById('visualizer-hdr').addEventListener('change', e => {
+    const enabled = e.target.checked;
+    try {
+      window.localStorage.setItem('effetune_visualizer_hdr', String(enabled));
+    } catch (error) {
+      console.error('Failed to save Visualizer HDR setting:', error);
+      e.target.checked = visualizerHdr;
+      window.uiManager?.setError?.('Failed to save settings.', true);
+      return;
+    }
+    visualizerHdr = enabled;
+    window.uiManager?.visualizerView?.setHdrEnabled(enabled);
   });
   document.getElementById('frequency-preview-sound').addEventListener('change', async e => {
     const frequencyPreviewSound = e.target.value === 'bandpassNoise' ? 'bandpassNoise' : 'sine';

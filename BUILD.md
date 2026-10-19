@@ -498,6 +498,12 @@ The web app uses `manifest.json`, `sw.js`, and generated `sw-precache.js` for in
 
 Before release, verify that the web app loads normally, can be installed where supported, and still opens after going offline once the app shell has been cached.
 
+The original numeric fonts in `css/fonts/` are committed assets; normal builds
+do not require Python. To regenerate them after editing their geometry, install
+the optional authoring tools with
+`python -m pip install "fonttools[woff]==4.57.0" "brotli==1.0.9"`, then run
+`python scripts/generate-numeric-fonts.py` and include the regenerated fonts.
+
 ### OpenHome Sidecar
 
 The native OpenHome sidecar requires Node.js, npm, CMake 3.21 or newer, and a

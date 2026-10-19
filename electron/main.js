@@ -408,6 +408,17 @@ if (process.versions.electron?.startsWith('44.')) {
   }
 }
 
+// Preserve HDR video values in the Visualizer's float16 Canvas intermediates.
+// The renderer enables this only for HDR output and falls back to SDR when unavailable.
+const enabledBlinkFeatures = app.commandLine.getSwitchValue('enable-blink-features')
+  .split(',')
+  .map(feature => feature.trim())
+  .filter(Boolean);
+if (!enabledBlinkFeatures.includes('CanvasGlobalHDRHeadroom')) {
+  enabledBlinkFeatures.push('CanvasGlobalHDRHeadroom');
+  app.commandLine.appendSwitch('enable-blink-features', enabledBlinkFeatures.join(','));
+}
+
 // OpenHome transport commands arrive over IPC and therefore cannot carry a
 // Chromium transient user activation. Allow the desktop audio player to honor
 // those explicit remote playback commands.

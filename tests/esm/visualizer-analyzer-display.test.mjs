@@ -1499,7 +1499,7 @@ test('Notes intensity gradients color pitch confidence and note volume while pre
         plugin.mn = plugin.mx = 60; plugin._normalizedLevel = () => 1;
         plugin._drawVolumeMeters({ createRadialGradient: context.createLinearGradient,
             beginPath() {}, moveTo() {}, arc() {}, closePath() {}, fill() {} }, 100, 8, plugin._displayPalette());
-        assert.ok(gradients[0].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.5)'));
+        assert.ok(gradients[0].stops.some(([, color]) => color === 'rgba(255, 0, 0, 0.65)'));
         item.palette.direction = 'frequency'; display.draw(item, 0, 800);
         assert.equal(plugin.history, history);
         assert.deepEqual(plugin.displayOptions.noteColor(60), plugin.displayOptions.noteColor(72));
@@ -1782,7 +1782,7 @@ test('Notes Heatmap uses confidence for history and volume bars without a second
         const glow = { createRadialGradient: context.createLinearGradient,
             beginPath() {}, moveTo() {}, arc() {}, closePath() {}, fill() {} };
         plugin._drawVolumeMeters(glow, 100, 8, plugin._displayPalette());
-        assert.ok(gradients[0].stops.some(([, color]) => color.endsWith(`, ${rgba[index + 3] / 255 * .5})`)));
+        assert.ok(gradients[0].stops.some(([, color]) => color.endsWith(`, ${rgba[index + 3] / 255 * .65})`)));
         assert.equal(display.phase, 0);
         display.dispose();
     });

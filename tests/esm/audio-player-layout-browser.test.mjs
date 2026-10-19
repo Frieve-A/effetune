@@ -78,7 +78,7 @@ test('expanded video fills desktop and mobile viewports with bottom transport co
       const page = await browser.newPage({ viewport: { width, height: 720 } });
       await page.setContent(`<body class="layout-${mobile ? 'mobile' : 'desktop'}">
         <div class="audio-player" data-expanded="true" data-video="true"
-          data-video-expanded="true" data-video-controls="true">
+          data-video-expanded="false" data-video-controls="false">
           <h2>Player</h2>
           <div class="player-artwork"><video class="player-video"></video>
             <button class="player-button player-video-expand">↗</button></div>
@@ -95,6 +95,18 @@ test('expanded video fills desktop and mobile viewports with bottom transport co
             `<button class="mobile-bottom-button" data-view="${view}">${view}</button>`).join('')}
         </nav>` : ''}</body>`);
       await page.addStyleTag({ content: css + read('../../css/effetune-mobile.css') });
+      const buttonStyle = () => page.locator('.player-video-expand').evaluate(element => ({
+        opacity: getComputedStyle(element).opacity,
+        pointerEvents: getComputedStyle(element).pointerEvents
+      }));
+      await page.waitForFunction(() =>
+        getComputedStyle(document.querySelector('.player-video-expand')).opacity === '0');
+      assert.deepEqual(await buttonStyle(), { opacity: '0', pointerEvents: 'none' });
+      await page.locator('.audio-player').evaluate(element => element.dataset.videoControls = 'true');
+      await page.waitForFunction(() =>
+        getComputedStyle(document.querySelector('.player-video-expand')).opacity === '1');
+      assert.deepEqual(await buttonStyle(), { opacity: '1', pointerEvents: 'auto' });
+      await page.locator('.audio-player').evaluate(element => element.dataset.videoExpanded = 'true');
       const layout = await page.evaluate(() => {
         const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
         return {
@@ -125,6 +137,25 @@ test('expanded video fills desktop and mobile viewports with bottom transport co
       await page.waitForFunction(() =>
         getComputedStyle(document.querySelector('.player-controls')).opacity === '0');
       assert.equal(await page.locator('.player-controls').evaluate(element => getComputedStyle(element).opacity), '0');
+      assert.deepEqual(await buttonStyle(), { opacity: '0', pointerEvents: 'none' });
+      await page.locator('.player-video-expand').focus();
+      assert.equal(await page.locator('.player-video-expand').evaluate(element => element.matches(':focus-visible')), true);
+      for (const expanded of [true, false]) {
+        await page.locator('.audio-player').evaluate((element, expanded) => {
+          element.dataset.videoExpanded = String(expanded);
+          element.dataset.videoControls = 'true';
+        }, expanded);
+        await page.waitForFunction(() =>
+          getComputedStyle(document.querySelector('.player-video-expand')).opacity === '1');
+        assert.equal(await hitTest('.player-video-expand'), true);
+        await page.locator('.audio-player').evaluate(element => element.dataset.videoControls = 'false');
+        await page.waitForFunction(() =>
+          getComputedStyle(document.querySelector('.player-video-expand')).opacity === '0');
+        assert.equal(await page.locator('.player-video-expand').evaluate(element => document.activeElement === element), true);
+        assert.deepEqual(await buttonStyle(), { opacity: '0', pointerEvents: 'none' });
+        assert.equal(await hitTest('.player-video-expand'), false, 'focused toggle must hide and stop receiving pointer input after inactivity');
+      }
+      await page.locator('.player-video-expand').evaluate(element => element.blur());
       if (mobile) {
         await page.locator('.audio-player').evaluate(element => element.dataset.videoExpanded = 'false');
         assert.equal(await page.locator('.mobile-bottom-nav').isVisible(), true);
@@ -134,6 +165,15 @@ test('expanded video fills desktop and mobile viewports with bottom transport co
         await page.locator('.audio-player').evaluate(element => element.remove());
         assert.equal(await page.locator('.mobile-bottom-nav').isVisible(), true);
         assert.equal(await hitTest('.mobile-bottom-button[data-view="player"]'), true);
+      } else {
+        await page.evaluate(() => {
+          document.body.className = 'layout-mini-player';
+          const player = document.querySelector('.audio-player');
+          player.dataset.miniPlayer = 'true';
+          player.dataset.videoExpanded = 'false';
+          player.dataset.videoControls = 'true';
+        });
+        assert.equal(await page.locator('.player-video-expand').isVisible(), false);
       }
       await page.close();
     }

@@ -303,7 +303,7 @@
     "@mediabunny/flac-encoder": "1.61.6",
     "electron-updater": "6.8.9",
     "mediabunny": "1.61.6",
-    "music-metadata": "^12.2.1",
+    "music-metadata": "^12.2.3",
     "qrcode-generator": "^2.0.4",
     "ws": "^8.22.0"
   },

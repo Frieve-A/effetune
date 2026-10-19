@@ -1332,7 +1332,7 @@ body.layout-mobile .double-blind-test .dbt-testname-row .delete-preset-button sv
     display: block;
 }
 
-body.layout-mobile .play-pause-button {
+body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button {
     grid-area: play;
     justify-self: center;
     align-self: center;
@@ -1347,23 +1347,23 @@ body.layout-mobile .play-pause-button {
     transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
 }
 
-body.layout-mobile .play-pause-button svg {
+body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button svg {
     width: 24px;
     height: 24px;
 }
 
-body.layout-mobile .play-pause-button:active {
+body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button:active {
     transform: translateY(1px);
     background: linear-gradient(180deg, color-mix(in srgb, var(--et-text-primary) 14%, transparent), transparent 38%), linear-gradient(180deg, var(--et-accent), var(--et-accent-pressed));
     box-shadow: 0 10px 24px color-mix(in srgb, var(--et-accent) 28%, transparent), 0 4px 14px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
-body.layout-mobile .play-pause-button:disabled {
+body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button:disabled {
     transform: none;
 }
 
 @media (hover: hover) {
-    body.layout-mobile .play-pause-button:hover:not(:disabled) {
+    body.layout-mobile .audio-player:not([data-video-expanded="true"]) .play-pause-button:hover:not(:disabled) {
     background: linear-gradient(180deg, color-mix(in srgb, var(--et-text-primary) 26%, transparent), transparent 38%), linear-gradient(180deg, var(--et-accent-hover), var(--et-accent));
         border-color: var(--et-accent-hover);
         box-shadow: 0 16px 36px color-mix(in srgb, var(--et-accent) 40%, transparent), 0 8px 22px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.32);

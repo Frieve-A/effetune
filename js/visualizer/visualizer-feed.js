@@ -17,7 +17,17 @@ export class VisualizerFeed {
         this.canvas = doc.createElement('canvas');
         this.canvas.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)';
         doc.body.appendChild(this.canvas);
-        this.renderer = new VisualizerRenderer(this.canvas);
+        this.hdrCanvas = doc.createElement('canvas');
+        this.hdrCanvas.style.cssText = `${this.canvas.style.cssText};pointer-events:none`;
+        this.hdrCanvas.hidden = true;
+        this.hdrCanvas.setAttribute('aria-hidden', 'true');
+        doc.body.appendChild(this.hdrCanvas);
+        this.renderer = new VisualizerRenderer(this.canvas, { hdrCanvas: this.hdrCanvas });
+        this.canvas.addEventListener('pointerdown', event => view.beginCounterPointer(event));
+        this.canvas.addEventListener('click', event => view.resetCounterAt(event, this.canvas, this.renderer));
+        this.canvas.addEventListener('pointermove', event => {
+            this.canvas.style.cursor = view.counterAt(event, this.canvas, this.renderer) === null ? '' : 'pointer';
+        });
     }
 
     get closed() { return !this.window || this.window.closed; }
@@ -34,13 +44,14 @@ export class VisualizerFeed {
         const [aw, ah] = layout.aspect.split(':').map(Number);
         const width = Math.min(feed.innerWidth, feed.innerHeight * aw / ah), height = width * ah / aw;
         this.canvas.style.width = `${Math.max(1, width)}px`; this.canvas.style.height = `${Math.max(1, height)}px`;
+        this.hdrCanvas.style.width = this.canvas.style.width; this.hdrCanvas.style.height = this.canvas.style.height;
         const dpr = Math.min(feed.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
         const cw = Math.max(1, Math.round(width * dpr)), ch = Math.max(1, Math.round(height * dpr));
         if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
         if (sources.getStatus() === 'ready') {
-            this.renderer.draw(layout, sources, this.view.metadata(), milliseconds / 1000, { quality: this.view.quality, lyrics: this.view.lyrics(), video: this.view.video.frame() });
+            this.renderer.draw(layout, sources, this.view.metadata(), milliseconds / 1000, { quality: this.view.quality, hdr: this.view.hdr, lyrics: this.view.lyrics(), video: this.view.videoFrame(), counters: this.view.counters() });
         } else {
-            this.canvas.getContext('2d').clearRect(0, 0, cw, ch);
+            this.renderer.clear();
         }
         this.frameRequest = feed.requestAnimationFrame(time => this.frame(time));
     }

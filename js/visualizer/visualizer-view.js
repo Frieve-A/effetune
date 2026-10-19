@@ -4,7 +4,8 @@ import { copyTextToClipboard, readTextFromClipboard } from '../utils/clipboard-u
 import { VisualizerPresetStore } from './visualizer-preset-store.js';
 import { VisualizerSources } from './visualizer-sources.js';
 import { VisualizerRenderer } from './visualizer-renderer.js';
-import { VisualizerVideo } from './visualizer-video.js';
+import { SynchronizedVideo } from '../ui/audio-player/synchronized-video.js';
+import { hasPlaybackRegionDescriptor } from '../ui/audio-player/playback-region.js';
 import { VisualizerFeed } from './visualizer-feed.js';
 import { VisualizerEditor } from './visualizer-editor.js';
 import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-history.js';
@@ -21,9 +22,10 @@ export class VisualizerView {
         this.hasLyrics = false;
         this.store = new VisualizerPresetStore({ onError: () => this.notice('visualizer.saveFailed', 'Your layout could not be saved. Check that browser storage is available and try again.') });
         this.sources = new VisualizerSources(uiManager.audioManager);
-        this.video = new VisualizerVideo(uiManager);
+        this.video = new SynchronizedVideo();
         this.currentPresetName = '';
         this.quality = localStorage.getItem('effetune_visualizer_quality') || 'auto';
+        this.hdr = localStorage.getItem('effetune_visualizer_hdr') === 'true';
         this.historyDepth = 0;
         this.history = new VisualizerHistory();
         this.root = document.createElement('section');
@@ -36,7 +38,12 @@ export class VisualizerView {
         this.stage = this.root.querySelector('.visualizer-stage');
         this.canvas = this.stage.querySelector('canvas');
         this.status = this.root.querySelector('.visualizer-status');
-        this.renderer = new VisualizerRenderer(this.canvas);
+        this.hdrCanvas = document.createElement('canvas');
+        this.hdrCanvas.className = 'visualizer-hdr-canvas';
+        this.hdrCanvas.hidden = true;
+        this.hdrCanvas.setAttribute('aria-hidden', 'true');
+        this.stage.appendChild(this.hdrCanvas);
+        this.renderer = new VisualizerRenderer(this.canvas, { hdrCanvas: this.hdrCanvas });
         this.editor = new VisualizerEditor(this);
         const workspace = this.root.querySelector('.visualizer-workspace');
         workspace.insertBefore(this.editor.navigation, this.stageHost);
@@ -62,10 +69,10 @@ export class VisualizerView {
         this.expandButton.addEventListener('click', () => this.setExpanded(!this.expanded));
         this.stage.addEventListener('pointermove', event => {
             this.showControls();
-            this.stage.classList.toggle('lyrics-seekable', this.lyricsSeekTime(event) !== null);
+            this.stage.classList.toggle('lyrics-seekable', this.lyricsSeekTime(event) !== null || this.counterAt(event) !== null);
         });
-        this.stage.addEventListener('pointerdown', () => this.showControls());
-        this.stage.addEventListener('click', event => this.seekToLyrics(event));
+        this.stage.addEventListener('pointerdown', event => { this.showControls(); this.beginCounterPointer(event); });
+        this.stage.addEventListener('click', event => { if (!this.resetCounterAt(event)) this.seekToLyrics(event); });
         this.stageHost.addEventListener('pointermove', () => this.showControls());
         this.stageHost.addEventListener('pointerdown', () => this.showControls());
         this.toolbar = this.root.querySelector('.visualizer-toolbar');
@@ -212,6 +219,7 @@ export class VisualizerView {
     }
     applyLayout() {
         this.hasLyrics = this.layout.items.some(item => item.type === 'lyrics');
+        this.counters();
         this.video.setEnabled(this.layout.items.some(item => item.type === 'video'));
         this.sources.setLayout(this.layout);
         this.store.saveCurrent(this.layout);
@@ -289,6 +297,11 @@ export class VisualizerView {
         else this.toolbar.appendChild(this.qualityLabel);
         this.editButton.setAttribute('aria-pressed', String(open));
     }
+    setHdrEnabled(enabled) {
+        this.hdr = enabled === true;
+        this.renderer.setHdrEnabled(this.hdr);
+        this.feed?.renderer?.setHdrEnabled(this.hdr);
+    }
     updateExpandButtonLabel() {
         const label = this.expanded
             ? this.t('visualizer.restore', 'Restore Visualizer size')
@@ -360,13 +373,56 @@ export class VisualizerView {
         return { data, time: this.uiManager.audioManager.getAudiblePlaybackPosition(position, snapshot.playbackSpeed),
             duration: snapshot.currentTrackDuration, isStopped: snapshot.isStopped };
     }
+    counters(now = performance.now()) {
+        const items = this.layout.items.filter(item => item.type === 'counter');
+        this.counterOrigins ||= new Map();
+        const ids = new Set(items.map(item => item.id));
+        for (const id of this.counterOrigins.keys()) if (!ids.has(id)) this.counterOrigins.delete(id);
+        if (!items.length) return new Map();
+        const player = this.uiManager.audioPlayer;
+        const snapshot = player?.ui?.container ? player.stateManager.getStateSnapshot() : null;
+        const external = !snapshot?.currentTrack;
+        const position = external ? 0 : snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
+        return new Map(items.map(item => {
+            if (!this.counterOrigins.has(item.id)) this.counterOrigins.set(item.id, now);
+            return [item.id, {
+                time: external ? Math.max(0, (now - this.counterOrigins.get(item.id)) / 1000) : Math.max(0, position || 0),
+                trackIndex: external ? 0 : Math.max(0, snapshot.currentTrackIndex + 1), external,
+                playing: external || !!snapshot.isPlaying,
+                speed: external ? 1 : snapshot.playbackSpeed || 1,
+                source: external ? this.counterOrigins.get(item.id) : snapshot.currentTrack,
+                stamp: now / 1000
+            }];
+        }));
+    }
+    resetCounter(id, now = performance.now()) {
+        if (!this.counters(now).get(id)?.external) return false;
+        this.counterOrigins.set(id, now);
+        return true;
+    }
+    beginCounterPointer(event) {
+        this.counterPointerStart = { x: event.clientX, y: event.clientY, editing: this.editor.open };
+    }
+    counterAt(event, canvas = this.canvas, renderer = this.renderer) {
+        if (this.editor.open || event.target?.closest?.('button')) return null;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        const id = renderer.counterAt(this.layout, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+        return id && this.counters().get(id)?.external ? id : null;
+    }
+    resetCounterAt(event, canvas = this.canvas, renderer = this.renderer) {
+        const start = this.counterPointerStart;
+        this.counterPointerStart = null;
+        if (event.defaultPrevented || start?.editing || (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5)) return false;
+        const id = this.counterAt(event, canvas, renderer);
+        return id !== null && this.resetCounter(id);
+    }
     // Click-to-seek uses the renderer that drew the visible pixels; Edit keeps clicks for item selection.
     lyricsSeekTime(event) {
         if (this.editor.open || !this.hasLyrics || event.target.closest?.('button')) return null;
         const rect = this.canvas.getBoundingClientRect();
         if (!rect.width || !rect.height) return null;
-        const renderer = this.feed?.visible ? this.feed.renderer : this.renderer;
-        return renderer.lyricsSeekTime(this.layout, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+        return this.renderer.lyricsSeekTime(this.layout, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
     }
     seekToLyrics(event) {
         const time = this.lyricsSeekTime(event), player = this.uiManager.audioPlayer;
@@ -395,7 +451,7 @@ export class VisualizerView {
         const height = editSize?.height ?? width / aspect;
         this.stage.style.width = `${Math.max(1, width)}px`; this.stage.style.height = `${Math.max(1, height)}px`;
         const state = this.sources.getStatus();
-        // While the clean feed is shown, it renders once and this view shows the same pixels at the feed resolution.
+        // Share the clean feed's composition when both displays use the same dynamic range.
         const feed = state === 'ready' && this.feed?.visible ? this.feed.canvas : null;
         const dpr = Math.min(window.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
         // Edit zoom enlarges the CSS artboard independently of raster size. Cap its longest
@@ -407,19 +463,37 @@ export class VisualizerView {
             // Restore the notice text that the unavailable status may have replaced before audio was ready.
             if (!this.noticeActive) this.status.hidden = true;
             else if (this.status.textContent !== this.noticeText) this.status.textContent = this.noticeText;
-            if (feed) {
-                const ctx = this.canvas.getContext('2d');
-                ctx.clearRect(0, 0, cw, ch);
-                ctx.drawImage(feed, 0, 0);
-            } else {
-                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, lyrics: this.lyrics(), video: this.video.frame() });
+            if (!feed || !this.renderer.copyFrom(this.feed.renderer, { hdr: this.hdr })) {
+                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, hdr: this.hdr, lyrics: this.lyrics(), video: this.videoFrame(), counters: this.counters() });
             }
         } else {
-            this.canvas.getContext('2d').clearRect(0, 0, cw, ch);
+            this.renderer.clear();
             this.status.hidden = false;
             this.status.textContent = state === 'disabled' ? this.t('visualizer.disabled', 'Enable WebAssembly DSP in Config to use Visualizer.') : this.t('visualizer.unavailable', 'Visualizer is unavailable. Reload the app to try again.');
         }
         this.frameRequest = requestAnimationFrame(time => this.frame(time));
+    }
+    videoFrame() {
+        if (!this.video.enabled || !this.video.active) return null;
+        const player = this.uiManager.audioPlayer;
+        // OpenHome can retain the player and its last track after the UI closes.
+        const snapshot = player?.ui?.container ? player.stateManager?.getStateSnapshot() : null;
+        if (!snapshot) {
+            this.video.load(null);
+            return null;
+        }
+        const track = snapshot?.currentTrack;
+        const source = track && !hasPlaybackRegionDescriptor(track) ? track.mediaSource ?? track.file ?? track.path ?? null : null;
+        const playable = (source instanceof Blob || (typeof source === 'string' && source)) &&
+            [track.path, track.file?.name, track.name, typeof source === 'string' ? source : source.name]
+                .some(name => typeof name === 'string' && /\.(3gp|m4v|mkv|mov|mp4|webm)(?:[?#].*)?$/i.test(name));
+        const presentation = player?.contextManager?.getVideoPresentation?.();
+        if (presentation) this.video.setPresentation(hasPlaybackRegionDescriptor(track)
+            ? { ...presentation, source: null } : presentation);
+        else this.video.load(playable ? (source instanceof Blob ? source : player.contextManager.getMediaElementSourceUrl(source)) : null);
+        const position = snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
+        const target = this.uiManager.audioManager.getAudiblePlaybackPosition(position, snapshot.playbackSpeed);
+        return this.video.frame(target, snapshot.playbackSpeed, snapshot.isPlaying);
     }
     async openPresets() {
         this.systems ||= await this.store.loadSystemPresets();

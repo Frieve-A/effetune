@@ -2,8 +2,10 @@ import { createLayer, drawBackplates, paletteGradient, VisualizerEffects, applyE
 
 import { drawStyledText } from './visualizer-text.js';
 import { lyricsFrame, lyricsOpacity, drawLyrics } from './visualizer-lyrics.js';
+import { counterFrame, animateCounterFrame, drawCounter } from './visualizer-counter.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
-import { REFERENCE_WIDTH } from './visualizer-model.js';
+import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS } from './visualizer-model.js';
+import { VisualizerHDROutput } from './visualizer-hdr.js';
 
 const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'guitar', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
 
@@ -17,7 +19,7 @@ function fitRect(image, w, h, fit) {
 }
 
 export class VisualizerRenderer {
-    constructor(canvas) {
+    constructor(canvas, { hdrCanvas = null } = {}) {
         this.canvas = canvas;
         this.layers = new Map();
         this.effects = new VisualizerEffects();
@@ -25,6 +27,21 @@ export class VisualizerRenderer {
         this.quality = 0;
         this.cost = 0;
         this.qualityFrames = 0;
+        this.counterFonts = new Set();
+        this.hdrOutput = hdrCanvas ? new VisualizerHDROutput(canvas, hdrCanvas) : null;
+        this.hdrActive = false;
+    }
+
+    loadCounterFont(family) {
+        if (this.counterFonts.has(family) || !COUNTER_DIGIT_FONTS.some(([value]) => value === family) || !document.fonts?.load) return;
+        this.counterFonts.add(family);
+        // Counter layers, including Clean Feed layers, are created in this document.
+        // Loading must name digits: FontFaceSet's default space is outside our subset.
+        document.fonts.load(`16px ${family}`, '0123456789').then(faces => {
+            if (faces.length) for (const state of this.layers.values()) {
+                if (state.type === 'counter') state.signature = '';
+            }
+        }).catch(error => console.warn('Counter font could not be loaded:', error));
     }
 
     image(url) {
@@ -37,11 +54,70 @@ export class VisualizerRenderer {
     dispose() {
         for (const state of this.layers.values()) state.display?.dispose();
         this.layers.clear();
+        this.effects.states.clear();
+        this.hdrOutput?.dispose();
     }
 
-    draw(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null, video = null } = {}) {
+    setHdrEnabled(enabled) {
+        this.hdrOutput?.setEnabled(enabled);
+    }
+
+    prepareOutput(hdr) {
+        this.setHdrEnabled(hdr);
+        const active = Boolean(this.hdrOutput?.prepare());
+        if (active !== this.hdrActive) {
+            for (const state of this.layers.values()) state.display?.dispose();
+            this.layers.clear();
+            this.effects = new VisualizerEffects(active ? this.hdrOutput : null);
+            this.hdrActive = active;
+            this.hdrStage = active ? createLayer(this.canvas.width, this.canvas.height, true) : null;
+        }
+        if (!active) this.hdrOutput?.show(false);
+        const stage = this.hdrStage || this.canvas;
+        if (stage.width !== this.canvas.width) stage.width = this.canvas.width;
+        if (stage.height !== this.canvas.height) stage.height = this.canvas.height;
+        return stage;
+    }
+
+    clear() {
+        this.canvas.getContext('2d')?.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.hdrOutput?.show(false);
+    }
+
+    copyFrom(renderer, { hdr = false } = {}) {
+        const stage = this.prepareOutput(hdr);
+        if (renderer.hdrActive !== this.hdrActive) return false;
+        const ctx = stage.getContext('2d');
+        ctx.clearRect(0, 0, stage.width, stage.height);
+        ctx.drawImage(renderer.hdrStage || renderer.canvas, 0, 0, stage.width, stage.height);
+        // Hit geometry belongs to the composited frame, including its effect transforms.
+        this.hitRenderer = renderer;
+        if (this.hdrActive) {
+            try { this.hdrOutput.present(stage); }
+            catch (error) { this.failHDR(error); return false; }
+        }
+        return true;
+    }
+
+    failHDR(error) {
+        console.warn('Visualizer HDR frame failed; returning to SDR:', error);
+        this.hdrOutput.failed = true;
+        this.hdrOutput.dispose();
+    }
+
+    draw(layout, sources, metadata, time, options = {}) {
+        try { this.drawFrame(layout, sources, metadata, time, options); }
+        catch (error) {
+            if (!this.hdrActive) throw error;
+            this.failHDR(error);
+            this.drawFrame(layout, sources, metadata, time, options);
+        }
+    }
+
+    drawFrame(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null, video = null, counters = null, hdr = false } = {}) {
         const start = performance.now();
-        const stage = this.canvas, ctx = stage.getContext('2d');
+        const stage = this.prepareOutput(hdr), ctx = stage.getContext('2d');
+        this.hitRenderer = null;
         if (!ctx || !stage.width || !stage.height) return;
         // Graphics scale with the output width on the 1280-wide basis, so a layout looks
         // the same at any resolution. Analyzer graphics additionally follow Graph Scale.
@@ -61,8 +137,12 @@ export class VisualizerRenderer {
                 : this.image(item.type === 'background' ? item.image : artwork ? metadata?.artwork?.[0]?.src : null);
             // An absent picture has no visual layer or effect history, even while editing.
             if ((item.type === 'artwork' || item.type === 'video') && !image) continue;
-            const videoTime = video && image === video ? video.currentTime : null;
+            // currentTime changes before a seek's pixels are decoded. Only cache
+            // that timestamp once its picture is available so paused seeks repaint.
+            const videoTime = video && image === video && !video.seeking ? video.currentTime : null;
             const lyricFrame = item.type === 'lyrics' ? lyricsFrame(item, lyrics, editing) : null;
+            const counter = item.type === 'counter' ? counters?.get(item.id) : null;
+            if (item.type === 'counter') this.loadCounterFont(item.style.fontFamily);
             const lyricOpacity = lyricFrame ? lyricsOpacity(item, lyrics, editing) : 1;
             if (lyricFrame && (!lyricOpacity || (!lyricFrame.rows.length && !lyricFrame.placeholder))) continue;
             alive.add(item.id);
@@ -71,18 +151,27 @@ export class VisualizerRenderer {
             let state = this.layers.get(item.id);
             if (!state || state.type !== item.type) {
                 state?.display?.dispose();
-                state = { type: item.type, canvas: createLayer(width, height), signature: '', frame: null, image: null };
+                state = { type: item.type, canvas: createLayer(width, height, this.hdrActive), signature: '', frame: null, image: null };
                 this.layers.set(item.id, state);
             } else if (state.canvas.width !== width || state.canvas.height !== height) {
                 state.canvas.width = width; state.canvas.height = height;
                 state.signature = '';
             }
+            let counterDisplay = null;
+            if (item.type === 'counter') {
+                const descriptor = counter || { time: 0, trackIndex: 0, playing: false, stamp: time };
+                const animation = animateCounterFrame(counterFrame(item.params, descriptor.time, descriptor.trackIndex),
+                    item.params, { stamp: time, ...descriptor }, state.counterAnimation);
+                counterDisplay = animation.frame;
+                state.counterAnimation = animation.state;
+            }
             const frame = sources.getFrame(item.id);
-            const text = lyricFrame ? lyricFrame.key : item.type === 'text' ? item.params.text : ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null;
+            const text = counterDisplay || (lyricFrame ? lyricFrame.key : item.type === 'text' ? item.params.text : ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null);
             // Image identity is checked separately; never copy data URLs into a
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
-                item.palette, item.style, item.effects, item.color, item.flipX, item.flipY, text, editing]);
+                item.palette, item.style, item.effects, item.color, item.flipX, item.flipY, text, editing,
+                item.type === 'counter' ? item.params : null]);
             let changed = state.signature !== signature || state.frame !== frame || state.image !== image || state.videoTime !== videoTime ||
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
@@ -91,7 +180,7 @@ export class VisualizerRenderer {
                 changed = state.signature !== signature || state.image !== image || rendered !== false;
                 state.signature = signature; state.frame = frame; state.image = image;
             } else if (changed) {
-                this.drawItem(state, item, metadata, image, time, editing, lyricFrame);
+                this.drawItem(state, item, metadata, image, time, editing, lyricFrame, counterDisplay);
                 state.signature = signature; state.frame = frame; state.image = image; state.videoTime = videoTime;
             }
             const signal = state.display?.signalCanvas;
@@ -111,10 +200,10 @@ export class VisualizerRenderer {
                 // clips the composite to the item rectangle.
                 const cw = fades.length ? width : stage.width, ch = fades.length ? height : stage.height;
                 if (fades.length) {
-                    state.fadeLayer ||= createLayer(cw, ch);
+                    state.fadeLayer ||= createLayer(cw, ch, this.hdrActive);
                     state.fadeMask ||= createLayer(cw, ch);
                     composite = state.fadeLayer;
-                } else composite = state.lyricsLayer ||= createLayer(cw, ch);
+                } else composite = state.lyricsLayer ||= createLayer(cw, ch, this.hdrActive);
                 const resized = composite.width !== cw || composite.height !== ch;
                 if (resized) {
                     composite.width = cw; composite.height = ch;
@@ -141,14 +230,15 @@ export class VisualizerRenderer {
                 const paddingX = output.paddingX || 0, paddingY = output.paddingY || 0;
                 const bounds = output.bounds || { x: -width / 2 - paddingX, y: -height / 2 - paddingY,
                     w: width + paddingX * 2, h: height + paddingY * 2 };
-                if (state.lyricsMeasurements?.hits?.length) {
+                if (state.lyricsMeasurements?.hits?.length || state.counterBounds) {
                     // Retain the actual source-to-stage geometry, including effects and flips.
                     const originX = fades.length ? item.rect.x * stage.width : 0;
                     const originY = fades.length ? item.rect.y * stage.height : 0;
                     const matrix = new DOMMatrix().translate(originX, originY).multiply(ctx.getTransform())
                         .translate(bounds.x, bounds.y).scale(bounds.w / output.canvas.width, bounds.h / output.canvas.height);
-                    state.lyricsTransform = (output.inputTransform ? matrix.multiply(output.inputTransform) : matrix).inverse();
-                    state.lyricsClipped = Boolean(fades.length || !output.bounds);
+                    state.hitTransform = (output.inputTransform ? matrix.multiply(output.inputTransform) : matrix).inverse();
+                    state.hitClipped = Boolean(fades.length || !output.bounds);
+                    state.hitVisible = output.opacity > 0;
                 }
                 ctx.drawImage(output.canvas, bounds.x, bounds.y, bounds.w, bounds.h);
                 ctx.restore();
@@ -189,6 +279,7 @@ export class VisualizerRenderer {
         }
         for (const [id, state] of this.layers) if (!alive.has(id)) { state.display?.dispose(); this.layers.delete(id); }
         this.effects.prune(alive);
+        if (this.hdrActive) this.hdrOutput.present(stage);
         if (quality === 'auto') {
             this.cost = this.cost * .95 + (performance.now() - start) * .05;
             if (++this.qualityFrames >= 120) {
@@ -201,22 +292,41 @@ export class VisualizerRenderer {
 
     // Returns the playback time of the synced lyric row drawn under a normalized stage point, or null.
     lyricsSeekTime(layout, x, y) {
+        if (this.hitRenderer) return this.hitRenderer.lyricsSeekTime(layout, x, y);
         for (const item of layout.items.toReversed()) {
             const state = item.type === 'lyrics' ? this.layers.get(item.id) : null;
             const hits = state?.lyricsMeasurements?.hits;
-            if (!hits?.length || !state.lyricsTransform) continue;
-            if (state.lyricsClipped && (x < item.rect.x || x > item.rect.x + item.rect.w ||
-                y < item.rect.y || y > item.rect.y + item.rect.h)) continue;
-            const { x: px, y: py } = state.lyricsTransform.transformPoint({ x: x * this.canvas.width, y: y * this.canvas.height });
-            if (!Number.isFinite(px) || !Number.isFinite(py) || px < 0 || px > state.canvas.width || py < 0 || py > state.canvas.height) continue;
-            const hit = hits.find(row => px >= row.left && px <= row.right && py >= row.top && py <= row.bottom);
+            if (!hits?.length) continue;
+            const point = this.hitPoint(state, item, x, y);
+            if (!point) continue;
+            const hit = hits.find(row => point.x >= row.left && point.x <= row.right && point.y >= row.top && point.y <= row.bottom);
             if (hit) return hit.time;
         }
         return null;
     }
 
-    drawItem(state, item, metadata, image, time, editing, lyricFrame) {
+    hitPoint(state, item, x, y) {
+        if (!state?.hitTransform || state.hitVisible === false) return null;
+        if (state.hitClipped && (x < item.rect.x || x > item.rect.x + item.rect.w ||
+            y < item.rect.y || y > item.rect.y + item.rect.h)) return null;
+        const point = state.hitTransform.transformPoint({ x: x * this.canvas.width, y: y * this.canvas.height });
+        return Number.isFinite(point.x) && Number.isFinite(point.y) && point.x >= 0 && point.x <= state.canvas.width &&
+            point.y >= 0 && point.y <= state.canvas.height ? point : null;
+    }
+
+    counterAt(layout, x, y) {
+        if (this.hitRenderer) return this.hitRenderer.counterAt(layout, x, y);
+        for (const item of layout.items.toReversed()) {
+            const state = item.type === 'counter' ? this.layers.get(item.id) : null;
+            const bounds = state?.counterBounds, point = bounds && this.hitPoint(state, item, x, y);
+            if (point && point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom) return item.id;
+        }
+        return null;
+    }
+
+    drawItem(state, item, metadata, image, time, editing, lyricFrame, counterDisplay) {
         const canvas = state.canvas, ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+        if (this.hdrActive) ctx.globalHDRHeadroom = Infinity;
         ctx.clearRect(0, 0, w, h);
         if (item.type === 'background') {
             ctx.fillStyle = item.color; ctx.fillRect(0, 0, w, h);
@@ -235,6 +345,10 @@ export class VisualizerRenderer {
                 : metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
             drawStyledText(ctx, raw, item.style, w, h, this.canvas.width / REFERENCE_WIDTH,
                 item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h));
+        } else if (item.type === 'counter') {
+            if (item.palette.mode === 'gradient') state.counterPaintLayer ||= createLayer(w, h);
+            state.counterBounds = drawCounter(ctx, item, counterDisplay, w, h, this.canvas.width / REFERENCE_WIDTH,
+                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h), state.counterPaintLayer);
         } else if (item.type === 'lyrics') {
             if (item.palette.mode === 'gradient') {
                 state.glyphMask ||= createLayer(w, h);

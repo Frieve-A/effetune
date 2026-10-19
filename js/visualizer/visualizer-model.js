@@ -15,8 +15,8 @@ export const META_TYPES = ['artwork', 'video', 'title', 'album', 'artist'];
 // Picture items show the playing track's artwork or video frames and have no palette.
 export const PICTURE_TYPES = ['artwork', 'video'];
 export const VIDEO_FITS = ['contain', 'cover', 'stretch'];
-export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'rhythm-analyzer'];
-export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'shape'];
+export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'counter', 'rhythm-analyzer'];
+export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'counter', 'shape'];
 export const SHAPES = ['rectangle', 'ellipse', 'triangle', 'line'];
 export const MAX_TEXT_LENGTH = 4096;
 export const MAX_ITEMS = 64;
@@ -52,6 +52,43 @@ export const FONT_FAMILIES = Object.freeze([
     ['Verdana, Geneva, sans-serif', 'Verdana'], ['Georgia, "Times New Roman", serif', 'Georgia'],
     ['"Courier New", Courier, monospace', 'Courier New'], ['cursive', 'Cursive']
 ]);
+export const COUNTER_DIGIT_FONTS = Object.freeze([
+    ['"EffeTune Seven Segment", monospace', 'Seven Segment', 'visualizer.fontSevenSegment'],
+    ['"EffeTune Dot Matrix", monospace', 'Dot Matrix', 'visualizer.fontDotMatrix'],
+    ['"EffeTune Wire Digits", monospace', 'Wire Digits', 'visualizer.fontWireDigits']
+]);
+export const COUNTER_FONT_FAMILIES = Object.freeze([...FONT_FAMILIES, ...COUNTER_DIGIT_FONTS]);
+// Appearance presets leave the Counter's content and formatting choices intact.
+export const COUNTER_APPEARANCES = Object.freeze([
+    ['mechanical', 'Mechanical', { font: 'monospace', color: '#eee7d4', motion: 'tape', fill: '#181818', border: '#656565', shading: true }], // theme-allow: Fixed, user-selectable Counter scene colors.
+    ['led', 'Red LED', { font: COUNTER_DIGIT_FONTS[0][0], color: '#ff3028', fill: '#180403', border: '#54201b', background: 'full', ghost: '#ff3028', glow: .28 }], // theme-allow: Fixed, user-selectable Counter scene colors.
+    ['vfd', 'Blue-green VFD', { font: COUNTER_DIGIT_FONTS[0][0], color: '#80ffe1', fill: '#031b19', border: '#23524b', background: 'full', ghost: '#80ffe1', glow: .22 }], // theme-allow: Fixed, user-selectable Counter scene colors.
+    ['lcd', 'Classic LCD', { font: COUNTER_DIGIT_FONTS[0][0], color: '#263729', fill: '#b2bea0', border: '#59664e', background: 'full', ghost: '#263729' }], // theme-allow: Fixed, user-selectable Counter scene colors.
+    ['dots', 'Dot Matrix', { font: COUNTER_DIGIT_FONTS[1][0], color: '#ffc45b', fill: '#1c1003', border: '#60461d', background: 'full', ghost: '#ffc45b', glow: .12 }], // theme-allow: Fixed, user-selectable Counter scene colors.
+    ['flip', 'Flip', { font: 'monospace', color: '#ffffff', motion: 'flip', fill: '#202124', border: '#55565a', shading: true }], // theme-allow: Fixed, user-selectable Counter scene colors.
+    ['nixie', 'Nixie', { font: COUNTER_DIGIT_FONTS[2][0], color: '#ff9b42', motion: 'crossfade', fill: '#1c0c04', border: '#775036', background: 'all', ghost: '#c57943', glow: .3 }] // theme-allow: Fixed, user-selectable Counter scene colors.
+]);
+
+export function applyCounterAppearance(item, key) {
+    const preset = COUNTER_APPEARANCES.find(([id]) => id === key)?.[2];
+    if (item.type !== 'counter' || !preset) return false;
+    Object.assign(item.params, {
+        counterMotion: preset.motion || 'static', counterDuration: 150,
+        counterBackgroundGlyphs: preset.background || 'none', counterBackgroundOpacity: .05,
+        counterBackgroundColor: preset.ghost || preset.color,
+        counterBoxes: true, counterBoxColor: preset.border, counterBoxWidth: 1,
+        counterBoxFill: preset.fill, counterBoxOpacity: 1, counterBoxRadius: 3,
+        counterWindowShading: !!preset.shading
+    });
+    Object.assign(item.style, { fontFamily: preset.font, bold: false, italic: false,
+        outlineWidth: 0, shadowColor: preset.color, shadowOpacity: preset.glow ? .8 : 0,
+        shadowBlur: preset.glow ? Math.round(6 + preset.glow * 24) : 0,
+        shadowX: 0, shadowY: 0, letterSpacing: 2 });
+    item.palette = itemPalette('counter', { mode: 'solid', color: preset.color,
+        stops: [{ pos: 0, color: preset.color }] });
+    item.effects = item.effects.filter(effect => effect.type !== 'glow');
+    return true;
+}
 export const THEME_COLOR_ROLES = Object.freeze([
     'graph-bg-deep', 'graph-base-soft', 'graph-grid-subtle', 'graph-grid-soft', 'graph-grid-strong',
     'graph-label', 'text-primary', 'graph-trace-tertiary'
@@ -69,6 +106,8 @@ export const EFFECT_CATALOG = Object.freeze({
     glow: { label: 'Glow', defaultAmount: 0.5, allowedOn: ['item'] },
     outline: { label: 'Outline', defaultAmount: 0.5, allowedOn: ['item'] },
     blur: { label: 'Blur', defaultAmount: 0.3, allowedOn: ['item', 'background'] },
+    'color-adjust': { label: 'Color Adjust', defaultAmount: 1, allowedOn: ['item', 'background'] },
+    'color-map': { label: 'Color Map', defaultAmount: 1, allowedOn: ['item', 'background'] },
     trail: { label: 'Trail', defaultAmount: 0.5, allowedOn: ['item'] },
     transform: { label: 'Transform', defaultAmount: 1, allowedOn: ['item', 'background'] },
     'scale-pulse': { label: 'Scale Pulse', defaultAmount: 0.4, allowedOn: ['item'] },
@@ -93,9 +132,23 @@ export const TRANSFORM_PARAMETERS = Object.freeze([
     { key: 'skewY', label: 'Vertical skew (°)', initial: 0, min: -60, max: 60, unit: '°' }
 ]);
 
+export const COLOR_ADJUST_PARAMETERS = Object.freeze([
+    { key: 'brightness', label: 'Brightness', initial: 0, min: -1, max: 1, step: .01, unit: '%', scale: 100 },
+    { key: 'contrast', label: 'Contrast', initial: 1, min: 0, max: 3, step: .01, unit: '%', scale: 100 },
+    { key: 'saturation', label: 'Saturation', initial: 1, min: 0, max: 3, step: .01, unit: '%', scale: 100 },
+    { key: 'hue', label: 'Hue', initial: 0, min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'inputBlack', label: 'Input black', initial: 0, min: 0, max: .99, step: .01, unit: '%', scale: 100, group: 'levels' },
+    { key: 'inputWhite', label: 'Input white', initial: 1, min: .01, max: 1, step: .01, unit: '%', scale: 100, group: 'levels' },
+    { key: 'gamma', label: 'Gamma', initial: 1, min: .1, max: 4, step: .01, group: 'levels' },
+    { key: 'outputBlack', label: 'Output black', initial: 0, min: 0, max: 1, step: .01, unit: '%', scale: 100, group: 'levels' },
+    { key: 'outputWhite', label: 'Output white', initial: 1, min: 0, max: 1, step: .01, unit: '%', scale: 100, group: 'levels' },
+    { key: 'temperature', label: 'Temperature', initial: 0, min: -1, max: 1, step: .01, unit: '%', scale: 100, group: 'whiteBalance' },
+    { key: 'tint', label: 'Tint', initial: 0, min: -1, max: 1, step: .01, unit: '%', scale: 100, group: 'whiteBalance' }
+]);
+
 const CHANNELS = new Set([null, 'L', 'R', ...Array.from({ length: 7 }, (_, i) => `${2 * i + 3}${2 * i + 4}`),
     ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)]);
-const MOD_SOURCES = ['none', 'time', 'level', 'bass'];
+export const MOD_SOURCES = ['none', 'time', 'level', 'bass', 'mid', 'treble', 'beat', 'width'];
 const DEFAULT_PALETTE = { stops: [{ pos: 0, color: '#40dfff' }], motion: { mode: 'none', speed: 0.25 } }; // theme-allow: Editable scene palette default.
 export const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const choice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
@@ -147,10 +200,18 @@ export function normalizePalette(value, maxStops = 8) {
 
 export function normalizeEffect(value, target = 'item') {
     if (!isRecord(value) || !EFFECT_CATALOG[value.type]?.allowedOn.includes(target)) return null;
+    const adjustment = value.type === 'color-adjust' ? Object.fromEntries(COLOR_ADJUST_PARAMETERS.map(({ key, initial, min, max }) =>
+        [key, number(value[key], initial, min, max)])) : null;
+    if (adjustment) adjustment.inputWhite = Math.max(adjustment.inputWhite, Number((adjustment.inputBlack + .01).toFixed(12)));
     return {
         type: value.type,
         enabled: value.enabled !== false,
         amount: number(value.amount, EFFECT_CATALOG[value.type].defaultAmount, 0, 1),
+        ...(adjustment ? { ...adjustment, invert: value.invert === true } : {}),
+        ...(value.type === 'color-map' ? {
+            steps: value.steps === 0 || !Number.isFinite(value.steps) ? 0 : Math.round(number(value.steps, 0, 2, 16)),
+            threshold: number(value.threshold, .5, 0, 1)
+        } : {}),
         ...(value.type === 'edge-fade' ? {
             shape: choice(value.shape, ['rectangle', 'circle'], 'rectangle'),
             top: number(value.top, 0.1, 0, 1),
@@ -179,7 +240,9 @@ export function normalizeEffect(value, target = 'item') {
             // Positive margins extend the plate beyond the item; negative ones shrink it inside.
             margin: Math.round(number(value.margin, 0, -200, 200))
         } : {}),
-        palette: normalizePalette(value.palette),
+        palette: normalizePalette(value.palette ?? (value.type === 'color-map' ? {
+            stops: [{ pos: 0, color: '#000000' }, { pos: 1, color: '#ffffff' }] // theme-allow: Editable grayscale Color Map default.
+        } : undefined)),
         mod: {
             source: choice(value.mod?.source, MOD_SOURCES, 'none'),
             depth: number(value.mod?.depth, 0, 0, 1),
@@ -229,10 +292,10 @@ function normalizeStyle(type, input) {
     const style = isRecord(input) ? input : {};
     if (TEXT_STYLE_TYPES.includes(type)) return {
         fontSize: number(style.fontSize, type === 'rhythm-analyzer' ? 96 : 36, 8, 200),
-        fontFamily: choice(style.fontFamily, FONT_FAMILIES.map(([family]) => family), 'sans-serif'),
+        fontFamily: choice(style.fontFamily, (type === 'counter' ? COUNTER_FONT_FAMILIES : FONT_FAMILIES).map(([family]) => family), type === 'counter' ? 'monospace' : 'sans-serif'),
         bold: style.bold === true,
         italic: style.italic === true,
-        align: choice(style.align, ['left', 'center', 'right'], type === 'rhythm-analyzer' || type === 'lyrics' ? 'center' : 'left'),
+        align: choice(style.align, ['left', 'center', 'right'], ['rhythm-analyzer', 'lyrics', 'counter'].includes(type) ? 'center' : 'left'),
         ...(type === 'rhythm-analyzer' ? { outlineWidth: 2,
             ...Object.fromEntries(Object.entries(RHYTHM_BEAT_STYLE_RULES).map(([key, rule]) => [key, rule(style[key])])) } : {}),
         ...Object.fromEntries(Object.entries(TEXT_DECORATION_RULES)
@@ -256,6 +319,37 @@ function normalizeStyle(type, input) {
 }
 
 export function normalizeParams(type, input) {
+    if (type === 'counter') {
+        const params = isRecord(input) ? input : {};
+        const separator = (key, fallback) => typeof params[key] === 'string' ? params[key].replace(/[\r\n\t]/g, '').slice(0, 8) : fallback;
+        return {
+            counterIndex: params.counterIndex === true,
+            counterHours: params.counterHours !== false,
+            counterMinutes: params.counterMinutes !== false,
+            counterSeconds: params.counterSeconds !== false,
+            counterFraction: params.counterFraction !== false,
+            counterSubsecond: choice(params.counterSubsecond, ['milliseconds', 'frames'], 'milliseconds'),
+            counterFps: Math.round(number(params.counterFps, 30, 1, 120)),
+            counterDigits: Math.round(number(params.counterDigits, 3, 1, 4)),
+            counterTimeSeparator: separator('counterTimeSeparator', ':'),
+            counterFractionSeparator: separator('counterFractionSeparator', '.'),
+            counterIndexSeparator: separator('counterIndexSeparator', ' '),
+            counterMotion: choice(params.counterMotion, ['static', 'tape', 'flip', 'crossfade'], 'static'),
+            counterDuration: number(params.counterDuration, 150, 0, 1000),
+            counterWholeDigits: Math.round(number(params.counterWholeDigits, 2, 1, 8)),
+            counterZeroPad: params.counterZeroPad !== false,
+            counterBackgroundGlyphs: choice(params.counterBackgroundGlyphs, ['none', 'full', 'all'], 'none'),
+            counterBackgroundOpacity: number(params.counterBackgroundOpacity, .05, 0, 1),
+            counterBackgroundColor: color(params.counterBackgroundColor, '#808080'), // theme-allow: Editable digit backdrop.
+            counterBoxes: params.counterBoxes === true,
+            counterBoxColor: color(params.counterBoxColor, '#808080'), // theme-allow: Editable digit border.
+            counterBoxWidth: number(params.counterBoxWidth, 1, 0, 10),
+            counterBoxFill: color(params.counterBoxFill, '#000000'), // theme-allow: Editable digit window.
+            counterBoxOpacity: number(params.counterBoxOpacity, 0, 0, 1),
+            counterBoxRadius: number(params.counterBoxRadius, 0, 0, 20),
+            counterWindowShading: params.counterWindowShading === true
+        };
+    }
     if (type === 'lyrics') {
         const params = isRecord(input) ? input : {};
         return {

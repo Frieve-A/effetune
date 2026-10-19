@@ -4,10 +4,11 @@ const glowRadius = amount => 2 + clamp(amount) * 12;
 const blurSigma = amount => 1 + clamp(amount) * 12;
 const GRADIENT_STEPS = 24;
 
-export function createLayer(width, height) {
+export function createLayer(width, height, hdr = false) {
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(width));
     canvas.height = Math.max(1, Math.round(height));
+    if (hdr) canvas.getContext('2d', { colorSpace: 'display-p3', colorType: 'float16' });
     return canvas;
 }
 
@@ -165,18 +166,89 @@ export function animatedEffects(effects = []) {
         effect.palette.motion.mode !== 'none' || ['trail', 'trail-feedback', 'particles', 'shake', 'ken-burns'].includes(effect.type)));
 }
 
-// Layer effects share reusable, reduced-resolution canvases. No pixel reads are
-// needed, so artwork served from another origin can use the same path.
+const isColorEffect = effect => effect.type === 'color-adjust' || effect.type === 'color-map';
+
+function componentTransfer(type, attributes) {
+    return `<feComponentTransfer>${['R', 'G', 'B'].map((channel, index) =>
+        `<feFunc${channel} type="${type}" ${attributes[index]}/>`).join('')}</feComponentTransfer>`;
+}
+
+function colorAdjustFilter(effect) {
+    const parts = [];
+    const linear = (slope, intercept) => componentTransfer('linear',
+        [0, 1, 2].map(index => `slope="${slope}" intercept="${Array.isArray(intercept) ? intercept[index] : intercept}"`));
+    if (effect.inputBlack !== 0 || effect.inputWhite !== 1) {
+        const range = effect.inputWhite - effect.inputBlack;
+        parts.push(linear(1 / range, -effect.inputBlack / range));
+    }
+    if (effect.gamma !== 1) parts.push(componentTransfer('gamma',
+        Array(3).fill(`amplitude="1" exponent="${1 / effect.gamma}" offset="0"`)));
+    if (effect.brightness !== 0 || effect.contrast !== 1)
+        parts.push(linear(effect.contrast, (effect.brightness - .5) * effect.contrast + .5));
+    if (effect.saturation !== 1) parts.push(`<feColorMatrix type="saturate" values="${effect.saturation}"/>`);
+    if (effect.hue !== 0) parts.push(`<feColorMatrix type="hueRotate" values="${effect.hue}"/>`);
+    if (effect.temperature !== 0 || effect.tint !== 0) parts.push(linear(1,
+        [(effect.temperature + effect.tint) * .25, -effect.tint * .25, (effect.tint - effect.temperature) * .25]));
+    if (effect.outputBlack !== 0 || effect.outputWhite !== 1)
+        parts.push(linear(effect.outputWhite - effect.outputBlack, effect.outputBlack));
+    if (effect.invert) parts.push(linear(-1, 1));
+    return parts.join('');
+}
+
+function colorMapFilter(effect, time) {
+    // Luminance and palette interpolation use sRGB, matching the existing palette.
+    const filter = '<feColorMatrix type="matrix" values=".2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 0 0 0 1 0"/>';
+    const count = effect.steps === 2 ? 256 : effect.steps || 256;
+    // Discrete Scroll levels occupy distinct positions in the repeating [0, 1) palette.
+    const paletteRange = effect.steps && effect.palette.motion.mode === 'scroll' ? (effect.steps - 1) / effect.steps : 1;
+    const colors = Array.from({ length: count }, (_, index) => {
+        const position = index / (count - 1);
+        const level = effect.steps === 2 ? Number(position >= effect.threshold) : position;
+        return paletteColor(effect.palette, level * paletteRange, time)
+            .match(/[\d.]+/g).map(Number);
+    });
+    return filter + componentTransfer(effect.steps ? 'discrete' : 'table', [0, 1, 2].map(channel =>
+        `tableValues="${colors.map(color => (color[channel] / 255).toFixed(6)).join(' ')}"`));
+}
+
+function colorFilter(state, index, effect, time, amount) {
+    const key = JSON.stringify(effect.type === 'color-adjust'
+        ? [effect.brightness, effect.contrast, effect.saturation, effect.hue, effect.gamma,
+            effect.inputBlack, effect.inputWhite, effect.outputBlack, effect.outputWhite,
+            effect.temperature, effect.tint, effect.invert]
+        : [effect.steps, effect.threshold, effect.palette, effect.palette.motion.mode === 'none' ? 0 : time]);
+    let cached = state.colorFilters[index];
+    if (!cached || cached.key !== key) {
+        const body = effect.type === 'color-adjust' ? colorAdjustFilter(effect) : colorMapFilter(effect, time);
+        cached = { key, body };
+        state.colorFilters[index] = cached;
+    }
+    if (cached.amount !== amount) {
+        // Mix premultiplied colors inside the filter, preserving the source alpha
+        // without the rounding or opacity changes of separate canvas draws.
+        const mix = amount < 1 ? `<feComposite in2="SourceGraphic" operator="arithmetic" k2="${amount}" k3="${1 - amount}"/>` : '';
+        // A data URL needs no document nodes or asynchronous image loading. Native
+        // filters also accept tainted artwork, unlike reading or uploading pixels.
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="color" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">${cached.body}${mix}</filter></svg>`;
+        cached.filter = cached.body ? `url("data:image/svg+xml,${encodeURIComponent(svg)}#color")` : 'none';
+        cached.amount = amount;
+    }
+    return cached.filter;
+}
+
+// Spatial effects share reduced-resolution canvases; color-only chains retain
+// source detail. Neither path reads pixels, including for cross-origin artwork.
 export class VisualizerEffects {
-    constructor() { this.states = new Map(); }
+    constructor(hdrOutput = null) { this.states = new Map(); this.hdrOutput = hdrOutput; }
     prune(ids) { for (const id of this.states.keys()) if (!ids.has(id)) this.states.delete(id); }
     // `scale` is the output width over the 1280-wide reference, so pixel radii keep
     // the same proportion to the scene at any output resolution.
     apply(id, input, effects, time, modulators, quality = 0, changed = true, flipX = false, flipY = false, scale = 1, scene = null) {
-        const factor = quality > 0 ? .35 : .65;
+        const active = effects.filter(isLayerEffect);
+        const colorOnly = active.some(isColorEffect) && active.every(effect => isColorEffect(effect) || effect.type === 'opacity');
+        const factor = colorOnly ? 1 : quality > 0 ? .35 : .65;
         const width = Math.max(1, Math.round(input.width * factor));
         const height = Math.max(1, Math.round(input.height * factor));
-        const active = effects.filter(isLayerEffect);
         const affine = active.some(effect => effect.type === 'transform');
         const padding = active.reduce((max, effect) => effect.type === 'glow'
             ? Math.max(max, Math.ceil(glowRadius(effect.amount + effect.mod.depth) * scale * 3)) : max, 0);
@@ -190,7 +262,8 @@ export class VisualizerEffects {
         const inputX = centerX - width / 2, inputY = centerY - height / 2;
         let state = this.states.get(id);
         if (!state || state.a.width !== workWidth || state.a.height !== workHeight || state.padding !== padding) {
-            state = { a: createLayer(workWidth, workHeight), b: createLayer(workWidth, workHeight), small: createLayer(1, 1), edge: createLayer(1, 1), history: new Map(), particles: [], lastTime: time, bass: 0, padding };
+            const layer = (w, h) => createLayer(w, h, Boolean(this.hdrOutput));
+            state = { a: layer(workWidth, workHeight), b: layer(workWidth, workHeight), small: layer(1, 1), edge: layer(1, 1), history: new Map(), colorFilters: [], particles: [], lastTime: time, bass: 0, padding };
             this.states.set(id, state);
             changed = true;
         }
@@ -252,16 +325,29 @@ export class VisualizerEffects {
         }
         const dt = Math.min(.1, Math.max(0, time - state.lastTime));
         state.lastTime = time;
+        state.colorFilters.length = active.length;
         for (let index = 0; index < active.length; index++) {
             const effect = active[index];
             if (effect.type === 'transform' || effect.type === 'scale-pulse' || effect.type === 'shake' || effect.type === 'ken-burns') continue;
             const amount = effectAmount(effect, time, modulators);
             if (effect.type === 'opacity') { transform.opacity *= amount; continue; }
+            if (isColorEffect(effect) && amount <= 0) continue;
             ctx = next.getContext('2d');
             ctx.clearRect(0, 0, workWidth, workHeight);
             ctx.save();
             const color = paletteColor(effect.palette, .5, time);
-            if (effect.type === 'glow') {
+            if (isColorEffect(effect)) {
+                if (this.hdrOutput) {
+                    const count = effect.steps || 256;
+                    const range = effect.steps && effect.palette.motion.mode === 'scroll' ? (count - 1) / count : 1;
+                    const palette = effect.type === 'color-map' ? Array.from({ length: count }, (_, i) =>
+                        paletteColor(effect.palette, i / (count - 1) * range, time).match(/[\d.]+/g).map(value => Number(value) / 255)) : null;
+                    this.hdrOutput.color(ctx, current, effect, amount, palette);
+                } else {
+                    ctx.filter = colorFilter(state, index, effect, time, amount);
+                    ctx.drawImage(current, 0, 0);
+                }
+            } else if (effect.type === 'glow') {
                 const small = state.small;
                 small.width = Math.max(1, Math.round(workWidth / (2 + amount * 24)));
                 small.height = Math.max(1, Math.round(workHeight / (2 + amount * 24)));
@@ -279,9 +365,12 @@ export class VisualizerEffects {
                 ctx.globalCompositeOperation = 'source-in';
                 ctx.fillStyle = color;
                 ctx.fillRect(0, 0, workWidth, workHeight);
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.drawImage(small, 0, 0, workWidth, workHeight);
-                ctx.drawImage(current, 0, 0);
+                if (this.hdrOutput) this.hdrOutput.glow(ctx, small, current);
+                else {
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.drawImage(small, 0, 0, workWidth, workHeight);
+                    ctx.drawImage(current, 0, 0);
+                }
             } else if (effect.type === 'blur') {
                 // The canvas Gaussian already rescales internally for large radii, which is
                 // cheaper than mipmapped downscaling here. The edge-extended margin keeps
@@ -314,7 +403,7 @@ export class VisualizerEffects {
                 ctx.drawImage(current, 0, 0);
             } else if (effect.type === 'trail' || effect.type === 'trail-feedback') {
                 let history = state.history.get(index);
-                if (!history) { history = createLayer(workWidth, workHeight); state.history.set(index, history); }
+                if (!history) { history = createLayer(workWidth, workHeight, Boolean(this.hdrOutput)); state.history.set(index, history); }
                 ctx.globalAlpha = Math.pow(.15 + amount * .84, dt * 60);
                 if (effect.type === 'trail-feedback') {
                     ctx.translate(centerX + amount * (effect.flowX ?? 0) * width / 100 * (flipX ? -1 : 1),

@@ -8,7 +8,7 @@ const css = read('../../css/effetune-theme.css') +
     read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '') +
     read('../../css/effetune-mobile.css') + read('../../css/effetune-library.css');
 const viewSource = read('../../js/ui/audio-player/playback-region.js').replace(/^export /gm, '') +
-    read('../../js/visualizer/visualizer-video.js').replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '') +
+    read('../../js/ui/audio-player/synchronized-video.js').replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '') +
     read('../../js/visualizer/visualizer-history.js').replace(/^export /gm, '') +
     read('../../js/visualizer/visualizer-view.js')
     .replace(/^import .*;\r?\n/gm, '')
@@ -23,6 +23,91 @@ const editorSource = read('../../js/ui/range-fill.js').replace(/^export /gm, '')
     .replace(/^import .*;\r?\n/gm, '')
     .replace('export class VisualizerEditor', 'window.VisualizerEditor = class VisualizerEditor');
 
+test('Color effect controls fold details, edit levels and mapping, and fit desktop and mobile inspectors', async () => {
+    const locales = Object.fromEntries(['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'].map(locale => [locale,
+        JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer layout-desktop"><div class="main-container"></div></body>');
+        await page.addStyleTag({ content: css + '* { transition: none !important; }' });
+        await page.addScriptTag({ content: `
+            window.VisualizerPresetStore = class { saveCurrent() {} };
+            window.VisualizerSources = class { setLayout() {} };
+            window.VisualizerRenderer = class {};
+        ` });
+        for (const source of [modelSource, palettePresetsSource, editorSource, viewSource]) await page.addScriptTag({ content: source });
+        await page.evaluate(locales => {
+            Object.defineProperty(window, 'localStorage', { configurable: true, value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            VisualizerView.prototype.initialize = async () => {};
+            window.manager = { locale: 'en', t(key) { return locales[this.locale][key] || key; }, audioManager: {} };
+            window.view = new VisualizerView(manager); window.editor = view.editor;
+            const item = createItem('shape', 'color-controls');
+            item.effects = ['color-adjust', 'color-map'].map(type => normalizeEffect({ type }));
+            view.setLayout({ ...createDefaultLayout(), items: [item] });
+            editor.selection = new Set([item.id]); view.setEditing(true);
+            window.effectBlock = name => [...editor.root.querySelectorAll('section')].find(section =>
+                section.querySelector(':scope > .visualizer-effect-heading .visualizer-section-title')?.textContent === name);
+            window.colorField = (name, label) => [...effectBlock(name).querySelectorAll('.visualizer-field')]
+                .find(row => row.querySelector('label')?.textContent.replace(/\([^)]*\):$|:$/g, '') === label)?.querySelector('input, select');
+            window.editColor = (name, label, value) => {
+                const control = colorField(name, label); control.value = value;
+                control.dispatchEvent(new Event(control.type === 'range' ? 'input' : 'change'));
+            };
+        }, locales);
+        assert.deepEqual(await page.evaluate(() => ({
+            folded: !editor.root.querySelector('details').open,
+            primary: [...effectBlock('Color Adjust').querySelectorAll(':scope > .visualizer-field label')].slice(1, 5).map(label => label.textContent),
+            thresholdDisabled: colorField('Color Map', 'Threshold').disabled
+        })), { folded: true, primary: ['Brightness(%):', 'Contrast(%):', 'Saturation(%):', 'Hue(°):'], thresholdDisabled: true });
+        await page.getByText('Advanced', { exact: true }).click();
+        const changed = await page.evaluate(() => {
+            editColor('Color Adjust', 'Input white', .2);
+            editColor('Color Adjust', 'Input black', .4);
+            const first = [view.layout.items[0].effects[0].inputBlack, view.layout.items[0].effects[0].inputWhite,
+                colorField('Color Adjust', 'Input white').value];
+            editColor('Color Adjust', 'Input white', .1);
+            editColor('Color Map', 'Steps', '2');
+            const thresholdEnabled = !colorField('Color Map', 'Threshold').disabled;
+            editColor('Color Map', 'Threshold', .7);
+            const reverse = [...effectBlock('Color Map').querySelectorAll('button')].find(button => button.textContent === 'Reverse gradient');
+            reverse.click();
+            return { first, final: [view.layout.items[0].effects[0].inputBlack, view.layout.items[0].effects[0].inputWhite],
+                thresholdEnabled, threshold: view.layout.items[0].effects[1].threshold,
+                reversed: view.layout.items[0].effects[1].palette.stops.map(stop => stop.color),
+                expanded: editor.root.querySelector('details').open };
+        });
+        assert.deepEqual(changed, { first: [.4, .41, '0.41'], final: [.09, .1], thresholdEnabled: true,
+            threshold: .7, reversed: ['#ffffff', '#000000'], expanded: true });
+        for (const width of [1280, 390]) {
+            await page.setViewportSize({ width, height: 900 });
+            for (const locale of Object.keys(locales)) {
+                const violations = await page.evaluate(({ width, locale }) => {
+                    document.body.className = `view-visualizer layout-${width < 1024 ? 'mobile' : 'desktop'}`;
+                    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+                    manager.locale = locale; view.updateUITexts();
+                    return ['Color Adjust', 'Color Map'].flatMap(name => [...effectBlock(name).querySelectorAll('.visualizer-field')])
+                        .filter(row => row.getBoundingClientRect().height > 0 && row.scrollWidth > row.clientWidth + 1)
+                        .map(row => row.textContent);
+                }, { width, locale });
+                assert.deepEqual(violations, [], `${locale} at ${width}px`);
+            }
+        }
+        assert.deepEqual(await page.evaluate(() => {
+            manager.locale = 'en'; view.updateUITexts();
+            editColor('Color Map', 'Steps', '3');
+            const thresholdDisabled = colorField('Color Map', 'Threshold').disabled;
+            effectBlock('Color Map').querySelector('.toggle-button').click();
+            const controls = [...effectBlock('Color Map').querySelectorAll('input, select')];
+            return { thresholdDisabled, allDisabled: controls.every(control => control.disabled) };
+        }), { thresholdDisabled: true, allDisabled: true });
+    } finally {
+        await browser.close();
+    }
+});
+
 test('Visualizer language updates translate the toolbar and open editor while preserving the layout and editing state', async () => {
     const locales = Object.fromEntries(['en', 'ja'].map(locale => [locale,
         JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
@@ -34,17 +119,25 @@ test('Visualizer language updates translate the toolbar and open editor while pr
         await page.addScriptTag({ content: `
             window.VisualizerPresetStore = class { saveCurrent() {} };
             window.VisualizerSources = class { setLayout() {} };
-            window.VisualizerRenderer = class {};
+            window.VisualizerRenderer = class { setHdrEnabled(value) { this.hdr = value; } };
         ` });
         for (const source of [modelSource, palettePresetsSource, editorSource, viewSource]) await page.addScriptTag({ content: source });
         const result = await page.evaluate(locales => {
+            const preferences = new Map();
             Object.defineProperty(window, 'localStorage', { configurable: true,
-                value: { getItem: () => null, setItem() {} } });
+                value: { getItem: key => preferences.get(key) ?? null, setItem: (key, value) => preferences.set(key, value) } });
             let nextId = 0;
             Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
             VisualizerView.prototype.initialize = async () => {};
             const manager = { locale: 'en', t(key) { return locales[this.locale][key] || key; }, audioManager: {} };
             const view = new VisualizerView(manager), editor = view.editor;
+            const initiallyOff = !view.hdr;
+            view.feed = { renderer: new VisualizerRenderer() };
+            view.setHdrEnabled(true);
+            const sharedHdr = view.renderer.hdr && view.feed.renderer.hdr;
+            preferences.set('effetune_visualizer_hdr', 'true');
+            const restoredView = new VisualizerView(manager), restoredHdr = restoredView.hdr;
+            restoredView.root.remove();
             view.setLayout({ ...createDefaultLayout(), items: [createItem('spectrum', 'spectrum')] });
             view.layout.items[0].params.sc = 'linear'; view.changed();
             editor.selection.add('spectrum'); view.setEditing(true);
@@ -55,7 +148,7 @@ test('Visualizer language updates translate the toolbar and open editor while pr
             const state = () => JSON.stringify({ layout: view.layout, history: view.history.entries,
                 historyIndex: view.history.index, selection: [...editor.selection], open: editor.open,
                 zoom: editor.zoom, pan: [editor.panX, editor.panY], quality: view.quality,
-                qualityValue: quality.value, undoDisabled: view.undoButton.disabled });
+                qualityValue: quality.value, hdr: view.hdr, undoDisabled: view.undoButton.disabled });
             const before = state(), updates = [];
             for (const locale of ['ja', 'en']) {
                 manager.locale = locale;
@@ -65,6 +158,7 @@ test('Visualizer language updates translate the toolbar and open editor while pr
                     undo: view.undoButton.title, copy: view.copyButton.getAttribute('aria-label'),
                     quality: view.qualityLabel.querySelector('span').textContent,
                     options: [...quality.options].map(option => option.textContent),
+                    hdrControlAbsent: !view.root.querySelector('.visualizer-hdr-label, .visualizer-hdr'),
                     navigation: editor.navigationContent.querySelector('h3').textContent,
                     inspector: editor.root.querySelector('h3').textContent,
                     scaleLabel: [...editor.root.querySelectorAll('label')].some(label => label.textContent === locales[locale]['visualizer.param.sc']),
@@ -77,8 +171,15 @@ test('Visualizer language updates translate the toolbar and open editor while pr
             view.setExpanded(true); manager.locale = 'ja'; view.updateUITexts();
             const restore = [view.expandButton.title, view.expandButton.getAttribute('aria-label')];
             view.setExpanded(false); view.setEditing(true);
-            return { before, updates, restore, reopened: editor.root.querySelector('h3').textContent };
+            view.setHdrEnabled(false);
+            return { before, updates, restore, reopened: editor.root.querySelector('h3').textContent,
+                initiallyOff, sharedHdr, restoredHdr,
+                disabled: !view.renderer.hdr && !view.feed.renderer.hdr };
         }, locales);
+        assert.equal(result.initiallyOff, true);
+        assert.equal(result.sharedHdr, true);
+        assert.equal(result.restoredHdr, true);
+        assert.equal(result.disabled, true);
         for (const update of result.updates) {
             const t = key => locales[update.locale][key];
             assert.equal(update.state, result.before);
@@ -87,6 +188,7 @@ test('Visualizer language updates translate the toolbar and open editor while pr
             assert.equal(update.copy, t('visualizer.copy'));
             assert.equal(update.quality, t('visualizer.quality'));
             assert.deepEqual(update.options, ['auto', 'high', 'low'].map(value => t(`visualizer.quality.${value}`)));
+            assert.equal(update.hdrControlAbsent, true);
             assert.equal(update.navigation, t('visualizer.layout'));
             assert.equal(update.inspector, t('visualizer.properties'));
             assert.equal(update.scaleLabel, true);
@@ -836,10 +938,10 @@ test('Visualizer fills the available width on first display and after leaving ex
             const qualityLabel = document.querySelector('.visualizer-quality-label');
             const toolbar = document.querySelector('.visualizer-toolbar');
             const view = Object.assign(Object.create(window.VisualizerView.prototype), {
-                visible: true, layout: { aspect: '16:9' }, root, toolbar, qualityLabel, stageHost, stage,
+                visible: true, layout: { aspect: '16:9', items: [] }, root, toolbar, qualityLabel, stageHost, stage,
                 canvas: stage.querySelector('canvas'), status: {},
                 renderer: { quality: 0, draw() {} }, sources: { getStatus: () => 'ready' },
-                video: new VisualizerVideo({}),
+                video: new SynchronizedVideo(),
                 uiManager: { t: key => key }, editor: { open: false, navigation, navigationContent: navigation.firstElementChild,
                     setOpen(open) { this.open = open; navigation.hidden = !open; inspector.hidden = !open; root.classList.toggle('is-editing', open); } },
                 editButton: { setAttribute() {} }, expandButton: { setAttribute() {} }, showControls() {}
@@ -984,7 +1086,7 @@ test('Mobile Visualizer Edit fits the artboard and keeps a page scroll lane outs
             const view = Object.assign(Object.create(window.VisualizerView.prototype), {
                 visible: true, layout: { ...createDefaultLayout(), aspect: '9:16' }, root, stageHost: host, stage, canvas,
                 status: {}, renderer: { quality: 0, draw() {} }, sources: { getStatus: () => 'ready' },
-                video: new VisualizerVideo({}),
+                video: new SynchronizedVideo(),
                 uiManager: { mobileNav: { nav: document.querySelector('.mobile-bottom-nav') } },
                 updateEditButtons() {}, t: (_, fallback) => fallback, metadata: () => null, commitPending() {}
             });
@@ -1082,7 +1184,7 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
             layout.items[0].params.showAxes = true;
             layout.items.push(window.createItem('artwork'));
             const view = Object.assign(Object.create(window.VisualizerView.prototype), { root, stage, layout, updateEditButtons() {},
-                video: new VisualizerVideo({}),
+                video: new SynchronizedVideo(),
                 t: (key, fallback) => ({ 'visualizer.type.spectrum': 'Spectrum',
                     'visualizer.gradient': 'グラデーション', 'visualizer.apply': '適用',
                     'visualizer.effect': '演出', 'visualizer.add': '追加' })[key] || fallback, changes: 0,
@@ -1451,8 +1553,8 @@ test('Visualizer editor uses unboxed settings sections and pipeline parameter ro
                 lowSlider.min === '21' && lowSlider.max === '108' && lowSlider.step === '1' &&
                 lowRow.querySelector('input[type=number]').title === 'E1' &&
                 highRow.querySelector('input[type=number]').title === 'G6' &&
-                lowRow.getBoundingClientRect().height === 26 &&
-                highRow.getBoundingClientRect().top - lowRow.getBoundingClientRect().top === 30;
+                lowRow.getBoundingClientRect().height >= 26 &&
+                highRow.getBoundingClientRect().top - lowRow.getBoundingClientRect().bottom === 4;
             lowSlider.value = '100'; lowSlider.dispatchEvent(new Event('input', { bubbles: true }));
             const noteRangeUp = notes.params.mn === 100 && notes.params.mx === 100 &&
                 lowRow.querySelector('input[type=number]').title === 'E7' &&
@@ -2079,7 +2181,7 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
                 invalidUnapplied, clamped, restored, initialDisabled, enabled, disabled, noteRange, peerRestored, bpmRange, mobile };
         });
         assert.deepEqual(result.violations, []);
-        assert.equal(Object.keys(result.counts).length, 19);
+        assert.equal(Object.keys(result.counts).length, 20);
         assert.ok(Object.values(result.counts).every(count => count > 0));
         assert.deepEqual(result.typing, [.33, '33', 0]);
         assert.deepEqual(result.committed, [1, '33%']);
@@ -2214,6 +2316,116 @@ test('Visualizer number edits commit one canonical step value after native blur,
             view.history.entries.slice(beforeHistory - 1).map(entry => JSON.parse(entry.json).graphScale)]), [3, '3', [1, 3]]);
         await page.evaluate(() => { keypad.dispose(); view.stepHistory('undo'); });
         assert.equal(await page.evaluate(() => view.layout.graphScale), 1);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('Counter inspector groups remain usable with wrapped labels in every locale and layout', async () => {
+    const locales = Object.fromEntries(['en', 'ja', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh', 'ar'].map(locale => [locale,
+        JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<!doctype html><body class="view-visualizer layout-desktop"><div class="main-container"></div></body>');
+        await page.addStyleTag({ content: css });
+        // Measure settled responsive geometry rather than the width transition between layouts.
+        await page.addStyleTag({ content: '* { transition: none !important; }' });
+        await page.addScriptTag({ content: `
+            window.VisualizerPresetStore = class { saveCurrent() {} };
+            window.VisualizerSources = class { setLayout() {} };
+            window.VisualizerRenderer = class {};
+        ` });
+        for (const source of [modelSource, palettePresetsSource, editorSource, viewSource]) await page.addScriptTag({ content: source });
+        await page.evaluate(locales => {
+            Object.defineProperty(window, 'localStorage', { configurable: true,
+                value: { getItem: () => null, setItem() {} } });
+            let nextId = 0;
+            Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => String(++nextId) });
+            VisualizerView.prototype.initialize = async () => {};
+            window.manager = { locale: 'en', t(key) { return locales[this.locale][key] || key; }, audioManager: {} };
+            window.view = new VisualizerView(manager); window.editor = view.editor;
+            const item = createItem('counter');
+            view.setLayout({ ...createDefaultLayout(), items: [item] });
+            editor.selection = new Set([item.id]); view.setEditing(true);
+        }, locales);
+        let wrappedLabels = 0;
+        for (const width of [1280, 1024, 390, 320]) {
+            await page.setViewportSize({ width, height: 900 });
+            for (const locale of Object.keys(locales)) {
+                const result = await page.evaluate(({ width, locale }) => {
+                    document.body.className = `view-visualizer layout-${width < 1024 ? 'mobile' : 'desktop'}`;
+                    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+                    manager.locale = locale; view.updateUITexts();
+                    const violations = [], rows = [...editor.root.querySelectorAll('.visualizer-field')];
+                    let wrapped = 0;
+                    for (const row of rows) {
+                        const label = row.querySelector(':scope > label');
+                        if (!label) continue;
+                        const bounds = row.getBoundingClientRect(), labelBounds = label.getBoundingClientRect();
+                        // A fixed-height label can conceal overflowing glyphs in its element bounds.
+                        const range = document.createRange(); range.selectNodeContents(label);
+                        const text = range.getBoundingClientRect();
+                        if (range.getClientRects().length > 1) wrapped++;
+                        if (text.top < bounds.top - 1 || text.bottom > bounds.bottom + 1 ||
+                            text.left < labelBounds.left - 1 || text.right > labelBounds.right + 1 ||
+                            row.scrollWidth > row.clientWidth + 1) violations.push(label.textContent);
+                        for (const control of row.querySelectorAll(':scope > input, :scope > select')) {
+                            const box = control.getBoundingClientRect();
+                            if (box.left < bounds.left - 1 || box.right > bounds.right + 1 || box.width <= 0 ||
+                                box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1) violations.push(`${label.textContent} control`);
+                            if (box.left < text.right && box.right > text.left && box.top < text.bottom && box.bottom > text.top) {
+                                violations.push(`${label.textContent} overlaps control`);
+                            }
+                        }
+                    }
+                    const groups = ['display', 'separators', 'transition', 'background', 'windows', 'text'].map(key => {
+                        const heading = [...editor.root.querySelectorAll('.visualizer-section-title')]
+                            .find(element => element.textContent === manager.t(`visualizer.counterGroup.${key}`));
+                        return heading?.parentElement;
+                    });
+                    const groupedControls = ['visualizer.param.counterWholeDigits', 'visualizer.param.counterTimeSeparator',
+                        'visualizer.param.counterDuration', 'visualizer.param.counterBackgroundOpacity',
+                        'visualizer.param.counterBoxOpacity', 'visualizer.style.fontFamily'].map((key, index) =>
+                        Boolean(groups[index] && [...groups[index].querySelectorAll('.visualizer-field')]
+                            .some(row => visualizerFieldLabel(row) === manager.t(key))));
+                    return { violations, wrapped, groupedControls };
+                }, { width, locale });
+                assert.deepEqual(result.violations, [], `${locale} at ${width}px`);
+                assert.ok(result.groupedControls.every(Boolean), `${locale}: controls retain their group context`);
+                wrappedLabels += result.wrapped;
+            }
+        }
+        assert.ok(wrappedLabels > 0, 'The regression exercises actual wrapped translations');
+        const edited = await page.evaluate(() => {
+            manager.locale = 'en'; view.updateUITexts();
+            const field = (group, key) => {
+                const heading = [...editor.root.querySelectorAll('.visualizer-section-title')]
+                    .find(element => element.textContent === manager.t(`visualizer.counterGroup.${group}`));
+                return [...heading.parentElement.querySelectorAll('.visualizer-field')]
+                    .find(row => visualizerFieldLabel(row) === manager.t(`visualizer.param.${key}`));
+            };
+            const change = (group, key, value) => {
+                const input = field(group, key).querySelector('input, select');
+                if (input.type === 'checkbox') input.checked = value; else input.value = value;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+            change('separators', 'counterTimeSeparator', '-');
+            change('windows', 'counterBoxes', true);
+            const opacity = field('windows', 'counterBoxOpacity').querySelector('input[type=number]');
+            opacity.value = '42'; opacity.dispatchEvent(new Event('input', { bubbles: true }));
+            opacity.dispatchEvent(new Event('blur'));
+            change('transition', 'counterMotion', 'crossfade');
+            change('background', 'counterBackgroundGlyphs', 'full');
+            const item = view.layout.items[0];
+            return { separator: item.params.counterTimeSeparator, boxes: item.params.counterBoxes,
+                opacity: item.params.counterBoxOpacity, transition: item.params.counterMotion,
+                background: item.params.counterBackgroundGlyphs,
+                durationEnabled: !field('transition', 'counterDuration').querySelector('input').disabled,
+                backgroundEnabled: !field('background', 'counterBackgroundOpacity').querySelector('input').disabled };
+        });
+        assert.deepEqual(edited, { separator: '-', boxes: true, opacity: .42, transition: 'crossfade',
+            background: 'full', durationEnabled: true, backgroundEnabled: true });
     } finally {
         await browser.close();
     }

@@ -636,6 +636,7 @@ export class PlaybackManager {
   async #activateQueueTrack(track, ordinal, {
     play,
     userInitiated,
+    reason,
     state = this.audioPlayer.stateManager?.getStateSnapshot?.()
   }) {
     const contextManager = this.audioPlayer.contextManager;
@@ -644,7 +645,7 @@ export class PlaybackManager {
     }
     if (!contextManager?.loadTrack) return false;
 
-    const loaded = await contextManager.loadTrack(track, ordinal);
+    const loaded = await contextManager.loadTrack(track, ordinal, null, { preserveVideoTail: reason === 'ended' });
     if (play && loaded !== false && contextManager.play) {
       return contextManager.play(false, userInitiated);
     }
@@ -678,6 +679,7 @@ export class PlaybackManager {
       : true);
     this.trackCommandGeneration += 1;
     if (reason === 'explicit') {
+      this.audioPlayer.contextManager?.cancelVideoNaturalEnd?.();
       this.audioPlayer.contextManager?.invalidateAutomaticMoveForManualCommand?.();
     }
     const transportCommandType = commandKind === 'next'
@@ -809,6 +811,7 @@ export class PlaybackManager {
         played = await this.#activateQueueTrack(track, ordinal, {
           play: resolution.play,
           userInitiated,
+          reason,
           state
         });
       } catch (error) {
@@ -884,7 +887,7 @@ export class PlaybackManager {
           restorePlannedShuffle(sequence, transportRollback);
           return result;
         }
-        await this.audioPlayer.contextManager?.stop?.();
+        await this.audioPlayer.contextManager?.stop?.({ preserveVideoTail: true });
         return { ...result, stoppedAtEnd: true };
       } catch (error) {
         restorePlannedShuffle(sequence, transportRollback);
@@ -1689,7 +1692,7 @@ export class PlaybackManager {
     const contextManager = this.audioPlayer.contextManager;
     contextManager?.invalidateAutomaticMoveForManualCommand?.();
     if (typeof contextManager?.restartAudioElementPlayback === 'function') {
-      const restarted = await contextManager.restartAudioElementPlayback();
+      const restarted = await contextManager.restartAudioElementPlayback(userInitiated);
       if (restarted === false) return false;
     } else if (typeof contextManager?.getCurrentPlaybackTime === 'function' &&
         typeof contextManager.seek === 'function') {
@@ -1717,6 +1720,7 @@ export class PlaybackManager {
     if (userInitiated) this.audioPlayer.resumeAudioContextInGesture?.();
     if (this.playlist.length === 0 || this.transitionInProgress) return false;
     if (userInitiated) {
+      this.audioPlayer.contextManager?.cancelVideoNaturalEnd?.();
       this.audioPlayer.contextManager?.invalidateAutomaticMoveForManualCommand?.();
     }
     this.clearFailedTrackSkipState();
@@ -1840,6 +1844,7 @@ export class PlaybackManager {
     }
     if (userInitiated) this.audioPlayer.resumeAudioContextInGesture?.();
     if (userInitiated) {
+      this.audioPlayer.contextManager?.cancelVideoNaturalEnd?.();
       this.audioPlayer.contextManager?.invalidateAutomaticMoveForManualCommand?.();
     }
     if (this.playlist.length === 0) {
@@ -2106,8 +2111,8 @@ export class PlaybackManager {
     }
     
     if (isLastTrack && repeatMode === 'OFF') {
-      this.audioPlayer.contextManager?.stop?.();
-      this.resetToFirstTrack(false);
+      this.audioPlayer.contextManager?.stop?.({ preserveVideoTail: true });
+      this.resetToFirstTrack(false, false);
       return;
     }
     
@@ -2141,7 +2146,7 @@ export class PlaybackManager {
       if (track) {
         const loadOperation = autoPlay
           ? this.audioPlayer.contextManager.seamlessTransition(track, finalIndex, userInitiated)
-          : this.audioPlayer.contextManager.loadTrack(track, finalIndex);
+          : this.audioPlayer.contextManager.loadTrack(track, finalIndex, null, { preserveVideoTail: !userInitiated });
         loadOperation.catch(error => {
           console.error('[PlaybackManager] Failed to load first track:', error);
         });

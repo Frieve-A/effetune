@@ -1644,7 +1644,8 @@ class NoteSpectrogramPlugin extends PluginBase {
                 const gradient = context.createRadialGradient(
                     rollWidth, centerY, 0, rollWidth, centerY, currentRadius
                 );
-                const visible = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${signalColor ? signalColor.alpha * .5 : .5})`; // theme-allow: RGB channels use the active theme trace or fixed note colormap.
+                const opacity = .65 * (signalColor?.alpha ?? 1);
+                const visible = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${opacity})`; // theme-allow: RGB channels use the active theme trace or fixed note colormap.
                 const transparent = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0)`; // theme-allow: RGB channels use the active theme trace or fixed note colormap.
                 gradient.addColorStop(0, visible);
                 gradient.addColorStop(0.75, visible);
@@ -1898,6 +1899,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                     context.stroke();
                 }
                 const blackKeys = [];
+                const outlineTint = .2;
                 for (let midi = this.mn; midi <= this.mx; midi++) {
                     const pitchClass = midi % 12;
                     if (!MULTI_F0_BLACK_KEY_CLASSES.has(pitchClass)) continue;
@@ -1908,7 +1910,14 @@ class NoteSpectrogramPlugin extends PluginBase {
                     const red = Math.round(palette.blackKey + (color[0] - palette.blackKey) * confidence);
                     const green = Math.round(palette.blackKey + (color[1] - palette.blackKey) * confidence);
                     const blue = Math.round(palette.blackKey + (color[2] - palette.blackKey) * confidence);
-                    blackKeys.push([row * rowHeight, (row + 1) * rowHeight, confidence, `rgb(${red}, ${green}, ${blue})`]); // theme-allow: Fixed signal-level or self-painted colormap color.
+                    const outlineRed = Math.round(255 + (red - 255) * outlineTint);
+                    const outlineGreen = Math.round(255 + (green - 255) * outlineTint);
+                    const outlineBlue = Math.round(255 + (blue - 255) * outlineTint);
+                    blackKeys.push([
+                        row * rowHeight, (row + 1) * rowHeight, confidence,
+                        `rgb(${red}, ${green}, ${blue})`, // theme-allow: Fixed signal-level or self-painted colormap color.
+                        `rgba(${outlineRed}, ${outlineGreen}, ${outlineBlue}, ${confidence})` // theme-allow: White tinted toward the self-painted key fill.
+                    ]);
                 }
                 window.FrequencyAxis.shadeKeyboard(context,
                     { along: 'y', edge: rollWidth, length: height, gutter, blackDepth: blackKeyDepth, dpr }, blackKeys, () => {
@@ -1917,6 +1926,24 @@ class NoteSpectrogramPlugin extends PluginBase {
                             context.fillRect(rollWidth, start, blackKeyDepth, end - start);
                         }
                     }, whiteKeys);
+                // Leave the back edge open: top in Horizontal, right in Vertical.
+                context.save();
+                const outlineWidth = Math.min(rowHeight, blackKeyDepth) * .1;
+                const inset = outlineWidth / 2;
+                const backEdge = rollWidth + (horizontal ? inset : blackKeyDepth - inset);
+                const frontEdge = rollWidth + (horizontal ? blackKeyDepth - inset : inset);
+                context.lineWidth = outlineWidth;
+                for (const [start, end, confidence, , outlineColor] of blackKeys) {
+                    if (confidence <= 0) continue;
+                    context.strokeStyle = outlineColor;
+                    context.beginPath();
+                    context.moveTo(backEdge, start + inset);
+                    context.lineTo(frontEdge, start + inset);
+                    context.lineTo(frontEdge, end - inset);
+                    context.lineTo(backEdge, end - inset);
+                    context.stroke();
+                }
+                context.restore();
             });
             // The meters and border sit on the roll boundary rather than inside the keys.
             drawKeyboard(() => {
@@ -2070,7 +2097,6 @@ class NoteSpectrogramPlugin extends PluginBase {
                 }
             }
         }
-        const center = (this.mx - cellMidi + 0.5) * rowHeight;
         const levelPitch = this._bestBagPitch(historyOffset, midi);
         const salience = matched ? this.history[historyOffset + levelPitch] : 0;
         const color = this._noteDisplayColor(column, cellMidi, salience, frame.palette, null, true, matched ? midi : NaN);
@@ -2078,7 +2104,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             label: 'Salience',
             color: `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`, // theme-allow: Same note or theme trace color as the drawn cell.
             value: format.percent(salience),
-            y: horizontal ? u : center
+            y
         };
         const levelRow = {
             ...row,
@@ -2110,7 +2136,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                     value: format.percent(multiF0HighlightProbability(probabilities, highlight)) });
             }
         }
-        return { cursor, rows, at: horizontal ? { x: canvasWidth - center, y: u } : { x: u, y: center } };
+        return { cursor, rows, at: { x, y } };
     }
 
     cleanup() {

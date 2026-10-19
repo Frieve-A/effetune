@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import vm from 'node:vm';
 import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
 
 test('Oscilloscope shares captures by trigger settings while display edits stay local', () => {
@@ -395,7 +397,7 @@ test('Visualizer sources share matching analyzers and stop outside the visible v
     }
 });
 
-test('Level and Bass modulation use separate adaptive dB ranges and reset on hide', () => {
+test('Level and frequency-band modulation use separate adaptive ranges and share one spectrum', () => {
     const oldWindow = globalThis.window, oldDocument = globalThis.document;
     const oldPerformance = globalThis.performance;
     const subscriptions = new Map(), published = [];
@@ -417,45 +419,168 @@ test('Level and Bass modulation use separate adaptive dB ranges and reset on hid
         const sources = new VisualizerSources(manager);
         sources.setLayout({ background: { effects: [
             { enabled: true, mod: { source: 'level' } },
-            { enabled: true, mod: { source: 'bass' } }
-        ] }, items: [] });
+            { enabled: true, mod: { source: 'bass' } },
+            { enabled: true, mod: { source: 'mid' } },
+            { enabled: true, mod: { source: 'treble' } }
+        ] }, items: [{ id: 'spectrum', type: 'spectrum', params: {},
+            effects: [{ mod: { source: 'mid' } }, { mod: { source: 'treble' } }] }] });
         sources.setVisible(true);
         assert.equal(published.at(-1).length, 2);
         const meter = published.at(-1).find(source => source.type === 'LevelMeterPlugin');
         const spectrum = published.at(-1).find(source => source.type === 'SpectrumAnalyzerPlugin');
         const spectrumAt = db => {
             const current = new Float32Array(2049).fill(-240);
-            current[7] = current[9] = db - 6.0206;
-            current[8] = db;
+            for (const index of [8, 80, 800]) {
+                current[index - 1] = current[index + 1] = db - 6.0206;
+                current[index] = db;
+            }
             return { points: 12, sampleRate: 48000, current };
         };
+        const quiet = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0, width: 0 };
+        const loud = { ...quiet, level: 1, bass: 1, mid: 1, treble: 1 };
         subscriptions.get(meter.tapId)({ snapshot: { channels: [{ rms: 0.1 }, { rms: 0.04 }] } });
         subscriptions.get(spectrum.tapId)({ snapshot: spectrumAt(-12) });
-        assert.deepEqual(sources.getModulators(), { level: 1, bass: 1 });
+        assert.deepEqual(sources.getModulators(), loud);
 
         milliseconds = 1000;
         subscriptions.get(meter.tapId)({ snapshot: { channels: [{ rms: 0.1 * 10 ** (-12 / 20) }] } });
         subscriptions.get(spectrum.tapId)({ snapshot: spectrumAt(-24) });
         const quieter = sources.getModulators();
         assert.ok(quieter.level > 0.49 && quieter.level < 0.51, JSON.stringify(quieter));
-        assert.ok(quieter.bass > 0.49 && quieter.bass < 0.52, JSON.stringify(quieter));
+        for (const band of ['bass', 'mid', 'treble']) {
+            assert.ok(quieter[band] > 0.49 && quieter[band] < 0.52, JSON.stringify(quieter));
+        }
 
         milliseconds = 2250;
         subscriptions.get(meter.tapId)({ snapshot: { channels: [{ rms: 0.1 * 10 ** (-12 / 20) }] } });
         subscriptions.get(spectrum.tapId)({ snapshot: spectrumAt(-24) });
-        assert.deepEqual(sources.getModulators(), { level: 1, bass: 1 },
+        assert.deepEqual(sources.getModulators(), loud,
             'The held reference follows a sustained quieter passage');
 
         sources.setVisible(false);
-        assert.deepEqual(sources.getModulators(), { level: 0, bass: 0 });
+        assert.deepEqual(sources.getModulators(), quiet);
         sources.setVisible(true);
         const restartedMeter = published.at(-1).find(source => source.type === 'LevelMeterPlugin');
         const restartedSpectrum = published.at(-1).find(source => source.type === 'SpectrumAnalyzerPlugin');
         subscriptions.get(restartedMeter.tapId)({ snapshot: { channels: [{ rms: 0.0001 }] } });
         subscriptions.get(restartedSpectrum.tapId)({ snapshot: spectrumAt(-90) });
-        assert.deepEqual(sources.getModulators(), { level: 0, bass: 0 });
+        assert.deepEqual(sources.getModulators(), quiet);
+
+        // A strong tone in one band must not drive either of the other bands.
+        for (const [band, index, sampleRate] of [
+            ['bass', 8, 48000], ['mid', 80, 48000], ['treble', 800, 48000],
+            // Exact 150 Hz, 2 kHz and 20 kHz bins keep the upper boundary in its band.
+            ['bass', 15, 40960], ['mid', 200, 40960], ['treble', 2000, 40960]
+        ]) {
+            sources.setVisible(false);
+            sources.setVisible(true);
+            const activeSpectrum = published.at(-1).find(source => source.type === 'SpectrumAnalyzerPlugin');
+            const snapshot = spectrumAt(-240);
+            snapshot.sampleRate = sampleRate;
+            snapshot.current[index] = -12;
+            subscriptions.get(activeSpectrum.tapId)({ snapshot });
+            assert.deepEqual(sources.getModulators(), { ...quiet, [band]: 1 });
+        }
         sources.dispose();
     } finally {
+        globalThis.window = oldWindow;
+        globalThis.document = oldDocument;
+        globalThis.performance = oldPerformance;
+    }
+});
+
+test('Beat and Width share analyzer sources and Beat interpolates real DSP telemetry between draws', async () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const oldPerformance = globalThis.performance;
+    const subscriptions = new Map(), published = [];
+    let milliseconds = 0;
+    const pluginWindow = {};
+    vm.runInNewContext(await readFile(new URL('../../plugins/analyzer/rhythm_analyzer.js', import.meta.url), 'utf8'),
+        { PluginBase: class {}, window: pluginWindow, console });
+    globalThis.performance = { now: () => milliseconds };
+    globalThis.window = {
+        RhythmAnalyzerPlugin: pluginWindow.RhythmAnalyzerPlugin,
+        StereoMeterPlugin: class { parseDspStereoFieldTelemetryFrame(frame) { return frame.snapshot; } }
+    };
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const manager = {
+        telemetryHub: { subscribe(tapId, frameType, callback) {
+            subscriptions.set(tapId, { frameType, callback });
+            return () => subscriptions.delete(tapId);
+        } },
+        setVisualizerSources(sources) { published.push(sources); }
+    };
+    const frame = (period = 0.5, preview = null) => {
+        const payload = new DataView(new ArrayBuffer(1496));
+        payload.setFloat32(0, 48000, true);
+        payload.setUint32(4, 1, true);
+        payload.setUint32(8, 480, true);
+        payload.setUint32(12, 100, true);
+        // Host time is deliberately different from the generation's analysis time.
+        payload.setFloat32(16, 42.123, true);
+        payload.setFloat32(40, period > 0 ? 0.7 : 0, true);
+        payload.setFloat32(44, period, true);
+        payload.setUint32(48, 100, true);
+        payload.setFloat32(60, period > 0 ? 60 / period : 0, true);
+        if (preview) {
+            payload.setUint32(1344, 1, true);
+            payload.setFloat32(1348, preview.period, true);
+            payload.setInt32(1352, preview.frame, true);
+        }
+        return { frameType: 28, formatVersion: 4, payload };
+    };
+    const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
+    const sources = new VisualizerSources(manager);
+    try {
+        const items = [{ id: 'rhythm', type: 'rhythm-analyzer', params: {} },
+            { id: 'stereo', type: 'stereo', params: {}, effects: [{ mod: { source: 'beat' } }] }];
+        sources.setLayout({ items, background: { effects: [
+            { mod: { source: 'beat' } }, { mod: { source: 'width' } }
+        ] } });
+        sources.setVisible(true);
+        assert.equal(published.at(-1).length, 2, 'Display and modulation share the same analyzer instances');
+        const rhythm = published.at(-1).find(source => source.type === 'RhythmAnalyzerPlugin');
+        const stereo = published.at(-1).find(source => source.type === 'StereoMeterPlugin');
+        assert.equal(subscriptions.get(rhythm.tapId).frameType, 28);
+        const receiveBeat = subscriptions.get(rhythm.tapId).callback;
+        receiveBeat(frame());
+        assert.equal(sources.getFrame('rhythm').periodSeconds, 0.5, 'The real Rhythm parser consumes the payload');
+        for (const [time, value] of [[0, 1], [125, 0.5], [250, 0], [500, 1]]) {
+            milliseconds = time;
+            near(sources.getModulators().beat, value);
+        }
+        milliseconds = 1000;
+        receiveBeat(frame(1));
+        milliseconds = 1250;
+        near(sources.getModulators().beat, 0.5);
+        milliseconds = 1500;
+        near(sources.getModulators().beat, 0);
+        // The current preview takes precedence over the older committed interval.
+        receiveBeat(frame(0.5, { frame: 75, period: 1 }));
+        near(sources.getModulators().beat, 0.5);
+        milliseconds = 1750;
+        near(sources.getModulators().beat, 0);
+        receiveBeat(frame(0));
+        assert.equal(sources.getModulators().beat, 0);
+        for (const [correlation, width] of [[1, 0], [-1, 0], [0, 1], [0.5, 0.5], [-0.5, 0.5]]) {
+            subscriptions.get(stereo.tapId).callback({ snapshot: { correlation, peakL: 0, peakR: 0 } });
+            assert.equal(sources.getModulators().width, width, 'Width follows correlation even for silent samples');
+        }
+        receiveBeat(frame());
+        sources.setVisible(false);
+        assert.equal(sources.getModulators().beat, 0);
+        assert.equal(sources.getModulators().width, 0);
+        sources.setVisible(true);
+        assert.equal(sources.getModulators().beat, 0);
+        assert.equal(sources.getModulators().width, 0);
+        sources.setLayout({ items: items.map(item => ({ ...item, effects: [] })) });
+        assert.equal(published.at(-1).length, 2, 'Removing modulation preserves the displayed analyzers');
+        const resumedRhythm = published.at(-1).find(source => source.type === 'RhythmAnalyzerPlugin');
+        subscriptions.get(resumedRhythm.tapId).callback(frame());
+        assert.equal(sources.getModulators().beat, 0, 'A remaining display tap cannot drive disabled modulation');
+    } finally {
+        sources.dispose();
+        assert.equal(subscriptions.size, 0);
         globalThis.window = oldWindow;
         globalThis.document = oldDocument;
         globalThis.performance = oldPerformance;

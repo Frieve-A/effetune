@@ -430,13 +430,14 @@ test('Off-frame marquee selection, nudge, clipboard copies, and paste preserve r
 test('Portrait editing caps the render surface while playback and clean feed keep their normal resolution', async () => {
     await withGlobals({ document: { body: body(1) }, window: { devicePixelRatio: 2 }, requestAnimationFrame: () => 1 }, () => {
         const { editor, view, layout } = setupViewport();
-        const draws = [];
+        const draws = [], copies = [];
         view.visible = true;
         view.status = {};
         view.sources.getStatus = () => 'ready';
         view.metadata = () => null;
-        view.renderer = { quality: 0, draw: (...args) => draws.push(args) };
-        view.canvas.getContext = () => ({ clearRect() {}, drawImage() {} });
+        view.hdr = false;
+        view.renderer = { quality: 0, draw: (...args) => draws.push(args),
+            copyFrom(...args) { copies.push(args); return true; } };
         layout.aspect = '9:16';
         editor.updateViewport(1280, 800);
         editor.zoomAt(4);
@@ -457,10 +458,12 @@ test('Portrait editing caps the render surface while playback and clean feed kee
         assert.equal(editor.panX, 0);
         assert.equal(editor.panY, 0);
         editor.zoomAt(4);
-        view.feed = { visible: true, canvas: { width: 1920, height: 1080 } };
+        view.feed = { visible: true, canvas: { width: 1920, height: 1080 }, renderer: {} };
         view.frame(32);
         assert.deepEqual([view.canvas.width, view.canvas.height], [1920, 1080]);
         assert.deepEqual([view.feed.canvas.width, view.feed.canvas.height], [1920, 1080]);
+        assert.deepEqual(copies, [[view.feed.renderer, { hdr: false }]]);
+        assert.equal(draws.length, 2, 'A compatible Clean Feed composition is copied without rendering again');
     });
 });
 

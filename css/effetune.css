@@ -1,5 +1,26 @@
 @import url("effetune-theme.css");
 
+@font-face {
+    font-family: "EffeTune Seven Segment";
+    src: url("fonts/effetune-seven-segment.woff2") format("woff2");
+    font-display: swap;
+    unicode-range: U+0030-0039, U+E000;
+}
+
+@font-face {
+    font-family: "EffeTune Dot Matrix";
+    src: url("fonts/effetune-dot-matrix.woff2") format("woff2");
+    font-display: swap;
+    unicode-range: U+0030-0039, U+E000;
+}
+
+@font-face {
+    font-family: "EffeTune Wire Digits";
+    src: url("fonts/effetune-wire-digits.woff2") format("woff2");
+    font-display: swap;
+    unicode-range: U+0030-0039;
+}
+
 /* Title container */
 .title-container {
     position: relative;
@@ -2239,6 +2260,7 @@ body.layout-mini-player .audio-player[data-mini-player="true"] {
 body.layout-mini-player .audio-player[data-mini-player="true"] h2,
 body.layout-mini-player .audio-player[data-mini-player="true"] .player-playlist,
 body.layout-mini-player .audio-player[data-mini-player="true"] .expand-button,
+body.layout-mini-player .audio-player[data-mini-player="true"] .player-video-expand,
 body.layout-mini-player .audio-player[data-mini-player="true"] .close-button,
 body.layout-mini-player .audio-player[data-mini-player="true"] .stop-button,
 body.layout-mini-player .audio-player[data-mini-player="true"] .mini-player-button {
@@ -4678,7 +4700,7 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-toolbar > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font: inherit; }
 .visualizer-toolbar > button svg { display: block; flex: 0 0 auto; }
 #visualizerView:not(.is-editing) .pipeline-header-right, #visualizerView.is-editing .visualizer-import { display: none; }
-/* Presets, Share, Import, and Quality sit at the right; while editing, the edit tools take the free space instead. */
+/* Display controls sit at the right; while editing, the edit tools take the free space instead. */
 .visualizer-toolbar > .visualizer-presets { margin-left: auto; }
 #visualizerView.is-editing .visualizer-toolbar > .visualizer-presets { margin-left: 0; }
 .visualizer-quality-label { display: flex; align-items: center; gap: 8px; }
@@ -4689,6 +4711,8 @@ body.view-visualizer #mobilePlayerView { display: none !important; }
 .visualizer-stage-host { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; min-width: 0; min-height: 200px; flex: 1; background: #000; } /* theme-allow: Black letterboxing surrounds the user-colored scene. */
 .visualizer-stage { position: relative; flex: none; overflow: hidden; }
 .visualizer-stage canvas { display: block; width: 100%; height: 100%; }
+.visualizer-stage .visualizer-hdr-canvas { position: absolute; inset: 0; pointer-events: none; }
+.visualizer-stage .visualizer-hdr-canvas[hidden] { display: none; }
 .visualizer-stage.lyrics-seekable { cursor: pointer; }
 .visualizer-stage-host.editing { overflow: clip; touch-action: none; background: var(--et-surface-12); overscroll-behavior: contain; }
 .visualizer-stage.editing { position: absolute; overflow: visible; background: #000; outline: 1px solid #ffffff80; } /* theme-allow: The artboard stays black behind transparent scene pixels, with a contrasting frame. */
@@ -4748,6 +4772,9 @@ body.layout-mobile #visualizerView.is-editing .visualizer-stage-host { min-heigh
 .visualizer-editor .visualizer-item-list .player-playlist-item:hover:not(.active) { background: var(--et-surface-17); box-shadow: none; }
 .visualizer-editor-inspector .visualizer-field { min-width: 0; justify-content: flex-start; flex-wrap: nowrap; font-size: 13px; }
 .visualizer-editor-inspector .visualizer-field > label { flex: 0 1 100px; min-width: 0; overflow-wrap: anywhere; }
+/* Wrapped inspector labels determine row height instead of overflowing the shared fixed-height labels. */
+.visualizer-editor-inspector.plugin-parameter-ui .visualizer-field.parameter-row > label:first-child,
+body.layout-mobile .visualizer-editor-inspector.plugin-parameter-ui .visualizer-field.parameter-row > label:first-child { height: auto; }
 .visualizer-editor-inspector .visualizer-style-row > span { flex: 0 1 100px; min-width: 0; color: var(--et-text-secondary); }
 .visualizer-style-toggles { display: flex; flex: none; gap: 4px; }
 .visualizer-editor .visualizer-style-toggles button { display: flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 26px; height: 26px; margin: 0; padding: 0; }
@@ -4843,6 +4870,12 @@ body .audio-player[data-video="true"] .player-artwork {
     display: block;
 }
 
+/* Rounded clipping can stall native video playback; keep it for artwork only. */
+body:is(.layout-desktop, .layout-mobile, .layout-mini-player) .audio-player[data-video="true"] .player-artwork {
+    border-radius: 0;
+    overflow: visible;
+}
+
 body .audio-player .player-video-expand {
     position: absolute;
     right: 4px;
@@ -4852,6 +4885,9 @@ body .audio-player .player-video-expand {
     height: 32px;
     min-width: 32px;
     padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
     color: #fff; /* theme-allow: Contrasting controls over video. */
     background: #0009; /* theme-allow: Contrasting controls over video. */
 }
@@ -4869,6 +4905,10 @@ body.layout-mobile:has(.audio-player[data-video-expanded="true"][data-video="tru
 }
 
 body .audio-player[data-video-expanded="true"][data-video="true"] {
+    --video-safe-top: env(safe-area-inset-top);
+    --video-safe-right: env(safe-area-inset-right);
+    --video-safe-bottom: env(safe-area-inset-bottom);
+    --video-safe-left: env(safe-area-inset-left);
     position: fixed;
     inset: 0;
     z-index: 1000;
@@ -4905,7 +4945,9 @@ body .audio-player[data-video-expanded="true"][data-video="true"] .player-contro
     gap: 8px;
     width: 100%;
     padding: 16px;
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    padding-bottom: max(16px, var(--video-safe-bottom));
+    padding-left: max(16px, var(--video-safe-left));
+    padding-right: max(16px, var(--video-safe-right));
     box-sizing: border-box;
     background: #000b; /* theme-allow: Contrasting controls over video. */
     opacity: 0;
@@ -4933,18 +4975,16 @@ body .audio-player[data-video-expanded="true"][data-video="true"] .player-contro
 }
 
 body .audio-player[data-video-expanded="true"][data-video="true"] .player-video-expand {
-    top: 12px;
-    right: 12px;
+    top: max(12px, var(--video-safe-top));
+    right: max(12px, var(--video-safe-right));
     bottom: auto;
     width: 42px;
     height: 42px;
-    opacity: 0;
 }
 
 body .audio-player[data-video-expanded="true"][data-video="true"][data-video-controls="true"] .player-controls,
-body .audio-player[data-video-expanded="true"][data-video="true"][data-video-controls="true"] .player-video-expand,
-body .audio-player[data-video-expanded="true"][data-video="true"] .player-controls:has(:focus-visible),
-body .audio-player[data-video-expanded="true"][data-video="true"] .player-video-expand:focus-visible {
+body .audio-player[data-video-controls="true"] .player-video-expand,
+body .audio-player[data-video-expanded="true"][data-video="true"] .player-controls:has(:focus-visible) {
     opacity: 1;
     pointer-events: auto;
 }
@@ -4957,4 +4997,27 @@ body .audio-player[data-video-expanded="true"][data-video="true"] .mini-player-b
 body .audio-player[data-video-expanded="true"][data-video="true"] .restore-button,
 body .audio-player[data-video-expanded="true"][data-video="true"] .pin-button {
     display: none;
+}
+
+/* Rotate only the expanded mobile presentation, leaving device orientation untouched. */
+body.layout-mobile .audio-player[data-video-expanded="true"][data-video="true"][data-video-rotated="true"] {
+    --video-safe-top: env(safe-area-inset-right);
+    --video-safe-right: env(safe-area-inset-bottom);
+    --video-safe-bottom: env(safe-area-inset-left);
+    --video-safe-left: env(safe-area-inset-top);
+    inset: 50% auto auto 50%;
+    width: var(--video-rotated-width);
+    height: var(--video-rotated-height);
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center;
+}
+
+body .audio-player[data-video-rotated="true"] > .player-speed-popup {
+    position: absolute;
+    left: calc(50% + (var(--video-safe-left) - var(--video-safe-right)) / 2);
+    top: calc(50% + (var(--video-safe-top) - var(--video-safe-bottom)) / 2);
+    transform: translate(-50%, -50%);
+    width: min(450px, calc(100% - 16px - var(--video-safe-left) - var(--video-safe-right)));
+    max-height: calc(100% - 16px - var(--video-safe-top) - var(--video-safe-bottom));
+    overflow: auto;
 }

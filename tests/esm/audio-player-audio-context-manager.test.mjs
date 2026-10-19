@@ -410,6 +410,109 @@ test('video uses one inline media element through the existing audio pipeline', 
   });
 });
 
+for (const move of ['OFF', 'ONE', 'ALL', 'prepared NEXT']) {
+  test(`video natural end retains its source and clock through automatic ${move} transport`, async () => {
+    await withAudioContextGlobals({
+      document: {
+        addEventListener() {},
+        removeEventListener() {},
+        createElement() {
+          const element = new FakeAudioElement();
+          element.tagName = 'VIDEO';
+          element.videoWidth = 640;
+          return element;
+        }
+      }
+    }, async ({ calls, objectUrls }) => {
+      const file = new FakeFile('clip.mp4');
+      const track = { name: 'clip.mp4', file };
+      const nextTrack = { name: 'next.mp4', file: new FakeFile('next.mp4') };
+      const hasNext = move === 'prepared NEXT';
+      const harness = createHarness({
+        calls, playlist: hasNext ? [track, nextTrack] : [track], isStopped: true,
+        repeatMode: hasNext ? 'OFF' : move,
+        state: { playbackSpeed: 2 },
+        audioManager: { getAudiblePlaybackPosition: (time, rate) => time - 0.2 * rate }
+      });
+      const { manager, audioPlayer, audioContext, state } = harness;
+      const { playbackManager, entries } = installMaterializedPlaybackManager(harness);
+      try {
+        assert.equal(await manager.loadTrack(entries[0], 0), true);
+        assert.equal(await manager.play(), true);
+        manager.clearNextTrackBuffer();
+        if (hasNext) {
+          const plan = await playbackManager.preparePlannedAutomaticMove();
+          await manager.prepareNextTrackBufferForTrack(plan.nextTrack, plan.nextOrdinal, plan);
+        }
+        const element = audioPlayer.audioElement;
+        const before = manager.getVideoPresentation();
+        assert.equal(before.source, file);
+        audioContext.currentTime = 100;
+        element.currentTime = element.duration;
+        element.dispatch('ended');
+        const ended = manager.getVideoPresentation().naturalEnd;
+        assert.deepEqual(ended, {
+          generation: before.generation,
+          source: file,
+          endPosition: 12,
+          playbackSpeed: 2,
+          targetAtEnd: 11.6,
+          contextTimeAtEnd: 100
+        });
+        if (move === 'ONE') {
+          assert.equal(audioPlayer.audioElement, element);
+          assert.equal(element.currentTime, 0);
+          assert.ok(manager.getVideoPresentation().generation > before.generation);
+        }
+        for (let index = 0; index < 80; index += 1) await flushMicrotasks();
+        const after = manager.getVideoPresentation();
+        assert.equal(after.naturalEnd, ended);
+        assert.equal(after.resetToken, before.resetToken);
+        assert.ok(after.generation > before.generation);
+        assert.equal(after.source, hasNext ? nextTrack.file : file);
+        assert.equal(state.isStopped, move === 'OFF');
+        assert.equal(state.isPlaying, move !== 'OFF');
+        assert.ok(objectUrls.some(([action]) => action === 'revoke'));
+        audioContext.currentTime = 100.21;
+        assert.equal(manager.getVideoPresentation().naturalEnd, null);
+      } finally {
+        manager.disconnect();
+      }
+    });
+  });
+}
+
+for (const command of ['pause', 'stop', 'seek', 'loadTrack', 'transitionToNextTrack']) {
+  test(`explicit ${command} cancels a delayed video end`, async () => {
+    await withAudioContextGlobals({}, async () => {
+      const element = new FakeAudioElement();
+      element.tagName = 'VIDEO';
+      const { manager, audioContext } = createHarness({
+        audioElement: element,
+        playbackMode: 'audioElement',
+        audioManager: { getAudiblePlaybackPosition: time => time - 0.2 }
+      });
+      manager.setVideoPresentationSource('/clip.mp4');
+      manager.captureVideoNaturalEnd();
+      const before = manager.getVideoPresentation();
+      assert.ok(before.naturalEnd);
+      try {
+        if (command === 'loadTrack' || command === 'transitionToNextTrack') {
+          await manager[command]({ name: 'next.wav', path: '/next.wav' }, 0);
+        } else {
+          await manager[command](command === 'seek' ? 3 : undefined);
+        }
+        const after = manager.getVideoPresentation();
+        assert.equal(after.naturalEnd, null);
+        assert.ok(after.resetToken > before.resetToken);
+        assert.equal(after.contextTime, audioContext.currentTime);
+      } finally {
+        manager.disconnect();
+      }
+    });
+  });
+}
+
 const NATIVE_FRAGMENT_CANDIDATE_MATRIX = Object.freeze([
   PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.cell
 ]);

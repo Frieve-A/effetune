@@ -25,7 +25,9 @@ const payloadBytes = centsOffset + noteCount * 4;
 const historyWidth = 1024;
 
 // Canvas calls used only by the shaded piano keys.
-const keyShadingStubs = { rect() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} }) };
+const keyShadingStubs = {
+    save() {}, restore() {}, rect() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} })
+};
 
 // Canvas calls used only by the Volume history bar shapes.
 const volumePathStubs = {
@@ -721,7 +723,7 @@ test('instrument colors keep unclassified history, volume and meters neutral in 
                     gradients.push(gradient);
                     return gradient;
                 }, ...volumePathStubs, arc() {} }, 200, 100, palette);
-                if (plugin.vl) assert.equal(gradients[0]?.stops[0].color, 'rgba(116, 116, 116, 0.5)');
+                if (plugin.vl) assert.equal(gradients[0]?.stops[0].color, 'rgba(116, 116, 116, 0.65)');
             };
             assert.deepEqual(Array.from(plugin._noteDisplayColor(0, 21, 1, palette)), [116, 116, 116],
                 'missing source history is neutral');
@@ -1275,6 +1277,47 @@ test('history readout includes measured dB for the displayed pitch in both layou
     assert.equal(plugin._readNote(historyWidth - 0.5, 50).rows[1].value, '—');
 });
 
+test('history crosshair follows the pointer as detected pitches change in both layouts', async () => {
+    const window = {};
+    vm.runInNewContext(await fs.readFile(path.join(repoRoot, 'plugins/graph-readout.js'), 'utf8'), { window });
+    const plugin = await loadPlugin({ graphReadout: window.GraphReadout });
+    plugin.setParameters({ mn: 21, mx: 21 });
+    let frameIndex = 0;
+    for (const ly of ['Horizontal', 'Vertical']) {
+        for (const pr of ['High', 'Semitone']) {
+            plugin.setParameters({ ly, pr });
+            const horizontal = ly === 'Horizontal';
+            for (const [cents, confidence] of [[-30, .8], [25, .8], [0, 0]]) {
+                plugin.handleTelemetry(createTelemetryFrame({
+                    frameIndex, timeSeconds: 1 + frameIndex * .01,
+                    levels: [0, 0, confidence], pitchCents: [cents]
+                }));
+                frameIndex++;
+                plugin._readoutFrame = {
+                    valid: true, horizontal, canvasWidth: horizontal ? 100 : historyWidth,
+                    rollWidth: historyWidth, rowHeight: 100, columnWidth: 1,
+                    scrollPhase: 0, phaseOffset: 0, split: plugin.writeColumn,
+                    palette: plugin._displayPalette()
+                };
+                for (const pitchPosition of [37.25, 38.5]) {
+                    const x = horizontal ? 100 - pitchPosition : historyWidth - .375;
+                    const y = horizontal ? historyWidth - .375 : pitchPosition;
+                    const readout = plugin._readNote(x, y);
+                    assert.equal(readout.at.x, x, `${ly} ${pr} at ${cents} cents`);
+                    assert.equal(readout.at.y, y, `${ly} ${pr} at ${cents} cents`);
+                    assert.ok(readout.rows.every(row => row.y === y), 'markers stay at the pointer');
+                    assert.equal(readout.rows[0].value, confidence ? '80%' : '0%');
+                    if (confidence) {
+                        const midi = 21 + (pr === 'High' ? cents / 100 : 0);
+                        const note = window.GraphReadout.format.note(440 * 2 ** ((midi - 69) / 12));
+                        assert.ok(readout.cursor.startsWith(`${note} · `), 'readout retains the detected pitch');
+                    }
+                }
+            }
+        }
+    }
+});
+
 test('High draws and reads unrounded pitch estimates with Volume on and off in both layouts', async () => {
     const window = {};
     vm.runInNewContext(await fs.readFile(path.join(repoRoot, 'plugins/graph-readout.js'), 'utf8'), { window });
@@ -1565,6 +1608,12 @@ test('Volume meter draws one blurred current semicircle into the graph area', as
     assert.equal(arcs[0].start, Math.PI / 2);
     assert.equal(arcs[0].end, Math.PI * 1.5);
     assert.deepEqual(gradients[0].stops.map(stop => stop.offset), [0, 0.75, 1]);
+    assert.deepEqual(gradients[0].stops.map(stop => stop.color), [
+        'rgba(0, 255, 0, 0.65)', 'rgba(0, 255, 0, 0.65)', 'rgba(0, 255, 0, 0)'
+    ]);
+    plugin.displayOptions = { signalColor: () => ({ rgb: [255, 128, 64], alpha: .5 }) };
+    plugin._drawVolumeMeters(context, 100, 20, palette);
+    assert.equal(gradients[1].stops[0].color, 'rgba(255, 128, 64, 0.325)');
 });
 
 test('Volume meter remains above the bars and graph-side in both layouts', async () => {
@@ -2171,7 +2220,7 @@ test('pitch resolution switches between five-cell history and semitone bag rows'
 test('layouts rotate the same piano keyboard while keeping labels upright', async () => {
     let now = 1000;
     const plugin = await loadPlugin({ now: () => now });
-    const fills = [], images = [], labels = [], lines = [];
+    const fills = [], images = [], labels = [], lines = [], outlines = [];
     const stack = [];
     let angle = 0, origin = [0, 0];
     const point = (x, y) => [
@@ -2206,16 +2255,24 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
         measureText() {
             return { width: 10, actualBoundingBoxAscent: 5, actualBoundingBoxDescent: 2 };
         },
-        beginPath() { this.lineStart = null; this.lineEnd = null; },
-        moveTo(x, y) { this.lineStart = point(x, y); },
-        lineTo(x, y) { this.lineEnd = point(x, y); },
+        beginPath() { this.lineStart = null; this.lineEnd = null; this.points = []; },
+        moveTo(x, y) {
+            this.lineStart = point(x, y);
+            this.points.push(this.lineStart);
+        },
+        lineTo(x, y) {
+            this.lineEnd = point(x, y);
+            this.points.push(this.lineEnd);
+        },
         stroke() {
-            if (this.lineStart && this.lineEnd) {
+            if (this.points.length === 4) {
+                outlines.push({ points: this.points, color: this.strokeStyle, lineWidth: this.lineWidth });
+            } else if (this.lineStart && this.lineEnd) {
                 lines.push({ start: this.lineStart, end: this.lineEnd });
             }
         }
     };
-    plugin.handleTelemetry(createTelemetryFrame({ levels: [1] }));
+    plugin.handleTelemetry(createTelemetryFrame({ levels: [1, 0, 0, 0, 0, .5] }));
     const history = plugin.history.slice();
     const frameIndex = plugin.lastFrameIndex;
     const writeColumn = plugin.writeColumn;
@@ -2228,6 +2285,21 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
     const whiteKeys = fills.filter(fill => Math.abs(fill.width - gutter) < 1e-6);
     assert.equal(blackKeys.length, 36);
     assert.equal(whiteKeys.length, 52);
+    assert.equal(outlines.length, 1, 'only the active black key is outlined');
+    assert.equal(outlines[0].color, 'rgba(206, 231, 206, 0.5)',
+        'the outline mixes 20% of the displayed key fill into white');
+    assert.equal(outlines[0].lineWidth, 1);
+    const [keyX, keyY] = blackKeys[0].center;
+    const halfWidth = (blackKeys[0].height - 1) / 2;
+    const halfDepth = (blackKeys[0].width - 1) / 2;
+    const expectedOutline = [
+        [keyX + halfWidth, keyY - halfDepth], [keyX + halfWidth, keyY + halfDepth],
+        [keyX - halfWidth, keyY + halfDepth], [keyX - halfWidth, keyY - halfDepth]
+    ];
+    outlines[0].points.forEach((point, index) => {
+        assert.ok(point.every((value, axis) => Math.abs(value - expectedOutline[index][axis]) < 1e-6),
+            'the outline follows the sides and front while leaving the top edge open');
+    });
     const blackKeyPitches = Array.from({ length: noteCount }, (_, pitch) => pitch)
         .filter(pitch => [1, 3, 6, 8, 10].includes((21 + pitch) % 12));
     blackKeys.forEach((key, index) => {
@@ -2296,6 +2368,22 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
     assert.deepEqual(plugin.history, history);
     assert.equal(plugin.lastFrameIndex, frameIndex);
     assert.equal(plugin.writeColumn, writeColumn);
+
+    plugin.mn = 21;
+    plugin.mx = 108;
+    for (const layout of ['Horizontal', 'Vertical']) {
+        plugin.ly = layout;
+        for (const [scale, dpr] of [[.5, 1], [2, 1], [2, 2]]) {
+            plugin.canvas.width = 880 * scale;
+            plugin.canvas.height = 440 * scale;
+            plugin.graphDpr = dpr;
+            outlines.length = 0;
+            plugin.drawGraph();
+            assert.equal(outlines.length, 1);
+            assert.equal(outlines[0].lineWidth, scale * (layout === 'Horizontal' ? 1 : .5),
+                `${layout} outline scales with the keyboard at DPR ${dpr}`);
+        }
+    }
 });
 
 test('all confidence values are displayed without a threshold in both colors', async () => {
