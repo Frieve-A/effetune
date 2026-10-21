@@ -134,6 +134,81 @@ function createConfigHarness(options = {}) {
   };
 }
 
+test('Browser Config saves only the User-Agent patch, restores failed edits and reopens the saved value', async () => {
+  const errors = [];
+  const harness = createConfigHarness({ uiManager: { setError: message => errors.push(message) } });
+  const calls = [];
+  let rejectSave = false;
+  const defaultUserAgent = 'Chrome/152.0.0.0 EffeTune/2.15.0';
+  let settings = { bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: '', userAgent: '', openTabsExternally: true };
+  harness.window.electronAPI.browser = {
+    async getState() { return { ok: true, settings, defaultUserAgent }; },
+    async saveSettings(patch) {
+      calls.push(patch);
+      if (rejectSave) return { ok: false, error: 'saveFailed' };
+      if (patch.startPage === 'javascript:alert(1)') return { ok: false, error: 'invalidURL' };
+      settings = { ...settings, ...patch };
+      if ('userAgent' in patch) settings.userAgent = patch.userAgent.trim();
+      harness.window.electronAPI.loadConfig = async () => ({ success: true, config: { browser: settings } });
+      return { ok: true, settings };
+    }
+  };
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    await harness.document.getElementById('config-category-browser').dispatchEvent('click');
+    const input = harness.document.getElementById('browser-user-agent');
+    const tabs = harness.document.getElementById('browser-open-tabs-externally');
+    const startPage = harness.document.getElementById('browser-start-page');
+    assert.equal(input.value, defaultUserAgent);
+    assert.equal(tabs.checked, true);
+    assert.equal(startPage.value, '');
+    assert.equal(harness.document.getElementById('browser-user-agent-label').textContent, 'label:dialog.config.browser.userAgent');
+    input.value = 'Custom Browser/1.0';
+    await input.dispatchEvent('change');
+    assert.deepEqual(calls, [{ userAgent: 'Custom Browser/1.0' }]);
+    assert.equal(harness.window.appConfig.browser.userAgent, 'Custom Browser/1.0');
+    assert.equal(harness.window.appConfig.browser.bookmarks.length, 1);
+    tabs.checked = false;
+    await tabs.dispatchEvent('change');
+    assert.deepEqual(calls.at(-1), { openTabsExternally: false });
+    assert.equal(harness.window.appConfig.browser.openTabsExternally, false);
+    assert.equal(input.value, 'Custom Browser/1.0');
+    startPage.value = 'https://example.com/start';
+    await startPage.dispatchEvent('change');
+    assert.deepEqual(calls.at(-1), { startPage: 'https://example.com/start' });
+    startPage.value = 'javascript:alert(1)';
+    await startPage.dispatchEvent('change');
+    assert.equal(startPage.value, 'https://example.com/start');
+    assert.equal(errors.pop(), 'label:dialog.config.browser.invalidStartPage');
+    await harness.document.getElementById('browser-reset-start-page').dispatchEvent('click');
+    assert.deepEqual(calls.at(-1), { startPage: '' });
+    assert.equal(startPage.value, '');
+    assert.equal(harness.window.appConfig.browser.startPage, '');
+    rejectSave = true;
+    input.value = 'Rejected Browser';
+    await withMutedConsole('error', () => input.dispatchEvent('change'));
+    assert.equal(input.value, 'Custom Browser/1.0');
+    assert.equal(input.disabled, false);
+    assert.deepEqual(errors, ['label:dialog.config.browser.saveFailed']);
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+    await showConfigDialog(true, {});
+    assert.equal(harness.document.getElementById('browser-user-agent').value, 'Custom Browser/1.0');
+    rejectSave = false;
+    harness.document.getElementById('browser-user-agent').value = '';
+    await harness.document.getElementById('browser-user-agent').dispatchEvent('change');
+    assert.equal(harness.document.getElementById('browser-user-agent').value, defaultUserAgent);
+    assert.equal(settings.userAgent, '');
+    const restoredInput = harness.document.getElementById('browser-user-agent');
+    restoredInput.value = 'Another custom browser';
+    await restoredInput.dispatchEvent('change');
+    await harness.document.getElementById('browser-reset-user-agent').dispatchEvent('click');
+    assert.equal(restoredInput.value, defaultUserAgent);
+    assert.deepEqual(calls.at(-1), { userAgent: '' });
+    assert.equal(settings.openTabsExternally, false);
+    await harness.document.getElementById('close-btn').dispatchEvent('click');
+  });
+});
+
 function createLocalStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
   return {
@@ -1203,6 +1278,39 @@ test('offline output controls normalize dependent choices and persist one nested
   });
 });
 
+test('MSIX Config opens Store and startup settings without changing legacy preferences', async () => {
+  const errors = [];
+  const harness = createConfigHarness({
+    config: { autoLaunch: true, checkForUpdatesOnStartup: false, startMinimized: true },
+    uiManager: { setError: message => errors.push(message) }
+  });
+  const opened = [];
+  harness.window.electronAPI.isMsix = true;
+  harness.window.electronAPI.openExternalUrl = async uri => {
+    opened.push(uri);
+    return { success: opened.length <= 2 };
+  };
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    assert.equal(harness.document.getElementById('auto-launch'), null);
+    assert.equal(harness.document.getElementById('check-updates'), null);
+    assert.equal(harness.document.getElementById('start-min').checked, true);
+    assert.equal(harness.document.getElementById('store-updates-help').textContent, 'label:dialog.store.updatesHelp');
+    await harness.document.getElementById('store-startup').dispatchEvent('click');
+    await harness.document.getElementById('store-updates').dispatchEvent('click');
+    assert.deepEqual(opened, ['ms-settings:startupapps', 'ms-windows-store://downloadsandupdates']);
+    await withMutedConsole('error', () => harness.document.getElementById('store-updates').dispatchEvent('click'));
+    assert.deepEqual(errors, ['label:dialog.store.openFailed']);
+    const startMin = harness.document.getElementById('start-min');
+    startMin.checked = false;
+    await startMin.dispatchEvent('change');
+    const saved = harness.calls.filter(call => call[0] === 'saveConfig').at(-1)[1];
+    assert.equal(saved.autoLaunch, true);
+    assert.equal(saved.checkForUpdatesOnStartup, false);
+    assert.equal(saved.startMinimized, false);
+  });
+});
+
 test('showConfigDialog renders settings, saves changes, and closes from the button', async () => {
   const languageCalls = [];
   const harness = createConfigHarness({
@@ -1615,6 +1723,15 @@ test('OpenHome setting failures roll back from getStatus and show a general-user
     ['setEnabled', true],
     ['getStatus']
   ]);
+});
+
+test('all locales label Store updates and Windows startup actions', () => {
+  for (const locale of ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh']) {
+    const source = readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
+    for (const key of ['startupHelp', 'openStartup', 'updatesHelp', 'openUpdates', 'openFailed']) {
+      assert.ok(source.includes(`"dialog.store.${key}":`), `${locale}: ${key}`);
+    }
+  }
 });
 
 test('all locales include the Web power-saving settings copy', () => {
@@ -2250,5 +2367,27 @@ test('optional mirror failures do not prevent loading or saving config', async (
       assert.ok(await loadConfig(isElectron));
       assert.equal(await saveConfig(isElectron, { theme: 'mint' }), true);
     }
+  });
+});
+
+test('Browser startup is saved and restored in desktop Config and unavailable on the Web', async () => {
+  const desktop = createConfigHarness({ config: { startupView: 'browser' } });
+  await withGlobals({ window: desktop.window, document: desktop.document }, async () => {
+    await showConfigDialog(true, {});
+    const browser = desktop.document.getElementById('startup-view-browser');
+    assert.equal(browser.checked, true);
+    assert.equal(desktop.document.getElementById('library-startup-view-select').disabled, true);
+    await desktop.document.getElementById('startup-view-effects').dispatchEvent('change');
+    assert.equal(browser.checked, false);
+    await browser.dispatchEvent('change');
+    assert.equal(browser.checked, true);
+    assert.equal(desktop.window.appConfig.startupView, 'browser');
+    assert.equal(desktop.calls.filter(call => call[0] === 'saveConfig').at(-1)[1].startupView, 'browser');
+  });
+  const web = createConfigHarness();
+  web.window.localStorage = createLocalStorage();
+  await withGlobals({ window: web.window, document: web.document }, async () => {
+    await showConfigDialog(false, {});
+    assert.equal(web.document.getElementById('startup-view-browser'), null);
   });
 });

@@ -3,8 +3,11 @@ import test from 'node:test';
 import { PowerPolicyController } from '../../js/audio/power-policy-controller.js';
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/audio/audio-context-manager.js';
+import { AudioIOManager } from '../../js/audio/audio-io-manager.js';
+import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 import { validatePowerSnapshot } from '../../js/audio/power-snapshot.js';
+import { withGlobals } from '../helpers/global-test-utils.mjs';
 
 function createHarness({
   settings = { mode: 'balanced', silenceThresholdDb: -80, fullSuspendDelaySeconds: 300 },
@@ -206,6 +209,7 @@ function createHarness({
       async resumeForPowerPolicy() { await context.resume(); return true; }
     },
     ioManager: {
+      inputKind: inputState.inputKind || 'device',
       inputGeneration: inputState.inputGeneration,
       audioElement: null,
       outputGainNode: outputGain === null ? null : { gain: { value: outputGain } },
@@ -2112,6 +2116,55 @@ test('output retries observe failures superseded before the shared transaction s
   await new Promise(resolve => setImmediate(resolve));
 });
 
+test('queued gestures immediately observe input rejection and preserve resume outcomes', { timeout: 2000 }, async () => {
+  for (const resumeKind of ['dedicated-input', 'mixed-play']) {
+    const harness = createHarness({
+      contextState: 'suspended',
+      inputDeviceId: 'missing-mic',
+      input: {
+        state: 'released', inputAvailability: 'unknown', inputAvailabilityRevision: 1,
+        inputGeneration: 4, inputResourceId: null, inputConfigured: true,
+        inputSourcePresent: false, trackState: 'ended'
+      }
+    });
+    harness.controller.effectiveState = 'SUSPENDED';
+    harness.controller.manualResumeRequired = true;
+    let releaseQueue;
+    const queued = harness.controller._enqueue(() => new Promise(resolve => { releaseQueue = resolve; }));
+    await harness.flush();
+    const inputError = new Error('Selected input device is unavailable');
+    let inputAcquireCount = 0;
+    harness.audioManager.ioManager.beginReacquireAudioInput = () => {
+      inputAcquireCount++;
+      return Promise.reject(inputError);
+    };
+    const pending = harness.controller.beginUserGestureResume(resumeKind);
+    const operation = harness.controller.gestureResumeOperation;
+    try {
+      assert.equal(inputAcquireCount, 1, 'acquisition begins on the gesture stack');
+      // The test runner rejects an unhandled rejection during this queued turn.
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(operation.phase, 'collecting');
+      await assert.rejects(operation.inputPromise, error => error === inputError);
+      releaseQueue();
+      const resumed = await pending;
+      const mixed = resumeKind === 'mixed-play';
+      assert.equal(resumed, mixed);
+      assert.equal(inputAcquireCount, 1);
+      assert.equal(harness.inputState.state, 'released');
+      assert.equal(harness.audioManager.ioManager.inputSourceNode, null);
+      assert.equal(harness.context.state, mixed ? 'running' : 'suspended');
+      const snapshot = harness.controller.getSnapshot();
+      assert.equal(snapshot.manualResumeRequired, true);
+      if (!mixed) assert.equal(snapshot.transitionError.code, 'resume-resource-failed');
+      assert.equal(harness.controller.gestureResumeInProgress, 0);
+    } finally {
+      releaseQueue();
+      await Promise.allSettled([queued, pending]);
+    }
+  }
+});
+
 test('different resume kinds merge into one gesture transaction without duplicate mutation', async () => {
   const harness = createHarness({
     contextState: 'suspended',
@@ -3887,4 +3940,139 @@ test('temporal preparation leaves the live skipped-frame base to the worklet', a
     .statePreparation;
   assert.equal(preparation.state, 'acknowledged');
   assert.equal(Number.isSafeInteger(preparation.skippedFrameCount), true);
+});
+
+test('Browser mixes device input independently of the local Player preference', async () => {
+  const player = createPausedPlayer();
+  const harness = createHarness({ player, input: {
+    state: 'live', inputConfigured: true, inputGeneration: 1,
+    inputAvailability: 'available', inputAvailabilityRevision: 0,
+    inputResourceId: 'device', inputSourcePresent: true, trackState: 'live'
+  } });
+  const source = { id: 'browser-playback' };
+  const browser = { selected: true,
+    getPowerSourceStatus: () => ({ state: 'connected', sourcePresent: true }) };
+  harness.audioManager.ioManager.browserInput = browser;
+  const device = harness.audioManager.ioManager.inputSourceNode;
+  const playerSource = { id: 'local-playback' };
+  harness.audioManager.ensureSourceConnectedToPipeline(playerSource);
+  assert.equal(await harness.controller.selectBrowserPlaybackSource(source, () => true), true);
+  const route = harness.controller._deriveRouteAndPlayerFacts();
+  assert.equal(route.inputRouteIntent, 'mixed');
+  assert.equal(route.transportDemand, false);
+  assert.equal(route.playerPresent, true);
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(device), true);
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(playerSource), true);
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(source), true);
+  browser.selected = false;
+  harness.audioManager.disconnectSourceFromPipeline(source);
+  await harness.controller.refreshPlaybackInputRouting();
+  assert.equal(harness.controller._deriveRouteAndPlayerFacts().inputRouteIntent, 'player-only');
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(device), false);
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(playerSource), true);
+  harness.controller.dispose();
+});
+
+test('Browser Close keeps device input muted across a pipeline rebuild without interrupting local playback', async () => {
+  await withGlobals({ window: {} }, async () => {
+    for (const playerOwnsCompatibilitySource of [false, true]) {
+      const harness = createHarness({ player: createPausedPlayer(), input: {
+        state: 'live', inputConfigured: true, inputGeneration: 1,
+        inputAvailability: 'available', inputAvailabilityRevision: 0,
+        inputResourceId: 'device', inputSourcePresent: true, trackState: 'live'
+      } });
+      const manager = harness.audioManager;
+      const io = manager.ioManager;
+      const device = io.inputSourceNode;
+      const playerSource = { id: 'local-playback' };
+      manager.ensureSourceConnectedToPipeline(playerSource);
+      if (playerOwnsCompatibilitySource) {
+        manager.sourceNode = playerSource;
+        io.sourceNode = playerSource;
+      }
+      const browserSource = { id: 'browser-playback' };
+      io.browserInput = { selected: true,
+        getPowerSourceStatus: () => ({ state: 'connected', sourcePresent: true }) };
+      await harness.controller.selectBrowserPlaybackSource(browserSource, () => true);
+      assert.equal(manager.isSourceConnectedToPipeline(device), true);
+      io.browserInput.selected = false;
+      manager.disconnectSourceFromPipeline(browserSource);
+      assert.equal(await harness.controller.refreshPlaybackInputRouting(), true);
+      assert.notEqual(io.sourceNode, device);
+      assert.equal(manager.isSourceConnectedToPipeline(device), false);
+      assert.equal(manager.isSourceConnectedToPipeline(playerSource), true);
+      if (playerOwnsCompatibilitySource) assert.equal(io.sourceNode, playerSource);
+
+      io.sourceNode.disconnect = () => manager.disconnectSourceFromPipeline(io.sourceNode);
+      Object.assign(manager.workletNode, { connect() {}, disconnect() {} });
+      Object.assign(io, {
+        contextManager: manager.contextManager,
+        outputGainNode: { connect() {} }, directOutputMode: true,
+        connectAudioNodes: AudioIOManager.prototype.connectAudioNodes
+      });
+      manager.contextManager.workletNode = manager.workletNode;
+      const pipeline = new PipelineProcessor(manager.contextManager, io, null,
+        source => manager.connectSourceToPipeline(source));
+      assert.equal(await pipeline.rebuildPipeline(), '');
+      assert.equal(manager.isSourceConnectedToPipeline(device), false);
+      assert.equal(manager.isSourceConnectedToPipeline(playerSource), true);
+      assert.equal(io.inputSourceNode, device);
+      assert.equal(harness.inputState.state, 'live');
+      harness.controller.dispose();
+    }
+  });
+});
+
+test('Browser without a device remains a routed playback source and resumes through existing power observations', async () => {
+  const harness = createHarness({ inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID });
+  const source = { id: 'browser-playback' };
+  harness.audioManager.ioManager.browserInput = { selected: true,
+    getPowerSourceStatus: () => ({ state: 'connected', sourcePresent: true }) };
+  await harness.controller.selectBrowserPlaybackSource(source, () => true);
+  await harness.controller.start();
+  await harness.flush();
+  const route = harness.controller._deriveRouteAndPlayerFacts();
+  assert.equal(route.inputRouteIntent, 'player-only');
+  assert.equal(route.inputSnapshot.inputConfigured, false);
+  assert.equal(route.pipelineInputConnected, true);
+  assert.equal(route.transportDemand, false);
+  harness.setNow(15_000);
+  await harness.controller.requestReconcile('browser-silence');
+  await harness.flush();
+  assert.equal(harness.context.state, 'running');
+  const tokens = harness.controller._getTokensAndGuards().tokens;
+  harness.controller.handleWorkletPowerEvent({
+    type: 'powerHeartbeat', state: 'monitoring',
+    processingDirective: 'allow-automatic', inputActive: false, outputActive: false,
+    workletGraphGeneration: tokens.workletGraphGeneration, topologyRevision: tokens.topologyRevision
+  });
+  assert.equal(harness.controller.getEffectiveState(), 'MONITORING');
+  harness.controller.handleWorkletPowerEvent({
+    type: 'powerHeartbeat', state: 'active',
+    reason: 'signal-wake', processingDirective: 'full-process', inputActive: true, outputActive: true,
+    workletGraphGeneration: tokens.workletGraphGeneration, topologyRevision: tokens.topologyRevision
+  });
+  assert.equal(harness.controller.getEffectiveState(), 'ACTIVE');
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(source), true);
+  harness.controller.dispose();
+});
+
+test('device release does not mute or disconnect concurrent Browser playback', async () => {
+  const harness = createHarness({ input: {
+    state: 'live', inputConfigured: true, inputGeneration: 1,
+    inputAvailability: 'available', inputAvailabilityRevision: 0,
+    inputResourceId: 'device', inputSourcePresent: true, trackState: 'live'
+  } });
+  const source = { id: 'browser-playback' };
+  harness.audioManager.ioManager.browserInput = { selected: true,
+    getPowerSourceStatus: () => ({ state: 'connected', sourcePresent: true }),
+    release() { throw new Error('Device release must not release Browser'); } };
+  await harness.controller.selectBrowserPlaybackSource(source, () => true);
+  assert.equal(await harness.controller.requestAudioReconfigurationInputRelease({
+    handoffToSilent: true, disconnectInput: true
+  }), true);
+  assert.equal(harness.inputState.state, 'released');
+  assert.equal(harness.audioManager.isSourceConnectedToPipeline(source), true);
+  assert.equal(harness.audioManager.ioManager.browserInput.selected, true);
+  harness.controller.dispose();
 });

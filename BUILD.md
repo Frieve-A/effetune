@@ -185,7 +185,7 @@ states; actual driver recovery requires this hardware check.
 
 The committed WebAssembly DSP artifacts let JavaScript-only contributors run the app
 without Emscripten. Changes under `dsp/`, `plugins/dsp/`, or a plugin's DSP parameter
-schema require the pinned toolchain recorded in `dsp/EMSDK_VERSION` (currently 6.0.11),
+schema require the pinned toolchain recorded in `dsp/EMSDK_VERSION` (currently 6.0.13),
 CMake 3.24 or newer, Ninja, Python 3.10 or newer, and a C++20 compiler.
 
 ```bash
@@ -470,6 +470,232 @@ The Tonal Balance EQ target-table generator publishes counts by style and licens
 without individual track identifiers or input archive fingerprints. Verify this
 with `python -m unittest discover -s dsp/plugins/eq/tonal_balance_eq -p test_learn_targets.py`.
 
+### Official ECS builds and Widevine signing
+
+Desktop release packages use Castlabs' official Electron for Content Security
+(ECS) for Windows x64, Linux x64, and macOS x64/arm64. Windows and macOS require
+production streaming VMP signatures from its EVS service; Linux does not use VMP.
+The regular development dependency and local build commands remain unchanged.
+
+#### GitHub Actions release setup
+
+In the repository's **Settings → Secrets and variables → Actions → Secrets**,
+select **New repository secret** and add these two values from your existing
+EVS account:
+
+| Repository secret | Value |
+| --- | --- |
+| `EVS_ACCOUNT_NAME` | The Account Name chosen during EVS signup |
+| `EVS_PASSWD` | The EVS account password |
+
+Use repository secrets for this configuration, not Actions variables or environment
+secrets. Do not put either value in source files, command arguments, or build logs.
+See [GitHub's secret setup](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets#creating-secrets-for-a-repository).
+
+The existing `desktop-release.yml` workflow accepts only a tag exactly matching
+`v${package.version}` in `Frieve-A/effetune`. Its Windows and macOS jobs pass the
+two named secrets explicitly to the reusable `build.yml` workflow after source preflight
+succeeds. Ordinary CI, pull requests, forks, and Dependabot runs do not sign.
+Missing credentials, authentication failures, or signature verification failures
+fail the affected release job; it does not fall back to an unsigned release.
+
+The workflow downloads the official ECS 44.5.1+wvcus archive for the runner's
+architecture and verifies its pinned SHA-256. Linux packages that runtime as an
+AppImage, retaining the separate GPG signing and OpenHome provenance checks.
+
+Windows authenticates with `castlabs-evs==1.3.2` using environment variables and
+`--no-ask`. It signs and verifies `dist/win-unpacked`, packages that directory
+with `--prepackaged`, and verifies VMP again before uploading artifacts.
+macOS authenticates with the same client, finalizes the application resources,
+then requests VMP in electron-builder's `afterPack` hook before macOS ad-hoc code
+signing. The app and its helpers use `build/entitlements.mac.plist`, including
+the library-validation entitlement needed for the downloaded Widevine CDM.
+The workflow verifies VMP after code signing, creates the DMG from that exact
+prepackaged `.app` without re-signing it, and verifies VMP again afterward.
+The authentication configuration is stored through `EVS_CONFIG_FILE` under the
+runner's temporary directory and removed after the signing step, including on
+failure. Credentials and this configuration are not included in artifacts or caches.
+The Windows packaging step checks that the executable is unchanged; its final VMP check
+uses the local signature and needs no EVS credentials.
+
+These secrets authorize Widevine VMP signing. They do not provide Windows
+Authenticode or Apple Developer ID signatures. macOS uses an explicit ad-hoc
+identity and does not require Apple credentials or notarization. Windows
+Authenticode, if added, must run before VMP signing. This workflow produces
+artifacts for the existing desktop Release draft process; it does not publish
+a GitHub Release.
+
+#### Local ECS packaging
+
+Use the opt-in ECS pack command to prepare a local Widevine-enabled build.
+Download the Windows x64 ZIP from the [pinned ECS release](https://github.com/castlabs/electron-releases/releases/tag/v44.5.1%2Bwvcus), then run:
+
+```powershell
+npm run pack:ecs:win -- --runtime-zip 'C:\Downloads\electron-v44.5.1+wvcus-win32-x64.zip'
+```
+
+For an already prepared application snapshot with its own installed dependencies,
+`node scripts/pack-ecs.mjs --runtime-zip '<ZIP>' --app-dir '<snapshot>'`
+packs that snapshot. Prepare its assets and sidecar before invoking the runner directly;
+keep the development-only `build` configuration in the root package, not the snapshot's
+`package.json`.
+
+The command verifies the official archive hash and prepares
+`out/ecs/win32-x64/win-unpacked`. The executable's icon and version resources
+are finalized during packing. OS code signing is disabled for this command,
+and it does not request a VMP signature;
+the original ECS development signature cannot be reused after executable edits.
+
+Install the [official EVS client](https://pypi.org/project/castlabs-evs/) in a
+dedicated Python environment. Use an existing EVS account; if authentication is
+needed, run `python -m castlabs_evs.account reauth` in your own terminal and enter
+credentials there. Do not put passwords in command arguments or repository files.
+On Windows, apply Authenticode signing first if it is part of your distribution
+process, then request and verify the streaming VMP signature:
+
+```powershell
+python -m castlabs_evs.vmp --no-ask sign-pkg --streaming 'out/ecs/win32-x64/win-unpacked'
+python -m castlabs_evs.vmp --no-ask verify-pkg --streaming 'out/ecs/win32-x64/win-unpacked'
+```
+
+The EVS client uploads the executable when a new signature is needed and writes
+its `.sig` sidecar. Keep that file with the application. After verification,
+freeze the application directory and package that exact directory:
+
+```powershell
+node scripts/pack-ecs.mjs --prepackaged 'out/ecs/win32-x64/win-unpacked' --output 'out/ecs/win32-x64/installers'
+```
+
+Do not run a fresh pack over the signed directory. Verify the VMP signature again
+after extracting or installing the resulting package. VMP and OS code signing
+are separate: Windows requires VMP **after** OS signing; macOS requires VMP
+**before** OS signing. Linux does not use VMP. See the [official EVS signing order](https://github.com/castlabs/electron-releases/wiki/EVS#signing-an-ecs-application-package).
+
+On Linux x64 and macOS x64/arm64, prepare the assets and native sidecar, then use
+`node scripts/prepare-ecs.mjs` to download and check the matching runtime and
+`node scripts/pack-ecs.mjs --output '<directory>'` to package it. Both helpers
+select the host architecture. Linux produces an AppImage; macOS produces a
+directory containing `EffeTune.app`, with OS and VMP signing disabled by default.
+On macOS, explicitly adding `--sign-vmp` requests VMP before ad-hoc signing and
+verifies it afterward; authenticate with EVS first. Package the verified app with
+`node scripts/pack-ecs.mjs --prepackaged '<directory>/mac/EffeTune.app' --output '<directory>'`
+(use `mac-arm64` for arm64). This produces a DMG without changing the signed app.
+
+ECS downloads the Widevine CDM through its component updater; do not copy a CDM
+from a development profile into the package. Its pinned Electron version may lag
+the normal dependency, so validate the completed application on that runtime.
+A valid VMP signature does not establish
+compatibility with a particular streaming service or guarantee audio capture.
+
+### Linux AppImage signing
+
+Desktop release builds create a GPG detached signature of the final AppImage.
+`EffeTune-<version>-Linux-AppImage.zip` contains the executable AppImage,
+`EffeTune-<version>.AppImage.asc`, and `EffeTune-AppImage-signing-key.asc`.
+The signature authenticates the AppImage bytes without repacking it. It is a
+separate file, not an embedded AppImage signature, and Linux does not automatically
+enforce it when launching the application. Local `npm run build:linux` builds
+remain unsigned.
+
+#### Create a signing key on Windows
+
+Install [Gpg4win](https://www.gpg4win.org/download.html), open a new PowerShell
+terminal, and check `gpg --version`. Create a dedicated signing key using a
+public contact address you control in place of the example:
+
+```powershell
+gpg --quick-generate-key "EffeTune AppImage Signing <you@example.com>" rsa4096 sign 2y
+gpg --list-secret-keys --keyid-format long --with-fingerprint "EffeTune AppImage Signing"
+```
+
+Enter a new, unique passphrase in GnuPG's prompt. Generate and store it in your
+password manager; for example, use at least 24 random printable ASCII characters
+without line breaks. Do not put it in a command or send it in chat. Record the
+full 40-character fingerprint shown below the `sec` line, without spaces.
+The name and contact address are public parts of the exported key.
+
+Export the passphrase-protected private key and the public key to a private
+directory outside this repository:
+
+```powershell
+$signingDirectory = Join-Path $env:USERPROFILE 'EffeTune-signing'
+New-Item -ItemType Directory -Path $signingDirectory -Force | Out-Null
+$fingerprint = 'REPLACE_WITH_THE_FULL_40_CHARACTER_FINGERPRINT'
+gpg --armor --output "$signingDirectory\appimage-private-key.asc" --export-secret-keys $fingerprint
+gpg --armor --output "$signingDirectory\EffeTune-AppImage-signing-key.asc" --export $fingerprint
+gpg --output "$signingDirectory\appimage-revocation.asc" --gen-revoke $fingerprint
+```
+
+Keep an encrypted offline backup of the private key, its passphrase, and the
+revocation certificate. The revocation certificate can invalidate this key, so
+keep it private as well. Do not import it unless you intend to revoke the key.
+The key expires after two years. Before expiry, run
+`gpg --quick-set-expire $fingerprint 2y`, export the keys again, update the
+private-key secret, and publish the renewed public key. The fingerprint stays
+the same.
+
+#### Configure repository secrets
+
+Open **Settings → Secrets and variables → Actions → Secrets → New repository
+secret** in `Frieve-A/effetune`, and register:
+
+| Repository secret | Value |
+| --- | --- |
+| `APPIMAGE_GPG_PRIVATE_KEY` | The entire `appimage-private-key.asc` text, including the BEGIN/END lines and line breaks; no Base64 conversion |
+| `APPIMAGE_GPG_PASSPHRASE` | The passphrase entered when creating the key |
+| `APPIMAGE_GPG_KEY_FINGERPRINT` | The full 40-character fingerprint, without spaces |
+
+Use repository secrets, not Actions variables. The fingerprint is public but is
+passed as a named secret alongside the other signing inputs. With an authenticated
+[GitHub CLI](https://cli.github.com/manual/gh_secret_set), the equivalent PowerShell
+commands are:
+
+```powershell
+Get-Content -Raw "$signingDirectory\appimage-private-key.asc" | gh secret set APPIMAGE_GPG_PRIVATE_KEY --repo Frieve-A/effetune
+gh secret set APPIMAGE_GPG_PASSPHRASE --repo Frieve-A/effetune
+gh secret set APPIMAGE_GPG_KEY_FINGERPRINT --repo Frieve-A/effetune --body $fingerprint
+gh secret list --repo Frieve-A/effetune
+```
+
+Enter the passphrase at the CLI's hidden prompt. Verify each command succeeds.
+After verifying the encrypted backup and secret registration, remove the temporary
+private-key export from this directory. Never commit private keys, passphrases,
+or revocation certificates.
+
+The Linux job in `desktop-release.yml` passes only these three named secrets to
+`build.yml`. Signing requires the official repository and an exact
+`v${package.version}` tag after the common preflight. It imports the key into an
+isolated temporary GnuPG home, checks the exported public key's fingerprint, signs
+with that exact key using the passphrase on stdin, and verifies the result with
+`gpgv` and the exported public key before creating the release ZIP. Missing secrets,
+an incorrect passphrase or fingerprint, an unusable key, or a failed verification
+fails the job before artifact upload. The temporary keyring and its GnuPG agent
+are cleaned up on success or failure. Signing secrets are not passed to Windows,
+macOS, ordinary CI, or pull-request builds. The workflow creates artifacts; it
+does not publish a GitHub Release.
+
+#### Verify a downloaded release
+
+Publish the public key and full fingerprint on an official project channel, and
+include the fingerprint in the desktop Release notes. A public key bundled beside
+an untrusted download does not by itself establish who signed it.
+After extracting the Linux ZIP, compare the key's fingerprint with the official
+one, then verify the signature before running the AppImage:
+
+```bash
+gpg --show-keys --with-fingerprint EffeTune-AppImage-signing-key.asc
+gpg --import EffeTune-AppImage-signing-key.asc
+gpg --verify EffeTune-<version>.AppImage.asc EffeTune-<version>.AppImage
+```
+
+Replace `<version>` with the downloaded version. Require a successful exit status
+and `Good signature` from the expected fingerprint. GnuPG may warn that the key is
+not certified by a trusted signature; independently checking the official
+fingerprint is still necessary. The detached `.asc` signature is verified by GnuPG,
+not by `--appimage-signature`, which only displays an embedded signature.
+See the [GnuPG key-management manual](https://www.gnupg.org/documentation/manuals/gnupg/OpenPGP-Key-Management.html)
+and [AppImage's signature documentation](https://docs.appimage.org/packaging-guide/optional/signatures.html).
+
 ### Browser Extension
 
 Build the Chrome and Edge extension separately from the desktop application:
@@ -491,6 +717,10 @@ npm run test:extension-browser
 
 The extension is its own Manifest V3 package. Do not add extension-only files or assets
 to the desktop and Web/PWA packages, and keep the generated `out/` artifacts untracked.
+
+For automated Chrome CRX signing and Chrome/Edge store submission from release tags,
+see [Browser extension releases](extension/RELEASING.md), including the required
+repository secrets, store API setup, and manual upload-only runs.
 
 ### Web and PWA Assets
 
@@ -576,8 +806,10 @@ Desktop release packaging runs only in `Frieve-A/effetune` for an exact
 `v${package.version}` tag. A preflight job must succeed before any platform job
 runs. That preflight performs the full source verification once; the platform
 jobs retain only host-filesystem checks plus packaged DSP and OpenHome smoke
-checks. The Windows, macOS, and Linux jobs produce the same unsigned packages
-as the maintained platform build commands. Central CI verifies the app's DSP
+checks. Windows release packages use ECS and require EVS VMP signing as described
+above; Linux packages require the GPG detached signature described above.
+macOS retains its existing Electron packaging. Windows Authenticode and Apple
+Developer ID signing are not configured by this workflow. Central CI verifies the app's DSP
 core on a desktop tag but leaves desktop package production to this release
 workflow, and it does not rebuild the separately released Python/npm DSP
 Library matrix. Tags beginning with `dsp-v` belong to the separate DSP library
@@ -727,3 +959,131 @@ After building the application:
 3. **Updates**:
    - Increment the version number in `package.json` for new releases
    - For Windows installer releases, upload the matching `latest.yml` and installer block map with the installer so the in-app update can download it
+
+## Microsoft Store MSIX packaging
+
+The Store package wraps the final Windows x64 ECS application with Windows SDK
+MakePRI and MakeAppx. It does not rebuild the application or change its executable.
+Complete the existing EVS VMP signing and verification first, and package before
+adding `effetune_settings` for the Portable ZIP. Never edit the executable after
+VMP signing. The existing NSIS and Portable outputs remain separate artifacts.
+
+Set `name`, `publisher`, `publisherDisplayName`, and `productId` in
+`build/msix/store-identity.json` to the exact Partner Center values. They are public
+identifiers, not credentials. The checked-in null values deliberately stop a
+submission build. For local packaging checks only, `--test-identity` selects
+`build/msix/test-identity.json` and marks the metadata `testOnly: true`; that
+artifact must never be submitted to the Store.
+
+```powershell
+npm run pack:msix:win -- --prepackaged out/ecs/win32-x64/win-unpacked --output dist/store
+# Without a Partner Center identity, exercise the same SDK packaging with:
+npm run pack:msix:win -- --prepackaged out/ecs/win32-x64/win-unpacked --output out/msix/test --test-identity
+```
+
+The command selects the newest installed Windows SDK containing MakePRI and
+MakeAppx; `--sdk-dir <Windows-Kits-bin/version/x64>` overrides that selection.
+It stages beneath `out/msix`, rejects local settings/cache folders and links,
+checks the packaged application version, generates file associations from
+`package.json`, and unpacks the result to verify the manifest and unchanged EXE
+and `.sig` hashes. The source application directory is left intact.
+The manifest uses `Windows.Desktop`, x64, disabled-by-default `EffeTuneStartup`,
+the `effetune` protocol, microphone access, and `runFullTrust`. Its Windows 10
+22H2 minimum (`10.0.19045.0`) is a candidate pending the initial OS trials.
+Images under `build/msix/Assets` are resized from `build/icon.png`: StoreLogo
+50/100 px, Square44x44Logo 44/88 px, and Square150x150Logo 150/300 px.
+
+Outputs are the unsigned `EffeTune-<version>-Store-x64.msix` and
+`store-package.json`. The metadata records the source tag/commit, three-part
+application version, four-part Windows version (`X.Y.Z.0`), Identity, hashes,
+ECS version, SDK version, and test-only status. The Store signs the submitted
+original. Do not distribute the unsigned package as a general installation file.
+
+### Installed-package and WACK trial
+
+Use a dedicated Windows 11 VM with an interactive test-user session, Node/npm
+dependencies, the Windows SDK, and the Windows App Certification Kit. Provision
+one QA administrator account with UAC enabled and an active desktop session, then
+run the orchestrator elevated as that same account. The routine job must use this
+interactive session, not a Session 0 service. Certificate trust, WACK and cleanup
+run in the administrative orchestrator without per-release UAC prompts. Registered
+launch, restart, file and protocol activation use a temporary Task Scheduler task
+with that QA SID, the exact desktop session and explicit Interactive/Limited
+permissions; no password is stored. The helper's identity/session and the app's
+actual token are checked. Launch uses COM activation; file and protocol operations
+use the registered Shell associations and verify their effect in the existing app.
+The runner removes its task and package processes before
+cleaning the test data and certificate. Do not run the trial on a personal workstation.
+
+```powershell
+npm run test:msix:installed -- -Package dist/store/EffeTune-2.15.0-Store-x64.msix -Metadata dist/store/store-package.json -ReportDirectory out/msix/installed-test -DedicatedTestVm
+# To choose a different validated baseline explicitly:
+# -PreviousPackage <previous-version.msix>
+```
+
+`-DryRun` only checks input metadata, hashes, and installed SDK/WACK paths. It
+does not install, trust certificates, start the app, or certify the package.
+Without `-PreviousPackage`, the first full trial creates an older manifest
+version in a disposable copy, leaving `package.json` and the submission original
+unchanged. Successful trials preserve the unsigned original and metadata in
+`%LOCALAPPDATA%\EffeTuneMsixValidation\validated`, and select that validated
+baseline automatically for a newer candidate. `-ValidatedPackageDirectory`
+changes this VM-local cache location. `-PreviousPackage` overrides selection.
+
+The runner refuses an existing registration or Store data, signs test copies,
+checks clean installation and restart, then upgrades the older package to the
+candidate. It activates through Windows package registration and uses a temporary
+loopback CDP connection with the bundled Playwright probe. Checks cover the
+Store flag, rendered main window, dedicated userData path, configuration,
+presets, a library playlist, Browser bookmarks, OpenHome start/stop, application
+of an identifiable file preset, restoration of a minimized
+window by protocol activation, StartupTask registration, and a complete WACK pass
+or pass with warnings. Required failures, unknown results and incomplete runs fail
+validation. WACK warnings and optional failures remain in the report and console;
+`wack.xml` retains the original SDK findings.
+The report evaluator can be checked without installing or launching an app:
+`powershell -NoProfile -File tests/msix-wack.test.ps1`.
+The runner removes its packages, test certificate, processes, and scratch files, while
+preserving `installed-test.json`, probe JSON/screenshots, and `wack.xml`.
+
+VM execution is required before enabling routine validation or publishing.
+The initial Windows 10/11 compatibility trial, actual audio devices, LAN clients
+and Firewall behavior, login-triggered StartupTask operation, and Store-delivered
+Widevine playback still require their dedicated environment checks. A successful
+SDK pack or `-DryRun` does not establish those results.
+
+### Store release automation
+
+After the formal Identity is configured, repository variable
+`MSSTORE_BUILD_ENABLED=true` adds the unsigned `store-msix-x64` artifact to the
+desktop release build. `MSSTORE_VALIDATION_ENABLED=true` also selects the dedicated
+`[self-hosted, Windows, X64, msix-validation]` runner. Both artifacts, including
+`store-msix-validation`, are retained for 90 days. Leave these variables unset
+until their inputs and VM are ready. The runner may set `MSIX_PREVIOUS_PACKAGE`
+to override the automatically retained validation baseline.
+
+Configure the `microsoft-store` GitHub Environment with variables
+`MSSTORE_TENANT_ID`, `MSSTORE_SELLER_ID`, and `MSSTORE_CLIENT_ID`, and secret
+`MSSTORE_CLIENT_SECRET`. Set repository variable `MSSTORE_CREDENTIAL_EXPIRES_AT`
+to the credential expiry date in ISO format. Keep credentials out of Git and
+artifacts. Initial listing drafts live in `build/msix/store-listing`.
+Only after initial Partner Center publication and Store-installed validation,
+enable `MSSTORE_AUTOPUBLISH_ENABLED=true` once to connect subsequent formal
+GitHub Release publication to Store updates.
+
+The release workflow checks the exact published tag, commit, MSIX hash and
+installed-test report from a successful desktop build. GitHub Deployments record
+the release input and submission ID; six-hour checks resume pending work without
+holding a runner during certification. A submitted package remains pending until
+the Store confirms publication. Manual workflow dispatch with an empty
+`release_tag` resumes recorded work; an explicit tag must already be published.
+Do not edit a submission concurrently in Partner Center. If an upload/commit
+result is unknown or an unrelated draft exists, preserve it and investigate
+before resubmitting. The pinned Microsoft Store CLI uses the MSIX positional
+argument; submission metadata, commit and polling use Microsoft's submission API.
+
+The Store app uses its own `EffeTune Store` data directory and leaves existing
+NSIS/Portable data in place. It does not invoke the GitHub updater, legacy login
+registration, or protocol registration. Windows handles package associations,
+startup settings and updates; ordinary Store package updates retain the same
+Identity and userData location.

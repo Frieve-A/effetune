@@ -1,0 +1,6 @@
+{
+  "name": "EffeTune.LocalTest",
+  "publisher": "CN=EffeTune MSIX Local Test",
+  "publisherDisplayName": "EffeTune Local Test",
+  "productId": "LOCAL-TEST-ONLY"
+}

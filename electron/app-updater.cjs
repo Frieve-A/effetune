@@ -3,6 +3,7 @@ const RELEASE_DOWNLOAD_BASE_URL = 'https://github.com/Frieve-A/effetune/releases
 function createAppUpdater({
   app,
   platform = process.platform,
+  isMsix = process.windowsStore === true,
   env = process.env,
   releaseDownloadBaseUrl = RELEASE_DOWNLOAD_BASE_URL,
   loadUpdater = () => require('electron-updater').autoUpdater
@@ -19,7 +20,7 @@ function createAppUpdater({
   }
 
   function isSupported() {
-    return platform === 'win32' && app.isPackaged === true && !env.PORTABLE_EXECUTABLE_DIR;
+    return !isMsix && platform === 'win32' && app.isPackaged === true && !env.PORTABLE_EXECUTABLE_DIR;
   }
 
   function downloadUpdate() {

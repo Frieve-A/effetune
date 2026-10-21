@@ -6,7 +6,7 @@ lang: en
 
 # How to Use the Double Blind Test
 
-The Double Blind Test lets you compare **Pipeline A** and **Pipeline B** by ear without knowing which one you are listening to. It is a controlled way to find out whether a difference you *think* you hear is actually distinguishable, and whether you actually prefer one pipeline over the other.
+The Double Blind Test lets you compare **Pipeline A** and **Pipeline B** by ear. It is a controlled way to find out whether a difference you *think* you hear is actually distinguishable, and whether you actually prefer one pipeline over the other.
 
 Two test types are available:
 
@@ -21,8 +21,8 @@ The test compares the two pipelines described in [Using AB Pipeline Features](..
 
 - **Pipeline A** and **Pipeline B** must each contain at least one effect.
 - Put one setting in Pipeline A and the other in Pipeline B, keeping everything else identical (for example, *With EQ* vs. *Without EQ*) so only the target difference is tested.
-- Remember which setting you placed in Pipeline A and which in Pipeline B. The test randomly reassigns the two pipelines on every trial; for an A/B Preference Test, it reports at the end whether Pipeline A or Pipeline B was significantly preferred.
-- The start buttons remain disabled until both Pipeline A and Pipeline B are present.
+- Remember which setting you placed in Pipeline A and which in Pipeline B. For an A/B Preference Test, the result reports whether Pipeline A or Pipeline B was significantly preferred.
+- The Double Blind Test menu and start buttons remain disabled until both Pipeline A and Pipeline B contain at least one effect.
 
 ## Opening the Test
 
@@ -38,10 +38,11 @@ The configuration screen offers the following items:
 - **Test name** – Describes the difference you are testing (for example, *With EQ vs. Without EQ*). The combobox works like Effect Presets: you can **save**, **recall**, and **delete** named tests. A saved test stores both pipelines and the number of tests, so you can reload the same comparison later. A test name is required before you can share a test.
 - **Your name** – Optional. Shown in the result; left blank it becomes *Anonymous*.
 - **Number of tests** – How many trials to run (set with the box or the slider). More trials give a more reliable result but take longer. The default is 20.
+- **Keep A/B fixed in ABX tests** – On by default. A stays assigned to the original Pipeline A and B to the original Pipeline B throughout an ABX test. X is still chosen randomly for each trial. Turn this off to randomize the A/B assignments on every trial as well. This setting is included in saved and shared tests.
 
 Press **Start ABX Test** or **Start A/B Preference Test** to begin.
 
-> **Note:** The **A** and **B** in the test are a separate thing from Effect Pipeline A and Pipeline B. On every trial, which pipeline's sound is assigned to A and which to B is decided again at random, and that mapping is never shown — so you cannot know which real pipeline you are currently hearing as A. The test's "A" is not necessarily Pipeline A, so do not assume it is; this is what keeps the test blind.
+> **Note:** An A/B Preference Test always randomizes the A/B assignments on every trial, regardless of this checkbox. The test's A is therefore not necessarily the original Pipeline A, and the assignments are hidden.
 
 ## Playing the Audio
 

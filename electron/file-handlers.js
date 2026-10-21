@@ -63,6 +63,7 @@ function getUserDataPath() {
   // 2. Otherwise, use the standard userData path (installed mode)
   
   const { app } = require('electron');
+  if (process.windowsStore === true) return app.getPath('userData');
   
   // Check in the executable directory using process.execPath
   const execPath = getActualExePath();

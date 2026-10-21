@@ -23,6 +23,7 @@ import {
     createShareUrl
 } from '../../utils/pipeline-state-codec.js';
 import { copyTextToClipboard } from '../../utils/clipboard-utils.js';
+import { hasDoubleBlindTestPipelines } from './pipeline-availability.js';
 import {
     appendExternalAssetWarningSnapshot,
     captureExternalAssetWarning,
@@ -70,15 +71,14 @@ export class DoubleBlindTest {
 
     /** Both pipelines must hold at least one plugin for the test to be available. */
     static abValid(audioManager) {
-        const a = audioManager?.pipelineA;
-        const b = audioManager?.pipelineB;
-        return Array.isArray(a) && a.length > 0 && Array.isArray(b) && b.length > 0;
+        return hasDoubleBlindTestPipelines(audioManager);
     }
 
     _resetTestState() {
         this.testType = 'ABX';       // 'ABX' | 'ABPREF'
         this.testName = '';          // describes what difference is being tested
         this.testCount = 20;
+        this.fixAB = true;
         this.localName = '';
         this.name = '';
         this.correctCount = 0;       // ABX: correct identifications
@@ -166,6 +166,7 @@ export class DoubleBlindTest {
         this.testType = (obj.tT === 'ABPREF') ? 'ABPREF' : 'ABX';
         this.testName = obj.tn || '';
         this.testCount = Math.max(1, parseInt(obj.tc, 10) || 20);
+        this.fixAB = obj.fAB !== false;
         this.name = obj.n || '';
         this.correctCount = obj.cC || 0;
         this.totalCount = obj.tC || 0;
@@ -258,6 +259,7 @@ export class DoubleBlindTest {
 
     _applyGating(on) {
         const ui = this.uiManager;
+        ui.updatePipelineMenuState?.();
         if (on) {
             ui.urlReflectionEnabled = false;
             // Strip any pipeline params so nothing about the pipelines leaks via URL.
@@ -371,6 +373,11 @@ export class DoubleBlindTest {
                         <input class="dbt-count-range" type="range" min="5" max="50" value="20" />
                     </div>
 
+                    <label class="dbt-fix-ab-row">
+                        <input class="dbt-fix-ab-input" type="checkbox" checked />
+                        <span class="dbt-fix-ab-label"></span>
+                    </label>
+
                     <div class="dbt-start-buttons">
                         <button class="header-button dbt-start-abx" type="button"></button>
                         <button class="header-button dbt-start-abpref" type="button"></button>
@@ -433,6 +440,8 @@ export class DoubleBlindTest {
             countLabel: q('.dbt-count-label'),
             countInput: q('.dbt-count-input'),
             countRange: q('.dbt-count-range'),
+            fixABInput: q('.dbt-fix-ab-input'),
+            fixABLabel: q('.dbt-fix-ab-label'),
             startAbx: q('.dbt-start-abx'),
             startAbpref: q('.dbt-start-abpref'),
             configError: q('.dbt-config-error'),
@@ -506,6 +515,9 @@ export class DoubleBlindTest {
         this.els.countRange.addEventListener('input', () => {
             this.els.countInput.value = this.els.countRange.value;
         });
+        this.els.fixABInput.addEventListener('change', () => {
+            this.fixAB = this.els.fixABInput.checked;
+        });
 
         this.els.switchA.addEventListener('click', () => this._switchToLabel('A'));
         this.els.switchB.addEventListener('click', () => this._switchToLabel('B'));
@@ -567,6 +579,7 @@ export class DoubleBlindTest {
         if (!this.els.nameInput) return;
         this.els.testNameInput.value = this.testName || '';
         this.els.countInput.value = this.testCount;
+        this.els.fixABInput.checked = this.fixAB;
         this.els.countRange.value = (this.testCount >= 5 && this.testCount <= 50) ? this.testCount : 20;
         this.uiManager.refreshRangeFillStyling?.(this.els.countRange);
         this.els.nameInput.value = '';
@@ -651,6 +664,7 @@ export class DoubleBlindTest {
             tests[name] = {
                 v: 1,
                 tc: (isNaN(tc) || tc < 1) ? this.testCount : tc,
+                fAB: this.fixAB,
                 pA: (this.audioManager.pipelineA || []).map(getSerializablePluginStateShort),
                 pB: (this.audioManager.pipelineB || []).map(getSerializablePluginStateShort)
             };
@@ -705,6 +719,7 @@ export class DoubleBlindTest {
 
         this.testName = name;
         this.testCount = Math.max(1, parseInt(t.tc, 10) || 20);
+        this.fixAB = t.fAB !== false;
         this._applyConfigToInputs();
         this._updateStartAvailability();
 
@@ -747,6 +762,7 @@ export class DoubleBlindTest {
         if (e.nameLabel) e.nameLabel.textContent = this.t('dbt.yourName');
         if (e.nameInput) e.nameInput.placeholder = this.t('dbt.anonymous');
         if (e.countLabel) e.countLabel.textContent = this.t('dbt.numberOfTests');
+        if (e.fixABLabel) e.fixABLabel.textContent = this.t('dbt.fixAB');
         if (e.startAbx) e.startAbx.textContent = this.t('dbt.startABX');
         if (e.startAbpref) e.startAbpref.textContent = this.t('dbt.startABPref');
         if (e.shareBtn) e.shareBtn.textContent = this.t('dbt.share');
@@ -877,8 +893,8 @@ export class DoubleBlindTest {
         this._activeLabel = null;
         this._highlightSwitch(null);
 
-        // Randomise the label -> pipeline mapping for this trial.
-        this._aIsPhysicalA = Math.random() < 0.5;
+        // Keep ABX references fixed when requested; preference tests stay blind.
+        this._aIsPhysicalA = (this.testType === 'ABX' && this.fixAB) || Math.random() < 0.5;
         this._xIsA = Math.random() < 0.5;
         this._updateSampleRateText();
     }
@@ -901,6 +917,7 @@ export class DoubleBlindTest {
      */
     _onKeyDown(e) {
         if (!this.active || !this.testRunning || this._startPending) return;
+        if (document.body.classList.contains('view-browser')) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.repeat) return;
 
@@ -1076,6 +1093,7 @@ export class DoubleBlindTest {
             tn: this.testName,
             tT: this.testType,
             tc: this.testCount,
+            fAB: this.fixAB,
             cC: this.correctCount,
             tC: this.totalCount,
             pa: this.prefACount,

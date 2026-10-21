@@ -40,11 +40,7 @@ public:
   }
 
   void reset() noexcept override {
-    active_routes_[0] = {0u, 0u, 0u};
-    active_routes_[1] = {1u, 1u, 0u};
-    active_route_count_ = 2u;
-    staged_route_count_ = 0u;
-    routes_pending_ = false;
+    // Active and staged routes are parameters, not processing history.
     telemetry_channels_ = 0u;
   }
 
@@ -109,10 +105,10 @@ public:
   }
 
 private:
-  std::array<Route, kMaximumRoutes> active_routes_{};
+  std::array<Route, kMaximumRoutes> active_routes_{{{0u, 0u, 0u}, {1u, 1u, 0u}}};
   std::array<Route, kMaximumRoutes> staged_routes_{};
   std::vector<float> input_;
-  std::uint32_t active_route_count_ = 0u;
+  std::uint32_t active_route_count_ = 2u;
   std::uint32_t staged_route_count_ = 0u;
   std::uint32_t telemetry_channels_ = 0u;
   bool routes_pending_ = false;

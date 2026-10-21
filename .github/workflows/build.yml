@@ -22,6 +22,27 @@ on:
         required: false
         default: false
         type: boolean
+      store_msix:
+        description: Package the signed Windows app for Microsoft Store
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      APPIMAGE_GPG_PRIVATE_KEY:
+        description: ASCII-armored private key for Linux AppImage signatures
+        required: false
+      APPIMAGE_GPG_PASSPHRASE:
+        description: Passphrase protecting the Linux AppImage signing key
+        required: false
+      APPIMAGE_GPG_KEY_FINGERPRINT:
+        description: Full fingerprint of the Linux AppImage signing key
+        required: false
+      EVS_ACCOUNT_NAME:
+        description: Castlabs EVS account name for Windows and macOS production VMP signing
+        required: false
+      EVS_PASSWD:
+        description: Castlabs EVS account password for Windows and macOS production VMP signing
+        required: false
 
 permissions:
   contents: read
@@ -60,7 +81,7 @@ jobs:
             grep -F 'Types: deb deb-src' "$sources"
           fi
           sudo apt-get update
-          packages=(libnl-3-dev libnl-genl-3-dev)
+          packages=(libnl-3-dev libnl-genl-3-dev gnupg)
           if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
             packages+=(dpkg-dev)
           fi
@@ -74,13 +95,14 @@ jobs:
         run: |
           set -euo pipefail
           npm run clean
+          node scripts/prepare-ecs.mjs
           npm run build:openhome-sidecar -- --no-publish-development
           if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
             npm run collect:openhome-linux-provenance -- --with-source
           else
             npm run verify:openhome-linux-provenance
           fi
-          npx electron-builder --publish never
+          node scripts/pack-ecs.mjs --output dist
         env:
           USE_HARD_LINKS: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -107,6 +129,61 @@ jobs:
         if: inputs.openhome_source_bundle
         run: npm run verify:openhome-linux-provenance -- --require-source
 
+      - name: Sign and verify Linux AppImage
+        shell: bash
+        env:
+          APPIMAGE_GPG_PRIVATE_KEY: ${{ secrets.APPIMAGE_GPG_PRIVATE_KEY }}
+          APPIMAGE_GPG_PASSPHRASE: ${{ secrets.APPIMAGE_GPG_PASSPHRASE }}
+          APPIMAGE_GPG_KEY_FINGERPRINT: ${{ secrets.APPIMAGE_GPG_KEY_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REPOSITORY" != 'Frieve-A/effetune' ||
+                "$GITHUB_REF_TYPE" != 'tag' || "$GITHUB_REF_NAME" != "v${version}" ]]; then
+            echo 'AppImage signing requires the official repository and exact desktop version tag.' >&2
+            exit 1
+          fi
+          : "${APPIMAGE_GPG_PRIVATE_KEY:?Configure the APPIMAGE_GPG_PRIVATE_KEY repository secret.}"
+          : "${APPIMAGE_GPG_PASSPHRASE:?Configure the APPIMAGE_GPG_PASSPHRASE repository secret.}"
+          : "${APPIMAGE_GPG_KEY_FINGERPRINT:?Configure the APPIMAGE_GPG_KEY_FINGERPRINT repository secret.}"
+          fingerprint="${APPIMAGE_GPG_KEY_FINGERPRINT^^}"
+          if [[ ! "$fingerprint" =~ ^[A-F0-9]{40}$ ]]; then
+            echo 'APPIMAGE_GPG_KEY_FINGERPRINT must be the full 40-character fingerprint without spaces.' >&2
+            exit 1
+          fi
+
+          export GNUPGHOME
+          GNUPGHOME="$(mktemp -d "$RUNNER_TEMP/effetune-appimage-gnupg.XXXXXX")"
+          cleanup() {
+            gpgconf --homedir "$GNUPGHOME" --kill all || true
+            rm -rf -- "$GNUPGHOME"
+          }
+          trap cleanup EXIT
+          chmod 0700 "$GNUPGHOME"
+          printf '%s\n' "$APPIMAGE_GPG_PRIVATE_KEY" | gpg --batch --import
+          unset APPIMAGE_GPG_PRIVATE_KEY
+
+          appimage="dist/EffeTune-${version}.AppImage"
+          public_key="dist/EffeTune-AppImage-signing-key.asc"
+          test -s "$appimage"
+          gpg --batch --armor --export-options export-minimal \
+            --output "$public_key" --export "$fingerprint"
+          actual_fingerprint="$(gpg --batch --with-colons --show-keys "$public_key" |
+            awk -F: '$1 == "fpr" { print $10; exit }')"
+          test "$actual_fingerprint" = "$fingerprint"
+
+          # Feed the passphrase through stdin, never through command arguments.
+          printf '%s\n' "$APPIMAGE_GPG_PASSPHRASE" |
+            gpg --batch --no-tty --pinentry-mode loopback --passphrase-fd 0 \
+              --local-user "${fingerprint}!" --digest-algo SHA256 \
+              --armor --detach-sign --output "${appimage}.asc" "$appimage"
+          unset APPIMAGE_GPG_PASSPHRASE
+
+          # Verify using only the public key that will be distributed.
+          gpg --batch --dearmor --output "$GNUPGHOME/verification-keyring.gpg" "$public_key"
+          gpgv --homedir "$GNUPGHOME" --keyring "$GNUPGHOME/verification-keyring.gpg" \
+            "${appimage}.asc" "$appimage"
+
       - name: Package Linux AppImage
         shell: bash
         run: |
@@ -121,7 +198,8 @@ jobs:
           chmod 0755 "dist/${appimage}"
           (
             cd dist
-            zip -9 "${release_zip}" "${appimage}"
+            zip -9 "${release_zip}" "${appimage}" "${appimage}.asc" \
+              EffeTune-AppImage-signing-key.asc
             stored_mode="$(zipinfo -l "${release_zip}" "${appimage}" | awk -v file="${appimage}" '$NF == file { print $1 }')"
             test "${stored_mode}" = "-rwxr-xr-x"
           )
@@ -185,17 +263,74 @@ jobs:
       - name: Generate web assets
         run: npm run assets:web
 
-      - name: Install Electron runtime for rolling PCM Electron tests
-        run: npx install-electron
+      - name: Prepare official ECS runtime
+        run: node scripts/prepare-ecs.mjs
 
       - name: Run rolling PCM Electron tests
         run: npm run test:rolling-pcm:electron
+        env:
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ github.workspace }}/out/ecs/runtime/win32-x64
 
-      - name: Build
+      - name: Build ECS application
         run: |
           npm run clean
+          if ($LASTEXITCODE -ne 0) { throw 'Clean failed.' }
           npm run build:openhome-sidecar -- --no-publish-development
-          npx electron-builder --publish never
+          if ($LASTEXITCODE -ne 0) { throw 'OpenHome build failed.' }
+          node scripts/pack-ecs.mjs --output dist
+          if ($LASTEXITCODE -ne 0) { throw 'ECS packaging failed.' }
+        env:
+          USE_HARD_LINKS: false
+
+      - name: Set up Python for VMP signing
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install EVS client
+        run: python -m pip install --disable-pip-version-check castlabs-evs==1.3.2
+
+      - name: Sign and verify Windows VMP
+        shell: pwsh
+        env:
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+          EVS_CONFIG_FILE: ${{ runner.temp }}/effetune-evs.json
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $version = node -p "require('./package.json').version"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read the application version.' }
+            if ($env:GITHUB_REPOSITORY -ne 'Frieve-A/effetune' -or
+                $env:GITHUB_REF_TYPE -ne 'tag' -or $env:GITHUB_REF_NAME -ne "v$version") {
+              throw 'VMP signing requires the official repository and exact desktop version tag.'
+            }
+            if (-not $env:EVS_ACCOUNT_NAME -or -not $env:EVS_PASSWD) {
+              throw 'Configure the EVS_ACCOUNT_NAME and EVS_PASSWD repository secrets.'
+            }
+            python -m castlabs_evs.account --no-ask reauth
+            if ($LASTEXITCODE -ne 0) { throw 'EVS authentication failed.' }
+            python -m castlabs_evs.vmp --no-ask sign-pkg --streaming dist/win-unpacked
+            if ($LASTEXITCODE -ne 0) { throw 'VMP signing failed.' }
+            python -m castlabs_evs.vmp --no-ask verify-pkg --streaming dist/win-unpacked
+            if ($LASTEXITCODE -ne 0) { throw 'VMP verification failed.' }
+          } finally {
+            if (Test-Path -LiteralPath $env:EVS_CONFIG_FILE) {
+              Remove-Item -LiteralPath $env:EVS_CONFIG_FILE -Force
+            }
+          }
+
+      - name: Package signed Windows installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $before = (Get-FileHash -LiteralPath dist/win-unpacked/EffeTune.exe -Algorithm SHA256).Hash
+          node scripts/pack-ecs.mjs --prepackaged dist/win-unpacked --output dist
+          if ($LASTEXITCODE -ne 0) { throw 'Windows installer packaging failed.' }
+          $after = (Get-FileHash -LiteralPath dist/win-unpacked/EffeTune.exe -Algorithm SHA256).Hash
+          if ($before -ne $after) { throw 'Installer packaging changed the VMP-signed executable.' }
+          python -m castlabs_evs.vmp --no-ask verify-pkg --streaming dist/win-unpacked
+          if ($LASTEXITCODE -ne 0) { throw 'VMP verification failed after installer packaging.' }
         env:
           USE_HARD_LINKS: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -208,6 +343,20 @@ jobs:
 
       - name: Run rolling PCM distribution smoke
         run: npm run smoke:rolling-pcm-distribution
+
+      - name: Package Microsoft Store MSIX
+        if: inputs.store_msix
+        run: node scripts/pack-msix-win.mjs --prepackaged dist/win-unpacked --output dist/store
+
+      - name: Upload Microsoft Store package
+        if: inputs.store_msix
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-msix-x64
+          path: dist/store/*
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
 
       - name: Package Windows release ZIPs
         if: inputs.release_artifacts
@@ -244,6 +393,7 @@ jobs:
             dist/*-Windows-Portable.zip
             dist/*-Windows-Setup.zip
             dist/**/*.exe
+            dist/win-unpacked/*.sig
             dist/latest.yml
             dist/*-Setup.exe.blockmap
           if-no-files-found: error
@@ -293,15 +443,58 @@ jobs:
       - name: Generate web assets
         run: npm run assets:web
 
-      - name: Build
+      - name: Prepare official ECS runtime
+        run: node scripts/prepare-ecs.mjs
+
+      - name: Build OpenHome sidecar
         shell: bash
         run: |
+          set -euo pipefail
           npm run clean
           npm run build:openhome-sidecar -- --arch ${{ matrix.arch }} --no-publish-development
-          npx electron-builder --mac --${{ matrix.arch }} --publish never
+
+      - name: Set up Python for VMP signing
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install EVS client
+        run: python -m pip install --disable-pip-version-check castlabs-evs==1.3.2
+
+      - name: Build and verify macOS VMP application
+        shell: bash
+        env:
+          USE_HARD_LINKS: false
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+          EVS_CONFIG_FILE: ${{ runner.temp }}/effetune-evs.json
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- "$EVS_CONFIG_FILE"' EXIT
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REPOSITORY" != 'Frieve-A/effetune' ||
+                "$GITHUB_REF_TYPE" != 'tag' || "$GITHUB_REF_NAME" != "v${version}" ]]; then
+            echo 'VMP signing requires the official repository and exact desktop version tag.' >&2
+            exit 1
+          fi
+          : "${EVS_ACCOUNT_NAME:?Configure the EVS_ACCOUNT_NAME repository secret.}"
+          : "${EVS_PASSWD:?Configure the EVS_PASSWD repository secret.}"
+          python -m castlabs_evs.account --no-ask reauth
+          node scripts/pack-ecs.mjs --sign-vmp --output dist
+
+      - name: Package verified macOS DMG
+        shell: bash
         env:
           USE_HARD_LINKS: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          app_dir=dist/mac
+          if [[ '${{ matrix.arch }}' == 'arm64' ]]; then
+            app_dir=dist/mac-arm64
+          fi
+          node scripts/pack-ecs.mjs --prepackaged "$app_dir/EffeTune.app" --output dist
+          python -m castlabs_evs.vmp --no-ask verify-pkg --streaming "$app_dir"
 
       - name: Verify packaged DSP artifacts
         run: npm run smoke:dsp-package

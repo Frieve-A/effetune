@@ -247,6 +247,22 @@ test('getUserDataPath selects portable settings beside the executable or app use
   });
 });
 
+test('MSIX ignores Portable settings beside the executable', () => {
+  const portableRoot = fs.realpathSync(createTempDir('effetune-msix-storage'));
+  fs.mkdirSync(path.join(portableRoot, 'effetune_settings'));
+  const storePath = path.join(portableRoot, 'EffeTune Store');
+  const harness = createHarness({ userDataPath: storePath });
+  try {
+    withPatchedProperty(process, 'windowsStore', true, () => {
+      withPatchedProperty(process, 'execPath', path.join(portableRoot, 'EffeTune.exe'), () => {
+        harness.withElectronStub(() => assert.equal(harness.module.getUserDataPath(), storePath));
+      });
+    });
+  } finally {
+    fs.rmSync(portableRoot, { recursive: true, force: true });
+  }
+});
+
 test('file operation helpers delegate to file-utils', async () => {
   const harness = createHarness({ userDataPath: 'C:\\UserData' });
 

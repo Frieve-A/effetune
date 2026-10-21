@@ -1,3 +1,4 @@
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
 import {
   loadWebAudioPreferences,
   mergeWebAudioPreferences,
@@ -12,8 +13,10 @@ export async function loadAudioPreferences(isElectron) {
 
   try {
     const result = await window.electronAPI.loadAudioPreferences();
-    if (result.success && result.preferences) {
-      return normalizeWebAudioPreferences(result.preferences);
+    if (result.success) {
+      if (result.preferences) return normalizeWebAudioPreferences(result.preferences);
+      // Leave the device-selected sample rate and default output routing unchanged.
+      return { inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID };
     }
     return null;
   } catch (error) {

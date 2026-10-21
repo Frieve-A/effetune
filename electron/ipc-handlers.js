@@ -384,7 +384,7 @@ function createApplicationMenuTemplate(menuState = {}) {
         { type: 'separator' },
         item('file.doubleBlindTest', {
           label: 'Double Blind Test',
-          enabled: true,
+          enabled: false,
           click: () => sendToRenderer('start-double-blind-test')
         }),
         { type: 'separator' },
@@ -702,6 +702,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
 
   // Download and install a desktop update through the normal quit path.
   ipcMain.handle('download-update', async () => {
+    if (process.windowsStore === true) return { success: false };
     try {
       const { downloadAndInstallUpdate } = require('./main');
       await downloadAndInstallUpdate();
@@ -1010,7 +1011,11 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   // Save configuration
   ipcMain.handle('save-config', async (event, cfg) => {
     try {
-      const current = { ...config.loadConfig(), ...cfg };
+      const stored = config.loadConfig();
+      const current = { ...stored, ...cfg };
+      // The Browser controller owns this independently saved settings area.
+      if (Object.hasOwn(stored, 'browser')) current.browser = stored.browser;
+      else delete current.browser;
       const saved = config.saveConfig(current);
       if (saved !== true) {
         return { success: false, error: 'Failed to write config file' };
@@ -1018,7 +1023,9 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       constants.setAppConfig(current);
       onConfigSaved?.(current);
       try {
-        app.setLoginItemSettings({ openAtLogin: !!current.autoLaunch });
+        if (process.windowsStore !== true) {
+          app.setLoginItemSettings({ openAtLogin: !!current.autoLaunch });
+        }
       } catch (error) {
         console.error('Config saved, but failed to update the auto-launch setting:', error);
         return {
@@ -1047,6 +1054,18 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   // Handle opening external URLs in default browser
   ipcMain.handle('open-external-url', async (event, url) => {
     try {
+      if (typeof url !== 'string') return { success: false };
+      if (/^ms-(?:windows-store|settings):/i.test(url)) {
+        const mainWindow = constants.getMainWindow();
+        const allowed = url === 'ms-windows-store://downloadsandupdates' || url === 'ms-settings:startupapps';
+        if (!allowed || process.platform !== 'win32' || process.windowsStore !== true ||
+            !mainWindow?.webContents || event.sender !== mainWindow.webContents ||
+            !event.senderFrame || event.senderFrame !== mainWindow.webContents.mainFrame) {
+          return { success: false };
+        }
+        await shell.openExternal(url);
+        return { success: true };
+      }
       // Make sure the URL is properly formatted
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         // Extract anchor if present

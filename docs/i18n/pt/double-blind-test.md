@@ -6,7 +6,7 @@ lang: pt
 
 # Como Usar o Teste duplo-cego
 
-O Teste duplo-cego permite comparar de ouvido o **Pipeline A** e o **Pipeline B** sem saber qual deles você está escutando. É uma forma controlada de descobrir se uma diferença que você *acha* ouvir é realmente perceptível e se você de fato prefere um pipeline ao outro.
+O Teste duplo-cego permite comparar de ouvido o **Pipeline A** e o **Pipeline B**. É uma forma controlada de descobrir se uma diferença que você *acha* ouvir é realmente perceptível e se você de fato prefere um pipeline ao outro.
 
 Há dois tipos de teste disponíveis:
 
@@ -21,8 +21,8 @@ O teste compara os dois pipelines descritos em [Usando Recursos de Pipeline AB](
 
 - O **Pipeline A** e o **Pipeline B** devem conter pelo menos um efeito cada.
 - Coloque uma configuração no Pipeline A e a outra no Pipeline B, mantendo todo o restante idêntico (por exemplo, *Com EQ* vs. *Sem EQ*) para que apenas a diferença desejada seja testada.
-- Lembre-se de qual configuração você colocou no Pipeline A e qual colocou no Pipeline B. O teste reatribui aleatoriamente os dois pipelines a cada tentativa; em um teste de preferência A/B, ele informa no final se o Pipeline A ou o Pipeline B foi preferido de forma significativa.
-- Os botões de início permanecem desativados até que tanto o Pipeline A quanto o Pipeline B estejam presentes.
+- Lembre-se de qual configuração você colocou no Pipeline A e qual colocou no Pipeline B. Em um teste de preferência A/B, o resultado informa se o Pipeline A ou o Pipeline B foi preferido de forma significativa.
+- A opção “Teste duplo-cego” do menu e os botões de início permanecem desativados até que o Pipeline A e o Pipeline B contenham pelo menos um efeito cada.
 
 ## Abrindo o Teste
 
@@ -38,10 +38,11 @@ A tela de configuração oferece os seguintes itens:
 - **Nome do teste** – Descreve a diferença que você está testando (por exemplo, *Com EQ vs. Sem EQ*). A caixa combinada funciona como as Predefinições de efeito: você pode **salvar**, **carregar** e **excluir** testes nomeados. Um teste salvo armazena ambos os pipelines e o número de tentativas, permitindo recarregar a mesma comparação depois. É necessário definir um nome antes de compartilhar um teste.
 - **Seu nome** – Opcional. É exibido no resultado; se deixado em branco, aparece como *Anônimo*.
 - **Número de tentativas** – Quantas tentativas serão executadas (definidas pela caixa numérica ou pelo controle deslizante). Mais tentativas produzem um resultado mais confiável, mas levam mais tempo. O padrão é 20.
+- **Manter A/B fixos nos testes ABX** – Ativado por padrão. Durante todo o teste ABX, A corresponde ao Pipeline A original e B ao Pipeline B original. X continua sendo escolhido aleatoriamente a cada tentativa. Desmarque a opção para que as atribuições de A e B também sejam sorteadas a cada tentativa. Essa configuração é incluída ao salvar ou compartilhar o teste.
 
 Pressione **Iniciar teste ABX** ou **Iniciar teste de preferência A/B** para começar.
 
-> **Observação:** Os **A** e **B** do teste são independentes do Pipeline A e do Pipeline B do Effect Pipeline. A cada tentativa, qual pipeline será atribuído a A e qual será atribuído a B é sorteado novamente ao acaso, e essa correspondência nunca é exibida — assim você não tem como saber qual pipeline real está ouvindo como A nem presumir que "A" seja o Pipeline A. É isso que mantém o teste cego.
+> **Observação:** Em um teste de preferência A/B, as atribuições de A e B são sempre sorteadas a cada tentativa, independentemente dessa opção. Portanto, o A do teste não corresponde necessariamente ao Pipeline A original, e essa correspondência permanece oculta.
 
 ## Reproduzindo o Áudio
 

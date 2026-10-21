@@ -39,6 +39,7 @@ const CONFIG_CATEGORY_LABEL_KEYS = {
   powerSaving: 'dialog.config.powerSaving.title',
   offlineOutput: 'dialog.config.offlineOutput.title',
   controllers: 'dialog.config.physicalControl',
+  browser: 'dialog.config.browser.title',
   remoteControl: 'dialog.config.openHome.title'
 };
 
@@ -53,7 +54,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   };
   if ('theme' in config) config.theme = normalizeThemeId(config.theme);
   config.language = normalizeLanguagePreference(config.language || AUTO_LANGUAGE_PREFERENCE);
-  config.startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
+  const startupViews = isElectron ? ['effects', 'library', 'visualizer', 'browser'] : ['effects', 'library', 'visualizer'];
+  config.startupView = startupViews.includes(config.startupView) ? config.startupView : 'effects';
   config.libraryStartupView = normalizeMusicLibraryStartupView(config.libraryStartupView);
   config.libraryIncludeVideo = config.libraryIncludeVideo === true;
   config.videoAutoRotate = config.videoAutoRotate !== false;
@@ -72,6 +74,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
   config.powerSaving = { ...powerSavingSettings };
   let offlineOutputSettings = normalizeOfflineOutputSettings(config.offlineOutput);
   config.offlineOutput = { ...offlineOutputSettings };
+  let defaultBrowserUserAgent = '';
+  if (isElectron && window.electronAPI?.browser?.getState) {
+    const browserState = await window.electronAPI.browser.getState();
+    config.browser = browserState.settings;
+    defaultBrowserUserAgent = browserState.defaultUserAgent;
+  }
   
   const pipelinePresetManager = window.pipelineManager && window.pipelineManager.presetManager;
   const presets = pipelinePresetManager
@@ -84,6 +92,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     ? window.uiManager.t.bind(window.uiManager)
     : key => key;
   const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1 : null;
+  const isMsix = isElectron && window.electronAPI?.isMsix === true;
 
   // Fix for single preset case: auto-set startupPreset if pipelineStartup is 'preset' but startupPreset is empty
   if (config.pipelineStartup === 'preset' && (!config.startupPreset || config.startupPreset === '') && presetNames.length > 0) {
@@ -92,10 +101,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
 
   const electronStartupSections = isElectron ? `
       <div class="device-section">
+        ${isMsix ? `
+        <div class="power-mode-help" id="store-startup-help"></div>
+        <button type="button" class="library-button" id="store-startup"></button>` : `
         <div class="checkbox-container">
           <input type="checkbox" id="auto-launch" ${config.autoLaunch ? 'checked' : ''}>
           <label for="auto-launch" id="config-auto-launch-label"></label>
-        </div>
+        </div>`}
       </div>
       <div class="device-section">
         <div class="checkbox-container">
@@ -112,10 +124,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
       </div>
       <div class="device-section">
+        ${isMsix ? `
+        <div class="power-mode-help" id="store-updates-help"></div>
+        <button type="button" class="library-button" id="store-updates"></button>` : `
         <div class="checkbox-container">
           <input type="checkbox" id="check-updates" ${config.checkForUpdatesOnStartup !== false ? 'checked' : ''}>
           <label for="check-updates" id="config-check-updates-label"></label>
-        </div>
+        </div>`}
       </div>
       <div class="device-section">
         <div class="checkbox-container">
@@ -256,6 +271,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <input type="radio" name="startup-view" id="startup-view-visualizer" value="visualizer" ${config.startupView === 'visualizer' ? 'checked' : ''}>
               <label for="startup-view-visualizer" id="config-startup-view-visualizer-label"></label>
             </div>
+            ${isElectron ? `<div class="radio-container">
+              <input type="radio" name="startup-view" id="startup-view-browser" value="browser" ${config.startupView === 'browser' ? 'checked' : ''}>
+              <label for="startup-view-browser" id="config-startup-view-browser-label"></label>
+            </div>` : ''}
           </div>
           <div class="device-section">
             <label class="section-label" id="config-pipeline-label"></label>
@@ -314,7 +333,30 @@ export async function showConfigDialog(isElectron, currentConfig) {
     powerSaving: powerSavingSection,
     offlineOutput: offlineOutputSection,
     controllers: physicalControlSection,
-    ...(isElectron ? { remoteControl: openHomeSection } : {})
+    ...(isElectron ? {
+      browser: `
+          <div class="device-section">
+            <label class="section-label" for="browser-user-agent" id="browser-user-agent-label"></label>
+            <div class="browser-setting-row">
+              <input type="text" class="browser-setting-input" id="browser-user-agent" maxlength="1024" spellcheck="false" aria-describedby="browser-user-agent-help">
+              <button type="button" class="library-button" id="browser-reset-user-agent"></button>
+            </div>
+            <div class="power-mode-help" id="browser-user-agent-help"></div>
+            <div class="checkbox-container">
+              <input type="checkbox" id="browser-open-tabs-externally">
+              <label for="browser-open-tabs-externally" id="browser-open-tabs-externally-label"></label>
+            </div>
+          </div>
+          <div class="device-section">
+            <label class="section-label" for="browser-start-page" id="browser-start-page-label"></label>
+            <div class="browser-setting-row">
+              <input type="text" class="browser-setting-input" id="browser-start-page" maxlength="8192" spellcheck="false" aria-describedby="browser-start-page-help">
+              <button type="button" class="library-button" id="browser-reset-start-page"></button>
+            </div>
+            <div class="power-mode-help" id="browser-start-page-help"></div>
+          </div>`,
+      remoteControl: openHomeSection
+    } : {})
   };
   const categories = Object.keys(categoryPanels);
   if (!categories.includes(selectedConfigCategory)) selectedConfigCategory = categories[0];
@@ -488,7 +530,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
       color: var(--et-surface-89);
       font-size: 13px;
     }
-    .openhome-name-row input {
+    .openhome-name-row input,
+    .browser-setting-input {
       min-width: 0;
       flex: 1 1 auto;
       padding: 6px 8px;
@@ -497,12 +540,27 @@ export async function showConfigDialog(isElectron, currentConfig) {
       background: var(--et-surface-7);
       color: var(--et-surface-96);
     }
-    .openhome-name-row input:focus {
+    .browser-setting-input {
+      flex: 1 1 0;
+      box-sizing: border-box;
+    }
+    .openhome-name-row input:focus,
+    .browser-setting-input:focus {
       border-color: var(--et-surface-51);
       outline: none;
     }
-    .openhome-name-row input:disabled {
+    .openhome-name-row input:disabled,
+    .browser-setting-input:disabled {
       opacity: 0.6;
+    }
+    .browser-setting-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .browser-setting-row .library-button {
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
     .openhome-status {
       margin: 8px 0 0 26px;
@@ -1026,6 +1084,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     const autoLaunchLabel = document.getElementById('config-auto-launch-label');
     if (autoLaunchLabel) autoLaunchLabel.textContent = t('dialog.config.autoLaunch');
+    for (const [id, key] of [
+      ['store-startup-help', 'dialog.store.startupHelp'],
+      ['store-startup', 'dialog.store.openStartup'],
+      ['store-updates-help', 'dialog.store.updatesHelp'],
+      ['store-updates', 'dialog.store.openUpdates']
+    ]) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = t(key);
+    }
     const startMinLabel = document.getElementById('config-start-min-label');
     if (startMinLabel) startMinLabel.textContent = t('dialog.config.startMinimized');
     const trayLabel = document.getElementById('config-tray-label');
@@ -1036,6 +1103,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (hardwareAccelerationLabel) hardwareAccelerationLabel.textContent = t('dialog.config.hardwareAcceleration');
     const hardwareAccelerationHelp = document.getElementById('hardware-acceleration-help');
     if (hardwareAccelerationHelp) hardwareAccelerationHelp.textContent = t('dialog.config.hardwareAccelerationHelp');
+    const browserUserAgentLabel = document.getElementById('browser-user-agent-label');
+    if (browserUserAgentLabel) browserUserAgentLabel.textContent = t('dialog.config.browser.userAgent');
+    const browserUserAgentHelp = document.getElementById('browser-user-agent-help');
+    if (browserUserAgentHelp) browserUserAgentHelp.textContent = t('dialog.config.browser.userAgentHelp');
+    const browserOpenTabsLabel = document.getElementById('browser-open-tabs-externally-label');
+    if (browserOpenTabsLabel) browserOpenTabsLabel.textContent = t('dialog.config.browser.openTabsExternally');
+    const browserStartPageLabel = document.getElementById('browser-start-page-label');
+    if (browserStartPageLabel) browserStartPageLabel.textContent = t('dialog.config.browser.startPage');
+    const browserStartPageHelp = document.getElementById('browser-start-page-help');
+    if (browserStartPageHelp) browserStartPageHelp.textContent = t('dialog.config.browser.startPageHelp');
+    const browserResetStartPageLabel = document.getElementById('browser-reset-start-page');
+    if (browserResetStartPageLabel) browserResetStartPageLabel.textContent = t('dialog.config.browser.reset');
+    const browserResetUserAgentLabel = document.getElementById('browser-reset-user-agent');
+    if (browserResetUserAgentLabel) browserResetUserAgentLabel.textContent = t('dialog.config.browser.reset');
     const openHomeTitle = document.getElementById('openhome-title');
     if (openHomeTitle) openHomeTitle.textContent = t('dialog.config.openHome.title');
     const openHomeEnabledLabel = document.getElementById('openhome-enabled-label');
@@ -1077,6 +1158,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-startup-view-effects-label').textContent = t('dialog.config.startupView.effects');
     document.getElementById('config-startup-view-library-label').textContent = t('dialog.config.startupView.library');
     document.getElementById('config-startup-view-visualizer-label').textContent = t('dialog.config.startupView.visualizer');
+    const browserStartupLabel = document.getElementById('config-startup-view-browser-label');
+    if (browserStartupLabel) browserStartupLabel.textContent = t('dialog.config.startupView.browser');
     document.getElementById('config-pipeline-label').textContent = t('dialog.config.pipeline');
     document.getElementById('config-pipeline-default-label').textContent = t('dialog.config.pipeline.default');
     document.getElementById('config-pipeline-last-label').textContent = t('dialog.config.pipeline.last');
@@ -1157,13 +1240,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const visualizerHdrInput = document.getElementById('visualizer-hdr');
     if (visualizerHdrInput) visualizerHdrInput.checked = visualizerHdr;
 
-    const startupView = ['library', 'visualizer'].includes(config.startupView) ? config.startupView : 'effects';
+    const startupView = startupViews.includes(config.startupView) ? config.startupView : 'effects';
     const startupEffects = document.getElementById('startup-view-effects');
     const startupLibrary = document.getElementById('startup-view-library');
     if (startupEffects) startupEffects.checked = startupView === 'effects';
     if (startupLibrary) startupLibrary.checked = startupView === 'library';
     const startupVisualizer = document.getElementById('startup-view-visualizer');
     if (startupVisualizer) startupVisualizer.checked = startupView === 'visualizer';
+    const startupBrowser = document.getElementById('startup-view-browser');
+    if (startupBrowser) startupBrowser.checked = startupView === 'browser';
     const libraryStartupView = document.getElementById('library-startup-view-select');
     if (libraryStartupView) {
       libraryStartupView.value = normalizeMusicLibraryStartupView(config.libraryStartupView);
@@ -1300,6 +1385,20 @@ export async function showConfigDialog(isElectron, currentConfig) {
       .addEventListener('click', () => selectCategory(category));
   }
 
+  for (const [id, uri] of [
+    ['store-startup', 'ms-settings:startupapps'],
+    ['store-updates', 'ms-windows-store://downloadsandupdates']
+  ]) {
+    document.getElementById(id)?.addEventListener('click', async () => {
+      try {
+        const result = await window.electronAPI.openExternalUrl(uri);
+        if (result?.success !== true) throw new Error('Windows action failed');
+      } catch (error) {
+        console.error('Could not open Windows settings or Microsoft Store:', error);
+        window.uiManager?.setError?.(t('dialog.store.openFailed'), true);
+      }
+    });
+  }
   const autoLaunch = document.getElementById('auto-launch');
   if (autoLaunch) {
     autoLaunch.addEventListener('change', async e => {
@@ -1382,6 +1481,45 @@ export async function showConfigDialog(isElectron, currentConfig) {
   openHomeFriendlyName?.addEventListener('change', async e => {
     await applyOpenHomeFriendlyName(e.target.value);
   });
+  const browserUserAgent = document.getElementById('browser-user-agent');
+  const browserOpenTabs = document.getElementById('browser-open-tabs-externally');
+  const browserStartPage = document.getElementById('browser-start-page');
+  const browserResetStartPage = document.getElementById('browser-reset-start-page');
+  const browserResetUserAgent = document.getElementById('browser-reset-user-agent');
+  const browserControls = [browserUserAgent, browserOpenTabs, browserStartPage, browserResetStartPage, browserResetUserAgent].filter(Boolean);
+  function syncBrowserControls() {
+    if (!browserUserAgent) return;
+    browserUserAgent.value = config.browser?.userAgent || defaultBrowserUserAgent;
+    browserOpenTabs.checked = config.browser?.openTabsExternally !== false;
+    browserStartPage.value = config.browser?.startPage || '';
+    for (const control of browserControls) control.disabled = !window.electronAPI?.browser;
+  }
+  async function saveBrowserSettings(patch) {
+    for (const control of browserControls) control.disabled = true;
+    try {
+      const result = await window.electronAPI.browser.saveSettings(patch);
+      if (result?.error === 'invalidURL') {
+        window.uiManager?.setError?.(t('dialog.config.browser.invalidStartPage'), true);
+        return;
+      }
+      if (!result?.ok) throw new Error('Browser settings save failed');
+      config.browser = result.settings;
+      publishElectronConfig({ ...(window.appConfig || config), browser: result.settings });
+    } catch (error) {
+      console.error('Failed to save Browser settings:', error);
+      window.uiManager?.setError?.(t('dialog.config.browser.saveFailed'), true);
+    } finally {
+      syncBrowserControls();
+    }
+  }
+  syncBrowserControls();
+  browserUserAgent?.addEventListener('change', () => saveBrowserSettings({
+    userAgent: browserUserAgent.value.trim() === defaultBrowserUserAgent ? '' : browserUserAgent.value
+  }));
+  browserResetUserAgent?.addEventListener('click', () => saveBrowserSettings({ userAgent: '' }));
+  browserOpenTabs?.addEventListener('change', () => saveBrowserSettings({ openTabsExternally: browserOpenTabs.checked }));
+  browserStartPage?.addEventListener('change', () => saveBrowserSettings({ startPage: browserStartPage.value }));
+  browserResetStartPage?.addEventListener('click', () => saveBrowserSettings({ startPage: '' }));
   [
     [document.getElementById('power-mode-continuous'), PowerPolicy.CONTINUOUS],
     [document.getElementById('power-mode-balanced'), PowerPolicy.BALANCED],
@@ -1421,10 +1559,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
   [
     document.getElementById('startup-view-effects'),
     document.getElementById('startup-view-library'),
-    document.getElementById('startup-view-visualizer')
+    document.getElementById('startup-view-visualizer'),
+    document.getElementById('startup-view-browser')
   ].filter(Boolean).forEach(el => {
     el.addEventListener('change', async () => {
-      const startupView = ['library', 'visualizer'].includes(el.value) ? el.value : 'effects';
+      const startupView = startupViews.includes(el.value) ? el.value : 'effects';
       if (await save({ startupView })) syncConfigControls();
     });
   });

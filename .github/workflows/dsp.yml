@@ -27,7 +27,7 @@ jobs:
       - name: Setup Emscripten SDK
         uses: emscripten-core/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
         with:
-          version: 6.0.11
+          version: 6.0.13
       - name: Build committed DSP artifacts
         run: npm run build:dsp
       - name: Verify committed generated files and artifacts

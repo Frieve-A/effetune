@@ -301,6 +301,10 @@ function addDocumentBodyClass(documentRef, className) {
 }
 
 function applyInitialStartupViewClass(config, windowRef = window) {
+    if (config?.startupView === 'browser' && windowRef.electronAPI?.browser && !hasExplicitStartupViewRequest(windowRef)) {
+        addDocumentBodyClass(getStartupDocument(windowRef), 'view-browser');
+        return;
+    }
     if (config?.startupView === 'visualizer' && !hasExplicitStartupViewRequest(windowRef)) {
         addDocumentBodyClass(getStartupDocument(windowRef), 'view-visualizer');
         return;
@@ -582,6 +586,8 @@ class App {
 
             // Apply the configured initial view after startup content has been handled.
             await this.applyStartupViewPreference();
+            // Browser capture requires the initialized graph and power controller.
+            if (this.browserStartupRequested) await this.uiManager.showBrowserView();
         } catch (error) {
             console.error('Initialization error:', error);
             this.uiManager.setError('error.initializationFailed', true);
@@ -760,6 +766,11 @@ class App {
             }
         }
 
+        if (startupConfig.startupView === 'browser' && window.electronAPI?.browser && !hasExplicitStartupViewRequest(window)) {
+            this.browserStartupRequested = true;
+            applyInitialStartupViewClass(startupConfig, window);
+            return;
+        }
         if (startupConfig.startupView === 'visualizer' && !hasExplicitStartupViewRequest(window)) {
             try { await this.uiManager?.showVisualizerView?.(); }
             catch (error) { console.error('Error opening Visualizer startup view:', error); }

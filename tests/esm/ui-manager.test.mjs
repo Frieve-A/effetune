@@ -745,6 +745,7 @@ test('Pipeline Analyzer host owns absolute open state and disposes the Electron 
 
 test('updateEditButtons disables pipeline edit buttons that have nothing to act on', () => {
   const manager = Object.create(UIManager.prototype);
+  manager.refreshApplicationMenu = () => {};
   for (const name of ['undoButton', 'redoButton', 'cutButton', 'copyButton']) manager[name] = { disabled: false };
   manager.pipelineManager = {
     historyManager: { canUndo: false, canRedo: true },
@@ -1246,7 +1247,13 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
       updateTexts: () => calls.push(['doubleBlind.updateTexts'])
     };
     manager.pluginListManager.dragMessage = document.createElement('div');
+    const browserButton = document.createElement('button');
+    browserButton.id = 'browserButton';
+    document.body.appendChild(browserButton);
+    manager.translations['dialog.config.browser.title'] = 'ブラウザ';
     manager.updateUITexts();
+    assert.equal(browserButton.title, 'ブラウザ');
+    assert.equal(browserButton['aria-label'], 'ブラウザ');
     assert.equal(manager.shareButton.textContent, '');
     assert.equal(manager.shareButton['aria-label'], manager.t('ui.title.sharePipeline'));
     assert.equal(manager.pipelineEmpty.querySelector('.pipeline-empty-message').textContent, 'Drop here');
@@ -1773,6 +1780,58 @@ test('audio player replacement reserves layout until the new player mounts', asy
   });
 });
 
+test('pipeline menus follow copy sources and blind test availability after edits and restores', async () => {
+  await withUIHarness({}, async ({ audioManager, manager }) => {
+    const assertDisabled = (copyAToB, copyBToA, blindTest) => {
+      assert.deepEqual([
+        manager.copyAToBButton.disabled,
+        manager.copyBToAButton.disabled,
+        manager.doubleBlindTestButton.disabled
+      ], [copyAToB, copyBToA, blindTest]);
+    };
+    assertDisabled(false, true, true);
+
+    let menuRefreshes = 0;
+    manager.refreshApplicationMenu = () => { menuRefreshes++; };
+    await manager.copyAToBButton.click();
+    assertDisabled(false, false, false);
+    assert.equal(menuRefreshes, 1);
+
+    manager.updateEditButtons();
+    assert.equal(menuRefreshes, 1);
+
+    audioManager.pipelineB = [];
+    manager.updateEditButtons();
+    assertDisabled(false, false, true);
+    assert.equal(menuRefreshes, 2);
+
+    audioManager.pipelineB = [createPlugin('B')];
+    manager.updateEditButtons();
+    assertDisabled(false, false, false);
+
+    audioManager.pipelineA = [];
+    manager.updateEditButtons();
+    assertDisabled(false, false, true);
+
+    audioManager.pipelineA = [createPlugin('A')];
+    audioManager.pipelineB = null;
+    audioManager.listeners.get('pipelineChanged')({ pipeline: 'A' });
+    assertDisabled(false, true, true);
+
+    audioManager.pipelineB = [createPlugin('B')];
+    audioManager.listeners.get('pipelineChanged')({ pipeline: 'B' });
+    assertDisabled(false, false, false);
+
+    manager.doubleBlindTest = { isActive: () => true };
+    manager.togglePipelineMenu();
+    assertDisabled(true, true, true);
+
+    manager.doubleBlindTest = null;
+    manager.updatePipelineToggleButton();
+    assertDisabled(false, false, false);
+  });
+});
+
 test('wires clipboard, history, pipeline toggles, menus, and keyboard shortcuts', async () => {
   await withUIHarness({}, async ({ audioManager, calls, document, manager }) => {
     await manager.cutButton.click();
@@ -2067,4 +2126,137 @@ test('pipeline delay uses confirmed totals during pending changes and translated
     manager.updateUITexts();
     assert.equal(label.textContent, 'Delay: 384');
   });
+});
+
+test('Browser passes synchronous capture to its view and keeps audio selected when showing effects', async () => {
+  await withUIHarness({ electronAPI: { browser: {} } }, async ({ manager, document }) => {
+    let selections = 0;
+    let shows = 0;
+    let restores = 0;
+    let finishCapture;
+    let capture;
+    manager.browserView = { input: {
+      select() {
+        selections++;
+        capture = selections === 1 ? new Promise(resolve => { finishCapture = resolve; }) : Promise.resolve(true);
+        return capture;
+      },
+      restoreDevice() { restores++; return Promise.resolve(true); }
+    },
+      async show(pendingCapture) { shows++; assert.equal(pendingCapture, capture); await pendingCapture; }, hide() {} };
+    const firstVisit = manager.showBrowserView();
+    assert.equal(selections, 1);
+    await flushMicrotasks();
+    assert.equal(shows, 1);
+    finishCapture(true);
+    assert.equal(await firstVisit, true);
+    assert.equal(shows, 1);
+    assert.equal(document.body.classList.contains('view-browser'), true);
+    manager.showEffectPipelineView();
+    assert.equal(document.body.classList.contains('view-browser'), false);
+    assert.equal(restores, 0);
+    assert.equal(await manager.showBrowserView(), true);
+    assert.equal(await manager.showBrowserView(), true);
+    assert.equal(selections, 3);
+    assert.equal(shows, 3);
+  });
+});
+
+test('a library dialog prevents Browser from acquiring audio or changing the view', async () => {
+  await withUIHarness({ electronAPI: { browser: {} } }, async ({ manager, document }) => {
+    let selections = 0;
+    let shows = 0;
+    manager.libraryView = { hasActiveDialog: () => true };
+    manager.browserView = { input: { select() { selections++; return Promise.resolve(true); } },
+      async show() { shows++; } };
+    document.body.classList.add('view-library');
+    assert.equal(await manager.showBrowserView(), false);
+    assert.equal(selections, 0);
+    assert.equal(shows, 0);
+    assert.equal(document.body.classList.contains('view-library'), true);
+    assert.equal(document.body.classList.contains('view-browser'), false);
+  });
+});
+
+test('an active Double Blind Test permits Browser visits without forcing a return', async () => {
+  await withUIHarness({ electronAPI: { browser: {} } }, async ({ manager, document }) => {
+    let selections = 0;
+    let shows = 0;
+    let hides = 0;
+    manager.doubleBlindTest = { isActive: () => true };
+    manager.browserButton = document.createElement('button');
+    manager.browserButton.disabled = false;
+    manager.browserView = {
+      input: { select() { selections++; return Promise.resolve(true); } },
+      async show() { shows++; },
+      hide() { hides++; }
+    };
+    assert.equal(await manager.showBrowserView(), true);
+    assert.equal(manager.browserButton.disabled, false);
+
+    manager.updateEffectPipelineVisibility();
+    assert.equal(hides, 0);
+    assert.equal(document.body.classList.contains('view-browser'), true);
+    assert.equal(manager.browserButton.disabled, false);
+    assert.equal(manager.browserButton['aria-pressed'], 'true');
+    assert.equal(selections, 1);
+    assert.equal(shows, 1);
+    assert.equal(manager.showEffectPipelineView(), true);
+    assert.equal(hides, 1);
+    assert.equal(await manager.showBrowserView(), true);
+    assert.equal(selections, 2);
+    assert.equal(shows, 2);
+  });
+});
+
+test('a pending Browser visit can finish while a Double Blind Test is active', async () => {
+  await withUIHarness({ electronAPI: { browser: {} } }, async ({ manager, document }) => {
+    let active = false;
+    let finishRestore;
+    let selections = 0;
+    let shows = 0;
+    manager.doubleBlindTest = { isActive: () => active };
+    manager.browserButton = document.createElement('button');
+    manager.browserButton.disabled = false;
+    manager.browserView = {
+      input: { select() { selections++; return Promise.resolve(true); } },
+      async show() { shows++; }
+    };
+    manager.miniPlayerMode = true;
+    manager.setMiniPlayerMode = () => new Promise(resolve => { finishRestore = resolve; });
+    const visit = manager.showBrowserView();
+    assert.equal(selections, 1);
+    active = true;
+    manager.updateEffectPipelineVisibility();
+    finishRestore(true);
+    assert.equal(await visit, true);
+    assert.equal(shows, 1);
+    assert.equal(document.body.classList.contains('view-browser'), true);
+    assert.equal(manager.browserButton.disabled, false);
+  });
+});
+
+test('Double Blind Test entry waits for successful Effects restoration from Mini Player', async () => {
+  for (const encoded of [undefined, 'shared-test']) {
+    for (const restored of [true, false]) {
+      await withUIHarness({}, async ({ manager, document }) => {
+        let finishRestore;
+        let entries = 0;
+        manager.doubleBlindTest = { isActive: () => false, enterFresh() { entries++; },
+          restoreFromShare(value) { assert.equal(value, encoded); entries++; return true; } };
+        manager.miniPlayerMode = true;
+        document.body.classList.add('view-browser');
+        manager.setMiniPlayerMode = () => new Promise(resolve => {
+          finishRestore = () => { manager.miniPlayerMode = !restored; resolve(restored); };
+        });
+        const entry = manager.startDoubleBlindTest(encoded);
+        await flushMicrotasks();
+        assert.equal(entries, 0);
+        finishRestore();
+        assert.equal(await entry, restored);
+        assert.equal(entries, restored ? 1 : 0);
+        assert.equal(document.body.classList.contains('view-browser'), !restored);
+      });
+    }
+  }
 });

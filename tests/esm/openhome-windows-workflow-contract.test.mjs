@@ -70,7 +70,7 @@ test('Windows desktop packaging is owned by the reusable Electron build', () => 
   assert.match(desktopWindows, /uses: \.\/\.github\/workflows\/build\.yml/);
   assert.match(desktopWindows, /^\s+stage: windows$/m);
   assert.match(desktopWindows, /^\s+source_verified: true$/m);
-  assert.match(buildWindows, /npx electron-builder --publish never/);
+  assert.match(buildWindows, /node scripts\/pack-ecs\.mjs --output dist/);
   assert.match(buildWindows, /npm run smoke:dsp-package/);
   assert.match(buildWindows, /npm run smoke:openhome-package/);
   assert.match(buildWindows, /^\s+dist\/latest\.yml$/m);
@@ -101,6 +101,110 @@ test('OpenHome native CI builds Windows x64, Linux x64, and both macOS architect
   ]) {
     assert.match(openHomeNative, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+});
+
+test('Windows release signing is mandatory before installers and artifact upload', () => {
+  const windows = jobBlock(workflows.build, 'build-windows');
+  const caller = jobBlock(workflows.desktopRelease, 'windows');
+  for (const secret of ['EVS_ACCOUNT_NAME', 'EVS_PASSWD']) {
+    assert.ok(caller.includes(`${secret}: \${{ secrets.${secret} }}`));
+    assert.match(workflows.build, new RegExp(`      ${secret}:\\s+description: [^\\n]+\\s+required: false`));
+    assert.doesNotMatch(jobBlock(workflows.desktopRelease, 'linux'), new RegExp(secret));
+    assert.doesNotMatch(workflows.ci, new RegExp(secret));
+  }
+  const pack = windows.indexOf('name: Build ECS application');
+  const signing = windows.indexOf('name: Sign and verify Windows VMP');
+  const installers = windows.indexOf('name: Package signed Windows installers');
+  const upload = windows.indexOf('name: Upload Windows artifacts');
+  assert.ok(pack < signing && signing < installers && installers < upload);
+  const signStep = windows.slice(signing, installers);
+  assert.doesNotMatch(signStep, /\n\s+if:|continue-on-error:/);
+  assert.match(signStep, /GITHUB_REPOSITORY -ne 'Frieve-A\/effetune'/);
+  assert.match(signStep, /GITHUB_REF_TYPE -ne 'tag'.*GITHUB_REF_NAME -ne "v\$version"/);
+  assert.match(signStep, /-not \$env:EVS_ACCOUNT_NAME -or -not \$env:EVS_PASSWD/);
+  assert.match(signStep, /castlabs_evs\.account --no-ask reauth/);
+  assert.match(signStep, /castlabs_evs\.vmp --no-ask sign-pkg --streaming dist\/win-unpacked/);
+  assert.match(signStep, /castlabs_evs\.vmp --no-ask verify-pkg --streaming dist\/win-unpacked/);
+  assert.equal(signStep.match(/if \(\$LASTEXITCODE -ne 0\)/g)?.length, 4);
+  assert.match(signStep, /finally[\s\S]*Remove-Item -LiteralPath \$env:EVS_CONFIG_FILE -Force/);
+  assert.match(signStep, /EVS_CONFIG_FILE: \$\{\{ runner\.temp \}\}\/effetune-evs\.json/);
+  const packaging = windows.slice(installers, upload);
+  assert.doesNotMatch(packaging, /EVS_ACCOUNT_NAME|EVS_PASSWD/);
+  assert.match(packaging, /if \(\$before -ne \$after\)/);
+  assert.match(packaging, /verify-pkg --streaming dist\/win-unpacked/);
+  assert.match(windows, /dist\/win-unpacked\/\*\.sig/);
+  assert.doesNotMatch(windows, /continue-on-error:|if: always\(\)/);
+});
+
+test('macOS ECS release signs VMP before ad-hoc signing and preserves it through DMG packaging', () => {
+  const macos = jobBlock(workflows.build, 'build-macos');
+  const caller = jobBlock(workflows.desktopRelease, 'macos');
+  for (const secret of ['EVS_ACCOUNT_NAME', 'EVS_PASSWD']) {
+    assert.ok(caller.includes(`${secret}: \${{ secrets.${secret} }}`));
+  }
+  assert.match(macos, /runner: macos-15-intel\s+arch: x64/);
+  assert.match(macos, /runner: macos-15\s+arch: arm64/);
+  assert.match(macos, /node scripts\/prepare-ecs\.mjs/);
+  assert.match(macos, /castlabs-evs==1\.3\.2/);
+  const signing = macos.indexOf('name: Build and verify macOS VMP application');
+  const packaging = macos.indexOf('name: Package verified macOS DMG');
+  const upload = macos.indexOf('name: Upload macOS artifacts');
+  assert.ok(signing >= 0 && signing < packaging && packaging < upload);
+  const signStep = macos.slice(signing, packaging);
+  assert.doesNotMatch(signStep, /\n\s+if:|continue-on-error:/);
+  assert.match(signStep, /GITHUB_REPOSITORY" != 'Frieve-A\/effetune'/);
+  assert.match(signStep, /GITHUB_REF_TYPE" != 'tag'.*GITHUB_REF_NAME" != "v\$\{version\}"/);
+  assert.match(signStep, /EVS_ACCOUNT_NAME:\?Configure/);
+  assert.match(signStep, /EVS_PASSWD:\?Configure/);
+  assert.match(signStep, /EVS_CONFIG_FILE: \$\{\{ runner\.temp \}\}\/effetune-evs\.json/);
+  assert.match(signStep, /trap 'rm -f -- "\$EVS_CONFIG_FILE"' EXIT/);
+  assert.match(signStep, /set -euo pipefail/);
+  assert.ok(signStep.indexOf('castlabs_evs.account --no-ask reauth') < signStep.indexOf('pack-ecs.mjs --sign-vmp --output dist'));
+  const packageStep = macos.slice(packaging, upload);
+  assert.doesNotMatch(packageStep, /EVS_ACCOUNT_NAME|EVS_PASSWD|--sign-vmp/);
+  assert.match(packageStep, /app_dir=dist\/mac\n/);
+  assert.match(packageStep, /app_dir=dist\/mac-arm64/);
+  assert.match(packageStep, /pack-ecs\.mjs --prepackaged "\$app_dir\/EffeTune\.app" --output dist/);
+  assert.ok(packageStep.indexOf('--prepackaged') < packageStep.indexOf('verify-pkg --streaming "$app_dir"'));
+  assert.doesNotMatch(macos, /continue-on-error:|if: always\(\)/);
+
+  const linux = jobBlock(workflows.build, 'build-linux');
+  assert.match(linux, /node scripts\/prepare-ecs\.mjs/);
+  assert.match(linux, /node scripts\/pack-ecs\.mjs --output dist/);
+  assert.doesNotMatch(linux, /EVS_|castlabs_evs|--sign-vmp/);
+});
+
+test('Linux release signatures are required and verified before packaging and upload', () => {
+  const linux = jobBlock(workflows.build, 'build-linux');
+  const caller = jobBlock(workflows.desktopRelease, 'linux');
+  for (const secret of ['APPIMAGE_GPG_PRIVATE_KEY', 'APPIMAGE_GPG_PASSPHRASE', 'APPIMAGE_GPG_KEY_FINGERPRINT']) {
+    assert.ok(caller.includes(`${secret}: \${{ secrets.${secret} }}`));
+    assert.match(workflows.build, new RegExp(`      ${secret}:\\s+description: [^\\n]+\\s+required: false`));
+    for (const other of ['windows', 'macos']) {
+      assert.doesNotMatch(jobBlock(workflows.desktopRelease, other), new RegExp(secret));
+    }
+    assert.doesNotMatch(workflows.ci, new RegExp(secret));
+  }
+  const signing = linux.indexOf('name: Sign and verify Linux AppImage');
+  const packaging = linux.indexOf('name: Package Linux AppImage');
+  const upload = linux.indexOf('name: Upload Linux artifacts');
+  assert.ok(signing >= 0 && signing < packaging && packaging < upload);
+  const signStep = linux.slice(signing, packaging);
+  assert.doesNotMatch(signStep, /\n\s+if:|continue-on-error:/);
+  assert.match(signStep, /GITHUB_REPOSITORY" != 'Frieve-A\/effetune'/);
+  assert.match(signStep, /GITHUB_REF_TYPE" != 'tag'.*GITHUB_REF_NAME" != "v\$\{version\}"/);
+  assert.match(signStep, /APPIMAGE_GPG_PRIVATE_KEY:\?Configure/);
+  assert.match(signStep, /APPIMAGE_GPG_PASSPHRASE:\?Configure/);
+  assert.match(signStep, /APPIMAGE_GPG_KEY_FINGERPRINT:\?Configure/);
+  assert.match(signStep, /test "\$actual_fingerprint" = "\$fingerprint"/);
+  assert.match(signStep, /--passphrase-fd 0/);
+  assert.match(signStep, /--local-user "\$\{fingerprint\}!"/);
+  assert.match(signStep, /gpgv --homedir "\$GNUPGHOME" --keyring "\$GNUPGHOME\/verification-keyring\.gpg"/);
+  assert.match(signStep, /trap cleanup EXIT/);
+  assert.match(signStep, /gpgconf --homedir "\$GNUPGHOME" --kill all/);
+  assert.match(signStep, /rm -rf -- "\$GNUPGHOME"/);
+  assert.match(linux.slice(packaging, upload), /"\$\{appimage\}\.asc" \\\n\s+EffeTune-AppImage-signing-key\.asc/);
+  assert.doesNotMatch(linux, /continue-on-error:|if: always\(\)/);
 });
 
 test('all desktop packages include the native sidecar and its tracked notices', () => {
@@ -322,8 +426,8 @@ test('desktop tag jobs build every platform package after exact-version prefligh
 
   const buildWindows = jobBlock(workflows.build, 'build-windows');
   const buildMacos = jobBlock(workflows.build, 'build-macos');
-  assert.match(buildWindows, /npx electron-builder --publish never/);
-  assert.match(buildMacos, /npx electron-builder --mac --\$\{\{ matrix\.arch \}\} --publish never/);
+  assert.match(buildWindows, /node scripts\/pack-ecs\.mjs --prepackaged dist\/win-unpacked --output dist/);
+  assert.match(buildMacos, /node scripts\/pack-ecs\.mjs --sign-vmp --output dist/);
   for (const build of [buildWindows, buildMacos]) {
     assert.match(build, /^\s+if: inputs\.source_verified$/m);
     for (const hostTest of [

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Streaming | Frieve EffeTune</title>
+    <meta name="description" content="Start page for the Frieve EffeTune built-in browser with links to major music and video streaming services.">
+    <meta name="robots" content="noindex, follow">
+    <link rel="icon" href="/images/favicon.ico">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f4f5f7;
+            --card: #ffffff;
+            --card-hover: #eef0f4;
+            --text: #1b1d22;
+            --muted: #60646e;
+            --border: #dde0e6;
+            --accent: #3b6ef5;
+            --shadow: 0 6px 20px rgba(20, 24, 32, 0.08);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #15171b;
+                --card: #1f2228;
+                --card-hover: #292d35;
+                --text: #eceef2;
+                --muted: #9aa0ab;
+                --border: #2e323a;
+                --accent: #7c9cff;
+                --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            }
+        }
+        * { box-sizing: border-box; }
+        html { font-size: clamp(15px, 0.35vw + 11px, 24px); }
+        body {
+            display: flex;
+            min-height: 100vh;
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+        main {
+            --gutter: clamp(16px, 5vw, 96px);
+            width: 100%;
+            max-width: calc(96rem + 2 * var(--gutter));
+            margin: auto;
+            padding: clamp(24px, 7vh, 120px) var(--gutter);
+        }
+        h1 {
+            margin: 0 0 1.25rem;
+            font-size: 1.75rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+        h2 {
+            margin: 1.75rem 0 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+        ul {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.75rem;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        li[hidden] { display: none; }
+        .tile {
+            display: flex;
+            align-items: center;
+            gap: 0.875rem;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0.875rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            background: var(--card);
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+        }
+        .tile:hover, .tile:focus-visible {
+            background: var(--card-hover);
+            border-color: var(--brand, var(--accent));
+            box-shadow: var(--shadow);
+        }
+        .tile:focus-visible { outline: 2px solid var(--brand, var(--accent)); outline-offset: 2px; }
+        .tile:active { transform: scale(0.98); }
+        .mark {
+            flex: none;
+            display: grid;
+            place-items: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 0.625rem;
+            background: var(--brand);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+            color: var(--ink, #fff);
+            font-weight: 700;
+            font-size: 1.05rem;
+        }
+        .label { min-width: 0; }
+        .name, .host {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .name { font-weight: 600; }
+        .host { font-size: 0.8rem; color: var(--muted); }
+        .more {
+            justify-content: center;
+            border-style: dashed;
+            background: color-mix(in srgb, var(--card) 50%, transparent);
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+        .more:hover, .more:focus-visible { color: var(--text); }
+        .more svg { width: 1.25rem; height: 1.25rem; transition: transform 0.2s; }
+        .more[aria-expanded="true"] svg { transform: rotate(180deg); }
+        @media (min-width: 420px) {
+            ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (min-width: 720px) {
+            ul { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (min-width: 1200px) {
+            ul { grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 1rem; }
+            .tile {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+                padding: 1.25rem;
+                border-radius: 1rem;
+            }
+            .tile:hover { transform: translateY(-2px); }
+            .mark { width: 3rem; height: 3rem; border-radius: 0.75rem; font-size: 1.25rem; }
+            .more { flex-direction: row; align-items: center; justify-content: center; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tile, .more svg { transition: none; }
+            .tile:hover, .tile:active { transform: none; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Streaming</h1>
+    <section aria-labelledby="music">
+        <h2 id="music">Music</h2>
+        <ul id="music-list"></ul>
+    </section>
+    <section aria-labelledby="video">
+        <h2 id="video">Video</h2>
+        <ul id="video-list"></ul>
+    </section>
+</main>
+<script>
+(() => {
+    // Global services in display order. Entries with `locales` are regional:
+    // they move up for matching browser languages and otherwise follow the globals.
+    // Each entry: [name, url, brand color, locales?, mark text color?]
+    const SERVICES = {
+        music: [
+            ['Spotify', 'https://open.spotify.com/', '#1db954'],
+            ['YouTube Music', 'https://music.youtube.com/', '#ff0033'],
+            ['Apple Music', 'https://music.apple.com/', '#fa2d48'],
+            ['Amazon Music', 'https://music.amazon.com/', '#1a98ff'],
+            ['SoundCloud', 'https://soundcloud.com/', '#ff5500'],
+            ['NetEase Cloud Music', 'https://music.163.com/', '#d43c33'],
+            ['Deezer', 'https://www.deezer.com/', '#a238ff'],
+            ['TIDAL', 'https://tidal.com/', '#111111'],
+            ['Qobuz', 'https://play.qobuz.com/', '#1d4ed8'],
+            ['Pandora', 'https://www.pandora.com/', '#224099'],
+            ['Audiomack', 'https://audiomack.com/', '#ffa200', null, '#111'],
+            ['Bandcamp', 'https://bandcamp.com/', '#1da0c3'],
+            ['iHeartRadio', 'https://www.iheart.com/', '#c6002b'],
+            ['TuneIn', 'https://tunein.com/', '#1c203c'],
+            ['QQ Music', 'https://y.qq.com/', '#31c27c', ['zh']],
+            ['LINE MUSIC', 'https://music.line.me/', '#06c755', ['ja']],
+            ['AWA', 'https://s.awa.fm/', '#fc4c02', ['ja']],
+            ['KKBOX', 'https://www.kkbox.com/', '#0aa5d6', ['zh-tw', 'zh-hk', 'zh-hant', 'ja']],
+            ['Melon', 'https://www.melon.com/', '#00cd3c', ['ko']],
+            ['Genie', 'https://www.genie.co.kr/', '#0090ff', ['ko']],
+            ['JioSaavn', 'https://www.jiosaavn.com/', '#2bc5b4', ['hi']],
+            ['Gaana', 'https://gaana.com/', '#e72c30', ['hi']],
+            ['Yandex Music', 'https://music.yandex.ru/', '#ffcc00', ['ru'], '#111'],
+            ['Anghami', 'https://play.anghami.com/', '#8f00ff', ['ar']]
+        ],
+        video: [
+            ['YouTube', 'https://www.youtube.com/', '#ff0033'],
+            ['Netflix', 'https://www.netflix.com/', '#e50914'],
+            ['Prime Video', 'https://www.primevideo.com/', '#1f7aec'],
+            ['Disney+', 'https://www.disneyplus.com/', '#113ccf'],
+            ['TikTok', 'https://www.tiktok.com/', '#111111'],
+            ['Bilibili', 'https://www.bilibili.com/', '#00a1d6'],
+            ['Twitch', 'https://www.twitch.tv/', '#9146ff'],
+            ['HBO Max', 'https://www.hbomax.com/', '#002be7'],
+            ['Apple TV', 'https://tv.apple.com/', '#111111'],
+            ['Crunchyroll', 'https://www.crunchyroll.com/', '#f47521'],
+            ['Paramount+', 'https://www.paramountplus.com/', '#0064ff'],
+            ['Vimeo', 'https://vimeo.com/', '#1ab7ea'],
+            ['Dailymotion', 'https://www.dailymotion.com/', '#0066dc'],
+            ['Pluto TV', 'https://pluto.tv/', '#2c2c2c'],
+            ['iQIYI', 'https://www.iqiyi.com/', '#00be06', ['zh']],
+            ['Tencent Video', 'https://v.qq.com/', '#ff6022', ['zh']],
+            ['Youku', 'https://www.youku.com/', '#24a5ff', ['zh']],
+            ['TVer', 'https://tver.jp/', '#1a8cff', ['ja']],
+            ['U-NEXT', 'https://video.unext.jp/', '#111111', ['ja']],
+            ['ABEMA', 'https://abema.tv/', '#17a34a', ['ja']],
+            ['Niconico', 'https://www.nicovideo.jp/', '#252525', ['ja']],
+            ['TVING', 'https://www.tving.com/', '#ff153c', ['ko']],
+            ['Wavve', 'https://www.wavve.com/', '#1351f9', ['ko']],
+            ['Coupang Play', 'https://www.coupangplay.com/', '#e31837', ['ko']],
+            ['JioHotstar', 'https://www.hotstar.com/', '#1f80e0', ['hi']],
+            ['ZEE5', 'https://www.zee5.com/', '#8230c6', ['hi']],
+            ['SonyLIV', 'https://www.sonyliv.com/', '#2a2a2a', ['hi']],
+            ['Kinopoisk', 'https://hd.kinopoisk.ru/', '#ff6600', ['ru']],
+            ['VK Video', 'https://vkvideo.ru/', '#0077ff', ['ru']],
+            ['Rutube', 'https://rutube.ru/', '#100943', ['ru']],
+            ['Shahid', 'https://shahid.mbc.net/', '#0fae8a', ['ar']],
+            ['Globoplay', 'https://globoplay.globo.com/', '#fb0234', ['pt-br']],
+            ['ViX', 'https://vix.com/', '#ff5a00', ['es']],
+            ['france.tv', 'https://www.france.tv/', '#2a2adb', ['fr']],
+            ['CANAL+', 'https://www.canalplus.com/', '#111111', ['fr']]
+        ]
+    };
+    // Services shown ahead of locale-matched regional ones.
+    const LEADING_GLOBALS = 4;
+    // Minimum number of tiles visible per section before the expand tile.
+    const MIN_VISIBLE = 6;
+    const STORAGE_KEY = 'effetune-streaming-expanded';
+
+    const languages = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'])
+        .map(l => l.toLowerCase());
+    const matchesLocale = tags => tags.some(tag => languages.some(l => l === tag || l.startsWith(tag + '-')));
+
+    // Country for services with per-country sites. Only the primary language is
+    // used: its explicit region, or the country a few languages imply on their own.
+    // Unknown countries keep the default URL.
+    const IMPLIED_COUNTRY = { ja: 'jp', ko: 'kr', hi: 'in' };
+    const country = (() => {
+        try {
+            const locale = new Intl.Locale(languages[0]);
+            return (locale.region || IMPLIED_COUNTRY[locale.language] || '').toLowerCase();
+        } catch { return ''; }
+    })();
+    const AMAZON_DOMAINS = {
+        jp: 'co.jp', gb: 'co.uk', de: 'de', fr: 'fr', es: 'es', it: 'it',
+        ca: 'ca', br: 'com.br', in: 'in', mx: 'com.mx', au: 'com.au'
+    };
+    // Apple falls back to its US storefront for unsupported countries.
+    const REGIONAL_URLS = {
+        'Apple Music': c => `https://music.apple.com/${c}/new`,
+        'Apple TV': c => `https://tv.apple.com/${c}`,
+        'Amazon Music': c => AMAZON_DOMAINS[c] && `https://music.amazon.${AMAZON_DOMAINS[c]}/`
+    };
+    const localizeUrl = (name, url) => (country && /^[a-z]{2}$/.test(country) && REGIONAL_URLS[name]?.(country)) || url;
+
+    function orderServices(list) {
+        const globals = list.filter(s => !s[3]);
+        const regional = list.filter(s => s[3]);
+        const local = regional.filter(s => matchesLocale(s[3]));
+        const other = regional.filter(s => !local.includes(s));
+        return [...globals.slice(0, LEADING_GLOBALS), ...local, ...globals.slice(LEADING_GLOBALS), ...other];
+    }
+
+    function loadExpanded() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+    }
+    function saveExpanded() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(expanded)); } catch { /* storage unavailable */ }
+    }
+    const expanded = loadExpanded();
+
+    function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text) node.textContent = text;
+        return node;
+    }
+
+    function renderSection(key) {
+        const ul = document.getElementById(key + '-list');
+        for (const [name, url, brand, , ink] of orderServices(SERVICES[key])) {
+            const a = el('a', 'tile');
+            a.href = localizeUrl(name, url);
+            a.style.setProperty('--brand', brand);
+            if (ink) a.style.setProperty('--ink', ink);
+            const mark = el('span', 'mark', name[0].toUpperCase());
+            mark.setAttribute('aria-hidden', 'true');
+            const label = el('span', 'label');
+            label.append(el('span', 'name', name), el('span', 'host', new URL(a.href).hostname.replace(/^www\./, '')));
+            a.append(mark, label);
+            const li = el('li');
+            li.append(a);
+            ul.append(li);
+        }
+        const button = el('button', 'tile more');
+        button.type = 'button';
+        button.setAttribute('aria-controls', ul.id);
+        button.setAttribute('aria-labelledby', `${key} ${key}-count`);
+        button.innerHTML = `<span class="count" id="${key}-count"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
+        button.addEventListener('click', () => {
+            expanded[key] = !expanded[key];
+            saveExpanded();
+            layout();
+        });
+        const moreItem = el('li');
+        moreItem.append(button);
+        ul.append(moreItem);
+        return { key, ul, items: [...ul.children].slice(0, -1), moreItem, button };
+    }
+
+    const sections = ['music', 'video'].map(renderSection);
+
+    // Fit as many tiles as the viewport allows: whole rows that keep both
+    // sections on screen, never fewer than MIN_VISIBLE tiles.
+    function layout() {
+        for (const s of sections) {
+            s.items.forEach(li => { li.hidden = false; });
+            s.moreItem.hidden = false;
+        }
+        const main = document.querySelector('main');
+        const listsHeight = sections.reduce((sum, s) => sum + s.ul.offsetHeight, 0);
+        const perSection = (window.innerHeight - (main.offsetHeight - listsHeight)) / sections.length;
+
+        for (const s of sections) {
+            const style = getComputedStyle(s.ul);
+            const columns = style.gridTemplateColumns.split(' ').length;
+            const gap = parseFloat(style.rowGap) || 0;
+            const rowHeight = s.items[0].offsetHeight;
+            const rows = Math.max(1, Math.floor((perSection + gap) / (rowHeight + gap)));
+            const capacity = Math.max(columns * rows, Math.ceil(MIN_VISIBLE / columns) * columns);
+            const total = s.items.length;
+            const overflow = total > capacity;
+            const open = overflow && !!expanded[s.key];
+            const visible = !overflow || open ? total : capacity - 1;
+
+            s.items.forEach((li, i) => { li.hidden = i >= visible; });
+            s.moreItem.hidden = !overflow;
+            s.button.setAttribute('aria-expanded', String(open));
+            s.button.querySelector('.count').textContent = overflow && !open ? '+' + (total - visible) : '';
+        }
+    }
+
+    let frame = 0;
+    window.addEventListener('resize', () => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(layout);
+    });
+    layout();
+    if (document.fonts) document.fonts.ready.then(layout);
+
+    // Arrow keys move focus to the nearest tile in that direction.
+    document.addEventListener('keydown', event => {
+        const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        const dir = dirs[event.key];
+        const current = document.activeElement;
+        if (!dir || !current || !current.classList.contains('tile')) return;
+        const from = current.getBoundingClientRect();
+        const cx = from.left + from.width / 2;
+        const cy = from.top + from.height / 2;
+        let best = null;
+        let bestScore = Infinity;
+        for (const tile of document.querySelectorAll('li:not([hidden]) > .tile')) {
+            if (tile === current) continue;
+            const r = tile.getBoundingClientRect();
+            const dx = r.left + r.width / 2 - cx;
+            const dy = r.top + r.height / 2 - cy;
+            const along = dx * dir[0] + dy * dir[1];
+            if (along <= 1) continue;
+            const across = dir[0] ? (dy < 0 ? -dy : dy) : (dx < 0 ? -dx : dx);
+            const score = along + across * 4;
+            if (score < bestScore) { bestScore = score; best = tile; }
+        }
+        if (best) {
+            event.preventDefault();
+            best.focus();
+            best.scrollIntoView({ block: 'nearest' });
+        }
+    });
+})();
+</script>
+</body>
+</html>

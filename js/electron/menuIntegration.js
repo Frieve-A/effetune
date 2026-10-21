@@ -3,6 +3,8 @@
  * Provides application menu functionality when running in Electron
  */
 
+import { hasDoubleBlindTestPipelines } from '../ui/double-blind-test/pipeline-availability.js';
+
 /**
  * Update the tray menu with translated labels
  * This method is called when translations are loaded
@@ -63,8 +65,8 @@ export async function updateApplicationMenu(isElectron) {
     // Determine gating state for the Double Blind Test:
     //  - File (except Open music file / Quit) and all Edit items are disabled
     //    while the test is open.
-    //  - The Double Blind Test entry can always be opened (a saved test can be
-    //    recalled from inside it); it is only disabled while already open.
+    //  - Opening a Double Blind Test requires two populated pipelines and no
+    //    test already open.
     const dbtActive = !!(window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive());
     const editEnabled = !dbtActive;
 
@@ -81,7 +83,10 @@ export async function updateApplicationMenu(isElectron) {
       'file.exportPreset': { label: t('menu.file.exportPreset'), enabled: !dbtActive },
       'file.importPreset': { label: t('menu.file.importPreset'), enabled: !dbtActive },
       'file.backupRestore': { label: t('menu.settings.backupRestore'), enabled: !dbtActive },
-      'file.doubleBlindTest': { label: t('menu.doubleBlindTest'), enabled: !dbtActive },
+      'file.doubleBlindTest': {
+        label: t('menu.doubleBlindTest'),
+        enabled: !dbtActive && hasDoubleBlindTestPipelines(window.uiManager.audioManager)
+      },
       'file.quit': { label: t('menu.file.quit'), enabled: true },
       'menu.edit': { label: t('menu.edit') },
       'edit.undo': { label: t('menu.edit.undo'), enabled: editEnabled },

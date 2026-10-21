@@ -99,6 +99,7 @@ export async function buildExtension() {
     const materials = [
         ...(await walk('extension')).filter(filename => /\.(html|css)$/.test(filename)),
         ...(await walk('plugins')).filter(filename => filename.endsWith('.css')),
+        ...(await walk('css/fonts')),
         ...(await walk('js/locales')),
         ...(await walk('presets')),
         'plugins/plugins.txt', 'plugins/dsp/effetune-dsp.wasm', 'plugins/dsp/effetune-dsp.simd.wasm',

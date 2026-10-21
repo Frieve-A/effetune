@@ -13,10 +13,85 @@ import {
   initializeWebSqliteRuntime
 } from '../../js/library/repository/web-sqlite-runtime.js';
 import { metadataParseEligibility } from '../../js/library/scan/metadata-parse-service.js';
+import { WebCatalogScanRuntime } from '../../js/library/scan/web-scan-runtime.js';
 import { createConsoleHarness, withGlobals } from '../helpers/global-test-utils.mjs';
 import { removeSqliteTestDirectory } from '../helpers/sqlite-test-utils.mjs';
 
 const catalogRuntimeCoreSource = fs.readFileSync(new URL('../../js/library/repository/catalog-runtime-core.js', import.meta.url), 'utf8');
+
+test('Web empty imports and rescans preserve tracks in other folders', async t => {
+  const { database } = await openWebTestCatalog(t, 'effetune-web-empty-import-');
+  const repository = new WebSqliteCatalogRepository({ authority: 'test' });
+  repository.database = database;
+  const handles = new Map();
+  const runtime = new WebCatalogScanRuntime({
+    repository,
+    handleStore: {
+      list: async () => [...handles].map(([folderId, handle]) => ({ folderId, handle })),
+      put: async ({ folderId, handle }) => handles.set(folderId, handle),
+      get: async folderId => handles.get(folderId),
+      delete: async folderId => handles.delete(folderId),
+      close() {}
+    },
+    metadataParserFactory: () => ({
+      async parse({ relativePath }) {
+        if (relativePath === 'broken.mp3') {
+          throw Object.assign(new Error('Invalid audio container'), { code: 'corrupt-container' });
+        }
+        return { title: 'Song', artist: 'Artist', album: 'Album', genre: 'Rock', durationSec: 1 };
+      }
+    })
+  });
+  t.after(() => runtime.close());
+  const roots = [
+    ['Music', ['song.mp3']], ['Empty', []], ['Documents', ['notes.txt']],
+    ['Corrupt', ['broken.mp3']], ['Other Music', ['other.mp3']]
+  ].map(([name, names]) => {
+    const files = new Map(names.map(fileName => [fileName, new File(['media'], fileName, { lastModified: 1 })]));
+    return {
+      kind: 'directory', name, files,
+      queryPermission: async () => 'granted',
+      resolve: async () => null,
+      getFileHandle: async fileName => ({ getFile: async () => files.get(fileName) }),
+      async *values() {
+        for (const [fileName, file] of files) {
+          yield { kind: 'file', name: fileName, getFile: async () => file };
+        }
+      }
+    };
+  });
+  const music = await runtime.addFolder({ handle: roots[0] });
+  assert.equal(music.scan.status, 'completed');
+  const initial = await repository.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  assert.equal(initial.rows.length, 1);
+  const originalTrack = initial.rows[0];
+  await repository.releaseContext(initial.contextToken);
+
+  for (const handle of roots.slice(1, 4)) {
+    const added = await runtime.addFolder({ handle });
+    assert.equal(added.scan.status, 'completed', handle.name);
+    assert.equal(added.scan.counts.parsed - added.scan.counts.metadataTerminal, 0, handle.name);
+    assert.equal(added.scan.counts.metadataTerminal, handle === roots[3] ? 1 : 0, handle.name);
+    const page = await repository.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+    assert.deepEqual(page.rows.find(track => track.trackUid === originalTrack.trackUid), originalTrack, handle.name);
+    await repository.releaseContext(page.contextToken);
+    const counts = await repository.getCounts();
+    assert.equal(counts.albums, 1, handle.name);
+    assert.equal(counts.artists, 1, handle.name);
+    assert.equal(counts.genres, 1, handle.name);
+  }
+
+  const other = await runtime.addFolder({ handle: roots[4] });
+  assert.equal(other.scan.status, 'completed');
+  assert.equal((await repository.getScanFolderTrackCount({ folderId: other.folder.id })).trackCount, 1);
+  roots[4].files.clear();
+  const rescan = await runtime.scanFolders({ folderIds: [other.folder.id], scanReason: 'explicit-rescan' });
+  assert.equal(rescan.results[0].status, 'completed');
+  assert.equal((await repository.getScanFolderTrackCount({ folderId: other.folder.id })).trackCount, 0);
+  const page = await repository.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  assert.deepEqual(page.rows.find(track => track.trackUid === originalTrack.trackUid), originalTrack);
+  await repository.releaseContext(page.contextToken);
+});
 
 test('Web SQLite repository maps OPFS, full, busy, and corruption failures to stable codes', async () => {
   for (const [failure, expectedCode] of [

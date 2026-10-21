@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.15.0-77715ad4eaa2ad2a";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.15.0-414f2fd62a93a419";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -48,6 +48,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/audio/audio-manager-wasm-assets.js",
   "./js/audio/audio-mime.js",
   "./js/audio/audio-session-type-controller.js",
+  "./js/audio/browser-input-controller.js",
   "./js/audio/dsp-engine-binding.js",
   "./js/audio/dsp-module-warmup-worker.js",
   "./js/audio/dsp-module-warmup.js",
@@ -73,6 +74,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/bass-management/design-core.js",
   "./js/bass-management/design-worker.js",
   "./js/bass-management/designer.js",
+  "./js/browser/browser-view.js",
   "./js/crosstalk-cancellation/design-core.js",
   "./js/crosstalk-cancellation/design-worker.js",
   "./js/crosstalk-cancellation/designer.js",
@@ -258,6 +260,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/audio-player/track-lyrics.js",
   "./js/ui/brand-animation.js",
   "./js/ui/double-blind-test/double-blind-test.js",
+  "./js/ui/double-blind-test/pipeline-availability.js",
   "./js/ui/layout-mode-manager.js",
   "./js/ui/library/artwork-loader.js",
   "./js/ui/library/durable-action-controller.js",

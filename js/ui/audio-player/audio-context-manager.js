@@ -527,6 +527,7 @@ export class AudioContextManager {
   }
 
   getUseInputWithPlayer() {
+    if (this.audioManager.ioManager?.browserInput?.selected) return true;
     const integration = window.electronIntegration;
     const isElectron = !!(integration?.isElectronEnvironment?.() || integration?.isElectron);
     const preferences = isElectron

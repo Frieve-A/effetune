@@ -289,6 +289,23 @@ contextBridge.exposeInMainWorld(
     // Platform identifier ('darwin' | 'win32' | 'linux'). Synchronous so the
     // renderer can branch on it without an async round-trip.
     platform: process.platform,
+    isMsix: process.windowsStore === true,
+    browser: Object.freeze({
+      prepareCapture: () => ipcRenderer.sendSync('browser:prepare-capture'),
+      getState: () => ipcRenderer.invoke('browser:get-state'),
+      navigate: url => ipcRenderer.invoke('browser:navigate', url),
+      back: () => ipcRenderer.invoke('browser:back'),
+      forward: () => ipcRenderer.invoke('browser:forward'),
+      reload: () => ipcRenderer.invoke('browser:reload'),
+      stop: () => ipcRenderer.invoke('browser:stop'),
+      openExternal: () => ipcRenderer.invoke('browser:open-external'),
+      setPresentation: value => ipcRenderer.invoke('browser:set-presentation', value),
+      setCaptureState: value => ipcRenderer.invoke('browser:set-capture-state', value),
+      saveSettings: value => ipcRenderer.invoke('browser:save-settings', value),
+      clearSiteData: () => ipcRenderer.invoke('browser:clear-site-data'),
+      onState: callback => addSingleArgIpcListener('browser:state', callback),
+      onFocusAddress: callback => addSingleArgIpcListener('browser:focus-address', callback)
+    }),
 
     // File system operations
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),

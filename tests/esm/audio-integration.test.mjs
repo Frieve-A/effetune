@@ -131,6 +131,7 @@ test('audio preferences load and save honor Electron and Web storage availabilit
   });
   await withGlobals({ window: { localStorage } }, async () => {
     const loadedPreferences = await loadAudioPreferences(false);
+    assert.equal(loadedPreferences.inputDeviceId, 'default');
     assert.equal(loadedPreferences.sampleRate, 88200);
     assert.equal(loadedPreferences.outputChannels, 4);
     assert.equal(loadedPreferences.useWasmDsp, false);
@@ -155,16 +156,21 @@ test('audio preferences load and save honor Electron and Web storage availabilit
     assert.equal(preferences.gaplessPlayback, true);
   });
 
-  const emptyLoadResults = [
-    { success: false, preferences: { ignored: true } },
-    { success: true }
-  ];
-  for (const loadResult of emptyLoadResults) {
+  for (const loadResult of [{ success: true, preferences: null }, { success: true }]) {
     const harness = createAudioHarness({ loadResult });
     await withGlobals({ window: harness.window }, async () => {
-      assert.equal(await loadAudioPreferences(true), null);
+      assert.deepEqual(await loadAudioPreferences(true), {
+        inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID
+      });
     });
   }
+
+  const rejectedLoad = createAudioHarness({
+    loadResult: { success: false, preferences: { ignored: true } }
+  });
+  await withGlobals({ window: rejectedLoad.window }, async () => {
+    assert.equal(await loadAudioPreferences(true), null);
+  });
 
   const loadFailure = createAudioHarness({ loadError: new Error('load failed') });
   await withGlobals({ window: loadFailure.window }, async () => {

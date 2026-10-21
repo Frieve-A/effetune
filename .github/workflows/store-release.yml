@@ -1,0 +1,77 @@
+name: Microsoft Store Release
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published desktop tag to queue, or leave empty to resume
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  deployments: write
+
+jobs:
+  prepare:
+    if: >-
+      github.repository == 'Frieve-A/effetune' &&
+      vars.MSSTORE_AUTOPUBLISH_ENABLED == 'true' &&
+      (github.event_name != 'release' ||
+        (github.event.release.draft == false && github.event.release.prerelease == false &&
+         startsWith(github.event.release.tag_name, 'v')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      deployment_id: ${{ steps.queue.outputs.deployment_id }}
+    steps:
+      - name: Check out automation source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Queue verified release and select pending work
+        id: queue
+        run: node scripts/publish-msstore.mjs --prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MSSTORE_AUTOPUBLISH_ENABLED: ${{ vars.MSSTORE_AUTOPUBLISH_ENABLED }}
+          MSSTORE_CREDENTIAL_EXPIRES_AT: ${{ vars.MSSTORE_CREDENTIAL_EXPIRES_AT }}
+          MSSTORE_RELEASE_TAG: ${{ inputs.release_tag }}
+
+  submit:
+    needs: prepare
+    if: needs.prepare.outputs.deployment_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: microsoft-store
+    concurrency:
+      group: microsoft-store-submission
+      cancel-in-progress: false
+    steps:
+      - name: Check out automation source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Set up Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@781cadc9d347f025460d72480e777ef074cdbe98 # main
+        with:
+          version: v0.4.3
+      - name: Advance the recorded Store submission
+        run: node scripts/publish-msstore.mjs --submit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MSSTORE_AUTOPUBLISH_ENABLED: ${{ vars.MSSTORE_AUTOPUBLISH_ENABLED }}
+          MSSTORE_DEPLOYMENT_ID: ${{ needs.prepare.outputs.deployment_id }}
+          MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
+          MSSTORE_SELLER_ID: ${{ vars.MSSTORE_SELLER_ID }}
+          MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
+          MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}

@@ -234,6 +234,7 @@
         <div class="header-buttons">
             <button class="header-button open-music-button" id="openMusicButton" title="Open music files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M6 14.5 7.7 11a2 2 0 0 1 1.8-1.1H21a1.5 1.5 0 0 1 1.45 1.9l-1.6 5.7A2 2 0 0 1 18.95 19H4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.7a2 2 0 0 1 1.66.9l.74 1.1a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v1.7"/></svg></button>
             <button class="header-button view-switch-button effect-pipeline-button active" id="effectPipelineButton" title="Effect Pipeline" aria-label="Effect Pipeline" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/><path d="M10 7h4M10 17h4M6.5 10v4M17.5 10v4"/></svg></button>
+            <button class="header-button view-switch-button browser-button" id="browserButton" title="Browser" aria-label="Browser" aria-pressed="false" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18M7 5.5h1M10 5.5h1"/></svg></button>
             <button class="header-button view-switch-button open-library-button" id="openLibraryButton" title="Music Library" aria-label="Music Library" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false"><path d="M4 19.5V5.2A2.2 2.2 0 0 1 6.2 3H20v16H6.2A2.2 2.2 0 0 0 4 21.2"/><path d="M8 7h8M8 11h6M8 15h7"/></svg></button>
             <button class="header-button view-switch-button" id="visualizerButton" title="Visualizer" aria-label="Visualizer" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v4m4-8v12m5-16v20m5-16v12m4-8v4"/></svg></button>
             <div class="settings-menu-container">
@@ -287,8 +288,8 @@
                         <button class="header-button pipeline-menu-button" id="pipelineMenuButton" title="Pipeline menu">▼</button>
                         <div class="pipeline-menu" id="pipelineMenu">
                             <button class="pipeline-menu-item" id="copyAToBButton">A → B</button>
-                            <button class="pipeline-menu-item" id="copyBToAButton">B → A</button>
-                            <button class="pipeline-menu-item" id="doubleBlindTestButton">Double Blind Test</button>
+                            <button class="pipeline-menu-item" id="copyBToAButton" disabled>B → A</button>
+                            <button class="pipeline-menu-item" id="doubleBlindTestButton" disabled>Double Blind Test</button>
                         </div>
                     </div>
                 </div>

@@ -6,7 +6,7 @@ lang: es
 
 # Cómo usar la prueba de doble ciego
 
-La prueba de doble ciego permite comparar de oído **Pipeline A** y **Pipeline B** sin saber cuál estás escuchando. Es una forma controlada de comprobar si una diferencia que *crees* oír se distingue de verdad y si realmente prefieres un pipeline frente al otro.
+La prueba de doble ciego permite comparar de oído **Pipeline A** y **Pipeline B**. Es una forma controlada de comprobar si una diferencia que *crees* oír se distingue de verdad y si realmente prefieres un pipeline frente al otro.
 
 Hay dos tipos de prueba disponibles:
 
@@ -21,8 +21,8 @@ La prueba compara los dos pipelines descritos en [Usando Funciones de Pipeline A
 
 - **Pipeline A** y **Pipeline B** deben contener al menos un efecto cada uno.
 - Coloca una configuración en Pipeline A y la otra en Pipeline B, manteniendo idéntico todo lo demás (por ejemplo, *Con EQ* frente a *Sin EQ*) para evaluar únicamente esa diferencia.
-- Recuerda qué configuración pusiste en Pipeline A y cuál en Pipeline B. La prueba reasigna aleatoriamente ambos pipelines en cada ensayo; en una prueba de preferencia A/B, indica al final si se prefirió de forma significativa Pipeline A o Pipeline B.
-- Los botones de inicio permanecen desactivados hasta que existan tanto Pipeline A como Pipeline B.
+- Recuerda qué configuración pusiste en Pipeline A y cuál en Pipeline B. En una prueba de preferencia A/B, el resultado indica si se prefirió de forma significativa Pipeline A o Pipeline B.
+- La opción «Prueba de doble ciego» del menú y los botones de inicio permanecen desactivados hasta que Pipeline A y Pipeline B contengan al menos un efecto cada uno.
 
 ## Abrir la prueba
 
@@ -38,10 +38,11 @@ La pantalla de configuración incluye los siguientes campos:
 - **Nombre de la prueba** – Describe la diferencia que estás probando (por ejemplo, *Con EQ vs. Sin EQ*). El cuadro combinado funciona igual que Preajustes de efecto: puedes **guardar**, **cargar** y **eliminar** pruebas con nombre. Una prueba guardada conserva ambos pipelines y el número de ensayos para que puedas repetir la misma comparación más adelante. Es necesario indicar un nombre antes de compartir una prueba.
 - **Tu nombre** – Opcional. Se muestra en el resultado; si se deja en blanco aparece como *Anónimo*.
 - **Número de ensayos** – Número de ensayos que se realizarán (ajústalo con el cuadro numérico o el control deslizante). Más ensayos ofrecen un resultado más fiable, pero llevan más tiempo. El valor predeterminado es 20.
+- **Mantener A/B fijos en las pruebas ABX** – Activado de forma predeterminada. Durante toda la prueba ABX, A corresponde al Pipeline A original y B al Pipeline B original. X sigue eligiéndose al azar en cada ensayo. Desmarca la casilla para que las asignaciones de A y B también se elijan al azar en cada ensayo. Esta opción se conserva al guardar o compartir la prueba.
 
 Pulsa **Iniciar prueba ABX** o **Iniciar prueba de preferencia A/B** para comenzar.
 
-> **Nota:** Las muestras **A** y **B** de la prueba son independientes de Pipeline A y Pipeline B del Effect Pipeline. En cada ensayo se vuelve a decidir al azar qué pipeline se asigna a A y cuál a B, y esa correspondencia nunca se muestra en pantalla, de modo que no puedes saber qué pipeline real estás escuchando como A ni dar por sentado que "A" sea Pipeline A. Así se garantiza que la prueba sea a ciegas.
+> **Nota:** En una prueba de preferencia A/B, las asignaciones de A y B siempre se eligen al azar en cada ensayo, independientemente de esta casilla. Por tanto, la A de la prueba no corresponde necesariamente al Pipeline A original, y la asignación permanece oculta.
 
 ## Reproducir audio
 

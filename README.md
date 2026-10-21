@@ -53,9 +53,31 @@ Choose the setup below that matches the audio source you want to listen to.
    - Or open a music file and select EffeTune as the application (desktop app only)
    - Or select Open music file... from the File menu (desktop app only)
    - Or drag the music file into the window
-- For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input
+- For player-only use, set Input Device to None (music file player only) in Audio Configuration to avoid using a live audio input. This is the desktop app's default; saved input device selections are preserved.
 
 [Music Player](docs/music-player.md)
+
+### Desktop Browser Setup
+
+The desktop app's **Browser** plays audio from websites through your current effects without a virtual audio device.
+
+1. Click **Browser** in the header. This starts browser audio processing.
+2. Enter an HTTP or HTTPS address, then sign in and play music using the website's controls. An address without a scheme opens with HTTPS.
+3. Switch to **Effect Pipeline** to adjust the sound. Switching views keeps browser audio playing.
+
+Use Back, Forward, Reload, and Stop to navigate. Open **Bookmarks** to add the current page, open a saved page, rename a bookmark, or delete it. The browser menu contains **Open in default browser**, **Use as start page**, and **Clear site data**. Bookmarks and the chosen start page are saved. Website sign-ins are kept separately, so you can return to a site after restarting the app. Browser pages follow the app's zoom level.
+
+Opening or returning to **Browser** automatically selects browser audio. Browser audio is mixed with your selected input device. Choose **None** for the input device to listen to browser audio alone. The Player input option does not affect Browser playback. Local music playback can continue alongside browser audio. If audio capture stops, click **Browser** again to retry. **Clear site data** signs you out of websites and clears their stored data while keeping bookmarks.
+
+Use **Close** on the browser toolbar to stop browser audio processing and return to **Effect Pipeline**. The page and browsing history are kept. Open **Browser** again to resume audio processing on the same page.
+
+In **Settings > Config... > Browser**:
+
+- **Start page** sets the HTTP or HTTPS address shown when Browser first opens. The field is blank by default; when blank, it opens the [EffeTune streaming guide](https://effetune.frieve.com/streaming/). **Reset** clears the field without changing the current page.
+- **Open new tabs in the default browser** is enabled by default. Turn it off to open new-tab links in EffeTune's Browser instead. Separate windows, such as sign-in windows, stay inside EffeTune either way.
+- **User-Agent** is the browser identification sent to websites. The default identifies Browser as Chrome-compatible and includes the EffeTune name. Leave the field blank or click **Reset** to restore the default. After changing it, reload the page in Browser.
+
+Some websites do not allow embedded browsers, sign-in, protected playback, or audio capture. Availability depends on the website and operating system; DRM playback is not guaranteed. If sign-in is refused, try another sign-in method offered by the site or use your normal browser. Signing in there does not sign you in inside EffeTune. The Browser feature is available only in the desktop app.
 
 ### Browser Extension Setup
 
@@ -68,6 +90,8 @@ Process up to four Chrome or Edge tabs with separate effect pipelines, URL-based
 ### Streaming Service Setup
 
 To process audio from streaming services (Spotify, YouTube Music, etc.):
+
+In the desktop app, first try [Desktop Browser Setup](#desktop-browser-setup). To use a separate streaming app or a source that the built-in browser cannot play, use the audio-device setup below.
 
 1. Prerequisites:
    - Install a virtual audio device (e.g., VB Cable, Voice Meeter, or ASIO Link Tool)
@@ -276,9 +300,11 @@ Before sharing a backup, review the selection: it can contain preset names and c
 
 ### Application Settings
 
-Open **Settings > Config...** to choose **Language**, set **Startup view:** (`Effect Pipeline (Default)`, `Music Library`, or `Visualizer`), configure **Effect Pipeline at startup:**, and select a **Theme** (`Graphite`, `Paper`, `Midnight`, `Ember`, or `Mint`). When **Startup view:** is set to **Music Library**, you can also choose which library category opens first.
+Open **Settings > Config...** to choose **Language**, set **Startup view:** (`Effect Pipeline (Default)`, `Music Library`, or `Visualizer`), configure **Effect Pipeline at startup:**, and select a **Theme** (`Graphite`, `Paper`, `Midnight`, `Ember`, or `Mint`). When **Startup view:** is set to **Music Library**, you can also choose which library category opens first. In the desktop app, you can also select **Browser** as the startup view.
 
 For **Effect Pipeline columns**, choose **Manual** to adjust the column count with the +/− buttons, or **Automatic** (default) to fit the columns alongside the effect list within the window width. Automatic mode adjusts the column count when you resize the window.
+
+The Microsoft Store edition receives updates through Microsoft Store. In **Settings > Config...**, use **Open Microsoft Store updates** to check for updates and **Open Windows startup settings** to choose whether EffeTune starts automatically. This edition stores its settings and Browser sign-ins separately from other desktop editions.
 
 ### Frequency Response Measurement and Correction
 

@@ -51,9 +51,31 @@ Elige el método de configuración que corresponda a la fuente de audio que quie
    - O abre un archivo de música y selecciona EffeTune como la aplicación (solo aplicación de escritorio)
    - O selecciona **Abrir archivo de música...** desde el menú **Archivo** (solo aplicación de escritorio)
    - O arrastra el archivo de música a la ventana
-- Para usar solo el reproductor, selecciona Ninguno (solo reproductor de archivos de música) como dispositivo de entrada en Configuración de audio y evita usar una entrada de audio en vivo
+- Para usar solo el reproductor, selecciona Ninguno (solo reproductor de archivos de música) como dispositivo de entrada en Configuración de audio y evita usar una entrada de audio en vivo. Este es el ajuste predeterminado de la aplicación de escritorio; si ya has guardado un dispositivo de entrada, se mantiene tu selección.
 
 [Reproductor de música](music-player.md)
+
+### Navegador integrado de la aplicación de escritorio
+
+En la aplicación de escritorio, **Navegador** reproduce el audio de los sitios web con los efectos actuales, sin necesidad de un dispositivo de audio virtual.
+
+1. Haz clic en **Navegador** en la cabecera. Se inicia el procesamiento del audio del navegador.
+2. Introduce una dirección HTTP o HTTPS, inicia sesión y reproduce música con los controles del sitio. Si omites el protocolo, se utiliza HTTPS.
+3. Cambia a **Effect Pipeline** para ajustar el sonido. Cambiar de vista mantiene la reproducción del navegador.
+
+Usa Atrás, Adelante, Recargar y Detener carga para navegar. Abre **Marcadores** para añadir la página actual, abrir una página guardada, cambiar el nombre de un marcador o eliminarlo. El menú del navegador incluye **Abrir en el navegador predeterminado**, **Usar como página de inicio** y **Borrar datos de sitios**. Los marcadores y la página de inicio elegida se guardan. Las sesiones de los sitios se conservan por separado y siguen disponibles al reiniciar la aplicación. Las páginas del navegador siguen el nivel de zoom de la aplicación.
+
+Al abrir **Navegador** o volver a él, se selecciona automáticamente el audio del navegador. El audio del navegador se mezcla con el dispositivo de entrada seleccionado. Elige **Ninguno** como dispositivo de entrada para escuchar solo el audio del navegador. La opción de entrada del reproductor no afecta a la reproducción del navegador. La música local puede reproducirse junto con el audio del navegador. Si la captura se detiene, pulsa **Navegador** otra vez para reintentar. **Borrar datos de sitios** cierra la sesión en los sitios y borra sus datos guardados, conservando los marcadores.
+
+Usa **Cerrar** en la barra de herramientas del navegador para detener el procesamiento de su audio y volver a **Effect Pipeline**. Se conservan la página y el historial de navegación. Abre **Navegador** de nuevo para reanudar el procesamiento de audio en la misma página.
+
+En **Configuración > Configuración... > Navegador**:
+
+- **Página de inicio** establece la dirección HTTP o HTTPS que se abre al abrir el navegador por primera vez. El campo está vacío de forma predeterminada; cuando está vacío, se abre la [guía de streaming de EffeTune](https://effetune.frieve.com/streaming/). **Restablecer** vacía el campo sin cambiar la página actual.
+- **Abrir nuevas pestañas en el navegador predeterminado** está activado de forma predeterminada. Desactívalo para abrir esos enlaces en el navegador de EffeTune. Las ventanas independientes, como las de inicio de sesión, permanecen dentro de EffeTune en ambos casos.
+- **User-Agent** es la identificación del navegador que se envía a los sitios web. El valor predeterminado identifica el navegador como compatible con Chrome e incluye el nombre EffeTune. Deja el campo vacío o pulsa **Restablecer** para recuperar el valor predeterminado. Después de cambiarlo, recarga la página en el navegador.
+
+Algunos sitios no permiten navegadores integrados, el inicio de sesión, la reproducción protegida o la captura de audio. La disponibilidad depende del sitio y del sistema operativo; no se garantiza la reproducción con DRM. Si se rechaza el inicio de sesión, prueba otro método que ofrezca el sitio o usa tu navegador habitual. Iniciar sesión allí no inicia la sesión dentro de EffeTune. navegador solo está disponible en la aplicación de escritorio.
 
 ### Configuración de la extensión de navegador
 
@@ -66,6 +88,8 @@ Procesa hasta cuatro pestañas de Chrome o Edge con cadenas independientes, prea
 ### Configuración para Servicios de Streaming
 
 Para procesar audio de servicios de streaming (Spotify, YouTube Music, etc.):
+
+En la aplicación de escritorio, prueba primero el [navegador integrado](#navegador-integrado-de-la-aplicación-de-escritorio). Si usas una aplicación de streaming independiente o una fuente que el navegador integrado no puede reproducir, sigue la configuración de audio que se indica a continuación.
 
 1. Requisitos:
    - Instala un dispositivo de audio virtual (por ejemplo, VB Cable, Voice Meeter o ASIO Link Tool)
@@ -274,9 +298,11 @@ Antes de compartir una copia de seguridad, revisa la selección: puede contener 
 
 ### Configuración de la aplicación
 
-Abre **Configuración > Configuración...** para elegir el **Idioma**, ajustar **Vista al inicio:** (`Effect Pipeline (predeterminado)`, `Biblioteca musical` o `Visualizer`), configurar **Pipeline de efectos al inicio:** y seleccionar un **Tema** (`Graphite`, `Paper`, `Midnight`, `Ember` o `Mint`). Si **Vista al inicio:** es **Biblioteca musical**, también puedes elegir qué categoría de la biblioteca se abre primero.
+Abre **Configuración > Configuración...** para elegir el **Idioma**, ajustar **Vista al inicio:** (`Effect Pipeline (predeterminado)`, `Biblioteca musical` o `Visualizer`), configurar **Pipeline de efectos al inicio:** y seleccionar un **Tema** (`Graphite`, `Paper`, `Midnight`, `Ember` o `Mint`). Si **Vista al inicio:** es **Biblioteca musical**, también puedes elegir qué categoría de la biblioteca se abre primero. En la aplicación de escritorio, también puedes elegir **Browser** como vista al inicio.
 
 En **Columnas de la cadena de efectos**, elige **Manual** para ajustar el número de columnas con los botones +/−, o **Automático** (predeterminado) para que las columnas y la lista de efectos quepan en el ancho de la ventana. El modo automático ajusta el número de columnas al cambiar el tamaño de la ventana.
+
+La edición de Microsoft Store recibe las actualizaciones a través de Microsoft Store. En **Configuración > Configuración...**, usa **Abrir las actualizaciones de Microsoft Store** para buscar actualizaciones y **Abrir la configuración de inicio de Windows** para elegir si EffeTune se inicia automáticamente. Esta edición guarda su configuración y las sesiones de Browser por separado de las demás ediciones de escritorio.
 
 ### Medición y Corrección de Respuesta en Frecuencia
 

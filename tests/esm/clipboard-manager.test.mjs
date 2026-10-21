@@ -96,14 +96,9 @@ async function withClipboardGlobals(calls, options, callback) {
           calls.push(['isDoubleBlindActive']);
           return options.isDoubleBlindActive;
         },
-    getDoubleBlindTest() {
-      calls.push(['getDoubleBlindTest']);
-      return {
-        restoreFromShare(value) {
-          calls.push(['restoreFromShare', value]);
-          return options.restoreFromShare ?? false;
-        }
-      };
+    async startDoubleBlindTest(value) {
+      calls.push(['startDoubleBlindTest', value]);
+      return options.restoreFromShare ?? false;
     }
   };
   if (options.uiManagerNoDoubleBlind) {
@@ -321,7 +316,7 @@ test('handlePaste decodes pipeline share URLs and falls back after URL failures'
     await runtime.manager.handlePaste(`https://example.test/share?dbt=keep-going&p=${encoded}`);
   });
   assert.deepEqual(runtime.pipeline.map(plugin => plugin.name), ['Shared', 'Selected']);
-  assert.ok(runtime.calls.some(call => call[0] === 'restoreFromShare' && call[1] === 'keep-going'));
+  assert.ok(runtime.calls.some(call => call[0] === 'startDoubleBlindTest' && call[1] === 'keep-going'));
 
   const tailRuntime = createRuntime({ pipeline: [createPlugin('Existing', [])] });
   await withClipboardGlobals(tailRuntime.calls, {}, async ({ frameCallbacks, timeoutCallbacks }) => {
@@ -370,7 +365,7 @@ test('handlePaste honors double blind test guards and restoration paths', async 
     await activeUrlRuntime.manager.handlePaste('https://example.test/share?dbt=value');
   });
   assert.deepEqual(activeUrlRuntime.pipeline, []);
-  assert.equal(activeUrlRuntime.calls.some(call => call[0] === 'getDoubleBlindTest'), false);
+  assert.equal(activeUrlRuntime.calls.some(call => call[0] === 'startDoubleBlindTest'), false);
 
   const activePipelineUrlRuntime = createRuntime();
   await withClipboardGlobals(activePipelineUrlRuntime.calls, { isDoubleBlindActive: true }, async () => {
@@ -383,7 +378,7 @@ test('handlePaste honors double blind test guards and restoration paths', async 
     await restoreRuntime.manager.handlePaste('https://example.test/share?dbt=value');
   });
   assert.deepEqual(restoreRuntime.pipeline, []);
-  assert.ok(restoreRuntime.calls.some(call => call[0] === 'restoreFromShare' && call[1] === 'value'));
+  assert.ok(restoreRuntime.calls.some(call => call[0] === 'startDoubleBlindTest' && call[1] === 'value'));
 
   const noMethodRuntime = createRuntime();
   await withClipboardGlobals(noMethodRuntime.calls, { uiManagerNoDoubleBlind: true }, async () => {

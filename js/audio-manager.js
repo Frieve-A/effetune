@@ -3161,6 +3161,7 @@ export class AudioManager {
      */
     async _doReset(audioPreferences = null) {
         const fadeToken = await this.fadeOutOutputForTeardown();
+        const browser = this.ioManager.browserInput;
         const inputSnapshot = this.ioManager.getInputSnapshot?.();
         if (this.ioManager.inputSourceNode || inputSnapshot?.state === 'live' ||
             inputSnapshot?.state === 'acquiring') {
@@ -3179,6 +3180,7 @@ export class AudioManager {
                 return 'Audio Error: Failed to release the current audio input safely.';
             }
         }
+        browser?.detachGraph();
         this._primaryWorkletEpoch++;
         this._invalidateDspModuleLoadRequest();
         const invalidatedParallel = this._parallelPreparing || this._parallelActive;
@@ -3294,6 +3296,7 @@ export class AudioManager {
             }
         }
 
+        await this.ioManager.browserInput?.bindGraph();
         this.dispatchEvent('audioGraphRebuilt', {
             audioContext: this.audioContext,
             workletNode: this.workletNode,

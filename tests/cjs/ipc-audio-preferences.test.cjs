@@ -122,6 +122,25 @@ function registerAudioPreferencesHandlers(userDataPath, mainWindow) {
   return handlers;
 }
 
+test('registered Electron IPC defaults missing input selections to None and preserves saved choices', async () => {
+  const tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-ipc-audio-preferences-')));
+  const preferencesPath = path.join(tempRoot, 'audio-preferences.json');
+
+  try {
+    const load = registerAudioPreferencesHandlers(tempRoot, null).get('load-audio-preferences');
+    for (const inputDeviceId of [undefined, 'default', 'mic-1', noInput]) {
+      const stored = { inputDeviceId, sampleRate: 48000 };
+      await fs.writeFile(preferencesPath, JSON.stringify(stored));
+      const result = await load();
+      assert.equal(result.success, true);
+      assert.equal(result.preferences.inputDeviceId, inputDeviceId ?? noInput);
+      assert.equal(result.preferences.sampleRate, 48000);
+    }
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('registered Electron IPC persists canonical gapless changes without reload', async () => {
   const rawTempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-ipc-audio-preferences-'));
   const tempRoot = await fs.realpath(rawTempRoot);

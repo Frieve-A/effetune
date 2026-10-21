@@ -2401,3 +2401,16 @@ test('waits for a transiently missing active WASM asset until it becomes ready',
     assert.equal(result.assets.get(slot), descriptor);
   });
 });
+
+test('device settings changes keep Browser playback selected while rebuilding the graph', async () => {
+  let resets = 0;
+  const manager = Object.assign(Object.create(AudioManager.prototype), {
+    ioManager: { browserInput: { selected: true } },
+    _doReset: async () => { resets++; return ''; }
+  });
+  await withGlobals({ window: { electronAPI: {}, audioPreferences: { inputDeviceId: 'old' } } }, async () => {
+    assert.equal(await manager._executeReset({ inputDeviceId: 'new' }), '');
+    assert.equal(resets, 1);
+    assert.equal(manager.ioManager.browserInput.selected, true);
+  });
+});

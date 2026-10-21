@@ -2,6 +2,7 @@ import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-st
 import { normalizeThemeId, getThemePreset } from './theme-registry.mjs';
 import { PluginListManager } from './ui/plugin-list-manager.js';
 import { PipelineManager } from './ui/pipeline-manager.js';
+import { hasDoubleBlindTestPipelines } from './ui/double-blind-test/pipeline-availability.js';
 import { StateManager } from './ui/state-manager.js';
 import {
     TRANSLATED_LANGUAGE_CODES,
@@ -25,6 +26,7 @@ import { OnboardingTour } from './ui/onboarding-tour.js';
 import { MobileNumberKeypad } from './ui/mobile-number-keypad.js';
 import { normalizeMusicLibraryStartupView } from './library/constants.js';
 import { PowerStateView } from './ui/power-state-view.js';
+import { BrowserView } from './browser/browser-view.js';
 import { attachLyricsFiles } from './ui/audio-player/lyrics-file-links.js';
 import { installRangePrecisionControl } from './ui/range-precision-controller.js';
 import { installRangeFillStyling, updateRangeFill } from './ui/range-fill.js';
@@ -694,6 +696,16 @@ export class UIManager {
         return this.doubleBlindTestPromise;
     }
 
+    /** Restore the Effects view before opening the blind test panel. */
+    async startDoubleBlindTest(encodedShare) {
+        if (encodedShare !== undefined && this.isDoubleBlindActive()) return false;
+        const doubleBlindTest = await this.getDoubleBlindTest();
+        if (await this.showEffectPipelineView() !== true) return false;
+        if (encodedShare !== undefined) return doubleBlindTest.restoreFromShare(encodedShare);
+        doubleBlindTest.enterFresh();
+        return true;
+    }
+
     /** Is the Double Blind Test mode currently open? */
     isDoubleBlindActive() {
         return !!(this.doubleBlindTest && this.doubleBlindTest.isActive());
@@ -1297,6 +1309,7 @@ export class UIManager {
      * Update UI elements with translated text
      */
     updateUITexts() {
+        this.browserView?.updateUITexts();
         this.updateLoadingProgress(this.loadingProgressPercent);
         this.updateSampleRateStatus();
         this.updatePipelineLatency(this.audioManager.getTotalPipelineLatencySamples());
@@ -1351,6 +1364,12 @@ export class UIManager {
         }
 
         // Update titles for common buttons
+        const browserButton = document.getElementById('browserButton');
+        if (browserButton) {
+            const title = this.t('dialog.config.browser.title');
+            browserButton.title = title;
+            browserButton.setAttribute('aria-label', title);
+        }
         const openMusicButton = document.getElementById('openMusicButton');
         if (openMusicButton) {
             openMusicButton.title = this.t('ui.title.openMusic');
@@ -1786,11 +1805,16 @@ export class UIManager {
      */
     initOpenLibraryButton() {
         this.effectPipelineButton = document.getElementById('effectPipelineButton');
+        this.browserButton = document.getElementById('browserButton');
+        if (this.browserButton && window.electronAPI?.browser) {
+            this.browserButton.hidden = false;
+            this.browserButton.addEventListener('click', () => this.showBrowserView());
+        }
         this.openLibraryButton = document.getElementById('openLibraryButton');
         this.visualizerButton = document.getElementById('visualizerButton');
         this.visualizerButton?.addEventListener('click', () => this.showVisualizerView());
         this.effectPipelineButton?.addEventListener('click', (event) => {
-            if (!document.body.classList.contains('view-library') && !document.body.classList.contains('view-visualizer')) return;
+            if (!document.body.classList.contains('view-library') && !document.body.classList.contains('view-visualizer') && !document.body.classList.contains('view-browser')) return;
             this.showEffectPipelineView({
                 returnFocus: event.currentTarget
             });
@@ -2138,6 +2162,7 @@ export class UIManager {
     }
 
     async showLibraryView(options = {}, context = {}) {
+        this.browserView?.hide();
         this.visualizerOpenRevision = (this.visualizerOpenRevision || 0) + 1;
         if ((this.miniPlayerMode || this.miniPlayerTargetMode) && !await this.setMiniPlayerMode(false)) return false;
         const ensureOptions = { skipRecoveryWait: options.skipRecoveryWait === true };
@@ -2225,6 +2250,7 @@ export class UIManager {
             returnFocus: options.returnFocus || options.opener
         });
         this.mobileNav?.setView?.('effects', { fromLibraryView: true });
+        this.browserView?.hide();
         this.updateViewSwitchButtons('effects');
         return true;
     }
@@ -2242,6 +2268,7 @@ export class UIManager {
         this.visualizerView.previousMobileView = this.mobileNav?.getCurrentView() || 'player';
         this.hideLibraryView({ restoreFocus: false });
         this.visualizerView.show();
+        this.browserView?.hide();
         this.updateViewSwitchButtons('visualizer');
         this.mobileNav?.applyViewState('visualizer', { fromLibraryView: true });
         this.visualizerView.updateVisibility();
@@ -2290,7 +2317,27 @@ export class UIManager {
         this.updateViewSwitchButtons('effects');
     }
 
-    updateViewSwitchButtons(view = document.body?.classList.contains('view-visualizer') ? 'visualizer' : document.body?.classList.contains('view-library') ? 'library' : 'effects') {
+    showBrowserView() {
+        if (!window.electronAPI?.browser) return Promise.resolve(false);
+        if (this.browserView?.closing) return Promise.resolve(false);
+        if (this.libraryView?.hasActiveDialog?.()) return Promise.resolve(false);
+        this.browserView ||= new BrowserView(this);
+        // Start acquisition on the click stack, including a return from local playback.
+        const capture = this.browserView.input.select();
+        const show = async () => {
+            if ((this.miniPlayerMode || this.miniPlayerTargetMode) && !await this.setMiniPlayerMode(false)) return false;
+            this.visualizerOpenRevision = (this.visualizerOpenRevision || 0) + 1;
+            this.visualizerView?.hide();
+            this.hideLibraryView({ restoreFocus: false });
+            this.updateViewSwitchButtons('browser');
+            await this.browserView.show(capture);
+            return true;
+        };
+        return show();
+    }
+
+    updateViewSwitchButtons(view = document.body?.classList.contains('view-browser') ? 'browser' : document.body?.classList.contains('view-visualizer') ? 'visualizer' : document.body?.classList.contains('view-library') ? 'library' : 'effects') {
+        document.body?.classList?.toggle('view-browser', view === 'browser');
         document.body?.classList?.toggle('view-visualizer', view === 'visualizer');
         if (view === 'visualizer') document.body?.classList?.remove('view-library', 'view-effects');
         const setButtonState = (button, active) => {
@@ -2304,6 +2351,7 @@ export class UIManager {
         };
         setButtonState(this.effectPipelineButton, view === 'effects');
         setButtonState(this.openLibraryButton, view === 'library');
+        setButtonState(this.browserButton, view === 'browser');
         setButtonState(this.visualizerButton, view === 'visualizer');
         if (this.visualizerButton) this.visualizerButton.disabled = this.isDoubleBlindActive();
     }
@@ -2331,6 +2379,7 @@ export class UIManager {
     isEffectPipelineHidden() {
         const classList = document.body?.classList;
         return Boolean(classList?.contains('view-library') ||
+            classList?.contains('view-browser') ||
             classList?.contains('view-visualizer') ||
             (classList?.contains('layout-mobile') && classList?.contains('view-player')) ||
             this.isDoubleBlindActive());
@@ -2608,6 +2657,7 @@ export class UIManager {
         if (this.redoButton) this.redoButton.disabled = !history?.canRedo;
         if (this.cutButton) this.cutButton.disabled = noSelection;
         if (this.copyButton) this.copyButton.disabled = noSelection;
+        this.updatePipelineMenuState();
     }
 
     /**
@@ -2648,10 +2698,7 @@ export class UIManager {
             this.doubleBlindTestButton.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 this.hidePipelineMenu();
-                // The panel can always be opened; a saved test can be recalled
-                // from inside it even when Pipeline B is not currently set up.
-                const doubleBlindTest = await this.getDoubleBlindTest();
-                doubleBlindTest.enterFresh();
+                await this.startDoubleBlindTest();
             });
         }
 
@@ -2715,12 +2762,31 @@ export class UIManager {
         if (this.pipelineToggleButton) {
             this.pipelineToggleButton.textContent = this.audioManager.currentPipeline;
         }
+        this.updatePipelineMenuState();
+    }
+
+    /** Keep pipeline actions and the Electron blind test menu in sync. */
+    updatePipelineMenuState() {
+        const active = this.isDoubleBlindActive();
+        if (this.copyAToBButton) {
+            this.copyAToBButton.disabled = active || !Array.isArray(this.audioManager.pipelineA);
+        }
+        if (this.copyBToAButton) {
+            this.copyBToAButton.disabled = active || !Array.isArray(this.audioManager.pipelineB);
+        }
+        const canStart = !active && hasDoubleBlindTestPipelines(this.audioManager);
+        if (this.doubleBlindTestButton) this.doubleBlindTestButton.disabled = !canStart;
+        if (this._doubleBlindMenuEnabled !== canStart) {
+            this._doubleBlindMenuEnabled = canStart;
+            this.refreshApplicationMenu();
+        }
     }
 
     /**
      * Toggle pipeline menu visibility
      */
     togglePipelineMenu() {
+        this.updatePipelineMenuState();
         if (this.pipelineMenu) {
             this.pipelineMenu.classList.toggle('show');
         }

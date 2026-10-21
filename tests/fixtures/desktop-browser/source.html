@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Browser audio fixture</title>
+<audio id="player" controls loop></audio>
+<button id="play">Play</button>
+<script>
+'use strict';
+const player = document.getElementById('player');
+player.preload = 'auto';
+window.fixtureReady = (async () => {
+  if (new URL(location.href).searchParams.has('mse')) {
+    const mediaSource = new MediaSource();
+    player.src = URL.createObjectURL(mediaSource);
+    await new Promise(resolve => mediaSource.addEventListener('sourceopen', resolve, { once: true }));
+    const buffer = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
+    const bytes = await fetch('/stereo.webm').then(response => response.arrayBuffer());
+    buffer.appendBuffer(bytes);
+    await new Promise(resolve => buffer.addEventListener('updateend', resolve, { once: true }));
+    mediaSource.endOfStream();
+  } else {
+    player.src = '/stereo.webm';
+  }
+  return true;
+})();
+window.startFixture = async () => {
+  // Starting play also opens MSE on Chromium builds that defer preloading.
+  const playing = player.play();
+  await window.fixtureReady;
+  await playing;
+};
+document.getElementById('play').onclick = window.startFixture;
+</script>
+</html>

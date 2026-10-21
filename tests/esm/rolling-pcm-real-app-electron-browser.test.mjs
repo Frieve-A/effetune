@@ -5,6 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { _electron as electron } from 'playwright';
+import {
+  deriveRollingProductionSelection,
+  PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS,
+  RollingPolicyMode
+} from '../../js/ui/audio-player/rolling-pcm-policy.js';
 
 const repoRoot = path.resolve('.');
 const SOURCE_FRAMES = 44_100 * 3;
@@ -206,7 +211,7 @@ async function runRealAppScenario(options) {
         };
         const context = new AudioContext({ sampleRate: 96_000, sinkId: { type: 'none' } });
         if (context.sampleRate !== 96_000 || context.sinkId?.type !== 'none') {
-          throw new Error('Electron 44 silent 96 kHz AudioContext is unavailable');
+          throw new Error('Electron silent 96 kHz AudioContext is unavailable');
         }
         await context.audioWorklet.addModule('/tests/rolling-real-app-capture-worklet.js');
         const capture = new AudioWorkletNode(context, 'rolling-real-app-capture', {
@@ -324,9 +329,13 @@ async function runRealAppScenario(options) {
           commitCount++;
           return commitCatalogDestination(...args);
         };
-        const productionEvidence = policy.PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD;
+        const runtime = policy.detectRollingRuntime();
+        const productionEvidence = policy.PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS.find(record =>
+          record.cell.electronMajorVersion === runtime.electronMajorVersion &&
+          record.cell.chromiumMajorVersion === runtime.chromiumMajorVersion);
+        const productionSelection = policy.deriveRollingProductionSelection(productionEvidence);
         if (policy.PRODUCTION_ROLLING_POLICY_MODE !== policy.RollingPolicyMode.LIMITED_ROLLING ||
-            policy.PRODUCTION_ROLLING_ENABLED_MATRIX.length !== 1 ||
+            productionSelection.policyMode !== policy.RollingPolicyMode.LIMITED_ROLLING ||
             productionEvidence.continuityPassed !== true ||
             productionEvidence.fullDecodeBaselineImprovementPassed !== true ||
             productionEvidence.warmupPlateauPassed !== true ||
@@ -338,12 +347,13 @@ async function runRealAppScenario(options) {
             player.contextManager.rollingEnabledMatrix !== policy.PRODUCTION_ROLLING_ENABLED_MATRIX) {
           throw new Error('AudioContextManager is not using the production rolling defaults');
         }
-        const cell = policy.PRODUCTION_ROLLING_ENABLED_MATRIX[0];
-        if (cell.host !== 'electron' || cell.electronMajorVersion !== 44 ||
-            cell.chromiumMajorVersion !== 152 || cell.sourceKind !== 'path' ||
+        const cell = policy.PRODUCTION_ROLLING_ENABLED_MATRIX.find(candidate =>
+          candidate.electronMajorVersion === runtime.electronMajorVersion &&
+          candidate.chromiumMajorVersion === runtime.chromiumMajorVersion);
+        if (cell?.host !== 'electron' || cell.sourceKind !== 'path' ||
             cell.format !== 'wav' || cell.sourceSampleRate !== 44_100 ||
             cell.outputSampleRate !== 96_000 || cell.channelCount !== 2) {
-          throw new Error('Production rolling matrix is not the exact Electron 44 PCM16 44.1-to-96 cell');
+          throw new Error('Production rolling matrix does not include the launched PCM16 44.1-to-96 cell');
         }
         const teardown = async () => {
           await player.stop();
@@ -438,6 +448,7 @@ async function runRealAppScenario(options) {
         silentSource.disconnect();
         await context.close();
         return {
+          runtime,
           receipt,
           state: player.stateManager.getStateSnapshot(),
           commitCount,
@@ -465,8 +476,17 @@ async function runRealAppScenario(options) {
 }
 
 function assertOwnerPipeline({ result, versions, tracks }) {
-  assert.match(versions.electron, /^44\./);
-  assert.match(versions.chromium, /^152\./);
+  const runtime = {
+    host: 'electron',
+    electronMajorVersion: Number.parseInt(versions.electron, 10),
+    chromiumMajorVersion: Number.parseInt(versions.chromium, 10)
+  };
+  const evidence = PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS.find(record =>
+    record.cell.electronMajorVersion === runtime.electronMajorVersion &&
+    record.cell.chromiumMajorVersion === runtime.chromiumMajorVersion);
+  assert.equal(deriveRollingProductionSelection(evidence).policyMode,
+    RollingPolicyMode.LIMITED_ROLLING);
+  assert.deepEqual(result.runtime, runtime);
   assert.equal(result.receipt.kind, 'started');
   assert.equal(result.commitCount, 1);
   assert.equal(result.managedSourceHandoff, true);

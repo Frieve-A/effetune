@@ -134,7 +134,7 @@ jobs:
       - name: Setup Emscripten SDK
         uses: emscripten-core/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
         with:
-          version: 6.0.11
+          version: 6.0.13
       - name: Verify committed DSP artifacts
         run: npm run build:dsp -- --check
       - name: Run WebAssembly parity
@@ -201,7 +201,7 @@ jobs:
           path: ${{ runner.temp }}/npm-dist/*.tgz
           if-no-files-found: error
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -242,7 +242,7 @@ jobs:
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -276,7 +276,7 @@ jobs:
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -335,7 +335,7 @@ jobs:
           npm run test:dsp -- --native-build-type=Release
           node tools/dsp-parity/run.mjs --native
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -376,7 +376,7 @@ jobs:
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -410,7 +410,7 @@ jobs:
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -455,7 +455,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -496,7 +496,7 @@ jobs:
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -530,7 +530,7 @@ jobs:
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -575,7 +575,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build CPython 3.12 stable-ABI wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp312-*
           CIBW_ARCHS: auto64
@@ -616,7 +616,7 @@ jobs:
           path: wheelhouse/cp312/*.whl
           if-no-files-found: error
       - name: Build CPython 3.10 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp310-*
           CIBW_ARCHS: auto64
@@ -650,7 +650,7 @@ jobs:
           path: wheelhouse/cp310/*.whl
           if-no-files-found: error
       - name: Build CPython 3.11 wheel
-        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
         env:
           CIBW_BUILD: cp311-*
           CIBW_ARCHS: auto64
@@ -836,7 +836,7 @@ jobs:
         with:
           name: ${{ github.ref_name }}-publication-candidate
           path: release
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
           packages-dir: release/python
 

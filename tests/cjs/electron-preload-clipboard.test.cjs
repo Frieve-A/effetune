@@ -3,7 +3,8 @@ const test = require('node:test');
 
 const {
   loadFreshModule,
-  withModuleLoadStub
+  withModuleLoadStub,
+  withPatchedProperty
 } = require('../helpers/cjs-module-utils.cjs');
 
 function createPreloadHarness() {
@@ -65,6 +66,98 @@ function loadPreload(harness) {
   });
 }
 
+test('preload returns the Browser capture reservation synchronously', () => {
+  const harness = createPreloadHarness();
+  const syncCalls = [];
+  let reservation = { ok: true, generation: 7 };
+  harness.electron.ipcRenderer.sendSync = (...args) => {
+    syncCalls.push(args);
+    return reservation;
+  };
+  loadPreload(harness);
+  const browser = harness.exposed.electronAPI.browser;
+
+  assert.equal(browser.prepareCapture(), reservation);
+  reservation = { ok: false };
+  assert.equal(browser.prepareCapture(), reservation);
+  assert.deepEqual(syncCalls, [
+    ['browser:prepare-capture'],
+    ['browser:prepare-capture']
+  ]);
+  assert.deepEqual(harness.invocations, []);
+  assert.deepEqual(harness.sends, []);
+});
+
+test('preload forwards Browser commands and results through their dedicated IPC channels', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const browser = harness.exposed.electronAPI.browser;
+  const presentation = {
+    visible: true, zoomFactor: 1.5,
+    bounds: { x: 0, y: 96, width: 1000, height: 600 }
+  };
+  const capture = { generation: 7, active: true };
+  const settings = {
+    bookmarks: [{ name: 'Music', url: 'https://example.test/music' }],
+    startPage: 'https://example.test/'
+  };
+  const cases = [
+    ['getState', [], 'browser:get-state'],
+    ['navigate', ['https://example.test/music'], 'browser:navigate'],
+    ['back', [], 'browser:back'],
+    ['forward', [], 'browser:forward'],
+    ['reload', [], 'browser:reload'],
+    ['stop', [], 'browser:stop'],
+    ['openExternal', [], 'browser:open-external'],
+    ['setPresentation', [presentation], 'browser:set-presentation'],
+    ['setCaptureState', [capture], 'browser:set-capture-state'],
+    ['saveSettings', [settings], 'browser:save-settings'],
+    ['clearSiteData', [], 'browser:clear-site-data']
+  ];
+
+  assert.equal(Object.isFrozen(browser), true);
+  assert.deepEqual(Object.keys(browser).sort(), [
+    'prepareCapture', ...cases.map(([method]) => method), 'onState', 'onFocusAddress'
+  ].sort());
+  for (const [method, args, channel] of cases) {
+    assert.deepEqual(await browser[method](...args), { channel, args }, method);
+  }
+  assert.deepEqual(harness.invocations, cases.map(([, args, channel]) => [channel, ...args]));
+
+  harness.rejectInvokeChannels.add('browser:save-settings');
+  await assert.rejects(browser.saveSettings(settings), /invoke rejected: browser:save-settings/);
+});
+
+test('Browser subscriptions hide IPC events and unsubscribe independently', () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const browser = harness.exposed.electronAPI.browser;
+  const states = [];
+  const focusRequests = [];
+  const unsubscribeState = browser.onState((...args) => states.push(args));
+  const unsubscribeFocus = browser.onFocusAddress((...args) => focusRequests.push(args));
+  const event = { sender: { privileged: true } };
+  const state = { url: 'https://example.test/', captureActive: true, captureGeneration: 7 };
+
+  harness.listeners.get('browser:state')(event, state, 'private-extra-argument');
+  harness.listeners.get('browser:focus-address')(event);
+  assert.deepEqual(states, [[state]]);
+  assert.deepEqual(focusRequests, [[undefined]]);
+
+  unsubscribeState();
+  unsubscribeState();
+  assert.equal(harness.listeners.has('browser:state'), false);
+  assert.equal(harness.listeners.has('browser:focus-address'), true);
+  harness.listeners.get('browser:focus-address')(event);
+  assert.equal(focusRequests.length, 2);
+  unsubscribeFocus();
+  assert.equal(harness.listeners.size, 0);
+
+  assert.throws(() => browser.onState(null), TypeError);
+  assert.throws(() => browser.onFocusAddress(null), TypeError);
+  assert.equal(harness.listeners.size, 0);
+});
+
 test('SFZ library preload forwards file and folder selection modes', async () => {
   const harness = createPreloadHarness();
   loadPreload(harness);
@@ -81,6 +174,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
 
   assert.deepEqual(Object.keys(harness.exposed), ['electronAPI']);
   assert.equal(api.platform, process.platform);
+  assert.equal(api.isMsix, process.windowsStore === true);
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   assert.equal(Object.hasOwn(api, 'openDocumentation'), false);
   assert.equal(Object.hasOwn(api, 'getApplicationMenu'), false);
@@ -184,6 +278,13 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['pipeline-state-for-close', { plugins: [] }],
     ['renderer-ready-for-music-files']
   ]);
+});
+
+test('preload exposes MSIX identity as a plain boolean without IPC', () => {
+  const harness = createPreloadHarness();
+  withPatchedProperty(process, 'windowsStore', true, () => loadPreload(harness));
+  assert.equal(harness.exposed.electronAPI.isMsix, true);
+  assert.deepEqual(harness.invocations, []);
 });
 
 test('preload keeps OpenHome settings under the versioned host API', async () => {

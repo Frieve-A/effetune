@@ -20,6 +20,7 @@ import {
   PRODUCTION_ROLLING_ENABLED_MATRIX,
   PRODUCTION_ROLLING_POLICY_MODE,
   PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD,
+  PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS,
   ROLLING_PCM_CLEANUP_OBSERVATION_TIMES_MS,
   RollingPcmAdmissionLedger,
   ROLLING_PCM_LIVE_MEMORY_CATEGORIES,
@@ -198,15 +199,19 @@ function authoritativeCounterCaps(profileId) {
   return getRollingPcmEvidencePolicy(MEMORY_CELL, profileId).mandatoryCounterCaps;
 }
 
-test('production evidence enables the single Electron native-fragment cell', () => {
+test('production evidence independently enables the measured Electron runtime pairs', () => {
   assert.equal(PRODUCTION_ROLLING_POLICY_MODE, RollingPolicyMode.LIMITED_ROLLING);
   assert.equal(SELECTED_ROLLING_PCM_PROFILE_ID, DEFAULT_ROLLING_PCM_PROFILE_ID);
-  assert.equal(PRODUCTION_ROLLING_ENABLED_MATRIX.length, 1);
-  assert.deepEqual(PRODUCTION_ROLLING_ENABLED_MATRIX[0],
-    { ...PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.cell });
-  assert.equal(PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.processMemory.allGatesPassed, true);
-  assert.equal(PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.processMemory.observedCleanupOverageBytes,
-    Math.min(...PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.processMemory.cleanupObservationOveragesBytes));
+  assert.deepEqual(PRODUCTION_ROLLING_ENABLED_MATRIX.map(cell =>
+    [cell.electronMajorVersion, cell.chromiumMajorVersion]), [[44, 152], [45, 156]]);
+  for (const record of PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS) {
+    assert.deepEqual(deriveRollingProductionSelection(record).enabledMatrix, [record.cell]);
+    assert.equal(record.processMemory.allGatesPassed, true);
+    assert.equal(record.processMemory.observedCleanupOverageBytes,
+      Math.min(...record.processMemory.cleanupObservationOveragesBytes));
+  }
+  assert.equal(PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS[0],
+    PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD);
 });
 
 test('missing Gapless Playback preferences remain enabled', () => {
@@ -327,6 +332,14 @@ test('exact native candidate preflight waits for READY on the enabled production
   assert.equal(pending.mode, 'media');
   assert.equal(pending.rollingCandidate, true);
   assert.equal(hasRollingMatrixCandidate(source, PRODUCTION_ROLLING_ENABLED_MATRIX, capability), true);
+  assert.equal(hasRollingMatrixCandidate(source, PRODUCTION_ROLLING_ENABLED_MATRIX, {
+    ...capability, electronMajorVersion: 45, chromiumMajorVersion: 156
+  }), true);
+  for (const [electronMajorVersion, chromiumMajorVersion] of [[44, 156], [45, 152], [46, 156]]) {
+    assert.equal(hasRollingMatrixCandidate(source, PRODUCTION_ROLLING_ENABLED_MATRIX, {
+      ...capability, electronMajorVersion, chromiumMajorVersion
+    }), false);
+  }
   assert.equal(hasRollingMatrixCandidate(source, PRODUCTION_ROLLING_ENABLED_MATRIX, {
     ...capability,
     host: 'chromium',
@@ -485,10 +498,18 @@ test('exact candidate WAV cell rolls below the old threshold and matches both sa
     }
   };
 
-  assert.equal(selectPlaybackBackend({
-    ...common,
-    enabledMatrix: NATIVE_FRAGMENT_CANDIDATE_MATRIX
-  }).mode, 'rolling');
+  for (const cell of PRODUCTION_ROLLING_ENABLED_MATRIX) {
+    const capability = { ...common.capability,
+      electronMajorVersion: cell.electronMajorVersion,
+      chromiumMajorVersion: cell.chromiumMajorVersion };
+    assert.equal(selectPlaybackBackend({
+      ...common, capability, enabledMatrix: PRODUCTION_ROLLING_ENABLED_MATRIX
+    }).mode, 'rolling');
+    assert.equal(selectPlaybackBackend({
+      ...common, capability, metadata: { ...metadata, dataOffset: undefined },
+      enabledMatrix: PRODUCTION_ROLLING_ENABLED_MATRIX
+    }).rollingRejection, 'native-fragment-metadata-invalid');
+  }
   assert.equal(selectPlaybackBackend({
     ...common,
     enabledMatrix: [{ ...NATIVE_FRAGMENT_CANDIDATE_MATRIX[0], sourceSampleRate: 48000 }]
@@ -889,39 +910,49 @@ test('capability reports reflect the versioned production evidence and stay fail
   assert.equal(incompleteCleanupEvidence.policyMode, RollingPolicyMode.RESOURCE_SAFE_LEGACY);
 });
 
-test('production selection fails closed when any single evidence field is falsified', () => {
-  const record = PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD;
-  assert.equal(deriveRollingProductionSelection(record).policyMode,
-    RollingPolicyMode.LIMITED_ROLLING);
-  const withProcessMemory = patch => ({
-    ...record,
-    processMemory: { ...record.processMemory, ...patch }
+for (const record of PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS) {
+  test(`production selection for Electron ${record.cell.electronMajorVersion} fails closed on falsified evidence`, () => {
+    assert.equal(deriveRollingProductionSelection(record).policyMode,
+      RollingPolicyMode.LIMITED_ROLLING);
+    const withProcessMemory = patch => ({
+      ...record,
+      processMemory: { ...record.processMemory, ...patch }
+    });
+    const falsifiedRecords = {
+      peakAboveCap: withProcessMemory({
+        observedPeakIncreaseBytes: record.processMemory.peakIncreaseByteCap + 1
+      }),
+      inventedPeakCap: withProcessMemory({
+        peakIncreaseByteCap: record.processMemory.peakIncreaseByteCap + 1
+      }),
+      extendedCleanupGrace: withProcessMemory({ cleanupGraceMaximumMs: 25000 }),
+      shiftedObservationTimes: withProcessMemory({
+        cleanupObservationTimesMs: [1000, 5000, 10000, 15000, 25000]
+      }),
+      processMemoryUnavailable: withProcessMemory({ available: false }),
+      foreignMetric: withProcessMemory({ metric: 'electron-process-memory-info-private-bytes' }),
+      plateauAboveCap: withProcessMemory({
+        observedPlateauSpreadBytes: record.processMemory.plateauSpreadByteCap + 1
+      }),
+      continuityFailed: { ...record, continuityPassed: false },
+      foreignHost: { ...record, cell: { ...record.cell, host: 'chromium' } },
+      foreignChromium: { ...record, cell: { ...record.cell, chromiumMajorVersion: 151 } },
+      crossedElectron: { ...record, cell: {
+        ...record.cell, electronMajorVersion: record.cell.electronMajorVersion === 44 ? 45 : 44
+      } },
+      crossedChromium: { ...record, cell: {
+        ...record.cell, chromiumMajorVersion: record.cell.chromiumMajorVersion === 152 ? 156 : 152
+      } },
+      incorrectCleanupMinimum: withProcessMemory({
+        observedCleanupOverageBytes: record.processMemory.observedCleanupOverageBytes + 1
+      })
+    };
+    for (const [name, falsified] of Object.entries(falsifiedRecords)) {
+      const selection = deriveRollingProductionSelection(falsified);
+      assert.equal(selection.policyMode, RollingPolicyMode.RESOURCE_SAFE_LEGACY, name);
+      assert.equal(selection.profileId, null, name);
+      assert.deepEqual(selection.enabledMatrix, [], name);
+      assert.equal(selection.evidenceRecord, null, name);
+    }
   });
-  const falsifiedRecords = {
-    peakAboveCap: withProcessMemory({
-      observedPeakIncreaseBytes: record.processMemory.peakIncreaseByteCap + 1
-    }),
-    inventedPeakCap: withProcessMemory({
-      peakIncreaseByteCap: record.processMemory.peakIncreaseByteCap + 1
-    }),
-    extendedCleanupGrace: withProcessMemory({ cleanupGraceMaximumMs: 25000 }),
-    shiftedObservationTimes: withProcessMemory({
-      cleanupObservationTimesMs: [1000, 5000, 10000, 15000, 25000]
-    }),
-    processMemoryUnavailable: withProcessMemory({ available: false }),
-    foreignMetric: withProcessMemory({ metric: 'electron-process-memory-info-private-bytes' }),
-    plateauAboveCap: withProcessMemory({
-      observedPlateauSpreadBytes: record.processMemory.plateauSpreadByteCap + 1
-    }),
-    continuityFailed: { ...record, continuityPassed: false },
-    foreignHost: { ...record, cell: { ...record.cell, host: 'chromium' } },
-    foreignChromium: { ...record, cell: { ...record.cell, chromiumMajorVersion: 151 } }
-  };
-  for (const [name, falsified] of Object.entries(falsifiedRecords)) {
-    const selection = deriveRollingProductionSelection(falsified);
-    assert.equal(selection.policyMode, RollingPolicyMode.RESOURCE_SAFE_LEGACY, name);
-    assert.equal(selection.profileId, null, name);
-    assert.deepEqual(selection.enabledMatrix, [], name);
-    assert.equal(selection.evidenceRecord, null, name);
-  }
-});
+}

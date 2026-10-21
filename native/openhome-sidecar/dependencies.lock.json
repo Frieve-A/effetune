@@ -3,9 +3,9 @@
   "archives": [
     {
       "name": "ohNet",
-      "commit": "b16816876a88e5f1783225114470025458eb1b61",
-      "url": "https://codeload.github.com/openhome/ohNet/zip/b16816876a88e5f1783225114470025458eb1b61",
-      "sha256": "993e6fd081b9b44584e7295259f29e5b077fe28ee526bea3bf3db1937f6e2ec8",
+      "commit": "b86dab7ff82cd972ef83cf27aab667e821242440",
+      "url": "https://codeload.github.com/openhome/ohNet/zip/b86dab7ff82cd972ef83cf27aab667e821242440",
+      "sha256": "bf83fd53a7533fa09a1fdf81c9261df806614e4b94cd3b45df4ded28aef44238",
       "license": "MIT with separately licensed bundled components",
       "licenseFiles": [
         "License.txt",

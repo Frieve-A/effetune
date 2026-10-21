@@ -416,15 +416,17 @@ async function withHarness(options, callback) {
   };
 
   try {
-    return await withPatchedPropertyAsync(process, 'platform', options.platform ?? process.platform, async () =>
-      withPatchedPropertyAsync(console, 'error', (...args) => {
-        harness.calls.push(['console.error', ...args]);
-      }, async () =>
-        withPatchedPropertyAsync(global, 'setTimeout', timer, async () =>
-          withModuleLoadStubAsync(harness.stubs, async () => {
-            const moduleUnderTest = loadFreshModule('../../electron/ipc-handlers.js');
-            return callback({ ...harness, moduleUnderTest });
-          })
+    return await withPatchedPropertyAsync(process, 'windowsStore', options.isMsix ?? false, async () =>
+      withPatchedPropertyAsync(process, 'platform', options.platform ?? process.platform, async () =>
+        withPatchedPropertyAsync(console, 'error', (...args) => {
+          harness.calls.push(['console.error', ...args]);
+        }, async () =>
+          withPatchedPropertyAsync(global, 'setTimeout', timer, async () =>
+            withModuleLoadStubAsync(harness.stubs, async () => {
+              const moduleUnderTest = loadFreshModule('../../electron/ipc-handlers.js');
+              return callback({ ...harness, moduleUnderTest });
+            })
+          )
         )
       )
     );
@@ -455,6 +457,50 @@ async function invokeAllDelegates(handlers) {
   assert.equal(handlers.get('fileExists')({}, 'missing'), false);
   assert.deepEqual(await handlers.get('save-pipeline-state-to-file')({}, { pipeline: [] }), { success: true });
 }
+
+test('MSIX config saves preserve preferences without registering login items or downloading NSIS updates', async () => {
+  await withHarness({ isMsix: true, platform: 'win32' }, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    assert.deepEqual(await ipcMain.handlers.get('save-config')({}, {
+      autoLaunch: true, checkForUpdatesOnStartup: false, startMinimized: true
+    }), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('download-update')(), { success: false });
+    assert.equal(calls.some(call => call[0] === 'app.setLoginItemSettings'), false);
+    assert.equal(calls.some(call => call[0] === 'main.downloadAndInstallUpdate'), false);
+    const saved = calls.find(call => call[0] === 'config.saveConfig')[1];
+    assert.equal(saved.autoLaunch, true);
+    assert.equal(saved.checkForUpdatesOnStartup, false);
+    assert.equal(saved.startMinimized, true);
+  });
+});
+
+test('Windows system links require MSIX, exact URIs and the main renderer frame', async () => {
+  for (const options of [
+    { isMsix: true, platform: 'win32' },
+    { isMsix: false, platform: 'win32' },
+    { isMsix: true, platform: 'linux' }
+  ]) {
+    await withHarness(options, async ({ calls, ipcMain, moduleUnderTest, constants }) => {
+      moduleUnderTest.registerIpcHandlers();
+      const webContents = constants.getMainWindow().webContents;
+      webContents.mainFrame = {};
+      const event = { sender: webContents, senderFrame: webContents.mainFrame };
+      const open = ipcMain.handlers.get('open-external-url');
+      for (const uri of ['ms-settings:startupapps', 'ms-windows-store://downloadsandupdates']) {
+        assert.deepEqual(await open(event, uri), { success: options.isMsix && options.platform === 'win32' });
+        assert.deepEqual(await open({ ...event, sender: {} }, uri), { success: false });
+        assert.deepEqual(await open({ ...event, senderFrame: {} }, uri), { success: false });
+        assert.deepEqual(await open({}, uri), { success: false });
+        assert.deepEqual(await open(event, `${uri}?extra=1`), { success: false });
+      }
+      for (const uri of ['ms-settings:privacy', 'ms-windows-store://home', 'MS-SETTINGS:startupapps']) {
+        assert.deepEqual(await open(event, uri), { success: false });
+      }
+      assert.equal(calls.filter(call => call[0] === 'shell.openExternal').length,
+        options.isMsix && options.platform === 'win32' ? 2 : 0);
+    });
+  }
+});
 
 test('prepare-local-playback-source delegates to the main-owned converter', async () => {
   await withHarness({}, async ({ ipcMain, moduleUnderTest }) => {
@@ -521,7 +567,7 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.deepEqual(await handlers.get('load-audio-preferences')(), {
       success: true,
       preferences: {
-        inputDeviceId: 'default',
+        inputDeviceId: '__effetune_no_audio_input__',
         outputDeviceId: 'speaker1',
         inputDeviceLabel: '',
         outputDeviceLabel: '',
@@ -629,6 +675,16 @@ test('read-track-tags validates the path before artwork and closes both worker p
 
     await assert.rejects(readTrackTags({}, 'relative.flac'), error => error?.code === 'invalidMetadataRequest');
     assert.deepEqual(poolCalls.map(call => call[0]), ['metadata.parse', 'metadata.close', 'artwork.close']);
+  });
+});
+
+test('save-config preserves Browser settings independently of stale renderer snapshots', async () => {
+  const browser = { bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: '' };
+  await withHarness({ config: { theme: 'graphite', browser } }, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const result = await ipcMain.handlers.get('save-config')({}, { theme: 'paper', browser: { bookmarks: [] } });
+    assert.equal(result.success, true);
+    assert.deepEqual(calls.find(call => call[0] === 'config.saveConfig')[1], { theme: 'paper', browser });
   });
 });
 
@@ -877,6 +933,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(translatedMenu.getMenuItemById('file.save').enabled, false);
     assert.equal(translatedMenu.getMenuItemById('file.saveAs').label, 'Save As...');
     assert.equal(translatedMenu.getMenuItemById('file.backupRestore').label, 'Backup X');
+    assert.equal(translatedMenu.getMenuItemById('file.doubleBlindTest').enabled, false);
     assert.equal(translatedMenu.getMenuItemById('unknown'), null);
     assert.deepEqual(
       translatedMenu.template.map(section => ({
@@ -983,6 +1040,7 @@ test('IPC handlers manage stable-ID menu state, tray presets, and default menu c
     assert.equal(defaultMenu.template[2].submenu[9].type, 'checkbox');
     assert.equal(defaultMenu.template[2].submenu[9].checked, false);
     assert.equal(defaultMenu.getMenuItemById('settings.audioDevices').label, 'Audio Configuration...');
+    assert.equal(defaultMenu.getMenuItemById('file.doubleBlindTest').enabled, false);
     clickMenu(defaultMenu);
     await Promise.resolve();
     assert.deepEqual(

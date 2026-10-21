@@ -9140,3 +9140,23 @@ test('defensive failures leave playback state recoverable', async () => {
     assert.equal(throwingRebind.state.currentTrackPosition, 0);
   });
 });
+
+test('local Play and Stop preserve Browser playback and use device mixing only while Browser is selected', async () => {
+  await withAudioContextGlobals({ useInputWithPlayer: false }, async () => {
+    const { manager, audioManager } = createHarness();
+    const browser = { selected: true, stream: {}, sourceNode: {},
+      release() { throw new Error('Local playback must not release Browser capture'); } };
+    audioManager.ioManager.browserInput = browser;
+    manager.resumePlaybackAudioContext = async () => true;
+    let backendCalls = 0;
+    manager.dispatchPlaybackBackend = () => { backendCalls++; return true; };
+    assert.equal(manager.getUseInputWithPlayer(), true);
+    assert.equal(await manager.play(), true);
+    assert.equal(backendCalls, 1);
+    await manager.stop();
+    assert.equal(browser.selected, true);
+    assert.ok(browser.stream);
+    browser.selected = false;
+    assert.equal(manager.getUseInputWithPlayer(), false);
+  });
+});

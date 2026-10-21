@@ -1,0 +1,127 @@
+name: Browser Extension Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      store:
+        description: Store to update (use a release tag to submit, or main for a draft)
+        type: choice
+        options: [both, chrome, edge]
+        default: both
+      submit:
+        description: Submit for review and publish after approval (unchecked uploads a draft only)
+        type: boolean
+        default: false
+
+concurrency:
+  group: extension-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  EXTENSION_SUBMIT: ${{ github.event_name == 'push' || inputs.submit }}
+
+jobs:
+  package:
+    name: Verify and package extension
+    if: github.repository == 'Frieve-A/effetune'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check release tag or manual main draft
+        run: node scripts/release-extension.mjs check
+      - run: npm ci --ignore-scripts
+      - run: npm audit signatures
+      - run: npm run verify
+      - run: npm run build:extension
+      - name: Install browser and virtual audio output
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio xvfb
+      - name: Test tab audio in the packaged extension
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=effetune
+          pactl set-default-sink effetune
+          xvfb-run -a npm run test:extension-browser
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extension-package
+          path: |
+            out/extension/
+            out/effetune-extension-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  chrome:
+    name: Sign and upload to Chrome Web Store
+    needs: package
+    if: github.event_name == 'push' || inputs.store == 'both' || inputs.store == 'chrome'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extension-package
+          path: out
+      - name: Sign CRX with the existing upload key
+        env:
+          CHROME_CRX_PRIVATE_KEY: ${{ secrets.CHROME_CRX_PRIVATE_KEY }}
+        run: node scripts/release-extension.mjs sign
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: chrome-extension-crx
+          path: out/effetune-extension-*.crx
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload CRX and optionally submit for review
+        env:
+          CHROME_WEB_STORE_SERVICE_ACCOUNT: ${{ secrets.CHROME_WEB_STORE_SERVICE_ACCOUNT }}
+          CHROME_WEB_STORE_PUBLISHER_ID: ${{ vars.CHROME_WEB_STORE_PUBLISHER_ID }}
+          CHROME_WEB_STORE_EXTENSION_ID: fhjhnpepnhkcdggogicifibfegpbhibp
+        run: node scripts/release-extension.mjs chrome
+
+  edge:
+    name: Upload to Microsoft Edge Add-ons
+    needs: package
+    if: github.event_name == 'push' || inputs.store == 'both' || inputs.store == 'edge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extension-package
+          path: out
+      - name: Upload ZIP and optionally submit for review
+        env:
+          EDGE_ADDONS_API_KEY: ${{ secrets.EDGE_ADDONS_API_KEY }}
+          EDGE_ADDONS_CLIENT_ID: ${{ vars.EDGE_ADDONS_CLIENT_ID }}
+          EDGE_ADDONS_PRODUCT_ID: ${{ vars.EDGE_ADDONS_PRODUCT_ID }}
+        run: node scripts/release-extension.mjs edge

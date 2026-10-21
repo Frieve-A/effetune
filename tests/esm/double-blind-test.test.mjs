@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 import { DoubleBlindTest } from '../../js/ui/double-blind-test/double-blind-test.js';
+import { UIManager } from '../../js/ui-manager.js';
 import { PluginManager } from '../../js/plugin-manager.js';
 import { encodePipelineState, decodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
@@ -271,7 +272,7 @@ class FakeElement {
   _seedChildrenFromHTML(html) {
     if (!html.includes('dbt-')) return;
 
-    const elementPattern = /<(div|h2|h3|button|p|label|input|datalist|ul)\b([^>]*)>/gi;
+    const elementPattern = /<(div|h2|h3|button|p|label|input|datalist|ul|span)\b([^>]*)>/gi;
     let match;
     while ((match = elementPattern.exec(html)) !== null) {
       const tagName = match[1];
@@ -282,6 +283,7 @@ class FakeElement {
       if (attrs.type) child.type = attrs.type;
       if (attrs.value !== undefined) child.value = String(attrs.value);
       if (attrs.disabled === true) child.disabled = true;
+      if (attrs.checked === true) child.checked = true;
       child.attributes = attrs;
       this.appendChild(child);
     }
@@ -648,6 +650,71 @@ async function withHarness(options, callback) {
   const harness = createHarness(options);
   return withGlobals(harness.globals, () => callback(harness));
 }
+
+test('Browser roundtrip preserves a running test and suspends hidden sample and vote shortcuts', async () => {
+  await withHarness({ electronAPI: { browser: {} } }, async h => {
+    const ui = h.uiManager;
+    ui.doubleBlindTest = h.dbt;
+    for (const method of ['getDoubleBlindTest', 'startDoubleBlindTest', 'isDoubleBlindActive',
+      'showBrowserView', 'showEffectPipelineView', 'updateViewSwitchButtons',
+      'updateEffectPipelineVisibility', 'isEffectPipelineHidden', 'reportVisualizerFeedAllowed', 'hideLibraryView',
+      'hideLibraryRecoveryShell']) {
+      ui[method] = UIManager.prototype[method];
+    }
+    ui.browserButton = h.document.createElement('button');
+    const stream = { getAudioTracks: () => [{ readyState: 'live' }] };
+    ui.browserView = {
+      input: { stream, selected: true, active: true, select() { return Promise.resolve(true); } },
+      async show() {}, hide() {}
+    };
+    await ui.startDoubleBlindTest();
+    h.dbt.els.countInput.value = '3';
+    await h.dbt._startTest('ABX');
+    h.dbt._vote('A');
+    h.dbt._switchToLabel('X');
+    const panel = h.dbt.container;
+    const state = () => [h.dbt.testRunning, h.dbt.totalCount, h.dbt.correctCount,
+      h.dbt.prefACount, h.dbt._aIsPhysicalA, h.dbt._xIsA, h.dbt._activeLabel];
+    const before = state();
+    assert.equal(await ui.showBrowserView(), true);
+    ui.updateEffectPipelineVisibility();
+    assert.equal(h.document.body.classList.contains('view-browser'), true);
+    for (const key of ['a', 'b', 'x', '1', '2', '3', 'q', 'w']) {
+      assert.equal(h.document.dispatch('keydown', { key, target: h.document.body }).event.prevented, 0);
+    }
+    assert.deepEqual(state(), before);
+    assert.equal(ui.showEffectPipelineView(), true);
+    assert.equal(h.dbt.container, panel);
+    assert.equal(panel.parentNode, h.document.body);
+    assert.deepEqual(state(), before);
+    assert.equal(ui.browserView.input.stream, stream);
+    assert.equal(ui.browserView.input.selected && ui.browserView.input.active, true);
+    assert.equal(ui.browserView.input.stream.getAudioTracks()[0].readyState, 'live');
+    // The menu path also returns to the existing panel without entering a fresh test.
+    await ui.showBrowserView();
+    assert.equal(await ui.startDoubleBlindTest(), true);
+    assert.equal(h.document.body.classList.contains('view-browser'), false);
+    assert.equal(h.dbt.container, panel);
+    assert.deepEqual(state(), before);
+    assert.equal(h.document.dispatch('keydown', { key: 'b', target: h.document.body }).event.prevented, 1);
+    assert.equal(h.dbt._activeLabel, 'B');
+    h.document.dispatch('keydown', { key: 'q', target: h.document.body });
+    assert.equal(h.dbt.totalCount, 2);
+    assert.equal(ui.urlReflectionEnabled, false);
+    assert.equal(h.main.children.length, 0);
+    const shared = encodePipelineState(h.dbt._buildSharePayload());
+    await ui.showBrowserView();
+    assert.equal(await ui.startDoubleBlindTest(shared), false, 'shared tests cannot replace an active test');
+    assert.equal(h.document.body.classList.contains('view-browser'), true);
+    await h.dbt.exit();
+    assert.equal(await ui.startDoubleBlindTest('invalid!'), false);
+    await ui.showBrowserView();
+    assert.equal(await ui.startDoubleBlindTest(shared), true);
+    assert.equal(h.dbt.restoredFromURI, true);
+    assert.equal(h.document.body.classList.contains('view-browser'), false);
+    await h.dbt.exit();
+  });
+});
 
 test('validates pipeline availability and manages entry/exit gating', async () => {
   await withHarness({}, async h => {
@@ -1111,6 +1178,84 @@ for (const source of ['saved', 'shared']) {
     });
   });
 }
+
+for (const type of ['ABX', 'ABPREF']) {
+  for (const fixAB of [true, false]) {
+    test(`${type} routes and scores trials with fixed A/B ${fixAB ? 'on' : 'off'}`, async t => {
+      let randomValue = 0.75;
+      t.mock.method(Math, 'random', () => randomValue);
+      await withHarness({}, async h => {
+        h.dbt.enterFresh();
+        const e = h.dbt.els;
+        assert.equal(e.fixABInput.checked, true);
+        assert.equal(e.fixABLabel.textContent, 'dbt.fixAB');
+        e.fixABInput.checked = fixAB;
+        await e.fixABInput.dispatch('change');
+        e.countInput.value = '2';
+        await h.dbt._startTest(type);
+
+        const fixed = type === 'ABX' && fixAB;
+        const labels = type === 'ABX' ? ['A', 'B', 'X'] : ['A', 'B'];
+        for (const label of labels) h.dbt._switchToLabel(label);
+        const firstRoutes = fixed ? ['A', 'B', 'B'] : ['B', 'A', 'A'];
+        assert.deepEqual(
+          h.calls.filter(call => call[0] === 'setBlindSelection').map(call => call[1]),
+          firstRoutes.slice(0, labels.length)
+        );
+
+        randomValue = 0.25;
+        h.dbt._vote('B');
+        h.calls.length = 0;
+        for (const label of labels) h.dbt._switchToLabel(label);
+        assert.deepEqual(
+          h.calls.filter(call => call[0] === 'setBlindSelection').map(call => call[1]),
+          ['A', 'B', 'A'].slice(0, labels.length)
+        );
+        h.dbt._vote('A');
+        assert.equal(h.dbt.totalCount, 2);
+        assert.equal(type === 'ABX' ? h.dbt.correctCount : h.dbt.prefACount, 2);
+        assert.equal(h.dbt.testRunning, false);
+      });
+    });
+  }
+}
+
+test('preserves fixed A/B in saved and shared tests and defaults older tests to on', async () => {
+  await withHarness({}, async h => {
+    h.dbt.enterFresh();
+    for (const fixAB of [false, true]) {
+      h.dbt.els.fixABInput.checked = fixAB;
+      await h.dbt.els.fixABInput.dispatch('change');
+      await h.dbt._saveTest('Fixed A/B');
+      const saved = (await h.dbt._getTests())['Fixed A/B'];
+      assert.equal(saved.fAB, fixAB);
+      const payload = h.dbt._buildSharePayload();
+      assert.equal(payload.fAB, fixAB);
+
+      h.dbt.fixAB = !fixAB;
+      await h.dbt._loadTest('Fixed A/B');
+      assert.equal(h.dbt.fixAB, fixAB);
+      assert.equal(h.dbt.els.fixABInput.checked, fixAB);
+
+      await h.dbt.exit();
+      assert.equal(h.dbt.restoreFromShare(encodePipelineState(payload)), true);
+      assert.equal(h.dbt.fixAB, fixAB);
+      assert.equal(h.dbt.els.fixABInput.checked, fixAB);
+    }
+
+    const legacy = h.dbt._buildSharePayload();
+    delete legacy.fAB;
+    await h.dbt._persistTests({ Legacy: legacy });
+    h.dbt.fixAB = false;
+    await h.dbt._loadTest('Legacy');
+    assert.equal(h.dbt.fixAB, true);
+    assert.equal(h.dbt.els.fixABInput.checked, true);
+    await h.dbt.exit();
+    assert.equal(h.dbt.restoreFromShare(encodePipelineState(legacy)), true);
+    assert.equal(h.dbt.fixAB, true);
+    assert.equal(h.dbt.els.fixABInput.checked, true);
+  });
+});
 
 test('starts tests, randomizes trials, switches labels, and handles keyboard shortcuts', async () => {
   await withHarness({ rejectEnableParallel: true, throwFadeOut: true, throwFadeIn: true }, async h => {

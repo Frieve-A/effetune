@@ -206,6 +206,13 @@ async function waitForPowerControllerSettled(runtime, description, timeoutMs = t
   throw new Error(`${description} Last diagnostics: ${JSON.stringify(diagnostics)}`);
 }
 
+async function waitForSourceAudio(page) {
+  // Linux can report a running context before a newly opened output device fills the analyser.
+  await page.waitForFunction(async () =>
+    await window.__browserExtensionAudio.measureRms() > 0.05,
+  null, { timeout: transitionTimeoutMs, polling: 100 });
+}
+
 async function assertCaptureReleased(page, offscreenRuntime, sourcePage, expectedStatus,
   pipelineFingerprint) {
   const state = await waitForState(
@@ -225,8 +232,7 @@ async function assertCaptureReleased(page, offscreenRuntime, sourcePage, expecte
   assert.equal(resources.stream, null);
   assert.equal((await sourcePage.evaluate(() => window.__browserExtensionAudio.snapshot())).state,
     'running');
-  assert.ok(await sourcePage.evaluate(() => window.__browserExtensionAudio.measureRms()) > 0.05,
-    'The source tab did not return to normal playback after a failed start.');
+  await waitForSourceAudio(sourcePage);
   return state;
 }
 
@@ -541,8 +547,7 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
         sampleRate: 48000,
         frequency: 997
       });
-      assert.ok(await sourcePage.evaluate(() => window.__browserExtensionAudio.measureRms()) > 0.05,
-        'The fixture source did not produce a measurable audio signal.');
+      await waitForSourceAudio(sourcePage);
     });
 
     const browser = context.browser();

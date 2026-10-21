@@ -253,9 +253,8 @@ export class ElectronIntegration {
 
     // Listen for Double Blind Test launch request from the application menu
     window.electronAPI.onIPC('start-double-blind-test', () => {
-      if (window.uiManager && window.uiManager.getDoubleBlindTest) {
-        void Promise.resolve(window.uiManager.getDoubleBlindTest())
-          .then(doubleBlindTest => doubleBlindTest.enterFresh())
+      if (window.uiManager?.startDoubleBlindTest) {
+        void window.uiManager.startDoubleBlindTest()
           .catch(error => console.error('Failed to open Double Blind Test:', error));
       }
     });
@@ -384,7 +383,10 @@ export class ElectronIntegration {
       // Check for available updates (always check in About dialog regardless of config)
       let updateLinkHTML = '';
       let availableUpdate = null;
-      if (window.electronAPI) {
+      const isMsix = window.electronAPI?.isMsix === true;
+      if (isMsix) {
+        updateLinkHTML = '<div id="about-store-updates-help"></div><button type="button" class="library-button" id="about-store-updates"></button>';
+      } else if (window.electronAPI) {
         try {
           // Force check for updates in About dialog
           await window.electronAPI.forceCheckForUpdates();
@@ -428,6 +430,22 @@ export class ElectronIntegration {
       dialogElement.className = 'modal-overlay';
       dialogElement.innerHTML = dialogHTML;
       document.body.appendChild(dialogElement);
+
+      if (isMsix) {
+        const t = key => window.uiManager?.t?.(key) || key;
+        document.getElementById('about-store-updates-help').textContent = t('dialog.store.updatesHelp');
+        const storeButton = document.getElementById('about-store-updates');
+        storeButton.textContent = t('dialog.store.openUpdates');
+        storeButton.addEventListener('click', async () => {
+          try {
+            const result = await window.electronAPI.openExternalUrl('ms-windows-store://downloadsandupdates');
+            if (result?.success !== true) throw new Error('Microsoft Store could not open');
+          } catch (error) {
+            console.error('Could not open Microsoft Store:', error);
+            window.uiManager?.setError?.(t('dialog.store.openFailed'), true);
+          }
+        });
+      }
 
       if (availableUpdate) {
         const updateSlot = document.getElementById('about-update-link');

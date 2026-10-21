@@ -21,6 +21,69 @@ async function waitForTerminal(runtime, scanId, timeoutMs = 5000) {
   throw new Error(`Timed out waiting for scan ${scanId}`);
 }
 
+test('Electron empty imports and rescans preserve tracks in other folders', async t => {
+  const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-empty-library-import-')));
+  const roots = ['Music', 'Empty', 'Documents', 'Corrupt', 'Other Music'].map(name => path.join(temporary, name));
+  for (const root of roots) await fs.mkdir(root);
+  await fs.writeFile(path.join(roots[0], 'song.mp3'), 'audio');
+  await fs.writeFile(path.join(roots[2], 'notes.txt'), 'not audio');
+  await fs.writeFile(path.join(roots[3], 'broken.mp3'), 'invalid audio');
+  await fs.writeFile(path.join(roots[4], 'other.mp3'), 'audio');
+  const host = await LibraryCatalogHost.open({ dbPath: path.join(temporary, 'catalog.sqlite') });
+  const selections = [...roots];
+  const runtime = await LibraryCatalogScanRuntime.open({
+    host,
+    dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [selections.shift()] }) },
+    metadataParser: {
+      async parse({ relativePath }) {
+        if (relativePath === 'broken.mp3') {
+          throw Object.assign(new Error('Invalid audio container'), { code: 'corrupt-container' });
+        }
+        return { title: 'Song', artist: 'Artist', album: 'Album', genre: 'Rock', durationSec: 1 };
+      }
+    }
+  });
+  t.after(async () => {
+    await runtime.close();
+    await host.close();
+    await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  const music = await runtime.addFolder();
+  assert.equal((await waitForTerminal(runtime, music.scan.scanId)).status, 'completed');
+  const initial = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  assert.equal(initial.rows.length, 1);
+  const originalTrack = initial.rows[0];
+  await host.releaseContext(initial.contextToken);
+
+  for (const root of roots.slice(1, 4)) {
+    const added = await runtime.addFolder();
+    const terminal = await waitForTerminal(runtime, added.scan.scanId);
+    assert.equal(terminal.status, 'completed', root);
+    const countsForScan = terminal.results[0].counts;
+    assert.equal(countsForScan.parsed - countsForScan.metadataTerminal, 0, root);
+    assert.equal(countsForScan.metadataTerminal, root === roots[3] ? 1 : 0, root);
+    const page = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+    assert.deepEqual(page.rows.find(track => track.trackUid === originalTrack.trackUid), originalTrack, root);
+    await host.releaseContext(page.contextToken);
+    const counts = await host.getCounts();
+    assert.equal(counts.albums, 1, root);
+    assert.equal(counts.artists, 1, root);
+    assert.equal(counts.genres, 1, root);
+  }
+
+  const other = await runtime.addFolder();
+  assert.equal((await waitForTerminal(runtime, other.scan.scanId)).status, 'completed');
+  assert.equal((await host.getScanFolderTrackCount({ folderId: other.folder.id })).trackCount, 1);
+  await fs.rm(path.join(roots[4], 'other.mp3'));
+  const rescan = await runtime.scanFolders({ folderIds: [other.folder.id], scanReason: 'explicit-rescan' });
+  assert.equal((await waitForTerminal(runtime, rescan.scanId)).status, 'completed');
+  assert.equal((await host.getScanFolderTrackCount({ folderId: other.folder.id })).trackCount, 0);
+  const page = await host.queryTracks({ query: '', sort: 'title', direction: 'asc', limit: 10 });
+  assert.deepEqual(page.rows.find(track => track.trackUid === originalTrack.trackUid), originalTrack);
+  await host.releaseContext(page.contextToken);
+});
+
 test('Electron library scans apply the video format preference on add and rescan', async t => {
   const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-video-scan-')));
   const libraryRoot = path.join(temporary, 'Music');

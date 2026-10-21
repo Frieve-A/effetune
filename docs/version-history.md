@@ -6,7 +6,8 @@ lang: en
 
 # Version History
 
-### Version 2.15.0 (TBD, 2026)
+### Version 2.15.0 (Oct 23, 2026)
+- Added a built-in browser that allows for the direct processing and playback of audio from various streaming services
 - Supports video file playback
 - Added Video and Counter to the Visualizer
 - Added Apple Lossless (ALAC) playback in the macOS desktop app

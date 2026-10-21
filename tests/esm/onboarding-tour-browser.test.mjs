@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright';
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const origin = 'https://effetune.test';
@@ -36,13 +37,13 @@ async function openPage(browser, { mobile = false, config = {}, savedPipeline, s
     });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ config, savedPipeline }) => {
+    await page.addInitScript(({ config, savedPipeline, inputDeviceId }) => {
         window.EFFECTUNE_DEV_SERVER = true;
         localStorage.setItem('effetune_app_config', JSON.stringify({
             language: 'en', pipelineStartup: 'default', ...config
         }));
         localStorage.setItem('effetune_audio_preferences', JSON.stringify({
-            inputDeviceId: 'none', useWasmDsp: false
+            inputDeviceId, useWasmDsp: false
         }));
         if (savedPipeline !== undefined) localStorage.setItem('effetune_pipeline_state', savedPipeline);
         let app;
@@ -60,7 +61,7 @@ async function openPage(browser, { mobile = false, config = {}, savedPipeline, s
                 };
             }
         });
-    }, { config, savedPipeline });
+    }, { config, savedPipeline, inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID });
     await page.route(`${origin}/**`, async route => {
         const pathname = new URL(route.request().url()).pathname;
         if (localeGate && pathname === '/js/locales/ja.json5') {

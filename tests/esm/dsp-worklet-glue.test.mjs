@@ -9,6 +9,8 @@ import { PowerPolicyController } from '../../js/audio/power-policy-controller.js
 import { SHIPPED_ENABLED_TYPES } from '../../js/audio/dsp-rollout.js';
 import { instantiateDspBinding } from '../../js/audio/dsp-engine-binding.js';
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
+import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
+import { analyzeTemporalCapabilities } from '../../js/audio/power-topology.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const processorPath = path.join(repoRoot, 'plugins', 'audio-processor.js');
@@ -6975,6 +6977,101 @@ test('sixteen-channel hybrid routing reuses the preallocated buses and processin
     assert.equal(harness.processor.busBuffers.get(1), pool.buses.get(1));
     assert.equal(harness.processor.pluginContexts.get(7).buffer, pool.allChannels.buffer);
     assert.equal(harness.processor.pluginContexts.get(8).buffer, pool.allChannels.buffer);
+  }
+});
+
+test('real WASM Matrix preserves third-channel mixing across power resume and processing resets', async () => {
+  const { plugin: matrix } = await createReferenceSession('MatrixPlugin', { params: { mx: '00021112' } });
+  matrix.id = 7;
+  matrix.channel = 'A';
+  const temporal = analyzeTemporalCapabilities([matrix]);
+  const packer = DSP_PARAM_PACKERS.get('MatrixPlugin');
+  for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+    const binding = await instantiateDspBinding(await fs.readFile(path.join(repoRoot, 'plugins/dsp', artifact)));
+    const harness = await createWorkletHarness({ binding });
+    const parameters = matrix.getParameters();
+    const plugin = pluginConfig({
+      type: 'MatrixPlugin',
+      parameters,
+      wasmParams: packer.pack(parameters),
+      wasmParamBytes: packer.packBytes(parameters),
+      wasmParamsHash: packer.hash
+    });
+    const render = channels => {
+      const input = [new Float32Array(128).fill(0.25), new Float32Array(128).fill(0.125)];
+      const output = Array.from({ length: channels }, () => new Float32Array(128));
+      assert.equal(harness.processor.process([input], [output], {}), true);
+      return output;
+    };
+    const checkRouting = output => {
+      for (let channel = 0; channel < output.length; channel++) {
+        const expected = [0.25, 0.125, 0.375][channel] ?? 0;
+        assert.ok(output[channel].every(value => Math.abs(value - expected) < 1e-7),
+          `${artifact}: channel ${channel + 1} must remain routed`);
+      }
+    };
+    try {
+      await harness.send({ type: 'registerProcessor', pluginType: plugin.type, processor: matrix.processorString });
+      await harness.send({ type: 'updatePlugins', plugins: [plugin], masterBypass: false });
+      await harness.send({ type: 'dspEnableTypes', types: [plugin.type] });
+      await harness.send({ type: 'dspModule', module: {} });
+      assert.equal(harness.processor.dspPipelineReady, true);
+      checkRouting(render(2));
+      await harness.send({ type: 'updateAudioConfig', outputChannels: 8 });
+      checkRouting(render(8));
+      await harness.send({
+        type: 'configurePowerPolicy',
+        enabled: true,
+        workletGraphGeneration: 3,
+        topologyRevision: 7,
+        commandId: 1,
+        silenceThresholdDb: -80,
+        enabledPluginCount: 1,
+        monitoringPreparationCapabilities: temporal.capabilities,
+        temporalSkipEligible: temporal.temporalSkipEligible,
+        monitoringFastWakeEligible: temporal.monitoringFastWakeEligible
+      });
+      await harness.send({
+        type: 'setPowerProcessingState',
+        state: 'monitoring',
+        processingDirective: 'force-monitoring',
+        workletGraphGeneration: 3,
+        topologyRevision: 7,
+        commandId: 2,
+        skipEpoch: 1
+      });
+      render(8);
+      await harness.send({
+        type: 'prepareTemporalStateAndResume',
+        origin: 'deliberate',
+        ownerOperationId: 'matrix-resume',
+        commandId: 2,
+        resumeCommandId: 3,
+        ackCommandId: 4,
+        skipEpoch: 1,
+        suspendedElapsedMs: 1000,
+        elapsedContinuity: 'verified',
+        resumeSampleRate: 48000,
+        workletGraphGeneration: 3,
+        topologyRevision: 7
+      });
+      const resumed = messagesOf(harness.posts, 'temporalStateResumed').at(-1).message;
+      assert.equal(resumed.state, 'acknowledged');
+      const afterResume = render(8);
+      const nextBlock = render(8);
+      // The reported workaround resends the unchanged routing with the enabled flag.
+      await harness.send({ type: 'updatePlugin', plugin: { ...plugin, enabled: false } });
+      render(8);
+      await harness.send({ type: 'updatePlugin', plugin: { ...plugin, enabled: true } });
+      checkRouting(render(8));
+      checkRouting(afterResume);
+      checkRouting(nextBlock);
+      await harness.send({ type: 'resetProcessingState', requestId: 1 });
+      assert.equal(messagesOf(harness.posts, 'processingStateReset').at(-1).message.ok, true);
+      checkRouting(render(8));
+    } finally {
+      harness.processor.disableDspEngine();
+    }
   }
 });
 

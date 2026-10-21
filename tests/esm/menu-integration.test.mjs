@@ -207,6 +207,27 @@ test('updateApplicationMenu disables gated items while double blind test is acti
   assert.equal(menuState['view.visualizer'].enabled, false);
 });
 
+test('updateApplicationMenu enables blind tests only with two populated pipelines', async () => {
+  for (const [pipelineA, pipelineB, active, enabled] of [
+    [[{}], null, false, false],
+    [[{}], [], false, false],
+    [[], [{}], false, false],
+    [[{}], [{}], false, true],
+    [[{}], [{}], true, false]
+  ]) {
+    const harness = createWindowHarness({
+      uiManager: {
+        audioManager: { pipelineA, pipelineB },
+        isDoubleBlindActive: () => active
+      }
+    });
+    await withGlobals({ window: harness.window }, async () => {
+      await updateApplicationMenu(true);
+      assert.equal(harness.calls[0][1]['file.doubleBlindTest'].enabled, enabled);
+    });
+  }
+});
+
 test('updateApplicationMenu treats missing double blind state as inactive', async () => {
   const harness = createWindowHarness();
 

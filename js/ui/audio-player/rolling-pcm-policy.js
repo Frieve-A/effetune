@@ -172,12 +172,38 @@ const productionRollingSelectionEvidence = Object.freeze({
 
 export const PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD =
   productionRollingSelectionEvidence;
-const productionRollingSelection = deriveRollingProductionSelection(
-  PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD
+export const PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS = Object.freeze([
+  productionRollingSelectionEvidence,
+  Object.freeze({
+    ...productionRollingSelectionEvidence,
+    cell: Object.freeze({
+      ...productionRollingCell,
+      electronMajorVersion: 45,
+      chromiumMajorVersion: 156
+    }),
+    processMemory: Object.freeze({
+      ...productionRollingSelectionEvidence.processMemory,
+      observedPeakIncreaseBytes: 189206528,
+      observedPlateauSpreadBytes: 0,
+      observedCleanupOverageBytes: 36864,
+      cleanupObservationOveragesBytes: Object.freeze([
+        96714752, 96722944, 2064384, 36864, 151552
+      ])
+    })
+  })
+]);
+const productionRollingSelections = PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS.map(
+  deriveRollingProductionSelection
 );
-export const PRODUCTION_ROLLING_POLICY_MODE = productionRollingSelection.policyMode;
-export const SELECTED_ROLLING_PCM_PROFILE_ID = productionRollingSelection.profileId;
-export const PRODUCTION_ROLLING_ENABLED_MATRIX = productionRollingSelection.enabledMatrix;
+export const PRODUCTION_ROLLING_ENABLED_MATRIX = Object.freeze(
+  productionRollingSelections.flatMap(selection => selection.enabledMatrix)
+);
+export const PRODUCTION_ROLLING_POLICY_MODE = PRODUCTION_ROLLING_ENABLED_MATRIX.length > 0
+  ? RollingPolicyMode.LIMITED_ROLLING
+  : RollingPolicyMode.RESOURCE_SAFE_LEGACY;
+export const SELECTED_ROLLING_PCM_PROFILE_ID = PRODUCTION_ROLLING_ENABLED_MATRIX.length > 0
+  ? DEFAULT_ROLLING_PCM_PROFILE_ID
+  : null;
 
 export function normalizeGaplessPlayback(preferences) {
   return preferences?.gaplessPlayback !== false;
@@ -610,17 +636,8 @@ export function deriveRollingProductionSelection(record) {
   }
   const cell = record.cell;
   const nativeProfile = PCM16_STEREO_44100_TO_96000_PROFILE;
-  if (cell?.enabled !== true || cell.host !== 'electron' ||
-      cell.electronMajorVersion !== 44 || cell.chromiumMajorVersion !== 152 ||
-      cell.sourceKind !== 'path' || cell.format !== 'wav' ||
-      cell.sourceSampleRate !== nativeProfile.sourceSampleRate ||
-      cell.outputSampleRate !== nativeProfile.outputSampleRate ||
-      cell.sampleRate !== nativeProfile.outputSampleRate ||
-      cell.channelCount !== nativeProfile.channelCount || cell.lifecycle !== 'foreground' ||
-      cell.containerMimeType !== 'audio/wav' || cell.codec !== 'pcm-s16' ||
-      cell.decoderConfigCodec !== 'pcm-s16' || cell.decoderProfile !== nativeProfile.codec ||
-      cell.resamplerProfile !== nativeProfile.id || cell.profileId !== record.profileId ||
-      cell.protocolVersion !== record.protocolVersion) return disabled();
+  if (cell?.enabled !== true || !isExactNativeFragmentCell(cell) ||
+      cell.sampleRate !== nativeProfile.outputSampleRate) return disabled();
   const evidencePolicy = getRollingPcmEvidencePolicy(cell, record.profileId);
   if (!evidencePolicy || !counterRecordWithinCaps(
     record.mandatoryCounters,
@@ -1055,8 +1072,9 @@ function isUnverifiedPreflight(metadata) {
 
 function isExactNativeFragmentCell(cell) {
   const profile = PCM16_STEREO_44100_TO_96000_PROFILE;
-  return cell?.host === 'electron' && cell?.electronMajorVersion === 44 &&
-    cell?.chromiumMajorVersion === 152 && cell?.sourceKind === 'path' &&
+  return cell?.host === 'electron' && profile.runtimePairs.some(runtime =>
+    runtime.electronMajorVersion === cell.electronMajorVersion &&
+    runtime.chromiumMajorVersion === cell.chromiumMajorVersion) && cell?.sourceKind === 'path' &&
     cell?.format === 'wav' && cell?.sourceSampleRate === profile.sourceSampleRate &&
     cell?.outputSampleRate === profile.outputSampleRate &&
     cell?.channelCount === profile.channelCount && cell?.lifecycle === 'foreground' &&

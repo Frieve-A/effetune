@@ -22,6 +22,7 @@
     "test:dsp:telemetry-soak": "node tools/dsp-parity/telemetry-soak.mjs",
     "bench:score-reference": "node tools/benchmark-score-reference.mjs",
     "test:browser": "node tools/run-tests.mjs --browser",
+    "test:desktop-browser": "node --test --test-concurrency=1 tests/esm/desktop-browser-electron-browser.test.mjs",
     "test:power-browser": "node tools/run-power-browser-smoke.mjs",
     "test:rolling-pcm:endurance": "node --test tests/esm/rolling-pcm-endurance-browser.test.mjs",
     "test:rolling-pcm:electron": "node tools/run-tests.mjs --electron",
@@ -56,12 +57,16 @@
     "build:linux": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --linux --publish never",
     "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --dir",
     "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --dir --win --publish never && npm run smoke:openhome-package",
+    "pack:ecs:win": "npm run assets:web && npm run build:openhome-sidecar -- --no-publish-development && node scripts/pack-ecs.mjs",
+    "pack:msix:win": "node scripts/pack-msix-win.mjs",
+    "test:msix:installed": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-msix-installed.ps1",
+    "publish:msstore": "node scripts/publish-msstore.mjs",
     "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder"
   },
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^44.9.0",
+    "electron": "^45.0.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
@@ -300,9 +305,9 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.61.6",
+    "@mediabunny/flac-encoder": "1.62.0",
     "electron-updater": "6.8.9",
-    "mediabunny": "1.61.6",
+    "mediabunny": "1.62.0",
     "music-metadata": "^12.2.3",
     "qrcode-generator": "^2.0.4",
     "ws": "^8.22.0"

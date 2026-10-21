@@ -342,6 +342,9 @@ function createDependencies(calls, options = {}) {
     async showVisualizerView() {
       calls.push(['ui.showVisualizerView']);
     },
+    async showBrowserView() {
+      calls.push(['ui.showBrowserView']);
+    },
     async openSharedVisualizer(encoded) {
       calls.push(['ui.openSharedVisualizer', encoded]);
     },
@@ -2694,4 +2697,26 @@ test('autoStartApplication starts bootstrap only when auto-start is enabled', as
       resetWebAppConfigRuntimeForTests();
     }
   });
+});
+
+test('Browser startup waits for the audio graph and power controller and preserves explicit startup requests', async () => {
+  for (const [search, desktop, expected] of [['', true, true], ['?p=shared', true, false], ['', false, false]]) {
+    await withAppModule({ search }, async ({ calls, mod, timers, window, document }) => {
+      window.appConfig = { startupView: 'browser' };
+      window.electronIntegration = { isElectron: desktop };
+      if (desktop) window.electronAPI.browser = {};
+      const app = new mod.App(createDependencies(calls));
+      const pending = app.initialize();
+      await flushAndRunTimers(timers);
+      await pending;
+      const names = calls.map(call => call[0]);
+      assert.equal(names.includes('ui.showBrowserView'), expected);
+      if (expected) {
+        assert.equal(names.filter(name => name === 'ui.showBrowserView').length, 1);
+        assert.ok(names.indexOf('ui.showBrowserView') > names.indexOf('audio.startPowerPolicyController'));
+        assert.ok(names.indexOf('ui.showBrowserView') > names.indexOf('audio.fadeInOutputWhenReady'));
+        assert.equal(document.body.className.split(/\s+/).includes('view-browser'), true);
+      }
+    });
+  }
 });

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Browser output observer</title>
+<script>
+'use strict';
+window.startObserver = async () => {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: {
+    channelCount: 2, echoCancellation: false, noiseSuppression: false, autoGainControl: false
+  } });
+  for (const track of stream.getVideoTracks()) track.stop();
+  const context = new AudioContext();
+  const source = context.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+  const splitter = context.createChannelSplitter(2);
+  source.connect(splitter);
+  const meters = [0, 1].map(channel => {
+    const meter = context.createAnalyser();
+    meter.fftSize = 8192;
+    meter.smoothingTimeConstant = 0;
+    splitter.connect(meter, channel);
+    return meter;
+  });
+  const silence = context.createGain();
+  silence.gain.value = 0;
+  for (const meter of meters) meter.connect(silence);
+  silence.connect(context.destination);
+  await context.resume();
+  window.measureOutput = async () => {
+    const sums = [0, 0];
+    const tonePowers = [[0, 0], [0, 0]];
+    for (let sample = 0; sample < 5; sample++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      for (let channel = 0; channel < 2; channel++) {
+        const values = new Float32Array(meters[channel].fftSize);
+        meters[channel].getFloatTimeDomainData(values);
+        sums[channel] += values.reduce((sum, value) => sum + value * value, 0) / values.length;
+        const bins = new Float32Array(meters[channel].frequencyBinCount);
+        meters[channel].getFloatFrequencyData(bins);
+        [713, 1237].forEach((frequency, tone) => {
+          const center = Math.round(frequency * meters[channel].fftSize / context.sampleRate);
+          for (let bin = center - 3; bin <= center + 3; bin++) {
+            tonePowers[channel][tone] += 10 ** (bins[bin] / 10);
+          }
+        });
+      }
+    }
+    return { rms: sums.map(sum => Math.sqrt(sum / 5)),
+      tones: tonePowers.map(channel => channel.map(power => Math.sqrt(power / 5))) };
+  };
+  window.stopObserver = async () => {
+    for (const track of stream.getTracks()) track.stop();
+    await context.close();
+  };
+  return stream.getAudioTracks()[0].getSettings();
+};
+</script></html>

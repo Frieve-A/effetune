@@ -36,6 +36,7 @@ function createHarness(options = {}) {
   const appUpdater = createAppUpdater({
     app,
     platform: options.platform ?? 'win32',
+    isMsix: options.isMsix ?? false,
     env: options.env ?? {},
     releaseDownloadBaseUrl: 'https://releases.example/download',
     loadUpdater() { calls.push('load'); return updater; }
@@ -50,6 +51,7 @@ test('only packaged Windows installer installations support in-app updates', asy
     { platform: 'darwin' },
     { platform: 'linux' },
     { isPackaged: false },
+    { isMsix: true },
     { env: { PORTABLE_EXECUTABLE_DIR: 'C:\\portable' } }
   ]) {
     const { appUpdater, calls } = createHarness(options);

@@ -1,6 +1,9 @@
 const {
   app,
   BrowserWindow,
+  WebContentsView,
+  components,
+  session,
   Tray,
   Menu,
   dialog,
@@ -16,12 +19,21 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 
+// Set package storage before configuration, session, or instance initialization.
+if (process.windowsStore === true) {
+  const storeDataPath = path.join(app.getPath('appData'), 'EffeTune Store');
+  fs.mkdirSync(storeDataPath, { recursive: true });
+  app.setPath('userData', storeDataPath);
+  app.setPath('sessionData', storeDataPath);
+}
+
 // Import modules
 const constants = require('./constants');
 const configModule = require('./config');
 const windowState = require('./window-state');
 const ipcHandlers = require('./ipc-handlers');
 const visualizerFeed = require('./visualizer-feed');
+const { createBrowserController } = require('./browser-controller.cjs');
 const fileHandlers = require('./file-handlers');
 const { queueAutoRestart } = require('./relaunch');
 const { initializeGpuAcceleration } = require('./gpu-acceleration.cjs');
@@ -498,11 +510,25 @@ function createWindow() {
   // which deny media on file:// pages before the request handler is even called.
   const GRANTED_PERMISSIONS = ['media', 'microphone', 'midi'];
   mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'display-capture') return webContents === mainWindow.webContents;
     if (GRANTED_PERMISSIONS.includes(permission)) return true;
     return false;
   });
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(GRANTED_PERMISSIONS.includes(permission));
+    callback(GRANTED_PERMISSIONS.includes(permission) ||
+      (permission === 'display-capture' && webContents === mainWindow.webContents));
+  });
+
+  createBrowserController({
+    mainWindow, WebContentsView, session, ipcMain, shell, components,
+    allowStartupCapture: constants.getAppConfig().startupView === 'browser',
+    getSettings: () => constants.getAppConfig().browser,
+    saveSettings: browser => {
+      const config = { ...configModule.loadConfig(), browser };
+      if (!configModule.saveConfig(config)) return false;
+      constants.setAppConfig(config);
+      return true;
+    }
   });
 
   // Any full-page navigation replaces the renderer that is sending heartbeat
@@ -930,6 +956,7 @@ function fetchReleases() {
 
 // Check for updates from GitHub
 async function checkForUpdates() {
+  if (process.windowsStore === true) return;
   try {
     const releases = await fetchReleases();
 
@@ -1346,7 +1373,9 @@ async function initializeApp() {
   configModule.saveConfig(cfg);
   constants.setAppConfig(cfg);
   applyNativeTheme(cfg);
-  app.setLoginItemSettings({ openAtLogin: !!cfg.autoLaunch });
+  if (process.windowsStore !== true) {
+    app.setLoginItemSettings({ openAtLogin: !!cfg.autoLaunch });
+  }
   if (cfg.pipelineStartup === 'default') {
     constants.setShouldLoadPipelineState(false);
   } else if (cfg.pipelineStartup === 'last') {
@@ -1566,7 +1595,7 @@ app.on('open-file', async (event, path) => {
 });
 
 // Register the app as the default handler for effetune:// protocol
-app.setAsDefaultProtocolClient('effetune');
+if (process.windowsStore !== true) app.setAsDefaultProtocolClient('effetune');
   
 // Main entry point
 app.whenReady().then(async () => {

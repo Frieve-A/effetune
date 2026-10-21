@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright';
+import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const origin = 'https://effetune.test';
@@ -63,13 +64,13 @@ for (const startupView of ['effects', 'library']) {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.addInitScript(view => {
+      await page.addInitScript(({ view, inputDeviceId }) => {
         window.EFFECTUNE_DEV_SERVER = true;
         localStorage.setItem('effetune_app_config', JSON.stringify({
           startupView: view, libraryStartupView: 'tracks', language: 'en', pipelineStartup: 'default'
         }));
         localStorage.setItem('effetune_audio_preferences', JSON.stringify({
-          inputDeviceId: 'none', useWasmDsp: false
+          inputDeviceId, useWasmDsp: false
         }));
         let app;
         Object.defineProperty(window, 'app', {
@@ -98,7 +99,7 @@ for (const startupView of ['effects', 'library']) {
           requestAnimationFrame(observe);
         };
         requestAnimationFrame(observe);
-      }, startupView);
+      }, { view: startupView, inputDeviceId: NO_AUDIO_INPUT_DEVICE_ID });
       await page.route(`${origin}/**`, async route => {
         const pathname = new URL(route.request().url()).pathname;
         const gate = gates.get(pathname);

@@ -1,7 +1,7 @@
 import { parsePcmWaveFormatFromBytes } from '../../library/metadata/riff-info.js';
 
 export const PCM16_STEREO_44100_TO_96000_PROFILE = Object.freeze({
-  id: 'pcm16le-stereo-native-fragment-electron44-chromium152-v1',
+  id: 'pcm16le-stereo-native-fragment-v1',
   codec: 'native-decode-audio-data-pcm16le-stereo-v1',
   sourceSampleRate: 44100,
   outputSampleRate: 96000,
@@ -16,7 +16,10 @@ export const PCM16_STEREO_44100_TO_96000_PROFILE = Object.freeze({
   maxDecodedOutputFrames: 144000,
   maxDecodedPcmBytes: 1152000,
   boundary: 'bounded-native-fragment-with-available-guard',
-  runtime: Object.freeze({ electron: '44', chromium: '152' })
+  runtimePairs: Object.freeze([
+    Object.freeze({ electronMajorVersion: 44, chromiumMajorVersion: 152 }),
+    Object.freeze({ electronMajorVersion: 45, chromiumMajorVersion: 156 })
+  ])
 });
 
 export function createPcm16WaveFragmentSource(sourceBytes, {

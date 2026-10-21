@@ -1,11 +1,11 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:6e7db8dd290b0d1b1861f3b21ee256bc13c4afcad60bae523e3b5e23eb535011",
-  "emsdkVersion": "6.0.11",
+  "sourceDigest": "sha256:9116656c006f13dcaddaf11d0fd5910664ed0ef8e238d60f3a63373a3f963224",
+  "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:6d3b5ff6b95c505862b45c1deba623389a7e39560529cdfcecd1ea53d1d2931a",
+    "digest": "sha256:76181f592a38101b26f7b9784ed5dadce850300dd8580d5d5a8ef0b65af4f781",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
@@ -60,7 +60,7 @@
       {
         "id": "dsp/EMSDK_VERSION",
         "kind": "file",
-        "sha256": "sha256:4ec0b3efdba01e2fb956fa4e2d1499f798cbb5b32930f8c486a3e052891b516c"
+        "sha256": "sha256:a8f0307639032af72eeb14a11a3e08ffcb78c77e47c5c076e66a52471b6ca6a2"
       },
       {
         "id": "dsp/exports.txt",
@@ -135,7 +135,7 @@
       {
         "id": "production-build#g726-resolved-authority",
         "kind": "derived",
-        "sha256": "sha256:98a45e3ddccc90e82db20a1862aee74cc143eb6dd338415e1240aaed7f94c1b9"
+        "sha256": "sha256:fe826ce9987352054dbeaa969147dd9c3c3173ebda92aa6955d34ff63a8e8935"
       },
       {
         "id": "production-build#g726-source-authority",
@@ -242,7 +242,7 @@
               "-DET_DEBUG_STATE=OFF",
               "-DBUILD_TESTING=OFF"
             ],
-            "emsdkVersion": "6.0.11",
+            "emsdkVersion": "6.0.13",
             "compiler": {
               "id": "Clang",
               "version": "24.0.0",
@@ -321,7 +321,7 @@
               "-DET_DEBUG_STATE=OFF",
               "-DBUILD_TESTING=OFF"
             ],
-            "emsdkVersion": "6.0.11",
+            "emsdkVersion": "6.0.13",
             "compiler": {
               "id": "Clang",
               "version": "24.0.0",
@@ -386,7 +386,7 @@
             }
           }
         },
-        "digest": "sha256:1002037d638c1bef9c5943c1cb2e004475b18506886874c4f89cbbfcc51367f4"
+        "digest": "sha256:eb0e9e120250efe7d794473144448e0fead66bc6543b068948ada166f92d03b1"
       }
     }
   },
@@ -1128,7 +1128,7 @@
     }
   ],
   "sizes": {
-    "baseline": 2696318,
-    "simd": 2867648
+    "baseline": 2693766,
+    "simd": 2864802
   }
 }

@@ -5,8 +5,28 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { _electron as electron, chromium } from 'playwright';
+import {
+  detectRollingRuntime,
+  deriveRollingProductionSelection,
+  PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS,
+  RollingPolicyMode
+} from '../../js/ui/audio-player/rolling-pcm-policy.js';
 
 const repoRoot = path.resolve('.');
+
+function assertMeasuredRuntime(versions, userAgent) {
+  const runtime = {
+    host: 'electron',
+    electronMajorVersion: Number.parseInt(versions.electron, 10),
+    chromiumMajorVersion: Number.parseInt(versions.chromium, 10)
+  };
+  const evidence = PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS.find(record =>
+    record.cell.electronMajorVersion === runtime.electronMajorVersion &&
+    record.cell.chromiumMajorVersion === runtime.chromiumMajorVersion);
+  assert.equal(deriveRollingProductionSelection(evidence).policyMode,
+    RollingPolicyMode.LIMITED_ROLLING, `Unmeasured Electron runtime ${JSON.stringify(runtime)}`);
+  assert.deepEqual(detectRollingRuntime(userAgent), runtime);
+}
 const captureWorkletSource = `
 class RollingPcmCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -789,7 +809,7 @@ test('native fragment transport emits exact intervals and deterministic guarded 
     }
   });
 
-test('Electron 44 native fragments match full decode at the head and repeat exactly',
+test('Electron native fragments match full decode at the head and repeat exactly',
   { timeout: 120_000 }, async () => {
     const fixtureServer = await startWorkerServer();
     let runtime = null;
@@ -917,9 +937,7 @@ test('Electron 44 native fragments match full decode at the head and repeat exac
         };
       });
 
-      assert.equal(versions.electron.startsWith('44.'), true);
-      assert.equal(versions.chromium.startsWith('152.'), true);
-      assert.match(result.userAgent, /Electron\/44\./);
+      assertMeasuredRuntime(versions, result.userAgent);
       assert.deepEqual(result.headMismatches, [null, null]);
       assert.deepEqual(result.repeatMismatches, [null, null]);
       assert.deepEqual(result.nativeLengths, {
@@ -942,7 +960,7 @@ test('Electron 44 native fragments match full decode at the head and repeat exac
     }
   });
 
-test('Electron 44 isolated silent-sink PCM continuity cell preserves exact native fragments',
+test('Electron isolated silent-sink PCM continuity cell preserves exact native fragments',
   { timeout: 120_000 }, async t => {
     const fixtureServer = await startWorkerServer();
     let runtime = null;
@@ -960,7 +978,15 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
           import('/tests/rolling-pcm-electron-fixture.mjs')
         ]);
         const profile = core.PCM16_STEREO_44100_TO_96000_PROFILE;
-        const candidateMatrix = [policy.PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORD.cell];
+        const runtime = policy.detectRollingRuntime();
+        const evidence = policy.PRODUCTION_ROLLING_SELECTION_EVIDENCE_RECORDS.find(record =>
+          record.cell.electronMajorVersion === runtime.electronMajorVersion &&
+          record.cell.chromiumMajorVersion === runtime.chromiumMajorVersion);
+        const selection = policy.deriveRollingProductionSelection(evidence);
+        if (selection.policyMode !== policy.RollingPolicyMode.LIMITED_ROLLING) {
+          throw new Error('The launched Electron runtime has no validated rolling evidence');
+        }
+        const candidateMatrix = selection.enabledMatrix;
         const waves = [
           fixture.createStrictPcm16StereoWave(profile, 88200, 811),
           fixture.createStrictPcm16StereoWave(profile, 88200, 1237)
@@ -968,9 +994,7 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
         const catalog = waves.map((wav, index) =>
           fixture.createCatalogPathFixture(policy, wav, index + 1));
         const capability = {
-          host: 'electron',
-          electronMajorVersion: 44,
-          chromiumMajorVersion: 152,
+          ...runtime,
           lifecycle: 'foreground',
           workerAvailable: true,
           audioDecoderAvailable: false
@@ -1384,9 +1408,7 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
         }
       });
 
-      assert.equal(versions.electron.startsWith('44.'), true);
-      assert.equal(versions.chromium.startsWith('152.'), true);
-      assert.match(result.userAgent, /Electron\/44\./);
+      assertMeasuredRuntime(versions, result.userAgent);
       assert.deepEqual(result.sourceSnapshots, [
         {
           sourceKind: 'other', format: 'wav',
@@ -1484,13 +1506,17 @@ test('Electron 44 isolated silent-sink PCM continuity cell preserves exact nativ
     }
   });
 
-test('Electron 44 isolated 2048-fragment process-memory lifetime cell returns within grace',
+test('Electron isolated 2048-fragment process-memory lifetime cell returns within grace',
   { timeout: 180_000 }, async t => {
     const fixtureServer = await startWorkerServer();
     let runtime = null;
     try {
       runtime = await startElectronPage(fixtureServer.baseURL);
       await exposeElectronProcessMemorySampler(runtime);
+      const versions = await runtime.application.evaluate(() => ({
+        electron: process.versions.electron,
+        chromium: process.versions.chrome
+      }));
       const result = await runtime.page.evaluate(async () => {
         const [core, policy, transportModule, fixture] = await Promise.all([
           import('/js/ui/audio-player/rolling-pcm-core.js'),
@@ -1732,7 +1758,7 @@ test('Electron 44 isolated 2048-fragment process-memory lifetime cell returns wi
         peakWorkingSetTracked,
         explicitGcAvailable: result.explicitGcAvailable
       })}`);
-      assert.match(result.userAgent, /Electron\/44\./);
+      assertMeasuredRuntime(versions, result.userAgent);
       assert.equal(result.fragmentCount, 2048);
       assert.equal(result.warmupSnapshot.maxLivePcmBytes,
         result.plateauSnapshot.maxLivePcmBytes);

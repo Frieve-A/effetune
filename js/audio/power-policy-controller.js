@@ -658,8 +658,10 @@ export class PowerPolicyController {
             inputResourceId: null
         };
         let inputRouteIntent = InputRouteIntent.NONE;
-        if (this.player) {
-            inputRouteIntent = preferences.useInputWithPlayer === true &&
+        const browser = this.audioManager.ioManager?.browserInput;
+        const browserSelected = browser?.selected === true;
+        if (browserSelected || this.player) {
+            inputRouteIntent = (browserSelected || preferences.useInputWithPlayer === true) &&
                 inputSnapshot.inputConfigured === true
                 ? InputRouteIntent.MIXED
                 : InputRouteIntent.PLAYER_ONLY;
@@ -672,8 +674,9 @@ export class PowerPolicyController {
             inputSnapshot.inputRouteConnected === true
         );
         const pipelineInputSource = this.audioManager.ioManager?.sourceNode || inputSource;
-        const pipelineInputConnected = !!pipelineInputSource &&
-            this.audioManager.isSourceConnectedToPipeline?.(pipelineInputSource) === true;
+        const pipelineInputConnected = (!!pipelineInputSource &&
+            this.audioManager.isSourceConnectedToPipeline?.(pipelineInputSource) === true) ||
+            (browserSelected && browser.getPowerSourceStatus().state === 'connected');
         const playerSourceStatus = this.player?.contextManager?.getPowerSourceStatus?.() || {
             state: transportDemand ? 'unknown' : 'not-required',
             sourcePresent: false
@@ -682,12 +685,13 @@ export class PowerPolicyController {
             playerSnapshot,
             playerState,
             transportDemand,
+            playerPresent: browserSelected || !!this.player,
             inputRouteIntent,
             inputSnapshot,
             inputRouteConnected,
             pipelineInputConnected,
             playerSourceStatus,
-            useInputWithPlayer: preferences.useInputWithPlayer === true
+            useInputWithPlayer: browserSelected || preferences.useInputWithPlayer === true
         };
     }
 
@@ -964,7 +968,7 @@ export class PowerPolicyController {
             ...coordinator.tokens,
             ...coordinator.guards,
             inputRouteIntent: route.inputRouteIntent,
-            playerPresent: !!this.player,
+            playerPresent: route.playerPresent,
             playerState: route.playerState,
             transportDemand: route.transportDemand,
             useInputWithPlayer: route.useInputWithPlayer,
@@ -2311,6 +2315,7 @@ export class PowerPolicyController {
         } catch (error) {
             operation.inputPromise = Promise.reject(error);
         }
+        operation.inputSettlement = Promise.allSettled([operation.inputPromise]);
         operation.resourceVersion++;
     }
 
@@ -2530,6 +2535,7 @@ export class PowerPolicyController {
             needsInput: false,
             inputMutationBefore: null,
             inputPromise: null,
+            inputSettlement: null,
             acquiredInputResource: null,
             resourceVersion: 0,
             resourcesChanged: null,
@@ -2555,7 +2561,7 @@ export class PowerPolicyController {
                 results = await Promise.race([
                     Promise.all([
                         gestureOperation.outputPromise,
-                        Promise.allSettled([gestureOperation.inputPromise || Promise.resolve(null)])
+                        gestureOperation.inputSettlement || Promise.allSettled([null])
                     ]).then(([outputs, [input]]) => [...outputs, input]),
                     new Promise(resolve => {
                         gestureOperation.resourcesChanged = () => resolve(null);
@@ -2872,6 +2878,37 @@ export class PowerPolicyController {
 
     requestResumeFromUserGesture(resumeKind = ResumeKind.DEDICATED_INPUT) {
         return this.beginUserGestureResume(resumeKind);
+    }
+
+    async selectBrowserPlaybackSource(source, isCurrent) {
+        if (!isCurrent()) return false;
+        if (this.audioManager.ensureSourceConnectedToPipeline(source) !== true) return false;
+        return this.refreshPlaybackInputRouting();
+    }
+
+    async refreshPlaybackInputRouting() {
+        const before = this._getTokensAndGuards();
+        const io = this.audioManager.ioManager;
+        const inputSource = io.inputSourceNode;
+        const route = this._deriveRouteAndPlayerFacts();
+        if (route.inputRouteIntent === InputRouteIntent.MIXED ||
+            route.inputRouteIntent === InputRouteIntent.EXTERNAL) {
+            if (inputSource) this.audioManager.ensureSourceConnectedToPipeline(inputSource);
+            this.player?.contextManager?.replaceCanonicalInputSource?.(inputSource);
+        } else if (!this._handoffPipelineToSilentSource().success) {
+            return false;
+        }
+        const mutation = this.mutations.commitOwnedMutation({
+            ownerOperationId: `browser-playback-${++this.operationSequence}`,
+            mutationKind: 'route-topology-commit',
+            beforeTokens: before.tokens, beforeGuards: before.guards,
+            resourceSnapshot: io.getInputSnapshot(), topologyChanged: true
+        });
+        this.audioManager.adoptPowerMutation?.(mutation);
+        this._invalidateTopologyBoundPowerEvidence();
+        this._configureWorklets();
+        if (this.started) this.requestReconcile('browser-playback-selected').catch(() => {});
+        return true;
     }
 
     async requestSilentInputSelection(inputConfigRevision) {

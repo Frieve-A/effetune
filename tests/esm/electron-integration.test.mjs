@@ -247,12 +247,8 @@ function createUIManager(calls, options = {}) {
     createAudioPlayer(files, append) {
       calls.push(['createAudioPlayer', [...files], append]);
     },
-    getDoubleBlindTest() {
-      return {
-        enterFresh() {
-          calls.push(['enterFresh']);
-        }
-      };
+    async startDoubleBlindTest() {
+      calls.push(['startDoubleBlindTest']);
     }
   };
 }
@@ -610,7 +606,7 @@ test('Electron constructor defers preferences and config while callbacks dispatc
     assert.equal(windowRef.pendingPresetName, 'Deferred');
     assert.ok(calls.some(call => call[0] === 'createAudioPlayer' && call[2] === false));
     assert.ok(calls.some(call => call[0] === 'loadPreset' && call[1] === 'Ready'));
-    assert.ok(calls.some(call => call[0] === 'enterFresh'));
+    assert.ok(calls.some(call => call[0] === 'startDoubleBlindTest'));
     assert.ok(calls.some(call => call[0] === 'openBackupRestore'));
   });
 });
@@ -667,6 +663,23 @@ test('documentation link patching maps Electron paths and delegates web paths', 
     windowRef.uiManager = createUIManager([], { pipelineManager: null });
     timers.runIntervals();
     assert.equal(windowRef.uiManager.getLocalizedDocPath('/README.md'), 'web:/README.md');
+  });
+});
+
+test('MSIX About opens Store updates without querying GitHub releases', async () => {
+  const calls = [];
+  const electronAPI = createElectronAPI(calls);
+  electronAPI.isMsix = true;
+  electronAPI.openExternalUrl = async uri => { calls.push(['store', uri]); return { success: true }; };
+  await withIntegrationGlobals({ electronAPI, uiManager: createUIManager(calls), calls }, async ({ instance, documentRef }) => {
+    await instance.showAboutDialog({ version: '2.15.0' });
+    assert.ok(documentRef.getElementById('about-store-updates'));
+    assert.equal(documentRef.getElementById('about-update-link'), null);
+    documentRef.getElementById('about-store-updates').dispatchEvent('click');
+    await flushMicrotasks();
+    assert.deepEqual(calls.filter(call => call[0] === 'store'), [['store', 'ms-windows-store://downloadsandupdates']]);
+    assert.equal(calls.some(call => ['forceCheckForUpdates', 'getUpdateInfo'].includes(call[0])), false);
+    documentRef.getElementById('close-button').dispatchEvent('click');
   });
 });
 

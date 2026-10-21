@@ -143,7 +143,7 @@ The WebAssembly modules are used by the web, PWA, and Electron hosts.
 - Ninja
 - Python 3.10 or newer (standard library only, for binary model embedding)
 - A C++20 compiler for native tests
-- Emscripten SDK 6.0.11 for WebAssembly builds
+- Emscripten SDK 6.0.13 for WebAssembly builds
 
 On Windows, install and activate the version recorded in `EMSDK_VERSION`, then
 set `EMSDK` to the activated SDK root. The build script checks `emcc --version`
@@ -504,6 +504,8 @@ Matrix routing uses the `matrix-routes-v1` codec: a four-byte
 version/reserved/route-count header followed by ordered three-byte
 input/output/phase records. The 1,024-route limit fits the 4 KiB scratch slab
 and preserves duplicate route order.
+Instance and engine resets preserve both active routes and routes staged for the
+next process boundary. Only a new Matrix instance starts with the default stereo routing.
 
 ### Telemetry
 

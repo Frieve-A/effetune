@@ -23,6 +23,7 @@ export class AudioIOManager {
         // The player may replace sourceNode with a file or silent route while the
         // microphone remains live; power decisions must use these canonical fields.
         this.inputStream = null;
+        this.browserInput = null;
         this.inputSourceNode = null;
         this.inputGeneration = 0;
         this.inputAvailabilityRevision = 0;

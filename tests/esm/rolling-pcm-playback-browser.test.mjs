@@ -618,14 +618,15 @@ for (const [hostName, browserType] of [['chromium', chromium], ['webkit', webkit
               policy.PRODUCTION_ROLLING_ENABLED_MATRIX, electronCapability),
             productionMode: policy.PRODUCTION_ROLLING_POLICY_MODE,
             selectedProfileId: policy.SELECTED_ROLLING_PCM_PROFILE_ID,
-            enabledCells: policy.PRODUCTION_ROLLING_ENABLED_MATRIX.length,
+            enabledCells: policy.PRODUCTION_ROLLING_ENABLED_MATRIX.map(cell =>
+              [cell.host, cell.electronMajorVersion, cell.chromiumMajorVersion]),
             enabledHost: policy.PRODUCTION_ROLLING_ENABLED_MATRIX[0]?.host ?? null
           };
         });
         assert.equal(result.detectedHost, hostName);
         assert.equal(result.productionMode, 'limitedRolling');
         assert.equal(result.selectedProfileId, 'memory-first');
-        assert.equal(result.enabledCells, 1);
+        assert.deepEqual(result.enabledCells, [['electron', 44, 152], ['electron', 45, 156]]);
         assert.equal(result.enabledHost, 'electron');
         assert.equal(result.decision.mode, 'media');
         assert.equal(result.decision.reason, 'resource-safe-media');

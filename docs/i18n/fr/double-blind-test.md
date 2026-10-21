@@ -6,7 +6,7 @@ lang: fr
 
 # Comment utiliser le test en double aveugle
 
-Le test en double aveugle vous permet de comparer à l’écoute **Pipeline A** et **Pipeline B** sans savoir lequel vous entendez. C’est une façon contrôlée de vérifier si une différence que vous *pensez* entendre est réellement perceptible, et si vous préférez vraiment l’un des pipelines à l’autre.
+Le test en double aveugle vous permet de comparer à l’écoute **Pipeline A** et **Pipeline B**. C’est une façon contrôlée de vérifier si une différence que vous *pensez* entendre est réellement perceptible, et si vous préférez vraiment l’un des pipelines à l’autre.
 
 Deux types de test sont disponibles :
 
@@ -21,8 +21,8 @@ Le test compare les deux pipelines décrits dans [Utilisation des fonctions Pipe
 
 - **Pipeline A** et **Pipeline B** doivent contenir chacun au moins un effet.
 - Placez l’un des réglages dans Pipeline A et l’autre dans Pipeline B, en gardant tout le reste identique (par exemple *Avec EQ* et *Sans EQ*), afin de ne tester que la différence visée.
-- Retenez quel réglage vous avez placé dans Pipeline A et lequel dans Pipeline B. Le test réattribue aléatoirement les deux pipelines à chaque essai ; pour un test de préférence A/B, il indique à la fin si Pipeline A ou Pipeline B a été préféré de façon significative.
-- Les boutons de démarrage restent désactivés tant que Pipeline A et Pipeline B ne sont pas tous deux présents.
+- Retenez quel réglage vous avez placé dans Pipeline A et lequel dans Pipeline B. Dans un test de préférence A/B, le résultat indique si Pipeline A ou Pipeline B a été préféré de façon significative.
+- L’option « Test en double aveugle » du menu et les boutons de démarrage restent désactivés tant que Pipeline A et Pipeline B ne contiennent pas chacun au moins un effet.
 
 ## Ouvrir le test
 
@@ -38,10 +38,11 @@ L’écran de configuration propose les éléments suivants :
 - **Nom du test :** décrit la différence testée, par exemple *Avec EQ vs. Sans EQ*. Le sélecteur fonctionne comme les Préréglages d’effet : vous pouvez **enregistrer**, **rappeler** et **supprimer** des tests nommés. Un test enregistré contient les deux pipelines et le nombre d’essais, ce qui permet de recharger plus tard la même comparaison. Un nom de test est nécessaire pour pouvoir partager le test.
 - **Votre nom :** facultatif. Il apparaît dans le résultat. Si le champ est vide, le résultat utilise *Anonyme*.
 - **Nombre d’essais :** nombre d’essais à exécuter, défini avec le champ de saisie ou le curseur. Plus il y a d’essais, plus le résultat est fiable, mais plus le test prend du temps. La valeur par défaut est 20.
+- **Garder A/B fixes dans les tests ABX** – Activé par défaut. Pendant tout le test ABX, A correspond au Pipeline A d’origine et B au Pipeline B d’origine. X reste choisi au hasard à chaque essai. Décochez cette case pour que les attributions de A et B soient elles aussi tirées au sort à chaque essai. Ce réglage est conservé lors de l’enregistrement et du partage du test.
 
 Appuyez sur **Démarrer le test ABX** ou **Démarrer le test de préférence A/B** pour commencer.
 
-> **Remarque :** les lettres **A** et **B** dans le test sont distinctes de Pipeline A et Pipeline B dans l’Effect Pipeline. À chaque essai, EffeTune décide de nouveau au hasard quel pipeline est attribué à A et lequel est attribué à B, et cette correspondance n’est jamais affichée. Vous ne pouvez donc pas savoir quel pipeline réel vous entendez actuellement comme A, ni supposer que "A" signifie Pipeline A. C’est ce qui maintient le test en aveugle.
+> **Remarque :** dans un test de préférence A/B, les attributions de A et B sont toujours tirées au sort à chaque essai, quel que soit l’état de cette case. Le A du test ne correspond donc pas nécessairement au Pipeline A d’origine, et cette correspondance reste masquée.
 
 ## Lire l’audio
 

@@ -1,7 +1,7 @@
 'use strict';
 
 const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
-  inputDeviceId: 'default',
+  inputDeviceId: '__effetune_no_audio_input__',
   outputDeviceId: 'default',
   inputDeviceLabel: '',
   outputDeviceLabel: '',

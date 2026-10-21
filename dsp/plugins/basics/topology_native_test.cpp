@@ -155,6 +155,42 @@ void testDescriptorsAndChannelCountFrames() {
                      matrix->paramsHash) == ET_ERR_ARGS);
 }
 
+void testMatrixResetPreservesRoutingParameters() {
+  const auto *descriptor = et_kernel_descriptor_MatrixPlugin();
+  KernelHarness harness(descriptor, 48000.0F, 4u, 1u);
+  const std::array<float, 4> input = {0.25F, 0.125F, 0.75F, 0.5F};
+  const auto render = [&]() {
+    auto audio = input;
+    harness.process(audio.data(), 4u, 1u);
+    return audio;
+  };
+  const std::array<float, 4> defaults = {0.25F, 0.125F, 0.0F, 0.0F};
+  TOPOLOGY_CHECK(render() == defaults);
+
+  // mx = "00021112": preserve channels 1/2 and mix both into channel 3.
+  constexpr std::array<std::uint8_t, 16> routes = {1u, 0u, 4u, 0u, 0u, 0u, 0u, 0u,
+                                                   2u, 0u, 1u, 1u, 0u, 1u, 2u, 0u};
+  TOPOLOGY_CHECK(harness.kernel->stageParameterBytes(routes.data(),
+                                                     static_cast<std::uint32_t>(routes.size()),
+                                                     descriptor->paramsHash) == ET_OK);
+  harness.kernel->reset();
+  const std::array<float, 4> mixed = {0.25F, 0.125F, 0.375F, 0.0F};
+  TOPOLOGY_CHECK(render() == mixed);
+  harness.kernel->reset();
+  TOPOLOGY_CHECK(render() == mixed);
+  TOPOLOGY_CHECK(render() == mixed);
+
+  constexpr std::array<std::uint8_t, 4> empty_routes = {1u, 0u, 0u, 0u};
+  TOPOLOGY_CHECK(harness.kernel->stageParameterBytes(
+                     empty_routes.data(), static_cast<std::uint32_t>(empty_routes.size()),
+                     descriptor->paramsHash) == ET_OK);
+  harness.kernel->reset();
+  const std::array<float, 4> silence{};
+  TOPOLOGY_CHECK(render() == silence);
+  harness.kernel->reset();
+  TOPOLOGY_CHECK(render() == silence);
+}
+
 void testChannelDividerOutOfRangeSlopeClampsToSectionCapacity() {
   const effetune::KernelDescriptor *descriptor = et_kernel_descriptor_ChannelDividerPlugin();
   constexpr std::array<float, 7> maximum_slope = {2.0F,   2000.0F, -96.0F, 4000.0F,
@@ -250,6 +286,7 @@ void testMultiChannelPeakWindowWithIrregularBlocks() {
 
 int main() {
   testDescriptorsAndChannelCountFrames();
+  testMatrixResetPreservesRoutingParameters();
   testChannelDividerOutOfRangeSlopeClampsToSectionCapacity();
   testMultiChannelLevelFrame();
   testMultiChannelPeakWindowWithIrregularBlocks();
