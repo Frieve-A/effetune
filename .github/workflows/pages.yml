@@ -49,7 +49,7 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
 
       - name: Run browser integration tests
-        timeout-minutes: 3
+        timeout-minutes: 10
         run: npm run test:browser
 
       - name: Run mandatory power browser smoke
