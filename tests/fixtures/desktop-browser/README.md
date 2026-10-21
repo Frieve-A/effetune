@@ -20,3 +20,9 @@ The output observer uses system loopback only to measure direct sound leakage;
 it never feeds the production input. Physical assertions follow the two fixture
 tones, while total RMS is retained for diagnostics. Other sound in those same
 frequency bands can still prevent the strict silence check; use a quiet output.
+
+The main app checks for an available audio output device before starting the
+observer. Hosts without one still run all browser capture, DSP, navigation and
+resource-lifetime checks; only the physical-output subtest is skipped, with the
+missing device recorded as its reason. Observer errors on a host with an output
+device remain test failures.

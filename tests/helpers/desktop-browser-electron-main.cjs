@@ -60,9 +60,17 @@ globalThis.browserFixture = {
       // System loopback is a measurement instrument only, never the app input.
       callback({ video: target.mainFrame, audio: 'loopback' });
     });
-    await observer.loadFile(path.join(fixtureDirectory, 'observer.html'));
-    globalThis.browserFixtureObserver = observer;
-    return observerContents.executeJavaScript('startObserver()', true);
+    try {
+      await observer.loadFile(path.join(fixtureDirectory, 'observer.html'));
+      globalThis.browserFixtureObserver = observer;
+      return await observerContents.executeJavaScript(`startObserver().catch(error => {
+        throw new Error('System-loopback observer: ' + error.name + ': ' + error.message);
+      })`, true);
+    } catch (error) {
+      observer.destroy();
+      globalThis.browserFixtureObserver = null;
+      throw error;
+    }
   },
   async measureOutput() {
     return globalThis.browserFixtureObserver.webContents.executeJavaScript('measureOutput()');

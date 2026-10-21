@@ -262,12 +262,17 @@ test('desktop Browser captures HTTP and MSE playback through the production DSP 
 
     await page.evaluate(url => window.electronAPI.browser.navigate(url), `${fixture.origin}/source`);
     await browserEvaluate(application, 'startFixture()');
-    const observerSettings = await application.evaluate(() => globalThis.browserFixture.createObserver());
-    assert.equal(observerSettings.channelCount, 2);
+    // Probe the visible, permission-granted app, not the hidden observer document.
+    const hasAudioOutput = await page.evaluate(async () =>
+      (await navigator.mediaDevices.enumerateDevices()).some(device => device.kind === 'audiooutput'));
+    if (hasAudioOutput) {
+      const observerSettings = await application.evaluate(() => globalThis.browserFixture.createObserver());
+      assert.equal(observerSettings.channelCount, 2);
+    }
     await installMeters(page);
     await page.waitForTimeout(500);
     const unity = await page.evaluate(() => browserTestMeters.measure());
-    const physicalUnity = await application.evaluate(() => globalThis.browserFixture.measureOutput());
+    const physicalUnity = hasAudioOutput ? await application.evaluate(() => globalThis.browserFixture.measureOutput()) : null;
     assert.ok(unity.input.every(value => value > 0.005), `live input: ${JSON.stringify(unity)}`);
     assertRatio(unity.output, unity.input, [1, 1], 0.04, 'unity DSP');
     stage('HTTP input and unity DSP');
@@ -286,14 +291,14 @@ test('desktop Browser captures HTTP and MSE playback through the production DSP 
     await installMeters(page);
     await page.waitForTimeout(350);
     const processed = await page.evaluate(() => browserTestMeters.measure());
-    const physicalProcessed = await application.evaluate(() => globalThis.browserFixture.measureOutput());
+    const physicalProcessed = hasAudioOutput ? await application.evaluate(() => globalThis.browserFixture.measureOutput()) : null;
     assertRatio(processed.output, processed.input, [0.5, 0.25], 0.03, 'left/right production Volume processing');
     stage('independent left/right DSP gains');
 
     await page.evaluate(() => { window.audioManager.ioManager.outputGainNode.gain.value = 0; });
     await page.waitForTimeout(350);
     const zero = await page.evaluate(() => browserTestMeters.measure());
-    const physicalZero = await application.evaluate(() => globalThis.browserFixture.measureOutput());
+    const physicalZero = hasAudioOutput ? await application.evaluate(() => globalThis.browserFixture.measureOutput()) : null;
     assertRatio(zero.input, unity.input, [1, 1], 0.04, 'input survives output mute without feedback');
     assert.ok(zero.output.every(value => value === 0));
     stage('zero processing output preserves live input');
@@ -391,13 +396,17 @@ test('desktop Browser captures HTTP and MSE playback through the production DSP 
     stage('restart cookie, bookmark and start-page persistence');
     t.diagnostic(JSON.stringify({ versions: await application.evaluate(() => process.versions), unity, processed, mse,
       physicalUnity, physicalProcessed, physicalZero }));
-    const reference = fixtureToneLevels(physicalUnity);
-    assert.ok(reference.every(value => value > 0.0001), 'output observer must hear both fixture tones');
-    assertRatio(fixtureToneLevels(physicalProcessed), reference, [0.5, 0.25], 0.1,
-      'physical fixture tones without double playback');
-    assert.ok(fixtureToneLevels(physicalZero).every((value, index) => value < reference[index] * 0.03),
-      `no fixture tone leakage at zero processing gain: ${JSON.stringify({ physicalZero, physicalUnity })}`);
-    stage('physical fixture-tone gains and direct-sound suppression');
+    await t.test('physical output preserves DSP gains without direct sound leakage', {
+      skip: hasAudioOutput ? false : 'System-loopback measurement requires an available audio output device.'
+    }, () => {
+      const reference = fixtureToneLevels(physicalUnity);
+      assert.ok(reference.every(value => value > 0.0001), 'output observer must hear both fixture tones');
+      assertRatio(fixtureToneLevels(physicalProcessed), reference, [0.5, 0.25], 0.1,
+        'physical fixture tones without double playback');
+      assert.ok(fixtureToneLevels(physicalZero).every((value, index) => value < reference[index] * 0.03),
+        `no fixture tone leakage at zero processing gain: ${JSON.stringify({ physicalZero, physicalUnity })}`);
+      stage('physical fixture-tone gains and direct-sound suppression');
+    });
   } finally {
     clearTimeout(deadline);
   }
