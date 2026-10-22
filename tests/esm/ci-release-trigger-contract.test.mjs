@@ -54,6 +54,9 @@ test('central CI changes do not select unrelated product builds', () => {
   assert.match(dspCoreFilter, /dsp\/core\/\*\*/);
   assert.match(dspCoreFilter, /plugins\/\*\*\/\*\.js/);
   assert.match(dspLibraryFilter, /dsp\/bindings\/\*\*/);
+  assert.match(dspLibraryFilter, /tools\/repair-dsp-windows-wheel\.py/);
+  assert.doesNotMatch(dspCoreFilter, /repair-dsp-windows-wheel/);
+  assert.doesNotMatch(openHomeFilter, /repair-dsp-windows-wheel/);
   assert.match(dspDocsFilter, /docs\/\*\*/);
   assert.match(dspDocsFilter, /examples\/dsp-library\/\*\*/);
   assert.match(dspDocsFilter, /workflows\/pages\.yml/);

@@ -290,6 +290,13 @@ binding's package and acceptance checks. For Python, build and install a
 candidate wheel, then use the same unittest, native-export audit, and golden
 runner sequence defined in `.github/workflows/dsp-library-ci.yml`.
 
+Windows wheel repair uses `tools/repair-dsp-windows-wheel.py` through the shared
+cibuildwheel configuration. It selects the redistributable for the compiler
+recorded by CMake and verifies the bundled runtime after repair. An unrelated
+Java or Python installation earlier on `PATH` must not select an older C++
+runtime. Use the shared repair command for local release candidates too; do not
+replace it with a bare `delvewheel repair` command.
+
 Set `EMSDK` to the activated SDK root on Windows. Use `npm run build:dsp -- --check` for
 a write-free freshness check. Kernel preparation and instance creation run between audio quanta and may
 grow WASM memory; processing itself must never allocate, lock, perform I/O, or grow

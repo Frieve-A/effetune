@@ -14,6 +14,10 @@ const ciWorkflow = readFileSync(
   path.join(repoRoot, '.github', 'workflows', 'dsp-library-ci.yml'),
   'utf8'
 );
+const pythonProject = readFileSync(
+  path.join(repoRoot, 'dsp', 'bindings', 'python', 'pyproject.toml'),
+  'utf8'
+);
 
 function workflowJob(source, name) {
   const start = source.indexOf(`  ${name}:\n`);
@@ -55,6 +59,19 @@ test('every wheel runs export and Python golden checks with abi3 forward smoke',
     assert.match(source, /python-version: '3\.13'/);
     assert.match(source, /verify_abi3_wheel\.py wheelhouse/);
     assert.match(source, /CIBW_SKIP: "\*-musllinux_\*"/);
+  }
+});
+
+test('Windows CI and releases share the compiler-matched wheel repair command', () => {
+  const windowsConfig = pythonProject.split('[tool.cibuildwheel.windows]')[1]?.split('\n[')[0];
+  const repair = windowsConfig?.split(/\r?\n/).find(line => line.startsWith('repair-wheel-command'));
+  assert.ok(repair?.includes('{project}/tools/repair-dsp-windows-wheel.py'));
+  assert.ok(repair.includes('{wheel}'));
+  assert.ok(repair.includes('{dest_dir}'));
+  for (const source of [ciWorkflow, workflow]) {
+    const windows = workflowJob(source, 'windows');
+    assert.doesNotMatch(windows, /CIBW_REPAIR_WHEEL_COMMAND/);
+    assert.equal((windows.match(/package-dir: dsp\/bindings\/python/g) ?? []).length, 3);
   }
 });
 

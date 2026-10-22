@@ -40,6 +40,9 @@ wheel.packages = ["src/effetune"]
 # Official releases are wheel-only. Building this subproject as an sdist would
 # omit the DSP sources that intentionally remain rooted in the monorepo.
 
+[tool.cibuildwheel.windows]
+repair-wheel-command = 'python "{project}/tools/repair-dsp-windows-wheel.py" "{wheel}" "{dest_dir}"'
+
 [tool.cibuildwheel.macos]
 environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
 

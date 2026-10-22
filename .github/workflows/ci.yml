@@ -95,6 +95,7 @@ jobs:
               - 'scripts/gen-dsp-params.mjs'
               - 'scripts/build-dsp-wasm.mjs'
               - 'tools/verify-dsp-library-goldens.mjs'
+              - 'tools/repair-dsp-windows-wheel.py'
               - 'tools/dsp-parity/**'
               - 'tests/esm/dsp-library-codegen*.test.mjs'
               - 'tests/esm/dsp-library-goldens.test.mjs'
