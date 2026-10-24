@@ -129,4 +129,20 @@ Al exportar una lista de reproducción, activa **Rutas relativas** si quieres mo
 - Borrar los datos del sitio en el navegador elimina el catálogo y las listas de reproducción de la aplicación web; exporta las listas importantes para conservarlas.
 - Las colecciones grandes se cargan progresivamente a medida que te desplazas. Usa la Biblioteca musical en una sola ventana de EffeTune a la vez.
 
+## Música en tu red (aplicación de escritorio)
+
+Usa **Library** para explorar este dispositivo o un servidor detectado, y el selector de dispositivos de la parte superior de la ventana para elegir dónde sonará la música. Cambiar de biblioteca solo cambia la exploración y la búsqueda. Añadir carpetas, volver a escanear y otras tareas locales están disponibles con **This device** seleccionado.
+
+Al explorar la biblioteca de otro EffeTune, puedes usar **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added** y **Playlists** igual que en tu dispositivo. Busca en la biblioteca seleccionada, ordena sus listas y abre un álbum, artista o género para ver sus pistas. En **Folders**, usa **Tree** para recorrer la estructura de carpetas o **Flat** para listar todas las pistas de la carpeta seleccionada. Solo aparece la música compartida. Puedes explorar y reproducir las listas remotas; para editarlas, usa el ordenador de origen.
+
+Los demás servidores de música muestran las categorías y la estructura de carpetas que publican; la búsqueda y la ordenación solo están disponibles si el servidor las admite.
+
+Para reproducir pistas de Music Library en otro reproductor, primero comparte su carpeta en **Configuración > Configuración... > Red > Compartir biblioteca**. Los formatos y efectos disponibles dependen del destino; las pistas parciales CUE no están disponibles como pistas de red independientes. Consulta [música en red y control remoto](openhome.md) para configurar la conexión, emparejar los efectos y resolver problemas de acceso.
+
+Para reproducir archivos locales sueltos sin activar el uso compartido de la biblioteca, elige otro reproductor y usa **Open music files**. EffeTune facilita únicamente los archivos seleccionados a ese reproductor; mantén abierta la aplicación en el equipo de origen.
+
+## Música compartida en la PWA
+
+La PWA puede explorar la biblioteca compartida de un ordenador EffeTune registrado y reproducirla con los efectos de este dispositivo o en otro ordenador registrado. Los archivos locales de la PWA no se pueden enviar a otro reproductor. Consulta [configuración y reproducción desde la PWA](openhome.md#pwa) para añadir dispositivos y conocer los permisos del navegador y los requisitos de conexión.
+
 [← Volver al README](README.md)

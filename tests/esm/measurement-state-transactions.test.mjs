@@ -3,9 +3,9 @@ import test from 'node:test';
 
 import dataStorage, { MeasurementImportError } from '../../features/measurement/dataStorage.js';
 import audioUtils from '../../features/measurement/audio-utils/index.js';
+import { createEssSignal } from '../../js/utils/measurement-dsp/ess.js';
 import uiManager, { UIManager } from '../../features/measurement/ui/ui-manager.js';
 import AudioProcessing, {
-    createSweepCapturePlan,
     SweepCancelledError
 } from '../../features/measurement/measurement-controller/audio-processing.js';
 import {
@@ -15,6 +15,8 @@ import {
 } from '../../features/measurement/measurement-controller/index.js';
 import LevelAdjustment from '../../features/measurement/measurement-controller/level-adjustment.js';
 import { createImpulseResponseMeasurement } from '../../features/measurement/impulse-response-import.js';
+import { resolveResponseSweepBand } from '../../features/measurement/measurement-model.js';
+import { generateESS } from '../../features/measurement/audio-utils/signal-generation.js';
 
 const { default: SweepMeasurement } = await import(
     '../../features/measurement/measurement-controller/sweep-measurement.js'
@@ -502,7 +504,7 @@ test('redo controls follow running, single-channel, multi-channel, and redo stat
         clearInterval: globalThis.clearInterval,
         audioContext: audioUtils.audioContext,
         microphone: audioUtils.microphone,
-        generateTSP: audioUtils.generateTSP,
+        generateESS: audioUtils.generateESS,
         showNotification: uiManager.showNotification
     };
     t.after(() => {
@@ -511,7 +513,7 @@ test('redo controls follow running, single-channel, multi-channel, and redo stat
         globalThis.clearInterval = originals.clearInterval;
         audioUtils.audioContext = originals.audioContext;
         audioUtils.microphone = originals.microphone;
-        audioUtils.generateTSP = originals.generateTSP;
+        audioUtils.generateESS = originals.generateESS;
         uiManager.showNotification = originals.showNotification;
     });
 
@@ -522,7 +524,7 @@ test('redo controls follow running, single-channel, multi-channel, and redo stat
     globalThis.clearInterval = () => {};
     audioUtils.audioContext = { state: 'running', sampleRate: 48000 };
     audioUtils.microphone = {};
-    audioUtils.generateTSP = () => ({ length: 8 });
+    audioUtils.generateESS = () => ({ length: 8 });
     uiManager.showNotification = () => {};
 
     let releaseFirstChannel;
@@ -738,7 +740,7 @@ test('internal sweep errors reach the measurement failure path during cancellati
         clearInterval: globalThis.clearInterval,
         audioContext: audioUtils.audioContext,
         microphone: audioUtils.microphone,
-        generateTSP: audioUtils.generateTSP,
+        generateESS: audioUtils.generateESS,
         showNotification: uiManager.showNotification
     };
     t.after(() => {
@@ -747,7 +749,7 @@ test('internal sweep errors reach the measurement failure path during cancellati
         globalThis.clearInterval = originals.clearInterval;
         audioUtils.audioContext = originals.audioContext;
         audioUtils.microphone = originals.microphone;
-        audioUtils.generateTSP = originals.generateTSP;
+        audioUtils.generateESS = originals.generateESS;
         uiManager.showNotification = originals.showNotification;
     });
     const elements = createSweepTestElements();
@@ -756,7 +758,7 @@ test('internal sweep errors reach the measurement failure path during cancellati
     globalThis.clearInterval = () => {};
     audioUtils.audioContext = { state: 'running', sampleRate: 48000 };
     audioUtils.microphone = {};
-    audioUtils.generateTSP = () => ({ length: 8 });
+    audioUtils.generateESS = () => ({ length: 8 });
     const notifications = [];
     uiManager.showNotification = (...args) => notifications.push(args);
     const controller = {
@@ -786,19 +788,19 @@ test('channel redo commits one replacement and preserves prior state for failure
     const originals = {
         document: globalThis.document,
         audioContext: audioUtils.audioContext,
-        generateTSP: audioUtils.generateTSP,
+        generateESS: audioUtils.generateESS,
         showNotification: uiManager.showNotification
     };
     t.after(() => {
         globalThis.document = originals.document;
         audioUtils.audioContext = originals.audioContext;
-        audioUtils.generateTSP = originals.generateTSP;
+        audioUtils.generateESS = originals.generateESS;
         uiManager.showNotification = originals.showNotification;
     });
     const elements = createSweepTestElements();
     globalThis.document = { getElementById: id => elements.get(id) || null };
     audioUtils.audioContext = { sampleRate: 48000 };
-    audioUtils.generateTSP = (_length, _sampleRate, _channel, minFreq, maxFreq) => {
+    audioUtils.generateESS = (_length, _sampleRate, _channel, minFreq, maxFreq) => {
         assert.equal(minFreq, 40);
         assert.equal(maxFreq, 400);
         return { length: 8 };
@@ -918,7 +920,7 @@ test('per-channel sweeps retain the configured output width, bands and calibrati
         clearInterval: globalThis.clearInterval,
         audioContext: audioUtils.audioContext,
         microphone: audioUtils.microphone,
-        generateTSP: audioUtils.generateTSP,
+        generateESS: audioUtils.generateESS,
         stopWhiteNoise: audioUtils.stopWhiteNoise,
         stopMicrophoneInput: audioUtils.stopMicrophoneInput
     };
@@ -928,7 +930,7 @@ test('per-channel sweeps retain the configured output width, bands and calibrati
         globalThis.clearInterval = originals.clearInterval;
         audioUtils.audioContext = originals.audioContext;
         audioUtils.microphone = originals.microphone;
-        audioUtils.generateTSP = originals.generateTSP;
+        audioUtils.generateESS = originals.generateESS;
         audioUtils.stopWhiteNoise = originals.stopWhiteNoise;
         audioUtils.stopMicrophoneInput = originals.stopMicrophoneInput;
     });
@@ -950,7 +952,7 @@ test('per-channel sweeps retain the configured output width, bands and calibrati
     let now = 10000;
     t.mock.method(Date, 'now', () => now);
     let controller;
-    audioUtils.generateTSP = (_length, _sampleRate, channel, minFreq, maxFreq) => {
+    audioUtils.generateESS = (_length, _sampleRate, channel, minFreq, maxFreq) => {
         observed.push(['generate', channel, controller.interfaceCalibrationImpulseResponse]);
         bands.push([channel, minFreq, maxFreq]);
         return { length: 8 };
@@ -1092,59 +1094,9 @@ async function withPatchedSingletons(t, callback) {
     await callback();
 }
 
-test('failed deconvolution keeps FR fallback data but never exposes a persistable IR', async t => {
-    const originalInverseFilter = audioUtils.lastInverseFilter;
-    const originalRefScale = audioUtils.lastDeconvolutionRefScale;
-    t.after(() => {
-        audioUtils.lastInverseFilter = originalInverseFilter;
-        audioUtils.lastDeconvolutionRefScale = originalRefScale;
-    });
-    audioUtils.lastDeconvolutionRefScale = 0.5;
-
-    const sweepLength = 8;
-    const sampleRate = 16;
-    const capturePlan = createSweepCapturePlan(sweepLength, 1, sampleRate);
-    const preRollSamples = sampleRate / 2;
-    const fullRecording = new Float32Array(
-        preRollSamples + capturePlan.analysisStartSamples + sweepLength
-    );
-    fullRecording[preRollSamples + capturePlan.analysisStartSamples] = 1;
-    const cases = [
-        {
-            label: 'missing inverse',
-            inverse: null,
-            recording: fullRecording,
-            sweepLength,
-            sampleRate
-        },
-        {
-            label: 'empty inverse',
-            inverse: new Float32Array(0),
-            recording: fullRecording,
-            sweepLength,
-            sampleRate
-        },
-        {
-            label: 'deconvolution exception',
-            inverse: { length: Symbol('invalid') },
-            recording: fullRecording,
-            sweepLength,
-            sampleRate
-        }
-    ];
-
-    for (const scenario of cases) {
-        audioUtils.lastInverseFilter = scenario.inverse;
-        const result = AudioProcessing.processRecordedBuffer(
-            scenario.recording,
-            scenario.sweepLength,
-            1,
-            scenario.sampleRate
-        );
-        assert.strictEqual(result.analysisImpulseResponse, scenario.recording, scenario.label);
-        assert.equal(result.irValid, false, scenario.label);
-        assert.equal(result.impulseResponse, null, scenario.label);
-    }
+test('failed ESS deconvolution rejects instead of publishing recording samples as a response', async () => {
+    const sweep = createEssSignal({ length: 16384, sampleRate: 16000, startFrequency: 40, endFrequency: 7000 });
+    await assert.rejects(AudioProcessing.processRecordedBuffer(new Float32Array(32), sweep, 1, 16000));
 });
 
 test('calibrated measurement start is single-flight and snapshots valid source data', async t => {
@@ -1233,22 +1185,24 @@ test('uncalibrated start does not read calibration IR or add provenance', async 
     assert.equal(controller.interfaceCalibrationImpulseResponse, null);
 });
 
-test('unlimited sweep records the full FFT bandwidth', async t => {
-    installMeasurementStartEnvironment(t, null, null);
+test('ESS Off validates calibration and saves the actual excitation band before acquisition', async t => {
+    const source = calibrationSource({ acquisitionMethod: 'ess', sweepLength: 131072 });
+    installMeasurementStartEnvironment(t, source, calibrationImpulse());
     const controller = new MeasurementController();
     controller.prepareForLevelAdjustment = async () => {};
-    const config = measurementConfig();
+    const config = measurementConfig({ sourceMeasurementId: source.id, sourcePointId: 3 });
     config.sweepBand = { mode: 'off', common: { minFreq: 20, maxFreq: 20000 }, perChannel: [] };
 
     const measurement = await controller.startNewMeasurement(config);
-    const fftLength = Number(config.sweepLength);
-
     assert.equal(measurement.sweepBandLimited, false);
-    assert.equal(measurement.sweepMinFreq, 48000 / fftLength);
-    assert.equal(
-        measurement.sweepMaxFreq,
-        (fftLength / 2 - 1) * 48000 / fftLength
-    );
+    assert.equal(measurement.sweepMinFreq, 20);
+    assert.equal(measurement.sweepMaxFreq, 20000);
+    const band = resolveResponseSweepBand(measurement);
+    const sweep = generateESS.call({ initialized: true }, Number(config.sweepLength), 48000,
+        config.outputChannel, band.minFreq, band.maxFreq, band.bandLimited);
+    assert.equal(band.minFreq, sweep.startFrequency);
+    assert.equal(band.maxFreq, sweep.endFrequency);
+    assert.equal(controller.measurementConfig.acquisitionMethod, 'ess');
 });
 
 test('measurement setup and test signals preserve a configured six-channel device', async t => {
@@ -1343,7 +1297,7 @@ test('simultaneous stereo measurement keeps calibration and signals within conne
         assert.equal(maxFreq, 400);
         assert.deepEqual(bands.map(band => band.channel), ['left', 'right']);
     };
-    t.mock.method(audioUtils, 'generateTSP', (_length, _rate, channel, minFreq, maxFreq, _limited, bands) => {
+    t.mock.method(audioUtils, 'generateESS', (_length, _rate, channel, minFreq, maxFreq, _limited, bands) => {
         checkSignal(channel, minFreq, maxFreq, bands);
         return { length: 8 };
     });
@@ -1538,18 +1492,11 @@ test('level adjustment preparation stops partial input and propagates failure', 
     assert.equal(stopCalls, 1);
 });
 
-test('calibrated deconvolution failures reject instead of exposing uncalibrated fallback', () => {
-    const originalInverseFilter = audioUtils.lastInverseFilter;
-    audioUtils.lastInverseFilter = null;
-    try {
-        assert.throws(() => AudioProcessing.processRecordedBuffer.call({
-            ...AudioProcessing,
-            interfaceCalibrationImpulseResponse: calibrationImpulse(),
-            currentMeasurement: { sweepMinFreq: 20, sweepMaxFreq: 20000 }
-        }, new Float32Array(32), 8, 1, 48000), /could not be created/);
-    } finally {
-        audioUtils.lastInverseFilter = originalInverseFilter;
-    }
+test('calibrated deconvolution failures reject instead of exposing uncalibrated fallback', async () => {
+    const sweep = createEssSignal({ length: 16384, sampleRate: 16000, startFrequency: 40, endFrequency: 7000 });
+    await assert.rejects(AudioProcessing.processRecordedBuffer.call({
+        ...AudioProcessing, interfaceCalibrationImpulseResponse: calibrationImpulse()
+    }, new Float32Array(32), sweep, 1, 16000));
 });
 
 test('configuration lists uncalibrated mono and imported multichannel IR candidates', async t => {
@@ -1989,25 +1936,11 @@ test('next-point level preparation failure preserves the current point and sweep
 
 test('only valid deconvolution publishes IR metadata and binary for atomic saving', async t => {
     await withPatchedSingletons(t, async () => {
-        const originalInverseFilter = audioUtils.lastInverseFilter;
-        t.after(() => {
-            audioUtils.lastInverseFilter = originalInverseFilter;
-        });
-        const sweepLength = 5000;
-        const sampleRate = 100;
-        const capturePlan = createSweepCapturePlan(sweepLength, 1, sampleRate);
-        const preRollSamples = sampleRate / 2;
-        const recording = new Float32Array(
-            preRollSamples + capturePlan.analysisStartSamples + sweepLength
-        );
-        recording[preRollSamples + capturePlan.analysisStartSamples + 4096] = 1;
-        audioUtils.lastInverseFilter = Float32Array.from([1]);
-        const valid = AudioProcessing.processRecordedBuffer(
-            recording,
-            sweepLength,
-            1,
-            sampleRate
-        );
+        const sampleRate = 16000;
+        const sweep = createEssSignal({ length: 16384, sampleRate, startFrequency: 40, endFrequency: 7000 });
+        const recording = new Float32Array(8000 + sweep.length + sweep.tailSamples);
+        recording.set(Float32Array.from(sweep.signal, value => value * 0.5), 8100);
+        const valid = await AudioProcessing.processRecordedBuffer(recording, sweep, 1, sampleRate);
         assert.equal(valid.irValid, true);
         assert.ok(valid.impulseResponse instanceof Float32Array);
         const sweepResult = AudioProcessing.createSweepMeasurementResult(valid, {

@@ -61,6 +61,7 @@ async function openDialog(t, { language = 'en', viewport } = {}) {
             onStatus: callback => { statusListeners.add(callback); return () => statusListeners.delete(callback); },
             setEnabled: async enabled => {
                 calls.push(['enabled', enabled]);
+                if (window.permissionFails) throw new Error('internal permission save failure');
                 pushStatus({ enabled, running: enabled });
                 return structuredClone(remoteStatus);
             },
@@ -72,6 +73,7 @@ async function openDialog(t, { language = 'en', viewport } = {}) {
             copyLink: async index => { calls.push(['copy', index]); return !window.copyFails; },
             join: async input => { calls.push(['join', input]); return { ok: !window.joinFails, error: 'internal-details' }; }
         };
+        window.remoteSettingsApi = api;
         window.dialog = new RemoteControlDialog(window, api);
         document.getElementById('opener').focus();
         dialog.show();
@@ -182,6 +184,59 @@ test('remote settings show useful failure messages and ignore an old request aft
     await page.locator('.remote-control-overlay').click({ position: { x: 1, y: 1 } });
     assert.equal(await page.locator('[role="dialog"]').count(), 0);
     assert.equal(await page.evaluate(() => statusListeners.size), 0);
+    assert.deepEqual(errors, []);
+});
+
+test('Network settings shares the Remote Control permission, subscription and failed-save state with the original dialog', { timeout: 30000 }, async t => {
+    const { page, errors } = await openDialog(t);
+    await page.evaluate(async () => {
+        window.electronAPI = {
+            loadConfig: async () => ({ success: true, config: {} }),
+            remoteV1: { settings: remoteSettingsApi },
+            openHomeV1: { getStatus: async () => ({ enabled: false, friendlyName: 'Test PC' }) },
+            networkMusicGetState: async () => ({ sharing: { enabled: false, folderIds: [], folders: [] } })
+        };
+        const { showConfigDialog } = await import('./js/electron/configIntegration.js');
+        window.openNetworkConfig = () => showConfigDialog(true, {});
+        await openNetworkConfig();
+    });
+    await page.locator('#config-category-network').click();
+    const permission = page.locator('#network-remote-control-enabled');
+    assert.equal(await permission.isChecked(), false);
+    assert.equal(await permission.isDisabled(), false);
+    assert.equal(await page.evaluate(() => statusListeners.size), 1, 'both controls must share the same host subscription');
+    const layout = await page.evaluate(() => {
+        const ids = ['network-device-name-section', 'network-remote-control-section', 'openhome-section', 'library-sharing-section'];
+        const rows = ids.map(id => document.getElementById(id).getBoundingClientRect());
+        return rows.map(row => ({ x: row.x, top: row.top, bottom: row.bottom, right: row.right }));
+    });
+    assert.ok(layout.every((row, index) => row.x === layout[0].x && row.right <= 1200 &&
+        (index === 0 || row.top >= layout[index - 1].bottom)), 'Network groups must align below the common device name');
+    await permission.check();
+    await page.waitForFunction(() => !document.getElementById('network-remote-control-enabled').disabled);
+    assert.equal(await page.locator('#remote-control-enabled').isChecked(), true);
+    await page.evaluate(() => { window.permissionFails = true; });
+    await permission.click();
+    await page.waitForFunction(() => !document.getElementById('network-remote-control-enabled').disabled);
+    assert.equal(await permission.isChecked(), true);
+    assert.equal(await page.locator('#remote-control-enabled').isChecked(), true);
+    assert.match(await page.locator('#network-remote-control-status').textContent(), /could not be updated/);
+    assert.match(await page.locator('#remote-control-error').textContent(), /could not be updated/);
+    await page.locator('#close-btn').click();
+    assert.equal(await page.evaluate(() => statusListeners.size), 1);
+    await page.evaluate(() => { window.permissionFails = false; });
+    await page.locator('#remote-control-enabled').uncheck();
+    await page.waitForFunction(() => !document.getElementById('remote-control-enabled').disabled);
+    await page.evaluate(() => openNetworkConfig());
+    assert.equal(await page.locator('#network-remote-control-enabled').isChecked(), false);
+    await page.evaluate(() => pushStatus({ enabled: true, running: false, error: 'internal listener failure' }));
+    assert.equal(await page.locator('#network-remote-control-enabled').isChecked(), true, 'the permission follows desired enabled, not running');
+    assert.match(await page.locator('#network-remote-control-status').textContent(), /could not start/);
+    assert.ok(!(await page.locator('#config-panel-network').textContent()).includes('internal listener failure'));
+    await page.locator('#close-btn').click();
+    await page.locator('#remote-control-close').click();
+    assert.equal(await page.evaluate(() => statusListeners.size), 0);
+    assert.deepEqual(await page.evaluate(() => calls), [['enabled', true], ['enabled', false], ['enabled', false]]);
     assert.deepEqual(errors, []);
 });
 
@@ -362,13 +417,16 @@ test('remote effect UIs hide local audio outputs and retain parameter curves and
     assert.deepEqual(errors, []);
 });
 
-test('IR Reverb uses the host library picker without local file actions', { timeout: 30000 }, async t => {
+for (const irSync of [false, true]) {
+test(`IR Reverb host picker respects ${irSync ? 'IR transfer' : 'selection-only'} capabilities`, { timeout: 30000 }, async t => {
     const { page, errors } = await openEffectPage(t);
-    await page.evaluate(async () => {
+    await page.evaluate(async irSync => {
         const { createRemoteIrLibrary } = await import('./js/remote/remote-ir-library.js');
         window.selectedIr = null;
         window.irLibraryService = createRemoteIrLibrary({
-            request: async () => ({ items: [{ id: 'c'.repeat(24), name: 'Host Hall.wav', channels: 4, topology: 'true-stereo' }] })
+            features: new Set(irSync ? ['irSelection', 'irSync'] : ['irSelection']),
+            request: async () => ({ items: [{ id: 'c'.repeat(24), name: 'Host Hall.wav',
+                channels: irSync ? 2 : 4, topology: irSync ? 'stereo' : 'true-stereo' }] })
         }, async (plugin, entry) => {
             selectedIr = { pluginId: plugin.id, ir: entry.irId };
             return true;
@@ -379,15 +437,28 @@ test('IR Reverb uses the host library picker without local file actions', { time
         plugin.setWasmAssetTargetResolver(() => []);
         audioManager.pipeline.push(plugin);
         document.getElementById('effect-fixture').append(plugin.createUI());
-    });
+    }, irSync);
     await page.locator('.ir-reverb-import-actions button:visible').click();
     await page.locator('.ir-library-entry').waitFor();
     assert.match(await page.locator('.ir-library-entry').textContent(), /Host Hall.wav/);
-    assert.equal(await page.locator('.ir-library-dialog input[type="file"], .ir-library-danger-action, .ir-library-decay').count(), 0);
-    await page.locator('.ir-library-actions button').click();
+    const dialog = page.locator('.ir-library-dialog');
+    assert.equal(await dialog.getByRole('button', { name: /^Delete(?: selected)?$/, includeHidden: true }).count(), 0);
+    assert.equal(await dialog.locator('.ir-library-decay').count(), 0);
+    assert.equal(await dialog.getByRole('button', { name: 'Upload file…', exact: true }).count(), irSync ? 1 : 0);
+    assert.equal(await dialog.getByRole('button', { name: 'Cancel import', exact: true, includeHidden: true }).count(), irSync ? 1 : 0);
+    assert.equal(await dialog.getByRole('button', { name: 'Download', exact: true }).count(), irSync ? 1 : 0);
+    const fileInput = dialog.locator('input[type="file"]');
+    assert.equal(await fileInput.count(), irSync ? 1 : 0);
+    if (irSync) {
+        assert.equal(await fileInput.evaluate(input => input.multiple), false);
+        assert.equal(await dialog.getByRole('button', { name: 'Upload file…', exact: true }).isEnabled(), true);
+        assert.equal(await dialog.getByRole('button', { name: 'Download', exact: true }).isEnabled(), true);
+    }
+    await dialog.locator('.ir-library-actions .ir-library-primary-action').click();
     assert.deepEqual(await page.evaluate(() => selectedIr), { pluginId: 1, ir: 'c'.repeat(24) });
     assert.deepEqual(errors, []);
 });
+}
 
 test('remote sliders send one operation per drag and flush pending values before undo', { timeout: 60000 }, async t => {
     const browser = await chromium.launch();
@@ -419,7 +490,7 @@ test('remote sliders send one operation per drag and flush pending values before
             }
             socket.send(JSON.stringify({ op: 'ack', seq: message.seq, ok: true, rev }));
             if (['hello', 'get', 'edit', 'history'].includes(message.op)) {
-                socket.send(JSON.stringify({ op: 'state', epoch: 'e1', rev, ...model }));
+                socket.send(JSON.stringify({ op: 'state', epoch: 'e1', rev, features: ['sync1'], ...model }));
             }
         });
     });

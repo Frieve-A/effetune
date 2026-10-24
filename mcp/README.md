@@ -3,7 +3,11 @@
 An [MCP](https://modelcontextprotocol.io) server that lets an AI assistant drive a running
 [EffeTune](https://effetune.frieve.com) desktop app: read and edit the effect pipeline, change
 parameters, and load or save presets. It talks to the app over its LAN Remote Control API
-([remote-v1](https://github.com/Frieve-A/effetune/blob/main/docs/remote-v1.md)); the audio stays in EffeTune.
+([remote-v1](https://github.com/Frieve-A/effetune/blob/main/docs/remote-v1.md)); the MCP server does not handle audio.
+
+On desktop builds with the `music1` feature, it can also find music in the paired app's own
+Music Library or a network library and control playback. A single computer needs no library
+sharing for its own music and player.
 
 The server knows no effect by name. It asks the connected app which effects it has and which
 parameters they take (`describeEffects`), so effects added in a later EffeTune release can be
@@ -134,15 +138,46 @@ command. Restart the client if necessary, then check `connection_info` and `get_
 | `switch_slot` / `copy_slot` | A/B pipelines |
 | `raw_request` | Any remote-v1 request, for ops newer than this server. Only offered with `EFFETUNE_MCP_ALLOW_RAW=1`, since it can also delete presets |
 | `connection_info` | App version, host name and protocol features |
+| `list_music_devices` | The paired app's local library, any local player, and known network devices; optionally refresh discovery |
+| `browse_music` | Browse or search music, starting with the local library when no source is given |
+| `get_playback` | Current playback and a queue page; defaults to the local player |
+| `play_music` | Replace a player's queue with selected tracks and start playback; defaults to the local player |
+| `queue_music` | Add tracks at the end or after the current track without starting playback; defaults to the local player |
+| `control_playback` | Play, pause, stop, skip, seek, repeat, shuffle or change supported volume; defaults to the local player |
+| `edit_playback_queue` | Delete one queue entry or clear a queue; defaults to the local player |
 
 Tools that need a protocol extension report it when the app does not support it. Every tool carries
 MCP annotations (`readOnlyHint`, `destructiveHint`), so clients can ask before tools that replace or
 delete something.
 
+For music on the paired EffeTune computer, call `browse_music` with a song query and no `serverId`, then send the returned
+concrete `serverId` and `trackId` in `play_music` items. Omit `playerId` to use the paired app's
+local player. A blank query browses only the local catalog; a search checks it first and tries
+known searchable network libraries only when it reports no matches. A result uses one source:
+pass its returned `serverId` for later pages. `play_music` replaces the queue; `queue_music`
+adds tracks without starting playback.
+
+To choose another source or player, use `list_music_devices` and pass its exact `serverId` or
+`playerId`. If a name matches more than one device, ask the user which one they mean. Explicit
+choices never fall back to another device, and pipeline tools still control
+the paired app. Share the source folder if it is another EffeTune computer; sending this app's
+local tracks to another player also follows the existing sharing limits. The device list is a
+snapshot: `refresh:true` starts asynchronous discovery, so an immediate empty list is not final.
+`connection_info` reports `music1`; older apps still support the existing tools.
+
+After a playback command, use `get_playback` to check the player's observed state. A successful
+command does not prove that sound was heard. If a sent change times out or the connection closes,
+the tool reports `outcomeUnknown` and `"outcome":"unknown"`, with `playerId` when one was supplied.
+It may include a `playback` snapshot if a short read succeeded on the same open connection.
+The change may have been partly applied. The server does not reconnect or retry it automatically:
+use `get_playback` for that player (or omit `playerId` for the local player) before deciding whether
+to retry.
+
 ## Security
 
-The token in the link is the only credential and the traffic is plain `ws://`. Use it on a
-network you trust, keep the link private, and press **New token** in EffeTune to revoke it.
+The token in the link is the credential. Without [TLS](https://github.com/Frieve-A/effetune/blob/main/docs/remote-v1.md#encrypted-connections),
+traffic uses plain `ws://`; use it on a network you trust. Keep the link private, and press
+**New token** in EffeTune to revoke it.
 
 Tool results include text that anyone holding the link can write, such as preset names and
 Section comments. The server tells the model to treat it as data, but keep your client's approval

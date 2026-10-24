@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const constants = require('./constants');
 const fileUtils = require('./file-utils');
+const fileAccess = require('./file-access.cjs');
 const {
   LocalPlaybackIngress,
   admitLocalPlaybackPaths: admitLocalPlaybackPathsImpl
@@ -47,7 +48,7 @@ function setMainWindow(window) {
   if (!window || typeof window.on !== 'function' || typeof window.once !== 'function') return;
   const ingress = localPlaybackIngress;
   window.on('close', () => ingress.cancel());
-  window.once('closed', () => ingress.dispose());
+  window.once('closed', () => { ingress.dispose(); fileAccess.clear(); });
 }
 
 // Get the actual executable path for packaged apps
@@ -82,12 +83,21 @@ function getUserDataPath() {
 // File dialog operations
 async function showSaveDialog(options) {
   const mainWindow = constants.getMainWindow();
-  return await dialog.showSaveDialog(mainWindow, options);
+  const result = await dialog.showSaveDialog(mainWindow, options);
+  if (!result.canceled && result.filePath) fileAccess.grantWrite(result.filePath);
+  return result;
 }
 
 async function showOpenDialog(options) {
   const mainWindow = constants.getMainWindow();
-  return await dialog.showOpenDialog(mainWindow, normalizeAudioOpenDialogOptions(options));
+  const result = await dialog.showOpenDialog(mainWindow, normalizeAudioOpenDialogOptions(options));
+  if (!result.canceled) {
+    for (const selected of result.filePaths || []) {
+      if (options?.properties?.includes('openDirectory')) fileAccess.grantOutputDirectory(selected);
+      else fileAccess.grantRead(selected);
+    }
+  }
+  return result;
 }
 
 async function openPlaybackSelection() {
@@ -107,6 +117,7 @@ async function openPlaybackSelection() {
       return { canceled: true };
     }
     const selection = await localPlaybackIngress.resolveSelection(result.filePaths, request);
+    for (const source of selection.descriptors || selection.tracks || []) fileAccess.grantRead(source.path);
     return { accepted: true, ...selection };
   } catch (error) {
     if (error?.code === 'selection-stale' || error?.name === 'AbortError') return { stale: true };
@@ -130,6 +141,7 @@ async function admitLocalPlaybackPaths(filePaths) {
     signal: request.controller.signal
   });
   localPlaybackIngress.assertCurrent(request);
+  for (const source of descriptors) fileAccess.grantRead(source.path);
   return descriptors;
 }
 
@@ -184,6 +196,7 @@ function processCommandLineArgs(argv) {
         try {
           // Check if file exists
           if (fs.existsSync(arg)) {
+            fileAccess.grantRead(arg);
             // Store the command line preset file path
             constants.setCommandLinePresetFile(arg);
             

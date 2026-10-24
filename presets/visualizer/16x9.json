@@ -5963,5 +5963,725 @@
         ]
       }
     ]
+  },
+  "Listening Room": {
+    "aspect": "16:9",
+    "graphScale": 1,
+    "background": {
+      "color": "#0b0e12",
+      "image": null,
+      "effects": [],
+      "themeColors": {
+        "graph-bg-deep": "#0b0e12",
+        "graph-base-soft": "#191b1e",
+        "graph-grid-subtle": "#22252a",
+        "graph-grid-soft": "#303238",
+        "graph-grid-strong": "#46484b",
+        "graph-label": "#918e88",
+        "text-primary": "#f1eee7",
+        "graph-trace-tertiary": "#8f8170"
+      }
+    },
+    "items": [
+      {
+        "id": "listening-room-backdrop",
+        "type": "artwork",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          }
+        },
+        "params": {},
+        "style": {
+          "rounded": false
+        },
+        "effects": [
+          {
+            "type": "blur",
+            "enabled": true,
+            "amount": 1,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          },
+          {
+            "type": "blur",
+            "enabled": true,
+            "amount": 0.65,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          },
+          {
+            "type": "opacity",
+            "enabled": true,
+            "amount": 0.16,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "listening-room-cover",
+        "type": "artwork",
+        "rect": {
+          "x": 0.075,
+          "y": 0.1527777777777778,
+          "w": 0.3,
+          "h": 0.5333333333333333
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          }
+        },
+        "params": {},
+        "style": {
+          "rounded": true
+        },
+        "effects": [
+          {
+            "type": "backplate",
+            "enabled": true,
+            "amount": 1,
+            "fill": "#06080b",
+            "fillOpacity": 0.45,
+            "border": "#56514a",
+            "borderWidth": 1,
+            "radius": 24,
+            "margin": 7,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "listening-room-title",
+        "type": "title",
+        "rect": {
+          "x": 0.4296875,
+          "y": 0.17083333333333334,
+          "w": 0.4953125,
+          "h": 0.11388888888888889
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#f1eee7"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#f1eee7"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 44,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-artist",
+        "type": "artist",
+        "rect": {
+          "x": 0.43125,
+          "y": 0.2972222222222222,
+          "w": 0.4921875,
+          "h": 0.05555555555555555
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#c5c1b8"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#c5c1b8"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 25,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-album",
+        "type": "album",
+        "rect": {
+          "x": 0.43125,
+          "y": 0.36666666666666664,
+          "w": 0.4921875,
+          "h": 0.044444444444444446
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#918e88"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#918e88"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 17,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle",
+          "letterSpacing": 1
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-shuffle",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.5265625,
+          "y": 0.4861111111111111,
+          "w": 0.03125,
+          "h": 0.05555555555555555
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#dedad2"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#dedad2"
+        },
+        "params": {
+          "action": "shuffle",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#25272b",
+          "fillOpacity": 0,
+          "border": "#8c795e",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 48,
+          "depth": 0,
+          "activeColor": "#dfba81"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-previous",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.58125,
+          "y": 0.475,
+          "w": 0.04375,
+          "h": 0.07777777777777778
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#dedad2"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#dedad2"
+        },
+        "params": {
+          "action": "previous",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#25272b",
+          "fillOpacity": 0,
+          "border": "#8c795e",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 48,
+          "depth": 0,
+          "activeColor": "#dfba81"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-play-pause",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.64609375,
+          "y": 0.4583333333333333,
+          "w": 0.0625,
+          "h": 0.1111111111111111
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#15191e"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#15191e"
+        },
+        "params": {
+          "action": "play-pause",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#dfba81",
+          "fillOpacity": 1,
+          "border": "#8c795e",
+          "borderWidth": 1,
+          "radius": 18,
+          "iconSize": 42,
+          "depth": 0.2,
+          "activeColor": "#dfba81"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-next",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.7296875,
+          "y": 0.475,
+          "w": 0.04375,
+          "h": 0.07777777777777778
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#dedad2"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#dedad2"
+        },
+        "params": {
+          "action": "next",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#25272b",
+          "fillOpacity": 0,
+          "border": "#8c795e",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 48,
+          "depth": 0,
+          "activeColor": "#dfba81"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-repeat",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.796875,
+          "y": 0.4861111111111111,
+          "w": 0.03125,
+          "h": 0.05555555555555555
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#dedad2"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#dedad2"
+        },
+        "params": {
+          "action": "repeat",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#25272b",
+          "fillOpacity": 0,
+          "border": "#8c795e",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 48,
+          "depth": 0,
+          "activeColor": "#dfba81"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-seek",
+        "type": "seek-bar",
+        "rect": {
+          "x": 0.4296875,
+          "y": 0.6305555555555555,
+          "w": 0.4953125,
+          "h": 0.05
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#dfba81"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#dfba81"
+        },
+        "params": {
+          "thickness": 4,
+          "rounding": true,
+          "trackColor": "#bcb5aa",
+          "trackOpacity": 0.2,
+          "showThumb": true,
+          "thumbSize": 10,
+          "thumbColor": "#f1eee7",
+          "thumbShape": "circle",
+          "thumbBorderWidth": 0,
+          "thumbBorderColor": "#182331"
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "listening-room-counter",
+        "type": "counter",
+        "rect": {
+          "x": 0.846875,
+          "y": 0.6944444444444444,
+          "w": 0.078125,
+          "h": 0.044444444444444446
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#a8a39b"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#a8a39b"
+        },
+        "params": {
+          "counterIndex": false,
+          "counterHours": false,
+          "counterMinutes": true,
+          "counterSeconds": true,
+          "counterFraction": false,
+          "counterSubsecond": "milliseconds",
+          "counterFps": 30,
+          "counterDigits": 3,
+          "counterTimeSeparator": ":",
+          "counterFractionSeparator": ".",
+          "counterIndexSeparator": " ",
+          "counterMotion": "static",
+          "counterDuration": 150,
+          "counterWholeDigits": 2,
+          "counterZeroPad": true,
+          "counterBackgroundGlyphs": "none",
+          "counterBackgroundOpacity": 0.05,
+          "counterBackgroundColor": "#808080",
+          "counterBoxes": false,
+          "counterBoxColor": "#808080",
+          "counterBoxWidth": 1,
+          "counterBoxFill": "#000000",
+          "counterBoxOpacity": 0,
+          "counterBoxRadius": 0,
+          "counterWindowShading": false
+        },
+        "style": {
+          "fontSize": 21,
+          "fontFamily": "monospace",
+          "bold": false,
+          "italic": false,
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "listening-room-spectrum",
+        "type": "spectrum",
+        "rect": {
+          "x": 0.075,
+          "y": 0.8083333333333333,
+          "w": 0.85,
+          "h": 0.11666666666666667
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#655647"
+            },
+            {
+              "pos": 0.65,
+              "color": "#c7a879"
+            },
+            {
+              "pos": 1,
+              "color": "#eee2cc"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#dfba81",
+          "direction": "intensity"
+        },
+        "params": {
+          "dr": -78,
+          "pt": 12,
+          "sc": "log-hq",
+          "kb": false,
+          "kl": 100,
+          "mf": 22000,
+          "dm": "bar",
+          "quantizeBars": false,
+          "bc": 64,
+          "ds": 0,
+          "orientation": "horizontal",
+          "cf": 0.3,
+          "pk": false,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0.35,
+          "gainDb": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": [
+          {
+            "type": "opacity",
+            "enabled": true,
+            "amount": 0.72,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      }
+    ]
   }
 }

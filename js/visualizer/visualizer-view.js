@@ -14,6 +14,8 @@ import { VisualizerHistory, layoutSnapshot, snapshotLayout } from './visualizer-
 const NON_TEXT_INPUT_TYPES = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
 const isTextEntry = target => !!target && (target.isContentEditable || target.tagName === 'TEXTAREA' ||
     (target.tagName === 'INPUT' && !NON_TEXT_INPUT_TYPES.has(target.type)));
+const PLAYBACK_METHODS = { 'play-pause': 'togglePlayPause', stop: 'stop', previous: 'playPrevious', next: 'playNext',
+    shuffle: 'toggleShuffleMode', repeat: 'toggleRepeatMode' };
 
 export class VisualizerView {
     constructor(uiManager) {
@@ -67,12 +69,21 @@ export class VisualizerView {
         this.expandButton = this.root.querySelector('.visualizer-expand');
         this.stageHost.appendChild(this.expandButton);
         this.expandButton.addEventListener('click', () => this.setExpanded(!this.expanded));
+        this.createPlaybackControls(this.stage);
         this.stage.addEventListener('pointermove', event => {
             this.showControls();
-            this.stage.classList.toggle('lyrics-seekable', this.lyricsSeekTime(event) !== null || this.counterAt(event) !== null);
+            this.movePlaybackPointer(event);
+            this.moveSeekPointer(event);
+            const control = this.playbackControlAt(event);
+            this.playbackHoveredId = control?.id;
+            this.stage.classList.toggle('lyrics-seekable', !!control || !!this.seekBarAt(event) || this.lyricsSeekTime(event) !== null || this.counterAt(event) !== null);
         });
-        this.stage.addEventListener('pointerdown', event => { this.showControls(); this.beginCounterPointer(event); });
-        this.stage.addEventListener('click', event => { if (!this.resetCounterAt(event)) this.seekToLyrics(event); });
+        this.stage.addEventListener('pointerdown', event => { this.showControls(); this.beginPlaybackInteraction(event); });
+        this.stage.addEventListener('pointerup', event => this.finishSeekPointer(event));
+        this.stage.addEventListener('click', event => { if (!this.activatePlaybackControl(event) && !this.resetCounterAt(event)) this.seekToLyrics(event); });
+        this.stage.addEventListener('pointercancel', () => { this.clearPlaybackPointer(); this.cancelSeekPointer(); });
+        this.canvas.addEventListener('lostpointercapture', () => this.cancelSeekPointer());
+        this.stage.addEventListener('pointerleave', () => { this.playbackHoveredId = null; this.clearPlaybackPointer(); });
         this.stageHost.addEventListener('pointermove', () => this.showControls());
         this.stageHost.addEventListener('pointerdown', () => this.showControls());
         this.toolbar = this.root.querySelector('.visualizer-toolbar');
@@ -147,9 +158,15 @@ export class VisualizerView {
     fail(error) { console.error('Visualizer operation failed:', error); this.notice('visualizer.loadFailed', 'Visualizer could not be opened. Try again.'); }
     async initialize() {
         try {
-            const [saved, systems] = await Promise.all([this.store.loadCurrent(), this.store.loadSystemPresets()]);
-            this.systems = systems;
-            this.setLayout(saved || Object.values(systems['16:9'])[0]);
+            let layout = await this.store.loadCurrent();
+            if (!layout) {
+                this.systems = await this.store.loadSystemPresets();
+                layout = Object.values(this.systems['16:9'])[0];
+            }
+            // Keep the original stored data until an explicit edit, including fields
+            // or items this version cannot restore. Startup is a read-only operation.
+            this.replaceLayout(normalizeLayout(layout), false);
+            this.recordHistory();
         } catch (error) { this.fail(error); this.sources.setLayout(this.layout); }
     }
     setLayout(layout) {
@@ -158,10 +175,10 @@ export class VisualizerView {
         this.recordHistory();
     }
     // Shared by setLayout and Undo/Redo; restored snapshots skip normalization so redo entries survive.
-    replaceLayout(layout) {
+    replaceLayout(layout, persist = true) {
         this.layout = layout;
         this.editor.resetForLayout();
-        this.applyLayout();
+        this.applyLayout(persist);
         if (this.editor.open) this.editor.render();
         this.editor.updateSelection();
     }
@@ -217,12 +234,12 @@ export class VisualizerView {
         if (continuing) this.historyPending = true;
         else this.recordHistory();
     }
-    applyLayout() {
+    applyLayout(persist = true) {
         this.hasLyrics = this.layout.items.some(item => item.type === 'lyrics');
         this.counters();
         this.video.setEnabled(this.layout.items.some(item => item.type === 'video'));
         this.sources.setLayout(this.layout);
-        this.store.saveCurrent(this.layout);
+        if (persist) this.store.saveCurrent(this.layout);
         this.stage.style.aspectRatio = this.layout.aspect.replace(':', '/');
     }
     recordHistory() {
@@ -282,6 +299,7 @@ export class VisualizerView {
         this.setEditing(false);
         this.setExpanded(false, { fromHistory: true });
         this.visible = false;
+        if (this.playbackControls) this.syncPlaybackControls(this, this.playback(), false);
         clearTimeout(this.controlsTimer);
         cancelAnimationFrame(this.frameRequest); this.frameRequest = null;
         this.sources.setVisible(!!this.feed?.visible);
@@ -296,6 +314,8 @@ export class VisualizerView {
         if (open) this.editor.navigation.insertBefore(this.qualityLabel, this.editor.navigationContent);
         else this.toolbar.appendChild(this.qualityLabel);
         this.editButton.setAttribute('aria-pressed', String(open));
+        this.syncPlaybackControls();
+        if (this.feed) this.syncPlaybackControls(this.feed);
     }
     setHdrEnabled(enabled) {
         this.hdr = enabled === true;
@@ -344,6 +364,7 @@ export class VisualizerView {
         const hostHidden = this.sources.hostHidden ?? this.uiManager.audioManager.powerPolicyController?.hostHidden;
         const visible = document.body.classList.contains('view-visualizer') && !document.hidden && !hostHidden && !this.uiManager.isDoubleBlindActive();
         this.visible = visible;
+        if (this.playbackControls) this.syncPlaybackControls(this, this.playback(), visible);
         this.sources.setVisible(visible || !!this.feed?.visible);
         this.video.setActive(visible || !!this.feed?.visible);
         if (visible && !this.frameRequest) this.frameRequest = requestAnimationFrame(time => this.frame(time));
@@ -372,6 +393,205 @@ export class VisualizerView {
         const position = snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
         return { data, time: this.uiManager.audioManager.getAudiblePlaybackPosition(position, snapshot.playbackSpeed),
             duration: snapshot.currentTrackDuration, isStopped: snapshot.isStopped };
+    }
+    playbackTarget() { return this.uiManager.getPlaybackTarget?.() ?? this.uiManager.audioPlayer; }
+    playbackLabels(playing, repeat) {
+        return {
+            'play-pause': this.t(playing ? 'visualizer.playback.pause' : 'visualizer.playback.play', playing ? 'Pause' : 'Play'),
+            stop: this.t('ui.title.stop', 'Stop'), previous: this.t('ui.title.prevTrack', 'Previous track'),
+            next: this.t('ui.title.nextTrack', 'Next track'), shuffle: this.t('ui.title.shuffle', 'Toggle shuffle'),
+            repeat: this.t(`visualizer.playback.repeat${repeat === 'ONE' ? 'One' : repeat === 'ALL' ? 'All' : 'Off'}`, `Repeat ${repeat.toLowerCase()}`)
+        };
+    }
+    playback(target = this.playbackTarget(), owner = this) {
+        const state = target?.ui?.container ? target.stateManager?.getStateSnapshot?.() : null;
+        const present = !!state;
+        const available = !!state && state.controlsEnabled !== false &&
+            (target.isRemote || !!state.currentTrack || state.playlistLength > 0);
+        const enabled = Object.fromEntries(Object.entries(PLAYBACK_METHODS).map(([action, method]) => {
+            const receiver = action === 'shuffle' || action === 'repeat' ? target?.playbackManager : target;
+            const capability = action === 'play-pause' ? (state?.isPlaying ? 'pause' : 'play') : action;
+            return [action, !!available && typeof receiver?.[method] === 'function' &&
+                (!state.transportCapabilities || state.transportCapabilities[capability] === true) &&
+                !(action === 'shuffle' && state.repeatMode === 'ONE')];
+        }));
+        const duration = Number.isFinite(state?.currentTrackDuration) && state.currentTrackDuration > 0 ? state.currentTrackDuration : 0;
+        const currentTime = state?.isPlaying ? target.contextManager?.getCurrentPlaybackTime?.() : state?.currentTrackPosition;
+        const position = Math.max(0, Math.min(duration, Number.isFinite(currentTime) ? currentTime : 0));
+        const seek = this.seekGesture || owner.seekGesture || this.feed?.seekGesture;
+        return { available: present, playing: !!state?.isPlaying, stopped: !state || !!state.isStopped,
+            shuffle: !!state?.shuffleMode, repeat: state?.repeatMode || 'OFF', enabled,
+            position, duration, seekEnabled: !!available && duration > 0 && state.seekBarEnabled === true &&
+                typeof target.contextManager?.seek === 'function' && (!state.transportCapabilities || state.transportCapabilities.seek === true),
+            seekingId: seek?.id, seekPosition: seek ? seek.value * duration : undefined,
+            labels: this.playbackLabels(!!state?.isPlaying, state?.repeatMode || 'OFF'),
+            focusedId: this.playbackFocusedId || owner.playbackFocusedId || this.feed?.playbackFocusedId,
+            hoveredId: this.playbackHoveredId || owner.playbackHoveredId || this.feed?.playbackHoveredId,
+            pressedId: this.playbackPressedId || owner.playbackPressedId || this.feed?.playbackPressedId };
+    }
+    runPlaybackAction(action) {
+        const target = this.playbackTarget();
+        if (this.editor.open || !this.playback(target).enabled[action]) return Promise.resolve(false);
+        const receiver = action === 'shuffle' || action === 'repeat' ? target.playbackManager : target;
+        const command = () => receiver[PLAYBACK_METHODS[action]]();
+        // The shared executor invokes local commands on the click stack, preserving the audio gesture.
+        return target.playbackManager.runPlaybackCommand(command);
+    }
+    playbackItemAt(event, owner = this) {
+        if (this.editor.open || !this.playback().available || event.target?.closest?.('button, input')) return null;
+        const rect = owner.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return owner.renderer.playbackItemAt?.(this.layout,
+            (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height) ?? null;
+    }
+    playbackControlAt(event, owner = this) {
+        const hit = this.playbackItemAt(event, owner);
+        return hit?.action ? hit : null;
+    }
+    beginPlaybackInteraction(event, owner = this) {
+        const hit = this.playbackItemAt(event, owner);
+        if (!this.beginSeekPointer(event, owner, hit && 'value' in hit ? hit : null)) {
+            this.beginCounterPointer(event);
+            this.beginPlaybackPointer(event, owner, hit?.action ? hit : null);
+        }
+    }
+    beginPlaybackPointer(event, owner = this, hit = this.playbackControlAt(event, owner)) {
+        if (event.button > 0) hit = null;
+        owner.playbackPointer = { x: event.clientX, y: event.clientY, id: hit?.id, editing: this.editor.open };
+        owner.playbackPressedId = hit?.id;
+    }
+    clearPlaybackPointer(owner = this) { owner.playbackPointer = null; owner.playbackPressedId = null; }
+    movePlaybackPointer(event, owner = this) {
+        const start = owner.playbackPointer;
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) {
+            start.moved = true;
+            owner.playbackPressedId = null;
+        }
+    }
+    activatePlaybackControl(event, owner = this) {
+        if (owner.seekClick) { owner.seekClick = false; return true; }
+        const start = owner.playbackPointer, hit = this.playbackControlAt(event, owner);
+        this.clearPlaybackPointer(owner);
+        if (!hit) return false;
+        // Consume disabled controls too, so a control cannot seek lyrics or reset a counter behind it.
+        if (!event.defaultPrevented && start?.id === hit.id && !start.editing && !start.moved &&
+            Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 5) {
+            void this.runPlaybackAction(hit.action);
+        }
+        return true;
+    }
+    seekBarAt(event, owner = this) {
+        const hit = this.playbackItemAt(event, owner);
+        return hit && 'value' in hit ? hit : null;
+    }
+    seekPlayback(value, expectedTarget = this.playbackTarget(), expectedTrack = expectedTarget?.stateManager?.getStateSnapshot?.().currentTrack) {
+        const target = this.playbackTarget(), playback = this.playback(target);
+        if (this.editor.open || !playback.seekEnabled || !Number.isFinite(value) || target !== expectedTarget ||
+            target.stateManager.getStateSnapshot().currentTrack !== expectedTrack) return Promise.resolve(false);
+        return target.playbackManager.runPlaybackCommand(() => {
+            target.resumeAudioContextInGesture?.();
+            return target.contextManager.seek(Math.max(0, Math.min(1, value)) * playback.duration);
+        });
+    }
+    beginSeekPointer(event, owner = this, hit = this.seekBarAt(event, owner)) {
+        if (owner.seekGesture) return true;
+        owner.seekClick = false;
+        if (event.button > 0) return false;
+        if (!hit) return false;
+        owner.seekClick = true;
+        if (!this.playback().seekEnabled) return true;
+        const target = this.playbackTarget();
+        owner.seekGesture = { id: hit.id, value: hit.value, pointerId: event.pointerId, target,
+            track: target.stateManager.getStateSnapshot().currentTrack };
+        owner.canvas.setPointerCapture?.(event.pointerId);
+        event.preventDefault?.();
+        return true;
+    }
+    moveSeekPointer(event, owner = this) {
+        const seek = owner.seekGesture;
+        if (!seek || seek.pointerId !== event.pointerId) return;
+        const rect = owner.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const value = owner.renderer.seekBarValue(this.layout, seek.id,
+            (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+        if (Number.isFinite(value)) seek.value = Math.max(0, Math.min(1, value));
+    }
+    finishSeekPointer(event, owner = this) {
+        const seek = owner.seekGesture;
+        if (!seek || seek.pointerId !== event.pointerId) return;
+        this.moveSeekPointer(event, owner);
+        this.cancelSeekPointer(owner);
+        void this.seekPlayback(seek.value, seek.target, seek.track);
+    }
+    cancelSeekPointer(owner = this) {
+        const seek = owner.seekGesture;
+        owner.seekGesture = null;
+        if (seek && owner.canvas.hasPointerCapture?.(seek.pointerId)) owner.canvas.releasePointerCapture(seek.pointerId);
+    }
+    createPlaybackControls(host, owner = this) {
+        const group = host.ownerDocument.createElement('div');
+        group.className = 'visualizer-playback-accessibility';
+        // Native buttons preserve Tab, Enter, and Space activation; focus is drawn on the canvas item.
+        group.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)';
+        host.appendChild(group);
+        owner.playbackControls = group;
+        owner.playbackButtons = new Map();
+    }
+    syncPlaybackControls(owner = this, playback = this.playback(undefined, owner), active = true) {
+        if (!owner.playbackControls) return;
+        const shown = playback.available && !this.editor.open && active;
+        if (!shown) {
+            owner.playbackFocusedId = null;
+            owner.playbackHoveredId = null;
+            this.clearPlaybackPointer(owner);
+            this.cancelSeekPointer(owner);
+        }
+        const items = shown ? this.layout.items.filter(item => item.type === 'playback-control' || item.type === 'seek-bar') : [];
+        if (owner.canvas?.style) owner.canvas.style.touchAction = items.some(item => item.type === 'seek-bar') ? 'none' : '';
+        const ids = new Set(items.map(item => item.id));
+        if (owner.seekGesture && (!ids.has(owner.seekGesture.id) || !playback.seekEnabled)) this.cancelSeekPointer(owner);
+        for (const [id, button] of owner.playbackButtons) {
+            if (!ids.has(id)) { button.remove(); owner.playbackButtons.delete(id); }
+        }
+        for (const item of items) {
+            const range = item.type === 'seek-bar';
+            let button = owner.playbackButtons.get(item.id);
+            if (!button) {
+                button = owner.playbackControls.ownerDocument.createElement(range ? 'input' : 'button');
+                button.type = range ? 'range' : 'button';
+                button.addEventListener('focus', () => { owner.playbackFocusedId = item.id; this.showControls(); });
+                button.addEventListener('blur', () => { if (owner.playbackFocusedId === item.id) owner.playbackFocusedId = null; });
+                button.addEventListener('click', event => {
+                    event.stopPropagation();
+                    const current = this.layout.items.find(value => value.id === item.id);
+                    if (current && !range) void this.runPlaybackAction(current.params.action);
+                });
+                if (range) {
+                    button.min = '0'; button.step = '1';
+                    button.addEventListener('keydown', event => event.stopPropagation());
+                    button.addEventListener('change', () => void this.seekPlayback(Number(button.value) / Number(button.max)));
+                }
+                owner.playbackButtons.set(item.id, button);
+            }
+            const action = item.params.action;
+            if (range) {
+                button.setAttribute('aria-label', this.t('visualizer.type.seek-bar', 'Seek Bar'));
+                button.max = String(playback.duration || 1);
+                button.value = String(playback.position);
+                button.setAttribute('aria-valuetext', [playback.position, playback.duration].map(seconds =>
+                    `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`).join(' / '));
+                button.disabled = !playback.seekEnabled;
+            } else {
+                if (button.textContent !== playback.labels[action]) button.textContent = playback.labels[action];
+                button.disabled = !playback.enabled[action];
+            }
+            if (action === 'shuffle') button.setAttribute('aria-pressed', String(playback.shuffle));
+            else button.removeAttribute('aria-pressed');
+            // Append only when the layout order changed, keeping keyboard focus stable during playback.
+            const index = items.indexOf(item);
+            if (owner.playbackControls.children[index] !== button) owner.playbackControls.insertBefore(button, owner.playbackControls.children[index] || null);
+        }
+        if (!ids.has(owner.playbackFocusedId) || this.editor.open || !active) owner.playbackFocusedId = null;
     }
     counters(now = performance.now()) {
         const items = this.layout.items.filter(item => item.type === 'counter');
@@ -451,8 +671,10 @@ export class VisualizerView {
         const height = editSize?.height ?? width / aspect;
         this.stage.style.width = `${Math.max(1, width)}px`; this.stage.style.height = `${Math.max(1, height)}px`;
         const state = this.sources.getStatus();
-        // Share the clean feed's composition when both displays use the same dynamic range.
-        const feed = state === 'ready' && this.feed?.visible ? this.feed.canvas : null;
+        const playback = this.playback();
+        this.syncPlaybackControls(this, playback, state === 'ready');
+        // Edit has its own previews; only presentation can share the clean feed composition.
+        const feed = !this.editor.open && state === 'ready' && this.feed?.visible ? this.feed.canvas : null;
         const dpr = Math.min(window.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
         // Edit zoom enlarges the CSS artboard independently of raster size. Cap its longest
         // raster edge so portrait artboards at 400% cannot allocate enormous effect layers.
@@ -464,7 +686,7 @@ export class VisualizerView {
             if (!this.noticeActive) this.status.hidden = true;
             else if (this.status.textContent !== this.noticeText) this.status.textContent = this.noticeText;
             if (!feed || !this.renderer.copyFrom(this.feed.renderer, { hdr: this.hdr })) {
-                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, hdr: this.hdr, lyrics: this.lyrics(), video: this.videoFrame(), counters: this.counters() });
+                this.renderer.draw(this.layout, this.sources, this.metadata(), milliseconds / 1000, { editing: this.editor.open, quality: this.quality, hdr: this.hdr, lyrics: this.lyrics(), video: this.videoFrame(), counters: this.counters(), playback });
             }
         } else {
             this.renderer.clear();

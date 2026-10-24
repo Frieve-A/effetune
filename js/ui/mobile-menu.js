@@ -62,7 +62,7 @@ export class MobileMenu {
             this.panel.appendChild(this.createLocalizedAction('dialog.config.title', 'Config', () => this.uiManager.stateManager?.openConfig?.()));
             this.panel.appendChild(this.createLocalizedAction('dialog.audioConfig.title', 'Audio Configuration', () => this.uiManager.stateManager?.openAudioConfig?.()));
             this.panel.appendChild(this.createLocalizedAction('menu.settings.performanceBenchmark', 'Performance Benchmark', () => this.uiManager.stateManager?.openFeaturePage?.('features/effetune_bench.html')));
-            this.panel.appendChild(this.createLocalizedAction('menu.settings.frequencyResponseMeasurement', 'Frequency Response Measurement', () => this.uiManager.stateManager?.openFeaturePage?.('features/measurement/measurement.html')));
+            this.panel.appendChild(this.createLocalizedAction('menu.settings.frequencyResponseMeasurement', 'Acoustic Measurement', () => this.uiManager.stateManager?.openFeaturePage?.('features/measurement/measurement.html')));
             this.panel.appendChild(this.createLocalizedAction('menu.settings.backupRestore', 'Backup / Restore', () => this.uiManager.stateManager?.openBackupRestore?.()));
             this.panel.appendChild(this.createLocalizedAction('ui.resetButton', 'Reset Audio', () => this.uiManager.stateManager?.resetAudio?.()));
             this.panel.appendChild(this.createLocalizedAction('ui.shareButton', 'Share', () => document.getElementById('shareButton')?.click()));

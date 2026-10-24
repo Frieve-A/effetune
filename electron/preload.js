@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+async function invokeNetworkMusic(method, request = {}) {
+  const response = await ipcRenderer.invoke(`network-music:${method}`, request);
+  if (response?.networkMusicError) {
+    throw Object.assign(new Error(response.networkMusicError.message), { code: response.networkMusicError.code });
+  }
+  return response;
+}
+
 const libraryCatalogV1 = Object.freeze({
   apiVersion: 1,
   getCapabilities: () => ipcRenderer.invoke('library-catalog-v1:get-capabilities', {}),
@@ -174,7 +182,7 @@ const openHomeV1 = Object.freeze({
     return ipcRenderer.invoke('openhome-v1:set-enabled', { enabled });
   },
   setFriendlyName: friendlyName => {
-    if (typeof friendlyName !== 'string') throw new TypeError('OpenHome player name must be a string');
+    if (typeof friendlyName !== 'string') throw new TypeError('Network device name must be a string');
     return ipcRenderer.invoke('openhome-v1:set-friendly-name', { friendlyName });
   },
   rendererReady: () => ipcRenderer.invoke('openhome-v1:renderer-ready', {}),
@@ -219,6 +227,8 @@ function withoutOpenHomeOwnedConfig(config) {
     openHomeRemoteControl: _openHomeRemoteControl,
     openHomeDeviceId: _openHomeDeviceId,
     openHomeFriendlyName: _openHomeFriendlyName,
+    networkMusicDeviceId: _networkMusicDeviceId,
+    networkMusicSharing: _networkMusicSharing,
     // Owned by the remote-control host in main (Settings > Remote Control).
     remoteControlEnabled: _remoteControlEnabled,
     remoteControlToken: _remoteControlToken,
@@ -304,6 +314,7 @@ contextBridge.exposeInMainWorld(
       saveSettings: value => ipcRenderer.invoke('browser:save-settings', value),
       clearSiteData: () => ipcRenderer.invoke('browser:clear-site-data'),
       onState: callback => addSingleArgIpcListener('browser:state', callback),
+      onCommand: callback => addSingleArgIpcListener('browser:command', callback),
       onFocusAddress: callback => addSingleArgIpcListener('browser:focus-address', callback)
     }),
 
@@ -316,7 +327,13 @@ contextBridge.exposeInMainWorld(
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     readTrackLyrics: request => ipcRenderer.invoke('read-track-lyrics', request),
     readTrackTags: filePath => ipcRenderer.invoke('read-track-tags', filePath),
-    getPathForFile: file => webUtils.getPathForFile(file),
+    getPathForFile: file => {
+      const filePath = webUtils.getPathForFile(file);
+      if (filePath && !ipcRenderer.sendSync('grant-dropped-file', filePath)) {
+        throw new Error('This file could not be opened. Select it again.');
+      }
+      return filePath;
+    },
     readFileBytes: (filePath, expectedByteLength) => {
       if (expectedByteLength === undefined) {
         return ipcRenderer.invoke('read-file-bytes', filePath);
@@ -334,6 +351,7 @@ contextBridge.exposeInMainWorld(
     abortAtomicFileWrite: (token) => ipcRenderer.invoke('abort-atomic-file-write', token),
     readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
     writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
+    writeClipboardImage: (bytes) => ipcRenderer.invoke('write-clipboard-image', bytes),
 
     // Versioned, bounded music catalog API. Filesystem grants remain brokered by the main process.
     libraryCatalogV1,
@@ -356,6 +374,27 @@ contextBridge.exposeInMainWorld(
 
     // Versioned OpenHome bridge exposes only bounded player actions and state snapshots.
     openHomeV1,
+
+    networkMusicGetState: request => invokeNetworkMusic('GetState', request),
+    networkMusicDiscover: () => invokeNetworkMusic('Discover'),
+    networkMusicBrowse: request => invokeNetworkMusic('Browse', request),
+    networkMusicGetPlayerState: request => invokeNetworkMusic('GetPlayerState', request),
+    networkMusicPlayerCommand: request => invokeNetworkMusic('PlayerCommand', request),
+    networkMusicResolveTrack: request => invokeNetworkMusic('ResolveTrack', request),
+    networkMusicSetSharing: request => invokeNetworkMusic('SetSharing', request),
+    networkMusicPlaySelection: request => invokeNetworkMusic('PlaySelection', request),
+    networkMusicPlayFiles: request => invokeNetworkMusic('PlayFiles', request),
+    onNetworkMusicState: callback => addSingleArgIpcListener('network-music:state', callback),
+    remoteClient: Object.freeze({
+      getConnection: playerId => ipcRenderer.invoke('remote-client:get-connection', playerId),
+      requestConnection: (playerId, requestId) => ipcRenderer.invoke('remote-client:request-connection', playerId, requestId),
+      cancelConnectionRequest: requestId => ipcRenderer.invoke('remote-client:cancel-connection-request', requestId),
+      saveConnection: (playerId, link) => ipcRenderer.invoke('remote-client:save-connection', playerId, link),
+      connect: playerId => ipcRenderer.invoke('remote-client:connect', playerId),
+      send: (connectionId, data) => ipcRenderer.invoke('remote-client:send', connectionId, data),
+      disconnect: connectionId => ipcRenderer.invoke('remote-client:disconnect', connectionId),
+      onEvent: callback => addSingleArgIpcListener('remote-client:event', callback)
+    }),
 
     remoteV1,
     

@@ -5,7 +5,7 @@ const { createBrowserController, normalizeBrowserURL, normalizeBrowserSettings, 
 const RUNTIME_USER_AGENT = 'Mozilla/5.0 EffeTune/2.15.0 Chrome/152.0.0.0 Electron/44.5.1 Safari/537.36';
 const DEFAULT_USER_AGENT = RUNTIME_USER_AGENT.replace(/\sElectron\/\S+/g, '');
 
-function harness(t, { deferInitialLoad = false, allowStartupCapture = false, components, settings: initialSettings, saveFailure = false, runtimeUserAgent = RUNTIME_USER_AGENT } = {}) {
+function harness(t, { deferInitialLoad = false, allowStartupCapture = false, components, themePreset, settings: initialSettings, saveFailure = false, runtimeUserAgent = RUNTIME_USER_AGENT } = {}) {
   const ipc = new EventEmitter();
   const handlers = new Map();
   ipc.handle = (name, fn) => handlers.set(name, fn);
@@ -32,7 +32,13 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
       setUserAgent(value) { wc.userAgent = value; },
       setAudioMuted(value) { wc.muted = value; },
       setWindowOpenHandler(fn) { wc.open = fn; },
-      loads: [],
+      loads: [], styles: new Map(), nextStyle: 0,
+      async insertCSS(css, options) {
+        const key = String(++wc.nextStyle);
+        wc.styles.set(key, { css, options });
+        return key;
+      },
+      async removeInsertedCSS(key) { wc.styles.delete(key); },
       async loadURL(url) {
         wc.loads.push(url);
         if (deferInitialLoad && url === 'about:blank') {
@@ -55,6 +61,8 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
   const mainWindow = new EventEmitter();
   const views = [];
   const externalURLs = [];
+  const menus = [];
+  const copied = [];
   Object.assign(mainWindow, {
     webContents: trusted, isDestroyed: () => false,
     getContentBounds: () => ({ width: 1000, height: 800 }),
@@ -62,7 +70,10 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
   });
   let settings = initialSettings || { bookmarks: [], startPage: '' };
   const controller = createBrowserController({
-    mainWindow, ipcMain: ipc, allowStartupCapture, components,
+    mainWindow, ipcMain: ipc, allowStartupCapture, components, themePreset,
+    translate: key => key,
+    clipboard: { writeText: text => copied.push(text) },
+    Menu: { buildFromTemplate(items) { return { popup: options => menus.push({ items, options }) }; } },
     shell: { async openExternal(url) { externalURLs.push(url); } },
     session: { fromPartition(name) { assert.equal(name, PARTITION); return partition; } },
     WebContentsView: class {
@@ -89,8 +100,103 @@ function harness(t, { deferInitialLoad = false, allowStartupCapture = false, com
     await mediaSession.handler({ frame: trusted.mainFrame, userGesture: true, videoRequested: true, audioRequested: true, ...changes }, value => { streams = value; });
     return streams;
   };
-  return { controller, ipc, handlers, trusted, mainWindow, views, partition, mediaSession, invoke, prepare, capture, contents, externalURLs };
+  return { controller, ipc, handlers, trusted, mainWindow, views, partition, mediaSession, invoke, prepare, capture, contents, externalURLs, menus, copied };
 }
+
+test('browser page shortcuts are scoped to visible pages and leave unrelated app keys alone', async t => {
+  const h = harness(t);
+  await h.invoke('navigate', 'https://example.com/');
+  const wc = h.views[0].webContents;
+  const sent = [];
+  h.trusted.send = (channel, value) => { if (channel === 'browser:command') sent.push(value); };
+  const press = input => {
+    let prevented = false;
+    wc.emit('before-input-event', { preventDefault() { prevented = true; } }, { type: 'keyDown', ...input });
+    return prevented;
+  };
+  assert.equal(press({ key: 'F5' }), false);
+  await h.invoke('set-presentation', { visible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } });
+  assert.equal(press({ key: 'r', control: true }), true);
+  assert.deepEqual(sent.pop(), { action: 'reload' });
+  assert.equal(press({ key: 'l', meta: true }), true);
+  assert.deepEqual(sent.pop(), { action: 'address' });
+  assert.equal(press({ key: 'F5', type: 'keyUp' }), false);
+  for (const key of ['s', 'o', 'e', 'c', 'v', 'z', '0']) assert.equal(press({ key, control: true }), false);
+  assert.equal(press({ key: 'Escape' }), false);
+  wc.isLoading = () => true;
+  assert.equal(press({ key: 'Escape' }), true);
+  assert.deepEqual(sent.pop(), { action: 'stop' });
+  wc.emit('enter-html-full-screen');
+  assert.equal(press({ key: 'Escape' }), false);
+});
+
+test('browser context menus validate links and edit the browser page without invoking pipeline commands', async t => {
+  const h = harness(t);
+  await h.invoke('navigate', 'https://example.com/');
+  await h.invoke('set-presentation', { visible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } });
+  const wc = h.views[0].webContents;
+  const sent = [];
+  h.trusted.send = (channel, value) => { if (channel === 'browser:command') sent.push(value); };
+  const linkURL = 'https://example.com/music';
+  wc.emit('context-menu', {}, { linkURL, isEditable: true, editFlags: { canCopy: true, canPaste: true } });
+  const menu = h.menus.at(-1);
+  assert.equal(menu.options.window, h.mainWindow);
+  const item = label => menu.items.find(entry => entry.label === label);
+  assert.equal(item('browser.back').enabled, false);
+  item('browser.openLink').click();
+  assert.deepEqual(sent.pop(), { action: 'navigate', url: linkURL });
+  item('browser.openLinkExternal').click();
+  assert.deepEqual(h.externalURLs, [linkURL]);
+  item('browser.copyLink').click();
+  assert.deepEqual(h.copied, [linkURL]);
+  let copies = 0;
+  wc.copy = () => { copies++; };
+  item('menu.edit.copy').click();
+  assert.equal(copies, 1);
+  assert.equal(item('menu.edit.cut').enabled, false);
+  for (const url of ['javascript:alert(1)', 'file:///secret', 'https://user:password@example.com']) {
+    wc.emit('context-menu', {}, { linkURL: url });
+    assert.equal(h.menus.at(-1).items.some(entry => entry.label === 'browser.openLinkExternal'), false);
+  }
+  wc.destroyed = true;
+  item('menu.edit.copy').click();
+  assert.equal(copies, 1);
+});
+
+test('Browser scrollbars follow theme changes and navigation with overridable, replaced styles', async t => {
+  const { THEME_PRESETS } = await import('../../js/theme-registry.mjs');
+  const h = harness(t, { themePreset: THEME_PRESETS[0] });
+  await h.invoke('navigate', 'https://example.com/');
+  const wc = h.views[0].webContents;
+  wc.emit('dom-ready');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(wc.styles.size, 1);
+  assert.ok([...wc.styles.values()][0].css.includes(THEME_PRESETS[0].windowBackground));
+  const child = new EventEmitter();
+  child.webContents = h.contents();
+  child.isDestroyed = () => false;
+  child.destroy = () => {};
+  child.setMenu = child.setTitle = () => {};
+  wc.emit('did-create-window', child);
+  for (const preset of THEME_PRESETS.slice(1)) {
+    await h.controller.updateTheme(preset);
+    for (const page of [wc, child.webContents]) {
+      assert.equal(page.styles.size, 1);
+      const { css, options } = [...page.styles.values()][0];
+      assert.ok(css.includes(preset.windowBackground));
+      assert.ok(css.includes(preset.windowForeground));
+      assert.equal(options.cssOrigin, 'user');
+      assert.doesNotMatch(css, /!important/);
+    }
+  }
+  await Promise.all(THEME_PRESETS.map(preset => h.controller.updateTheme(preset)));
+  wc.styles.clear();
+  wc.emit('dom-ready');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(wc.styles.size, 1);
+  assert.ok([...wc.styles.values()][0].css.includes(THEME_PRESETS.at(-1).windowBackground));
+  assert.deepEqual(wc.loads, ['about:blank', 'https://example.com/']);
+});
 
 test('Browser accepts HTTP and HTTPS addresses and validates stored bookmarks', () => {
   assert.equal(normalizeBrowserURL('example.com/music'), 'https://example.com/music');
@@ -99,7 +205,7 @@ test('Browser accepts HTTP and HTTPS addresses and validates stored bookmarks', 
     assert.equal(normalizeBrowserURL(url), null);
   }
   assert.deepEqual(normalizeBrowserSettings({ bookmarks: [{ name: ' Music ', url: 'example.com' }, { name: 'bad', url: 'file:///x' }], startPage: 'javascript:x' }), {
-    bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: '', userAgent: '', openTabsExternally: true
+    bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: '', userAgent: '', openTabsExternally: true, urlRules: []
   });
   assert.equal(normalizeBrowserSettings(undefined).startPage, '');
 });
@@ -159,7 +265,7 @@ test('Browser User-Agent is saved independently and updates owned pages without 
   const settings = { bookmarks: [{ name: 'Music', url: 'https://example.com/' }], startPage: 'https://example.com/' };
   await h.invoke('save-settings', settings);
   const saved = await h.invoke('save-settings', { userAgent: ' Desktop Browser/1.0 ' });
-  assert.deepEqual(saved.settings, { ...settings, userAgent: 'Desktop Browser/1.0', openTabsExternally: true });
+  assert.deepEqual(saved.settings, { ...settings, userAgent: 'Desktop Browser/1.0', openTabsExternally: true, urlRules: [] });
   assert.equal(h.partition.userAgent, 'Desktop Browser/1.0');
   assert.equal(wc.userAgent, 'Desktop Browser/1.0');
   assert.equal(child.webContents.userAgent, 'Desktop Browser/1.0');
@@ -297,7 +403,10 @@ test('Browser lazily isolates remote pages and rejects foreign/subframe IPC and 
   h.prepare();
   const wc = h.views[0].webContents;
   assert.equal(wc.muted, true);
-  assert.equal(h.views[0].options.webPreferences.preload, undefined);
+  assert.equal(h.views[0].options.webPreferences.preload,
+    require('node:path').resolve(__dirname, '../../electron/browser-fullscreen-preload.js'));
+  assert.equal(h.views[0].options.webPreferences.contextIsolation, true);
+  assert.equal(h.views[0].options.webPreferences.nodeIntegration, false);
   assert.equal(h.views[0].options.webPreferences.sandbox, true);
   for (const permission of ['media', 'microphone', 'display-capture', 'notifications', 'midi', 'geolocation', 'local-network', 'fileSystem']) {
     assert.equal(h.partition.check(wc, permission, 'https://example.com'), false);
@@ -543,4 +652,21 @@ test('Browser startup permits only its first reserved trusted capture without a 
   h.prepare();
   assert.deepEqual(await h.capture({ userGesture: false }), {});
   assert.equal((await h.capture()).audio, h.views[0].webContents.mainFrame);
+});
+const browserRules = [{ pattern: '*.example.com/music/*', preset: 'Music', enabled: true }];
+test('Browser URL rules persist independently, reject invalid edits and retain other Browser settings', async t => {
+  const h = harness(t, { settings: { startPage: 'https://example.com/', userAgent: 'Saved Browser' } });
+  await h.invoke('navigate', 'https://example.com/current');
+  const before = h.controller.getState();
+  const saved = await h.invoke('save-settings', { urlRules: browserRules });
+  assert.deepEqual(saved.settings.urlRules, browserRules);
+  assert.equal(saved.settings.startPage, before.settings.startPage);
+  assert.equal(saved.url, before.url);
+  assert.equal(saved.captureGeneration, before.captureGeneration);
+  for (const urlRules of [null, {}, [{ ...browserRules[0], pattern: 'https://example.com/*' }], [{ ...browserRules[0], enabled: 'yes' }]]) {
+    assert.deepEqual(await h.invoke('save-settings', { urlRules }), { ok: false, error: 'invalidRules' });
+    assert.deepEqual(h.controller.getState().settings.urlRules, browserRules);
+  }
+  assert.deepEqual((await h.invoke('save-settings', { userAgent: '' })).settings.urlRules, browserRules);
+  assert.deepEqual(normalizeBrowserSettings({ urlRules: [{ pattern: 3 }] }).urlRules, []);
 });

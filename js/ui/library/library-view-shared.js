@@ -29,6 +29,10 @@ export const PLAYLIST_PICKER_FOCUS_TIMEOUT_MS = 1000;
 
 export const LIBRARY_SEARCH_DEBOUNCE_MS = 100;
 
+export function getLibraryEnterOperation(event) {
+  return event.ctrlKey || event.metaKey ? 'queue' : event.shiftKey ? 'playNext' : 'play';
+}
+
 export const DETAIL_VIEW_BY_TYPE = Object.freeze({
   album: 'albums',
   artist: 'artists',

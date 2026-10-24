@@ -23,17 +23,29 @@ export class VisualizerFeed {
         this.hdrCanvas.setAttribute('aria-hidden', 'true');
         doc.body.appendChild(this.hdrCanvas);
         this.renderer = new VisualizerRenderer(this.canvas, { hdrCanvas: this.hdrCanvas });
-        this.canvas.addEventListener('pointerdown', event => view.beginCounterPointer(event));
-        this.canvas.addEventListener('click', event => view.resetCounterAt(event, this.canvas, this.renderer));
-        this.canvas.addEventListener('pointermove', event => {
-            this.canvas.style.cursor = view.counterAt(event, this.canvas, this.renderer) === null ? '' : 'pointer';
+        view.createPlaybackControls(doc.body, this);
+        this.canvas.addEventListener('pointerdown', event => view.beginPlaybackInteraction(event, this));
+        this.canvas.addEventListener('pointerup', event => view.finishSeekPointer(event, this));
+        this.canvas.addEventListener('click', event => {
+            if (!view.activatePlaybackControl(event, this)) view.resetCounterAt(event, this.canvas, this.renderer);
         });
+        this.canvas.addEventListener('pointermove', event => {
+            view.movePlaybackPointer(event, this);
+            view.moveSeekPointer(event, this);
+            const control = view.playbackControlAt(event, this);
+            this.playbackHoveredId = control?.id;
+            this.canvas.style.cursor = control || view.seekBarAt(event, this) || view.counterAt(event, this.canvas, this.renderer) !== null ? 'pointer' : '';
+        });
+        this.canvas.addEventListener('pointercancel', () => { view.clearPlaybackPointer(this); view.cancelSeekPointer(this); });
+        this.canvas.addEventListener('lostpointercapture', () => view.cancelSeekPointer(this));
+        this.canvas.addEventListener('pointerleave', () => { this.playbackHoveredId = null; view.clearPlaybackPointer(this); });
     }
 
     get closed() { return !this.window || this.window.closed; }
 
     setVisible(visible) {
         this.visible = visible === true && !this.closed;
+        this.view.syncPlaybackControls(this, this.view.playback(undefined, this), this.visible);
         if (this.visible && !this.frameRequest) this.frameRequest = this.window.requestAnimationFrame(time => this.frame(time));
     }
 
@@ -48,8 +60,10 @@ export class VisualizerFeed {
         const dpr = Math.min(feed.devicePixelRatio || 1, this.renderer.quality >= 3 ? 1 : 2);
         const cw = Math.max(1, Math.round(width * dpr)), ch = Math.max(1, Math.round(height * dpr));
         if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
-        if (sources.getStatus() === 'ready') {
-            this.renderer.draw(layout, sources, this.view.metadata(), milliseconds / 1000, { quality: this.view.quality, hdr: this.view.hdr, lyrics: this.view.lyrics(), video: this.view.videoFrame(), counters: this.view.counters() });
+        const playback = this.view.playback(undefined, this), ready = sources.getStatus() === 'ready';
+        this.view.syncPlaybackControls(this, playback, ready);
+        if (ready) {
+            this.renderer.draw(layout, sources, this.view.metadata(), milliseconds / 1000, { quality: this.view.quality, hdr: this.view.hdr, lyrics: this.view.lyrics(), video: this.view.videoFrame(), counters: this.view.counters(), playback });
         } else {
             this.renderer.clear();
         }
@@ -57,6 +71,7 @@ export class VisualizerFeed {
     }
 
     dispose() {
+        this.view.cancelSeekPointer?.(this);
         this.visible = false;
         if (this.frameRequest && !this.closed) this.window.cancelAnimationFrame(this.frameRequest);
         this.frameRequest = null;

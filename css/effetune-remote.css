@@ -4,6 +4,30 @@ body.remote-client {
     margin: 0;
 }
 
+body.integrated-remote-client {
+    padding: 0;
+    width: 100%;
+}
+
+body.integrated-remote-client.layout-desktop .main-container {
+    width: max-content;
+}
+
+body.integrated-remote-client .remote-bar {
+    box-sizing: border-box;
+    padding: 0;
+    z-index: 51;
+}
+
+#remoteChangeConnection {
+    margin-left: auto;
+    flex: none;
+}
+
+#remoteChangeConnection[hidden] {
+    display: none;
+}
+
 /* The remote editor has neither a bottom navigation bar nor a mini player. */
 body.remote-client.layout-mobile {
     --et-bottom-nav-height: 0px;

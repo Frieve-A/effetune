@@ -44,3 +44,10 @@ test('dialog locale resolution follows the saved preference and operating-system
   assert.equal(resolveLibraryDialogLocale('auto', 'de-DE'), 'en');
   assert.equal(resolveLibraryDialogLocale('unknown', 'ja-JP'), 'en');
 });
+
+test('native menu translations preserve URL text and wildcard examples inside strings', () => {
+  const translate = createLibraryDialogTranslator();
+  assert.ok(translate('dialog.config.browser.rules.help').includes('http://'));
+  assert.ok(translate('dialog.config.browser.rules.invalid').includes('example.com/*'));
+  assert.equal(translate('browser.home'), 'Show start page');
+});

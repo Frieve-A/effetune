@@ -43,8 +43,9 @@ const COORDINATOR_METHODS = Object.freeze([
 ]);
 const REPOSITORY_METHODS = Object.freeze([
   'getCapabilities', 'getCounts', 'createContext', 'getContextCount',
-  'queryTracks', 'browseFolderChildren', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
+  'queryTracks', 'querySharedLibrary', 'browseFolderChildren', 'queryEntities', 'readContextPage', 'readContextPageAtOrdinal',
   'resolveEntityAnchor', 'retainContext', 'releaseRetainedContext', 'releaseContext', 'getTrack',
+  'listScanFolders', 'getTrackStorageIdentity',
   'createPlaylist', 'createPlaylistWithItems',
   'recordRecentlyPlayed', 'setTrackFavorite', 'getFavoriteTrackUids', 'getSystemPlaylists',
   'renamePlaylist', 'reorderPlaylistItem', 'removePlaylistItem', 'duplicatePlaylist',

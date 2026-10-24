@@ -170,6 +170,7 @@ export class MeasurementController {
         }
 
         const configSnapshot = structuredClone(config);
+        configSnapshot.acquisitionMethod = 'ess';
         
         // Get preferred sample rate from config
         const preferredSampleRate = parseInt(configSnapshot.sampleRate);
@@ -247,6 +248,7 @@ export class MeasurementController {
             ...(configSnapshot.outputChannelCount ? { outputChannelCount: configSnapshot.outputChannelCount } : {}),
             requestedSampleRate: preferredSampleRate, // Store the requested rate
             sampleRate: actualSampleRate, // Store the actual rate used
+            acquisitionMethod: 'ess',
             sweepLength: configSnapshot.sweepLength,
             ...(configSnapshot.sweepBand ? { sweepBand: structuredClone(configSnapshot.sweepBand) } : {}),
             sweepBandLimited,

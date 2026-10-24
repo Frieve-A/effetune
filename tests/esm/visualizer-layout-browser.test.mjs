@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { chromium } from 'playwright';
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
+import { ITEM_TYPES } from '../../js/visualizer/visualizer-model.js';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../../css/effetune-theme.css') +
-    read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '') +
+    read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '')
+        .replace('@import url("parameter-controls.css");', () => read('../../css/parameter-controls.css')) +
     read('../../css/effetune-mobile.css') + read('../../css/effetune-library.css');
 const viewSource = read('../../js/ui/audio-player/playback-region.js').replace(/^export /gm, '') +
     read('../../js/ui/audio-player/synchronized-video.js').replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '') +
@@ -25,7 +28,7 @@ const editorSource = read('../../js/ui/range-fill.js').replace(/^export /gm, '')
 
 test('Color effect controls fold details, edit levels and mapping, and fit desktop and mobile inspectors', async () => {
     const locales = Object.fromEntries(['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'].map(locale => [locale,
-        JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
+        parseCommentedJSON(read(`../../js/locales/${locale}.json5`))]));
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
@@ -110,7 +113,7 @@ test('Color effect controls fold details, edit levels and mapping, and fit deskt
 
 test('Visualizer language updates translate the toolbar and open editor while preserving the layout and editing state', async () => {
     const locales = Object.fromEntries(['en', 'ja'].map(locale => [locale,
-        JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
+        parseCommentedJSON(read(`../../js/locales/${locale}.json5`))]));
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
@@ -2181,7 +2184,7 @@ test('Every Visualizer numeric slider supports unit-aware input, history, and th
                 invalidUnapplied, clamped, restored, initialDisabled, enabled, disabled, noteRange, peerRestored, bpmRange, mobile };
         });
         assert.deepEqual(result.violations, []);
-        assert.equal(Object.keys(result.counts).length, 20);
+        assert.deepEqual(Object.keys(result.counts).sort(), [...ITEM_TYPES].sort());
         assert.ok(Object.values(result.counts).every(count => count > 0));
         assert.deepEqual(result.typing, [.33, '33', 0]);
         assert.deepEqual(result.committed, [1, '33%']);
@@ -2323,7 +2326,7 @@ test('Visualizer number edits commit one canonical step value after native blur,
 
 test('Counter inspector groups remain usable with wrapped labels in every locale and layout', async () => {
     const locales = Object.fromEntries(['en', 'ja', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh', 'ar'].map(locale => [locale,
-        JSON.parse(read(`../../js/locales/${locale}.json5`).replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''))]));
+        parseCommentedJSON(read(`../../js/locales/${locale}.json5`))]));
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();

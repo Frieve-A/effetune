@@ -1,5 +1,6 @@
 import { ASPECTS, MOD_SOURCES, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, COLOR_ADJUST_PARAMETERS, FONT_FAMILIES, COUNTER_FONT_FAMILIES, COUNTER_APPEARANCES, applyCounterAppearance, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, PICTURE_TYPES, VIDEO_FITS, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
+import { PLAYBACK_ACTIONS, PLAYBACK_APPEARANCES, SEEK_APPEARANCES } from './visualizer-model.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
 import { bindNumberInput, updateRangeFill } from '../ui/range-fill.js';
@@ -576,7 +577,7 @@ export class VisualizerEditor {
         const addItem = this.button(addRow, this.t('visualizer.add', 'Add'), () => {
             if (layout.items.length >= MAX_ITEMS) return;
             const item = createItem(add.value);
-            if (!PICTURE_TYPES.includes(item.type)) item.palette.color = DEFAULT_TRACE_COLOR;
+            if (!PICTURE_TYPES.includes(item.type) && !['playback-control', 'seek-bar'].includes(item.type)) item.palette.color = DEFAULT_TRACE_COLOR;
             layout.items.push(item); this.selection = new Set([item.id]); this.changed(true);
         });
         addItem.disabled = layout.items.length >= MAX_ITEMS;
@@ -648,13 +649,71 @@ export class VisualizerEditor {
             value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
         this.styleToggles(properties, item);
         if (VISUAL_TYPES.includes(item.type) || item.type === 'lyrics' || item.type === 'counter') this.parameters(properties, item);
+        if (item.type === 'playback-control') this.playbackParameters(properties, item);
+        if (item.type === 'seek-bar') this.seekParameters(properties, item);
         if (item.type === 'video') this.videoStyle(properties, item.style);
         if (PICTURE_TYPES.includes(item.type)) this.field(properties, this.t('visualizer.style.rounded', 'Rounded corners'), 'checkbox',
             item.style.rounded, value => { item.style.rounded = value; this.changed(); });
-        else if (TEXT_STYLE_TYPES.includes(item.type)) this.textStyle(properties, item.style, item.type, item.params);
+        else if (TEXT_STYLE_TYPES.includes(item.type) && (item.type !== 'playback-control' || item.params.display !== 'icon')) this.textStyle(properties, item.style, item.type, item.params);
         else if (item.type === 'shape') this.shapeStyle(properties, item.style);
         if (!PICTURE_TYPES.includes(item.type)) this.palette(this.root, item.palette, item.type);
         this.effects(this.root, item.effects, 'item', item.type);
+    }
+
+    applyControlAppearance(type, appearance) {
+        for (const item of this.selectedItems()) {
+            if (item.type === type) Object.assign(item.params, appearance);
+        }
+        this.changed(true);
+    }
+
+    seekParameters(parent, item) {
+        const params = item.params, label = (key, text) => this.t(`visualizer.seek.${key}`, text);
+        let thumbBorderColor;
+        const field = (key, text, type, options = {}) => this.field(parent, label(key, text), type, params[key], value => {
+            params[key] = value;
+            if (key === 'thumbBorderWidth' && thumbBorderColor) thumbBorderColor.disabled = value === 0;
+            this.changed(key === 'showThumb');
+        }, options);
+        this.field(parent, label('preset', 'Appearance'), 'select', '', value => {
+            if (!Object.hasOwn(SEEK_APPEARANCES, value)) return;
+            this.applyControlAppearance(item.type, SEEK_APPEARANCES[value]);
+        }, { values: [['', label('preset.custom', 'Choose a preset')], ...Object.keys(SEEK_APPEARANCES).map(key => [key, label(`preset.${key}`, key[0].toUpperCase() + key.slice(1))])] });
+        field('trackColor', 'Track color', 'color');
+        field('trackOpacity', 'Track opacity', 'range', { min: 0, max: 1, step: .01, unit: '%', scale: 100 });
+        field('thickness', 'Track thickness', 'range', { min: 2, max: 40, step: 1, unit: 'px' });
+        field('rounding', 'Rounded ends', 'checkbox');
+        field('showThumb', 'Show thumb', 'checkbox');
+        if (params.showThumb) {
+            field('thumbShape', 'Thumb shape', 'select', { values: ['circle', 'square', 'diamond', 'bar']
+                .map(key => [key, label(`thumbShape.${key}`, key[0].toUpperCase() + key.slice(1))]) });
+            field('thumbSize', 'Thumb size', 'range', { min: 6, max: 64, step: 1, unit: 'px' });
+            field('thumbColor', 'Thumb color', 'color');
+            field('thumbBorderWidth', 'Thumb border width', 'range', { min: 0, max: 8, step: .5, unit: 'px' });
+            thumbBorderColor = field('thumbBorderColor', 'Thumb border color', 'color', { disabled: params.thumbBorderWidth === 0 });
+        }
+    }
+
+    playbackParameters(parent, item) {
+        const params = item.params, label = (key, text) => this.t(`visualizer.playback.${key}`, text);
+        const field = (key, text, type, options = {}) => this.field(parent, label(key, text), type, params[key], value => {
+            params[key] = value; this.changed(['display', 'shape', 'action'].includes(key));
+        }, options);
+        const actions = ['Play / Pause', 'Stop', 'Previous track', 'Next track', 'Shuffle', 'Repeat'];
+        field('action', 'Action', 'select', { values: PLAYBACK_ACTIONS.map((action, index) => [action, label(`action.${action}`, actions[index])]) });
+        this.field(parent, label('preset', 'Appearance'), 'select', '', value => {
+            if (!Object.hasOwn(PLAYBACK_APPEARANCES, value)) return;
+            this.applyControlAppearance(item.type, PLAYBACK_APPEARANCES[value]);
+        }, { values: [['', label('preset.custom', 'Choose a preset')], ...Object.keys(PLAYBACK_APPEARANCES).map(key => [key, label(`preset.${key}`, key[0].toUpperCase() + key.slice(1))])] });
+        field('display', 'Content', 'select', { values: [['icon', 'Icon'], ['icon-label', 'Icon and label'], ['label', 'Label']].map(([key, text]) => [key, label(`display.${key}`, text)]) });
+        if (params.display !== 'icon') field('label', 'Custom label', 'text', { maxLength: 80 });
+        field('shape', 'Button shape', 'select', { values: [['rectangle', label('shape.rectangle', 'Rounded rectangle')], ['ellipse', label('shape.ellipse', 'Ellipse')]] });
+        for (const [key, text] of [['fill', 'Fill color'], ['border', 'Border color'], ['activeColor', 'Active color']]) field(key, text, 'color');
+        field('fillOpacity', 'Fill opacity', 'range', { min: 0, max: 1, step: .01, unit: '%', scale: 100 });
+        field('borderWidth', 'Border width', 'range', { min: 0, max: 12, step: .5, unit: 'px' });
+        if (params.shape === 'rectangle') field('radius', 'Corner radius', 'range', { min: 0, max: 200, step: 1, unit: 'px' });
+        if (params.display !== 'label') field('iconSize', 'Icon size', 'range', { min: 15, max: 85, step: 1, unit: '%' });
+        field('depth', 'Surface depth', 'range', { min: 0, max: 1, step: .01, unit: '%', scale: 100 });
     }
 
     videoStyle(parent, style) {

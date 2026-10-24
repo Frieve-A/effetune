@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(effetune_dsp VERSION 1.0.0 LANGUAGES C CXX)
+project(effetune_dsp VERSION 1.16.0 LANGUAGES C CXX)
 
 include(CTest)
 

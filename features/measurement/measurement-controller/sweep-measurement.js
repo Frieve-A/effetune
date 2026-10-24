@@ -56,9 +56,19 @@ const SweepMeasurement = {
         const band = resolveSweepBand(config, channel, sampleRate, length);
         const outputBands = channel === 'all' && config.sweepBand?.mode === 'perChannel'
             ? resolveOutputSweepBands(config, sampleRate, length) : undefined;
-        this.currentSweepBand = band;
-        return audioUtils.generateTSP(length, sampleRate, channel,
+        const sweep = audioUtils.generateESS(length, sampleRate, channel,
             band.minFreq, band.maxFreq, band.bandLimited, outputBands);
+        this.currentSweepBand = { ...band, minFreq: sweep.startFrequency ?? band.minFreq,
+            maxFreq: sweep.endFrequency ?? band.maxFreq };
+        if (sweep.method === 'ess') {
+            config.requestedSweepLength = length;
+            config.sweepLength = Math.max(config.sweepLength, sweep.length);
+            if (!band.bandLimited) {
+                config.sweepMinFreq = sweep.startFrequency;
+                config.sweepMaxFreq = sweep.endFrequency;
+            }
+        }
+        return sweep;
     },
 
     /**
@@ -262,6 +272,8 @@ const SweepMeasurement = {
                         outputTimeReference: result.outputTimeReference,
                         refScale: result.refScale,
                         peakDb: result.peakDb,
+                        acquisitionMethod: result.acquisitionMethod,
+                        harmonicAnalysis: result.harmonicAnalysis,
                         data: result.impulseResponse
                     });
                 }
@@ -300,6 +312,8 @@ const SweepMeasurement = {
                 outputTimeReference: measurementResult.outputTimeReference,
                 refScale: measurementResult.refScale,
                 peakDb: measurementResult.peakDb,
+                acquisitionMethod: measurementResult.acquisitionMethod,
+                harmonicAnalysis: measurementResult.harmonicAnalysis,
                 data: measurementResult.impulseResponse
             };
         }

@@ -1,11 +1,14 @@
 import { INDIVIDUAL_CHANNELS } from './audio-utils/channel-selection.js';
+import { validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
 
 export function resolveSweepBand(config, channel, sampleRate, sweepLength,
     outputChannelCount = config?.outputChannelCount ?? INDIVIDUAL_CHANNELS.length) {
     const setting = config?.sweepBand;
     const bandLimited = setting ? setting.mode !== 'off' : config?.sweepBandLimited !== false;
+    const ess = config?.acquisitionMethod === 'ess';
     const fftLength = 2 ** Math.ceil(Math.log2(Number(sweepLength) || 65536));
     if (!bandLimited) {
+        if (ess) return { minFreq: 20, maxFreq: Math.min(20000, sampleRate * 0.49), bandLimited: false };
         return {
             minFreq: sampleRate / fftLength,
             maxFreq: (fftLength / 2 - 1) * sampleRate / fftLength,
@@ -23,7 +26,7 @@ export function resolveSweepBand(config, channel, sampleRate, sweepLength,
     const band = (setting?.mode === 'perChannel'
         ? setting.perChannel?.find(entry => entry.channel === channel) : null) ||
         setting?.common || { minFreq: config?.sweepMinFreq, maxFreq: config?.sweepMaxFreq };
-    const nyquistLimit = Math.max(2, Math.floor(sampleRate / 2) - 1);
+    const nyquistLimit = ess ? sampleRate * 0.49 : Math.max(2, Math.floor(sampleRate / 2) - 1);
     const minFreq = Math.max(1, Math.min(Number(band.minFreq) || 20, nyquistLimit - 1));
     const maxFreq = Math.max(minFreq + 1, Math.min(Number(band.maxFreq) || 20000, nyquistLimit));
     return { minFreq, maxFreq, bandLimited: true };
@@ -210,6 +213,41 @@ export function resolveIrRecordKey(measurement, pointIndex = 'all', channelToken
     return null;
 }
 
+export function listAnalysisRecords(measurement) {
+    return collectCalibrationIrCandidates(measurement).map(({ pointIndex, channel, irKey }) => ({
+        pointIndex,
+        channel,
+        irKey,
+        combinedOutput: !isMultiChannelMeasurement(measurement) &&
+            measurement.outputChannel === 'all' && measurement.acquisitionMethod !== 'wav'
+    }));
+}
+
+export function resolveAnalysisRecord(measurement, pointIndex = 'all', channelToken = null, previous = null) {
+    const records = listAnalysisRecords(measurement);
+    const hasPoint = Number.isInteger(pointIndex);
+    const hasChannel = channelToken !== null && channelToken !== undefined && channelToken !== 'all';
+    const candidates = records.filter(record =>
+        (!hasPoint || record.pointIndex === pointIndex) &&
+        (!hasChannel || record.channel === channelToken || !isMultiChannelMeasurement(measurement)));
+    return candidates.find(record => previous && record.irKey === previous.irKey) || candidates[0] || null;
+}
+
+export function getAnalysisCapabilities(record, frequencyResponse = null) {
+    const impulse = record?.data instanceof Float32Array && record.data.length > 0 &&
+        Number.isFinite(record.sampleRate) && record.sampleRate > 0 &&
+        Number.isSafeInteger(record.onsetIndex) && record.onsetIndex >= 0 &&
+        record.onsetIndex < record.data.length && record.data.every(Number.isFinite);
+    const harmonic = record?.harmonicAnalysis;
+    return {
+        frequency: validResponse(frequencyResponse) || impulse,
+        impulse,
+        distortion: impulse && validateHarmonicAnalysis(harmonic) &&
+            harmonic.sampleRate === record.sampleRate && harmonic.quality.valid,
+        waterfall: impulse
+    };
+}
+
 export function collectCalibrationIrCandidates(measurement) {
     const points = Array.isArray(measurement?.points) ? measurement.points : [];
     const candidates = [];
@@ -349,6 +387,8 @@ export function mergeChannelRedoResult(point, records, channelToken, result, all
             outputTimeReference: result.outputTimeReference,
             refScale: result.refScale,
             peakDb: result.peakDb,
+            ...(result.acquisitionMethod ? { acquisitionMethod: result.acquisitionMethod } : {}),
+            ...(result.harmonicAnalysis ? { harmonicAnalysis: result.harmonicAnalysis } : {}),
             data: result.impulseResponse
         });
     }

@@ -43,6 +43,7 @@ export class PlaybackManager {
     this.activeBulkPlay = null;
     this.sessionTransportUndo = null;
     this.repeatModeNormalizer = null;
+    this.queueChangeListener = null;
     
     // Initialize keyboard shortcuts
     this.initKeyboardShortcuts();
@@ -259,6 +260,14 @@ export class PlaybackManager {
     if (this.catalogSequence) return;
     this.sequence = new MaterializedSequence(this.playlist);
     this.queueProvider = new SequenceQueueProvider(this.sequence);
+    this.queueChangeListener?.();
+  }
+
+  setQueueChangeListener(listener) {
+    this.queueChangeListener = listener;
+    return () => {
+      if (this.queueChangeListener === listener) this.queueChangeListener = null;
+    };
   }
 
   capturePlaybackQueueSnapshot() {
@@ -579,6 +588,7 @@ export class PlaybackManager {
       playbackGeneration: this.playbackGeneration
     });
     void this.refreshCatalogQueueWindow(currentOrdinal);
+    this.queueChangeListener?.();
   }
 
   async refreshCatalogQueueWindow(centerOrdinal = this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0) {
@@ -618,7 +628,8 @@ export class PlaybackManager {
     userInitiated = true,
     preserveQueueWindow = false,
     skipUnavailable = false,
-    playbackReady = null
+    playbackReady = null,
+    isCurrent = () => true
   } = {}) {
     if (!Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= this.sequence.itemCount) {
       return { accepted: false, reason: 'invalid-ordinal' };
@@ -629,7 +640,8 @@ export class PlaybackManager {
       userInitiated,
       preserveQueueWindow,
       skipUnavailable,
-      playbackReady
+      playbackReady,
+      isCurrent
     });
   }
 
@@ -637,6 +649,7 @@ export class PlaybackManager {
     play,
     userInitiated,
     reason,
+    isCurrent = () => true,
     state = this.audioPlayer.stateManager?.getStateSnapshot?.()
   }) {
     const contextManager = this.audioPlayer.contextManager;
@@ -646,8 +659,9 @@ export class PlaybackManager {
     if (!contextManager?.loadTrack) return false;
 
     const loaded = await contextManager.loadTrack(track, ordinal, null, { preserveVideoTail: reason === 'ended' });
+    if (!isCurrent()) return false;
     if (play && loaded !== false && contextManager.play) {
-      return contextManager.play(false, userInitiated);
+      return contextManager.play(false, userInitiated, isCurrent);
     }
     return loaded;
   }
@@ -669,7 +683,8 @@ export class PlaybackManager {
     preserveQueueWindow = false,
     resolutionScope = createPlaybackSourceResolutionScope(),
     skipUnavailable = false,
-    playbackReady = null
+    playbackReady = null,
+    isCurrent = () => true
   } = {}) {
     const sequence = this.sequence;
     if (!sequence) return { accepted: false, reason: 'no-sequence' };
@@ -711,7 +726,8 @@ export class PlaybackManager {
         transportRollback,
         preserveQueueWindow,
         resolutionScope: activeResolutionScope,
-        playbackReady: readiness
+        playbackReady: readiness,
+        isRequestCurrent: isCurrent
       });
       if (result.accepted) {
         if (failures.length > 0) this.#reportSkippedTracks(failures, sequence);
@@ -747,7 +763,8 @@ export class PlaybackManager {
     transportRollback,
     preserveQueueWindow,
     resolutionScope,
-    playbackReady
+    playbackReady,
+    isRequestCurrent
   }) {
     const sequence = this.sequence;
     if (!sequence) return { accepted: false, reason: 'no-sequence' };
@@ -765,16 +782,16 @@ export class PlaybackManager {
       } catch (_) {
         ready = false;
       }
-      if (!isCurrent() || sequence !== this.sequence) return { committed: false };
+      if (!isCurrent() || !isRequestCurrent() || sequence !== this.sequence) return { committed: false };
       if (play && ready === false) return { committed: false, resumeFailed: true };
       const entry = await sequence.getEntry(ordinal);
-      if (!isCurrent() || sequence !== this.sequence) return { committed: false };
+      if (!isCurrent() || !isRequestCurrent() || sequence !== this.sequence) return { committed: false };
       try {
         const source = await sequence.resolveEntrySource(entry, resolutionScope, signal);
-        if (!isCurrent() || sequence !== this.sequence) return { committed: false };
+        if (!isCurrent() || !isRequestCurrent() || sequence !== this.sequence) return { committed: false };
         return { committed: true, entry, source, play };
       } catch (error) {
-        if (!isCurrent() || sequence !== this.sequence) return { committed: false };
+        if (!isCurrent() || !isRequestCurrent() || sequence !== this.sequence) return { committed: false };
         return { committed: false, unavailable: true, error };
       }
     });
@@ -791,7 +808,7 @@ export class PlaybackManager {
     const mediaOperation = async () => {
       if (
         !this.pendingTransport.isGenerationCurrent(result.generation) ||
-        sequence !== this.sequence
+        sequence !== this.sequence || !isRequestCurrent()
       ) {
         return { accepted: false, reason: 'stale' };
       }
@@ -802,7 +819,7 @@ export class PlaybackManager {
       const changedTransport = previousOrdinal !== ordinal || Boolean(transportRollback?.shuffleChanged);
       if (
         !this.pendingTransport.isGenerationCurrent(result.generation) ||
-        sequence !== this.sequence
+        sequence !== this.sequence || !isRequestCurrent()
       ) {
         return { accepted: false, reason: 'stale' };
       }
@@ -812,6 +829,7 @@ export class PlaybackManager {
           play: resolution.play,
           userInitiated,
           reason,
+          isCurrent: isRequestCurrent,
           state
         });
       } catch (error) {
@@ -1525,20 +1543,21 @@ export class PlaybackManager {
   /**
    * Play the current track
    */
-  async play(userInitiated = true) {
+  async play(userInitiated = true, options = {}) {
     return this.runWithPlaybackPending(
-      () => this.#play(userInitiated),
+      () => this.#play(userInitiated, options),
       userInitiated ? 2 : 1
     );
   }
 
-  async #play(userInitiated = true) {
+  async #play(userInitiated = true, { isCurrent = () => true } = {}) {
     if (this.activePlayRequest?.promise) {
       return this.activePlayRequest.promise;
     }
 
     const request = {
       token: ++this.playRequestToken,
+      isCurrent,
       promise: null
     };
     this.activePlayRequest = request;
@@ -1604,8 +1623,9 @@ export class PlaybackManager {
   }
 
   async performPlay(request, userInitiated = true) {
+    const isCurrent = () => this.isActivePlayRequest(request) && request.isCurrent();
     if (this.audioPlayer.contextManager?.hasActiveGraphRebuildRequest?.()) {
-      const started = await this.audioPlayer.contextManager.play(false, userInitiated);
+      const started = await this.audioPlayer.contextManager.play(false, userInitiated, isCurrent);
       return this.isActivePlayRequest(request) ? started : false;
     }
 
@@ -1618,13 +1638,14 @@ export class PlaybackManager {
     const currentOrdinal = state?.currentTrackIndex ??
       this.audioPlayer.stateManager?.getCurrentTrackIndex?.() ?? 0;
     if (this.canResumeCurrentTrack(state, currentOrdinal)) {
-      const started = await contextManager.play(false, userInitiated);
+      const started = await contextManager.play(false, userInitiated, isCurrent);
       return this.isActivePlayRequest(request) ? started : false;
     }
     const result = await this.selectSequenceOrdinal(currentOrdinal, {
       play: true,
       userInitiated,
-      skipUnavailable: false
+      skipUnavailable: false,
+      isCurrent
     });
     return this.isActivePlayRequest(request) && result?.accepted !== false;
   }
@@ -2465,6 +2486,8 @@ export class PlaybackManager {
       // The Space key guard cancels scrolling; shortcut consumers stop propagation.
       // Check if audio player is initialized
       if (!this.audioPlayer) return;
+      const network = globalThis.window?.uiManager?.networkMusic;
+      if (network && network.selectedPlayerId !== 'local') return;
       
       if (e.target.matches('input:not([type="range"]), textarea, select')) {
         return;

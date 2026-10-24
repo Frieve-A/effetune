@@ -1,4 +1,5 @@
 @import url("effetune-theme.css");
+@import url("parameter-controls.css");
 
 @font-face {
     font-family: "EffeTune Seven Segment";
@@ -442,12 +443,13 @@ html[data-theme="mint"] .plugin-list {
 
 /* Pull tab for plugin list */
 .plugin-list-pull-tab {
-    position: fixed; /* Keep fixed positioning */
-    right: auto;
-    /* Its static flex position follows the shell's right edge. */
-    left: auto;
-    top: 50vh; /* Center vertically in viewport */
-    transform: translate(100%, -50%);
+    position: sticky;
+    align-self: flex-start;
+    flex-shrink: 0;
+    /* Leave 20px above the tab and keep its width outside the list's shell. */
+    margin: 20px -15px 0 0;
+    /* Center in the viewport, below the list's sticky top plus the 20px gap. */
+    top: max(40px, calc(50vh - 30px));
     width: 15px;
     height: 60px;
     background-color: var(--et-surface-10);
@@ -1450,15 +1452,6 @@ body.layout-mobile #pipelineStats {
     flex-direction: column;
 }
 
-.plugin-parameter-ui .parameter-row {
-    display: flex;
-    align-items: center;
-    min-height: 26px;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: 2px 0;
-}
-
 .plugin-parameter-ui .parameter-row.radio-group {
     column-gap: 10px;
     row-gap: 4px;
@@ -1507,99 +1500,9 @@ body.layout-mobile #pipelineStats {
     cursor: pointer;
 }
 
-body.layout-mobile .plugin-parameter-ui .parameter-row {
-    min-height: var(--et-mobile-control-height);
-}
-
 .plugin-parameter-ui .radio-group label {
     margin-top: 0;
     margin-bottom: 0;
-}
-
-/* Keep row spacing fixed while allowing wrapped text and glyphs to overflow vertically. */
-.plugin-parameter-ui .parameter-row:has(> input[type="number"], > input[type="range"], > select) > label:first-child {
-    display: flex;
-    align-items: center;
-    height: 26px;
-    line-height: normal;
-    overflow: visible;
-}
-
-body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"], > input[type="range"], > select) > label:first-child {
-    height: var(--et-mobile-control-height);
-}
-
-.plugin-parameter-ui .parameter-row input[type="range"] {
-    flex: 1 1 120px;
-    min-width: 120px;
-    margin-top: 0;
-    margin-bottom: 0;
-}
-
-.plugin-parameter-ui .parameter-row input[type="number"],
-.pipeline-analyzer-panel input[type='number'] {
-    width: 80px;
-    padding: 4px;
-    background-color: var(--et-surface-17);
-    border: 1px solid var(--et-surface-23);
-    color: var(--et-text-primary);
-    border-radius: 4px;
-}
-
-/* Single-line effect fields and compact EQ fields share the standard desktop height. */
-body:not(.layout-mobile) :is(
-    .plugin-parameter-ui input[type="number"],
-    .plugin-parameter-ui input[type="text"],
-    .plugin-parameter-ui select,
-    .plugin-parameter-ui .parameter-row input[type="number"],
-    .pipeline-analyzer-panel input[type="number"],
-    .five-band-peq-band input[type="number"],
-    .five-band-peq-filter-type,
-    .five-band-fir-peq-band input[type="number"],
-    .five-band-fir-peq-filter-type,
-    .group-delay-peq-band input[type="number"],
-    .group-delay-peq-band-type,
-    .room-eq-additional-eq-band input[type="number"],
-    .room-eq-additional-eq-filter-type,
-    .earphone-cable-sim-row-input,
-    .multichannel-panel-ui input[type="number"]
-) {
-    box-sizing: border-box;
-    height: 26px;
-    min-height: 26px;
-}
-
-body:not(.layout-mobile) .plugin-parameter-ui .parameter-row input[type="number"],
-body:not(.layout-mobile) .pipeline-analyzer-panel input[type="number"] {
-    padding: 4px;
-    border: 1px solid var(--et-surface-23);
-    border-radius: 4px;
-    font: inherit;
-    line-height: normal;
-}
-
-.plugin-parameter-ui .parameter-row input[type="text"] {
-    flex-grow: 1;
-    padding: 4px;
-    background-color: var(--et-surface-17);
-    border: 1px solid var(--et-surface-23);
-    color: var(--et-text-primary);
-    border-radius: 4px;
-}
-
-.plugin-parameter-ui label {
-    min-width: 80px;
-}
-
-.plugin-parameter-ui select,
-.pipeline-analyzer-panel select,
-.visualizer-editor-navigation select,
-.visualizer-quality {
-    background-color: var(--et-surface-17);
-    border: 1px solid var(--et-surface-23);
-    color: var(--et-text-primary);
-    border-radius: 4px;
-    padding: 4px;
 }
 
 body:not(.layout-mobile) .plugin-parameter-ui .parameter-row:has(> .slope-select) > input[type="number"],
@@ -1858,10 +1761,6 @@ body.layout-mobile .plugin-parameter-ui .spectrum-overlay-axis-title {
 .cancel-button::before {
     content: "✕";
     font-size: 18px;
-}
-
-.parameter-row label {
-    width: 120px;
 }
 
 ::-webkit-scrollbar {
@@ -3285,6 +3184,7 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 
 .plugin-list,
 .pipeline,
+.network-effects,
 .audio-player,
 .double-blind-test {
     background: var(--et-panel-gradient);
@@ -3318,11 +3218,6 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 
 .effect-search-input,
 .preset-select,
-.plugin-parameter-ui .parameter-row input[type="number"],
-.plugin-parameter-ui .parameter-row input[type="text"],
-.plugin-parameter-ui select,
-.pipeline-analyzer-panel input[type="number"],
-.pipeline-analyzer-panel select,
 .dbt-name-input,
 .dbt-count-input,
 .routing-dialog-row select,
@@ -3334,11 +3229,6 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 
 .effect-search-input:focus,
 .preset-select:focus,
-.plugin-parameter-ui .parameter-row input[type="number"]:focus,
-.plugin-parameter-ui .parameter-row input[type="text"]:focus,
-.plugin-parameter-ui select:focus,
-.pipeline-analyzer-panel input[type="number"]:focus,
-.pipeline-analyzer-panel select:focus,
 .dbt-name-input:focus,
 .dbt-count-input:focus,
 .routing-dialog-row select:focus,
@@ -3495,8 +3385,6 @@ h1 {
 }
 
 .plugin-list-content h3,
-.parameter-row label,
-.plugin-parameter-ui label,
 .routing-dialog-row label,
 .ai-dialog-caption,
 .dbt-config-form label,
@@ -3687,90 +3575,6 @@ h1 {
     background: color-mix(in srgb, var(--et-accent) 22%, transparent);
     color: var(--et-text-primary);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--et-accent) 24%, transparent), 0 0 12px color-mix(in srgb, var(--et-accent) 18%, transparent);
-}
-
-input[type="range"] {
-    --et-range-fill-start: min(var(--et-range-origin, 0%), var(--et-range-fill, 0%));
-    --et-range-fill-end: max(var(--et-range-origin, 0%), var(--et-range-fill, 0%));
-}
-
-input[type="range"]:not(.vertical-slider) {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 16px;
-    background: transparent;
-    cursor: pointer;
-}
-
-input[type="range"]:not(.vertical-slider):disabled {
-    cursor: not-allowed;
-    opacity: 0.58;
-}
-
-input[type="range"]:not(.vertical-slider)::-webkit-slider-runnable-track {
-    height: 6px;
-    border: 1px solid color-mix(in srgb, var(--et-text-primary) 7%, transparent);
-    border-radius: 999px;
-    background: linear-gradient(90deg, transparent 0 var(--et-range-fill-start), color-mix(in srgb, var(--et-accent) 82%, transparent) var(--et-range-fill-start) var(--et-range-fill-end), transparent var(--et-range-fill-end) 100%), linear-gradient(180deg, var(--et-surface-11), var(--et-surface-5));
-    background-repeat: no-repeat;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.055);
-}
-
-input[type="range"]:not(.vertical-slider)::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    margin-top: -6px;
-    border: 1px solid var(--et-accent-hover);
-    border-radius: 4px;
-    background: linear-gradient(180deg, var(--et-accent-hover), var(--et-accent-pressed));
-    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px color-mix(in srgb, var(--et-accent) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-    transition: border-color var(--et-transition-fast), box-shadow var(--et-transition-fast), filter var(--et-transition-fast);
-}
-
-input[type="range"]:not(.vertical-slider):hover::-webkit-slider-thumb {
-    border-color: var(--et-accent-hover);
-    box-shadow: 0 3px 9px rgba(0, 0, 0, 0.36), 0 0 14px color-mix(in srgb, var(--et-accent) 32%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.20);
-}
-
-input[type="range"]:not(.vertical-slider):focus-visible {
-    outline: none;
-}
-
-input[type="range"]:not(.vertical-slider):focus-visible::-webkit-slider-runnable-track {
-    border-color: color-mix(in srgb, var(--et-accent) 64%, transparent);
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), var(--et-focus-ring);
-}
-
-input[type="range"]:not(.vertical-slider)::-moz-range-track {
-    height: 6px;
-    border: 1px solid color-mix(in srgb, var(--et-text-primary) 7%, transparent);
-    border-radius: 999px;
-    background: linear-gradient(90deg, transparent 0 var(--et-range-fill-start), color-mix(in srgb, var(--et-accent) 82%, transparent) var(--et-range-fill-start) var(--et-range-fill-end), transparent var(--et-range-fill-end) 100%), linear-gradient(180deg, var(--et-surface-11), var(--et-surface-5));
-    background-repeat: no-repeat;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.055);
-}
-
-input[type="range"]:not(.vertical-slider):focus-visible::-moz-range-track {
-    border-color: color-mix(in srgb, var(--et-accent) 64%, transparent);
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), var(--et-focus-ring);
-}
-
-input[type="range"]:not(.vertical-slider)::-moz-range-progress {
-    height: 6px;
-    border-radius: 999px;
-    background: transparent;
-    box-shadow: none;
-}
-
-input[type="range"]:not(.vertical-slider)::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border: 1px solid var(--et-accent-hover);
-    border-radius: 4px;
-    background: linear-gradient(180deg, var(--et-accent-hover), var(--et-accent-pressed));
-    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px color-mix(in srgb, var(--et-accent) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 /* Vertical sliders (15Band GEQ, Group Delay EQ, ...): same visual language as the
@@ -4720,7 +4524,7 @@ body.view-browser .double-blind-test { display: none !important; }
     flex: 0 0 auto;
     align-items: center;
     gap: 6px;
-    padding: 10px 12px;
+    padding: 10px 20px;
     border-bottom: 1px solid var(--et-border-strong);
     background: var(--et-surface-5);
 }
@@ -5114,3 +4918,61 @@ body .audio-player[data-video-rotated="true"] > .player-speed-popup {
     max-height: calc(100% - 16px - var(--video-safe-top) - var(--video-safe-bottom));
     overflow: auto;
 }
+
+/* Library source and playback destination are independent header selections. */
+.network-playback-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.network-playback-target .network-select {
+  box-sizing: border-box;
+  height: 36px;
+  width: 160px;
+  max-width: 22vw;
+  padding: 0 8px;
+}
+.network-refresh-button {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  flex: 0 0 auto;
+}
+.network-select {
+  min-height: 32px;
+  color: var(--et-text-primary);
+  background: var(--et-surface-13);
+  border: 1px solid var(--et-border-strong);
+  border-radius: 4px;
+  padding: 5px 8px;
+  max-width: 100%;
+}
+.network-effects { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+body.network-player-selected:not(.layout-mobile):not(.layout-mini-player) { min-width: 100%; box-sizing: border-box; }
+.network-effects > .pipeline-header { justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 0; }
+.network-effects .pipeline-title { min-width: 0; overflow-wrap: anywhere; }
+.network-effects .remote-control-join-row { flex-wrap: wrap; }
+.network-effects .header-button { flex: 0 0 auto; }
+.network-effects .header-button:disabled { opacity: .5; cursor: default; }
+.network-effects .remote-control-help,
+.network-effects .remote-control-error { margin: 0; }
+.integrated-remote-effects-frame { width: 100%; min-height: 70vh; flex: 1; border: 0; }
+.network-player-selected .main-container,
+.network-library-selected > .library-main:not(.network-library-main),
+.network-library-selected .library-local-nav,
+body.view-library .network-effects,
+body.view-browser .network-effects,
+body.view-visualizer .network-effects,
+.network-effects[hidden], .network-library-main[hidden], .network-library-nav[hidden] { display: none !important; }
+.audio-player .player-button[hidden], .audio-player .player-volume[hidden] { display: none !important; }
+.audio-player .player-volume { width: 64px; flex: 0 0 64px; }
+body.layout-mobile .library-local-nav, body.layout-mobile .network-library-nav { display: flex; gap: 6px; }
+body.layout-mobile .network-playback-target .network-select { max-width: 30vw; width: 130px; }
+body.layout-mobile .title-container:has(.network-playback-target) { min-height: 88px; }
+body.layout-mobile .title-container:has(.network-playback-target) .header-buttons { top: 44px; right: 0; }
+body.layout-mobile .header-buttons #openMusicButton { display: inline-flex !important; }

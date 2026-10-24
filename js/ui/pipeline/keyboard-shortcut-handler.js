@@ -26,6 +26,7 @@ export function handlePipelineKeyboardShortcut(event, {
     uiManager = typeof window !== 'undefined' ? window.uiManager : null
 }) {
     if (globalThis.document?.body?.classList?.contains('view-visualizer')) return false;
+    if (uiManager?.networkMusic && uiManager.networkMusic.selectedPlayerId !== 'local') return false;
     const key = event.key ? event.key.toLowerCase() : '';
     const isCommandShortcut = event.ctrlKey || event.metaKey;
 
@@ -89,8 +90,10 @@ export function handlePipelineKeyboardShortcut(event, {
         }
 
         stopShortcutEvent(event);
+        const targetGeneration = uiManager?.networkMusic?.playerGeneration;
         readTextFromClipboard()
             .then(text => {
+                if (targetGeneration !== uiManager?.networkMusic?.playerGeneration) return;
                 if (text) clipboardManager.handlePaste(text);
             })
             .catch(() => {
@@ -111,9 +114,11 @@ export function handlePipelineKeyboardShortcut(event, {
 }
 
 export function handlePipelinePasteEvent(event, {
-    clipboardManager
+    clipboardManager,
+    uiManager = typeof window !== 'undefined' ? window.uiManager : null
 }) {
     if (globalThis.document?.body?.classList?.contains('view-visualizer')) return false;
+    if (uiManager?.networkMusic && uiManager.networkMusic.selectedPlayerId !== 'local') return false;
     if (isTextEditingTarget(event.target)) {
         return false;
     }

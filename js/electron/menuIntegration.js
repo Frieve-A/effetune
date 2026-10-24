@@ -69,19 +69,20 @@ export async function updateApplicationMenu(isElectron) {
     //    test already open.
     const dbtActive = !!(window.uiManager && window.uiManager.isDoubleBlindActive && window.uiManager.isDoubleBlindActive());
     const editEnabled = !dbtActive;
+    const localPresetEnabled = !dbtActive && (window.uiManager.networkMusic?.selectedPlayerId ?? 'local') === 'local';
 
     // The main process owns menu structure and actions. The renderer only
     // supplies translated labels and current item state by stable ID.
     const menuState = {
       'menu.file': { label: t('menu.file') },
-      'file.save': { label: t('menu.file.save'), enabled: !dbtActive },
-      'file.saveAs': { label: t('menu.file.saveAs'), enabled: !dbtActive },
+      'file.save': { label: t('menu.file.save'), enabled: localPresetEnabled },
+      'file.saveAs': { label: t('menu.file.saveAs'), enabled: localPresetEnabled },
       'file.openMusicFile': { label: t('menu.file.openMusicFile'), enabled: true },
       'file.addMusicFolder': { label: t('menu.file.addMusicFolder'), enabled: true },
       'file.rescanLibrary': { label: t('menu.file.rescanLibrary'), enabled: true },
       'file.processAudioFiles': { label: t('menu.file.processAudioFiles'), enabled: !dbtActive },
-      'file.exportPreset': { label: t('menu.file.exportPreset'), enabled: !dbtActive },
-      'file.importPreset': { label: t('menu.file.importPreset'), enabled: !dbtActive },
+      'file.exportPreset': { label: t('menu.file.exportPreset'), enabled: localPresetEnabled },
+      'file.importPreset': { label: t('menu.file.importPreset'), enabled: localPresetEnabled },
       'file.backupRestore': { label: t('menu.settings.backupRestore'), enabled: !dbtActive },
       'file.doubleBlindTest': {
         label: t('menu.doubleBlindTest'),

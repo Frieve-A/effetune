@@ -20,14 +20,17 @@ test('Electron resolves saved themes before creating themed windows and splash c
 
 test('native chrome uses the selected theme scheme and the registry default', () => {
   const nativeTheme = {};
+  let browserPreset;
+  const browserController = { updateTheme(preset) { browserPreset = preset; } };
   const helper = source.match(/function applyNativeTheme\(config\) \{[\s\S]*?\n\}/)[0];
-  const apply = runInNewContext(helper + '\napplyNativeTheme', { nativeTheme, themeRegistry });
+  const apply = runInNewContext(helper + '\napplyNativeTheme', { nativeTheme, themeRegistry, browserController });
   for (const [theme, expected] of [
     ['graphite', 'dark'], ['paper', 'light'], ['midnight', 'dark'],
     ['ember', 'dark'], ['mint', 'light'], ['unknown', 'dark'], [undefined, 'dark']
   ]) {
     apply({ theme });
     assert.equal(nativeTheme.themeSource, expected, theme);
+    assert.equal(browserPreset, themeRegistry.getThemePreset(theme));
   }
   const startup = source.slice(source.indexOf('async function initializeApp()'));
   assert.ok(startup.indexOf('constants.setAppConfig(cfg)') < startup.indexOf('applyNativeTheme(cfg)'));

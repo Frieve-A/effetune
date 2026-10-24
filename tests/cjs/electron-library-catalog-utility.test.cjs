@@ -83,6 +83,13 @@ test('main-process utility host exposes one repository facade and relays invalid
     target: 'runtime', method: 'resolvePlaybackSource'
   });
   assert.equal(host.repository.resolvePlaybackSource, undefined);
+  assert.deepEqual(await host.repository.listScanFolders({ includeRemoved: false }), {
+    target: 'repository', method: 'listScanFolders'
+  });
+  assert.deepEqual(await host.repository.getTrackStorageIdentity('shared-track'), {
+    target: 'repository', method: 'getTrackStorageIdentity'
+  });
+  assert.deepEqual(child.sent.find(message => message.method === 'getTrackStorageIdentity').args, ['shared-track']);
   assert.deepEqual(await host.coordinator.start({ operationKind: 'play' }), {
     target: 'coordinator', method: 'start'
   });
@@ -308,7 +315,7 @@ test('desktop bootstrap starts the scan, artwork, and operation runtime lazily i
   assert.match(mainSource, /LibraryCatalogUtilityHost\.open/);
   assert.match(mainSource, /imageAdapter: nativeImage/);
   assert.match(mainSource, /new LibraryCatalogRecovery/);
-  assert.doesNotMatch(mainSource, /libraryCatalogRecovery\.initialize\(\)/);
+  assert.match(mainSource, /if \(initialize\) await libraryCatalogRecovery\.initialize\(\)/);
   assert.match(mainSource, /require\('\.\/library-catalog-utility-host\.cjs'\)/);
   assert.ok(
     mainSource.indexOf("async function openLibraryCatalogServices") <

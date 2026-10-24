@@ -56,12 +56,18 @@ export class LayoutModeManager {
     }
 
     get mode() {
+        if (this.modeOverride) return this.modeOverride;
         if (this.isElectron) return 'desktop';
         return this.query.matches ? 'mobile' : 'desktop';
     }
 
     get isMobile() {
         return this.mode === 'mobile';
+    }
+
+    setModeOverride(mode) {
+        this.modeOverride = mode === 'desktop' || mode === 'mobile' ? mode : null;
+        this.applyMode();
     }
 
     applyMode() {

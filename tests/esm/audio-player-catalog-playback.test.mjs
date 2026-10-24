@@ -549,8 +549,9 @@ test('paused Web catalog buffer resumes at its position without source resolutio
     await manager.loadCatalogSequence(descriptor, { currentOrdinal: 0, autoPlay: false });
     const currentTrack = audioPlayer.stateManager.state.currentTrack;
     audioPlayer.contextManager.hasCurrentBuffer = () => true;
-    audioPlayer.contextManager.play = async (...args) => {
-      calls.push(['play', ...args]);
+    audioPlayer.contextManager.play = async (forcePlay, userInitiated, isCurrent) => {
+      assert.equal(isCurrent(), true);
+      calls.push(['play', forcePlay, userInitiated]);
       return true;
     };
     audioPlayer.stateManager.updateState({
@@ -596,8 +597,9 @@ test('paused Electron catalog media resumes at its position without source resol
       error: null,
       ended: false
     });
-    audioPlayer.contextManager.play = async (...args) => {
-      calls.push(['play', ...args]);
+    audioPlayer.contextManager.play = async (forcePlay, userInitiated, isCurrent) => {
+      assert.equal(isCurrent(), true);
+      calls.push(['play', forcePlay, userInitiated]);
       return true;
     };
     audioPlayer.stateManager.updateState({

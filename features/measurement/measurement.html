@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title data-i18n="title:main">Frequency Response Measurement</title>
+    <title data-i18n="title:main">Acoustic Measurement</title>
     <script src="../../js/theme-boot.js"></script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="styles-mobile.css">
+    <link rel="stylesheet" href="../../css/parameter-controls.css">
+    <link rel="stylesheet" href="../../plugins/graph-readout.css">
     <link rel="icon" href="../../images/favicon.ico" type="image/x-icon">
     <script>
         (function() {
@@ -38,7 +40,7 @@
         </svg>
         <span data-i18n="button:back">Back to EffeTune</span>
     </button>
-    <h1 data-i18n="title:main">EffeTune Frequency Response Measurement</h1>
+    <h1 data-i18n="title:main">EffeTune Acoustic Measurement</h1>
 
     <div class="app-container">
         <!-- Left Pane: Measurement History -->
@@ -278,7 +280,7 @@
             <div id="sweepMeasurementScreen" class="screen" style="display: none;">
                 <div class="screen-header">
                     <button id="backFromSweepBtn" class="back-btn"><span class="back-arrow">&larr;</span> <span data-i18n="button:backSimple">Back</span></button>
-                    <h2 data-i18n="title:frequencyResponseMeasurement">Frequency Response Measurement</h2>
+                    <h2 data-i18n="title:frequencyResponseMeasurement">Acoustic Measurement</h2>
                 </div>
                 <div class="measurement-progress">
                     <h3 data-i18n="title:inputLevel">Input Level</h3>
@@ -327,53 +329,59 @@
                         <div id="pointsGrid" class="points-grid"></div>
                         <div id="resultsChannelFilter" class="channel-filter" hidden></div>
                     </div>
+<div class="analysis-tabs" role="tablist" aria-label="Analysis">
+<button id="frequencyAnalysisTab" type="button" role="tab" data-analysis-tab="frequency" aria-controls="frequencyAnalysisPanel" aria-selected="true" tabindex="0" class="tab-button active" data-i18n="analysis:frequency">Frequency Response</button>
+<button id="impulseAnalysisTab" type="button" role="tab" data-analysis-tab="impulse" aria-controls="impulseAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:impulse">Impulse Response</button>
+<button id="distortionAnalysisTab" type="button" role="tab" data-analysis-tab="distortion" aria-controls="distortionAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:distortion">Distortion</button>
+<button id="waterfallAnalysisTab" type="button" role="tab" data-analysis-tab="waterfall" aria-controls="waterfallAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:waterfall">Waterfall (3D)</button>
+<button id="detailsAnalysisTab" type="button" role="tab" data-analysis-tab="details" aria-controls="detailsAnalysisPanel" aria-selected="false" tabindex="-1" class="tab-button" data-i18n="analysis:details">Measurement Details</button>
+</div>
+<p id="analysisTarget" class="analysis-target"></p>
+<section id="frequencyAnalysisPanel" data-analysis-panel="frequency" role="tabpanel" aria-labelledby="frequencyAnalysisTab">
                     <div class="frequency-response">
-                        <h3 data-i18n="title:frequencyResponse">Frequency Response</h3>
+                        <div class="analysis-graph-header"><h3 data-i18n="title:frequencyResponse">Frequency Response</h3><button id="frequencyCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="frequencyCopyGraphStatus" class="analysis-image-status" role="status"></p>
                         <div class="graph-options">
                             <label><input type="checkbox" id="showOriginal" checked> <span data-i18n="label:showOriginal">Original Response</span> <span class="legend-line original-line"></span></label>
                             <label><input type="checkbox" id="showCorrection" checked> <span data-i18n="label:showCorrection">Correction EQ</span> <span class="legend-line correction-line"></span></label>
                             <label><input type="checkbox" id="showCorrected" checked> <span data-i18n="label:showCorrected">Corrected Response</span> <span class="legend-line corrected-line"></span></label>
                         </div>
                         <div class="graph-container" style="position: relative;">
-                            <canvas id="resultsGraph" width="800" height="400"></canvas>
+                            <canvas id="resultsGraph" width="800" height="400" tabindex="0" role="img" aria-label="Frequency response"></canvas>
                             <div id="loading-spinner-results" class="loading-spinner"></div>
                         </div>
                         <div id="resultsChannelLegend" class="channel-legend" hidden></div>
-                        <div class="correction-controls">
-                            <div class="control-row">
+<p id="frequencyLevelWarning" class="warning-message warning-visible" role="status" hidden></p>
+<p id="frequencyAnalysisStatus" class="analysis-status" role="status" hidden></p>
+                        <p id="frequencyAnalysisConditions" class="analysis-conditions"></p>
+                        <output id="frequencyAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
+                            <div id="frequencyAnalysisSettings" class="analysis-settings-grid"></div></details><p class="explanation-text" data-i18n="analysis:smoothingNote">Zero adds no smoothing. Existing processing in a saved response cannot be undone. The width is Gaussian σ in octaves.</p>
+</div>
+<details class="analysis-correction" open><summary data-i18n="analysis:correction">Correction</summary>                        <div class="correction-controls plugin-parameter-ui">
+                            <div class="parameter-row">
                                 <label for="smoothing" data-i18n="label:smoothing">Smoothing (σ):</label>
                                 <input type="range" id="smoothing" min="0.01" max="1.00" value="0.3" step="0.01">
-                                <div class="value-unit-wrapper">
-                                    <span id="smoothingValue">0.3</span>&nbsp;<span data-i18n="unit:octave">oct.</span>
-                                </div>
+                                <input type="number" id="smoothingValue" min="0.01" max="1" step="0.01" value="0.3">
                             </div>
                             <div class="explanation-text2" data-i18n="help:smoothing">Amount of frequency response smoothing to adjust sensitivity to peaks and dips.</div>
-                            <div class="control-row">
+                            <div class="parameter-row">
                                 <label for="targetLowFreqSlider" data-i18n="label:targetLowFreq">Low Freq:</label>
                                 <input type="range" id="targetLowFreqSlider" min="20" max="1000" value="0" step="1" class="slider">
-                                <div class="value-unit-wrapper">
-                                    <span id="targetLowFreqValue">20</span>&nbsp;Hz
-                                </div>
+                                <input type="number" id="targetLowFreqValue" min="20" max="1000" step="1" value="20">
                             </div>
                             <div class="explanation-text2" data-i18n="help:targetLowFreq">The lower limit frequency for frequency response correction. It is usually best to set it at the lower limit of the system's playback capabilities.</div>
-                            <div class="control-row">
+                            <div class="parameter-row">
                                 <label for="targetHighFreqSlider" data-i18n="label:targetHighFreq">High Freq:</label>
                                 <input type="range" id="targetHighFreqSlider" min="1000" max="20000" value="20000" step="100" class="slider">
-                                <div class="value-unit-wrapper">
-                                    <span id="targetHighFreqValue">20000</span>&nbsp;Hz
-                                </div>
+                                <input type="number" id="targetHighFreqValue" min="1000" max="20000" step="1" value="20000">
                             </div>
                             <div class="explanation-text2" data-i18n="help:targetHighFreq">The upper frequency limit for frequency response correction. It is recommended to determine this based on the upper frequency limit of the measurement microphone.</div>
-                            <div class="control-row eq-type">
+                            <div class="parameter-row eq-type">
                                 <label for="eqBandCount" data-i18n="label:eqBandCount">PEQ Band:</label>
                                 <input type="range" id="eqBandCount" min="3" max="15" value="5" step="1">
-                                <div class="value-unit-wrapper">
-                                    <span id="eqBandCountValue">5</span>&nbsp;<span data-i18n="unit:band">Band</span>
-                                </div>
+                                <input type="number" id="eqBandCountValue" min="3" max="15" step="1" value="5">
                             </div>
                             <div class="explanation-text2" data-i18n="help:eqBandCount">The number of bands of the parametric equalizer for correction. The more bands you have, the more detailed the frequency correction will be, but the processing load will increase.</div>
                         </div>
-                    </div>
                     <div class="export-section">
                         <div class="export-actions-row">
                             <button id="copyPEQBtn" class="primary-btn" data-i18n="button:copyPEQ">Copy EffeTune PEQ settings to clipboard</button>
@@ -384,13 +392,18 @@
                             <button id="exportTxtBtn" class="secondary-btn" data-i18n="button:exportTxt">Export Correction Parameters (txt)</button>
                             <button id="exportCSVBtn" class="secondary-btn" data-i18n="button:exportCSV">Export Correction Parameters (CSV)</button>
                         </div>
-                        <div id="impulseResponseSection" class="impulse-response-section" hidden>
-                            <h3 data-i18n="title:impulseResponse">Impulse Response</h3>
+                    </div>
+</details>
+<p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
+</section>
+<section id="impulseAnalysisPanel" data-analysis-panel="impulse" role="tabpanel" aria-labelledby="impulseAnalysisTab" hidden>
+                        <div id="impulseResponseSection" class="impulse-response-section">
+                            <div class="analysis-graph-header"><h3 data-i18n="title:impulseResponse">Impulse Response</h3><button id="impulseCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="impulseCopyGraphStatus" class="analysis-image-status" role="status"></p>
                             <div class="impulse-response-meta">
                                 <span id="impulseResponsePointName"></span>
                                 <output id="impulseResponseRange">0.00–10.00 ms</output>
                             </div>
-                            <canvas id="impulseResponseGraph" width="800" height="300" tabindex="0" role="img" aria-label="Normalized impulse response"></canvas>
+                            <div class="analysis-graph-mount"><canvas id="impulseResponseGraph" width="800" height="300" tabindex="0" role="img" aria-label="Impulse response"></canvas></div>
                             <div class="impulse-response-controls">
                                 <button id="impulseResponseZoomOut" type="button" class="secondary-btn" data-i18n="button:zoomOut">Zoom Out</button>
                                 <label for="impulseResponseScroll">
@@ -400,25 +413,49 @@
                                 <button id="impulseResponseZoomIn" type="button" class="secondary-btn" data-i18n="button:zoomIn">Zoom In</button>
                                 <button id="impulseResponseReset" type="button" class="secondary-btn" data-i18n="button:resetZoom">Reset</button>
                             </div>
-                            <div class="explanation-text" data-i18n="help:impulseResponseGraph">Amplitude is normalized to the response peak. Use the mouse wheel or buttons to zoom, and drag the plot or use the slider to scroll through time.</div>
                             <div class="impulse-response-export">
                                 <button id="exportImpulseResponseWav" type="button" class="secondary-btn" data-i18n="button:exportImpulseResponseWav">Export Impulse Response (WAV)</button>
                             </div>
                         </div>
-                        <label class="measurement-ir-export-option">
-                            <input id="includeImpulseResponses" type="checkbox" checked>
-                            <span data-i18n="label:includeImpulseResponses">Include impulse responses in measurement JSON exports</span>
-                        </label>
-                        <div class="explanation-text" data-i18n="help:includeImpulseResponses">Impulse responses can make the exported file tens of megabytes larger.</div>
-                        <div class="explanation-text" data-i18n="help:roomEq">For FIR correction with phase control, use the Room EQ plugin in the main app.</div>
-                    </div>
+<p id="impulseAnalysisStatus" class="analysis-status" role="status" hidden></p>
+                        <p id="impulseAnalysisConditions" class="analysis-conditions"></p>
+                        <output id="impulseAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
+                            <div id="impulseAnalysisSettings" class="analysis-settings-grid"></div></details><p class="explanation-text" data-i18n="analysis:impulseNote">Time is relative to the saved onset. The outline marks the analysis window. Display changes do not change WAV export.</p>
+<p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
+</section>
+<section id="distortionAnalysisPanel" data-analysis-panel="distortion" role="tabpanel" aria-labelledby="distortionAnalysisTab" hidden>
+<div class="analysis-graph-header"><h3 data-i18n="analysis:distortion">Distortion</h3><button id="distortionCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="distortionCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="distortionAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Distortion"></canvas></div><p id="distortionAnalysisStatus" class="analysis-status" role="status" hidden></p>
+                        <p id="distortionAnalysisConditions" class="analysis-conditions"></p>
+                        <output id="distortionAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
+                            <div id="distortionAnalysisSettings" class="analysis-settings-grid"></div></details><p class="explanation-text" data-i18n="analysis:distortionNote"></p>
+<p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
+</section>
+<section id="waterfallAnalysisPanel" data-analysis-panel="waterfall" role="tabpanel" aria-labelledby="waterfallAnalysisTab" hidden>
+<div class="analysis-graph-header"><h3 data-i18n="analysis:waterfall">Waterfall (3D)</h3><button id="waterfallCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="waterfallCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="waterfallAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Waterfall (3D)"></canvas></div><p id="waterfallAnalysisStatus" class="analysis-status" role="status" hidden></p>
+                        <p id="waterfallAnalysisConditions" class="analysis-conditions"></p>
+                        <output id="waterfallAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
+                            <div id="waterfallAnalysisSettings" class="analysis-settings-grid"></div></details><p id="waterfallAnalysisNote" class="explanation-text" data-i18n="analysis:waterfallNote"></p><p class="explanation-text" data-i18n="analysis:orbitHelp">Drag to rotate. Use the wheel or + / − to zoom. Shift + arrow keys rotate; Shift + Home resets the view.</p>
+<p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
+</section>
+<section id="detailsAnalysisPanel" data-analysis-panel="details" role="tabpanel" aria-labelledby="detailsAnalysisTab" hidden>
                     <div class="result-metadata">
-                        <h3 data-i18n="title:measurementDetails">Measurement Details</h3>
+                        <div class="analysis-graph-header"><h3 data-i18n="title:measurementDetails">Measurement Details</h3></div>
                         <table class="metadata-table">
                             <tbody id="measurementDetails">
                             </tbody>
                         </table>
                     </div>
+<table class="metadata-table"><tbody id="analysisDetails"></tbody></table><div class="export-section">                        <label class="measurement-ir-export-option">
+                            <input id="includeImpulseResponses" type="checkbox" checked>
+                            <span data-i18n="label:includeImpulseResponses">Include impulse responses in measurement JSON exports</span>
+                        </label>
+                        <div class="explanation-text" data-i18n="help:includeImpulseResponses">Impulse responses can make the exported file tens of megabytes larger.</div>
+                        <div class="explanation-text" data-i18n="help:roomEq">For FIR correction with phase control, use the Room EQ plugin in the main app.</div>
+                        <div class="export-actions-row">
+                            <button id="exportAnalysisJson" type="button" class="secondary-btn" data-i18n="analysis:export">Export measurement (JSON)</button>
+                        </div>
+                    </div>
+</section>
                 </div>
             </div>
         </div>
@@ -449,6 +486,7 @@
     </div>
 
     <script src="../../plugins/theme-palette.js"></script>
+    <script src="../../plugins/graph-readout.js"></script>
     <script src="layout-mode.js" type="module"></script>
     <script src="app.js" type="module"></script>
     <script>

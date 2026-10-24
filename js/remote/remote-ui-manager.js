@@ -5,15 +5,12 @@
 
 import { LayoutModeManager } from '../ui/layout-mode-manager.js';
 import { resolveLanguagePreference } from '../language-options.js';
-
-function parseJson5Object(text) {
-    return JSON.parse(text.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
-}
+import { parseCommentedJSON } from '../utils/parse-commented-json.js';
 
 async function fetchLocale(locale, fetchImpl) {
     try {
         const response = await fetchImpl(`js/locales/${locale}.json5`);
-        return response.ok ? parseJson5Object(await response.text()) : {};
+        return response.ok ? parseCommentedJSON(await response.text()) : {};
     } catch (error) {
         console.warn(`[remote] translations for ${locale} could not be loaded`, error);
         return {};

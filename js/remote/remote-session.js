@@ -20,8 +20,7 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{4,64}$/;
 // reload, a bookmark or a screenshot of the URL does not carry it.
 // Returns { ok: true, token, url } or { ok: false, reason: 'protocol' | 'token' }.
 export function resolveRemoteTarget({ location, storage, history }) {
-    // ws:// from an https page is blocked by the browser, so only plain http works.
-    if (location.protocol !== 'http:') return { ok: false, reason: 'protocol' };
+    if (!['http:', 'https:'].includes(location.protocol)) return { ok: false, reason: 'protocol' };
     const params = new URLSearchParams(location.search);
     const supplied = params.get('t');
     let token = supplied !== null && TOKEN_PATTERN.test(supplied) ? supplied : null;
@@ -40,7 +39,7 @@ export function resolveRemoteTarget({ location, storage, history }) {
         if (token && !TOKEN_PATTERN.test(token)) token = null;
     }
     if (!token) return { ok: false, reason: 'token' };
-    return { ok: true, token, url: `ws://${location.host}/?t=${encodeURIComponent(token)}` };
+    return { ok: true, token, url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/?t=${encodeURIComponent(token)}` };
 }
 
 export class RemoteSession extends EventTarget {
@@ -193,7 +192,11 @@ export class RemoteSession extends EventTarget {
         }
         if (message.op === 'ack') {
             const waiter = this.waiters.get(message.seq);
-            if (waiter && !waiter.data) {
+            if (waiter?.onChunk) {
+                this.waiters.delete(message.seq);
+                if (message.ok === true) waiter.resolve(message);
+                else waiter.reject(new Error(message.error || 'request failed'));
+            } else if (waiter && !waiter.data) {
                 this.waiters.delete(message.seq);
                 waiter.resolve(message);
             } else if (waiter) {
@@ -208,8 +211,15 @@ export class RemoteSession extends EventTarget {
         if (message.seq !== undefined) {
             const waiter = this.waiters.get(message.seq);
             if (waiter?.data && message.op === waiter.data) {
-                this.waiters.delete(message.seq);
-                waiter.resolve(message);
+                if (waiter.onChunk) {
+                    try { waiter.onChunk(message); } catch (error) {
+                        this.waiters.delete(message.seq);
+                        waiter.reject(error);
+                    }
+                } else {
+                    this.waiters.delete(message.seq);
+                    waiter.resolve(message);
+                }
             }
         }
         if (message.op === 'state') {
@@ -239,12 +249,17 @@ export class RemoteSession extends EventTarget {
         return this.sendInternal(message, dataOp);
     }
 
-    sendInternal(message, dataOp) {
+    // IR downloads stream data before their final acknowledgement.
+    requestChunks(message, dataOp, onChunk) {
+        return this.sendInternal(message, dataOp, onChunk);
+    }
+
+    sendInternal(message, dataOp, onChunk = null) {
         const ws = this.ws;
         if (!ws || ws.readyState !== 1) return Promise.reject(new Error('not connected'));
         const seq = this.seq += 1;
         return new Promise((resolve, reject) => {
-            this.waiters.set(seq, { resolve, reject, data: dataOp });
+            this.waiters.set(seq, { resolve, reject, data: dataOp, onChunk });
             try {
                 ws.send(JSON.stringify({ ...message, seq }));
             } catch (error) {

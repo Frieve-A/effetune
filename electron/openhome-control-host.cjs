@@ -22,6 +22,7 @@ const CHANNELS = Object.freeze({
 const MAX_IPC_BYTES = 128 * 1024;
 const MAX_PENDING_ACTIONS = 16;
 const ACTION_TIMEOUT_MS = 10000;
+const CATALOG_ACTION_TIMEOUT_MS = 120000;
 const RESET_TIMEOUT_MS = 2000;
 const SIDECAR_RETRY_BASE_MS = 500;
 const SIDECAR_RETRY_MAX_MS = 30000;
@@ -37,6 +38,7 @@ class OpenHomeControlHost {
     saveConfig,
     setAppConfig,
     defaultFriendlyName = createDefaultFriendlyName(),
+    onFriendlyNameChanged = async () => {},
     setTimer = setTimeout,
     clearTimer = clearTimeout,
     now = Date.now,
@@ -49,12 +51,14 @@ class OpenHomeControlHost {
     this.saveConfig = saveConfig;
     this.setAppConfig = setAppConfig;
     this.defaultFriendlyName = normalizeFriendlyName(defaultFriendlyName, 'EffeTune');
+    this.onFriendlyNameChanged = onFriendlyNameChanged;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.now = now;
     this.onDiagnostic = onDiagnostic;
     const config = this.loadConfig();
     this.enabled = config.openHomeRemoteControl === true;
+    this.localControlEnabled = false;
     this.rendererReady = false;
     this.latestSnapshot = null;
     this.pendingActions = new Map();
@@ -104,6 +108,7 @@ class OpenHomeControlHost {
     return Object.freeze({
       apiVersion: 1,
       enabled: this.enabled,
+      localControlEnabled: this.localControlEnabled,
       friendlyName: this.getFriendlyName(),
       rendererReady: this.rendererReady,
       available: sidecarStatus.available,
@@ -151,13 +156,16 @@ class OpenHomeControlHost {
     else next.openHomeFriendlyName = friendlyName;
     if (!this.saveConfig(next)) throw createHostError('save-failed');
     this.setAppConfig(next);
-    if (currentFriendlyName !== friendlyName) await this.restartForEnvironmentChange();
+    if (currentFriendlyName !== friendlyName) {
+      await this.onFriendlyNameChanged();
+      await this.restartForEnvironmentChange();
+    }
     this.sendStatus();
     return this.getStatus();
   }
 
   getFriendlyName(config = this.loadConfig()) {
-    return normalizeFriendlyName(config.openHomeFriendlyName, this.defaultFriendlyName);
+    return resolveFriendlyName(config, this.defaultFriendlyName);
   }
 
   async applyEnabledTransition(enabled, epoch, disableTransition) {
@@ -217,6 +225,7 @@ class OpenHomeControlHost {
   }
 
   async setRendererUnavailable() {
+    const localOnly = this.reconciledMode === 'stopped';
     this.cancelSidecarRetry();
     this.finishPendingReset(false);
     if (this.rendererReady) {
@@ -226,14 +235,57 @@ class OpenHomeControlHost {
     }
     this.latestSnapshot = null;
     await this.scheduleReconciliation();
+    if (localOnly) {
+      this.releaseAllRegistrations();
+      await this.gateway.close();
+    }
     this.sendStatus();
   }
 
   publishState(snapshot) {
     requireBoundedObject(snapshot, 'invalid-state');
-    if (!this.enabled || !this.rendererReady || this.resetRequired || this.disposed) return false;
+    if ((!this.enabled && !this.localControlEnabled) || !this.rendererReady || this.resetRequired || this.disposed) return false;
     this.latestSnapshot = snapshot;
-    return this.sidecar.publishState(snapshot);
+    return this.enabled ? this.sidecar.publishState(snapshot) : true;
+  }
+
+  setLocalControlEnabled(enabled) {
+    this.localControlEnabled = enabled === true;
+    if (!this.localControlEnabled) this.cancelLocalActions();
+    this.sendStatus();
+  }
+
+  cancelLocalActions() {
+    for (const pending of this.pendingActions.values()) {
+      if (pending.local) this.failPendingAction(pending, 'service-stopped', true);
+    }
+  }
+
+  cancelStaleLocalActions() {
+    for (const pending of this.pendingActions.values()) {
+      if (pending.local && !pending.isCurrent()) this.failPendingAction(pending, 'unauthorized', true);
+    }
+  }
+
+  requestLocalAction(service, action, args = {}, isCurrent = () => true) {
+    if (!isCurrent()) return Promise.reject(createHostError('unauthorized'));
+    if (!this.localControlEnabled || !this.rendererReady || this.resetRequired ||
+        !this.environmentAvailable || this.disposed) return Promise.reject(createHostError('renderer-unavailable'));
+    if (this.pendingActions.size >= MAX_PENDING_ACTIONS) return Promise.reject(createHostError('busy'));
+    return new Promise((resolve, reject) => {
+      const request = { requestId: `pwa-${crypto.randomUUID()}`, service, action, args };
+      this.queueAction(request, {
+        local: true,
+        isCurrent,
+        respond: result => { resolve(result); return true; },
+        reject: (code, phase) => {
+          const error = createHostError(code);
+          if (phase === 'preflight' || phase === 'mutation') error.phase = phase;
+          reject(error);
+          return true;
+        }
+      });
+    });
   }
 
   handleRendererResetAck(ack) {
@@ -253,13 +305,13 @@ class OpenHomeControlHost {
     this.pendingActions.delete(requestId);
 
     if (response.ok === true) {
-      const accepted = this.sidecar.respond(requestId, response.result ?? {});
+      const accepted = pending.respond(response.result ?? {});
       if (accepted === true) this.commitMediaRegistration(pending, response.result);
       else this.releasePendingRegistration(pending);
       return accepted;
     }
     this.releasePendingRegistration(pending);
-    return this.sidecar.reject(requestId, response.error?.code || 'action-failed');
+    return pending.reject(response.error?.code || 'action-failed', response.error?.phase);
   }
 
   handleSidecarAction(action) {
@@ -272,11 +324,22 @@ class OpenHomeControlHost {
       return Promise.resolve();
     }
 
-    const deadlineEpochMs = this.now() + ACTION_TIMEOUT_MS;
+    return this.queueAction(action, {
+      local: false,
+      respond: result => this.sidecar.respond(action.requestId, result),
+      reject: code => this.sidecar.reject(action.requestId, code)
+    });
+  }
+
+  queueAction(action, response) {
+    const timeoutMs = action.service === 'Catalog' ? CATALOG_ACTION_TIMEOUT_MS : ACTION_TIMEOUT_MS;
+    const deadlineEpochMs = this.now() + timeoutMs;
     const pending = {
+      ...response,
       action,
       actionEpoch: this.actionEpoch,
       deadlineEpochMs,
+      timeoutMs,
       registration: null,
       artworkRegistration: null,
       timer: null
@@ -290,19 +353,21 @@ class OpenHomeControlHost {
 
   async dispatchSidecarAction(pending) {
     const action = pending.action;
-    if (!this.isCurrentAction(pending)) return;
+    if (!this.isCurrentAction(pending)) { this.failRevokedLocalAction(pending); return; }
 
-    let rendererAction = Object.freeze({ ...action, deadlineEpochMs: pending.deadlineEpochMs });
+    // Only the main process can grant authority to observe the existing local queue.
+    let rendererAction = Object.freeze({ ...action, localControl: pending.local === true, deadlineEpochMs: pending.deadlineEpochMs });
     try {
-      requireBoundedObject(action, 'invalid-action');
+      requireBoundedObject(action, 'invalid-action', action.service === 'Catalog' ? 4 * 1024 * 1024 : MAX_IPC_BYTES);
       pending.timer = this.setTimer(() => {
         this.failPendingAction(pending, 'action-timeout', true);
-      }, ACTION_TIMEOUT_MS);
+      }, pending.timeoutMs);
 
       if (action.service === 'Playlist' && action.action === 'Insert') {
         const registration = await this.gateway.register(action.args.uri);
         if (!this.isCurrentAction(pending)) {
           this.gateway.release(registration.token);
+          this.failRevokedLocalAction(pending);
           return;
         }
         pending.registration = registration;
@@ -315,7 +380,7 @@ class OpenHomeControlHost {
           }
         }
         if (!this.isCurrentAction(pending)) {
-          this.releasePendingRegistration(pending);
+          if (!this.failRevokedLocalAction(pending)) this.releasePendingRegistration(pending);
           return;
         }
         rendererAction = Object.freeze({
@@ -329,7 +394,7 @@ class OpenHomeControlHost {
           })
         });
       }
-      requireBoundedObject(rendererAction, 'invalid-action');
+      requireBoundedObject(rendererAction, 'invalid-action', action.service === 'Catalog' ? 4 * 1024 * 1024 : MAX_IPC_BYTES);
     } catch (error) {
       this.failPendingAction(pending, error?.code || 'invalid-media-uri');
       return;
@@ -340,6 +405,7 @@ class OpenHomeControlHost {
       this.failPendingAction(pending, 'renderer-unavailable');
       return;
     }
+    if (!this.isCurrentAction(pending)) { this.failRevokedLocalAction(pending); return; }
 
     try {
       window.webContents.send(CHANNELS.action, rendererAction);
@@ -351,7 +417,13 @@ class OpenHomeControlHost {
   isCurrentAction(pending) {
     return this.pendingActions.get(pending.action.requestId) === pending &&
       pending.actionEpoch === this.actionEpoch &&
-      this.getDesiredServiceMode() === 'running' && this.reconciledMode === 'running';
+      (pending.local
+        ? this.localControlEnabled && this.rendererReady && this.environmentAvailable && !this.resetRequired && !this.disposed && pending.isCurrent()
+        : this.getDesiredServiceMode() === 'running' && this.reconciledMode === 'running');
+  }
+
+  failRevokedLocalAction(pending) {
+    return pending.local && !pending.isCurrent() && this.failPendingAction(pending, 'unauthorized', true);
   }
 
   failPendingAction(pending, code, cancelRenderer = false) {
@@ -361,7 +433,7 @@ class OpenHomeControlHost {
     this.pendingActions.delete(requestId);
     this.releasePendingRegistration(pending);
     if (cancelRenderer) this.sendRendererCancel(requestId);
-    this.sidecar.reject(requestId, code);
+    pending.reject(code);
     return true;
   }
 
@@ -454,7 +526,7 @@ class OpenHomeControlHost {
         this.releasePendingRegistration(pending);
       }
       this.sendRendererCancel(requestId);
-      this.sidecar.reject(requestId, code);
+      pending.reject(code);
     }
     this.pendingActions.clear();
   }
@@ -472,6 +544,7 @@ class OpenHomeControlHost {
     this.lifecycleEpoch += 1;
     this.actionEpoch += 1;
     if (pendingCode) this.rejectPendingActions(pendingCode, true);
+    else this.cancelLocalActions();
   }
 
   getDesiredServiceMode() {
@@ -630,12 +703,17 @@ class OpenHomeControlHost {
 
   async dispose() {
     if (this.disposed) return;
+    const localOnly = this.reconciledMode === 'stopped';
     this.disposed = true;
     this.cancelSidecarRetry();
     this.finishPendingReset(false);
     this.rendererReady = false;
     this.advanceLifecycle('service-stopped');
     await this.scheduleReconciliation();
+    if (localOnly) {
+      this.releaseAllRegistrations();
+      await this.gateway.close();
+    }
   }
 }
 
@@ -670,6 +748,7 @@ function createOpenHomeControlHost({
   config,
   getMainWindow,
   processRef = process,
+  onFriendlyNameChanged,
   onDiagnostic = () => {}
 }) {
   const executableName = processRef.platform === 'win32'
@@ -690,13 +769,18 @@ function createOpenHomeControlHost({
     saveConfig: next => config.saveConfig(next),
     setAppConfig: next => constants.setAppConfig(next),
     defaultFriendlyName: createDefaultFriendlyName(),
+    onFriendlyNameChanged,
     onDiagnostic
   });
 }
 
 function createDefaultFriendlyName(computerName = os.hostname()) {
   const name = String(computerName || '').trim();
-  return normalizeFriendlyName(name ? `EffeTune (${name})` : 'EffeTune', 'EffeTune');
+  return normalizeFriendlyName(name, 'EffeTune');
+}
+
+function resolveFriendlyName(config, defaultFriendlyName = createDefaultFriendlyName()) {
+  return normalizeFriendlyName(config.openHomeFriendlyName, defaultFriendlyName);
 }
 
 function normalizeFriendlyName(value, fallback, strict = false) {
@@ -774,7 +858,7 @@ function decodeXmlText(value) {
   });
 }
 
-function requireBoundedObject(value, code) {
+function requireBoundedObject(value, code, maximum = MAX_IPC_BYTES) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw createHostError(code);
   }
@@ -784,7 +868,7 @@ function requireBoundedObject(value, code) {
   } catch (_) {
     throw createHostError(code);
   }
-  if (Buffer.byteLength(serialized) > MAX_IPC_BYTES) throw createHostError(code);
+  if (Buffer.byteLength(serialized) > maximum) throw createHostError(code);
 }
 
 function createHostError(code) {
@@ -806,6 +890,7 @@ module.exports = {
   OpenHomeControlHost,
   createDefaultFriendlyName,
   createOpenHomeControlHost,
+  resolveFriendlyName,
   extractDidlAlbumArtUri,
   registerOpenHomeIpc
 };

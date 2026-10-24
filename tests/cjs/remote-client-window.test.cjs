@@ -41,6 +41,8 @@ test('pairing links from the Remote Control window are understood', () => {
   const link = parseJoinInput('http://192.168.1.5:47300/?t=abcd1234');
   assert.deepEqual([link.ok, link.host, link.port, link.token, link.origin],
     [true, '192.168.1.5', 47300, 'abcd1234', 'http://192.168.1.5:47300']);
+  assert.equal(parseJoinInput('https://192.168.1.5:47300/?t=abcd').origin, 'https://192.168.1.5:47300');
+  assert.equal(parseJoinInput('wss://192.168.1.5:47300/?t=abcd').url, 'https://192.168.1.5:47300/?t=abcd');
   assert.equal(link.url, 'http://192.168.1.5:47300/?t=abcd1234');
   assert.equal(parseJoinInput('ws://10.0.0.2:47301/?t=tok_en-1').origin, 'http://10.0.0.2:47301');
   assert.equal(parseJoinInput('  http://192.168.0.9:47302/?t=abcdef  ').token, 'abcdef');
@@ -52,7 +54,7 @@ test('other links are refused with a message', () => {
   const bad = input => parseJoinInput(input);
   assert.equal(bad('').ok, false);
   assert.equal(bad('hello').ok, false);
-  assert.equal(bad('https://192.168.1.5:47300/?t=abcd').ok, false);
+  assert.equal(bad('ftp://192.168.1.5:47300/?t=abcd').ok, false);
   assert.equal(bad('http://192.168.1.5/?t=abcd').ok, false, 'no port');
   assert.equal(bad('http://192.168.1.5:0/?t=abcd').ok, false);
   assert.equal(bad('http://192.168.1.5:70000/?t=abcd').ok, false);

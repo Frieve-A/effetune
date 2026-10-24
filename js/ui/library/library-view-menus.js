@@ -309,7 +309,8 @@ export const menusMethods = {
       actionIntent && typeof this.manager?.performSelectionAction === 'function'
     );
     const disabled = canRunSelectionAction ? '' : ' disabled';
-    const playDisabled = canRunSelectionAction && Number.isSafeInteger(actionIntent.currentOrdinal)
+    const playbackDisabled = canRunSelectionAction && !this.localPlaybackUnavailable ? '' : ' disabled';
+    const playDisabled = canRunSelectionAction && !this.localPlaybackUnavailable && Number.isSafeInteger(actionIntent.currentOrdinal)
       ? ''
       : ' disabled';
     const artistDetail = this.getTrackArtistDetail(track);
@@ -323,8 +324,8 @@ export const menusMethods = {
     menu.style.top = `${Math.max(4, event.clientY || 0)}px`;
     menu.innerHTML = `
       <button type="button" role="menuitem" data-action="play"${playDisabled}>${ICONS.play}<span>${escapeHtml(this.t('library.action.play'))}</span></button>
-      <button type="button" role="menuitem" data-action="next"${disabled}>${ICONS.next}<span>${escapeHtml(this.t('library.action.playNext'))}</span></button>
-      <button type="button" role="menuitem" data-action="queue"${disabled}>${ICONS.queue}<span>${escapeHtml(this.t('library.action.addToQueue'))}</span></button>
+      <button type="button" role="menuitem" data-action="next"${playbackDisabled}>${ICONS.next}<span>${escapeHtml(this.t('library.action.playNext'))}</span></button>
+      <button type="button" role="menuitem" data-action="queue"${playbackDisabled}>${ICONS.queue}<span>${escapeHtml(this.t('library.action.addToQueue'))}</span></button>
       <button type="button" role="menuitem" data-action="playlist"${disabled}>${ICONS.add}<span>${escapeHtml(this.t('library.action.addToPlaylist'))}</span></button>
       <button type="button" role="menuitem" data-action="favorite"${canFavorite ? '' : ' disabled'}>${favorite ? ICONS.starFilled : ICONS.star}<span>${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}</span></button>
       <hr>

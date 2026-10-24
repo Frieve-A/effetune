@@ -10,7 +10,7 @@ Visualizer turns EffeTune's processed audio into a customizable display. It can 
 
 ## Open and display
 
-On PC, select **Visualizer** beside **Effect Pipeline** and **Music Library**. On mobile, tap the **Visualizer** icon in the upper-right corner. In the desktop app, choose **View > Visualizer**. In the [browser extension](browser-extension.md), select **Visualizer** in the Pipeline Editor header. You can also set Visualizer as the startup view in **Settings > Config...**.
+On PC, select **Visualizer** beside **Effect Pipeline** and **Music Library**. On mobile, tap the **Visualizer** icon in the upper-right corner. In the desktop app, choose **View > Visualizer**. In the [browser extension](browser-extension.md), select **Visualizer** in the Pipeline Editor header. You can also set Visualizer as the startup view in **Settings > Config...**. When Visualizer is selected, enable **Fill app window at startup** to start with the visualizer filling the app window.
 
 Choose a built-in preset to start. Presets are grouped by 16:9, 21:9, 4:3, 1:1, and 9:16 proportions. Selecting a preset replaces the current layout. Graphs display the audio signal just before it reaches the output, including all active effects.
 
@@ -26,7 +26,7 @@ Every proportion offers ten shared presets:
 - **Phase Galaxy**: The phase map rendered as a glowing, turning star.
 - **Chroma Mandala**: The chroma spiral rendered as a kaleidoscope.
 
-Eight additional presets appear in the proportions they suit best:
+Nine additional presets appear in the proportions they suit best:
 - **Fretboard** (21:9, 9:16): Detected notes on a guitar neck with a beat indicator; the 21:9 layout adds a piano-roll view above the neck.
 - **Power Amp** (21:9, 16:9): Blue-lit VU meters on a black amplifier front panel.
 - **Round Dials** (1:1, 9:16): Round VU meters in brass rims.
@@ -35,6 +35,7 @@ Eight additional presets appear in the proportions they suit best:
 - **Cinema Strip** (21:9): A full-width spectrogram, ten-second waveform, and scrolling lyrics line.
 - **Meter Bridge** (21:9, 4:3): True Peak, VU, slow RMS, and loudness meters lined up above a level meter and waveform strip so you can compare how each meter responds to the same music.
 - **Counter Gallery** (16:9): Eight live counters demonstrate mechanical, LED, VFD, LCD, dot-matrix, flip, and Nixie looks, including a calculated 30 fps display. Compare them, enjoy the display, or copy an individual Counter into your own layout.
+- **Listening Room** (16:9): Large album artwork and track details with playback buttons, a seek bar, elapsed time, and a subtle spectrum strip, in warm tones on graphite.
 
 Hover over or tap the display to reveal **⛶**. Select it to fill the app window while preserving the chosen proportions (edges may be cropped). Select **⛶** again, press **Esc**, or use mobile Back to return. In the desktop app, switching to Mini Player while Visualizer is open places the display above the playback controls.
 
@@ -52,7 +53,7 @@ Moving or resizing an item beyond the frame crops it at the edge in both Edit an
 
 - Choose display proportions, background color, or a background image (large images are resized automatically). **Theme colors** lets you customize the graph base, soft graph fill, fine and major grid lines, graph labels, axis titles, and meter ticks for the layout without changing the trace palette. Untouched colors use the default dark theme regardless of EffeTune's UI theme. Click **Use default colors** to reset.
 - **Graph scale** (×0.50 to ×3.00, default ×1.00): Graphs scale proportionally from small windows up to 4K. **Graph scale** enlarges or shrinks lines, ticks, peak marks, and graph labels across the layout, while Title, Album, Artist, and Text keep their own font sizes.
-- Add an **Oscilloscope**, **Spectrum**, **Spectrogram**, **Stereo**, **Level Meter**, **Analog Meter**, **Notes**, **Guitar**, **Chroma Spiral**, **Phase Map**, or **Rhythm Analyzer** graph, or add **Lyrics**, **Artwork**, **Video**, **Title**, **Album**, **Artist**, **Counter**, **Text**, or **Shape**. Drag an item to move it and drag its handles to resize (**Shift** preserves aspect ratio, **Ctrl**/**Cmd** resizes from center). Use **Snap to grid** for alignment, or hold **Alt** while dragging to bypass snapping. **Move up**, **Move down**, **Bring to front**, and **Send to back** control layering (items lower in the list appear in front). Press **Ctrl+D** (**Cmd+D** on Mac) or **Alt-drag** to duplicate selected items.
+- Add an **Oscilloscope**, **Spectrum**, **Spectrogram**, **Stereo**, **Level Meter**, **Analog Meter**, **Notes**, **Guitar**, **Chroma Spiral**, **Phase Map**, or **Rhythm Analyzer** graph, or add **Lyrics**, **Artwork**, **Video**, **Title**, **Album**, **Artist**, **Playback Control**, **Seek Bar**, **Counter**, **Text**, or **Shape**. Drag an item to move it and drag its handles to resize (**Shift** preserves aspect ratio, **Ctrl**/**Cmd** resizes from center). Use **Snap to grid** for alignment, or hold **Alt** while dragging to bypass snapping. **Move up**, **Move down**, **Bring to front**, and **Send to back** control layering (items lower in the list appear in front). Press **Ctrl+D** (**Cmd+D** on Mac) or **Alt-drag** to duplicate selected items.
 - **Shift+click** items on the canvas or list (or **Ctrl/Cmd+click** in the list) to select multiple items, or drag a selection box on empty canvas (**Shift+drag** adds to selection). Where items overlap, **Ctrl+click** (**Cmd+click** on Mac) cycles through items behind the pointer. **Ctrl+A** (**Cmd+A**) selects all; **Esc** clears the selection. Moving, deleting, duplicating, cutting, copying, and pasting apply to all selected items. When all selected items are the same type, edits in the right pane apply to all of them, along with edge and center alignment buttons.
 - **Undo** and **Redo** (**Ctrl+Z** / **Ctrl+Y**; **Cmd** on Mac) step through layout edits, preset loads, and link imports during the current session. **Cut items**, **Copy items**, and **Paste items** (**Ctrl+X**, **Ctrl+C**, **Ctrl+V**) move items through the clipboard, and **Paste items** also imports a Visualizer share link on the clipboard. Press **Delete** to remove selected items. Right-click (or long-press) the canvas for quick access to these commands.
 - Each graph defaults to output channels 1–2. Selecting a single channel displays it across the graph (or as a single bar/meter in Level Meter and Analog Meter). Either axis can be flipped.
@@ -61,6 +62,17 @@ Moving or resizing an item beyond the frame crops it at the edge in both Edit an
 For **Title**, **Album**, and **Artist**, set font, size, horizontal/vertical alignment, letter spacing, case, **Bold**, **Italic**, **Outline**, and **Shadow** independently. **Artwork** and **Video** support **Rounded corners**.
 
 Add **Text** for a static label or room name (up to 4096 characters, multiline supported) using the same typography, outline, and shadow controls as Title.
+
+Add **Playback Control** to place a player button in your layout. Choose **Action**: **Play / Pause**, **Stop**, **Previous track**, **Next track**, **Shuffle**, or **Repeat**; add separate items for the buttons you want. Outside **Edit**, click or tap a button, or focus it with **Tab** and press **Enter** or **Space**. With the player open, unavailable controls are dimmed. Shuffle is unavailable while repeating one track.
+
+- **Appearance** offers **Minimal**, **Glass**, and **Raised** starting points without changing the action or placement. **Button shape** chooses **Rounded rectangle** or **Ellipse**; use equal width and height for a circle. **Fill color** and **Fill opacity** set the background, **Border color** and **Border width** set the frame (0 hides it), and **Corner radius** rounds rectangular corners. Increase **Surface depth** for stronger shading, or set it to 0 for a flat surface.
+- **Content** selects **Icon**, **Icon and label**, or **Label**. **Icon size** changes the symbol's size; leave **Custom label** empty to show the action automatically. Label modes also provide the usual text styling. The palette colors the icon and label; **Active color** highlights enabled Shuffle and Repeat. Combine these controls with the existing item effects to match the layout.
+
+Add **Seek Bar** for a horizontal playback-position control. Outside **Edit**, click or drag to choose a position and release to seek. You can also focus it with **Tab** and use the arrow keys, **Home**, or **End**. The bar is dimmed when the current track cannot be seeked.
+
+- **Appearance** offers **Slim**, **Classic**, and **Bold** starting points. **Track color**, **Track opacity**, and **Track thickness** adjust the background bar; **Rounded ends** rounds its ends. The palette colors the played portion. **Show thumb** toggles the position marker, with **Thumb size** and **Thumb color** controlling its appearance. **Thumb shape** chooses **Circle**, **Square**, **Diamond**, or a vertical **Bar**. **Thumb border width** and **Thumb border color** add an outline; set the width to 0 to hide it. Existing item effects also apply.
+
+Playback Control and Seek Bar stay visible when the player is paused or stopped. When no player is open, both are hidden outside **Edit**, including in Clean Feed; you can still configure them in the editor.
 
 Add **Counter** to show the built-in player's current position, including pauses and seeking. With external input, it counts elapsed time from when the Counter is added or the layout is loaded in the current session, even while Visualizer is hidden. Outside **Edit**, click or tap it to reset that Counter's external elapsed time; this does not change player playback.
 

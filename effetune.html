@@ -63,7 +63,8 @@
         }
     </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data: blob: http://127.0.0.1:*; media-src 'self' blob: data: http://127.0.0.1:*; style-src 'self' 'unsafe-inline' blob:;">
+    <!-- Registered LAN addresses are checked by the PWA transport; static CSP cannot list user-selected hosts. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' https://www.googletagmanager.com 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' blob: http: https: ws: wss:; img-src 'self' https://www.google-analytics.com https://*.google-analytics.com data: blob: http://127.0.0.1:* http: https:; media-src 'self' blob: data: http: https:; style-src 'self' 'unsafe-inline' blob:;">
     <script src="js/theme-boot.js"></script>
     <title>EffeTune</title>
 
@@ -132,6 +133,7 @@
 
     <link rel="stylesheet" href="css/effetune.css">
     <link rel="stylesheet" href="css/effetune-mobile.css">
+    <link rel="stylesheet" href="css/effetune-network-music.css">
     <link rel="stylesheet" href="css/user-data-backup.css">
     <link rel="stylesheet" href="css/onboarding-tour.css">
     <link rel="icon" href="images/favicon.ico" type="image/x-icon">
@@ -245,7 +247,7 @@
                     <button type="button" class="settings-menu-item" id="tourSettingsButton">Take the tour</button>
                     <button class="settings-menu-item" id="audioConfigSettingsButton">Audio Configuration</button>
                     <button class="settings-menu-item" id="benchmarkSettingsButton">Performance Benchmark</button>
-                    <button class="settings-menu-item" id="measurementSettingsButton">Frequency Response Measurement</button>
+                    <button class="settings-menu-item" id="measurementSettingsButton">Acoustic Measurement</button>
                     <button class="settings-menu-item" id="backupRestoreSettingsButton">Backup / Restore</button>
                     <button class="settings-menu-item" id="resetAudioSettingsButton">Reset Audio</button>
                     <install class="settings-menu-install" id="installAppElement" hidden></install>

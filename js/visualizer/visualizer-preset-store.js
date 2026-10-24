@@ -1,4 +1,4 @@
-import { ASPECTS, ASPECT_FILES, snapshotLayout, validateLayout } from './visualizer-model.js';
+import { ASPECTS, ASPECT_FILES, isRecord, snapshotLayout, validateLayout } from './visualizer-model.js';
 
 const DATABASE_NAME = 'effetune-visualizer';
 const CURRENT_STORE = 'current';
@@ -61,7 +61,11 @@ export class VisualizerPresetStore {
 
     async loadCurrent() {
         const layout = await this.request(CURRENT_STORE, 'readonly', store => store.get(CURRENT_KEY));
-        return layout && validateLayout(layout) ? layout : null;
+        if (layout === undefined || layout === null) return null;
+        // Local state is recovered by normalizeLayout, not the strict import validator.
+        // Missing new fields or one unsupported item must not discard the whole scene.
+        if (!isRecord(layout) || !Array.isArray(layout.items)) throw new TypeError('Invalid saved visualizer layout');
+        return layout;
     }
 
     saveCurrent(layout) {

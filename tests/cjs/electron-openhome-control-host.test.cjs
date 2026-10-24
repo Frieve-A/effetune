@@ -119,6 +119,92 @@ function createHarness(initialConfig = {}, hostOptions = {}) {
   return { gateway, getConfig: () => config, host, saves, sends, sidecar, window };
 }
 
+test('only main-process local actions carry local queue observation authority', async () => {
+  const harness = createHarness({ openHomeRemoteControl: true });
+  await harness.host.setRendererReady();
+  harness.host.setLocalControlEnabled(true);
+  try {
+    const pending = harness.host.requestLocalAction('Playlist', 'Snapshot');
+    await delay();
+    const local = harness.sends.find(([channel, action]) => channel === CHANNELS.action && action.action === 'Snapshot')[1];
+    harness.host.handleRendererResponse({ requestId: local.requestId, ok: true, result: {} });
+    await pending;
+    assert.equal(local.localControl, true);
+    await harness.host.handleSidecarAction({ requestId: 'lan-snapshot', service: 'Playlist', action: 'Snapshot', args: {}, localControl: true });
+    const incoming = harness.sends.find(([channel, action]) => channel === CHANNELS.action && action.requestId === 'lan-snapshot')[1];
+    harness.host.handleRendererResponse({ requestId: incoming.requestId, ok: true, result: {} });
+    assert.equal(incoming.localControl, false);
+  } finally { await harness.host.dispose(); }
+});
+
+test('local actions waiting for dispatch are cancelled when advertisement changes their owner epoch', async () => {
+  const harness = createHarness({ openHomeRemoteControl: false });
+  await harness.host.setRendererReady();
+  harness.host.setLocalControlEnabled(true);
+  let release;
+  harness.host.actionDispatch = new Promise(resolve => { release = resolve; });
+  const pending = harness.host.requestLocalAction('Playlist', 'Snapshot');
+  const rejected = assert.rejects(pending, { code: 'service-stopped' });
+  try {
+    await harness.host.setEnabled(true);
+    await rejected;
+    assert.equal(harness.host.pendingActions.size, 0);
+  } finally { release(); await harness.host.dispose(); }
+});
+
+test('a revoked local endpoint session cannot dispatch a queued Play action', async () => {
+  const { LocalOpenHomePlayer } = require('../../electron/pwa-network-host.cjs');
+  const harness = createHarness({ openHomeRemoteControl: false });
+  await harness.host.setRendererReady();
+  harness.host.setLocalControlEnabled(true);
+  const player = new LocalOpenHomePlayer(harness.host);
+  const endpoint = player.services.get('urn:av-openhome-org:service:Playlist');
+  let release;
+  harness.host.actionDispatch = new Promise(resolve => { release = resolve; });
+  let authorized = true;
+  const pending = endpoint.invoke('Play', {}, () => authorized);
+  const rejected = assert.rejects(pending, { code: 'unauthorized' });
+  try {
+    authorized = false;
+    release();
+    await rejected;
+    assert.equal(harness.sends.some(([channel, action]) => channel === CHANNELS.action && action.action === 'Play'), false);
+    assert.equal(harness.host.pendingActions.size, 0);
+  } finally { release(); await harness.host.dispose(); }
+});
+
+test('a disconnected local session cancels renderer work already dispatched', async () => {
+  const harness = createHarness({ openHomeRemoteControl: false });
+  await harness.host.setRendererReady();
+  harness.host.setLocalControlEnabled(true);
+  let authorized = true;
+  const pending = harness.host.requestLocalAction('Catalog', 'PlayItems', { items: [{ serverId: 'local', trackId: 'song' }] }, () => authorized);
+  const rejected = assert.rejects(pending, { code: 'unauthorized' });
+  try {
+    await delay();
+    assert.equal(harness.sends.some(([channel, action]) => channel === CHANNELS.action && action.action === 'PlayItems'), true);
+    authorized = false;
+    harness.host.cancelStaleLocalActions();
+    await rejected;
+    assert.equal(harness.host.pendingActions.size, 0);
+    assert.equal(harness.sends.some(([channel, cancel]) => channel === CHANNELS.cancel && cancel.requestId), true);
+  } finally { await harness.host.dispose(); }
+});
+
+test('Catalog preflight phase reaches the local command owner', async () => {
+  const harness = createHarness({ openHomeRemoteControl: false });
+  await harness.host.setRendererReady();
+  harness.host.setLocalControlEnabled(true);
+  try {
+    const pending = harness.host.requestLocalAction('Catalog', 'PlayItems', { items: [{ serverId: 'local', trackId: 'missing' }] });
+    await delay();
+    const action = harness.sends.find(([channel, payload]) => channel === CHANNELS.action && payload.action === 'PlayItems')[1];
+    harness.host.handleRendererResponse({ requestId: action.requestId, ok: false,
+      error: { code: 'trackUnavailable', phase: 'preflight' } });
+    await assert.rejects(pending, { code: 'trackUnavailable', phase: 'preflight' });
+  } finally { await harness.host.dispose(); }
+});
+
 test('OpenHome host remains stopped until both enablement and renderer readiness are present', async () => {
   const harness = createHarness({ openHomeRemoteControl: false });
 
@@ -141,7 +227,7 @@ test('OpenHome host remains stopped until both enablement and renderer readiness
 });
 
 test('OpenHome player name defaults to the computer name and can be changed while published', async () => {
-  assert.equal(createDefaultFriendlyName('LISTENING-PC'), 'EffeTune (LISTENING-PC)');
+  assert.equal(createDefaultFriendlyName('LISTENING-PC'), 'LISTENING-PC');
   assert.equal(createDefaultFriendlyName(''), 'EffeTune');
 
   const harness = createHarness({
@@ -174,6 +260,100 @@ test('OpenHome player name can be saved while disabled and blank restores the de
     error => error?.code === 'invalid-setting'
   );
   await harness.host.dispose();
+});
+
+test('one saved device name updates both advertised services without revoking library playback', { timeout: 10000 }, async t => {
+  const os = require('node:os');
+  const { NetworkMusicHost } = require('../../electron/network-music-host.cjs');
+  const { Discovery, requestXml } = require('../../electron/network-music-upnp.cjs');
+  const { LocalOpenHomePlayer } = require('../../electron/pwa-network-host.cjs');
+  const { RemoteControlHost } = require('../../electron/remote-control-host.cjs');
+  t.mock.method(os, 'hostname', () => 'LISTENING-PC');
+  t.mock.method(os, 'networkInterfaces', () => ({ test: [{ family: 'IPv4', internal: false, address: '127.0.0.1' }] }));
+  let music;
+  const harness = createHarness({
+    openHomeRemoteControl: true,
+    openHomeFriendlyName: 'Saved Room',
+    openHomeDeviceId: '11111111-2222-4333-8444-555555555555',
+    networkMusicDeviceId: 'uuid:library',
+    networkMusicSharing: { enabled: true, folderIds: ['shared'] }
+  }, {
+    defaultFriendlyName: createDefaultFriendlyName(),
+    onFriendlyNameChanged: () => music.refreshFriendlyName()
+  });
+  const descriptions = [];
+  const peer = new Discovery({ fetchXml: async location => { descriptions.push(location); return requestXml(location); } });
+  const discovery = new Discovery();
+  const announcements = [];
+  discovery.start = async () => {};
+  discovery.socket = {
+    setMulticastInterface() {},
+    send(bytes, _port, _address, callback) {
+      announcements.push(bytes.toString());
+      // Missed withdrawal packets must not leave an available cached name stale.
+      const received = bytes.includes('ssdp:byebye') ? Promise.resolve() : peer.receive(bytes, { address: '127.0.0.1' });
+      void received.then(() => callback(), callback);
+    },
+    close() {}
+  };
+  const localPlayer = new LocalOpenHomePlayer(harness.host);
+  music = new NetworkMusicHost({
+    localPlayer, discovery, getCatalog: async () => null,
+    loadConfig: harness.getConfig, saveConfig() {},
+    getFriendlyName: () => harness.host.getFriendlyName()
+  });
+  const remote = new RemoteControlHost({
+    app: {}, getMainWindow: () => null, env: { EFFETUNE_REMOTE_TOKEN: 'fixture-token' }, argv: [],
+    config: { loadConfig: harness.getConfig }, networkMusic: music, localPlayer, getPlayerId: () => localPlayer.id,
+    log() {}
+  });
+  t.after(async () => { await remote.dispose(); await music.dispose(); await harness.host.dispose(); });
+  await harness.host.setRendererReady();
+  await music.start();
+  await discovery.multicastSending;
+  const server = music.server.server;
+  const port = music.server.port;
+  const sharing = music.sharing;
+  const resource = music.server.resource('track', '127.0.0.1');
+  let streamDestroyed = false;
+  music.server.streams.add({ destroy() { streamDestroyed = true; } });
+  const queue = Promise.resolve();
+  music.queues.set('peer', queue);
+  remote.pwa.grants.set('grant', { uid: 'track' });
+  assert.equal(peer.devices.get(music.id).name, 'Saved Room');
+  assert.equal(music.server.name, harness.host.getStatus().friendlyName);
+
+  for (const [input, expected] of [['  New & Room  ', 'New & Room'], ['   ', 'LISTENING-PC']]) {
+    const before = descriptions.length;
+    await harness.host.setFriendlyName(input);
+    assert.equal(descriptions.length, before + 1);
+    assert.equal(peer.devices.get(music.id).name, expected);
+    assert.equal(harness.sidecar.startCalls.at(-1).friendlyName, expected);
+    assert.equal(music.server.name, expected);
+    assert.equal(remote.pwa.info().name, expected);
+    assert.equal(remote.pairing.getInfo().name, expected);
+    assert.equal(music.server.server, server);
+    assert.equal(music.server.port, port);
+    assert.equal(music.server.resource('track', '127.0.0.1').uri, resource.uri);
+    assert.equal(streamDestroyed, false);
+    assert.equal(music.queues.get('peer'), queue);
+    assert.equal(music.sharing, sharing);
+    assert.equal(remote.pwa.grants.size, 1);
+    assert.equal(harness.gateway.closeCalls, 0);
+    assert.equal(harness.sends.filter(([channel]) => channel === CHANNELS.reset).length, 0);
+  }
+  assert.equal(Object.hasOwn(harness.getConfig(), 'openHomeFriendlyName'), false);
+  assert.ok(announcements.some(packet => packet.includes('NTS: ssdp:byebye')));
+  assert.equal(new URL(descriptions.at(-1)).searchParams.get('name'), 'LISTENING-PC');
+
+  await harness.host.setEnabled(false);
+  const starts = harness.sidecar.startCalls.length;
+  await harness.host.setFriendlyName('Library Only');
+  assert.equal(peer.devices.get(music.id).name, 'Library Only');
+  assert.equal(harness.sidecar.startCalls.length, starts);
+  const announcementCount = announcements.length;
+  await harness.host.setFriendlyName('Library Only');
+  assert.equal(announcements.length, announcementCount);
 });
 
 test('OpenHome host serializes lifecycle changes and converges after a stale start', async () => {

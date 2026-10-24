@@ -66,6 +66,51 @@ function loadPreload(harness) {
   });
 }
 
+test('preload exposes independent network music and integrated remote client contracts', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const api = harness.exposed.electronAPI;
+  const request = { playerId: 'uuid:player', action: 'play' };
+  await api.networkMusicGetState({ loadSharingFolders: true });
+  await api.networkMusicPlayerCommand(request);
+  await api.remoteClient.saveConnection('uuid:player', 'http://192.168.1.5:8080/remote.html#token=abc');
+  assert.deepEqual(harness.invocations, [
+    ['network-music:GetState', { loadSharingFolders: true }],
+    ['network-music:PlayerCommand', request],
+    ['remote-client:save-connection', 'uuid:player', 'http://192.168.1.5:8080/remote.html#token=abc']
+  ]);
+  const received = [];
+  const unsubscribe = api.onNetworkMusicState(state => received.push(state));
+  const state = { players: [{ id: 'uuid:player' }] };
+  harness.listeners.get('network-music:state')({}, state);
+  assert.deepEqual(received, [state]);
+  unsubscribe();
+  assert.equal(harness.listeners.has('network-music:state'), false);
+});
+
+test('network music failures preserve safe error codes across serialized IPC responses', async () => {
+  const harness = createPreloadHarness();
+  harness.electron.ipcRenderer.invoke = async () => ({ networkMusicError: { code: 'sharingRequired', message: 'Select the music folder to share.' } });
+  loadPreload(harness);
+  await assert.rejects(harness.exposed.electronAPI.networkMusicPlaySelection({}), { code: 'sharingRequired', message: 'Select the music folder to share.' });
+  await assert.rejects(harness.exposed.electronAPI.networkMusicPlayFiles({ filePaths: ['selected.flac'] }), { code: 'sharingRequired' });
+});
+
+test('preload grants only the native path resolved from a dropped File before returning it', () => {
+  const harness = createPreloadHarness();
+  const requests = [];
+  let allowed = true;
+  harness.electron.ipcRenderer.sendSync = (...args) => { requests.push(args); return allowed; };
+  loadPreload(harness);
+  const getPath = harness.exposed.electronAPI.getPathForFile;
+  assert.equal(getPath({ trustedPath: '/selected/audio.wav', path: '/forged/secret' }), '/selected/audio.wav');
+  assert.deepEqual(requests, [['grant-dropped-file', '/selected/audio.wav']]);
+  assert.equal(getPath({ path: '/forged/secret' }), '');
+  assert.equal(requests.length, 1);
+  allowed = false;
+  assert.throws(() => getPath({ trustedPath: '/selected/audio.wav' }), /Select it again/);
+});
+
 test('preload returns the Browser capture reservation synchronously', () => {
   const harness = createPreloadHarness();
   const syncCalls = [];
@@ -117,7 +162,7 @@ test('preload forwards Browser commands and results through their dedicated IPC 
 
   assert.equal(Object.isFrozen(browser), true);
   assert.deepEqual(Object.keys(browser).sort(), [
-    'prepareCapture', ...cases.map(([method]) => method), 'onState', 'onFocusAddress'
+    'prepareCapture', ...cases.map(([method]) => method), 'onState', 'onFocusAddress', 'onCommand'
   ].sort());
   for (const [method, args, channel] of cases) {
     assert.deepEqual(await browser[method](...args), { channel, args }, method);
@@ -134,10 +179,16 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   const browser = harness.exposed.electronAPI.browser;
   const states = [];
   const focusRequests = [];
+  const commands = [];
+  const unsubscribeCommand = browser.onCommand((...args) => commands.push(args));
   const unsubscribeState = browser.onState((...args) => states.push(args));
   const unsubscribeFocus = browser.onFocusAddress((...args) => focusRequests.push(args));
   const event = { sender: { privileged: true } };
   const state = { url: 'https://example.test/', captureActive: true, captureGeneration: 7 };
+  harness.listeners.get('browser:command')(event, { action: 'reload' }, 'private-extra-argument');
+  assert.deepEqual(commands, [[{ action: 'reload' }]]);
+  unsubscribeCommand();
+  assert.equal(harness.listeners.has('browser:command'), false);
 
   harness.listeners.get('browser:state')(event, state, 'private-extra-argument');
   harness.listeners.get('browser:focus-address')(event);
@@ -194,6 +245,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['abortAtomicFileWrite', ['token'], ['abort-atomic-file-write', 'token']],
     ['readClipboardText', [], ['read-clipboard-text']],
     ['writeClipboardText', ['pipeline'], ['write-clipboard-text', 'pipeline']],
+    ['writeClipboardImage', [new Uint8Array([137, 80, 78, 71])], ['write-clipboard-image', new Uint8Array([137, 80, 78, 71])]],
     ['openExternalUrl', ['https://example.test'], ['open-external-url', 'https://example.test']],
     ['openExternal', ['https://example.test'], ['open-external-url', 'https://example.test']],
     ['getAudioDevices', [], ['get-audio-devices']],

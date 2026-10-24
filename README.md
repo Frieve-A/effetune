@@ -65,7 +65,9 @@ The desktop app's **Browser** plays audio from websites through your current eff
 2. Enter an HTTP or HTTPS address, then sign in and play music using the website's controls. An address without a scheme opens with HTTPS.
 3. Switch to **Effect Pipeline** to adjust the sound. Switching views keeps browser audio playing.
 
-Use Back, Forward, Reload, and Stop to navigate. Open **Bookmarks** to add the current page, open a saved page, rename a bookmark, or delete it. The browser menu contains **Open in default browser**, **Use as start page**, and **Clear site data**. Bookmarks and the chosen start page are saved. Website sign-ins are kept separately, so you can return to a site after restarting the app. Browser pages follow the app's zoom level.
+Use Back, Forward, Reload, and Stop to navigate. Open **Bookmarks** to add the current page, open a saved page, rename a bookmark, or delete it. The browser menu contains **Show start page**, **Open in default browser**, **Use as start page**, and **Clear site data**. Bookmarks and the chosen start page are saved. Website sign-ins are kept separately, so you can return to a site after restarting the app. Browser pages follow the app's zoom level. Default scrollbars follow the app's theme colors; websites can supply their own scrollbar styles.
+
+While the browser toolbar has focus, use **F5** to reload, **F6** to select the address, **Alt+Left/Right** to go back or forward, and **Alt+Home** to show the start page. These shortcuts also work within a page. With a page focused, **Ctrl/Cmd+L** selects the address, **Ctrl/Cmd+R** reloads, and **Ctrl/Cmd+D** opens Bookmarks; on macOS, **Cmd+[/]** goes back or forward. **Escape** stops a loading page. Right-click a page for navigation, a link to open it here or in your default browser or copy its address, and selected text or a text field for available editing commands. Outside the page, existing app shortcuts keep their usual functions.
 
 Opening or returning to **Browser** automatically selects browser audio. Browser audio is mixed with your selected input device. Choose **None** for the input device to listen to browser audio alone. The Player input option does not affect Browser playback. Local music playback can continue alongside browser audio. If audio capture stops, click **Browser** again to retry. **Clear site data** signs you out of websites and clears their stored data while keeping bookmarks.
 
@@ -76,6 +78,10 @@ In **Settings > Config... > Browser**:
 - **Start page** sets the HTTP or HTTPS address shown when Browser first opens. The field is blank by default; when blank, it opens the [EffeTune streaming guide](https://effetune.frieve.com/streaming/). **Reset** clears the field without changing the current page.
 - **Open new tabs in the default browser** is enabled by default. Turn it off to open new-tab links in EffeTune's Browser instead. Separate windows, such as sign-in windows, stay inside EffeTune either way.
 - **User-Agent** is the browser identification sent to websites. The default identifies Browser as Chrome-compatible and includes the EffeTune name. Leave the field blank or click **Reset** to restore the default. After changing it, reload the page in Browser.
+
+To switch effects automatically between websites, save your pipelines as presets first. Under **URL rules**, click **Add rule**, enter a website and path such as `example.com/music/*`, and select a pipeline preset. Omit `http://` or `https://`, query strings, and `#` fragments; `*` matches any text. Use the up/down buttons to set priority, then click **Save rules**. The first enabled matching rule with an available preset wins.
+
+Rules apply while Browser audio is selected, including when you switch to another view. Saving rules, opening Browser, or navigating to a matching page can load its preset. Navigation within the same preset's rule keeps your manual adjustments. If no rule matches, your current pipeline stays unchanged.
 
 Some websites do not allow embedded browsers, sign-in, protected playback, or audio capture. Availability depends on the website and operating system; DRM playback is not guaranteed. If sign-in is refused, try another sign-in method offered by the site or use your normal browser. Signing in there does not sign you in inside EffeTune. The Browser feature is available only in the desktop app.
 
@@ -306,9 +312,9 @@ For **Effect Pipeline columns**, choose **Manual** to adjust the column count wi
 
 The Microsoft Store edition receives updates through Microsoft Store. In **Settings > Config...**, use **Open Microsoft Store updates** to check for updates and **Open Windows startup settings** to choose whether EffeTune starts automatically. This edition stores its settings and Browser sign-ins separately from other desktop editions.
 
-### Frequency Response Measurement and Correction
+### Acoustic Measurement
 
-Measure your audio system with a microphone and create a correction EQ that can be imported into EffeTune; see [Frequency Response Measurement and Correction](docs/measurement.md) and the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
+Measure your audio system with a microphone to inspect frequency response, impulse response, distortion, and decay, and create a correction EQ that can be imported into EffeTune; see [Acoustic Measurement](docs/measurement.md) and the [Pipeline Analyzer guide](docs/pipeline-analyzer.md).
 
 ### Audio Reset
 
@@ -317,9 +323,11 @@ If you experience audio issues (dropouts, glitches):
 2. The audio pipeline will be rebuilt automatically
 3. Your effect chain configuration will be preserved
 
-### OpenHome Remote Control (Desktop App)
+### Network Music and Remote Control
 
-Supported desktop builds can be controlled by OpenHome apps on the same local network. This is off by default; see [OpenHome Remote Control](docs/openhome.md) for setup, network access, compatibility, and limitations.
+**Desktop app:** Browse music on local-network servers, share selected music folders, and choose this device or an OpenHome player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md).
+
+The PWA can also play a registered EffeTune computer’s shared music through this device’s effects or control another registered computer. See [PWA setup and playback](docs/openhome.md#pwa) for browser and connection requirements.
 
 ### Control EffeTune with an AI Assistant (MCP)
 
@@ -335,6 +343,8 @@ Pairing link: <paste the copied link here>
 ```
 
 After setup, follow any restart instructions, then try asking, "Show my current effects." Keep the pairing link private; if you select **New token** or change the port, repeat setup with the new link.
+
+Add songs to the paired EffeTune app's Music Library, then ask, "Play [song]." The assistant checks that app's library first and plays through its player by default; you do not need to share its music folder. To use another library or player, name it in your request: "Find [song] in [library] and play it on [player]." If another EffeTune computer supplies the music, share its folder there first.
 
 ## Common Effect Combinations
 

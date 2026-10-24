@@ -460,10 +460,17 @@ test('Portrait editing caps the render surface while playback and clean feed kee
         editor.zoomAt(4);
         view.feed = { visible: true, canvas: { width: 1920, height: 1080 }, renderer: {} };
         view.frame(32);
+        assert.deepEqual([view.canvas.width, view.canvas.height], [2304, 4096]);
+        assert.deepEqual([view.feed.canvas.width, view.feed.canvas.height], [1920, 1080]);
+        assert.deepEqual(copies, []);
+        assert.equal(draws.length, 3, 'Editing renders its own preview independently of Clean Feed');
+        assert.equal(draws.at(-1).at(-1).editing, true);
+        editor.setOpen(false);
+        view.frame(48);
         assert.deepEqual([view.canvas.width, view.canvas.height], [1920, 1080]);
         assert.deepEqual([view.feed.canvas.width, view.feed.canvas.height], [1920, 1080]);
         assert.deepEqual(copies, [[view.feed.renderer, { hdr: false }]]);
-        assert.equal(draws.length, 2, 'A compatible Clean Feed composition is copied without rendering again');
+        assert.equal(draws.length, 3, 'A compatible Clean Feed composition is copied without rendering again');
     });
 });
 

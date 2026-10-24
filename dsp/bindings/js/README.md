@@ -3,7 +3,7 @@
 <!-- BEGIN DSP-LIBRARY-JAVASCRIPT-SUMMARY -->
 EffeTune DSP provides the same MIT-licensed C++ audio kernels used by EffeTune
 as a self-contained WebAssembly package for Node.js and evergreen browsers.
-Version 0.15.0 exposes all 111 catalog types through the generic Chain and
+Version 0.16.0 exposes all 111 catalog types through the generic Chain and
 `createEffect` APIs and 111 generated named convenience classes,
 decoded analyzer telemetry, versioned semantic presets, deterministic seeds, and an AudioWorklet wrapper.
 <!-- END DSP-LIBRARY-JAVASCRIPT-SUMMARY -->

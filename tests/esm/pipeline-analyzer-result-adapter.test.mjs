@@ -1,3 +1,4 @@
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -345,9 +346,7 @@ test('application locales retain only the shared menu entry as a runtime require
             new URL(`../../js/locales/${locale}.json5`, import.meta.url),
             'utf8'
         );
-        const messages = JSON.parse(source
-            .replace(/\/\/.*$/gm, '')
-            .replace(/\/\*[\s\S]*?\*\//g, ''));
+        const messages = parseCommentedJSON(source);
         assert.equal(messages['menu.view.pipelineAnalyzer'], 'Pipeline Analyzer');
     }
 });

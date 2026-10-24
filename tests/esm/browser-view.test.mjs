@@ -51,6 +51,36 @@ test('bookmarks hide the native browser while open and restore it when closed', 
     });
 });
 
+test('the browser menu opens the configured or default start page even without a current page', async () => {
+    for (const startPage of ['', 'https://example.com/start']) {
+        const harness = bookmarkHarness();
+        const { view, events } = harness;
+        view.menuButton = harness.document.createElement();
+        view.state.url = '';
+        view.state.settings.startPage = startPage;
+        const buttons = new Map();
+        view.button = (parent, key, action) => {
+            const button = { action, setAttribute() {} };
+            buttons.set(key, button);
+            return button;
+        };
+        view.input = { select() { events.push('capture'); return Promise.resolve(true); } };
+        view.api = { async navigate(url) { events.push(url); return { url }; } };
+        view.applyState = state => { view.state = state; };
+        await withGlobals({ document: harness.document }, async () => {
+            view.toggleMenu();
+            assert.equal(buttons.get('home').disabled, false);
+            assert.equal(buttons.get('external').disabled, true);
+            assert.equal(buttons.get('start').disabled, true);
+            assert.equal(buttons.get('clear').disabled, false);
+            await buttons.get('home').action();
+            assert.equal(view.popup, null);
+            assert.deepEqual(events, ['hideNative', 'removePopup', 'showNative', 'capture',
+                startPage || 'https://effetune.frieve.com/streaming/']);
+        });
+    }
+});
+
 test('the native browser hides while Settings is open and returns when it closes', async () => {
     let menuOpen = false;
     const presentations = [];
@@ -143,6 +173,26 @@ test('normal browser audio states have no visible status', () => {
     view.renderStatus();
     assert.equal(view.status.hidden, false);
     assert.equal(view.status.textContent, 'deviceError');
+});
+
+test('browser commands preserve popup editing and cannot navigate a hidden browser', async () => {
+    const calls = [];
+    const view = Object.assign(Object.create(BrowserView.prototype), {
+        visible: true, state: { canGoBack: true, canGoForward: false, loading: true },
+        input: { select: async () => { calls.push('capture'); } },
+        api: { back: async () => { calls.push('back'); return {}; }, stop: async () => { calls.push('stop'); return {}; } },
+        applyState() {}
+    });
+    await view.handleCommand({ action: 'back' });
+    await view.handleCommand({ action: 'forward' });
+    await view.handleCommand({ action: 'stop' });
+    assert.deepEqual(calls, ['capture', 'back', 'stop']);
+    view.popup = {};
+    await view.handleCommand({ action: 'back' });
+    view.popup = null;
+    view.visible = false;
+    await view.handleCommand({ action: 'back' });
+    assert.deepEqual(calls, ['capture', 'back', 'stop']);
 });
 
 test('clear site data hides the native view through confirmation and restores presentation on failure', async () => {
@@ -286,4 +336,119 @@ test('Browser bookmark changes send only their patch and preserve independently 
     const patch = { startPage: 'https://example.com/' };
     await view.saveSettings(patch);
     assert.deepEqual(sent, patch);
+});
+
+function ruleHarness({ selected = true, getPresets } = {}) {
+    const loaded = [];
+    const presets = { Music: { plugins: [{ nm: 'Volume' }] }, Speech: { plugins: [] } };
+    const view = Object.assign(Object.create(BrowserView.prototype), {
+        visible: false, input: { selected }, state: {
+            url: 'https://example.com/music/one', settings: { urlRules: [
+                { pattern: 'example.com/music/*', preset: 'Missing', enabled: true },
+                { pattern: 'example.com/music/*', preset: 'Speech', enabled: false },
+                { pattern: 'example.com/music/*', preset: 'Music', enabled: true },
+                { pattern: 'example.com/*', preset: 'Speech', enabled: true }
+            ] }
+        },
+        uiManager: { pipelineManager: { presetManager: {
+            getLoadablePresets: getPresets || (async () => presets),
+            async loadPreset(preset) { loaded.push(preset); return true; }
+        } } },
+        renderStatus() {}
+    });
+    return { view, loaded, presets };
+}
+
+test('Browser rules select the first available enabled preset in the background and preserve manual edits until the match changes', async () => {
+    const { view, loaded, presets } = ruleHarness();
+    await view.applyUrlRules();
+    assert.deepEqual(loaded, [presets.Music]);
+    await view.applyUrlRules();
+    view.state.url = 'https://example.com/music/two?query=1#part';
+    await view.applyUrlRules();
+    assert.equal(loaded.length, 1);
+    view.state.url = 'https://example.com/talk';
+    await view.applyUrlRules();
+    assert.deepEqual(loaded, [presets.Music, presets.Speech]);
+    view.state.url = 'https://other.test/';
+    await view.applyUrlRules();
+    assert.equal(loaded.length, 2, 'an unmatched page keeps the current pipeline');
+    view.state.url = 'https://example.com/music/one';
+    await view.applyUrlRules();
+    assert.equal(loaded.at(-1), presets.Music);
+    view.state.settings.urlRules = [{ pattern: 'example.com/*', preset: 'Speech', enabled: true }];
+    await view.applyUrlRules();
+    assert.equal(loaded.at(-1), presets.Speech, 'saved rules apply to the current page');
+});
+
+test('Browser selection evaluates the existing page and ignores preset reads superseded by navigation or input release', async () => {
+    const pending = [];
+    const { view, loaded, presets } = ruleHarness({ selected: false,
+        getPresets: () => new Promise(resolve => pending.push(resolve)) });
+    await view.applyUrlRules();
+    assert.equal(pending.length, 0);
+    view.input.selected = true;
+    const first = view.applyUrlRules();
+    view.state.url = 'https://example.com/talk';
+    const second = view.applyUrlRules();
+    pending[1](presets);
+    await second;
+    pending[0](presets);
+    await first;
+    assert.deepEqual(loaded, [presets.Speech]);
+    view.state.url = 'https://example.com/music/one';
+    const released = view.applyUrlRules();
+    view.input.selected = false;
+    await view.applyUrlRules();
+    pending[2](presets);
+    await released;
+    assert.equal(loaded.length, 1);
+    view.input.selected = true;
+    const resumed = view.applyUrlRules();
+    pending[3](presets);
+    await resumed;
+    assert.deepEqual(loaded, [presets.Speech, presets.Music]);
+});
+
+test('Browser navigation stays available during a blind test without applying URL presets', async () => {
+    const { view, loaded, presets } = ruleHarness();
+    let blindActive = false;
+    view.uiManager.isDoubleBlindActive = () => blindActive;
+    await view.applyUrlRules();
+    blindActive = true;
+    view.visible = true;
+    view.input.select = async () => true;
+    view.address = {}; view.back = {}; view.forward = {}; view.reload = {};
+    view.labelButton = () => {};
+    view.api = { navigate: async url => ({ url, settings: view.state.settings }) };
+    await withGlobals({ document: { activeElement: null } }, async () => {
+        await view.handleCommand({ action: 'navigate', url: 'https://example.com/talk' });
+        await view.applyUrlRules();
+        assert.equal(view.state.url, 'https://example.com/talk');
+        assert.deepEqual(loaded, [presets.Music]);
+        assert.equal(view.matchedPresetKey, null);
+        blindActive = false;
+        await view.applyUrlRules();
+        assert.deepEqual(loaded, [presets.Music, presets.Speech]);
+    });
+});
+
+test('preset reads finishing after blind-test entry cannot apply or consume the URL match', async () => {
+    let finishRead;
+    const { view, loaded, presets } = ruleHarness({
+        getPresets: () => new Promise(resolve => { finishRead = resolve; })
+    });
+    let blindActive = false;
+    view.uiManager.isDoubleBlindActive = () => blindActive;
+    const pending = view.applyUrlRules();
+    blindActive = true;
+    finishRead(presets);
+    await pending;
+    assert.deepEqual(loaded, []);
+    assert.equal(view.matchedPresetKey, null);
+    blindActive = false;
+    const resumed = view.applyUrlRules();
+    finishRead(presets);
+    await resumed;
+    assert.deepEqual(loaded, [presets.Music]);
 });

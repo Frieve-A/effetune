@@ -6,11 +6,12 @@ import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
 import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { VisualizerHistory } from '../../js/visualizer/visualizer-history.js';
 import { VisualizerPresetStore } from '../../js/visualizer/visualizer-preset-store.js';
-import { createDefaultLayout, createItem, normalizeEffect, snapshotLayout, validateLayout } from '../../js/visualizer/visualizer-model.js';
+import { createDefaultLayout, createItem, normalizeEffect, snapshotLayout, validateLayout, PLAYBACK_APPEARANCES, SEEK_APPEARANCES } from '../../js/visualizer/visualizer-model.js';
 import { UIManager } from '../../js/ui-manager.js';
 import { lyricsFrame, drawLyrics, lyricsOpacity } from '../../js/visualizer/visualizer-lyrics.js';
 import { parseLrc } from '../../js/library/metadata/lyrics.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { createFakeDocument } from '../helpers/fake-dom.mjs';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
@@ -23,6 +24,47 @@ function classes(...initial) {
         toggle(name, value) { if (value) values.add(name); else values.delete(name); }
     };
 }
+
+test('startup restores local layouts independently of system presets and never overwrites storage', async () => {
+    for (const state of ['saved', 'empty', 'read-failure', 'preset-failure']) {
+        const saved = createDefaultLayout();
+        saved.background.color = '#123456';
+        delete saved.items[0].params.showAxes;
+        const writes = [], failures = [];
+        let fetches = 0;
+        const view = Object.assign(Object.create(VisualizerView.prototype), {
+            layout: createDefaultLayout(),
+            store: {
+                async loadCurrent() {
+                    if (state === 'read-failure') throw new Error('Read failed');
+                    return state === 'saved' ? saved : null;
+                },
+                async loadSystemPresets() {
+                    fetches++;
+                    if (state !== 'empty') throw new Error('Fetch failed');
+                    return { '16:9': { Default: saved } };
+                },
+                saveCurrent: layout => writes.push(snapshotLayout(layout))
+            },
+            editor: { resetForLayout() {}, updateSelection() {} },
+            sources: { setLayout() {} }, video: { setEnabled() {} },
+            stage: { style: {} }, counters() {}, recordHistory() {},
+            fail: error => failures.push(error)
+        });
+        await view.initialize();
+        assert.equal(fetches, ['empty', 'preset-failure'].includes(state) ? 1 : 0);
+        assert.equal(failures.length, state.endsWith('failure') ? 1 : 0);
+        assert.deepEqual(writes, []);
+        if (!state.endsWith('failure')) {
+            assert.equal(view.layout.background.color, '#123456');
+            assert.equal(validateLayout(view.layout), true);
+            view.layout.background.color = '#abcdef';
+            view.changed();
+            assert.equal(writes.length, 1);
+            assert.equal(writes[0].background.color, '#abcdef');
+        }
+    }
+});
 
 test('Layout shortcuts and paste belong to Visualizer controls and leave external dialog controls alone', async () => {
     const body = { classList: classes('view-visualizer') };
@@ -138,6 +180,199 @@ test('Notes and Chroma range edits preserve the requested endpoint for every sel
             }
         }
     });
+});
+
+async function withPlaybackPropertyEditor(type, callback, { items = [createItem(type, 'control')], fullRender = false } = {}) {
+    const document = createFakeDocument();
+    const createElement = document.createElement.bind(document);
+    document.createElement = tag => {
+        const element = createElement(tag);
+        element.append = (...children) => children.forEach(child => element.appendChild(child));
+        element.replaceChildren = (...children) => {
+            for (const child of [...element.children]) element.removeChild(child);
+            element.append(...children);
+        };
+        element.contains = child => {
+            for (; child; child = child.parentNode) if (child === element) return true;
+            return false;
+        };
+        element.classList = classes();
+        element.dataset = {};
+        return element;
+    };
+    const root = document.createElement('div');
+    const fields = new Map(), saved = [];
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        layout: { ...createDefaultLayout(), items },
+        history: new VisualizerHistory(), undoButton: {}, redoButton: {}, cutButton: {}, copyButton: {},
+        stage: { style: {} }, sources: { setLayout() {} }, video: { setEnabled() {} }, counters() {},
+        store: { saveCurrent: layout => saved.push(snapshotLayout(layout)) }
+    });
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        view, root, navigationContent: document.createElement('div'), gridDivisions: 0,
+        open: true, selection: new Set(items.map(item => item.id)), t: (_key, fallback) => fallback,
+        updateSelection() {}, resetForLayout() {},
+        field(parent, label, ...args) {
+            const input = VisualizerEditor.prototype.field.call(this, parent, label, ...args);
+            fields.set(label, input);
+            return input;
+        },
+        render() {
+            fields.clear();
+            if (fullRender) return VisualizerEditor.prototype.render.call(this);
+            root.replaceChildren();
+            this[type === 'seek-bar' ? 'seekParameters' : 'playbackParameters'](root, view.layout.items[0]);
+            this.takeBaseline();
+        }
+    });
+    view.editor = editor;
+    const change = async (label, value) => {
+        const input = fields.get(label);
+        if (input.type === 'checkbox') input.checked = value;
+        else input.value = String(value);
+        if (input.type === 'range' || input.type === 'color') await input.dispatchEvent('input');
+        await input.dispatchEvent('change');
+    };
+    await withGlobals({ document }, async () => {
+        view.recordHistory();
+        editor.render();
+        await callback({ view, fields, saved, change, document });
+    });
+}
+
+test('Playback appearance and label edits persist and Undo restores the previous control settings', async () => {
+    await withPlaybackPropertyEditor('playback-control', async ({ view, fields, saved, change }) => {
+        await change('Appearance', 'raised');
+        assert.equal(saved.at(-1).items[0].params.depth, .8);
+        await change('Action', 'next');
+        await change('Content', 'label');
+        assert.equal(fields.has('Icon size'), false);
+        assert.equal(fields.has('Custom label'), true);
+        await change('Button shape', 'ellipse');
+        assert.equal(fields.has('Corner radius'), false);
+        const opacity = fields.get('Fill opacity');
+        const number = view.editor.rangeControls.get(opacity).valueInput;
+        number.value = '23';
+        await number.dispatchEvent('input');
+        assert.equal(Number(opacity.value), .23, 'The number field converts percent to the stored opacity');
+        assert.equal(view.historyPending, true);
+        await number.dispatchEvent('blur');
+        assert.equal(view.historyPending, false);
+        assert.equal(saved.at(-1).items[0].params.fillOpacity, .23);
+        const previous = snapshotLayout(view.layout);
+        await change('Custom label', 'Next song');
+        assert.equal(saved.at(-1).items[0].params.action, 'next');
+        assert.equal(saved.at(-1).items[0].params.label, 'Next song');
+        view.stepHistory('undo');
+        assert.deepEqual(view.layout.items, previous.items);
+        view.stepHistory('redo');
+        assert.equal(view.layout.items[0].params.label, 'Next song');
+        assert.equal(validateLayout(saved.at(-1)), true);
+    });
+});
+
+test('Seek appearance and thumb controls preserve saved settings through visibility changes and Undo', async () => {
+    await withPlaybackPropertyEditor('seek-bar', async ({ view, fields, saved, change }) => {
+        await change('Appearance', 'slim');
+        assert.equal(fields.has('Thumb color'), false);
+        assert.equal(saved.at(-1).items[0].params.thickness, 3);
+        await change('Show thumb', true);
+        assert.equal(fields.has('Thumb color'), true);
+        await change('Thumb border width', 0);
+        assert.equal(fields.get('Thumb border color').disabled, true);
+        await change('Thumb border width', 2);
+        assert.equal(fields.get('Thumb border color').disabled, false);
+        await change('Thumb shape', 'diamond');
+        const previous = snapshotLayout(view.layout);
+        const historyIndex = view.history.index;
+        const color = fields.get('Thumb color');
+        color.value = '#abcdef';
+        await color.dispatchEvent('input');
+        color.value = '#123456';
+        await color.dispatchEvent('input');
+        assert.equal(view.history.index, historyIndex, 'Continuous color input stays one pending edit');
+        await color.dispatchEvent('change');
+        assert.equal(view.history.index, historyIndex + 1);
+        assert.equal(saved.at(-1).items[0].params.thumbShape, 'diamond');
+        assert.equal(saved.at(-1).items[0].params.thumbColor, '#123456');
+        view.stepHistory('undo');
+        assert.deepEqual(view.layout.items, previous.items);
+        view.stepHistory('redo');
+        assert.equal(view.layout.items[0].params.thumbColor, '#123456');
+        assert.equal(validateLayout(saved.at(-1)), true);
+    });
+});
+
+for (const [type, appearances, chosen, previous] of [
+    ['playback-control', PLAYBACK_APPEARANCES, 'glass', 'minimal'],
+    ['seek-bar', SEEK_APPEARANCES, 'classic', 'bold']
+]) test(`${type} Appearance applies every preset key to all selected controls as one undoable edit`, async () => {
+    const first = createItem(type, 'first'), second = createItem(type, 'second');
+    Object.assign(first.params, appearances[chosen]);
+    Object.assign(second.params, appearances[previous]);
+    if (type === 'playback-control') {
+        Object.assign(first.params, { action: 'next', label: 'Next song', shape: 'ellipse' });
+        Object.assign(second.params, { action: 'stop', label: 'Stop here', shape: 'rectangle', fill: '#123456' });
+    } else {
+        Object.assign(first.params, { thumbShape: 'diamond', thumbColor: '#123456' });
+        Object.assign(second.params, { thumbShape: 'bar', thumbColor: '#abcdef' });
+    }
+    second.rect = { x: .2, y: .3, w: .4, h: .15 };
+    await withPlaybackPropertyEditor(type, async ({ view, saved, change }) => {
+        const before = snapshotLayout(view.layout), expected = snapshotLayout(view.layout);
+        for (const item of expected.items) Object.assign(item.params, appearances[chosen]);
+        const historyIndex = view.history.index;
+        await change('Appearance', chosen);
+        assert.deepEqual(snapshotLayout(view.layout), expected, 'Preset keys apply even when the first control already has their values');
+        assert.deepEqual(saved.at(-1), expected, 'Saving retains each control action, label, placement and non-preset styling');
+        assert.equal(view.history.index, historyIndex + 1);
+        view.stepHistory('undo');
+        assert.deepEqual(snapshotLayout(view.layout), before);
+        view.stepHistory('redo');
+        assert.deepEqual(snapshotLayout(view.layout), expected);
+        assert.deepEqual(saved.at(-1), expected);
+        assert.equal(validateLayout(saved.at(-1)), true);
+    }, { items: [first, second] });
+});
+
+test('Add creates player controls with factory colors and the full inspector follows content and history', async () => {
+    await withPlaybackPropertyEditor('playback-control', async ({ view, fields, saved, change }) => {
+        const add = async type => {
+            const select = fields.get('Item');
+            select.value = type;
+            const button = select.parentNode.parentNode.children.find(child => child.tagName === 'BUTTON');
+            await button.dispatchEvent('click');
+            const item = view.layout.items.at(-1);
+            assert.equal(item.type, type);
+            assert.deepEqual(item.palette, createItem(type, 'factory').palette);
+            assert.deepEqual(saved.at(-1), snapshotLayout(view.layout));
+        };
+        await add('playback-control');
+        assert.equal(fields.has('Icon size'), true);
+        assert.equal(fields.has('Font'), false);
+        await change('Content', 'icon-label');
+        assert.equal(fields.has('Font'), true);
+        assert.equal(fields.has('Text size'), true);
+        const withLabel = snapshotLayout(view.layout);
+        await change('Content', 'icon');
+        assert.equal(fields.has('Font'), false);
+        view.stepHistory('undo');
+        assert.deepEqual(snapshotLayout(view.layout), withLabel);
+        assert.equal(fields.has('Font'), true);
+        view.stepHistory('redo');
+        assert.equal(fields.has('Font'), false);
+        const beforeSeek = snapshotLayout(view.layout);
+        await add('seek-bar');
+        const both = snapshotLayout(view.layout);
+        assert.deepEqual(both.items.map(item => item.type), ['playback-control', 'seek-bar']);
+        assert.equal(fields.has('Thumb shape'), true);
+        view.stepHistory('undo');
+        assert.deepEqual(snapshotLayout(view.layout), beforeSeek);
+        view.stepHistory('redo');
+        assert.deepEqual(snapshotLayout(view.layout), both);
+        assert.deepEqual(saved.at(-1), both);
+        assert.equal(validateLayout(saved.at(-1)), true);
+    }, { items: [], fullRender: true });
 });
 
 test('Item and background modulation dropdowns select audio sources and reserve Speed for Time', async () => {

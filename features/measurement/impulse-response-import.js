@@ -96,6 +96,7 @@ export function createImpulseResponseMeasurement({
         id,
         name: name.trim(),
         timestamp,
+        acquisitionMethod: 'wav',
         outputChannel: channels.length === 1 ? 'all' : 'multi',
         ...(channels.length > 1 ? { outputChannels: OUTPUT_CHANNELS.slice(0, channels.length) } : {}),
         sampleRate,
@@ -137,6 +138,7 @@ export function createImpulseResponseMeasurement({
             prerollSamples: result.onsetIndex,
             trimStartSamples: 0,
             outputTimeReference: 'file',
+            acquisitionMethod: 'wav',
             refScale: 1,
             peakDb: result.peakDb,
             data: result.samples
@@ -159,6 +161,7 @@ export function createImpulseResponseMeasurement({
                     prerollSamples: result.onsetIndex,
                     trimStartSamples: 0,
                     outputTimeReference: 'file',
+                    acquisitionMethod: 'wav',
                     refScale: 1,
                     peakDb: result.peakDb,
                     data: result.samples

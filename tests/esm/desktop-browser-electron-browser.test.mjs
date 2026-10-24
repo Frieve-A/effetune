@@ -681,9 +681,16 @@ test('Browser toolbar, bookmarks and menu preserve automatic audio selection', {
     return input.stream === window.bookmarkCaptureBefore && input.selected && input.active &&
       input.stream.getAudioTracks().every(track => track.readyState === 'live');
   }), true, 'opening and closing Bookmarks preserves the same Browser audio capture');
+  await application.evaluate(() => {
+    const contents = globalThis.browserFixture.contents();
+    contents.focus();
+    contents.sendInputEvent({ type: 'keyDown', keyCode: 'F6' });
+    contents.sendInputEvent({ type: 'keyUp', keyCode: 'F6' });
+  });
+  await page.waitForFunction(() => document.activeElement?.classList.contains('browser-address'));
   await button('menu').click();
   assert.deepEqual(await page.locator('.browser-menu [role="menuitem"]').allTextContents(),
-    ['Open in default browser', 'Use as start page', 'Clear site data']);
+    ['Show start page', 'Open in default browser', 'Use as start page', 'Clear site data']);
   await menuItem('start').click();
   await page.waitForFunction(url => window.uiManager.browserView.state.settings.startPage === url, url);
   await browserEvaluate(application, '(document.cookie = "browserFixture=present; Path=/; Max-Age=3600; Secure; SameSite=Lax")');
@@ -768,7 +775,12 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
     button.addEventListener('click', () => target.requestFullscreen().catch(error => {
       window.fullscreenError = error.message;
     }));
-    document.body.prepend(button, target);
+    const probe = document.createElement('button');
+    probe.id = 'input-probe';
+    probe.textContent = 'Check input';
+    window.probeClicks = 0;
+    probe.addEventListener('click', () => { window.probeClicks += 1; });
+    document.body.prepend(button, probe, target);
     return true;
   })()`);
   await page.evaluate(() => {
@@ -808,9 +820,9 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
         error: await contents.executeJavaScript('window.fullscreenError') })}`);
     }, { fullscreen, nativeFullscreen, normalBounds });
   };
-  const enter = async () => {
+  const clickElement = async id => {
     const point = await browserEvaluate(application, `(() => {
-      const rect = document.getElementById('fullscreen-button').getBoundingClientRect();
+      const rect = document.getElementById(${JSON.stringify(id)}).getBoundingClientRect();
       return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
     })()`);
     await application.evaluate((_electron, point) => {
@@ -819,7 +831,20 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
       contents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point });
       contents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point });
     }, point);
+  };
+  const enter = async () => {
+    await clickElement('fullscreen-button');
     await assertLayout(true);
+  };
+  const hidePlayer = async (nativeFullscreen = false) => {
+    const before = await browserEvaluate(application, 'window.probeClicks');
+    // Streaming sites can hide their player without calling exitFullscreen().
+    await browserEvaluate(application, "document.getElementById('fullscreen-target').style.display = 'none'");
+    await assertLayout(false, nativeFullscreen);
+    await clickElement('input-probe');
+    assert.equal(await browserEvaluate(application, 'window.probeClicks'), before + 1,
+      'page controls accept clicks after the fullscreen player is hidden, without Escape');
+    await browserEvaluate(application, "document.getElementById('fullscreen-target').style.display = ''");
   };
   await enter();
   await application.evaluate(() => {
@@ -831,6 +856,8 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
   await enter();
   await browserEvaluate(application, 'document.exitFullscreen()');
   await assertLayout(false);
+  await enter();
+  await hidePlayer();
   await application.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('effetune.html')).setFullScreen(true);
   });
@@ -838,6 +865,8 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
   await enter();
   await browserEvaluate(application, 'document.exitFullscreen()');
   await assertLayout(false, true);
+  await enter();
+  await hidePlayer(true);
   await application.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('effetune.html')).setFullScreen(false);
   });

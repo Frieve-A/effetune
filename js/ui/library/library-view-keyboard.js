@@ -1,6 +1,7 @@
 import {
   cssEscape,
   getActiveLibraryDialogBackdrop,
+  getLibraryEnterOperation,
   isEditableTarget,
   isMobileLayout,
   isTextEditingTarget
@@ -67,10 +68,7 @@ export const keyboardMethods = {
       }
       if (event.key === 'Enter') {
         event.preventDefault();
-        const operationKind = event.ctrlKey || event.metaKey
-          ? 'queue'
-          : event.shiftKey ? 'playNext' : 'play';
-        this.runPagedKeyboardCommand(event, () => this.activatePagedFocused(operationKind));
+        this.runPagedKeyboardCommand(event, () => this.activatePagedFocused(getLibraryEnterOperation(event)));
         return;
       }
     }
@@ -114,6 +112,7 @@ export const keyboardMethods = {
 
   handleGlobalLibraryKeyDown(event) {
     if (!document.body?.classList.contains('view-library')) return;
+    if (this.uiManager?.networkMusic && this.uiManager.networkMusic.selectedLibraryId !== 'local') return;
     if (event.key === 'Escape' && this.handleLibraryEscape(event)) {
       event.stopImmediatePropagation?.();
       return;

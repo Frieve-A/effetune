@@ -214,8 +214,8 @@ export class AudioPlayer {
    * Play the current track
    * @param {boolean} userInitiated - Whether this command is running in a user gesture
    */
-  async play(userInitiated = true) {
-    return await this.playbackManager.play(userInitiated);
+  async play(userInitiated = true, options) {
+    return await this.playbackManager.play(userInitiated, options);
   }
   
   /**
@@ -276,13 +276,13 @@ export class AudioPlayer {
   setupStateManagerListeners() {
     // Listen for UI state changes that require special handling
     this.stateManager.addListener('seekBarEnabled', (enabled) => {
-      if (this.ui && this.ui.seekBar) {
+      if (this.ui?.audioPlayer === this && this.ui.seekBar) {
         this.ui.seekBar.disabled = !enabled;
       }
     });
     
     this.stateManager.addListener('controlsEnabled', (enabled) => {
-      if (this.ui) {
+      if (this.ui?.audioPlayer === this) {
         const controls = [
           this.ui.playPauseButton,
           this.ui.stopButton,

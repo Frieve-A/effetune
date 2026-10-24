@@ -15,6 +15,8 @@ import { copyPerChannelPEQClipboardPayload } from './peq-clipboard.js';
 import { importImpulseResponseWav } from '../impulse-response-import.js';
 import { channelDisplayLabel } from '../audio-utils/channel-selection.js';
 import { collectCalibrationIrCandidates } from '../measurement-model.js';
+import AnalysisController from './analysis-controller.js';
+import { bindNumberInput, updateRangeFill } from '../../../js/ui/range-fill.js';
 
 const AUDIO_ACTIVE_SCREENS = new Set(['levelAdjustmentScreen', 'sweepMeasurementScreen']);
 
@@ -78,6 +80,45 @@ export class UIManager {
         document.querySelector('.corrected-line').style.backgroundColor = this.graphColors.corrected;
     }
 
+    initializeCorrectionControls() {
+        const fields = [
+            ['targetLowFreqSlider', 'targetLowFreqValue', 20, 1000, 'Hz', true],
+            ['targetHighFreqSlider', 'targetHighFreqValue', 1000, 20000, 'Hz', true],
+            ['smoothing', 'smoothingValue', 0.01, 1, 'oct.', false],
+            ['eqBandCount', 'eqBandCountValue', 3, 15, '', false]
+        ];
+        for (const [sliderId, numberId, min, max, unit, logarithmic] of fields) {
+            const slider = document.getElementById(sliderId); const input = document.getElementById(numberId);
+            if (!slider || !input || input.dataset.bound) continue;
+            input.dataset.bound = 'true';
+            const row = slider.closest('.parameter-row'); const label = row.querySelector('label');
+            const text = document.createElement('span'); text.textContent = label.textContent.replace(/[:：]\s*$/, '');
+            const key = label.dataset.i18n; label.removeAttribute('data-i18n');
+            // Existing correction translations include punctuation; keep the live translated label separate from its unit.
+            text.dataset.i18n = key; text.dataset.i18nLabel = '';
+            const colon = document.createElement('span'); colon.className = 'parameter-colon';
+            colon.textContent = label.textContent.match(/([:：])\s*$/)?.[1] || ':';
+            const suffix = document.createElement('span'); suffix.className = 'parameter-unit'; suffix.textContent = unit ? ` (${unit})` : '';
+            label.replaceChildren(text, suffix, colon); label.id = `${numberId}-label`;
+            input.setAttribute('aria-labelledby', label.id);
+            if (logarithmic) slider.step = 'any';
+            const format = value => String(Number(Number(value).toFixed(min < 1 ? 2 : 0)));
+            const toSlider = value => logarithmic ? this.correctionHandler.valueToLogSlider(value, min, max) : value;
+            const applied = bindNumberInput(input, slider, min, max, input.value, () => {
+                const typed = input.value;
+                slider.dispatchEvent(new Event('input', { bubbles: true }));
+                slider.dispatchEvent(new Event('change', { bubbles: true })); updateRangeFill(slider);
+                if (document.activeElement === input) input.value = typed;
+            }, toSlider, format);
+            input.applied = applied; input.slider = slider;
+            slider.addEventListener('input', () => { applied.value = Number(input.value); updateRangeFill(slider); });
+            updateRangeFill(slider);
+            const group = document.createElement('div'); group.className = 'correction-control';
+            const help = row.nextElementSibling; row.before(group); group.append(row);
+            if (help?.classList.contains('explanation-text2')) group.append(help);
+        }
+    }
+
     logSliderToValue(sliderValue, minValue, maxValue) {
         return this.correctionHandler.logSliderToValue(sliderValue, minValue, maxValue);
     }
@@ -90,7 +131,8 @@ export class UIManager {
      * Initialize all event listeners
      */
     initializeEventListeners() {
-        this.graphRenderer.initializeImpulseResponseGraph();
+        this.analysisController = new AnalysisController(this);
+        this.analysisController.initialize();
 
         // Navigation buttons
         document.getElementById('newMeasurementBtn').addEventListener('click', () => this.startNewMeasurement());
@@ -122,7 +164,7 @@ export class UIManager {
             // Update slider value display
             const value = e.target.value;
             const freq = this.logSliderToValue(value, 20, 1000);
-            document.getElementById('targetLowFreqValue').textContent = Math.round(freq);
+            document.getElementById('targetLowFreqValue').value = Math.round(freq);
             // Show spinner
             document.getElementById('loading-spinner-results').style.display = 'block';
             // Update markers and graph immediately, but don't recalculate PEQ parameters
@@ -139,7 +181,7 @@ export class UIManager {
             // Update slider value display
             const value = e.target.value;
             const freq = this.logSliderToValue(value, 1000, 20000);
-            document.getElementById('targetHighFreqValue').textContent = Math.round(freq);
+            document.getElementById('targetHighFreqValue').value = Math.round(freq);
             // Show spinner
             document.getElementById('loading-spinner-results').style.display = 'block';
             // Update markers and graph immediately, but don't recalculate PEQ parameters
@@ -154,7 +196,7 @@ export class UIManager {
         
         // Smoothing slider updates the graph immediately
         document.getElementById('smoothing').addEventListener('input', (e) => {
-            document.getElementById('smoothingValue').textContent = parseFloat(e.target.value).toFixed(2);
+            document.getElementById('smoothingValue').value = parseFloat(e.target.value).toFixed(2);
             
             // Smoothing changes only affect the visual appearance of the graph
             this.updateResultsGraph();
@@ -178,7 +220,7 @@ export class UIManager {
         });
         
         document.getElementById('eqBandCount').addEventListener('input', (e) => {
-            document.getElementById('eqBandCountValue').textContent = e.target.value;
+            document.getElementById('eqBandCountValue').value = e.target.value;
             this.updateResultsGraph();
         });
         
@@ -186,6 +228,8 @@ export class UIManager {
             this.correctionHandler.requestCorrectionUpdate();
         });
         
+        this.initializeCorrectionControls();
+
         document.getElementById('exportCSVBtn').addEventListener('click', () => this.exportCSV());
         document.getElementById('exportTxtBtn').addEventListener('click', () => this.exportTXT());
         
@@ -287,7 +331,7 @@ export class UIManager {
      * @param {boolean} [skipPEQUpdate=false] - If true, don't recalculate PEQ parameters
      */
     updateResultsGraph(pointIndex, skipPEQUpdate = false) {
-        return this.graphRenderer.updateResultsGraph(pointIndex, skipPEQUpdate);
+        return this.analysisController?.refresh();
     }
 
     /**

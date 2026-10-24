@@ -9,7 +9,6 @@ import {
   PagedLibraryViewController
 } from './paged-view-controller.js';
 import { SegmentedVirtualListGeometry } from './segmented-virtual-list.js';
-import { SegmentedVirtualGridGeometry } from './segmented-virtual-grid.js';
 import { PagedArtworkLoader } from './artwork-loader.js';
 import { DurableActionController } from './durable-action-controller.js';
 import {
@@ -18,6 +17,7 @@ import {
   systemPlaylistLabelKey
 } from '../../library/playlists/system-playlists.js';
 import { escapeHtml } from '../../utils/escape-html.js';
+import { VIEW_LABELS, LIBRARY_NAV_VIEWS, FILE_SORT_COLUMNS, libraryNavItem, libraryDetailHeading, libraryEntityCard, libraryFolderMain, createLibraryEntityGridGeometry, createLibrarySortControl, librarySortHeader, TRACK_COLUMNS, libraryButton, libraryMain, librarySectionHeading, libraryTrackHeader, libraryTrackCells, createLibraryMessage, bindLibraryTrackPointer, bindLibrarySearchInput } from './library-view-components.js';
 import { folderBrowseMethods } from './library-view-folder-browse.js';
 import { navigationMethods } from './library-view-navigation.js';
 import { menusMethods } from './library-view-menus.js';
@@ -30,7 +30,6 @@ import {
   PAGED_SEARCH_ENTITY_TYPES,
   createFolderDirKey,
   decodeFolderDirKey,
-  formatDuration,
   getActiveLibraryDialogBackdrop,
   getRestorableFocusElement,
   isCueTrackDetails,
@@ -47,38 +46,10 @@ export {
   decodeFolderDirKey
 } from './library-view-shared.js';
 
-const VIEW_LABELS = {
-  tracks: 'library.nav.tracks',
-  albums: 'library.nav.albums',
-  artists: 'library.nav.artists',
-  genres: 'library.nav.genres',
-  subfolders: 'library.nav.subfolders',
-  files: 'library.nav.files',
-  folders: 'library.nav.folders',
-  playlists: 'library.nav.playlists',
-  recent: 'library.nav.recentlyAdded'
-};
-const LIBRARY_NAV_VIEWS = Object.freeze([
-  'tracks', 'albums', 'artists', 'genres', 'subfolders', 'files', 'folders', 'recent', 'playlists'
-]);
-
-const TRACK_SORT_COLUMNS = [
-  { key: 'trackNo', labelKey: 'library.column.trackNo' },
-  { key: 'title', labelKey: 'library.column.title' },
-  { key: 'artist', labelKey: 'library.column.artist' },
-  { key: 'album', labelKey: 'library.column.album' },
-  { key: 'genre', labelKey: 'library.column.genre' },
-  { key: 'duration', labelKey: 'library.column.duration' }
-];
 const RECENT_SORT_COLUMNS = [
-  ...TRACK_SORT_COLUMNS,
+  ...TRACK_COLUMNS,
   { key: 'added', labelKey: 'library.sort.added' }
 ];
-const FILE_SORT_COLUMNS = [
-  { key: 'path', labelKey: 'library.column.path' },
-  { key: 'duration', labelKey: 'library.column.duration' }
-];
-
 const PAGED_PLAYLIST_ITEM_DRAG_TYPE = 'application/x-effetune-playlist-item-key';
 const DESKTOP_LIBRARY_MIN_HEIGHT_PX = 360;
 const DESKTOP_LIBRARY_BOTTOM_GAP_PX = 20;
@@ -87,10 +58,6 @@ const PAGED_DEFAULT_SELECT_ALL_LIMIT = 300;
 const PAGED_DEFAULT_SELECT_ALL_SCOPE_KEYS = Object.freeze([
   'albumKey', 'artistKey', 'genreKey', 'subfolderKey', 'playlistId', 'folderDirKey'
 ]);
-const PAGED_GRID_MIN_CARD_WIDTH_PX = 176;
-const PAGED_GRID_MAX_COLUMNS = 12;
-const PAGED_GRID_GAP_PX = 16;
-const PAGED_MEDIA_CARD_VERTICAL_CHROME_PX = 48;
 const PAGED_CARD_SCOPE_KEYS = Object.freeze({
   album: 'albumKey',
   artist: 'artistKey',
@@ -240,7 +207,6 @@ export class LibraryView {
     this.favoriteTrackUids = new Set();
     this.favoriteStateRequestId = 0;
     this.favoriteMutationDepth = 0;
-    this.searchComposing = false;
     this.searchDebounceTimer = null;
     this.mobileHistoryInitialized = false;
     this.mobileHistoryDepth = 0;
@@ -273,39 +239,20 @@ export class LibraryView {
     this.root.className = 'library-view';
     this.root.setAttribute('aria-label', this.t('library.title'));
     this.root.innerHTML = `
-      <aside class="library-nav" aria-label="${escapeHtml(this.t('library.title'))}"></aside>
-      <div class="library-main">
-        <header class="library-header">
-          <div class="library-search-wrap">
-            <input class="library-search" type="search" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="library-header-actions">
-            <button type="button" class="library-button library-add-folder">${ICONS.add}<span>${escapeHtml(this.t('library.action.addFolder'))}</span></button>
-            <button type="button" class="library-icon-button library-rescan" title="${escapeHtml(this.t('library.action.rescan'))}" aria-label="${escapeHtml(this.t('library.action.rescan'))}">${ICONS.refresh}</button>
-          </div>
-        </header>
-        <div class="library-content" tabindex="0"></div>
-        <footer class="library-status"></footer>
-      </div>
+      <aside class="library-nav" aria-label="${escapeHtml(this.t('library.title'))}"><div class="library-local-nav"></div></aside>
+      ${libraryMain(
+        libraryButton(this.t('library.action.addFolder'), { className: 'library-add-folder', icon: ICONS.add }) +
+        libraryButton(this.t('library.action.rescan'), { className: 'library-rescan', icon: ICONS.refresh, iconOnly: true })
+      )}
     `;
     const mainContainer = document.querySelector('.main-container');
     mainContainer?.parentNode?.insertBefore(this.root, mainContainer.nextSibling);
-    this.nav = this.root.querySelector('.library-nav');
+    this.nav = this.root.querySelector('.library-local-nav');
     this.content = this.root.querySelector('.library-content');
     this.status = this.root.querySelector('.library-status');
     this.searchInput = this.root.querySelector('.library-search');
     this.searchInput.placeholder = this.t('library.search.placeholder');
-    this.searchInput.addEventListener('compositionstart', () => {
-      this.searchComposing = true;
-    });
-    this.searchInput.addEventListener('compositionend', () => {
-      this.searchComposing = false;
-      this.scheduleSearchQuery();
-    });
-    this.searchInput.addEventListener('input', () => {
-      if (this.searchComposing) return;
-      this.scheduleSearchQuery();
-    });
+    bindLibrarySearchInput(this.searchInput, () => this.scheduleSearchQuery(), () => clearTimeout(this.searchDebounceTimer));
     this.searchInput.addEventListener('keydown', event => {
       if (event.key === 'Escape' && this.handleLibraryEscape(event)) {
         event.stopPropagation?.();
@@ -1288,10 +1235,7 @@ export class LibraryView {
       this.nav.innerHTML = LIBRARY_NAV_VIEWS.map(view => {
         const count = view === 'recent' ? null : counts?.[view === 'files' ? 'tracks' : view];
         const active = this.currentView === view;
-        return `<button type="button" class="library-nav-item${active ? ' active' : ''}" data-view="${view}"${active ? ' aria-current="page"' : ''}>
-          <span class="library-nav-label">${escapeHtml(this.t(VIEW_LABELS[view]))}</span>
-          <span class="library-count"${Number.isSafeInteger(count) ? '' : ' hidden'}>${Number.isSafeInteger(count) ? count : ''}</span>
-        </button>`;
+        return libraryNavItem(view, this.t(VIEW_LABELS[view]), active, count);
       }).join('');
       buttons = [...this.nav.querySelectorAll('[data-view]')];
       buttons.forEach(button => {
@@ -1751,30 +1695,19 @@ export class LibraryView {
       }
       this.markPagedRowsInert();
       const shell = this.createPagedAttemptShell(state);
-      const status = document.createElement('p');
-      status.className = 'library-paged-loading';
-      status.setAttribute('role', 'status');
-      status.textContent = this.t('library.paged.loading');
-      shell.appendChild(status);
+      shell.appendChild(createLibraryMessage(this.t('library.paged.loading')));
       this.publishPagedAttemptDom(state, shell);
       return;
     }
     if (state.phase === 'failed' || state.phase === 'timedOut') {
       console.error('Music Library page load failed:', state.error);
       const shell = this.createPagedAttemptShell(state);
-      shell.innerHTML += `
-        <section class="library-paged-error" role="alert">
-          <p>${escapeHtml(this.t('library.paged.loadFailed'))}</p>
-          <button type="button" class="library-button library-paged-retry">${escapeHtml(this.t('library.paged.retry'))}</button>
-        </section>
-      `;
+      shell.appendChild(createLibraryMessage(this.t('library.paged.loadFailed'), {
+        error: true, retryLabel: this.t('library.paged.retry'),
+        retry: () => this.runLibraryCommand(() => this.pagedController.retry(), { logMessage: 'Music Library page retry failed:' })
+      }));
       this.publishPagedAttemptDom(state, shell);
       const retry = shell.querySelector('.library-paged-retry');
-      retry?.addEventListener('click', () => {
-        this.runLibraryCommand(() => this.pagedController.retry(), {
-          logMessage: 'Music Library page retry failed:'
-        });
-      });
       if (this.pagedFocusParked && globalThis.document?.activeElement === this.content &&
           this.isCurrentPagedAttempt(state)) this.focusWithoutContentScroll(retry);
       return;
@@ -1952,39 +1885,11 @@ export class LibraryView {
     const listGeometry = isTrackQuery
       ? new SegmentedVirtualListGeometry({ rowCount: logicalCount, rowHeight })
       : null;
-    const gridContainerWidth = Math.max(
-      PAGED_GRID_MIN_CARD_WIDTH_PX,
-      this.content.clientWidth || this.root?.clientWidth || PAGED_GRID_MIN_CARD_WIDTH_PX
-    );
-    const gridColumns = Math.max(1, Math.min(
-      PAGED_GRID_MAX_COLUMNS,
-      Math.floor(
-        (gridContainerWidth + PAGED_GRID_GAP_PX) /
-        (PAGED_GRID_MIN_CARD_WIDTH_PX + PAGED_GRID_GAP_PX)
-      )
-    ));
-    const gridCardWidth = (
-      gridContainerWidth - PAGED_GRID_GAP_PX * (gridColumns - 1)
-    ) / gridColumns;
-    const baseGridRowHeight = isMobileLayout() ? 196 : 224;
-    const gridRowHeight = PAGED_CARD_SCOPE_KEYS[pagedQuery.entityType]
-      ? Math.max(
-          baseGridRowHeight,
-          Math.ceil(
-            gridCardWidth + PAGED_MEDIA_CARD_VERTICAL_CHROME_PX + PAGED_GRID_GAP_PX
-          )
-        )
-      : baseGridRowHeight;
     const gridGeometry = isTrackQuery || logicalCount === 0
       ? null
-      : new SegmentedVirtualGridGeometry({
-          itemCount: logicalCount,
-          containerWidth: gridContainerWidth,
-          minimumCardWidth: PAGED_GRID_MIN_CARD_WIDTH_PX,
-          columnGap: PAGED_GRID_GAP_PX,
-          rowHeight: gridRowHeight,
-          maximumColumns: PAGED_GRID_MAX_COLUMNS
-        });
+      : createLibraryEntityGridGeometry(logicalCount,
+          this.content.clientWidth || this.root?.clientWidth,
+          Boolean(PAGED_CARD_SCOPE_KEYS[pagedQuery.entityType]));
     const scrollGeometry = listGeometry ?? gridGeometry?.list ?? new SegmentedVirtualListGeometry({
       rowCount: 0,
       rowHeight
@@ -2305,14 +2210,7 @@ export class LibraryView {
       ? 'library-detail-head library-paged-detail-head'
       : 'library-section-head';
     if (hasDetailArtwork) {
-      header.innerHTML = `
-        <button type="button" class="library-icon-button library-back" title="${escapeHtml(this.t('library.paged.previous'))}" aria-label="${escapeHtml(this.t('library.paged.previous'))}">${ICONS.back}</button>
-        <div class="library-paged-artwork library-paged-detail-artwork" aria-hidden="true"><span></span></div>
-        <div>
-          <h2>${escapeHtml(this.getPagedTitle())}</h2>
-          <p>${totalCount ?? '…'} ${escapeHtml(this.t('library.status.tracks'))}</p>
-        </div>
-      `;
+      header.innerHTML = libraryDetailHeading(this.getPagedTitle(), totalCount, this.t('library.status.tracks'), this.t('library.paged.previous'));
       const representativeTrack = state.rows.find(row => typeof (row.trackUid ?? row.id) === 'string');
       const representativeTrackUid = typeof this.detail.representativeTrackUid === 'string'
         ? this.detail.representativeTrackUid
@@ -2327,11 +2225,8 @@ export class LibraryView {
         );
       }
     } else {
-      header.innerHTML = `
-        ${this.detail || this.searchEntityType ? `<button type="button" class="library-icon-button library-back" title="${escapeHtml(this.t('library.paged.previous'))}" aria-label="${escapeHtml(this.t('library.paged.previous'))}">${ICONS.back}</button>` : ''}
-        <h2>${escapeHtml(this.getPagedTitle())}</h2>
-        <span>${escapeHtml(statusText)}</span>
-      `;
+      header.innerHTML = librarySectionHeading(this.getPagedTitle(), statusText,
+        this.detail || this.searchEntityType ? this.t('library.paged.previous') : '');
     }
     const query = this.getPagedQuery();
     const sortControl = !this.detail && query.endpoint === 'entities'
@@ -2371,31 +2266,7 @@ export class LibraryView {
   }
 
   createSortControl(fields, preference, applySort) {
-    const label = document.createElement('label');
-    label.className = 'library-entity-sort-control';
-    const labelText = document.createElement('span');
-    labelText.textContent = this.t('library.sort.label');
-    const select = document.createElement('select');
-    select.className = 'library-entity-sort-select';
-    select.setAttribute('aria-label', this.t('library.sort.label'));
-    for (const field of fields) {
-      for (const direction of ['asc', 'desc']) {
-        const option = document.createElement('option');
-        option.value = `${field.sort}:${direction}`;
-        option.textContent = `${this.t(field.labelKey)} — ${this.t(
-          direction === 'asc' ? 'library.sort.ascending' : 'library.sort.descending'
-        )}`;
-        option.selected = field.sort === preference.sort && direction === preference.direction;
-        select.appendChild(option);
-      }
-    }
-    select.value = `${preference.sort}:${preference.direction}`;
-    select.addEventListener('change', event => {
-      applySort(event.currentTarget?.value ?? select.value);
-    });
-    label.appendChild(labelText);
-    label.appendChild(select);
-    return label;
+    return createLibrarySortControl(fields, preference, applySort, (key, params) => this.t(key, params));
   }
 
   capturePagedAnchor() {
@@ -2557,17 +2428,18 @@ export class LibraryView {
       (!hasSelection && !this.usesPagedContextAction(state)) ||
       Boolean(state.staleSelectionDescriptor);
     const disabled = actionsDisabled ? ' disabled' : '';
+    const playbackDisabled = actionsDisabled || this.localPlaybackUnavailable ? ' disabled' : '';
     const deselectDisabled = hasSelection ? '' : ' disabled';
     const shuffleButton = this.detail?.type === 'playlist'
-      ? `<button type="button" class="library-button library-paged-shuffle"${disabled}>${ICONS.shuffle}<span>${escapeHtml(this.t('library.action.shuffle'))}</span></button>`
+      ? `<button type="button" class="library-button library-paged-shuffle"${playbackDisabled}>${ICONS.shuffle}<span>${escapeHtml(this.t('library.action.shuffle'))}</span></button>`
       : '';
     bar.innerHTML = `
       <button type="button" class="library-button library-paged-select-all">${escapeHtml(this.t('library.paged.selectAll'))}</button>
       <button type="button" class="library-button library-paged-deselect-all"${deselectDisabled}>${escapeHtml(this.t('library.paged.deselectAll'))}</button>
-      <button type="button" class="library-button library-paged-play"${disabled}>${ICONS.play}<span>${escapeHtml(this.t('library.action.play'))}</span></button>
+      <button type="button" class="library-button library-paged-play"${playbackDisabled}>${ICONS.play}<span>${escapeHtml(this.t('library.action.play'))}</span></button>
       ${shuffleButton}
-      <button type="button" class="library-button library-paged-play-next"${disabled}>${ICONS.next}<span>${escapeHtml(this.t('library.action.playNext'))}</span></button>
-      <button type="button" class="library-button library-paged-queue"${disabled}>${ICONS.queue}<span>${escapeHtml(this.t('library.action.addToQueue'))}</span></button>
+      <button type="button" class="library-button library-paged-play-next"${playbackDisabled}>${ICONS.next}<span>${escapeHtml(this.t('library.action.playNext'))}</span></button>
+      <button type="button" class="library-button library-paged-queue"${playbackDisabled}>${ICONS.queue}<span>${escapeHtml(this.t('library.action.addToQueue'))}</span></button>
       <button type="button" class="library-button library-paged-add-playlist"${disabled}>${ICONS.add}<span>${escapeHtml(this.t('library.action.addToPlaylist'))}</span></button>
       ${state.staleSelectionDescriptor ? `<span class="library-paged-stale-selection" role="status">${escapeHtml(this.t('library.paged.selectionStale'))}</span><button type="button" class="library-button library-paged-reselect">${escapeHtml(this.t('library.paged.reselect'))}</button>` : ''}
       ${state.selectionRejection ? `<span class="library-paged-selection-error" role="alert">${escapeHtml(this.t('library.paged.selectionTooLarge'))}</span>` : ''}
@@ -2609,12 +2481,9 @@ export class LibraryView {
     header.className = `library-track-header library-paged-track-header${this.isFileTrackView() ? ' library-file-row' : ''}`;
     header.setAttribute('role', 'row');
     header.setAttribute('aria-rowindex', '1');
-    header.innerHTML = `
-      <span class="library-track-control-header" role="columnheader" aria-label="${escapeHtml(this.t('library.paged.selectAll'))}"></span>
-      <span class="library-track-control-header" role="columnheader" aria-label="${escapeHtml(this.t('library.playlist.system.favorites'))}"></span>
-      ${this.getTrackSortColumns().map(column => this.renderSortHeader(column)).join('')}
-      <span class="library-track-control-header" role="columnheader" aria-label="${escapeHtml(this.t('library.action.more'))}"></span>
-    `;
+    header.innerHTML = libraryTrackHeader(this.getTrackSortColumns().map(column => this.renderSortHeader(column)).join(''), {
+      selectLabel: this.t('library.paged.selectAll'), favoriteLabel: this.t('library.playlist.system.favorites'), moreLabel: this.t('library.action.more')
+    });
     header.querySelectorAll('[data-sort]').forEach(button => {
       button.addEventListener('click', () => this.applyTrackSort(button.dataset.sort));
     });
@@ -2664,6 +2533,10 @@ export class LibraryView {
     request = {},
     targetName = ''
   }) {
+    if (this.localPlaybackUnavailable && isPagedPlaybackOperation(operationKind)) {
+      this.announcePagedStatus(this.t('networkMusic.libraryRequired'));
+      return Promise.resolve({ kind: 'unavailable' });
+    }
     if (!this.pagedActionController || typeof this.manager.performSelectionAction !== 'function') {
       return Promise.resolve({ kind: 'unavailable' });
     }
@@ -2700,12 +2573,14 @@ export class LibraryView {
 
   updatePagedActionToast(region, state = this.pagedActionController?.state) {
     const action = this.t(`library.job.action.${state.operationKind || 'operation'}`);
+    const networkError = state.result?.error?.networkMusic === true
+      ? this.uiManager?.networkMusic?.errorKey(state.result.error) : null;
     const statusText = state.status === 'waiting'
       ? this.t('library.job.waiting')
       : state.status === 'cancelling'
         ? this.t('library.job.cancelling')
         : state.status === 'terminal'
-          ? this.t(`library.job.terminal.${state.terminalKind || 'failed'}`)
+          ? this.t(networkError || `library.job.terminal.${state.terminalKind || 'failed'}`)
           : '';
     const operationPhaseKey = state.status === 'terminal'
       ? null
@@ -2776,9 +2651,9 @@ export class LibraryView {
       '.library-paged-queue', '.library-paged-add-playlist'
     ]) {
       const control = this.content.querySelector?.(selector);
-      if (control) control.disabled = disabled;
+      if (control) control.disabled = disabled || (selector !== '.library-paged-add-playlist' && this.localPlaybackUnavailable === true);
     }
-    const independentPlaybackDisabled = jobActive || typeof this.manager.performSelectionAction !== 'function';
+    const independentPlaybackDisabled = jobActive || this.localPlaybackUnavailable === true || typeof this.manager.performSelectionAction !== 'function';
     this.content.querySelectorAll?.('.library-card-play').forEach(control => {
       control.disabled = independentPlaybackDisabled;
     });
@@ -2926,23 +2801,20 @@ export class LibraryView {
       row.draggable = !isMobileLayout() && (
         this.detail?.type !== 'playlist' || playlistItemKey !== null
       );
-      row.innerHTML = `
-        <span class="library-paged-select-cell" role="gridcell"><input class="library-paged-select" type="checkbox" aria-label="${escapeHtml(this.t('library.paged.selectTrack', { title: trackTitle }))}"${selected ? ' checked' : ''}></span>
-        <span class="library-paged-favorite-cell" role="gridcell">${canFavorite ? `<button type="button" class="library-icon-button library-paged-favorite${favorite ? ' is-favorite' : ''}" data-favorite-track-id="${escapeHtml(trackUid)}" aria-pressed="${favorite ? 'true' : 'false'}" aria-label="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}" title="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}">${favorite ? ICONS.starFilled : ICONS.star}</button>` : ''}</span>
-        ${isFileRow ? '' : `<span class="library-track-number-cell" role="gridcell">${escapeHtml(item.trackNo ?? '')}</span>`}
-        <span class="library-track-title" role="gridcell"${isFileRow ? ` title="${escapeHtml(trackTitle)}"` : ''}><span class="library-now-playing-indicator" aria-hidden="true" ${nowPlaying ? '' : 'hidden'}>♪</span><span class="library-track-title-text">${escapeHtml(trackTitle)}</span>${unresolvedPlaylistItem ? `<span id="${unresolvedStatusId}" class="library-badge missing library-paged-unresolved-status">${escapeHtml(this.t('library.state.missing'))}</span>` : ''}</span>
-        ${isFileRow ? '' : `<span class="library-artist-cell" role="gridcell">${artistDetail ? `<button type="button" class="library-link library-artist-link">${escapeHtml(this.getTrackArtistLabel(item))}</button>` : escapeHtml(item.artist || item.albumArtist || '')}</span>
-        <span class="library-album-cell" role="gridcell">${item.albumKey ? `<button type="button" class="library-link library-album-link">${escapeHtml(this.getTrackAlbumLabel(item))}</button>` : escapeHtml(item.album || '')}</span>
-        <span class="library-genre-cell" role="gridcell">${escapeHtml(item.genre || '')}</span>`}
-        <span class="library-duration-cell" role="gridcell">${formatDuration(item.durationSec)}</span>
-        <span class="library-paged-more-cell" role="gridcell"><button type="button" class="library-icon-button library-paged-row-more" title="${escapeHtml(this.t('library.action.more'))}" aria-label="${escapeHtml(this.t('library.action.more'))}">${ICONS.more}</button></span>
+      row.innerHTML = libraryTrackCells(item, {
+        title: trackTitle, selected, nowPlaying, fileRow: isFileRow,
+        selectLabel: this.t('library.paged.selectTrack', { title: trackTitle }), moreLabel: this.t('library.action.more'),
+        favorite: canFavorite ? `<button type="button" class="library-icon-button library-paged-favorite${favorite ? ' is-favorite' : ''}" data-favorite-track-id="${escapeHtml(trackUid)}" aria-pressed="${favorite ? 'true' : 'false'}" aria-label="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}" title="${escapeHtml(this.t(favorite ? 'library.action.removeFavorite' : 'library.action.addFavorite'))}">${favorite ? ICONS.starFilled : ICONS.star}</button>` : '',
+        status: unresolvedPlaylistItem ? `<span id="${unresolvedStatusId}" class="library-badge missing library-paged-unresolved-status">${escapeHtml(this.t('library.state.missing'))}</span>` : '',
+        artist: artistDetail ? `<button type="button" class="library-link library-artist-link">${escapeHtml(this.getTrackArtistLabel(item))}</button>` : escapeHtml(item.artist || item.albumArtist || ''),
+        album: item.albumKey ? `<button type="button" class="library-link library-album-link">${escapeHtml(this.getTrackAlbumLabel(item))}</button>` : escapeHtml(item.album || '')
+      }) + `
         ${this.detail?.type === 'playlist' && (item.itemKey ?? item.playlistItemKey) != null ? `<span class="library-paged-playlist-row-actions" role="gridcell">
           <button type="button" class="library-icon-button library-paged-item-up" aria-label="${escapeHtml(this.t('library.action.moveUp'))}"${isFirstPlaylistItem ? ' disabled' : ''}>${ICONS.up}</button>
           <button type="button" class="library-icon-button library-paged-item-down" aria-label="${escapeHtml(this.t('library.action.moveDown'))}"${isLastPlaylistItem ? ' disabled' : ''}>${ICONS.down}</button>
           <button type="button" class="library-icon-button library-paged-item-remove" aria-label="${escapeHtml(this.t('library.action.removeFromPlaylist'))}">${ICONS.trash}</button>
         </span>` : ''}
       `;
-      const checkbox = row.querySelector('.library-paged-select');
       row.querySelector('.library-paged-favorite')?.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -2951,79 +2823,13 @@ export class LibraryView {
           logMessage: 'Music Library favorite update failed:'
         });
       });
-      checkbox?.addEventListener('click', event => {
-        checkbox._pagedShiftKey = event.shiftKey === true;
-      });
-      checkbox?.addEventListener('change', event => {
-        this.commitPagedTrackSelection(row, entityId, ordinal, event.target.checked, {
-          extend: checkbox._pagedShiftKey === true
-        });
-        checkbox._pagedShiftKey = false;
-      });
-      let suppressNextClick = false;
-      let longPressHandled = false;
-      let touchTimer = null;
-      const clearTouchTimer = () => {
-        if (touchTimer === null) return;
-        clearTimeout(touchTimer);
-        touchTimer = null;
-      };
-      const selectFromLongPress = event => {
-        if (!isMobileLayout()) return;
-        event.preventDefault?.();
-        suppressNextClick = true;
-        longPressHandled = true;
-        if (this.pagedController.isSelected(entityId, ordinal)) {
-          this.setPagedMobileSelectionActive(true);
-          return;
-        }
-        const dispatched = this.commitPagedTrackSelection(row, entityId, ordinal, true, { exclusive: true });
-        if (dispatched?.accepted !== false && dispatched?.value?.accepted !== false) {
-          this.setPagedMobileSelectionActive(true);
-        }
-      };
-      row.addEventListener('click', event => {
-        if (suppressNextClick) {
-          suppressNextClick = false;
-          event.preventDefault?.();
-          event.stopPropagation?.();
-          return;
-        }
-        if (event.target?.closest?.('button, input, a, [role="menuitem"]')) return;
-        if (isMobileLayout()) {
-          if (this.pagedMobileSelectionActive) {
-            const isSelected = this.pagedController.isSelected(entityId, ordinal);
-            this.commitPagedTrackSelection(row, entityId, ordinal, !isSelected);
-          } else {
-            if (event.detail > 1) return;
-            this.dispatchPagedRowAction(row, () => this.startPagedTrackPlay(item, ordinal));
-          }
-          return;
-        }
-        const additive = event.ctrlKey === true || event.metaKey === true;
-        const isSelected = this.pagedController.isSelected(entityId, ordinal);
-        this.commitPagedTrackSelection(row, entityId, ordinal, additive ? !isSelected : true, {
-          exclusive: !additive && event.shiftKey !== true,
-          extend: event.shiftKey === true
-        });
-      });
-      row.addEventListener('dblclick', event => {
-        if (event.target?.closest?.('button, input, a, [role="menuitem"]')) return;
-        if (isMobileLayout()) return;
-        this.dispatchPagedRowAction(row, () => this.startPagedTrackPlay(item, ordinal));
-      });
-      row.addEventListener('contextmenu', event => {
-        const touchPending = touchTimer !== null;
-        clearTouchTimer();
-        if (isMobileLayout() && (touchPending || longPressHandled)) {
-          if (longPressHandled) {
-            event.preventDefault?.();
-          } else {
-            selectFromLongPress(event);
-          }
-          return;
-        }
-        this.openPagedTrackContextMenu(event, item, { returnFocus: row, ordinal });
+      bindLibraryTrackPointer(row, {
+        isSelected: () => this.pagedController.isSelected(entityId, ordinal),
+        select: (selected, options) => this.commitPagedTrackSelection(row, entityId, ordinal, selected, options),
+        play: () => this.dispatchPagedRowAction(row, () => this.startPagedTrackPlay(item, ordinal)),
+        contextMenu: (event, returnFocus = row) => this.openPagedTrackContextMenu(event, item, { returnFocus, ordinal }),
+        selectionMode: () => this.pagedMobileSelectionActive,
+        enterSelectionMode: () => this.setPagedMobileSelectionActive(true)
       });
       if (this.detail?.type === 'playlist') {
         row.addEventListener('dragstart', event => this.handlePagedPlaylistItemDragStart(event, item, ordinal));
@@ -3034,33 +2840,6 @@ export class LibraryView {
       } else {
         row.addEventListener('dragstart', event => this.handlePagedTrackDragStart(event, trackUid, ordinal));
       }
-      row.addEventListener('touchstart', event => {
-        clearTouchTimer();
-        suppressNextClick = false;
-        longPressHandled = false;
-        touchTimer = setTimeout(() => {
-          touchTimer = null;
-          selectFromLongPress(event);
-        }, 520);
-      }, { passive: false });
-      row.addEventListener('touchend', clearTouchTimer);
-      row.addEventListener('touchmove', () => {
-        clearTouchTimer();
-        if (!longPressHandled) suppressNextClick = false;
-      });
-      row.addEventListener('touchcancel', () => {
-        clearTouchTimer();
-        if (!longPressHandled) suppressNextClick = false;
-      });
-      row.querySelector('.library-paged-row-more')?.addEventListener('click', event => {
-        event.stopPropagation();
-        const rect = event.currentTarget.getBoundingClientRect?.() || { left: 16, bottom: 16 };
-        this.openPagedTrackContextMenu({
-          preventDefault() {},
-          clientX: rect.left,
-          clientY: rect.bottom + 4
-        }, item, { returnFocus: event.currentTarget, ordinal });
-      });
       row.querySelector('.library-artist-link')?.addEventListener('click', event => {
         event.stopPropagation();
         if (artistDetail) this.navigateToDetail(artistDetail);
@@ -3098,10 +2877,7 @@ export class LibraryView {
     } else if (isFolder) {
       const folderCaption = this.getPagedEntityCaption(item, entityType);
       row.innerHTML = `
-        <button type="button" class="library-paged-folder-main">
-          <span class="library-paged-folder-title">${escapeHtml(item.displayName || item.name || entityId)}</span>
-          ${folderCaption ? `<span class="library-paged-folder-secondary">${escapeHtml(folderCaption)}</span>` : ''}
-        </button>
+        ${libraryFolderMain(item.displayName || item.name || entityId, folderCaption)}
         <span class="library-badge" data-folder-status></span>
         <span class="library-paged-folder-actions">
           ${(item.status === 'missing' || item.status === 'needs-permission') ? `<button type="button" class="library-button library-paged-folder-reconnect">${escapeHtml(this.t('library.action.reconnect'))}</button>` : ''}
@@ -3142,18 +2918,12 @@ export class LibraryView {
         : item.name || item.displayName || entityId;
       const caption = this.getPagedEntityCaption(item, entityType);
       if (isMediaCard) {
-        const playDisabled = this.isPagedActionBusy() ||
+        const playDisabled = this.isPagedActionBusy() || this.localPlaybackUnavailable === true ||
           typeof this.manager.performSelectionAction !== 'function';
         const artwork = systemPlaylist
           ? `<span class="library-paged-artwork library-system-playlist-artwork" aria-hidden="true"><span class="library-system-playlist-icon">${entityId === SYSTEM_PLAYLIST_IDS.recentlyPlayed ? ICONS.recent : ICONS.starFilled}</span></span>`
           : '<span class="library-paged-artwork" aria-hidden="true"><span></span></span>';
-        row.innerHTML = `
-          ${artwork}
-          <span class="library-paged-entity-title library-card-title">${escapeHtml(title)}</span>
-          <span class="library-card-subtitle">${escapeHtml(caption)}</span>
-          <button type="button" class="library-paged-entity-open library-album-open" aria-label="${escapeHtml(title)}"></button>
-          <button type="button" class="library-card-play" tabindex="-1" title="${escapeHtml(this.t('library.action.play'))}" aria-label="${escapeHtml(`${this.t('library.action.play')} ${title}`)}"${playDisabled ? ' disabled' : ''}>${ICONS.play}</button>
-        `;
+        row.innerHTML = libraryEntityCard(title, caption, { artwork, playDisabled, playLabel: this.t('library.action.play') });
       } else {
         row.innerHTML = `
           <button type="button" class="library-paged-entity-open" aria-label="${escapeHtml(title)}">
@@ -3250,6 +3020,10 @@ export class LibraryView {
   }
 
   startPagedEntityPlay(entityType, entity) {
+    if (this.localPlaybackUnavailable) {
+      this.announcePagedStatus(this.t('networkMusic.libraryRequired'));
+      return Promise.resolve({ kind: 'unavailable' });
+    }
     if (!this.pagedActionController || typeof this.manager.performSelectionAction !== 'function') {
       return Promise.resolve({ kind: 'unavailable' });
     }
@@ -3644,7 +3418,7 @@ export class LibraryView {
   }
 
   getTrackSortColumns() {
-    return this.isFileTrackView() ? FILE_SORT_COLUMNS : TRACK_SORT_COLUMNS;
+    return this.isFileTrackView() ? FILE_SORT_COLUMNS : TRACK_COLUMNS;
   }
 
   getTrackSort() {
@@ -3660,23 +3434,7 @@ export class LibraryView {
   }
 
   renderSortHeader(column) {
-    const preference = this.getTrackSort();
-    const active = preference.sort === column.key;
-    const direction = preference.direction === 'desc' ? 'desc' : 'asc';
-    const label = this.t(column.labelKey);
-    const ariaSort = active ? (direction === 'desc' ? 'descending' : 'ascending') : 'none';
-    const ariaLabel = active
-      ? this.t(direction === 'desc' ? 'library.sort.sortedDescending' : 'library.sort.sortedAscending', { column: label })
-      : this.t('library.sort.sortBy', { column: label });
-    const indicator = active ? ICONS[direction === 'desc' ? 'down' : 'up'] : '';
-    return `
-      <span class="library-sort-cell${active ? ' active' : ''}" role="columnheader" aria-sort="${ariaSort}">
-        <button type="button" class="library-sort-button${active ? ' active' : ''}" data-sort="${escapeHtml(column.key)}" aria-label="${escapeHtml(ariaLabel)}">
-          <span class="library-sort-label">${escapeHtml(label)}</span>
-          <span class="library-sort-indicator" aria-hidden="true">${indicator}</span>
-        </button>
-      </span>
-    `;
+    return librarySortHeader(column, this.getTrackSort(), (key, params) => this.t(key, params));
   }
 
   applyTrackSort(sort, direction) {

@@ -4,6 +4,7 @@
  * UNIFIED STATE MANAGEMENT: All state managed in StateManager only
  */
 import { audioContextManagerMetadataMethods, isFileObject } from './audio-context-manager-metadata.js';
+import { isPwaNetworkMediaUrl } from '../../network-music/pwa-connection.js';
 import {
   clampLogicalTime,
   getPlaybackPhysicalSourceKey,
@@ -2173,7 +2174,7 @@ export class AudioContextManager {
   // ===== AUDIO ELEMENT MANAGEMENT =====
 
   setAudioElementSource(audioElement, source) {
-    if (isLoopbackOpenHomeMediaGatewayUrl(source)) {
+    if (isLoopbackOpenHomeMediaGatewayUrl(source) || isPwaNetworkMediaUrl(source)) {
       audioElement.crossOrigin = 'anonymous';
       this.openHomeCorsElements.add(audioElement);
     } else if (this.openHomeCorsElements.has(audioElement)) {
@@ -2420,12 +2421,13 @@ export class AudioContextManager {
   /**
    * Play current track
    */
-  async play(forcePlay = false, userInitiated = true) {
+  async play(forcePlay = false, userInitiated = true, isCurrent = null) {
+    if (isCurrent?.() === false) return false;
     if (this.pendingPause) {
       const stopToken = this.stopRequestToken;
       const pauseToken = this.pauseRequestToken;
       await this.pendingPause;
-      if (this.stopRequestToken !== stopToken || this.pauseRequestToken !== pauseToken) return false;
+      if (this.stopRequestToken !== stopToken || this.pauseRequestToken !== pauseToken || isCurrent?.() === false) return false;
     }
     const graphRebuildRequest = this.setGraphRebuildTransportIntent('play');
     if (graphRebuildRequest) {
@@ -2447,21 +2449,21 @@ export class AudioContextManager {
 
     if (state?.playbackMode === 'rollingPcm' && !this.rollingTransport && state.currentTrack) {
       const loaded = await this.loadTrack(state.currentTrack, state.currentTrackIndex);
-      if (!loaded) return false;
-      return this.play(forcePlay, userInitiated);
+      if (!loaded || isCurrent?.() === false) return false;
+      return this.play(forcePlay, userInitiated, isCurrent);
     }
 
     const stopToken = this.stopRequestToken;
     if (!await this.resumePlaybackAudioContext(userInitiated)) return false;
-    if (this.stopRequestToken !== stopToken) {
+    if (this.stopRequestToken !== stopToken || isCurrent?.() === false) {
       return false;
     }
     
     const currentState = this.getCurrentState();
-    return this.dispatchPlaybackBackend('play', stopToken);
+    return this.dispatchPlaybackBackend('play', stopToken, isCurrent);
   }
 
-  async playRollingPcm(stopToken = this.stopRequestToken) {
+  async playRollingPcm(stopToken = this.stopRequestToken, isCurrent = null) {
     const transport = this.rollingTransport;
     if (!transport?.prepared || transport.failed || transport.disposed) return false;
     const fadeIn = this.getCurrentState()?.isPaused === true;
@@ -2474,7 +2476,7 @@ export class AudioContextManager {
         sourceGeneration,
         transport.currentTime
       );
-      if (this.stopRequestToken !== stopToken || this.rollingTransport !== transport ||
+      if (isCurrent?.() === false || this.stopRequestToken !== stopToken || this.rollingTransport !== transport ||
           this.activeSourceGeneration !== sourceGeneration ||
           !this.ensurePipelineSourceConnected(transport.sourceNode)) return false;
       if (fadeIn && !this.connectPrivatePipelineSource(transport.sourceNode, {
@@ -2504,7 +2506,7 @@ export class AudioContextManager {
       if (stage) {
         const result = await this.audioManager.activateStagedAudioCandidate(stage, {
           acquire: () => transport,
-          isCandidateCurrent: value => value === transport &&
+          isCandidateCurrent: value => isCurrent?.() !== false && value === transport &&
             this.rollingTransport === transport && this.stopRequestToken === stopToken &&
             transport.prepared === true && !transport.failed && !transport.disposed &&
             this.isPipelineSourceConnected(transport.sourceNode),
@@ -2518,7 +2520,7 @@ export class AudioContextManager {
       if (committed) this.rearmPreparedAutomaticMove();
       return committed;
     } catch (error) {
-      if (this.stopRequestToken === stopToken) {
+      if (this.stopRequestToken === stopToken && isCurrent?.() !== false) {
         console.error('[AudioContextManager] Rolling PCM playback failed:', error);
         this.updateState({ isPlaying: false, isPaused: true, isStopped: false },
           'Rolling PCM playback failed');
@@ -2532,7 +2534,7 @@ export class AudioContextManager {
   /**
    * Play using buffer source
    */
-  async playBufferSource(stopToken = this.stopRequestToken) {
+  async playBufferSource(stopToken = this.stopRequestToken, isCurrent = null) {
     if (!this.currentBuffer) {
       return false;
     }
@@ -2550,12 +2552,12 @@ export class AudioContextManager {
 
     try {
       stage = await this.stagePlaybackActivation('buffer-source', sourceGeneration, resumePosition);
-      if (this.stopRequestToken !== stopToken || this.currentBuffer !== buffer ||
+      if (isCurrent?.() === false || this.stopRequestToken !== stopToken || this.currentBuffer !== buffer ||
         this.activeSourceGeneration !== sourceGeneration) {
         return false;
       }
       await this.stopCurrentPlayback();
-      if (this.stopRequestToken !== stopToken) {
+      if (this.stopRequestToken !== stopToken || isCurrent?.() === false) {
         return false;
       }
 
@@ -2572,7 +2574,7 @@ export class AudioContextManager {
       if (stage) {
         const result = await this.audioManager.activateStagedAudioCandidate(stage, {
           acquire: () => candidateSource,
-          isCandidateCurrent: source => source === candidateSource &&
+          isCandidateCurrent: source => isCurrent?.() !== false && source === candidateSource &&
             !candidateEnded &&
             this.pendingBufferSource === candidateSource &&
             this.currentBuffer === buffer &&
@@ -2634,7 +2636,7 @@ export class AudioContextManager {
         if (this.pendingBufferSource === candidateSource) this.pendingBufferSource = null;
         this.releasePipelineSource(candidateSource, true);
       }
-      if (this.stopRequestToken !== stopToken) {
+      if (this.stopRequestToken !== stopToken || isCurrent?.() === false) {
         return false;
       }
       console.error('[AudioContextManager] Buffer source playback failed:', error);
@@ -2652,7 +2654,7 @@ export class AudioContextManager {
   /**
    * Play using audio element
    */
-  async playAudioElement(stopToken = this.stopRequestToken) {
+  async playAudioElement(stopToken = this.stopRequestToken, isCurrent = null) {
     const audioElement = this.audioPlayer.audioElement;
     if (!audioElement) {
       return false;
@@ -2667,19 +2669,28 @@ export class AudioContextManager {
     let stage = null;
     let pendingActivation = null;
     let mediaStart = null;
+    const ownsSource = () => this.audioPlayer.audioElement === audioElement &&
+      this.mediaSource === mediaSource && this.mediaSourceGeneration === mediaSourceGeneration;
+    const cleanup = () => {
+      if (!pendingActivation || this.pendingMediaActivation !== pendingActivation) return;
+      this.pendingMediaActivation = null;
+      if (ownsSource()) {
+        try { audioElement.pause(); } catch (_) { /* already paused */ }
+      }
+    };
 
     try {
       stage = await this.stagePlaybackActivation('html-media', sourceGeneration, intendedPosition);
-      if (this.stopRequestToken !== stopToken || this.audioPlayer.audioElement !== audioElement ||
-        this.mediaSource !== mediaSource || this.mediaSourceGeneration !== mediaSourceGeneration) {
+      if (isCurrent?.() === false || this.stopRequestToken !== stopToken || !ownsSource()) {
         return false;
       }
-      if ((stage || fadeIn) && !this.connectPrivatePipelineSource(mediaSource, { replaceDirectRoute: true })) {
+      const privateUntilCommit = !!stage || fadeIn || isCurrent !== null;
+      if (privateUntilCommit && !this.connectPrivatePipelineSource(mediaSource, { replaceDirectRoute: true })) {
         return false;
       }
-      if ((stage || fadeIn) && !this.getUseInputWithPlayer()) {
+      if (privateUntilCommit && !this.getUseInputWithPlayer()) {
         this.setManagedSourceNode(this.getPipelineSourceNode(mediaSource));
-      } else if (!stage && !fadeIn && !this.setPrivatePipelineSourceMuted(mediaSource, false)) {
+      } else if (!privateUntilCommit && !this.setPrivatePipelineSourceMuted(mediaSource, false)) {
         return false;
       }
       pendingActivation = {
@@ -2691,28 +2702,20 @@ export class AudioContextManager {
       };
       this.pendingMediaActivation = pendingActivation;
       mediaStart = this.startMediaElementPlayback(audioElement, {
-        isCurrent: () => this.stopRequestToken === stopToken &&
-          this.audioPlayer.audioElement === audioElement &&
-          this.mediaSource === mediaSource &&
-          this.mediaSourceGeneration === mediaSourceGeneration
+        // This callback owns cleanup, including a late browser play() result.
+        // Target validity is checked separately before publishing the source.
+        isCurrent: () => this.stopRequestToken === stopToken && ownsSource()
       });
       await mediaStart.finished;
-      if (this.stopRequestToken !== stopToken || this.audioPlayer.audioElement !== audioElement) {
-        if (this.pendingMediaActivation === pendingActivation) {
-          this.pendingMediaActivation = null;
-          try {
-            audioElement.pause();
-          } catch (e) {
-            // Silent fail
-          }
-        }
+      if (isCurrent?.() === false || this.stopRequestToken !== stopToken || !ownsSource()) {
+        cleanup();
         return false;
       }
 
       if (stage) {
         const result = await this.audioManager.activateStagedAudioCandidate(stage, {
           acquire: () => pendingActivation,
-          isCandidateCurrent: candidate => candidate === pendingActivation &&
+          isCandidateCurrent: candidate => isCurrent?.() !== false && candidate === pendingActivation &&
             this.pendingMediaActivation === pendingActivation &&
             candidate.invalid === false &&
             this.stopRequestToken === stopToken &&
@@ -2735,12 +2738,7 @@ export class AudioContextManager {
             }, 'Audio element playback activation committed');
             return true;
           },
-          cleanup: () => {
-            if (this.pendingMediaActivation === pendingActivation) {
-              this.pendingMediaActivation = null;
-              try { audioElement.pause(); } catch (_) { /* ignore */ }
-            }
-          }
+          cleanup
         });
         if (!result.activated || mediaStart?.failed) return false;
       } else {
@@ -2767,11 +2765,8 @@ export class AudioContextManager {
       return true;
 
     } catch (error) {
-      if (this.pendingMediaActivation === pendingActivation) {
-        this.pendingMediaActivation = null;
-        try { audioElement.pause(); } catch (_) { /* ignore */ }
-      }
-      if (this.stopRequestToken !== stopToken) {
+      cleanup();
+      if (this.stopRequestToken !== stopToken || isCurrent?.() === false) {
         return false;
       }
       console.error('[AudioContextManager] Audio element playback failed:', error);

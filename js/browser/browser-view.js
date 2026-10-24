@@ -1,3 +1,5 @@
+import { matchUrlRule } from './url-rules.js';
+import { browserShortcut } from './shortcuts.js';
 import { BrowserInputController } from '../audio/browser-input-controller.js';
 
 const DEFAULT_START_PAGE = 'https://effetune.frieve.com/streaming/';
@@ -69,12 +71,23 @@ export class BrowserView {
         this.input = new BrowserInputController(uiManager.audioManager, this.api, state => {
             this.inputStatus = state;
             this.renderStatus();
+            void this.applyUrlRules();
         });
         this.unsubscribe = this.api.onState(state => this.applyState(state));
         this.unsubscribeFocus = this.api.onFocusAddress?.(() => {
             this.closePopup(false);
             this.address.focus();
             this.address.select();
+        });
+        this.unsubscribeCommand = this.api.onCommand?.(command => this.handleCommand(command));
+        this.root.addEventListener('keydown', event => {
+            if (this.popup || event.defaultPrevented) return;
+            const action = browserShortcut({ key: event.key, control: event.ctrlKey, meta: event.metaKey,
+                alt: event.altKey, shift: event.shiftKey, isComposing: event.isComposing });
+            if (!action || (action === 'stop' && !this.state.loading)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void this.handleCommand({ action });
         });
         this.resize = new ResizeObserver(() => this.syncPresentation());
         this.resize.observe(this.content);
@@ -93,6 +106,7 @@ export class BrowserView {
         window.addEventListener('pagehide', () => {
             this.unsubscribe?.();
             this.unsubscribeFocus?.();
+            this.unsubscribeCommand?.();
             this.input.unsubscribe?.();
             this.resize.disconnect();
             this.observer.disconnect();
@@ -161,6 +175,20 @@ export class BrowserView {
         return capture.then(() => this.visible === false || this.closing ? false : this.run(action));
     }
 
+    handleCommand({ action, url } = {}) {
+        if (!this.visible || this.closing || this.popup) return;
+        switch (action) {
+            case 'address': this.address.focus(); this.address.select(); return;
+            case 'bookmarks': this.toggleBookmarks(); return;
+            case 'back': return this.state.canGoBack && this.navigate(() => this.api.back());
+            case 'forward': return this.state.canGoForward && this.navigate(() => this.api.forward());
+            case 'reload': return this.navigate(() => this.api.reload());
+            case 'stop': return this.state.loading && this.run(() => this.api.stop());
+            case 'home': return this.navigate(() => this.api.navigate(this.state.settings?.startPage || DEFAULT_START_PAGE));
+            case 'navigate': return this.navigate(() => this.api.navigate(url));
+        }
+    }
+
     async run(action, errorKey = 'pageError') {
         try {
             const state = await action();
@@ -189,6 +217,44 @@ export class BrowserView {
         this.forward.disabled = !state.canGoForward;
         this.labelButton(this.reload, state.loading ? 'stop' : 'reload');
         this.renderStatus();
+        void this.applyUrlRules();
+    }
+
+    async applyUrlRules() {
+        const rules = this.state.settings?.urlRules || [];
+        const rulesKey = JSON.stringify(rules);
+        const blindActive = this.uiManager?.isDoubleBlindActive?.() === true;
+        const key = JSON.stringify([this.input?.selected === true, this.state.url, rulesKey, blindActive]);
+        if (key === this.ruleEvaluationKey) return;
+        this.ruleEvaluationKey = key;
+        const revision = this.ruleEvaluationRevision = (this.ruleEvaluationRevision || 0) + 1;
+        if (!this.input?.selected || blindActive) {
+            this.matchedPresetKey = null;
+            return;
+        }
+        const manager = this.uiManager.pipelineManager?.presetManager;
+        if (!manager || !rules.length) {
+            this.matchedPresetKey = null;
+            return;
+        }
+        try {
+            const presets = await manager.getLoadablePresets();
+            if (revision !== this.ruleEvaluationRevision || !this.input.selected) return;
+            if (this.uiManager.isDoubleBlindActive?.()) {
+                this.ruleEvaluationKey = null;
+                this.matchedPresetKey = null;
+                return;
+            }
+            const name = matchUrlRule(this.state.url, rules, presets);
+            const matchedKey = name === null ? null : JSON.stringify([rulesKey, name]);
+            if (matchedKey === this.matchedPresetKey) return;
+            this.matchedPresetKey = matchedKey;
+            if (name !== null) await manager.loadPreset(presets[name]);
+        } catch (error) {
+            console.error('Browser URL rule could not load its preset:', error);
+            this.actionError = 'ruleError';
+            this.renderStatus();
+        }
     }
 
     openPopup(anchor, className, role, label) {
@@ -239,6 +305,7 @@ export class BrowserView {
         if (this.popupAnchor === this.menuButton) { this.closePopup(); return; }
         const popup = this.openPopup(this.menuButton, 'settings-menu show browser-menu', 'menu', 'menu');
         for (const [key, action] of [
+            ['home', () => this.handleCommand({ action: 'home' })],
             ['external', () => this.run(() => this.api.openExternal(), 'actionError')],
             ['start', () => this.saveSettings({ startPage: this.state.url })],
             ['clear', () => this.clearSiteData()]
@@ -248,7 +315,7 @@ export class BrowserView {
                 await action();
             }, { icon: false, className: 'settings-menu-item' });
             button.setAttribute('role', 'menuitem');
-            button.disabled = key !== 'clear' && !this.hasPage();
+            button.disabled = ['external', 'start'].includes(key) && !this.hasPage();
         }
         popup.querySelector('button:not(:disabled)')?.focus();
     }

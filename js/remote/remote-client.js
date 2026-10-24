@@ -17,7 +17,9 @@ import { installRangePrecisionControl } from '../ui/range-precision-controller.j
 import { RemoteAudioManager } from './remote-audio-manager.js';
 import { createRemoteIrLibrary } from './remote-ir-library.js';
 import { RemoteSession, resolveRemoteTarget } from './remote-session.js';
+import { createFrameWebSocket } from './remote-frame-transport.js';
 import { SyncEngine } from './remote-sync-engine.mjs';
+import { LegacySyncEngine } from './legacy-sync-engine.js';
 import { createRemoteUiManager, loadTranslations, RemoteMobileShell } from './remote-ui-manager.js';
 import { applyOpsToPipeline, createIdRegistry, finishBatch, randomClientPrefix } from './pipeline-apply.js';
 
@@ -54,20 +56,37 @@ function createMessageHelpers() {
 export function createRemotePresetHost(session, getPipeline) {
     let presetCache = null;
     session.addEventListener('presetsChanged', () => { presetCache = null; });
+    session.addEventListener('status', event => { if (event.detail.status !== 'open') presetCache = null; });
     return {
+        get canSave() { return !session.features || session.features.has('savePreset'); },
+        get canDelete() { return !session.features || session.features.has('sync1'); },
         async getPresets() {
-            if (!presetCache) presetCache = (await session.request({ op: 'presets' }, 'presets')).presets || {};
+            if (!presetCache || (session.features && !session.features.has('sync1'))) {
+                if (session.features && !session.features.has('sync1')) {
+                    const { names = [] } = await session.request({ op: 'listPresets' }, 'presets');
+                    const presets = await Promise.all(names.map(async name => {
+                        const result = await session.request({ op: 'getPreset', name }, 'preset');
+                        return [name, { plugins: result.pipeline || [] }];
+                    }));
+                    presetCache = Object.fromEntries(presets);
+                } else presetCache = (await session.request({ op: 'presets' }, 'presets')).presets || {};
+            }
             return { ...presetCache };
         },
         async savePreset(name) {
+            if (!this.canSave) throw new Error('preset saving unavailable');
             await session.sendCommand({ op: 'savePreset', name, pipeline: getPipeline() });
             presetCache = null;
         },
         async loadPreset(nameOrPreset) {
             if (typeof nameOrPreset !== 'string') throw new Error('Only stored presets can be loaded here');
-            await session.sendCommand({ op: 'loadPreset', name: nameOrPreset });
+            if (session.features && !session.features.has('sync1')) {
+                const { pipeline } = await session.request({ op: 'getPreset', name: nameOrPreset }, 'preset');
+                await session.sendCommand({ op: 'chain', pipeline });
+            } else await session.sendCommand({ op: 'loadPreset', name: nameOrPreset });
         },
         async deletePreset(name) {
+            if (!this.canDelete) throw new Error('preset deletion unavailable');
             await session.sendCommand({ op: 'deletePreset', name });
             presetCache = null;
         }
@@ -105,7 +124,8 @@ function createModelAdapter({ win, registry, audioManager, setSlotLabel }) {
 }
 
 export async function startRemoteClient(win = window) {
-    const target = resolveRemoteTarget({
+    const integrated = win.parent !== win && new URLSearchParams(win.location.search).get('integrated') === '1';
+    const target = integrated ? { ok: true, url: 'integrated' } : resolveRemoteTarget({
         location: win.location,
         storage: (() => { try { return win.localStorage; } catch (_) { return null; } })(),
         history: win.history
@@ -114,6 +134,9 @@ export async function startRemoteClient(win = window) {
         showNotice('Open this page from the QR code in EffeTune (Settings > Remote Control).');
         return null;
     }
+
+    const FrameWebSocket = integrated ? await createFrameWebSocket(win) : null;
+    if (integrated) document.body.classList.add('integrated-remote-client');
 
     const messages = createMessageHelpers();
     const showCommandError = (message, error) => {
@@ -155,6 +178,18 @@ export async function startRemoteClient(win = window) {
         showMessage: messages.show,
         hideMessage: messages.hide
     });
+    if (integrated) {
+        const updateMetadata = metadata => {
+            $('remoteHost').textContent = metadata.playerName;
+            uiManager.layoutMode.setModeOverride(metadata.layoutMode);
+        };
+        updateMetadata(FrameWebSocket.metadata);
+        FrameWebSocket.onMetadata = updateMetadata;
+        const changeConnection = $('remoteChangeConnection');
+        changeConnection.hidden = false;
+        changeConnection.title = uiManager.t('ui.network.changeConnection');
+        changeConnection.addEventListener('click', () => FrameWebSocket.changeConnection());
+    }
     const mobileShell = new RemoteMobileShell({
         documentRef: document,
         translate: (key, fallback) => uiManager.translations[key] || fallback
@@ -181,12 +216,14 @@ export async function startRemoteClient(win = window) {
     try { version = (await (await fetch('package.json')).json()).version || ''; } catch (_) { /* optional */ }
     const session = new RemoteSession({
         url: target.url,
+        ...(integrated ? { WebSocketImpl: FrameWebSocket } : {}),
         hello: { app: 'EffeTune', version, build: isDesktopClient ? 'desktop-client' : 'browser', sync: 1 }
     });
 
     const presetHost = createRemotePresetHost(session, () => adapter.snapshot().pipeline);
 
     const pluginListManager = new PluginListManager(pluginManager);
+    const allEffectCategories = pluginManager.effectCategories;
     uiManager.pluginListManager = pluginListManager;
     const pipelineManager = new PipelineManager(
         audioManager, pluginManager, uiManager.expandedPlugins, pluginListManager,
@@ -201,6 +238,7 @@ export async function startRemoteClient(win = window) {
     history.saveState = () => {};
     history.saveStateAtomicallyIfChanged = () => false;
     history.undo = () => {
+        if (!session.features?.has('sync1')) return;
         engine.noteGesture();
         history.endOperation();
         engine.flushNow();
@@ -209,6 +247,7 @@ export async function startRemoteClient(win = window) {
             error => showCommandError('EffeTune could not undo the last change. Try again.', error));
     };
     history.redo = () => {
+        if (!session.features?.has('sync1')) return;
         engine.noteGesture();
         history.endOperation();
         engine.flushNow();
@@ -222,11 +261,12 @@ export async function startRemoteClient(win = window) {
         win, registry, audioManager,
         setSlotLabel: slot => { if (toggleButton) toggleButton.textContent = slot; }
     });
-    const engine = new SyncEngine({
+    const engineOptions = {
         adapter,
         send: message => session.send(message),
         onError: error => showCommandError('EffeTune could not apply this change. Try again.', error)
-    });
+    };
+    let engine = new SyncEngine(engineOptions);
     // Reuse the editor's pointer, keyboard and text-edit boundaries for remote undo.
     const beginOperation = history.beginOperation.bind(history);
     const endOperation = history.endOperation.bind(history);
@@ -295,7 +335,26 @@ export async function startRemoteClient(win = window) {
 
     session.addEventListener('state', event => {
         const message = event.detail;
-        if (typeof message.host === 'string') $('remoteHost').textContent = message.host;
+        if (Array.isArray(message.features) || !session.features) {
+            session.features = new Set(message.features || []);
+            const sync = session.features.has('sync1');
+            if (sync !== (engine instanceof SyncEngine)) {
+                engine.onDisconnected();
+                engine = sync ? new SyncEngine(engineOptions) : new LegacySyncEngine(engineOptions);
+            }
+            engine.onConnected();
+            for (const id of ['undoButton', 'redoButton', 'pipelineToggleButton', 'pipelineMenuButton']) {
+                const button = $(id);
+                if (button) button.disabled = !sync;
+            }
+            if (Array.isArray(message.effects)) {
+                const available = new Set(message.effects);
+                pluginManager.effectCategories = Object.fromEntries(Object.entries(allEffectCategories).map(([category, value]) =>
+                    [category, { ...value, plugins: value.plugins.filter(name => available.has(name)) }]));
+                pluginListManager.initPluginList();
+            }
+        }
+        if (!integrated && typeof message.host === 'string') $('remoteHost').textContent = message.host;
         const formatChanged = audioManager.applyHostAudioState(message.audio);
         uiManager.debugChannelCount = audioManager.audioContext.destination.channelCount;
         engine.onState(message);
@@ -306,11 +365,13 @@ export async function startRemoteClient(win = window) {
         if (status === 'open') {
             engine.onConnected();
             overlay.hidden = true;
+            document.querySelector('.main-container').inert = false;
             setConnection('open', 'Connected');
             return;
         }
         engine.onDisconnected();
         overlay.hidden = false;
+        document.querySelector('.main-container').inert = true;
         // The overlay covers the editor: nothing can be edited without a host to take it.
         if (status === 'unauthorized') {
             overlayText.textContent = 'The pairing code changed. Scan the QR code in EffeTune again.';
@@ -322,6 +383,7 @@ export async function startRemoteClient(win = window) {
         }
     });
     session.start();
+    win.addEventListener('pagehide', () => { engine.onDisconnected(); session.stop(); }, { once: true });
     win.remoteClient = { session, engine, adapter, registry, pipelineManager, audioManager, pluginManager, uiManager };
     return win.remoteClient;
 }

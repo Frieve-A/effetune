@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseCommentedJSON } = require('../js/utils/parse-commented-json.js');
 
 const SUPPORTED_LOCALES = Object.freeze(['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh']);
 const localeCache = new Map();
@@ -61,9 +62,7 @@ function loadLocale(locale) {
   if (localeCache.has(locale)) return localeCache.get(locale);
   const localePath = path.join(__dirname, `../js/locales/${locale}.json5`);
   const source = fs.readFileSync(localePath, 'utf8');
-  const translations = JSON.parse(source
-    .replace(/\/\/.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, ''));
+  const translations = parseCommentedJSON(source);
   localeCache.set(locale, translations);
   return translations;
 }

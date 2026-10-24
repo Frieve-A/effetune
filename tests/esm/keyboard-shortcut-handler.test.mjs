@@ -32,6 +32,36 @@ test('Visualizer does not edit the hidden pipeline with shortcuts or paste', asy
   });
 });
 
+test('external playback selection disables local pipeline edits while isolated remote editors retain shortcuts', () => {
+  const context = createContext();
+  context.uiManager.networkMusic = { selectedPlayerId: 'remote-player', playerGeneration: 1 };
+  for (const options of [{ key: 'Delete' }, { key: 'z', ctrlKey: true }, { key: 's', ctrlKey: true }]) {
+    assert.equal(handlePipelineKeyboardShortcut(createEvent(options), context), false);
+  }
+  const paste = createEvent();
+  paste.clipboardData = { getData: () => '[{"nm":"Volume"}]' };
+  assert.equal(handlePipelinePasteEvent(paste, context), false);
+  assert.deepEqual(context.calls, []);
+  delete context.uiManager.networkMusic;
+  assert.equal(handlePipelineKeyboardShortcut(createEvent({ key: 'z', ctrlKey: true }), context), true);
+  assert.deepEqual(context.calls, [['undo']]);
+});
+
+test('a clipboard read begun before a player switch cannot edit the hidden local pipeline', async () => {
+  let resolve;
+  const clipboard = new Promise(yes => { resolve = yes; });
+  const context = createContext({ readTextFromClipboard: () => clipboard });
+  context.uiManager.networkMusic = { selectedPlayerId: 'local', playerGeneration: 0 };
+  await withGlobals({ window: { electronAPI: { readClipboardText() {} } } }, async () => {
+    assert.equal(handlePipelineKeyboardShortcut(createEvent({ key: 'v', ctrlKey: true }), context), true);
+    context.uiManager.networkMusic.playerGeneration += 1;
+    context.uiManager.networkMusic.selectedPlayerId = 'remote-player';
+    resolve('[{"nm":"Volume"}]');
+    await flushMicrotasks();
+    assert.deepEqual(context.calls, []);
+  });
+});
+
 function createEvent(options = {}) {
   const event = {
     key: options.key,

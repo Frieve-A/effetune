@@ -15,8 +15,19 @@ export const META_TYPES = ['artwork', 'video', 'title', 'album', 'artist'];
 // Picture items show the playing track's artwork or video frames and have no palette.
 export const PICTURE_TYPES = ['artwork', 'video'];
 export const VIDEO_FITS = ['contain', 'cover', 'stretch'];
-export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'counter', 'rhythm-analyzer'];
-export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'counter', 'shape'];
+export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'counter', 'rhythm-analyzer', 'playback-control'];
+export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'counter', 'shape', 'playback-control', 'seek-bar'];
+export const SEEK_APPEARANCES = Object.freeze({
+    slim: { thickness: 3, showThumb: false },
+    classic: { thickness: 6, showThumb: true, thumbSize: 16 },
+    bold: { thickness: 14, showThumb: true, thumbSize: 24 }
+});
+export const PLAYBACK_ACTIONS = ['play-pause', 'stop', 'previous', 'next', 'shuffle', 'repeat'];
+export const PLAYBACK_APPEARANCES = Object.freeze({
+    minimal: { fillOpacity: 0, borderWidth: 0, depth: 0 },
+    glass: { fill: '#182331', fillOpacity: .92, border: '#71859b', borderWidth: 1, radius: 18, depth: .35 }, // theme-allow: Editable scene button colors.
+    raised: { fill: '#30343b', fillOpacity: 1, border: '#8b929d', borderWidth: 1.5, radius: 12, depth: .8 } // theme-allow: Editable scene button colors.
+});
 export const SHAPES = ['rectangle', 'ellipse', 'triangle', 'line'];
 export const MAX_TEXT_LENGTH = 4096;
 export const MAX_ITEMS = 64;
@@ -295,7 +306,7 @@ function normalizeStyle(type, input) {
         fontFamily: choice(style.fontFamily, (type === 'counter' ? COUNTER_FONT_FAMILIES : FONT_FAMILIES).map(([family]) => family), type === 'counter' ? 'monospace' : 'sans-serif'),
         bold: style.bold === true,
         italic: style.italic === true,
-        align: choice(style.align, ['left', 'center', 'right'], ['rhythm-analyzer', 'lyrics', 'counter'].includes(type) ? 'center' : 'left'),
+        align: choice(style.align, ['left', 'center', 'right'], ['rhythm-analyzer', 'lyrics', 'counter', 'playback-control'].includes(type) ? 'center' : 'left'),
         ...(type === 'rhythm-analyzer' ? { outlineWidth: 2,
             ...Object.fromEntries(Object.entries(RHYTHM_BEAT_STYLE_RULES).map(([key, rule]) => [key, rule(style[key])])) } : {}),
         ...Object.fromEntries(Object.entries(TEXT_DECORATION_RULES)
@@ -319,6 +330,38 @@ function normalizeStyle(type, input) {
 }
 
 export function normalizeParams(type, input) {
+    if (type === 'seek-bar') {
+        const params = isRecord(input) ? input : {};
+        return {
+            thickness: number(params.thickness, 6, 2, 40),
+            rounding: params.rounding !== false,
+            trackColor: color(params.trackColor, '#71859b'), // theme-allow: Editable seek track color.
+            trackOpacity: number(params.trackOpacity, .35, 0, 1),
+            showThumb: params.showThumb !== false,
+            thumbSize: number(params.thumbSize, 16, 6, 64),
+            thumbColor: color(params.thumbColor, '#ffffff'), // theme-allow: Editable seek thumb color.
+            thumbShape: choice(params.thumbShape, ['circle', 'square', 'diamond', 'bar'], 'circle'),
+            thumbBorderWidth: Math.round(number(params.thumbBorderWidth, 0, 0, 8) * 2) / 2,
+            thumbBorderColor: color(params.thumbBorderColor, '#182331') // theme-allow: Editable seek thumb border.
+        };
+    }
+    if (type === 'playback-control') {
+        const params = isRecord(input) ? input : {};
+        return {
+            action: choice(params.action, PLAYBACK_ACTIONS, 'play-pause'),
+            display: choice(params.display, ['icon', 'icon-label', 'label'], 'icon'),
+            label: typeof params.label === 'string' ? params.label.replace(/[\r\n\t]/g, ' ').slice(0, 80) : '',
+            shape: choice(params.shape, ['rectangle', 'ellipse'], 'rectangle'),
+            fill: color(params.fill, '#182331'), // theme-allow: Editable scene button fill.
+            fillOpacity: number(params.fillOpacity, .92, 0, 1),
+            border: color(params.border, '#71859b'), // theme-allow: Editable scene button border.
+            borderWidth: number(params.borderWidth, 1, 0, 12),
+            radius: number(params.radius, 18, 0, 200),
+            iconSize: number(params.iconSize, 45, 15, 85),
+            depth: number(params.depth, .35, 0, 1),
+            activeColor: color(params.activeColor, '#6fe3ff') // theme-allow: Editable active control color.
+        };
+    }
     if (type === 'counter') {
         const params = isRecord(input) ? input : {};
         const separator = (key, fallback) => typeof params[key] === 'string' ? params[key].replace(/[\r\n\t]/g, '').slice(0, 8) : fallback;
@@ -550,7 +593,8 @@ function itemPalette(type, value) {
 export function createItem(type, id = globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2)}`) {
     if (!ITEM_TYPES.includes(type)) throw new TypeError('Unknown visualizer item type');
     return {
-        id, type, rect: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, channel: null,
+        id, type, rect: type === 'playback-control' ? { x: .45, y: .75, w: .1, h: .14 }
+            : type === 'seek-bar' ? { x: .2, y: .9, w: .6, h: .06 } : { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, channel: null,
         flipX: false, flipY: false, palette: itemPalette(type), params: normalizeParams(type), style: normalizeStyle(type), effects: []
     };
 }

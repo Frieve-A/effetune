@@ -1,13 +1,33 @@
 # remote-v1: LAN control API
 
-The desktop app can run a small WebSocket API so another device on the same network can drive
-its effect pipeline. The audio stays on the computer; the client only edits the pipeline, the
-presets and the IR library. The API speaks EffeTune's own pipeline format and knows nothing
-about any particular client. The app also serves a browser client on the same port, so a phone
-or another computer needs nothing installed.
+The desktop app can run a small WebSocket API so another device on the same network can edit
+its effect pipeline, presets and IR library. When network music is available, clients can also
+browse libraries and control playback on a chosen player. The API carries control messages,
+not audio. Pipeline commands use EffeTune's own format; the API does not depend on a particular
+client. The app also serves a browser client on the same port, so a phone or another computer
+needs nothing installed.
 
-It is off by default. The only credential is a random token in the pairing link, and traffic is
-plain http/ws, so use it only on a network you trust.
+It is off by default. A random token in the pairing link authorizes access. Without a TLS
+certificate, traffic uses plain HTTP/WS: use that mode only on a network you trust. Configure
+TLS to protect the pairing token and commands in transit.
+
+## Encrypted connections
+
+Set `EFFETUNE_REMOTE_TLS_CERT` to a PEM certificate-chain file and `EFFETUNE_REMOTE_TLS_KEY`
+to its PEM private-key file before starting the desktop app. Keep the private key outside the
+application's public asset folders and restrict access to your account. Enable Remote Control
+as usual; its pairing links and QR codes then use HTTPS/WSS on the same remote-control port.
+
+The certificate must cover the IP address in the pairing link, and each connecting browser,
+desktop client or MCP runtime must trust its issuer. For a private CA, install that CA in the
+client's trust store; Node-based MCP clients can use `NODE_EXTRA_CA_CERTS`. Do not disable
+certificate verification. Renew the certificate before it expires and restart EffeTune after
+replacing it.
+
+Both files are required. An unreadable, invalid or mismatched certificate/key prevents the
+remote server from starting; it never silently falls back to plaintext. With neither variable
+set, existing HTTP/WS connections continue to work. TLS mode requires HTTPS/WSS clients;
+HTTP/WS is not also exposed on another port.
 
 ## Enabling
 
@@ -16,6 +36,9 @@ enables the server and shows a QR code and the pairing link as text. The setting
 `config.json` in the user-data folder, so the server comes back after a restart. **New token**
 replaces the token; clients that are connected are closed with 4401 and must pair again.
 Clearing the checkbox closes all clients (1001) and releases the port.
+
+**Allow remote control** is also available under **Settings > Config... > Network**;
+both dialogs use the same setting.
 
 In the main window, the Effect Pipeline header has a Remote Control icon (broadcast symbol,
 tooltip "Remote Control", Electron app only). It is dimmed while the server is off, drawn in the
@@ -38,6 +61,12 @@ npm start
 ```
 
 ## Pairing
+
+The desktop player's integrated effect editor also uses this authenticated v1 connection.
+Its saved pairing link is associated with the player explicitly selected by the user, not a
+matching device name. Selecting another playback destination never changes the meaning of
+this server: clients connected to A continue to edit A's pipeline even while A's screen is
+showing B. Network discovery and library sharing do not grant effect-editing access.
 
 One link and one QR code serve every client. It is the http URL of the web client the app
 hosts:
@@ -86,7 +115,7 @@ requests that also return data, the ack comes first and the data message carries
 
 | Request | Effect |
 |---|---|
-| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","irSelection","sync1","describe1"]`, `"appName"` and `"effects"`. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client (control characters removed, cut to 48 characters). The Remote Control dialog shows `app` and `version`. Other extra fields are ignored. |
+| `{"op":"hello","v":1,"app":"MyRemote","version":"1.0","build":"12"}` | Replies with `state`, which also carries `"features":["origin","savePreset","irSync","irSelection","sync1","describe1"]`, `"appName"` and, once the effect renderer is ready, `"effects"`. `"music1"` is also advertised when network music is available. Any other `v` is rejected. `app`, `version` and `build` are optional strings naming the client (control characters removed, cut to 48 characters). The Remote Control dialog shows `app` and `version`. Other extra fields are ignored. |
 | `{"op":"get"}` | Replies with `state`. |
 | `{"op":"chain","pipeline":[...]}` | Replaces the whole pipeline (at most 256 items). If any `nm` is unknown, the request fails and nothing changes. Master bypass keeps its state. |
 | `{"op":"params","index":i,"params":{...}}` | Applies the keys to stage `i` (0-based) of the current pipeline. Keys that are not given stay as they are. |
@@ -142,7 +171,10 @@ The reply to `hello` also carries `"appName"` (`"EffeTune"`) next to `"app"`, wh
 version string. They are for display. Clients decide what they can do from `features`, never
 from `app` or the version.
 
-It also carries `"effects"`, the sorted names (`nm`) of every effect this app can load. A client
+Once the effect renderer is ready, it also carries `"effects"`, the sorted names (`nm`) of every
+effect this app can load. During startup, a music-capable `hello` may arrive before the renderer
+is ready and omit `effects`. Request `hello` again after the renderer is ready before comparing
+effect sets. A client
 compares `effects` with its own effect set before sending a chain: an effect that is not listed
 makes `chain` fail as a whole (`unknown effect`), so the client should leave such stages out and
 say so.
@@ -186,7 +218,8 @@ L/R) has a combined id and is left out.
 
 ## Browser clients
 
-The desktop app also serves the EffeTune web client on the remote port, over plain http:
+The desktop app also serves the EffeTune web client on the remote port, over HTTP or HTTPS
+when TLS is configured:
 
 ```
 http://<LAN IPv4>:<port>/?t=<token>
@@ -194,7 +227,8 @@ http://<LAN IPv4>:<port>/?t=<token>
 
 The Remote Control dialog shows this link and its QR code (the same ones apps use). The page is `remote.html`: the real effect list and pipeline editor
 of EffeTune, without the player, library, audio settings or measurement tools. It keeps the token
-in `localStorage`, removes `t` from the address bar and opens `ws://<same host:port>/?t=<token>`.
+in `localStorage`, removes `t` from the address bar and opens `ws://<same host:port>/?t=<token>`
+(or `wss://` when the page uses HTTPS).
 The hosted web version (https) cannot do this: a browser refuses `ws://` to a LAN address from an
 https page, which is why the desktop app serves the page itself. The desktop app can also join
 another one: **Join another EffeTune** in the same dialog opens a client window for a pasted link.
@@ -205,7 +239,11 @@ the settings remain visible, with their unsynchronized measurement traces and re
 On mobile, the **+** button sits near the bottom edge because this page has no player or navigation tabs.
 
 In IR Reverb, **Choose from library…** selects a saved IR from the connected computer,
-including true-stereo pairs. Importing and deleting files stays on that computer.
+including true-stereo pairs. With `irSync`, **Upload file…** explicitly imports one IR file
+of up to 64 MiB into that computer and **Download** saves a single-file IR to the controlling
+device. Pairs cannot be transferred, and deletion stays on the connected computer. IR libraries
+are never copied automatically. Individual effects offer built-in presets, but individual user
+presets are unavailable remotely; saved pipeline presets belong to the connected computer.
 Measurement and SFZ library selection are unavailable in the remote editor and their selectors
 are hidden. Existing assignments remain in use, and their effect parameters can still be adjusted.
 Actions that only reset local audio analysis or learning are also hidden. Graph editing remains
@@ -220,9 +258,11 @@ available, while frequency audition is unavailable from the remote editor.
   defence). A WebSocket upgrade without `Origin` is not a browser request, so its `Host` is not
   checked: native clients and scripts may connect through any host name (NetBIOS, MagicDNS).
 - `Origin` header (WebSocket upgrade only): an `http:`/`https:` origin must be exactly
-  `http://<Host>`. A missing `Origin` (native clients, scripts) is accepted; `Origin: null` and other
+  `http://<Host>` in plaintext mode or `https://<Host>` in TLS mode. A missing `Origin`
+  (native clients, scripts) is accepted; `Origin: null` and other
   schemes get 403.
-- `remote.html` is sent with `Content-Security-Policy: connect-src 'self' ws://<Host>`.
+- `remote.html` is sent with `Content-Security-Policy: connect-src 'self' ws://<Host>`
+  (using `wss://<Host>` in TLS mode).
 - The page is served from one origin per port. If the port falls back (47300 busy, 47301 used),
   the origin changes and the QR code must be scanned again.
 
@@ -426,6 +466,54 @@ effect is described as soon as the app ships it. A test starts the app and fails
 effect is left without `source`, so a new effect must either use the standard controls, have a DSP
 `params.json`, or get an entry in `js/remote/parameter-hints.js`.
 
+## Network music (music1)
+
+When `"music1"` appears in `features`, authenticated clients can browse the paired app's Music
+Library or known network libraries and control playback. The paired app is the gateway. A
+library's `serverId` identifies the source; a player's `playerId` identifies the destination.
+Omitting either selects the paired app's local source or player as described below. Explicit
+IDs are always respected, and pipeline and effect requests still control the paired app.
+
+Each accepted request below takes a `seq` and receives an ack followed by a `musicResult` carrying that
+`seq`. The ack confirms receipt, not completion. A successful result has `"ok":true` and a
+`result`; a failed result has `"ok":false` and an `error` with `code` and `message`.
+
+| Request `op` | Fields and effect |
+|---|---|
+| `listMusicDevices` | Returns a snapshot of the local library, any local player, and currently known network devices, with IDs, availability and capabilities. Optional `refresh:true` starts asynchronous discovery; an immediate empty network list is not a final finding. |
+| `browseMusic` | Optional `serverId`, `objectId` (default `"0"`), `query`, `sortCriteria`, `start`, `count`: returns one source's page of tracks or containers. Search and sorting depend on that source's capabilities. |
+| `getPlayback` | Optional `playerId`, `start` and `count`: returns playback state and a page of queue entries. |
+| `playMusic` | Optional `playerId`, ordered `items:[{"serverId":"...","trackId":"..."}]`, optional `startIndex`: replaces the queue and starts playback at the selected occurrence. Duplicate tracks retain their positions. |
+| `queueMusic` | Optional `playerId`, ordered `items`, optional `position:"end"` or `"afterCurrent"`: inserts tracks without starting playback. |
+| `controlPlayback` | Optional `playerId` and required `action` (`play`, `pause`, `stop`, `next`, `previous`, `seek`, `seekId`, `repeat`, `shuffle`, `volume`), with the action's `seconds`, queue-entry `id`, or `value` as needed. `seekId` also starts playback; volume needs player support. |
+| `editPlaybackQueue` | Optional `playerId` and `action:"delete"` with a queue-entry `id`, or `action:"clear"`. A queue-entry ID is distinct from a source track's `trackId`. |
+
+Without `serverId`, a blank query browses the local catalog only. Its root `objectId:"0"`
+lists tracks directly; it accepts title sorting with `+dc:title` or `-dc:title`. A nonblank query
+searches the full local catalog first. Only when that search succeeds with `total:0` does the
+gateway try known available searchable network libraries in ID order, returning the first
+match. A local error does not trigger fallback. An explicit `serverId` searches only that
+source. The result and every item identify their concrete `serverId`; use the result's
+`serverId` for later pages and each item's `serverId` with its `trackId` for playback. Local
+tracks use `serverId:"local"` and the native catalog track ID, including CUE tracks.
+`searchedSources`, when present, records `matched`, `noMatches`, `error`, `unsupported`, or
+`unavailable` for each attempted or skipped source; it does not establish that discovery is complete.
+
+Without `playerId`, playback requests use the paired app's actual local player and fail if it
+is unavailable. Explicit `playerId` never substitutes another player. Successful playback
+results include the effective `playerId`. Local catalog playback on the local player needs no
+LAN sharing; sending local tracks to another player follows the existing sharing restrictions.
+Ordered `items` may mix local and network track references, but each item requires its concrete
+`serverId` and `trackId` rather than a file path or media URL.
+
+Pages have a maximum `count` of 500. A play or queue request accepts 1–4096 items, subject
+to the player's own queue limit. Results contain selected display fields, not media URLs,
+file paths, or raw library metadata. Successful commands return the observed player state
+after the operation; they do not guarantee audible output. An in-band failure after a change
+has begun may carry `"outcome":"unknown"` and a refreshed `playback` snapshot. If the socket
+closes before the reply, no `musicResult` arrives; a sent change may still have been partly
+applied. Read the player's state before retrying rather than repeating the change automatically.
+
 ## Limitations
 
 - Only the active pipeline (A or B) is exposed.
@@ -440,7 +528,7 @@ effect is left without `source`, so a new effect must either use the standard co
 - The IR library window does not refresh while it is open when an IR arrives.
 - Browser clients hide unsynchronized analyzer outputs and runtime status. Parameter-derived graphs
   stay visible, including the settings portion of graphs that also show real-time readings.
-  The IR picker uses the host's saved library. Measurement and SFZ selectors, local file import,
+  The IR picker uses the host's saved library. Measurement and SFZ selectors,
   audio preview, spectrum overlays, and learning reset are unavailable and hidden.
   MIDI and clipboard features are unavailable. Undo and redo are global, not per client.
 - A client whose plugin rewrites its own parameters without a user gesture is not allowed to send

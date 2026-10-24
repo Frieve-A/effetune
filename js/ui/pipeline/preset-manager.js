@@ -42,14 +42,14 @@ export class PresetManager {
             getDefaultSaveName: () => this.currentPresetName,
             listUserPresetNames: async () => Object.keys(await this.getPresets()),
             applyUserPreset: name => this.loadPreset(name),
-            saveUserPreset: name => this.savePreset(name),
-            deleteUserPresets: names => this.deletePresets(names),
             errorKeys: {
                 save: 'error.failedToSavePreset',
                 delete: 'error.failedToDeletePreset'
             },
             handlesErrors: true
         };
+        if (this.externalHost?.canSave !== false) provider.saveUserPreset = name => this.savePreset(name);
+        if (this.externalHost?.canDelete !== false) provider.deleteUserPresets = names => this.deletePresets(names);
         if (!this.externalHost || typeof this.externalHost.renamePreset === 'function') {
             provider.renameUserPreset = (oldName, newName) => this.renamePreset(oldName, newName);
         }

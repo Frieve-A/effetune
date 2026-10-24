@@ -129,4 +129,20 @@ When exporting a playlist, enable **Relative paths** if you want the exported M3
 - Clearing browser site data removes the web app's catalog and playlists; export important playlists to keep them.
 - Large collections load progressively as you scroll. Use Music Library in one EffeTune window at a time.
 
+## Music on your network (desktop app)
+
+Use **Library** to browse this device or a discovered music server, and the device selector at the top of the window to choose where selected music plays. Switching the library changes browsing and search only. Adding folders, rescanning and other local library management are available with **This device** selected.
+
+When browsing another EffeTune library, use **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added**, and **Playlists** as you do locally. Search the selected library, sort its lists, and open albums, artists or genres to find their tracks. In **Folders**, use **Tree** to browse the folder hierarchy or **Flat** to list all tracks in the selected folder. Only shared music appears. Remote playlists can be browsed and played; edit them on the source computer.
+
+Other music servers show the categories and folder hierarchy they publish; search and sorting are available only when the server supports them.
+
+To play Music Library tracks on another player, open **Settings > Config... > Network > Library sharing** and explicitly share its folder first. Network playback uses the destination's supported formats and effects; CUE sub-tracks are not available as separate network tracks. See [network music and remote control](openhome.md#choose-a-library-and-a-player) for setup, effect pairing and connection troubleshooting.
+
+To play individual local files without enabling library sharing, choose another player and use **Open music files**. EffeTune makes only the selected files available to that player; keep the source app running.
+
+## Shared music in the PWA
+
+The PWA can browse a registered EffeTune computer’s shared library and play it through this device’s effects or another registered computer. Local PWA files cannot be sent to another player. See [PWA setup and playback](openhome.md#pwa) for adding a device, browser permissions, and connection requirements.
+
 [← Back to README](../README.md)

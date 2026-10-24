@@ -14,6 +14,8 @@ import {
   collectCalibrationIrCandidates,
   collectPointIrKeyIds,
   collectStoredIrKeyIds,
+  getAnalysisCapabilities,
+  listAnalysisRecords,
   mergeChannelRedoResult,
   recalculateAverages,
   resolveDisplayedChannelCurves,
@@ -21,11 +23,46 @@ import {
   resolveCalibrationIrCandidate,
   resolveIrRecordKey,
   resolveIrRecordTarget,
+  resolveAnalysisRecord,
   resolveSweepBand,
   resolveOutputSweepBands,
   resolveResponseSweepBand,
   visibleChannelCurves
 } from '../../features/measurement/measurement-model.js';
+
+test('analysis selects an explicit single record and preserves the last valid choice for averages', () => {
+  const measurement = { outputChannel: 'multi', outputChannels: ['left', 'right'], points: [
+    { pointId: 0, channels: [
+      { channel: 'left', irId: 1, ir: { stored: true } },
+      { channel: 'right', irId: 2, ir: { stored: true } }
+    ] },
+    { pointId: 3, channels: [
+      { channel: 'left', irId: 4, ir: { stored: true } }, { channel: 'right' }
+    ] }
+  ] };
+  const records = listAnalysisRecords(measurement);
+  assert.deepEqual(records.map(record => record.irKey), [1, 2, 4]);
+  assert.deepEqual(resolveAnalysisRecord(measurement), records[0]);
+  assert.deepEqual(resolveAnalysisRecord(measurement, 'all', 'all', records[2]), records[2]);
+  assert.deepEqual(resolveAnalysisRecord(measurement, 0, 'right', records[2]), records[1]);
+  assert.equal(resolveAnalysisRecord(measurement, 1, 'right', records[2]), null);
+  const combined = { outputChannel: 'all', points: [{ pointId: 0, ir: { stored: true } }] };
+  assert.equal(listAnalysisRecords(combined)[0].combinedOutput, true);
+  assert.equal(listAnalysisRecords({ ...combined, acquisitionMethod: 'wav' })[0].combinedOutput, false);
+});
+
+test('analysis capabilities depend on samples and valid harmonic evidence, not acquisition labels', () => {
+  assert.deepEqual(getAnalysisCapabilities(null, [[100, 0]]), {
+    frequency: true, impulse: false, distortion: false, waterfall: false
+  });
+  const record = { data: Float32Array.from([0, 1, 0]), sampleRate: 48000, onsetIndex: 1,
+    acquisitionMethod: 'ess' };
+  assert.deepEqual(getAnalysisCapabilities(record), {
+    frequency: true, impulse: true, distortion: false, waterfall: true
+  });
+  assert.equal(getAnalysisCapabilities({ ...record, onsetIndex: 3 }).impulse, false);
+  assert.equal(getAnalysisCapabilities({ ...record, data: Float32Array.of(NaN) }).impulse, false);
+});
 
 test('sweep bands preserve channel settings, clamp actual sample rate and resolve all outputs', () => {
   const config = { sweepBand: {
@@ -214,7 +251,9 @@ test('channel redo replaces only the selected channel and keeps IR IDs stable', 
     sampleRate: 48000,
     onsetIndex: 0,
     trimStartSamples: 512,
-    outputTimeReference: 'audio-context'
+    outputTimeReference: 'audio-context',
+    acquisitionMethod: 'ess',
+    harmonicAnalysis: { quality: { valid: false, reasons: ['clipping'] } }
   }, () => { allocations += 1; return 99; });
   assert.equal(allocations, 0);
   assert.equal(result.point.channels[0].irId, 1);
@@ -222,6 +261,9 @@ test('channel redo replaces only the selected channel and keeps IR IDs stable', 
   assert.deepEqual(result.records.map(record => record.pointId).sort(), [1, 2]);
   assert.equal(result.records.find(record => record.pointId === 1).trimStartSamples, 512);
   assert.equal(result.records.find(record => record.pointId === 1).outputTimeReference, 'audio-context');
+  assert.equal(result.records.find(record => record.pointId === 1).acquisitionMethod, 'ess');
+  assert.deepEqual(result.records.find(record => record.pointId === 1).harmonicAnalysis,
+    { quality: { valid: false, reasons: ['clipping'] } });
 });
 
 test('flat averages use defensive point-count semantics', () => {

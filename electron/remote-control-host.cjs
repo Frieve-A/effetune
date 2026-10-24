@@ -16,11 +16,17 @@
 
 const crypto = require('node:crypto');
 const http = require('node:http');
+const https = require('node:https');
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
 const { createStaticHandler, isAllowedHost, isAllowedOrigin } = require('./remote-static-server.cjs');
 const { closeAllClientWindows, openRemoteClientWindow } = require('./remote-client-window.cjs');
+const { RemotePairingHost } = require('./remote-pairing.cjs');
+const { PwaNetworkHost, PWA_ORIGIN } = require('./pwa-network-host.cjs');
+const { resolveFriendlyName } = require('./openhome-control-host.cjs');
+const { MUSIC_OPS, dispatchMusic } = require('./remote-music-dispatcher.cjs');
 
 const CHANNELS = Object.freeze({
   rendererReady: 'remote-v1:renderer-ready',
@@ -159,13 +165,13 @@ function pickLanAddress(interfaces = os.networkInterfaces()) {
 }
 
 // The WebSocket endpoint a client derives from the pairing link.
-function pairingUrl(address, port, token) {
-  return `ws://${address}:${port}/?t=${encodeURIComponent(token)}`;
+function pairingUrl(address, port, token, secure = false) {
+  return `${secure ? 'wss' : 'ws'}://${address}:${port}/?t=${encodeURIComponent(token)}`;
 }
 
 // The pairing link (and QR code): the web client that this server itself serves.
-function webPairingUrl(address, port, token) {
-  return `http://${address}:${port}/?t=${encodeURIComponent(token)}`;
+function webPairingUrl(address, port, token, secure = false) {
+  return `${secure ? 'https' : 'http'}://${address}:${port}/?t=${encodeURIComponent(token)}`;
 }
 
 function qrSvgDataUrl(text) {
@@ -192,6 +198,12 @@ class RemoteControlHost {
     getMainWindow,
     config = null,
     clipboard = null,
+    discovery = null,
+    getPlayerId = null,
+    networkMusic = null,
+    localPlayer = null,
+    pwaOrigin = PWA_ORIGIN,
+    approvePairing = async () => false,
     env = process.env,
     argv = process.argv,
     log = console.log
@@ -205,6 +217,9 @@ class RemoteControlHost {
     const cfg = this.loadConfig();
     this.enabled = this.forced || cfg.remoteControlEnabled === true;
     this.basePort = Number(env.EFFETUNE_REMOTE_PORT) || PORT;
+    this.tlsCertificate = env.EFFETUNE_REMOTE_TLS_CERT || '';
+    this.tlsKey = env.EFFETUNE_REMOTE_TLS_KEY || '';
+    this.secure = Boolean(this.tlsCertificate || this.tlsKey);
     this.port = this.basePort; // the port actually bound once running
     this.tokenFromEnvironment = typeof env.EFFETUNE_REMOTE_TOKEN === 'string' &&
       env.EFFETUNE_REMOTE_TOKEN.length > 0;
@@ -237,6 +252,16 @@ class RemoteControlHost {
     this.toggleQueue = Promise.resolve();
     this.irsChangedTimer = null;
     this.irsChangedFirstAt = null;
+    const playerId = getPlayerId?.() || (cfg.openHomeDeviceId ? `uuid:${cfg.openHomeDeviceId}` : null);
+    this.pairing = new RemotePairingHost({
+      discovery,
+      getInfo: () => ({ running: this.listening, port: this.port, secure: this.secure, token: this.token, playerId, name: localPlayer?.name || resolveFriendlyName(this.loadConfig()) }),
+      approve: approvePairing,
+      onDiagnostic: error => this.log('[remote] pairing failed:', error?.message || error)
+    });
+    this.pwa = networkMusic && localPlayer ? new PwaNetworkHost({ remote: this, music: networkMusic, player: localPlayer, origin: pwaOrigin }) : null;
+    this.networkMusic = networkMusic;
+    this.localPlayer = localPlayer;
     activeHost = this;
   }
 
@@ -271,7 +296,9 @@ class RemoteControlHost {
   setEnabled(enabled) {
     enabled = enabled === true;
     const run = this.toggleQueue.then(async () => {
-      this.saveConfigPatch({ remoteControlEnabled: enabled });
+      if (!this.saveConfigPatch({ remoteControlEnabled: enabled })) {
+        throw Object.assign(new Error('Remote Control settings could not be saved'), { code: 'save-failed' });
+      }
       this.enabled = enabled;
       if (enabled) await this.start();
       else await this.stop();
@@ -285,6 +312,8 @@ class RemoteControlHost {
     this.token = generateToken();
     this.tokenFromEnvironment = false;
     this.saveConfigPatch({ remoteControlToken: this.token });
+    this.pwa?.revoke();
+    this.pwa?.player.host.cancelLocalActions();
     // Clients paired with the old token must pair again.
     if (this.wss) {
       for (const ws of this.wss.clients) {
@@ -299,8 +328,8 @@ class RemoteControlHost {
     const running = this.listening;
     const lan = this.lan || pickLanAddress();
     const addresses = lan.offered.map(c => {
-      const url = pairingUrl(c.address, this.port, this.token);
-      const webUrl = webPairingUrl(c.address, this.port, this.token);
+      const url = pairingUrl(c.address, this.port, this.token, this.secure);
+      const webUrl = webPairingUrl(c.address, this.port, this.token, this.secure);
       return {
         address: c.address,
         name: c.name,
@@ -377,19 +406,37 @@ class RemoteControlHost {
     this.lan = lan;
     this.listenError = null;
     this.port = this.basePort;
-    // Plain http on the same port serves the browser client (remote.html).
+    // The page and WebSocket use the same transport; invalid TLS never falls back to HTTP.
     const staticHandler = createStaticHandler({
       root: path.resolve(__dirname, '..'),
+      secure: this.secure,
       log: (...args) => this.log(...args)
     });
-    const server = http.createServer((req, res) => {
+    const handler = (req, res) => {
       try {
+        if (this.pwa?.handle(req, res)) return;
+        if (this.pairing.handle(req, res)) return;
         staticHandler(req, res);
       } catch (error) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Error\n');
       }
-    });
+    };
+    let server;
+    try {
+      if (this.secure) {
+        if (!this.tlsCertificate || !this.tlsKey) throw new Error('Both TLS certificate and key are required');
+        server = https.createServer({
+          cert: fs.readFileSync(this.tlsCertificate), key: fs.readFileSync(this.tlsKey), minVersion: 'TLSv1.2'
+        }, handler);
+      } else server = http.createServer(handler);
+    } catch (error) {
+      this.log('[remote] TLS configuration failed:', error);
+      this.listenError = 'Remote Control could not start. Check the certificate and private key files.';
+      this.startPromise = null;
+      this.emitStatus();
+      return false;
+    }
     const wss = new WebSocketServer({
       server,
       maxPayload: MAX_WS_BYTES,
@@ -398,7 +445,9 @@ class RemoteControlHost {
       // apps, scripts) send no Origin and may use any host name (MagicDNS, NetBIOS, ...).
       verifyClient: (info, done) => {
         const { host, origin } = info.req.headers;
-        const ok = origin === undefined || (isAllowedHost(host) && isAllowedOrigin(origin, host));
+        const ok = info.req.url?.startsWith('/pwa/')
+          ? this.pwa?.acceptsUpgrade(info.req) === true
+          : origin === undefined || (isAllowedHost(host) && isAllowedOrigin(origin, host, this.secure));
         if (ok) {
           done(true);
         } else {
@@ -421,7 +470,7 @@ class RemoteControlHost {
     this.pingTimer.unref?.();
     this.dirtyTimer = setInterval(() => this.flushDirtyClients(), STATE_DIRTY_CHECK_MS);
     this.dirtyTimer.unref?.();
-    return this.bindWithFallback(server).then(port => {
+    return this.bindWithFallback(server).then(async port => {
       if (this.disposed || this.server !== server) return false;
       if (port === null) {
         if (this.portsBusy) this.scheduleListenRetry();
@@ -438,6 +487,8 @@ class RemoteControlHost {
       this.port = port;
       // Only advertise the pairing link once the port is actually bound.
       this.listening = true;
+      this.pwa?.player.host.setLocalControlEnabled(true);
+      await this.pairing.start().catch(error => this.log('[remote] discovery failed:', error?.message || error));
       this.log(`[remote] listening on 0.0.0.0:${this.port}`);
       if (lan.candidates.length > 1) {
         this.log('[remote] other addresses: ' +
@@ -540,6 +591,7 @@ class RemoteControlHost {
     }
     this.startPromise = null;
     this.clearListenRetry();
+    this.pairing.stop();
     const server = this.server;
     const wss = this.wss;
     this.server = null;
@@ -556,6 +608,8 @@ class RemoteControlHost {
     this.pendingOrigin = null;
     const wasRunning = this.listening;
     this.listening = false;
+    this.pwa?.revoke();
+    this.pwa?.player.host.setLocalControlEnabled(false);
     // A failed listen is not an error once the switch is off.
     if (!this.enabled || reason === 'shutdown') this.listenError = null;
     if (wasRunning) this.log(`[remote] stopped (${reason})`);
@@ -652,7 +706,7 @@ class RemoteControlHost {
     return true;
   }
 
-  async request(message, timeoutMs = REQUEST_TIMEOUT_MS) {
+  async request(message, timeoutMs = REQUEST_TIMEOUT_MS, isCurrent = null) {
     // Clients that connect during startup or a window reload wait for the
     // renderer instead of failing immediately.
     if (!this.rendererReady && !(await this.waitForRenderer())) {
@@ -665,6 +719,8 @@ class RemoteControlHost {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       return { ok: false, error: 'busy' };
     }
+    // A PWA session can be revoked while queued or waiting for the renderer.
+    if (isCurrent && !isCurrent()) return { ok: false, error: 'unauthorized' };
     const requestId = `r${++this.requestSeq}`;
     return new Promise(resolve => {
       const timer = setTimeout(() => {
@@ -685,11 +741,11 @@ class RemoteControlHost {
   // Serialise operations so overlapping chain replacements cannot interleave.
   // `cause` ({ ws, seq }) attributes the pipeline changes of a mutating
   // command to the client that sent it.
-  enqueue(message, { cause = null, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  enqueue(message, { cause = null, timeoutMs = REQUEST_TIMEOUT_MS, isCurrent = null } = {}) {
     const run = this.dispatchChain.then(async () => {
       if (cause) this.activeCause = cause;
       try {
-        const result = await this.request(message, timeoutMs);
+        const result = await this.request(message, timeoutMs, isCurrent);
         if (result.snapshot && this.listening) {
           this.ingestSnapshot(result.snapshot, cause || undefined);
         }
@@ -847,6 +903,13 @@ class RemoteControlHost {
       return;
     }
     ws.authenticated = true;
+    const token = this.token;
+    const session = this.wss;
+    ws.isCurrentMusicSession = () => ws.authenticated && !this.disposed && this.listening &&
+      this.token === token && this.wss === session && ws.readyState === 1;
+    ws.isCurrentPwaSession = req.url?.startsWith('/pwa/v1/')
+      ? () => this.listening && this.token === token && this.wss === session && ws.readyState === 1
+      : null;
     ws.remoteAddress = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
     ws.isAlive = true;
     ws.uploads = new Map();
@@ -857,11 +920,13 @@ class RemoteControlHost {
     ws.on('pong', () => { ws.isAlive = true; });
     ws.on('close', () => {
       ws.uploads.clear();
+      this.localPlayer?.host?.cancelStaleLocalActions?.();
       this.log(`[remote] client disconnected: ${req.socket.remoteAddress}`);
       this.emitStatus();
     });
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
+      if (ws.isCurrentPwaSession && !ws.isCurrentPwaSession()) return;
       this.onMessage(ws, data.toString('utf8')).catch(error => {
         this.log('[remote] message error:', error?.message || error);
       });
@@ -891,7 +956,7 @@ class RemoteControlHost {
     }
     const seq = Number.isSafeInteger(msg.seq) ? msg.seq : undefined;
     const op = msg.op;
-    if (!CLIENT_OPS.has(op)) {
+    if (!CLIENT_OPS.has(op) && !MUSIC_OPS.has(op)) {
       this.ack(ws, seq, false, `unknown-op: ${String(op).slice(0, 32)}`);
       return;
     }
@@ -909,6 +974,24 @@ class RemoteControlHost {
       ws.sync = msg.sync === 1;
       this.emitStatus();
     }
+    if (MUSIC_OPS.has(op)) {
+      this.ack(ws, seq, true);
+      const reply = await dispatchMusic(this.networkMusic, this.localPlayer, msg, ws.isCurrentMusicSession);
+      const response = { op: 'musicResult', seq, ...reply };
+      this.send(ws, Buffer.byteLength(JSON.stringify(response)) < MAX_WS_BYTES ? response : {
+        op: 'musicResult', seq, ok: false,
+        error: { code: 'responseTooLarge', message: 'This music response is too large. Request fewer items.' }
+      });
+      return;
+    }
+    if (op === 'hello' && this.networkMusic && !this.rendererReady) {
+      this.ack(ws, seq, true);
+      this.send(ws, this.stateMessage({
+        origin: 'remote', features: [...FEATURES, 'music1'], appName: APP_NAME,
+        ...(seq === undefined ? {} : { seq })
+      }));
+      return;
+    }
     if (op === 'putIR') {
       await this.onPutIrChunk(ws, msg, seq);
       return;
@@ -919,7 +1002,7 @@ class RemoteControlHost {
     }
 
     const cause = MUTATING_OPS.has(op) ? { ws, seq } : null;
-    const result = await this.enqueue(msg, { cause });
+    const result = await this.enqueue(msg, { cause, isCurrent: ws.isCurrentPwaSession });
     if (!result.ok) {
       this.ack(ws, seq, false, result.error);
       return;
@@ -932,7 +1015,7 @@ class RemoteControlHost {
       case 'hello':
         this.send(ws, this.stateMessage({
           origin: 'remote',
-          features: FEATURES,
+          features: this.networkMusic ? [...FEATURES, 'music1'] : FEATURES,
           appName: APP_NAME,
           ...(cleanEffectNames(result.effects) ? { effects: cleanEffectNames(result.effects) } : {}),
           ...seqField
@@ -1006,7 +1089,9 @@ class RemoteControlHost {
       this.ack(ws, seq, false, 'invalid id');
       return;
     }
-    const result = await this.enqueue({ op: 'getIR', id: msg.id }, { timeoutMs: IR_REQUEST_TIMEOUT_MS });
+    const result = await this.enqueue({ op: 'getIR', id: msg.id }, {
+      timeoutMs: IR_REQUEST_TIMEOUT_MS, isCurrent: ws.isCurrentPwaSession
+    });
     if (!result.ok) {
       this.ack(ws, seq, false, result.error);
       return;
@@ -1086,7 +1171,7 @@ class RemoteControlHost {
       name: upload.name,
       ext: upload.ext,
       data: new Uint8Array(joined.buffer, joined.byteOffset, joined.byteLength)
-    }, { timeoutMs: IR_REQUEST_TIMEOUT_MS });
+    }, { timeoutMs: IR_REQUEST_TIMEOUT_MS, isCurrent: ws.isCurrentPwaSession });
     this.ack(ws, seq, result.ok === true, result.error);
     return undefined;
   }
@@ -1101,6 +1186,8 @@ class RemoteControlHost {
     for (const waiter of [...this.readyWaiters]) waiter(false);
     closeAllClientWindows();
     await this.stop({ reason: 'shutdown' });
+    this.pwa?.dispose();
+    this.pairing.dispose();
   }
 }
 

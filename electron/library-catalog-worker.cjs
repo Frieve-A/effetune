@@ -53,6 +53,7 @@ let catalogState,
   countEntityContextRows,
   createCatalogError,
   createDirectoryAncestors,
+  createEntityContextFilter,
   createKeysetSql,
   createNoChangeResult,
   createOperationSnapshot,
@@ -166,6 +167,7 @@ const { fileURLToPath, pathToFileURL } = require('node:url');
 const { parentPort, threadId, workerData: initialWorkerData } = require('node:worker_threads');
 const { DatabaseSync } = require('node:sqlite');
 const { isCueCoverRelativePath } = require('./cue-cover.cjs');
+const { querySharedLibrary } = require('./library-shared-query.cjs');
 
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const SUBFOLDER_CAPTION_SQL = `COALESCE(
@@ -566,6 +568,7 @@ async function initialize() {
     countEntityContextRows,
     createCatalogError,
     createDirectoryAncestors,
+    createEntityContextFilter,
     createKeysetSql,
     createNoChangeResult,
     createOperationSnapshot,
@@ -923,6 +926,11 @@ function dispatchCommand(command, payload) {
     case 'createContext': return createContext(payload);
     case 'getContextCount': return getContextCount(payload);
     case 'queryTracks': return queryTracks(payload);
+    case 'querySharedLibrary': return querySharedLibrary(catalogState.database, payload, {
+      createContextFilter, createEntityContextFilter, normalizeContextQuery, createOrder,
+      trackFieldExpression, createSortKey, searchNormalizer: catalogState.modules.searchNormalizer,
+      entityDefinitions: ENTITY_DEFINITIONS, recentLimit: RECENT_TRACK_LIMIT
+    });
     case 'browseFolderChildren': return browseFolderChildren(payload);
     case 'queryEntities': return queryEntities(payload);
     case 'readContextPage': return readContextPage(payload);

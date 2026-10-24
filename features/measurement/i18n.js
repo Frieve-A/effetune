@@ -178,9 +178,17 @@ export async function translateUI() {
       if (element.tagName === 'INPUT' && element.hasAttribute('placeholder')) {
         element.placeholder = translation;
       } else if (element instanceof HTMLElement) {
-        element.textContent = translation;
+        element.textContent = element.hasAttribute('data-i18n-label') ? translation.replace(/[:：]\s*$/, '') : translation;
+        if (element.hasAttribute('data-i18n-label')) {
+          element.parentElement.querySelector('.parameter-colon').textContent = translation.match(/([:：])\s*$/)?.[1] || ':';
+          element.parentElement.title = element.parentElement.textContent;
+        }
       }
     }
+  }
+  for (const element of document.querySelectorAll('[data-i18n-title]')) {
+    const translation = t(element.getAttribute('data-i18n-title'));
+    if (translation !== null) element.title = translation;
   }
 }
 

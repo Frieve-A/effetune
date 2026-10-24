@@ -354,6 +354,13 @@ with development cache suppression and uses the existing DSP artifacts. Ruby and
 Jekyll are not required. Documentation pages are not rendered in this mode.
 Add `--port 8080` to use another port. Stop the server with Ctrl+C.
 
+The standalone measurement helper, `python features/measurement/server.py`, listens only on
+`127.0.0.1:8000` and serves the measurement page and public app assets from this checkout,
+independently of the shell's current directory. Open
+`http://127.0.0.1:8000/features/measurement/measurement.html`. Directory listings, hidden paths,
+Python sources and files outside the public asset folders are not served. Its tests run with
+`python -m unittest discover -s tests -p test_measurement_server.py`.
+
 With the full `npm run dev` command, open:
 
 - `http://localhost:8000/effetune.html` for the web app
@@ -506,7 +513,7 @@ succeeds. Ordinary CI, pull requests, forks, and Dependabot runs do not sign.
 Missing credentials, authentication failures, or signature verification failures
 fail the affected release job; it does not fall back to an unsigned release.
 
-The workflow downloads the official ECS 44.5.1+wvcus archive for the runner's
+The workflow downloads the official ECS 44.9.3+wvcus archive for the runner's
 architecture and verifies its pinned SHA-256. Linux packages that runtime as an
 AppImage, retaining the separate GPG signing and OpenHome provenance checks.
 
@@ -535,10 +542,10 @@ a GitHub Release.
 #### Local ECS packaging
 
 Use the opt-in ECS pack command to prepare a local Widevine-enabled build.
-Download the Windows x64 ZIP from the [pinned ECS release](https://github.com/castlabs/electron-releases/releases/tag/v44.5.1%2Bwvcus), then run:
+Download the Windows x64 ZIP from the [pinned ECS release](https://github.com/castlabs/electron-releases/releases/tag/v44.9.3%2Bwvcus), then run:
 
 ```powershell
-npm run pack:ecs:win -- --runtime-zip 'C:\Downloads\electron-v44.5.1+wvcus-win32-x64.zip'
+npm run pack:ecs:win -- --runtime-zip 'C:\Downloads\electron-v44.9.3+wvcus-win32-x64.zip'
 ```
 
 For an already prepared application snapshot with its own installed dependencies,

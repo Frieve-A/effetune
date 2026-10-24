@@ -1,4 +1,84 @@
 {
+  "analysis:normalization": "सामान्यीकरण",
+  "analysis:normalizationNone": "कोई नहीं",
+  "analysis:normalizationGlobal": "समग्र पीक = 0 dB",
+  "analysis:normalizationFrequency": "हर आवृत्ति का पीक = 0 dB",
+  "analysis:copyGraph": "छवि कॉपी करें",
+  "analysis:imageCopied": "ग्राफ़ की छवि कॉपी हो गई।",
+  "analysis:imageCopyFailed": "छवि कॉपी नहीं हो सकी। फिर से कोशिश करें।",
+  "analysis:imageCopyUnavailable": "इस ब्राउज़र में छवि कॉपी करना उपलब्ध नहीं है। डेस्कटॉप ऐप या छवि कॉपी करने वाला ब्राउज़र इस्तेमाल करें।",
+  "analysis:imageCopyDenied": "क्लिपबोर्ड का एक्सेस अस्वीकार कर दिया गया। क्लिपबोर्ड का एक्सेस दें और फिर से कोशिश करें।",
+  "analysis:mode": "विश्लेषण मोड",
+  "analysis:waterfallMode": "Waterfall",
+  "analysis:burstMode": "Burst Decay",
+  "analysis:depthUnit": "गहराई का अक्ष",
+  "analysis:time": "समय",
+  "analysis:cycles": "चक्र",
+  "analysis:elevation": "दृश्य का उन्नयन कोण",
+  "analysis:resetView": "दृश्य रीसेट करें",
+  "analysis:orbitHelp": "घुमाने के लिए खींचें। ज़ूम के लिए माउस व्हील या + / − का उपयोग करें। Shift + तीर कुंजियों से घुमाएँ; Shift + Home से दृश्य रीसेट करें।",
+  "analysis:burstNote": "Burst Decay में निश्चित 1/3-ऑक्टेव बैंडविड्थ वाले गॉसियन टोन बर्स्ट का उपयोग होता है। ऊँचाई और रंग एक ही सापेक्ष dB स्तर दिखाते हैं। अलग-अलग आवृत्तियों पर समान चक्र संख्या अलग समय दर्शाती है। अनुमान में सहेजी गई प्रतिक्रिया शुरू होने से पहले मौन माना जाता है; अपर्याप्त रिकॉर्डिंग वाले बाद के मान नहीं दिखाए जाते।",
+  "analysis:frequency": "फ़्रीक्वेंसी रिस्पॉन्स",
+  "analysis:impulse": "इम्पल्स रिस्पॉन्स",
+  "analysis:distortion": "विकृति",
+  "analysis:waterfall": "Waterfall (3D)",
+  "analysis:details": "माप विवरण",
+  "analysis:display": "प्रदर्शन सेटिंग",
+  "analysis:xMin": "न्यूनतम फ़्रीक्वेंसी",
+  "analysis:xMax": "अधिकतम फ़्रीक्वेंसी",
+  "analysis:yMin": "न्यूनतम स्तर",
+  "analysis:yMax": "अधिकतम स्तर",
+  "analysis:smoothing": "प्रदर्शन स्मूदिंग (σ)",
+  "analysis:normalize": "सापेक्ष सामान्यीकरण",
+  "analysis:reference": "संदर्भ स्तर",
+  "analysis:source": "रिस्पॉन्स का स्रोत",
+  "analysis:saved": "सहेजी गई रिस्पॉन्स",
+  "analysis:reanalysis": "विंडो लगी IR",
+  "analysis:before": "शुरुआत से पहले की विंडो",
+  "analysis:after": "शुरुआत के बाद की विंडो",
+  "analysis:window": "विंडो का आकार",
+  "analysis:tukey": "धीरे बदलते किनारे",
+  "analysis:hann": "Hann",
+  "analysis:rectangular": "आयताकार",
+  "analysis:auto": "स्वचालित सीमा",
+  "analysis:reset": "रीसेट",
+  "analysis:fromTime": "शुरुआती समय",
+  "analysis:toTime": "अंतिम समय",
+  "analysis:peak": "पीक के अनुसार सामान्य करें",
+  "analysis:db": "आयाम dB में",
+  "analysis:origin": "दिखने वाला समय मूल",
+  "analysis:unit": "इकाई",
+  "analysis:maxOrder": "THD का अधिकतम क्रम",
+  "analysis:start": "पहला स्लाइस",
+  "analysis:end": "अंतिम स्लाइस",
+  "analysis:length": "विंडो की लंबाई",
+  "analysis:rise": "बाईं ओर चढ़ाव का समय",
+  "analysis:angle": "दृश्य का घुमाव",
+  "analysis:zoom": "दृश्य का ज़ूम",
+  "analysis:correction": "सुधार",
+  "analysis:export": "माप निर्यात करें (JSON)",
+  "analysis:unavailable": "इस माप में इम्पल्स रिस्पॉन्स नहीं है। इम्पल्स रिस्पॉन्स वाली माप फ़ाइल आयात करें।",
+  "analysis:noDistortion": "इस माप में इस्तेमाल करने योग्य विकृति डेटा नहीं है। नया माप लें।",
+  "analysis:processing": "गणना जारी है…",
+  "analysis:failed": "इन सेटिंग के साथ यह विश्लेषण उपलब्ध नहीं है। विंडो बदलें या कोई दूसरा माप चुनें।",
+  "analysis:combined": "सभी स्पीकर का सम्मिलित आउटपुट",
+  "analysis:sourceNote": "प्रदर्शन सेटिंग सहेजे गए माप या सुधार सेटिंग को नहीं बदलतीं।",
+  "analysis:smoothingNote": "शून्य पर अतिरिक्त स्मूदिंग नहीं होती। सहेजी गई रिस्पॉन्स की मौजूदा प्रोसेसिंग वापस नहीं की जा सकती। चौड़ाई ऑक्टेव में गॉसियन σ है।",
+  "analysis:distortionNote": "प्लेबैक और रिकॉर्डिंग के पूरे मार्ग की सापेक्ष विकृति। माइक्रोफ़ोन और इंटरफ़ेस कैलिब्रेशन लागू नहीं होते।",
+  "analysis:waterfallNote": "सतह की ऊँचाई और रंग एक ही सापेक्ष dB स्तर दिखाते हैं। डिफ़ॉल्ट दृश्य में 0 ms पीछे और बाद के समय आगे होते हैं। केवल वे पूरी विंडो दिखाई जाती हैं जो सहेजी गई प्रतिक्रिया के भीतर आती हैं।",
+  "analysis:impulseNote": "समय सहेजी गई शुरुआत के सापेक्ष है। रूपरेखा विश्लेषण विंडो की सीमा दिखाती है। प्रदर्शन बदलने से WAV निर्यात नहीं बदलता।",
+  "analysis:readoutHelp": "मान पढ़ने के लिए ग्राफ़ पर पॉइंटर रखें या स्पर्श करें। कीबोर्ड से पढ़ने के लिए ग्राफ़ पर फ़ोकस लाएँ और तीर कुंजियाँ इस्तेमाल करें।",
+  "analysis:available": "उपलब्ध",
+  "analysis:notAvailable": "उपलब्ध नहीं",
+  "analysis:acquisition": "स्रोत",
+  "analysis:sampleRate": "वास्तविक सैंपलिंग दर",
+  "analysis:timeReference": "समय संदर्भ",
+  "analysis:relative": "शुरुआत के सापेक्ष",
+  "analysis:observed": "सहेजा गया समय अंतराल",
+  "analysis:calibration": "कैलिब्रेशन",
+  "analysis:relativeLevel": "सापेक्ष स्तर; पूर्ण SPL कैलिब्रेशन नहीं",
+  "analysis:windowLimits": "विंडो रिकॉर्ड किए गए सैंपल तक सीमित है",
+  "analysis:thdOrders": "THD में क्रम 2–{order} शामिल हैं",
   "title:impulseResponse": "इम्पल्स रिस्पॉन्स",
   "axis:impulseTime": "समय (ms)",
   "axis:normalizedAmplitude": "नॉर्मलाइज़्ड एम्प्लिट्यूड",
@@ -31,21 +111,21 @@
 "help:audioInput": "उस ऑडियो इनपुट डिवाइस को निर्दिष्ट करें जिसमें माप माइक्रोफोन जुड़ा है।", // Help text for audio input
 "label:sampleRate": "नमूना आवृत्ति:", // Label for sample rate selection
 "help:sampleRate": "माप लेते समय नमूना आवृत्ति निर्दिष्ट करें।", // Help text for sample rate
-"label:sweepLength": "स्वीप लंबाई (नमूने):", // Label for sweep length selection
-"help:sweepLength": "माप संकेत की लंबाई नमूनों में निर्दिष्ट करता है।", // Help text for sweep length
+"label:sweepLength": "अनुरोधित स्वीप लंबाई (सैंपल):",
+"help:sweepLength": "ESS माप संकेत की अनुरोधित लंबाई। हार्मोनिक रिस्पॉन्स अलग करने के लिए ज़रूरत पड़ने पर स्वीप अपने-आप लंबा होता है।",
 "title:advancedSettings": "उन्नत सेटिंग्स",
 "label:sweepBandMode": "स्वीप बैंडविड्थ:",
 "option:sweepBandOff": "बंद",
 "option:sweepBandCommon": "सभी चैनलों के लिए समान",
 "option:sweepBandPerChannel": "प्रति चैनल",
 "label:sweepBandChannel": "कॉन्फ़िगर करने वाला चैनल:",
-"help:sweepBandMode": "चुनें कि स्वीप और टेस्ट संकेत की बैंडविड्थ सीमित करनी है या नहीं। प्रति चैनल से हर चुने हुए आउटपुट चैनल के लिए अलग आवृत्ति सीमा सेट की जा सकती है।",
+"help:sweepBandMode": "सभी चैनलों के लिए समान या हर चैनल का अलग स्वीप बैंड चुनें। सीमा बंद होने पर ESS वास्तविक सैंपलिंग दर की सीमा में 20 Hz से 20 kHz इस्तेमाल करता है। प्रति-चैनल मोड में हर चुना आउटपुट अलग सेट कर सकते हैं।",
 "label:sweepMinFreq": "न्यूनतम स्वीप आवृत्ति (Hz):", // Label for sweep minimum frequency
 "help:sweepMinFreq": "स्वीप संकेत की न्यूनतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ठीक नीचे तक 1 Hz से सेट की जा सकती है। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20 Hz)", // Help text for sweep min frequency
 "label:sweepMaxFreq": "अधिकतम स्वीप आवृत्ति (Hz):", // Label for sweep maximum frequency
 "help:sweepMaxFreq": "स्वीप संकेत की अधिकतम आवृत्ति Hz में। चयनित सैंपलिंग दर की नाइक्विस्ट आवृत्ति से ऊपर के मान स्वचालित रूप से सीमित कर दिए जाते हैं। टेस्ट संकेत भी इसी रेंज तक सीमित होता है। (डिफ़ॉल्ट: 20000 Hz)", // Help text for sweep max frequency
 "label:averaging": "सामयिक औसत:", // Label for synchronous averaging selection
-"help:averaging": "अधिक सटीक माप के लिए एक ही माप बिंदु पर माप को दोहराने की संख्या निर्दिष्ट करें।", // Help text for averaging
+"help:averaging": "उसी बिंदु पर दोहराने की संख्या। हर बार स्वीप के साथ रिस्पॉन्स घटने के लिए 2.5 सेकंड शामिल होते हैं, इसलिए अधिक दोहराव में अधिक समय लगता है।",
 "label:interfaceCalibration": "ऑडियो इंटरफ़ेस कैलिब्रेशन:",
 "option:noInterfaceCalibration": "कोई नहीं (बिना कैलिब्रेशन)",
 "option:interfaceCalibrationPoint": "{measurement} — {point} ({date}, {sampleRate})",
@@ -70,7 +150,7 @@
 
 // Sweep Measurement Screen
 "help:measurement": "एक अतिरिक्त माप के लिए मापन सिग्नल और निर्दिष्ट मापों की संख्या के लिए मापन सिग्नल पुन: उत्पन्न किया जाता है।",
-"title:frequencyResponseMeasurement": "फ्रीक्वेंसी रिस्पांस माप", // Title for measurement screen
+"title:frequencyResponseMeasurement": "ध्वनिक मापन", // Title for measurement screen
 "title:currentMeasurement": "वर्तमान माप", // Title for current measurement graph
 "button:redo": "दोबारा करें", // Button to redo measurement
 "button:saveAndContinue": "सहेजें और दूसरा बिंदु मापें", // Button to save and continue measuring
@@ -115,7 +195,7 @@
 "confirm:discardChanges": "आपके पास असहेजे परिवर्तन हैं। परिवर्तन रद्द करें और जारी रखें?", // Confirmation message for discarding unsaved changes
 
 // New translations
-"title:main": "EffeTune फ्रीक्वेंसी रिस्पांस माप", // Title for the main page
+"title:main": "EffeTune ध्वनिक मापन", // Title for the main page
 "title:levelAdjustment": "स्तर समायोजन", // Title for level adjustment screen
 "button:back": "EffeTune पर वापस जाएँ", // Back button text
 "button:backSimple": "वापस", // Simple back button text

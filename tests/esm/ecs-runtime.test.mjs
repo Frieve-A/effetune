@@ -17,16 +17,16 @@ test('ECS packaging rejects an archive that differs from the pinned official rel
 
 test('ECS runtime selection is pinned to the four supported release hosts', () => {
   for (const [platform, architecture, sha256] of [
-    ['win32', 'x64', 'c7d51e4bf80de9ef18b3306b0d140059bb203510d3dfc88f3404049a12c90f89'],
-    ['linux', 'x64', 'afa7d4ea49abf1e91c5be0f88cfe1abdb977ff3454d57658e90b004aacbde9cc'],
-    ['darwin', 'x64', 'f3ebb426b24fd47dfb86fcd6ea3170f8d5058c4b1c5cb2ee35993fea32ecf454'],
-    ['darwin', 'arm64', '9503ac243997f151a3687d4e87d6f15d45127f50726ff2a8fd4c758b966d0dd4'],
+    ['win32', 'x64', '1ab1e5aa4566f218873d272af1a57c6162ad83911a69bbd4b0e341c37c6c40fc'],
+    ['linux', 'x64', '80cb5218ab814597282ebe41d16fb5a98abb0c75370e9195914e40e097359fad'],
+    ['darwin', 'x64', '99ca1b2c3bb295d7927ef8d17137952385844d67f63dbe827a7214aecca181fe'],
+    ['darwin', 'arm64', '3f49f11710e87974b6b7c7acb2c172c1f37c804f319f7c887e0a791bbda8dc6b'],
   ]) {
     const runtime = getEcsRuntime(platform, architecture);
     assert.equal(runtime.sha256, sha256);
-    assert.equal(path.basename(runtime.archive), `electron-v44.5.1+wvcus-${platform}-${architecture}.zip`);
+    assert.equal(path.basename(runtime.archive), `electron-v44.9.3+wvcus-${platform}-${architecture}.zip`);
     assert.equal(path.basename(runtime.directory), `${platform}-${architecture}`);
-    assert.equal(runtime.url, `https://github.com/castlabs/electron-releases/releases/download/v44.5.1%2Bwvcus/electron-v44.5.1+wvcus-${platform}-${architecture}.zip`);
+    assert.equal(runtime.url, `https://github.com/castlabs/electron-releases/releases/download/v44.9.3%2Bwvcus/electron-v44.9.3+wvcus-${platform}-${architecture}.zip`);
   }
   for (const [platform, architecture] of [['linux', 'arm64'], ['win32', 'arm64'], ['darwin', 'universal'], ['freebsd', 'x64']]) {
     assert.throws(() => getEcsRuntime(platform, architecture), /Unsupported ECS runtime target/);

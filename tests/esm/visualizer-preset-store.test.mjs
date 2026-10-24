@@ -6,6 +6,33 @@ import { createDefaultLayout, createItem, DEFAULT_THEME_COLORS, normalizeLayout,
 import { validateItemShape } from '../../js/user-data-backup/portable.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('current layout recovery tolerates missing fields and unsupported or damaged items without writing', async () => {
+    const layout = createDefaultLayout();
+    layout.aspect = '4:3';
+    layout.background.color = '#123456';
+    layout.items[0].rect.x = 0.3;
+    delete layout.items[0].params.showAxes;
+    layout.items.push(null, { id: 'future', type: 'future-visualizer' }, createItem('title', 'title'));
+    layout.items[2].futureSetting = true;
+    const original = structuredClone(layout);
+    const store = new VisualizerPresetStore();
+    store.request = async (_name, mode) => {
+        assert.equal(mode, 'readonly');
+        return layout;
+    };
+    assert.equal(validateLayout(layout), false);
+    const recovered = normalizeLayout(await store.loadCurrent());
+    assert.equal(recovered.aspect, '4:3');
+    assert.equal(recovered.background.color, '#123456');
+    assert.deepEqual(recovered.items.map(item => item.id), ['main-spectrum', 'title']);
+    assert.equal(recovered.items[0].rect.x, 0.3);
+    assert.deepEqual(layout, original);
+    store.request = async () => ({ unreadable: true });
+    await assert.rejects(store.loadCurrent(), /Invalid saved visualizer layout/);
+    store.request = async () => undefined;
+    assert.equal(await store.loadCurrent(), null);
+});
+
 test('current layout persists on flush while named presets require explicit save', async () => {
     const stores = { current: new Map(), presets: new Map() };
     const store = new VisualizerPresetStore();

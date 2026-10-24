@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { createRemoteUiManager, loadTranslations, RemoteMobileShell } from '../../js/remote/remote-ui-manager.js';
 
 function fakeFetch(files) {
@@ -12,6 +13,16 @@ function fakeFetch(files) {
     fetchImpl.requested = requested;
     return fetchImpl;
 }
+
+test('all shipped locales load through the remote loader with URL strings intact', async () => {
+    const fetchImpl = async path => ({ ok: true, text: () => readFile(new URL(`../../${path}`, import.meta.url), 'utf8') });
+    for (const language of ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh']) {
+        const { english, translations } = await loadTranslations({ fetchImpl, language });
+        assert.ok(Object.keys(english).length > 100, 'English fallback is populated');
+        assert.ok(Object.keys(translations).length > 100, `${language} is populated`);
+        assert.ok(Object.values(translations).some(value => typeof value === 'string' && value.includes('http://')));
+    }
+});
 
 test('translations load English plus the browser language, with comments removed', async () => {
     const fetchImpl = fakeFetch({

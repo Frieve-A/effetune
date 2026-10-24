@@ -7,6 +7,92 @@ import {
     MeasurementImportError,
     MeasurementLoadError
 } from '../../features/measurement/dataStorage.js';
+import { getAnalysisCapabilities } from '../../features/measurement/measurement-model.js';
+
+function harmonicAnalysis() {
+    return {
+        version: 2, method: 'ess', sampleRate: 48000,
+        excitation: { startFrequency: 20, endFrequency: 20000, durationSeconds: 2,
+            levelDb: -12, sweepSamples: 96000 },
+        reference: 'unit-input', calibration: 'uncorrected-system',
+        quality: { valid: true, reasons: [] },
+        orders: [1, 2, 3].map(order => ({ order, data: Float32Array.from([0, 1 / order, 0]),
+            referenceData: Float32Array.from([0, 1, 0]),
+            ...(order > 1 ? { harmonicReferenceData: Float32Array.from([0, 1, 0]) } : {}),
+            onsetIndex: 1, validMinFrequency: 20, validMaxFrequency: 20000 / order }))
+    };
+}
+
+test('harmonic time responses round trip within the linear IR record and remain optional', async () => {
+    const { storage: source } = createStorage();
+    source.measurements = [exportableMeasurement()];
+    const record = { ...impulseRecord('measurement-source', 0), acquisitionMethod: 'ess',
+        harmonicAnalysis: harmonicAnalysis() };
+    source.getImpulseResponses = async () => [record];
+    const json = await source.exportMeasurementToJSON('measurement-source');
+    const exported = JSON.parse(json).impulseResponses[0].harmonicAnalysis;
+    assert.equal(typeof exported.orders[0].data, 'string');
+    assert.equal(typeof exported.orders[0].referenceData, 'string');
+    assert.equal(exported.orders[0].harmonicReferenceData, undefined);
+    assert.equal(typeof exported.orders[1].harmonicReferenceData, 'string');
+    const { storage: target, database } = createStorage();
+    target.generateId = () => 'harmonic-import';
+    await target.importMeasurementFromJSON(json);
+    const imported = database.impulseResponses.get(JSON.stringify(['harmonic-import', 0]));
+    assert.deepEqual(imported.harmonicAnalysis, record.harmonicAnalysis);
+    assert.deepEqual(imported.data, record.data);
+    assert.equal(getAnalysisCapabilities(imported).distortion, true);
+    assert.equal(database.impulseResponses.size, 1);
+    assert.equal(JSON.parse(await source.exportMeasurementToJSON('measurement-source', false)).impulseResponses, undefined);
+});
+
+test('invalid optional harmonic analysis never removes a usable imported linear IR', async () => {
+    const { storage, database } = createStorage();
+    storage.generateId = () => 'invalid-harmonic';
+    const valid = harmonicAnalysis();
+    valid.orders = valid.orders.map(order => ({
+        ...order,
+        data: storage.encodeFloat32Array(order.data),
+        referenceData: storage.encodeFloat32Array(order.referenceData),
+        ...(order.order > 1 ? { harmonicReferenceData: storage.encodeFloat32Array(order.harmonicReferenceData) } : {})
+    }));
+    const missingReference = structuredClone(valid);
+    delete missingReference.orders[0].referenceData;
+    const missingHarmonicReference = structuredClone(valid);
+    delete missingHarmonicReference.orders[1].harmonicReferenceData;
+    const nonfiniteReference = structuredClone(valid);
+    nonfiniteReference.orders[1].referenceData = storage.encodeFloat32Array(Float32Array.of(0, NaN, 0));
+    const mismatchedReference = structuredClone(valid);
+    mismatchedReference.orders[2].harmonicReferenceData = storage.encodeFloat32Array(Float32Array.of(0, 1));
+    for (const invalid of [{ orders: null }, { ...valid, version: 1 }, missingReference,
+        missingHarmonicReference, nonfiniteReference, mismatchedReference]) {
+        const measurement = exportableMeasurement();
+        measurement.impulseResponses = [{ ...impulseRecord(measurement.id, 0),
+            data: storage.encodeFloat32Array(Float32Array.from([0, 1, 0])), harmonicAnalysis: invalid }];
+        await storage.importMeasurementFromJSON(JSON.stringify(measurement));
+        const record = database.impulseResponses.get(JSON.stringify(['invalid-harmonic', 0]));
+        assert.equal(record.data[1], 1);
+        assert.equal(record.harmonicAnalysis, undefined);
+        assert.equal(getAnalysisCapabilities(record).distortion, false);
+    }
+});
+
+test('quota preflight includes compact harmonic samples and transaction failure keeps both payloads atomic', async () => {
+    const { storage, database } = createStorage();
+    const measurement = exportableMeasurement();
+    const record = { ...impulseRecord(measurement.id, 0), harmonicAnalysis: harmonicAnalysis() };
+    // The linear and measured order arrays fit; their required reference arrays do not.
+    storage.getStorageEstimate = async () => ({ usage: 20, quota: 100 });
+    assert.equal(await storage.putMeasurement(measurement, [record]), false);
+    assert.equal(database.measurements.size, 0);
+    storage.getStorageEstimate = async () => null;
+    database.failNextIrTransaction = true;
+    assert.equal(await storage.putMeasurement(measurement, [record]), false);
+    assert.equal(database.impulseResponses.size, 0);
+    assert.equal(await storage.putMeasurement(measurement, [record]), true);
+    assert.deepEqual(database.impulseResponses.get(JSON.stringify([measurement.id, 0])).harmonicAnalysis,
+        record.harmonicAnalysis);
+});
 
 function clone(value) {
     return structuredClone(value);

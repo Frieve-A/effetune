@@ -99,7 +99,8 @@ test('PEQ graph handles share the 15Band gradient and active colors', () => {
 });
 
 test('Room EQ keeps Additional EQ filter types aligned with its parameter fields on desktop', () => {
-  const sharedCss = readCss('../../css/effetune.css');
+  assert.match(readCss('../../css/effetune.css'), /@import url\("parameter-controls\.css"\);/);
+  const sharedCss = readCss('../../css/parameter-controls.css');
   assert.match(sharedCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.room-eq-additional-eq-filter-type,[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
   const css = readCss('../../plugins/eq/room_eq.css');
 

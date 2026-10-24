@@ -48,13 +48,21 @@ export function openIrLibraryBrowser({ service, ...options } = {}) {
   return openAssetLibraryBrowser({
     ...options,
     readOnly: service.readOnly === true,
+    canImport: service.canImport ?? service.readOnly !== true,
+    canLoad: service.canLoad !== false,
+    multipleFiles: service.multipleFiles !== false,
     service: {
       list: async options => (await service.list(options)).map(entry => ({ ...entry, id: entry.irId, name: entry.fileLabel })),
       delete: (id, options) => service.delete(id, options),
       importFiles: (files, options) => service.importFiles(files, options),
-      importDirectory: (directory, options) => service.importDirectory(directory, options)
+      importDirectory: (directory, options) => service.importDirectory(directory, options),
+      ...(typeof service.downloadEntry === 'function' && {
+        downloadEntry: (entry, options) => service.downloadEntry(entry, options)
+      })
     },
-    translate: (key, fallback, params) => translateLibraryMessage(`irLibrary.${key}`, fallback, params),
+    translate: (key, fallback, params) => service.readOnly && key === 'action.importFiles'
+      ? translateLibraryMessage('irLibrary.action.uploadFile', 'Upload file…', params)
+      : translateLibraryMessage(`irLibrary.${key}`, fallback, params),
     formatBadge,
     decorateEntry(row, entry) {
       if (typeof service.readAnalysis !== 'function') return;

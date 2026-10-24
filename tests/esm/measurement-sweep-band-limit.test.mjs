@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import FFT from '../../features/measurement/audio-utils/fft.js';
+import { analyzeEssRecording } from '../../js/utils/measurement-dsp/ess.js';
 import {
-    generateTSP, startWhiteNoise, stopWhiteNoise
+    generateESS, startWhiteNoise, stopWhiteNoise
 } from '../../features/measurement/audio-utils/signal-generation.js';
 import { DataStorage } from '../../features/measurement/dataStorage.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { resolveSweepBand, resolveResponseSweepBand } from '../../features/measurement/measurement-model.js';
 
 const measurementHtml = fs.readFileSync(
     new URL('../../features/measurement/measurement.html', import.meta.url),
@@ -25,47 +27,36 @@ function spectrumMagnitude(signal, bin) {
     return Math.hypot(real[bin], imag[bin]);
 }
 
-test('unlimited TSP uses every non-DC FFT bin', () => {
-    const length = 1024;
-    const sampleRate = 48000;
-    const harness = { initialized: true };
+test('ESS full-band mode uses a finite audible sweep below Nyquist', () => {
+    const sweep = generateESS.call({ initialized: true }, 16384, 48000, 'left', 5000, 10000, false);
+    assert.equal(sweep.startFrequency, 20);
+    assert.equal(sweep.endFrequency, 20000);
+    assert.ok(sweep.signal.every(Number.isFinite));
+    assert.ok(sweep.length >= 16384);
+    assert.equal(sweep.right.some(value => value !== 0), false);
+});
 
-    const fullBand = generateTSP.call(
-        harness,
-        length,
-        sampleRate,
-        'left',
-        5000,
-        10000,
-        false
-    );
-    const limited = generateTSP.call(
-        { initialized: true },
-        length,
-        sampleRate,
-        'left',
-        5000,
-        10000,
-        true
-    );
-
-    const firstBin = 1;
-    const lastBin = length / 2 - 1;
-    assert.ok(
-        spectrumMagnitude(fullBand.left, firstBin) >
-            spectrumMagnitude(limited.left, firstBin) * 1000
-    );
-    assert.ok(
-        spectrumMagnitude(fullBand.left, lastBin) >
-            spectrumMagnitude(limited.left, lastBin) * 1000
-    );
-    assert.equal(fullBand.frequencyResponse[0].frequency, sampleRate / length);
-    assert.ok(
-        Math.abs(
-            fullBand.frequencyResponse.at(-1).frequency -
-            lastBin * sampleRate / length
-        ) < 1e-9
-    );
+test('ESS band resolution matches excitation at low sample rates and near Nyquist without reinterpreting TSP records', () => {
+    const cases = [
+        { sampleRate: 16000, sweepBand: { mode: 'off' } },
+        { sampleRate: 48000, sweepBand: { mode: 'common', common: { minFreq: 100, maxFreq: 23999 } } },
+        { sampleRate: 16000, outputChannel: 'right', sweepBand: { mode: 'perChannel', perChannel: [
+            { channel: 'right', minFreq: 7900, maxFreq: 7999 }
+        ] } }
+    ];
+    for (const config of cases) {
+        const measurement = { ...config, acquisitionMethod: 'ess', sweepLength: 16384 };
+        const band = resolveSweepBand(measurement, config.outputChannel || 'left', config.sampleRate, 16384);
+        const sweep = generateESS.call({ initialized: true }, 16384, config.sampleRate, config.outputChannel || 'left',
+            band.minFreq, band.maxFreq, band.bandLimited);
+        assert.equal(band.minFreq, sweep.startFrequency);
+        assert.equal(band.maxFreq, sweep.endFrequency);
+        assert.deepEqual(resolveResponseSweepBand(measurement, config.outputChannel || 'left'), band);
+    }
+    const legacy = { sampleRate: 48000, sweepLength: 65536, sweepBand: { mode: 'off' } };
+    assert.deepEqual(resolveResponseSweepBand(legacy), {
+        minFreq: 48000 / 65536, maxFreq: (65536 / 2 - 1) * 48000 / 65536, bandLimited: false
+    });
 });
 
 test('sweep bandwidth offers three modes and persists the complete channel configuration', () => {
@@ -201,28 +192,18 @@ test('settings restore adapts released sweep bands and prioritizes current per-c
     });
 });
 
-test('simultaneous sweeps filter each speaker and retain one calibrated aggregate reference', () => {
-    const state = { initialized: true };
-    const length = 1024;
-    const sampleRate = 48000;
-    const sweep = generateTSP.call(state, length, sampleRate, 'all', 1000, 12000, true, [
-        { minFreq: 1000, maxFreq: 6000 },
-        { minFreq: 4000, maxFreq: 12000 }
+test('simultaneous ESS sweeps preserve the summed speaker bands with one unit reference', () => {
+    const sampleRate = 16000;
+    const sweep = generateESS.call({ initialized: true }, 32768, sampleRate, 'all', 200, 7000, true, [
+        { minFreq: 200, maxFreq: 3000 }, { minFreq: 2000, maxFreq: 7000 }
     ]);
-    assert.ok(spectrumMagnitude(sweep.left, 44) > spectrumMagnitude(sweep.right, 44) * 1000);
-    assert.ok(spectrumMagnitude(sweep.right, 200) > spectrumMagnitude(sweep.left, 200) * 1000);
-    const sum = Float32Array.from(sweep.left, (value, i) => value + sweep.right[i]);
-    const fft = new FFT(length);
-    const real = new Float32Array(length), imag = new Float32Array(length);
-    const invReal = new Float32Array(length), invImag = new Float32Array(length);
-    fft.transform(real, imag, sum, new Float32Array(length));
-    fft.transform(invReal, invImag, sweep.inverseFilter, new Float32Array(length));
-    for (const [bin, expected] of [[44, 1], [107, 2], [200, 1]]) {
-        const gain = (real[bin] * invReal[bin] - imag[bin] * invImag[bin]) /
-            state.lastDeconvolutionRefScale;
-        assert.ok(Math.abs(gain - expected) < 1e-5, `${bin}: ${gain}`);
+    const recording = new Float32Array(8000 + sweep.length + sweep.tailSamples);
+    recording.set(Float32Array.from(sweep.left, (value, i) => (value + sweep.right[i]) * 0.2), 8100);
+    const result = analyzeEssRecording(recording, sweep, { playbackOffsetSamples: 8000, levelDb: 20 * Math.log10(0.2) });
+    for (const [frequency, gain] of [[1000, 1], [2500, 2], [5000, 1]]) {
+        const point = result.frequencyResponse.reduce((a, b) => Math.abs(a[0] - frequency) < Math.abs(b[0] - frequency) ? a : b);
+        assert.ok(Math.abs(point[1] - 20 * Math.log10(gain)) < 0.2, `${frequency}: ${point[1]}`);
     }
-    assert.ok(sweep.channels.every(samples => samples.every(value => Math.abs(value) <= 0.951)));
 });
 
 test('simultaneous noise uses separate bands and releases its multichannel source', async () => {

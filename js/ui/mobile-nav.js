@@ -110,10 +110,10 @@ export class MobileNav {
                 document.getElementById('openMusicButton')?.click();
             });
             playButton.addEventListener('click', () => {
-                this.uiManager.audioPlayer?.togglePlayPause();
+                (this.uiManager.getPlaybackTarget?.() ?? this.uiManager.audioPlayer)?.togglePlayPause();
             });
             nextButton.addEventListener('click', () => {
-                this.uiManager.audioPlayer?.playNext();
+                (this.uiManager.getPlaybackTarget?.() ?? this.uiManager.audioPlayer)?.playNext();
             });
             document.body.appendChild(this.miniPlayer);
         }
@@ -345,7 +345,7 @@ export class MobileNav {
     }
 
     hasMiniPlayerTrack() {
-        const state = this.uiManager.audioPlayer?.stateManager?.getStateSnapshot?.() || null;
+        const state = (this.uiManager.getPlaybackTarget?.() ?? this.uiManager.audioPlayer)?.stateManager?.getStateSnapshot?.() || null;
         return Boolean(state?.currentTrackName || state?.currentTrack);
     }
 
@@ -461,7 +461,7 @@ export class MobileNav {
     }
 
     attachPlayerState() {
-        const stateManager = this.uiManager.audioPlayer?.stateManager;
+        const stateManager = (this.uiManager.getPlaybackTarget?.() ?? this.uiManager.audioPlayer)?.stateManager;
         if (!stateManager || this.attachedStateManager === stateManager) return;
 
         this.stateUnsubscribers.forEach(unsubscribe => unsubscribe());
@@ -472,7 +472,7 @@ export class MobileNav {
             this.updateMiniPlayer();
             this.updatePlayerPlaceholder();
         };
-        const keys = ['currentTrack', 'currentTrackName', 'isPlaying', 'playlist'];
+        const keys = ['currentTrack', 'currentTrackName', 'isPlaying', 'playlist', 'controlsEnabled', 'transportCapabilities'];
         keys.forEach(key => {
             stateManager.addListener(key, update);
             this.stateUnsubscribers.push(() => stateManager.removeListener(key, update));
@@ -520,7 +520,7 @@ export class MobileNav {
 
     updateMiniPlayer() {
         if (!this.miniPlayer) return;
-        const state = this.uiManager.audioPlayer?.stateManager?.getStateSnapshot?.() || null;
+        const state = (this.uiManager.getPlaybackTarget?.() ?? this.uiManager.audioPlayer)?.stateManager?.getStateSnapshot?.() || null;
         const trackName = state?.currentTrackName || state?.currentTrack?.name || this.t('ui.mobileNav.noTrack', 'No track loaded');
         const hasTrack = Boolean(state?.currentTrackName || state?.currentTrack);
         const title = this.miniPlayer.querySelector('.mobile-mini-track');
@@ -532,8 +532,14 @@ export class MobileNav {
         if (play) {
             play.hidden = !hasTrack;
             play.innerHTML = state?.isPlaying ? MOBILE_ICONS.pause : MOBILE_ICONS.play;
+            play.disabled = state?.controlsEnabled === false ||
+                (state?.transportCapabilities && state.transportCapabilities[state.isPlaying ? 'pause' : 'play'] !== true);
         }
-        if (next) next.hidden = !hasTrack;
+        if (next) {
+            next.hidden = !hasTrack;
+            next.disabled = state?.controlsEnabled === false ||
+                (state?.transportCapabilities && state.transportCapabilities.next !== true);
+        }
     }
 
     dispose() {

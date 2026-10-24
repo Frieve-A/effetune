@@ -6,6 +6,8 @@ import { counterFrame, animateCounterFrame, drawCounter } from './visualizer-cou
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
 import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS } from './visualizer-model.js';
 import { VisualizerHDROutput } from './visualizer-hdr.js';
+import { drawPlaybackControl, playbackControlContains } from './visualizer-playback-control.js';
+import { drawSeekBar } from './visualizer-seek-bar.js';
 
 const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'guitar', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
 
@@ -114,7 +116,7 @@ export class VisualizerRenderer {
         }
     }
 
-    drawFrame(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null, video = null, counters = null, hdr = false } = {}) {
+    drawFrame(layout, sources, metadata, time, { editing = false, quality = 'auto', lyrics = null, video = null, counters = null, playback = {}, hdr = false } = {}) {
         const start = performance.now();
         const stage = this.prepareOutput(hdr), ctx = stage.getContext('2d');
         this.hitRenderer = null;
@@ -132,6 +134,7 @@ export class VisualizerRenderer {
         const imageUrls = new Set([layout.background.image, metadata?.artwork?.[0]?.src]);
         for (const url of this.images.keys()) if (!imageUrls.has(url)) this.images.delete(url);
         for (const item of [background, ...layout.items]) {
+            if (['playback-control', 'seek-bar'].includes(item.type) && playback.available === false && !editing) continue;
             const artwork = item.type === 'artwork' || (item.type === 'video' && !video && item.style.artworkFallback);
             const image = item.type === 'video' && video ? video
                 : this.image(item.type === 'background' ? item.image : artwork ? metadata?.artwork?.[0]?.src : null);
@@ -171,7 +174,8 @@ export class VisualizerRenderer {
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
                 item.palette, item.style, item.effects, item.color, item.flipX, item.flipY, text, editing,
-                item.type === 'counter' ? item.params : null]);
+                ['counter', 'playback-control', 'seek-bar'].includes(item.type) ? item.params : null,
+                ['playback-control', 'seek-bar'].includes(item.type) ? playback : null]);
             let changed = state.signature !== signature || state.frame !== frame || state.image !== image || state.videoTime !== videoTime ||
                 Boolean(item.palette?.mode === 'gradient' && item.palette.motion.mode !== 'none');
             if (ANALYZER_TYPES.has(item.type)) {
@@ -180,7 +184,7 @@ export class VisualizerRenderer {
                 changed = state.signature !== signature || state.image !== image || rendered !== false;
                 state.signature = signature; state.frame = frame; state.image = image;
             } else if (changed) {
-                this.drawItem(state, item, metadata, image, time, editing, lyricFrame, counterDisplay);
+                this.drawItem(state, item, metadata, image, time, editing, lyricFrame, counterDisplay, playback);
                 state.signature = signature; state.frame = frame; state.image = image; state.videoTime = videoTime;
             }
             const signal = state.display?.signalCanvas;
@@ -230,7 +234,7 @@ export class VisualizerRenderer {
                 const paddingX = output.paddingX || 0, paddingY = output.paddingY || 0;
                 const bounds = output.bounds || { x: -width / 2 - paddingX, y: -height / 2 - paddingY,
                     w: width + paddingX * 2, h: height + paddingY * 2 };
-                if (state.lyricsMeasurements?.hits?.length || state.counterBounds) {
+                if (state.lyricsMeasurements?.hits?.length || state.counterBounds || state.playbackBounds || state.seekBounds) {
                     // Retain the actual source-to-stage geometry, including effects and flips.
                     const originX = fades.length ? item.rect.x * stage.width : 0;
                     const originY = fades.length ? item.rect.y * stage.height : 0;
@@ -324,7 +328,42 @@ export class VisualizerRenderer {
         return null;
     }
 
-    drawItem(state, item, metadata, image, time, editing, lyricFrame, counterDisplay) {
+    seekBarValue(layout, id, x, y) {
+        if (this.hitRenderer) return this.hitRenderer.seekBarValue(layout, id, x, y);
+        const state = this.layers.get(id), bounds = state?.seekBounds;
+        if (!bounds || !layout.items.some(item => item.id === id && item.type === 'seek-bar') ||
+            !state.hitTransform || state.hitVisible === false || bounds.right <= bounds.left) return null;
+        const point = state.hitTransform.transformPoint({ x: x * this.canvas.width, y: y * this.canvas.height });
+        return Number.isFinite(point.x) ? Math.max(0, Math.min(1, (point.x - bounds.left) / (bounds.right - bounds.left))) : null;
+    }
+
+    seekBarAt(layout, x, y) {
+        const hit = this.playbackItemAt(layout, x, y);
+        return hit && 'value' in hit ? hit : null;
+    }
+
+    playbackControlAt(layout, x, y) {
+        const hit = this.playbackItemAt(layout, x, y);
+        return hit?.action ? hit : null;
+    }
+
+    playbackItemAt(layout, x, y) {
+        if (this.hitRenderer) return this.hitRenderer.playbackItemAt(layout, x, y);
+        for (const item of layout.items.toReversed()) {
+            if (item.type !== 'playback-control' && item.type !== 'seek-bar') continue;
+            const state = this.layers.get(item.id), point = this.hitPoint(state, item, x, y);
+            if (!point) continue;
+            if (state.playbackBounds && playbackControlContains(state.playbackBounds, point)) {
+                return { id: item.id, action: item.params.action };
+            }
+            if (state.seekBounds && point.y >= state.seekBounds.top && point.y <= state.seekBounds.bottom) {
+                return { id: item.id, value: this.seekBarValue(layout, item.id, x, y) };
+            }
+        }
+        return null;
+    }
+
+    drawItem(state, item, metadata, image, time, editing, lyricFrame, counterDisplay, playback) {
         const canvas = state.canvas, ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
         if (this.hdrActive) ctx.globalHDRHeadroom = Infinity;
         ctx.clearRect(0, 0, w, h);
@@ -345,6 +384,12 @@ export class VisualizerRenderer {
                 : metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
             drawStyledText(ctx, raw, item.style, w, h, this.canvas.width / REFERENCE_WIDTH,
                 item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h));
+        } else if (item.type === 'seek-bar') {
+            state.seekBounds = drawSeekBar(ctx, item, w, h, this.canvas.width / REFERENCE_WIDTH,
+                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h), { ...playback, editing });
+        } else if (item.type === 'playback-control') {
+            state.playbackBounds = drawPlaybackControl(ctx, item, w, h, this.canvas.width / REFERENCE_WIDTH,
+                item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h), { ...playback, editing });
         } else if (item.type === 'counter') {
             if (item.palette.mode === 'gradient') state.counterPaintLayer ||= createLayer(w, h);
             state.counterBounds = drawCounter(ctx, item, counterDisplay, w, h, this.canvas.width / REFERENCE_WIDTH,

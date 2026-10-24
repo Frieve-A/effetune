@@ -10,15 +10,11 @@
  */
 
 import audioUtils from '../audio-utils/index.js';
-import { FFT } from '../audio-utils/index.js';
 import {
     prepareMeasurementOutputRoute,
     releaseMeasurementOutputRoute
 } from '../audio-utils/output-routing.js';
-import { detectOnset, trimMeasurementImpulseResponse } from '../../../js/utils/measurement-dsp/onset.js';
-import {
-    applyInterfaceCalibration
-} from '../../../js/utils/measurement-dsp/interface-calibration.js';
+import { createEssCapturePlan, analyzeEssRecording } from '../../../js/utils/measurement-dsp/ess.js';
 
 const SWEEP_START_DELAY_SECONDS = 0.05;
 
@@ -38,20 +34,8 @@ function clearSweepTimers(elements) {
     if (elements.checkInterval) clearInterval(elements.checkInterval);
     elements.checkInterval = null;
 }
-const MAX_PRACTICAL_PATH_LATENCY_SECONDS = 1;
-
 function scheduledPlaybackFrameForTime(time, sampleRate) {
     return Math.round(time * sampleRate);
-}
-
-function trimStartOffsetSamples(preRollSamples, analysisStartSamples, timing) {
-    if (!Number.isSafeInteger(timing?.scheduledPlaybackFrame) ||
-        !Number.isSafeInteger(timing?.captureStartFrame)) {
-        return 0;
-    }
-    const assumedOffset = preRollSamples + analysisStartSamples;
-    const measuredOffset = timing.scheduledPlaybackFrame - timing.captureStartFrame;
-    return assumedOffset - measuredOffset;
 }
 
 function outputTimeReferenceForRoute(route, timing = null) {
@@ -65,18 +49,6 @@ function outputTimeReferenceForRoute(route, timing = null) {
     return 'audio-context';
 }
 
-function createSweepCapturePlan(sweepLength, averagingCount, sampleRate) {
-    const guardSamples = Math.ceil(
-        (SWEEP_START_DELAY_SECONDS + MAX_PRACTICAL_PATH_LATENCY_SECONDS) * sampleRate
-    ) + sweepLength;
-    const guardPeriods = Math.ceil(guardSamples / sweepLength);
-    return {
-        guardPeriods,
-        repeatCount: guardPeriods + averagingCount,
-        analysisStartSamples: guardPeriods * sweepLength
-    };
-}
-
 function createRepeatedSweepAudioBuffer(
     audioContext,
     sweepBuffer,
@@ -84,7 +56,8 @@ function createRepeatedSweepAudioBuffer(
     outputChannels,
     sampleRate
 ) {
-    const combinedBufferLength = sweepBuffer.length * repeatCount;
+    const intervalSamples = sweepBuffer.length + (sweepBuffer.tailSamples || 0);
+    const combinedBufferLength = intervalSamples * repeatCount;
     const combinedSweepBuffer = audioContext.createBuffer(
         outputChannels,
         combinedBufferLength,
@@ -99,7 +72,7 @@ function createRepeatedSweepAudioBuffer(
 
         const destinationChannel = combinedSweepBuffer.getChannelData(channel);
         for (let repeat = 0; repeat < repeatCount; repeat++) {
-            destinationChannel.set(sourceChannel, repeat * sweepBuffer.length);
+            destinationChannel.set(sourceChannel, repeat * intervalSamples);
         }
     }
 
@@ -118,7 +91,9 @@ const AudioProcessing = {
             outputTimeReference: processed.outputTimeReference,
             sweepLimited: processed.sweepLimited,
             peakDb: processed.peakDb,
-            refScale: processed.refScale
+            refScale: processed.refScale,
+            acquisitionMethod: processed.acquisitionMethod,
+            harmonicAnalysis: processed.harmonicAnalysis
         };
     },
 
@@ -200,12 +175,11 @@ const AudioProcessing = {
                 
                 // Calculate the expected playback duration
                 const sweepDuration = sweepBuffer.length / sampleRate;
-                const capturePlan = createSweepCapturePlan(
-                    sweepBuffer.length,
-                    averagingCount,
-                    sampleRate
+                const capturePlan = createEssCapturePlan(
+                    sweepBuffer,
+                    averagingCount
                 );
-                const totalPlaybackDuration = sweepDuration * capturePlan.repeatCount;
+                const totalPlaybackDuration = capturePlan.playbackSamples / sampleRate;
                 console.log(`Sweep duration: ${sweepDuration.toFixed(2)}s, Total playback: ${totalPlaybackDuration.toFixed(2)}s`);
                 
                 const outputRoute = await prepareMeasurementOutputRoute(
@@ -234,7 +208,7 @@ const AudioProcessing = {
                 
                 // Calculate recording buffer length - match exactly with playback plus some padding
                 // Instead of using fixed delays, calculate exact timing:
-                // 0.5s pre-roll + TSP playback + 0.5s post-roll
+                // 0.5s pre-roll + isolated ESS repetitions and tails + 0.5s post-roll
                 const prePostRollTime = 0.5; // seconds
                 const recordBufferLength = Math.ceil(sampleRate * (prePostRollTime + totalPlaybackDuration + prePostRollTime));
                 const recordBuffer = new Float32Array(recordBufferLength);
@@ -470,7 +444,7 @@ const AudioProcessing = {
                 elements.checkInterval = checkInterval;
                 
                 // Function to clean up and process the recording
-                const finishRecording = () => {
+                const finishRecording = async () => {
                     if (operation.settled || this.activeSweepOperation !== operation) return;
                     clearSweepTimers(elements);
                     // Clean up audio nodes
@@ -506,31 +480,22 @@ const AudioProcessing = {
                     try {
                         // Process the recording to extract the impulse response
                         const processStart = performance.now();
-                        const processed = this.processRecordedBuffer(
+                        const processed = await this.processRecordedBuffer(
                             finalBuffer,
-                            sweepBuffer.length,
+                            sweepBuffer,
                             averagingCount,
                             sampleRate,
                             {
                                 outputRoute,
                                 scheduledPlaybackFrame,
-                                captureStartFrame
+                                captureStartFrame,
+                                levelDb: signalLevel,
+                                overloaded: hasOverload
                             }
                         );
-                        const processedBuffer = processed.analysisImpulseResponse;
-
-                        // Save synchronized buffer for debugging
-                        this.syncedBuffer = processedBuffer;
-
-                        // Calculate smoothed frequency response with 0.005 octave spacing
+                        if (operation.settled || this.activeSweepOperation !== operation) return;
+                        const frequencyResponse = processed.frequencyResponse;
                         const freqStart = performance.now();
-                        const frequencyResponse = audioUtils.calculateFrequencyResponseWithSmoothing(
-                            processedBuffer,
-                            sampleRate,
-                            true, // Normalize with last sweep
-                            0.005  // Octave smoothing factor
-                        );
-
                         const processEnd = performance.now();
                         console.log(`Processing: ${(processEnd - processStart).toFixed(1)}ms (freq: ${(processEnd - freqStart).toFixed(1)}ms)`);
 
@@ -582,230 +547,53 @@ const AudioProcessing = {
     /**
      * Process the recorded buffer to get impulse response
      * @param {Float32Array} recordBuffer - Full recorded buffer
-     * @param {number} sweepLength - Sweep length in samples
+     * @param {Object} sweep - Generated ESS excitation and inverse filter
      * @param {number} averagingCount - Number of repetitions
      * @param {number} sampleRate - Sample rate in Hz
-     * @returns {Object} Processed and trimmed impulse response
+     * @returns {Promise<Object>} Linear impulse response and optional harmonic analysis
      */
-    processRecordedBuffer(recordBuffer, sweepLength, averagingCount, sampleRate, timing = null) {
-        console.time('processRecordedBuffer');
-        const calibrationRequired = Boolean(this.interfaceCalibrationImpulseResponse);
-        
-        // Log recording information
-        console.log(`Recording length: ${recordBuffer.length} samples (${recordBuffer.length/sampleRate}s)`);
-        console.log(`Sweep length: ${sweepLength} samples (${sweepLength/sampleRate}s)`);
-        
-        try {
-            // Get inverse filter from audioUtils
-            const inverseFilter = audioUtils.lastInverseFilter;
-            
-            if (!inverseFilter) {
-                console.warn('No inverse filter available, returning original recording');
-                if (calibrationRequired) {
-                    throw new Error('The measured impulse response could not be created');
-                }
-                console.timeEnd('processRecordedBuffer');
-                return {
-                    analysisImpulseResponse: recordBuffer,
-                    impulseResponse: null,
-                    irValid: false
-                };
-            }
-            
-            // Assuming there's a pre-roll time before the actual sweep
-            const preRollTime = 0.5; // seconds
-            const preRollSamples = Math.floor(preRollTime * sampleRate);
-            const capturePlan = createSweepCapturePlan(
-                sweepLength,
-                averagingCount,
-                sampleRate
-            );
-            const trimOffset = trimStartOffsetSamples(
-                preRollSamples,
-                capturePlan.analysisStartSamples,
-                timing
-            );
-            const outputTimeReference = outputTimeReferenceForRoute(timing?.outputRoute, timing);
-            
-            // Extract complete steady-state periods for circular deconvolution.
-            // Guard periods cover the scheduled start and practical device-path
-            // latency, plus one complete settling period. Any remaining offset
-            // only rotates a complete period and therefore shifts the recovered
-            // impulse response without changing its frequency response.
-            const segments = [];
-            
-            for (let i = 0; i < averagingCount; i++) {
-                const startOffset = preRollSamples +
-                    capturePlan.analysisStartSamples +
-                    (i * sweepLength);
-                
-                // Skip if not enough samples
-                if (startOffset + sweepLength > recordBuffer.length) {
-                    console.warn(`Not enough samples for segment ${i+1}`);
-                    continue;
-                }
-                
-                segments.push(recordBuffer.subarray(startOffset, startOffset + sweepLength));
-            }
-            
-            console.log(`Created ${segments.length} segments for averaging`);
-            if (segments.length !== averagingCount) {
-                const error = new Error(
-                    'The recording did not contain enough complete sweep periods. Please try the measurement again.'
-                );
-                error.isIncompleteSweepRecording = true;
-                throw error;
-            }
-            
-            // Circular convolution is implemented by folding the tail of a
-            // zero-padded linear convolution back into one sweep period.
-            const filterLength = Math.min(inverseFilter.length, sweepLength);
-            if (filterLength < 1) {
-                throw new Error('Inverse filter is empty');
-            }
-            const linearLength = sweepLength + filterLength - 1;
-            const paddedSize = Math.pow(2, Math.ceil(Math.log2(linearLength)));
-            const fft = new FFT(paddedSize);
-            const filterInputReal = new Float32Array(paddedSize);
-            const filterInputImag = new Float32Array(paddedSize);
-            const filterReal = new Float32Array(paddedSize);
-            const filterImag = new Float32Array(paddedSize);
-            for (let i = 0; i < filterLength; i++) {
-                filterInputReal[i] = inverseFilter[i];
-            }
-            fft.transform(filterReal, filterImag, filterInputReal, filterInputImag);
-
-            const processedSegments = [];
-            for (let i = 0; i < segments.length; i++) {
-                const signalReal = new Float32Array(paddedSize);
-                const signalImag = new Float32Array(paddedSize);
-                const resultReal = new Float32Array(paddedSize);
-                const resultImag = new Float32Array(paddedSize);
-                
-                signalReal.set(segments[i]);
-                fft.transform(resultReal, resultImag, signalReal, signalImag);
-                
-                for (let j = 0; j < paddedSize; j++) {
-                    const real1 = resultReal[j];
-                    const imag1 = resultImag[j];
-                    const real2 = filterReal[j];
-                    const imag2 = filterImag[j];
-                    
-                    resultReal[j] = real1 * real2 - imag1 * imag2;
-                    resultImag[j] = real1 * imag2 + imag1 * real2;
-                }
-                
-                fft.inverseTransform(resultReal, resultImag, resultReal, resultImag);
-                
-                const impulseResponse = new Float32Array(sweepLength);
-                for (let j = 0; j < sweepLength; j++) {
-                    const wrappedIndex = j + sweepLength;
-                    impulseResponse[j] = resultReal[j] +
-                        (wrappedIndex < linearLength ? resultReal[wrappedIndex] : 0);
-                }
-                
-                processedSegments.push(impulseResponse);
-            }
-            
-            // Average all processed segments
-            let result;
-            if (processedSegments.length > 0) {
-                const length = processedSegments[0].length;
-                result = new Float32Array(length);
-                
-                for (let i = 0; i < processedSegments.length; i++) {
-                    for (let j = 0; j < length; j++) {
-                        result[j] += processedSegments[i][j] / processedSegments.length;
+    async processRecordedBuffer(recordBuffer, sweep, averagingCount, sampleRate, timing = null) {
+        const outputTimeReference = outputTimeReferenceForRoute(timing?.outputRoute, timing);
+        const settings = {
+            repetitions: averagingCount,
+            playbackOffsetSamples: outputTimeReference === 'audio-context'
+                ? timing.scheduledPlaybackFrame - timing.captureStartFrame
+                : Math.round(0.5 * sampleRate),
+            outputTimeReference,
+            levelDb: timing?.levelDb ?? 0,
+            overloaded: Boolean(timing?.overloaded),
+            calibration: this.interfaceCalibrationImpulseResponse || null
+        };
+        let processed;
+        if (typeof Worker === 'undefined') {
+            // Node test harnesses exercise the same pure analysis used in the browser worker.
+            if (typeof window !== 'undefined') throw new Error('Measurement analysis worker unavailable');
+            processed = analyzeEssRecording(recordBuffer, sweep, settings);
+        } else {
+            processed = await new Promise((resolve, reject) => {
+                const worker = new Worker(new URL('../../../js/utils/measurement-dsp/analysis-worker.js', import.meta.url), { type: 'module' });
+                const elements = this.activeSweepElements;
+                const finish = (error, result) => {
+                    worker.terminate();
+                    if (elements?.analysisWorker === worker) {
+                        elements.analysisWorker = null;
+                        elements.cancelAnalysis = null;
                     }
-                }
-            } else {
-                console.warn('No processed segments available');
-                if (calibrationRequired) {
-                    throw new Error('The measured impulse response could not be created');
-                }
-                console.timeEnd('processRecordedBuffer');
-                return {
-                    analysisImpulseResponse: recordBuffer,
-                    impulseResponse: null,
-                    irValid: false
+                    if (error) reject(error); else resolve(result);
                 };
-            }
-            
-            const onsetIndex = detectOnset(result, sampleRate);
-            const trimmed = trimMeasurementImpulseResponse(
-                result,
-                sampleRate,
-                sweepLength,
-                onsetIndex,
-                trimOffset
-            );
-            // The analysis window starts a whole guard period after the pre-roll,
-            // and that guard is not part of the path latency, so remove it from the
-            // anchor. The anchor turns negative when the capture leads the pre-roll.
-            // Without an audio-context time reference the capture offset is unknown,
-            // so no anchor exists: drop it rather than store a meaningless one.
-            if (outputTimeReference === 'audio-context') {
-                trimmed.trimStartSamples -= capturePlan.analysisStartSamples;
-            } else {
-                trimmed.trimStartSamples = null;
-            }
-            let peak = 0;
-            for (const sample of trimmed.data) {
-                const magnitude = sample < 0 ? -sample : sample;
-                if (magnitude > peak) peak = magnitude;
-            }
-            const refScale = audioUtils.lastDeconvolutionRefScale || 1;
-
-            if (calibrationRequired) {
-                const calibrated = applyInterfaceCalibration({
-                    data: trimmed.data,
-                    onsetIndex: trimmed.onsetIndex,
-                    prerollSamples: trimmed.prerollSamples,
-                    refScale
-                }, this.interfaceCalibrationImpulseResponse, {
-                    sampleRate,
-                    minFrequency: this.currentSweepBand?.minFreq ?? this.currentMeasurement.sweepMinFreq,
-                    maxFrequency: this.currentSweepBand?.maxFreq ?? this.currentMeasurement.sweepMaxFreq,
-                    outputLength: trimmed.data.length,
-                    prerollSamples: trimmed.prerollSamples
-                });
-                console.timeEnd('processRecordedBuffer');
-                return {
-                    ...trimmed,
-                    ...calibrated,
-                    analysisImpulseResponse: calibrated.data,
-                    impulseResponse: calibrated.data,
-                    irValid: true,
-                    outputTimeReference
-                };
-            }
-
-            // The stored IR keeps its reference scale; frequency analysis uses
-            // unit-reference samples so changing the sweep band cannot add gain.
-            for (let index = 0; index < result.length; index++) result[index] /= refScale;
-            console.timeEnd('processRecordedBuffer');
-            return {
-                ...trimmed,
-                analysisImpulseResponse: result,
-                impulseResponse: trimmed.data,
-                irValid: true,
-                outputTimeReference,
-                peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity,
-                refScale
-            };
-            
-        } catch (error) {
-            console.error('Error processing recorded buffer:', error);
-            console.timeEnd('processRecordedBuffer');
-            if (calibrationRequired || error?.isIncompleteSweepRecording) throw error;
-            return {
-                analysisImpulseResponse: recordBuffer,
-                impulseResponse: null,
-                irValid: false
-            };
+                if (elements) {
+                    elements.analysisWorker = worker;
+                    elements.cancelAnalysis = () => finish(new SweepCancelledError());
+                }
+                worker.onmessage = ({ data }) => finish(data.error ? new Error('Measurement analysis failed') : null, data.result);
+                worker.onerror = error => finish(error);
+                worker.postMessage({ id: 1, type: 'ess', record: { recording: recordBuffer, sweep }, settings }, [recordBuffer.buffer]);
+            });
         }
+        return { ...processed, impulseResponse: processed.data, analysisImpulseResponse: processed.data,
+            sweepLimited: true };
     },
-    
+
     cleanupSweepOutput(operation) {
         const elements = this.activeSweepElements;
         if (!operation || this.activeSweepOperation !== operation ||
@@ -856,6 +644,7 @@ const AudioProcessing = {
         // Clean up active elements
         if (elements) {
             clearSweepTimers(elements);
+            elements.cancelAnalysis?.();
             this.cleanupSweepOutput(operation);
             
             // Clean up other elements
@@ -906,8 +695,6 @@ const AudioProcessing = {
 export default AudioProcessing;
 export {
     createRepeatedSweepAudioBuffer,
-    createSweepCapturePlan,
     scheduledPlaybackFrameForTime,
-    trimStartOffsetSamples,
     outputTimeReferenceForRoute
 };

@@ -24,6 +24,7 @@ const excludedFiles = new Set([
 ]);
 const targets = [
   'css/effetune.css',
+  'css/parameter-controls.css',
   'css/effetune-mobile.css',
   'css/effetune-library.css',
   'css/pipeline-analyzer.css',

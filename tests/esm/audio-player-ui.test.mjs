@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioPlayerUI } from '../../js/ui/audio-player/audio-player-ui.js';
+import { NetworkPlaybackAdapter } from '../../js/network-music/playback-adapter.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
 import { SynchronizedVideo } from '../../js/ui/audio-player/synchronized-video.js';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
@@ -1021,6 +1022,113 @@ test('player and Visualizer retain independent outgoing decoders until the next 
       ui.removeUI();
       visualizerVideo.setEnabled(false);
     }
+  });
+});
+
+test('one Player view follows its selected destination while local playback and listeners remain independent', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const local = createAudioPlayer(calls, { state: {
+      currentTrack: { name: 'Local song' }, currentTrackName: 'Local song',
+      playlist: [{ name: 'Local song' }], currentTrackIndex: 0
+    } });
+    const ui = new AudioPlayerUI(local);
+    local.ui = ui;
+    const container = ui.createPlayerUI();
+    const commands = [];
+    const controller = {
+      playerStates: new Map([['remote', {
+        available: true, transportState: 'Playing', position: 30, duration: 180, currentId: 7,
+        queue: [{ id: 7, title: 'Remote song', artist: 'Remote artist' }],
+        capabilities: { play: true, pause: true, stop: true, previous: true, next: true, seek: true, repeat: true, shuffle: true }
+      }]]),
+      command: async (...args) => commands.push(args),
+      reportError: error => { throw error; }
+    };
+    const remote = new NetworkPlaybackAdapter(controller, 'remote', ui);
+    ui.setPlaybackTarget(remote);
+    assert.equal(ui.container, container, 'the existing DOM must be reused');
+    assert.equal(ui.trackNameDisplay.textContent, 'Remote artist - Remote song');
+    assert.equal(ui.timeDisplay.textContent, '00:30 / 03:00');
+    controller.playerStates.get('remote').position = 46;
+    remote.sync();
+    assert.equal(ui.timeDisplay.textContent, '00:46 / 03:00', 'playing remote snapshots must update without a local animation clock');
+    assert.equal(Number(ui.seekBar.value), 46 / 180 * 100);
+    assert.equal(ui.speedButton.hidden, true);
+    assert.ok([...local.stateManager.listeners.values()].every(listeners => listeners.length === 0));
+    local.stateManager.setState({ currentTrackName: 'Local next song' });
+    local.stateManager.emit('currentTrackName', 'Local next song');
+    assert.equal(ui.trackNameDisplay.textContent, 'Remote artist - Remote song');
+    await Promise.all(ui.playPauseButton.dispatchEvent('click'));
+    await Promise.resolve();
+    assert.deepEqual(commands[0], ['pause', {}, 'remote']);
+    ui.seekBar.value = 50;
+    await Promise.all(ui.seekBar.dispatchEvent('input'));
+    await Promise.resolve();
+    assert.equal(commands.length, 1, 'remote seek is sent once when the drag finishes');
+    await Promise.all(ui.seekBar.dispatchEvent('change'));
+    await Promise.resolve();
+    assert.deepEqual(commands[1], ['seek', { seconds: 90 }, 'remote']);
+    controller.playerStates.get('remote').available = false;
+    remote.sync();
+    assert.equal(ui.playPauseButton.disabled, true);
+    assert.equal(ui.seekBar.disabled, true);
+    ui.setPlaybackTarget(local);
+    assert.equal(ui.container, container);
+    assert.equal(ui.trackNameDisplay.textContent, 'Local next song');
+    assert.equal(ui.speedButton.hidden, false);
+    assert.equal(ui.playPauseButton.disabled, false);
+    assert.ok(!calls.some(([kind]) => ['pause', 'stop', 'close'].includes(kind)));
+    ui.removeUI();
+  });
+});
+
+test('remote queue menus respect host capabilities and send mutations only to their selected player', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const local = createAudioPlayer(calls, { state: {
+      currentTrack: { name: 'Local song' }, playlist: [{ name: 'Local song' }], currentTrackIndex: 0
+    } });
+    const ui = new AudioPlayerUI(local);
+    local.ui = ui;
+    ui.createPlayerUI();
+    const commands = [], errors = [];
+    const remoteState = { available: true, currentId: 7, queue: [{ id: 7, title: 'Remote song' }],
+      capabilities: { delete: true, clear: false } };
+    const failure = new Error('Remote device disconnected');
+    const remote = new NetworkPlaybackAdapter({
+      playerStates: new Map([['selected-remote', remoteState]]),
+      command: async (...args) => { commands.push(args); if (args[0] === 'clear') throw failure; },
+      reportError: error => errors.push(error)
+    }, 'selected-remote', ui);
+    try {
+      ui.setPlaybackTarget(remote);
+      ui.getLibraryManager = async () => assert.fail('Remote queue operations must not access the local library');
+      const localState = structuredClone(local.stateManager.getStateSnapshot());
+      const openMenu = () => ui.openLibraryTrackMenu({ preventDefault() {}, clientX: 20, clientY: 30 }, remote.playlist[0]);
+      await openMenu();
+      assert.deepEqual(ui.playerPopup.children.map(button => [button.textContent, button.disabled]),
+        [['Remove', false], ['Clear queue', true]]);
+      ui.playerPopup.children[0].click();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(commands, [['delete', { id: 7 }, 'selected-remote']]);
+      assert.equal(ui.playerPopup, null);
+
+      remoteState.available = false;
+      remote.sync();
+      await openMenu();
+      assert.ok(ui.playerPopup.children.every(button => button.disabled));
+      remoteState.available = true;
+      remoteState.capabilities.clear = true;
+      remote.sync();
+      await openMenu();
+      assert.equal(ui.playerPopup.children[1].disabled, false);
+      ui.playerPopup.children[1].click();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(commands, [['delete', { id: 7 }, 'selected-remote'], ['clear', {}, 'selected-remote']]);
+      assert.deepEqual(errors, [failure], 'A failed command is reported once through the network controller');
+      assert.equal(ui.playerPopup, null);
+      assert.deepEqual(local.stateManager.getStateSnapshot(), localState);
+      assert.ok(!calls.some(([kind]) => ['pause', 'stop', 'close', 'loadTrack'].includes(kind)));
+    } finally { ui.removeUI(); }
   });
 });
 

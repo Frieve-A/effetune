@@ -181,6 +181,21 @@ test('updateApplicationMenu sends enabled menu labels and updates the tray', asy
   assert.equal(harness.calls[2][0], 'updateTrayMenu');
 });
 
+test('native preset file actions follow the selected target while music files stay enabled', async () => {
+  const harness = createWindowHarness({ uiManager: { networkMusic: { selectedPlayerId: 'room' } } });
+  await withGlobals({ window: harness.window }, async () => {
+    for (const selectedPlayerId of ['room', 'local']) {
+      harness.window.uiManager.networkMusic.selectedPlayerId = selectedPlayerId;
+      await updateApplicationMenu(true);
+      const menu = harness.calls.filter(([kind]) => kind === 'updateApplicationMenu').at(-1)[1];
+      for (const id of ['file.save', 'file.saveAs', 'file.exportPreset', 'file.importPreset']) {
+        assert.equal(menu[id].enabled, selectedPlayerId === 'local', id);
+      }
+      assert.equal(menu['file.openMusicFile'].enabled, true);
+    }
+  });
+});
+
 test('updateApplicationMenu disables gated items while double blind test is active', async () => {
   const harness = createWindowHarness({
     uiManager: {

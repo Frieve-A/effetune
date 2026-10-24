@@ -65,6 +65,36 @@ function makeSession(env, extra = {}) {
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('IR chunk requests collect every chunk before the final ack and reject on failure or disconnect', async () => {
+    const { session } = makeSession(makeEnv());
+    session.start();
+    const socket = FakeSocket.instances[0];
+    socket.open();
+    socket.receive({ op: 'ack', seq: 1, ok: true });
+    try {
+        const chunks = [];
+        let settled = false;
+        const request = session.requestChunks({ op: 'getIR', id: 'a'.repeat(24) }, 'irChunk', chunk => chunks.push(chunk.index));
+        void request.then(() => { settled = true; });
+        socket.receive({ op: 'irChunk', seq: 2, index: 0 });
+        socket.receive({ op: 'irChunk', seq: 2, index: 1 });
+        await tick();
+        assert.equal(settled, false);
+        socket.receive({ op: 'ack', seq: 2, ok: true });
+        await request;
+        assert.deepEqual(chunks, [0, 1]);
+        const failure = session.requestChunks({ op: 'getIR' }, 'irChunk', () => {});
+        socket.receive({ op: 'ack', seq: 3, ok: false, error: 'not found' });
+        await assert.rejects(failure, /not found/);
+        const malformed = session.requestChunks({ op: 'getIR' }, 'irChunk', () => { throw new Error('invalid chunk'); });
+        socket.receive({ op: 'irChunk', seq: 4 });
+        await assert.rejects(malformed, /invalid chunk/);
+        const interrupted = session.requestChunks({ op: 'getIR' }, 'irChunk', () => {});
+        socket.close();
+        await assert.rejects(interrupted, /closed/);
+    } finally { session.stop(); }
+});
+
 test('hello is sent on open and the session is open once it is acknowledged', async () => {
     const env = makeEnv();
     const { session, statuses } = makeSession(env);
@@ -215,6 +245,43 @@ test('a closed socket rejects waiting requests and reconnects with growing delay
     session.stop();
 });
 
+test('a retired socket cannot acknowledge a new hello or apply delayed state and edits', async () => {
+    const env = makeEnv();
+    const { session, statuses } = makeSession(env);
+    const states = [];
+    session.addEventListener('state', event => states.push(event.detail));
+    try {
+        session.start();
+        const first = FakeSocket.instances[0];
+        first.open();
+        first.close(1006);
+        env.fire(1000);
+        const second = FakeSocket.instances[1];
+        second.open();
+        const helloSeq = second.sent[0].seq;
+        first.receive({ op: 'ack', seq: helloSeq, ok: true });
+        first.receive({ op: 'state', seq: helloSeq, rev: 99, pipeline: [{ nm: 'Wrong host' }] });
+        await tick();
+        assert.equal(statuses.includes('open'), false);
+        assert.deepEqual(states, []);
+        second.receive({ op: 'ack', seq: helloSeq, ok: true });
+        await tick();
+        assert.equal(statuses.at(-1), 'open');
+        const current = { op: 'state', rev: 1, pipeline: [{ nm: 'Volume', vl: -9 }] };
+        second.receive(current);
+        assert.deepEqual(states, [current]);
+        const edit = session.sendCommand({ op: 'bypass', on: true });
+        let settled = false;
+        void edit.then(() => { settled = true; }, () => { settled = true; });
+        const seq = second.sent.at(-1).seq;
+        first.receive({ op: 'ack', seq, ok: true });
+        await tick();
+        assert.equal(settled, false);
+        second.receive({ op: 'ack', seq, ok: true });
+        await edit;
+    } finally { session.stop(); }
+});
+
 test('a successful connection resets the backoff', async () => {
     const env = makeEnv();
     const { session } = makeSession(env);
@@ -347,10 +414,10 @@ test('blocked storage still lets the page connect with the token from the link',
     assert.equal(target('', { throwing: true }).result.reason, 'token');
 });
 
-test('no token, a malformed token or a secure page give a notice instead of a connection', () => {
+test('no token, a malformed token or an unsupported protocol give a notice instead of a connection', () => {
     assert.deepEqual(target('').result, { ok: false, reason: 'token' });
     assert.deepEqual(target('?t=a b').result, { ok: false, reason: 'token' });
-    assert.deepEqual(target('?t=abcd1234', { protocol: 'https:' }).result, { ok: false, reason: 'protocol' });
+    assert.deepEqual(target('?t=abcd1234', { protocol: 'file:' }).result, { ok: false, reason: 'protocol' });
     assert.deepEqual(target('', { stored: 'no good' }).result, { ok: false, reason: 'token' });
 });
 
@@ -390,4 +457,11 @@ test('presetsChanged and irsChanged pushes become events', async () => {
     socket.receive({ op: 'irsChanged' });
     assert.deepEqual(events, ['irs', 'presets', 'irs']);
     session.stop();
+});
+
+test('secure remote pages use WSS and retain pairing behavior', () => {
+    const { result, calls, store } = target('?t=abcd1234', { protocol: 'https:' });
+    assert.equal(result.url, 'wss://192.168.1.5:47300/?t=abcd1234');
+    assert.equal(store.get(TOKEN_STORAGE_KEY), 'abcd1234');
+    assert.deepEqual(calls[0], [null, '', '/']);
 });

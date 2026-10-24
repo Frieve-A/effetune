@@ -1,4 +1,84 @@
 {
+  "analysis:normalization": "正規化",
+  "analysis:normalizationNone": "なし",
+  "analysis:normalizationGlobal": "全体のピーク = 0 dB",
+  "analysis:normalizationFrequency": "周波数ごとのピーク = 0 dB",
+  "analysis:copyGraph": "画像をコピー",
+  "analysis:imageCopied": "グラフ画像をコピーしました。",
+  "analysis:imageCopyFailed": "画像をコピーできませんでした。もう一度お試しください。",
+  "analysis:imageCopyUnavailable": "このブラウザーでは画像をコピーできません。デスクトップアプリ、または画像のコピーに対応したブラウザーをお使いください。",
+  "analysis:imageCopyDenied": "クリップボードへのアクセスが拒否されました。アクセスを許可して、もう一度お試しください。",
+  "analysis:mode": "分析モード",
+  "analysis:waterfallMode": "Waterfall",
+  "analysis:burstMode": "Burst Decay",
+  "analysis:depthUnit": "奥行き軸",
+  "analysis:time": "時間",
+  "analysis:cycles": "周期数",
+  "analysis:elevation": "視点の仰角",
+  "analysis:resetView": "視点をリセット",
+  "analysis:orbitHelp": "ドラッグで回転し、ホイールまたは＋／−で拡大・縮小できます。Shift＋矢印キーで回転、Shift＋Homeで視点をリセットします。",
+  "analysis:burstNote": "Burst Decayは、帯域幅が1/3オクターブのガウス形状のトーンバーストを使います。面の高さと色は、同じ相対dBレベルを表します。同じ周期数でも周波数によって経過時間は異なります。保存された応答より前は無音と仮定し、記録が足りない後半の値は表示しません。",
+  "analysis:frequency": "周波数特性",
+  "analysis:impulse": "インパルス応答",
+  "analysis:distortion": "歪率",
+  "analysis:waterfall": "Waterfall（3D）",
+  "analysis:details": "測定詳細",
+  "analysis:display": "表示設定",
+  "analysis:xMin": "周波数の下限",
+  "analysis:xMax": "周波数の上限",
+  "analysis:yMin": "レベルの下限",
+  "analysis:yMax": "レベルの上限",
+  "analysis:smoothing": "表示の平滑化（σ）",
+  "analysis:normalize": "相対レベルに正規化",
+  "analysis:reference": "基準レベル",
+  "analysis:source": "応答データ",
+  "analysis:saved": "保存された応答",
+  "analysis:reanalysis": "窓を適用したIR",
+  "analysis:before": "立ち上がり前の窓長",
+  "analysis:after": "立ち上がり後の窓長",
+  "analysis:window": "窓の形状",
+  "analysis:tukey": "両端を滑らかに",
+  "analysis:hann": "Hann",
+  "analysis:rectangular": "矩形",
+  "analysis:auto": "範囲を自動調整",
+  "analysis:reset": "リセット",
+  "analysis:fromTime": "時間の開始",
+  "analysis:toTime": "時間の終了",
+  "analysis:peak": "ピークで正規化",
+  "analysis:db": "振幅をdBで表示",
+  "analysis:origin": "表示の時間原点",
+  "analysis:unit": "単位",
+  "analysis:maxOrder": "THDに含める最高次数",
+  "analysis:start": "最初のスライス",
+  "analysis:end": "最後のスライス",
+  "analysis:length": "窓長",
+  "analysis:rise": "左側の立ち上がり時間",
+  "analysis:angle": "視点の回転",
+  "analysis:zoom": "表示倍率",
+  "analysis:correction": "補正",
+  "analysis:export": "測定データをエクスポート（JSON）",
+  "analysis:unavailable": "この測定にはインパルス応答がありません。インパルス応答を含む測定ファイルを読み込んでください。",
+  "analysis:noDistortion": "この測定には利用できる歪率データがありません。新しく測定してください。",
+  "analysis:processing": "計算中…",
+  "analysis:failed": "現在の設定では分析できません。窓を調整するか、別の測定を選んでください。",
+  "analysis:combined": "すべてのスピーカーの合成出力",
+  "analysis:sourceNote": "表示設定を変えても、保存された測定データや補正設定は変わりません。",
+  "analysis:smoothingNote": "0では追加の平滑化を行いません。保存された応答に適用済みの処理は取り消せません。幅はオクターブ単位のガウス分布のσです。",
+  "analysis:distortionNote": "再生から録音までの経路全体の相対歪率です。マイクやオーディオインターフェースの校正は適用されません。",
+  "analysis:waterfallNote": "面の高さと色は、同じ相対dBレベルを表します。初期の視点では0 msが奥、後の時刻が手前です。保存された応答に窓全体が収まる範囲だけを表示します。",
+  "analysis:impulseNote": "保存された立ち上がりを時間の基準にします。枠線は分析窓の範囲を示します。表示を変えてもWAVの書き出し内容は変わりません。",
+  "analysis:readoutHelp": "グラフを指すかタッチすると値を読み取れます。キーボードではグラフにフォーカスを移し、矢印キーで読み取ります。",
+  "analysis:available": "利用可能",
+  "analysis:notAvailable": "利用不可",
+  "analysis:acquisition": "取得元",
+  "analysis:sampleRate": "実サンプルレート",
+  "analysis:timeReference": "時間の基準",
+  "analysis:relative": "立ち上がりからの相対時間",
+  "analysis:observed": "保存されている時間範囲",
+  "analysis:calibration": "校正",
+  "analysis:relativeLevel": "相対レベル（絶対SPL校正なし）",
+  "analysis:windowLimits": "窓は保存されたサンプルの範囲内に制限されます",
+  "analysis:thdOrders": "THDの算入次数：2～{order}",
   "title:impulseResponse": "インパルス応答",
   "axis:impulseTime": "時間（ms）",
   "axis:normalizedAmplitude": "正規化振幅",
@@ -31,21 +111,21 @@
   "help:outputChannel": "測定する出力チャンネルを1つ以上選択してください。「全チャンネル」を選ぶと、個別のチャンネル選択は解除されます。", // 出力チャンネルのヘルプ
   "label:sampleRate": "サンプリング周波数：", // サンプリング周波数選択のラベル
   "help:sampleRate": "測定時のサンプリング周波数を指定してください。", // サンプリング周波数のヘルプ
-  "label:sweepLength": "スイープ長（サンプル数）：", // スイープ長選択のラベル
-  "help:sweepLength": "測定信号の長さをサンプル数で指定します。", // スイープ長のヘルプ
+  "label:sweepLength": "スイープの指定長（サンプル）:",
+  "help:sweepLength": "ESS測定信号の長さを指定します。高調波の応答を分離するために必要な場合は、自動的に長くなります。",
   "title:advancedSettings": "詳細設定",
   "label:sweepBandMode": "スイープの帯域制限：",
   "option:sweepBandOff": "Off",
   "option:sweepBandCommon": "全チャンネル共通",
   "option:sweepBandPerChannel": "チャンネル別",
   "label:sweepBandChannel": "設定チャンネル：",
-  "help:sweepBandMode": "スイープとテスト信号の帯域を制限する方法を選びます。チャンネル別では、選択した各出力チャンネルに個別の周波数範囲を設定できます。",
+  "help:sweepBandMode": "スイープ帯域を共通またはチャンネル別に指定します。OffではESSに20 Hz～20 kHzを使い、実際のサンプリング周波数に合わせて上限を制限します。チャンネル別では選んだ出力ごとに設定できます。",
   "label:sweepMinFreq": "スイープ最低周波数（Hz）：", // スイープ最低周波数のラベル
   "help:sweepMinFreq": "スイープ信号の最低周波数をHz単位で指定します。1Hzから選択したサンプリング周波数のナイキスト周波数直下まで設定可能です。テスト信号もこの帯域に制限されます。（デフォルト：20 Hz）", // スイープ最低周波数のヘルプ
   "label:sweepMaxFreq": "スイープ最高周波数（Hz）：", // スイープ最高周波数のラベル
   "help:sweepMaxFreq": "スイープ信号の最高周波数をHz単位で指定します。選択したサンプリング周波数のナイキスト周波数を超える値は自動的に制限されます。テスト信号もこの帯域に制限されます。（デフォルト：20000 Hz）", // スイープ最高周波数のヘルプ
   "label:averaging": "同期平均化：", // 同期平均化選択のラベル
-  "help:averaging": "より正確な測定のために、同一測定点での測定を繰り返す回数を指定してください。", // 同期平均化のヘルプ
+  "help:averaging": "同じ測定点で繰り返す回数です。各回にはスイープと応答の減衰を待つ2.5秒が含まれるため、回数を増やすと測定時間が長くなります。",
   "label:interfaceCalibration": "オーディオインターフェイスのキャリブレーション：",
   "option:noInterfaceCalibration": "なし（未補正）",
   "option:interfaceCalibrationPoint": "{measurement} — {point}（{date}、{sampleRate}）",
@@ -70,7 +150,7 @@
 
   // スイープ測定画面
   "help:measurement": "追加の1回分と指定した測定回数分の測定信号が再生されます。",
-  "title:frequencyResponseMeasurement": "周波数応答測定", // 測定画面のタイトル
+  "title:frequencyResponseMeasurement": "音響特性の測定", // 測定画面のタイトル
   "title:currentMeasurement": "現在の測定", // 現在の測定グラフのタイトル
   "button:redo": "やり直し", // 再測定
   "button:saveAndContinue": "保存して別のポイントを測定", // 保存して続ける
@@ -115,7 +195,7 @@
   "confirm:discardChanges": "未保存の変更があります。変更を破棄して続行しますか？", // 未保存の変更破棄の確認メッセージ
   
   // 新規翻訳
-  "title:main": "EffeTune 周波数応答測定", // メインページのタイトル
+  "title:main": "EffeTune 音響特性の測定", // メインページのタイトル
   "title:levelAdjustment": "レベル調整", // レベル調整画面のタイトル
   "button:back": "EffeTuneに戻る", // 戻るボタンのテキスト
   "button:backSimple": "戻る", // シンプルな戻るボタンのテキスト

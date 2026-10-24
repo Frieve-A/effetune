@@ -4,6 +4,7 @@ const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
+const fileAccess = require('./file-access.cjs');
 
 const LIBRARY_CATALOG_PROTOCOL_VERSION = 1;
 const LIBRARY_CATALOG_RENDERER_API_VERSION = 1;
@@ -162,6 +163,10 @@ class LibraryCatalogHost extends EventEmitter {
 
   queryTracks(query) {
     return this.request('queryTracks', query);
+  }
+
+  querySharedLibrary(query) {
+    return this.request('querySharedLibrary', query);
   }
 
   browseFolderChildren(request) {
@@ -672,7 +677,9 @@ function registerLibraryCatalogControlIpc({ ipcMain, runtime, shell, getMainWind
   const resolvePlaybackSource = async request => {
     assertTrackUidRendererRequest(request);
     try {
-      return publicCatalogPlaybackSource(await runtime.resolvePlaybackSource(request.trackUid));
+      const source = publicCatalogPlaybackSource(await runtime.resolvePlaybackSource(request.trackUid));
+      fileAccess.grantRead(source.path);
+      return source;
     } catch (error) {
       if (error?.code === 'folderPermissionRequired') return publicCatalogFolderPermissionError(error);
       throw error;

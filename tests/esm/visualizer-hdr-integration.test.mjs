@@ -20,10 +20,10 @@ test('Applying the Config HDR preference updates the existing Visualizer and Cle
 
 test('Visualizer shares compatible Clean Feed compositions and renders independently for mixed displays', async () => {
     const calls = [], sharedVideo = {}, layout = { aspect: '16:9', items: [] };
-    let compatible = true, status = 'ready';
+    let compatible = true, status = 'ready', rendered;
     const feedRenderer = {};
     const view = Object.assign(Object.create(VisualizerView.prototype), {
-        visible: true, hdr: true, quality: 'high', layout,
+        visible: true, hdr: true, quality: 'high', layout, uiManager: {},
         stageHost: { getBoundingClientRect: () => ({ width: 640, height: 360 }), classList: { contains: () => false } },
         stage: { style: {} }, canvas: { width: 640, height: 360 }, status: {}, editor: { open: false },
         sources: { getStatus: () => status },
@@ -31,7 +31,7 @@ test('Visualizer shares compatible Clean Feed compositions and renders independe
         renderer: {
             quality: 0,
             copyFrom(source, options) { calls.push(['copy', source, options.hdr]); return compatible; },
-            draw(_layout, _sources, _metadata, _time, options) { calls.push(['draw', options.hdr, options.video]); },
+            draw(_layout, _sources, _metadata, _time, options) { calls.push(['draw', options.hdr, options.video]); rendered = options; },
             clear() { calls.push(['clear']); }
         },
         metadata: () => null, lyrics: () => null, videoFrame: () => sharedVideo, counters: () => new Map(), t: (_key, fallback) => fallback
@@ -41,6 +41,14 @@ test('Visualizer shares compatible Clean Feed compositions and renders independe
         view.frame(0);
         assert.deepEqual(calls, [['copy', feedRenderer, true]]);
         assert.deepEqual([view.canvas.width, view.canvas.height], [1280, 720]);
+        calls.length = 0;
+        view.editor.open = true;
+        view.frame(8);
+        assert.deepEqual(calls, [['draw', true, sharedVideo]], 'Edit must render its own previews even with a compatible visible feed');
+        assert.equal(rendered.editing, true);
+        assert.equal(rendered.playback.available, false, 'Absent player must still reach the Edit renderer');
+        assert.deepEqual([view.canvas.width, view.canvas.height], [640, 360]);
+        view.editor.open = false;
         calls.length = 0;
         compatible = false;
         view.frame(16);
@@ -62,7 +70,7 @@ test('Clean Feed follows the shared HDR preference and clears and disposes its o
     let status = 'ready';
     const view = { hdr: true, quality: 'high', layout: { aspect: '16:9', items: [] },
         sources: { getStatus: () => status }, metadata: () => null, lyrics: () => null,
-        videoFrame: () => video, counters: () => new Map() };
+        videoFrame: () => video, counters: () => new Map(), playback: () => ({}), syncPlaybackControls() {} };
     const feed = Object.assign(Object.create(VisualizerFeed.prototype), {
         view, visible: true, canvas, hdrCanvas: { style: {} },
         window: { closed: false, innerWidth: 1920, innerHeight: 1080, devicePixelRatio: 1,

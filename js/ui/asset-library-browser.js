@@ -35,7 +35,7 @@ function isTextEntryTarget(target) {
 export function openAssetLibraryBrowser({
   service, onLoad, audioManager, onClose, returnFocus, translate, formatBadge, decorateEntry,
   accept, folderAccept = accept, folderFallback = false, chooseFiles, chooseFolder, kind,
-  readOnly = false
+  readOnly = false, canImport = !readOnly, canLoad = true, multipleFiles = true
 } = {}) {
   if (!service) throw new TypeError('Asset library service is required.');
   const previousFocus = returnFocus ?? document.activeElement;
@@ -71,7 +71,7 @@ export function openAssetLibraryBrowser({
   }
   const importInput = element('input');
   importInput.type = 'file';
-  importInput.multiple = true;
+  importInput.multiple = multipleFiles;
   importInput.accept = accept;
   importInput.hidden = true;
   const folderInput = element('input');
@@ -86,7 +86,8 @@ export function openAssetLibraryBrowser({
   const folderButton = element('button', '', translate('action.importFolder', 'Import folder…'));
   folderButton.type = 'button';
   controls.append(search, sort);
-  if (!readOnly) controls.append(importButton, folderButton, importInput, folderInput);
+  if (canImport) controls.append(importButton, importInput);
+  if (!readOnly) controls.append(folderButton, folderInput);
   dialog.appendChild(controls);
 
   const selectionControls = element('div', 'ir-library-selection-controls');
@@ -117,7 +118,7 @@ export function openAssetLibraryBrowser({
     translate('action.cancelImport', 'Cancel import'));
   cancelImport.type = 'button';
   importProgress.append(progressBar, cancelImport);
-  if (!readOnly) dialog.appendChild(importProgress);
+  if (canImport || !readOnly) dialog.appendChild(importProgress);
   const list = element('div', 'ir-library-list');
   dialog.appendChild(list);
 
@@ -247,7 +248,24 @@ export function openAssetLibraryBrowser({
           await render();
         }
       });
-      actions.appendChild(load);
+      if (canLoad) actions.appendChild(load);
+      if (entry.downloadable && typeof service.downloadEntry === 'function') {
+        const download = element('button', '', translate('action.download', 'Download'));
+        download.type = 'button';
+        download.disabled = Boolean(activeImport) || deleteInProgress;
+        download.addEventListener('click', async () => {
+          download.disabled = true;
+          status.textContent = translate('status.downloading', 'Downloading impulse response…');
+          try {
+            await service.downloadEntry(entry, { isCurrent: () => !closed });
+            if (!closed) status.textContent = '';
+          } catch (error) {
+            if (!closed) reportFailure(translate('error.download',
+              'The impulse response could not be downloaded. Check the connection and try again.'), error);
+          } finally { download.disabled = false; }
+        });
+        actions.appendChild(download);
+      }
       if (!readOnly) actions.appendChild(remove);
       row.appendChild(actions);
       list.appendChild(row);

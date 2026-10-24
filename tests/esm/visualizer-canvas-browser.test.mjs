@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { chromium } from 'playwright';
+import { ITEM_TYPES } from '../../js/visualizer/visualizer-model.js';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
@@ -144,7 +145,8 @@ test('Edge Fade composites every item including analyzer underlays, axes, labels
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
-        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-counter', 'visualizer-renderer']) {
+        for (const file of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-counter',
+            'visualizer-playback-control', 'visualizer-seek-bar', 'visualizer-renderer']) {
             await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${file}.js`) });
         }
         await page.addScriptTag({ content: `{${moduleScript('../../js/visualizer/visualizer-lyrics.js')}; window.lyricsFrame = lyricsFrame; window.lyricsOpacity = lyricsOpacity; window.drawLyrics = drawLyrics;}` });
@@ -197,7 +199,7 @@ test('Edge Fade composites every item including analyzer underlays, axes, labels
             }
             return results;
         });
-        assert.equal(results.length, 20);
+        assert.deepEqual(results.map(result => result.type), ITEM_TYPES);
         for (const result of results) {
             assert.ok(result.checked > 100, result.type);
             assert.equal(result.mismatches, 0, JSON.stringify(result));

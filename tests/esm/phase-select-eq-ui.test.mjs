@@ -732,6 +732,8 @@ test('UI reuses standard control rows and the shared effect tab surface', async 
   const css = await fs.readFile(
     path.join(repoRoot, 'plugins', 'spatial', 'phase_select_eq.css'), 'utf8');
   const globalCss = await fs.readFile(path.join(repoRoot, 'css/effetune.css'), 'utf8');
+  assert.match(globalCss, /@import url\("parameter-controls\.css"\);/);
+  const controlsCss = await fs.readFile(path.join(repoRoot, 'css/parameter-controls.css'), 'utf8');
   const mobileCss = await fs.readFile(path.join(repoRoot, 'css/effetune-mobile.css'), 'utf8');
   assert.match(css, /\.phase-select-eq-map\s*\{[^}]*background-color:\s*var\(--et-graph-bg-deep\)/s);
   assert.match(css, /\.phase-select-eq-editor\s*\{[^}]*background:\s*color-mix\(in srgb,\s*var\(--et-surface-10\),\s*var\(--et-graph-bg-deep\) 25%\)/s);
@@ -741,11 +743,11 @@ test('UI reuses standard control rows and the shared effect tab surface', async 
   const globalSelector = '.plugin-parameter-ui .parameter-row';
   const specificity = selector =>
     (selector.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) || []).length;
-  assert.match(globalCss,
+  assert.match(controlsCss,
     /\.plugin-parameter-ui \.parameter-row\s*\{[^}]*display:\s*flex/s);
   const pluginUiRule = css.match(/\.phase-select-eq-plugin-ui\s*\{([^}]*)\}/)?.[1] || '';
   const editorRule = css.match(/\.phase-select-eq-editor\s*\{([^}]*)\}/)?.[1] || '';
-  const standardRowRule = globalCss.match(
+  const standardRowRule = controlsCss.match(
     /\.plugin-parameter-ui \.parameter-row\s*\{([^}]*)\}/)?.[1] || '';
   const standardMargin = standardRowRule.match(/\bmargin:\s*([^;]+);/)?.[1];
   assert.equal(standardMargin, '2px 0');

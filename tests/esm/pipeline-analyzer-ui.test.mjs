@@ -16,6 +16,7 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
   const analyzerCss = fs.readFileSync(new URL('../../css/pipeline-analyzer.css', import.meta.url), 'utf8');
   const sharedCss = fs.readFileSync(new URL('../../css/effetune.css', import.meta.url), 'utf8');
+  const controlsCss = fs.readFileSync(new URL('../../css/parameter-controls.css', import.meta.url), 'utf8');
   const mobileCss = fs.readFileSync(new URL('../../css/effetune-mobile.css', import.meta.url), 'utf8');
   const uiSource = fs.readFileSync(new URL('../../js/pipeline-analyzer/ui.js', import.meta.url), 'utf8');
   const uiManagerSource = fs.readFileSync(new URL('../../js/ui-manager.js', import.meta.url), 'utf8');
@@ -54,7 +55,8 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(analyzerCss, /\.pipeline-analyzer-display-control\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:[^;]+;[^}]*gap:\s*10px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-display-control\s*\{[^}]*font-size:\s*12px;/s);
   assert.match(analyzerCss, /\.pipeline-analyzer-display-control input\[type='range'\]\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*120px;/s);
-  assert.match(sharedCss, /\.parameter-row label\s*\{[^}]*width:\s*120px;/s);
+  assert.match(sharedCss, /@import url\("parameter-controls\.css"\);/);
+  assert.match(controlsCss, /\.parameter-row label\s*\{[^}]*width:\s*120px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-curve(?::hover|\.is-selected)/);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-cursor-line/);
   assert.match(analyzerCss, /\.pipeline-analyzer-legend-row\s*\{[^}]*cursor:\s*default;/s);
@@ -72,10 +74,10 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option:hover,/);
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option:checked,/);
   assert.match(sharedCss, /\.pipeline-analyzer-panel input\[type="number"\],\s*\.pipeline-analyzer-panel select,/);
-  assert.match(sharedCss, /\.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*padding:\s*4px;[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;/s);
-  assert.match(sharedCss, /\.plugin-parameter-ui select,\s*\.pipeline-analyzer-panel select[^{}]*\{[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;[^}]*padding:\s*4px;/s);
-  assert.match(sharedCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;/s);
-  assert.match(sharedCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.pipeline-analyzer-panel input\[type="number"\],[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
+  assert.match(controlsCss, /\.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*padding:\s*4px;[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;/s);
+  assert.match(controlsCss, /\.plugin-parameter-ui select,\s*\.pipeline-analyzer-panel select[^{}]*\{[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;[^}]*padding:\s*4px;/s);
+  assert.match(controlsCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;/s);
+  assert.match(controlsCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.pipeline-analyzer-panel input\[type="number"\],[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px)/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel select\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px|border-radius:\s*4px)/s);
   assert.doesNotMatch(analyzerCss, /pipeline-analyzer-(?:status|warnings|provenance|graph-empty|stale-badge)/);

@@ -6,6 +6,7 @@ const {
   session,
   Tray,
   Menu,
+  clipboard,
   dialog,
   ipcMain,
   nativeImage,
@@ -35,6 +36,7 @@ const ipcHandlers = require('./ipc-handlers');
 const visualizerFeed = require('./visualizer-feed');
 const { createBrowserController } = require('./browser-controller.cjs');
 const fileHandlers = require('./file-handlers');
+const fileAccess = require('./file-access.cjs');
 const { queueAutoRestart } = require('./relaunch');
 const { initializeGpuAcceleration } = require('./gpu-acceleration.cjs');
 const { createLibraryDialogTranslator } = require('./library-dialog-localization.cjs');
@@ -51,6 +53,9 @@ const {
   registerOpenHomeIpc
 } = require('./openhome-control-host.cjs');
 const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
+const { LocalOpenHomePlayer } = require('./pwa-network-host.cjs');
+const { NetworkMusicHost, registerNetworkMusicIpc } = require('./network-music-host.cjs');
+const { registerIntegratedRemoteClientIpc } = require('./remote-client-window.cjs');
 const releaseVersionModulePromise = import(pathToFileURL(
   path.join(__dirname, '../js/release-version.mjs')
 ).href);
@@ -68,9 +73,12 @@ function isSupportedPlaybackAudioPath(filePath) {
 }
 
 let themeRegistry;
+let browserController;
 
 function applyNativeTheme(config) {
-  nativeTheme.themeSource = themeRegistry.getThemePreset(config?.theme).colorScheme;
+  const preset = themeRegistry.getThemePreset(config?.theme);
+  nativeTheme.themeSource = preset.colorScheme;
+  void browserController?.updateTheme(preset);
 }
 
 let tray = null;
@@ -119,6 +127,9 @@ let libraryCatalogRecovery = null;
 let disposeLibraryCatalogRecoveryIpc = null;
 let libraryCatalogClosePromise = null;
 let openHomeControlHost = null;
+let networkMusicHost = null;
+let disposeNetworkMusicIpc = null;
+let disposeIntegratedRemoteClientIpc = null;
 let disposeOpenHomeIpc = null;
 let remoteControlHost = null;
 let disposeRemoteControlIpc = null;
@@ -221,6 +232,7 @@ async function openLibraryCatalogServices({ catalogDirectory, catalogPath }) {
   disposeLibraryCatalogControlIpc = disposeControlIpc;
   disposeLibraryServiceIpc = disposeServiceIpc;
   published = true;
+  networkMusicHost?.emitState();
   disposeLibraryCatalogFailureListener = () => {
     utilityHost.repository.removeListener('failure', handleFailure);
   };
@@ -245,6 +257,12 @@ async function closeApplicationServices() {
   disposePowerMonitorEvents = null;
   disposeOpenHomeIpc?.();
   disposeOpenHomeIpc = null;
+  disposeNetworkMusicIpc?.();
+  disposeNetworkMusicIpc = null;
+  disposeIntegratedRemoteClientIpc?.();
+  disposeIntegratedRemoteClientIpc = null;
+  const musicHost = networkMusicHost;
+  networkMusicHost = null;
   const openHomeHost = openHomeControlHost;
   openHomeControlHost = null;
   const remoteHost = remoteControlHost;
@@ -252,7 +270,7 @@ async function closeApplicationServices() {
   const playbackSource = alacPlaybackSource;
   alacPlaybackSource = null;
   appServicesClosePromise = Promise.all([
-    closeLibraryCatalogRecovery(),
+    Promise.resolve(musicHost?.dispose()).then(() => closeLibraryCatalogRecovery()),
     openHomeHost?.dispose(),
     remoteHost?.dispose(),
     playbackSource?.dispose()
@@ -519,8 +537,13 @@ function createWindow() {
       (permission === 'display-capture' && webContents === mainWindow.webContents));
   });
 
-  createBrowserController({
-    mainWindow, WebContentsView, session, ipcMain, shell, components,
+  browserController = createBrowserController({
+    mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, components,
+    translate: createLibraryDialogTranslator({
+      getLanguagePreference: () => constants.getAppConfig()?.language,
+      getSystemLocale: () => app.getLocale()
+    }),
+    themePreset: themeRegistry.getThemePreset(constants.getAppConfig().theme),
     allowStartupCapture: constants.getAppConfig().startupView === 'browser',
     getSettings: () => constants.getAppConfig().browser,
     saveSettings: browser => {
@@ -1410,6 +1433,7 @@ async function initializeApp() {
     constants,
     config: configModule,
     getMainWindow: () => constants.getMainWindow(),
+    onFriendlyNameChanged: () => networkMusicHost?.refreshFriendlyName(),
     onDiagnostic: code => console.error('OpenHome diagnostic:', code)
   });
   disposeOpenHomeIpc = registerOpenHomeIpc({
@@ -1418,12 +1442,46 @@ async function initializeApp() {
     getMainWindow: () => constants.getMainWindow()
   });
 
+  const localPlayer = new LocalOpenHomePlayer(openHomeControlHost);
+  networkMusicHost = new NetworkMusicHost({
+    localPlayer,
+    getFriendlyName: () => openHomeControlHost.getFriendlyName(),
+    getCatalog: async (initialize = true) => {
+      if (initialize) await libraryCatalogRecovery.initialize();
+      else if (!libraryCatalogUtilityHost) return null;
+      if (!libraryCatalogUtilityHost) throw new Error('Music library is unavailable');
+      return libraryCatalogUtilityHost;
+    },
+    loadConfig: () => configModule.loadConfig(),
+    saveConfig: next => { configModule.saveConfig(next); constants.setAppConfig(next); },
+    onDiagnostic: error => console.error('Network music diagnostic:', error)
+  });
+  disposeNetworkMusicIpc = registerNetworkMusicIpc({ ipcMain, host: networkMusicHost, getMainWindow: () => constants.getMainWindow() });
+  disposeIntegratedRemoteClientIpc = registerIntegratedRemoteClientIpc({ ipcMain, app, getMainWindow: () => constants.getMainWindow(), getPairingEndpoint: playerId => networkMusicHost?.discovery.remoteControlEndpoint(playerId) });
+  void networkMusicHost.start().catch(error => console.error('Network music startup diagnostic:', error));
+
   // LAN remote control (remote-v1). IPC is always registered; the server
   // runs while Settings > Remote Control is on (or EFFETUNE_REMOTE=1 / --remote).
   remoteControlHost = new RemoteControlHost({
     app,
     getMainWindow: () => constants.getMainWindow(),
     config: configModule,
+    discovery: networkMusicHost.discovery,
+    networkMusic: networkMusicHost,
+    localPlayer,
+    getPlayerId: () => `uuid:${openHomeControlHost.ensureDeviceId().openHomeDeviceId}`,
+    approvePairing: async ({ address, clientName, signal }) => {
+      const window = constants.getMainWindow();
+      if (!window || window.isDestroyed() || signal.aborted) return false;
+      const translate = createLibraryDialogTranslator({ getLanguagePreference: () => constants.getAppConfig()?.language, getSystemLocale: () => app.getLocale() });
+      const text = key => translate(`dialog.remoteControl.${key}`);
+      const result = await dialog.showMessageBox(window, {
+        type: 'question', title: text('pairingRequestTitle'), message: text('pairingRequestMessage'),
+        detail: `${clientName ? `${clientName}\n` : ''}${address}\n\n${text('pairingRequestDetail')}`,
+        buttons: [text('pairingRequestDeny'), text('pairingRequestAllow')], defaultId: 0, cancelId: 0, noLink: true, signal
+      });
+      return !signal.aborted && result.response === 1;
+    },
     log: (...args) => console.log(...args)
   });
   disposeRemoteControlIpc = registerRemoteControlIpc({
@@ -1550,6 +1608,7 @@ app.on('open-file', async (event, path) => {
     try {
       // Check if file exists
       if (fs.existsSync(path)) {
+        fileAccess.grantRead(path);
         // If a preset file is specified, don't load previous pipeline state
         constants.setShouldLoadPipelineState(false);
         

@@ -155,6 +155,7 @@ async function loadCssInApplicationOrder(page) {
     .map(line => line.trim().split(':', 1)[0]);
   for (const path of [
     'css/effetune-theme.css',
+    'css/parameter-controls.css',
     'css/effetune.css',
     'css/effetune-mobile.css',
     'css/effetune-library.css',

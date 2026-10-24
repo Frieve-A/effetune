@@ -1,0 +1,37 @@
+.pwa-device-dialog {
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--et-border-strong);
+  border-radius: 8px;
+  background: var(--et-surface-13);
+  color: var(--et-text-primary);
+  font: inherit;
+}
+.pwa-device-dialog::backdrop { background: color-mix(in srgb, var(--et-base) 75%, transparent); }
+.pwa-device-dialog h2 { margin: 0 0 16px; font-size: 20px; }
+.pwa-device-dialog p { color: var(--et-text-secondary); font-size: 13px; line-height: 1.5; }
+.pwa-device-dialog label { display: block; font-size: 13px; }
+.pwa-device-dialog input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--et-surface-28);
+  border-radius: 4px;
+  background: var(--et-input-gradient);
+  color: var(--et-text-primary);
+  font: inherit;
+}
+.pwa-device-dialog input:focus { outline: none; border-color: var(--et-accent); box-shadow: var(--et-focus-ring); }
+.pwa-device-actions, .pwa-device-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pwa-device-actions .header-button, .pwa-device-row .header-button { width: auto; height: auto; min-height: 32px; white-space: normal; }
+.pwa-device-row > span { flex: 1 1 100%; overflow-wrap: anywhere; }
+.pwa-device-list { margin-top: 20px; border-top: 1px solid var(--et-border-strong); }
+.pwa-device-list:empty { display: none; }
+.pwa-device-dialog video { width: 100%; max-height: 240px; margin-top: 12px; }
+.pwa-device-dialog [hidden] { display: none !important; }

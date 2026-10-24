@@ -18,8 +18,16 @@ const REPLY_OPS = {
     getPreset: 'preset',
     presets: 'presets',
     listIRs: 'irs',
-    describeEffects: 'effects'
+    describeEffects: 'effects',
+    listMusicDevices: 'musicResult',
+    browseMusic: 'musicResult',
+    getPlayback: 'musicResult',
+    playMusic: 'musicResult',
+    queueMusic: 'musicResult',
+    controlPlayback: 'musicResult',
+    editPlaybackQueue: 'musicResult'
 };
+const MUSIC_MUTATIONS = new Set(['playMusic', 'queueMusic', 'controlPlayback', 'editPlaybackQueue']);
 
 // Accepts the pairing link (http://host:port/?t=token) or a ws:// URL.
 export function toWebSocketUrl(link) {
@@ -38,11 +46,12 @@ export function toWebSocketUrl(link) {
 }
 
 export class EffeTuneClient {
-    constructor({ url, clientName = 'effetune-mcp', clientVersion = '0.0.0', WebSocketImpl = WebSocket } = {}) {
+    constructor({ url, clientName = 'effetune-mcp', clientVersion = '0.0.0', WebSocketImpl = WebSocket, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
         this.url = url;
         this.clientName = clientName;
         this.clientVersion = clientVersion;
         this.WebSocketImpl = WebSocketImpl;
+        this.requestTimeoutMs = requestTimeoutMs;
         this.ws = null;
         this.connecting = null;
         this.seq = 0;
@@ -56,6 +65,8 @@ export class EffeTuneClient {
     get features() { return this.hello?.features || []; }
 
     hasFeature(name) { return this.features.includes(name); }
+
+    isOpen() { return this.ws?.readyState === this.WebSocketImpl.OPEN && this.hello !== null; }
 
     // Connects (once) and says hello. Later calls reuse the open socket.
     async connect() {
@@ -130,7 +141,13 @@ export class EffeTuneClient {
         this.lastCloseCode = code;
         this.ws = null;
         this.hello = null;
-        for (const seq of [...this.pending.keys()]) this.settle(seq, new Error(closeReason(code)));
+        for (const seq of [...this.pending.keys()]) this.settle(seq, this.transportError(seq, new Error(closeReason(code))));
+    }
+
+    transportError(seq, error) {
+        const pending = this.pending.get(seq);
+        if (!pending?.possiblySent || !MUSIC_MUTATIONS.has(pending.op)) return error;
+        return Object.assign(new Error(error.message, { cause: error }), { outcome: 'unknown' });
     }
 
     settle(seq, error) {
@@ -144,21 +161,32 @@ export class EffeTuneClient {
     }
 
     // Sends one request and resolves with { ack, data } once it is answered.
-    send(message, { timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+    send(message, { timeoutMs = this.requestTimeoutMs } = {}) {
         const ws = this.ws;
         // The app may close right after the upgrade (4401 for a wrong token): report why.
         if (ws && ws.readyState === this.WebSocketImpl.CLOSING) {
-            return new Promise((_, reject) => ws.once('close', code => reject(new Error(closeReason(code)))));
+            return new Promise((_, reject) => {
+                const onClose = code => { clearTimeout(timer); reject(new Error(closeReason(code))); };
+                const timer = setTimeout(() => { ws.removeListener('close', onClose); reject(new Error(`timeout waiting for ${message.op}`)); }, timeoutMs);
+                ws.once('close', onClose);
+            });
         }
         if (!ws || ws.readyState !== this.WebSocketImpl.OPEN) {
             return Promise.reject(new Error(this.lastCloseCode === null ? 'not connected' : closeReason(this.lastCloseCode)));
         }
         const seq = ++this.seq;
         const replyOp = Object.hasOwn(REPLY_OPS, message.op) ? REPLY_OPS[message.op] : (KNOWN_ACK_ONLY.has(message.op) ? null : undefined);
+        const payload = JSON.stringify({ ...message, seq });
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => this.settle(seq, new Error(`timeout waiting for ${message.op}`)), timeoutMs);
-            this.pending.set(seq, { resolve, reject, timer, replyOp, ack: null, data: null });
-            ws.send(JSON.stringify({ ...message, seq }));
+            const timer = setTimeout(() => this.settle(seq, this.transportError(seq, new Error(`timeout waiting for ${message.op}`))), timeoutMs);
+            this.pending.set(seq, { resolve, reject, timer, op: message.op, possiblySent: true, replyOp, ack: null, data: null });
+            try {
+                ws.send(payload, error => {
+                    if (error) this.settle(seq, this.transportError(seq, error));
+                });
+            } catch (error) {
+                this.settle(seq, this.transportError(seq, error));
+            }
         });
     }
 

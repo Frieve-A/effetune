@@ -23,13 +23,9 @@ const {
 
 // Import file handlers
 const fileHandlers = require('./file-handlers');
+const fileAccess = require('./file-access.cjs');
 
-const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = new Set([
-  'effetune_presets.json',
-  'effetune_plugin_presets.json',
-  'player-state.json',
-  'effetune_dbt_tests.json'
-]);
+const SETTINGS_DIR_SAVE_FILE_ALLOWLIST = fileAccess.SETTINGS_FILES;
 const SETTINGS_DIR_SAVE_FILE_DENIAL = 'Writing to the EffeTune settings folder is not allowed: library-folders.json and other settings files are managed by the application';
 const ATOMIC_FILE_WRITE_MAX_CHARS = 64 * 1024;
 const NO_AUDIO_INPUT_DEVICE_ID = '__effetune_no_audio_input__';
@@ -562,7 +558,7 @@ function createApplicationMenuTemplate(menuState = {}) {
           }
         }),
         item('settings.frequencyResponseMeasurement', {
-          label: 'Frequency Response Measurement',
+          label: 'Acoustic Measurement',
           click: () => {
             const mainWin = constants.getMainWindow();
             if (!mainWin) return;
@@ -631,6 +627,23 @@ function refreshMenu() {
 
 // Register all IPC handlers
 function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
+  const fileIpc = {
+    handle(channel, action) {
+      ipcMain.handle(channel, (event, ...args) => {
+        fileAccess.assertSender(event, constants.getMainWindow());
+        return action(event, ...args);
+      });
+    }
+  };
+  const assertFile = (filePath, mode = 'read') => fileAccess.assertPath(filePath, mode, fileHandlers.getUserDataPath());
+  ipcMain.on('grant-dropped-file', (event, filePath) => {
+    event.returnValue = false;
+    try {
+      fileAccess.assertSender(event, constants.getMainWindow());
+      fileAccess.grantRead(filePath);
+      event.returnValue = true;
+    } catch (error) { console.error('Dropped file access failed:', error); }
+  });
   registerIrLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath });
   registerSfzLibraryIpc({ ipcMain, getUserDataPath: fileHandlers.getUserDataPath,
     showOpenDialog: fileHandlers.showOpenDialog });
@@ -729,24 +742,27 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
 
 
   // File dialog operations
-  ipcMain.handle('show-save-dialog', async (event, options) => {
+  fileIpc.handle('show-save-dialog', async (event, options) => {
     return await fileHandlers.showSaveDialog(options);
   });
 
-  ipcMain.handle('show-open-dialog', async (event, options) => {
+  fileIpc.handle('show-open-dialog', async (event, options) => {
     return await fileHandlers.showOpenDialog(options);
   });
 
-  ipcMain.handle('open-playback-selection', async () => {
+  fileIpc.handle('open-playback-selection', async () => {
     return await fileHandlers.openPlaybackSelection();
   });
 
-  ipcMain.handle('prepare-local-playback-source', async (event, filePath) => {
-    return await alacPlaybackSource.prepare(filePath);
+  fileIpc.handle('prepare-local-playback-source', async (event, filePath) => {
+    assertFile(filePath);
+    const result = await alacPlaybackSource.prepare(filePath);
+    if (result?.success && result.path) fileAccess.grantRead(result.path);
+    return result;
   });
 
   // File operations
-  ipcMain.handle('save-file', async (event, filePath, content) => {
+  fileIpc.handle('save-file', async (event, filePath, content) => {
     const denialReason = getSaveFileDenialReason(filePath);
     if (denialReason) {
       return {
@@ -754,15 +770,17 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
         error: denialReason
       };
     }
+    assertFile(filePath, 'write');
     return await fileHandlers.saveFile(filePath, content);
   });
 
-  ipcMain.handle('begin-atomic-file-write', async (event, filePath) => {
+  fileIpc.handle('begin-atomic-file-write', async (event, filePath) => {
     if (typeof filePath !== 'string' || filePath.trim() === '') {
       return { success: false, error: 'Invalid atomic file write target.' };
     }
     const denialReason = getSaveFileDenialReason(filePath);
     if (denialReason) return { success: false, error: denialReason };
+    assertFile(filePath, 'write');
     const token = crypto.randomUUID();
     const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${token}.tmp`);
     try {
@@ -779,7 +797,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
     }
   });
 
-  ipcMain.handle('write-atomic-file-chunk', async (event, token, chunk) => {
+  fileIpc.handle('write-atomic-file-chunk', async (event, token, chunk) => {
     const session = atomicFileWrites.get(token);
     if (!session || session.senderId !== (event?.sender?.id ?? 0) || typeof chunk !== 'string' ||
         chunk.length > ATOMIC_FILE_WRITE_MAX_CHARS) {
@@ -793,13 +811,14 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
     }
   });
 
-  ipcMain.handle('commit-atomic-file-write', async (event, token) => {
+  fileIpc.handle('commit-atomic-file-write', async (event, token) => {
     const session = atomicFileWrites.get(token);
     if (!session || session.senderId !== (event?.sender?.id ?? 0)) {
       return { success: false, error: 'Invalid atomic file write session.' };
     }
     atomicFileWrites.delete(token);
     try {
+      assertFile(session.filePath, 'write');
       await session.handle.sync();
       await session.handle.close();
       await fs.promises.rename(session.tempPath, session.filePath);
@@ -811,7 +830,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
     }
   });
 
-  ipcMain.handle('abort-atomic-file-write', async (event, token) => {
+  fileIpc.handle('abort-atomic-file-write', async (event, token) => {
     const session = atomicFileWrites.get(token);
     if (!session || session.senderId !== (event?.sender?.id ?? 0)) return { success: true };
     atomicFileWrites.delete(token);
@@ -820,15 +839,17 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
     return { success: true };
   });
 
-  ipcMain.handle('read-file', async (event, filePath) => {
+  fileIpc.handle('read-file', async (event, filePath) => {
+    assertFile(filePath);
     return await fileHandlers.readFile(filePath);
   });
 
   registerClipboardIpcHandlers(ipcMain, clipboard);
-  ipcMain.handle('read-track-lyrics', async (event, request) => {
+  fileIpc.handle('read-track-lyrics', async (event, request) => {
     if (!request || typeof request !== 'object' || Array.isArray(request)) {
       throw new TypeError('Track lyrics request is invalid');
     }
+    assertFile(request.path);
     const pool = new MetadataWorkerPool({ workerCount: 2 });
     try {
       const result = await pool.parse({
@@ -842,7 +863,8 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       await pool.close();
     }
   });
-  ipcMain.handle('read-track-tags', async (event, filePath) => {
+  fileIpc.handle('read-track-tags', async (event, filePath) => {
+    assertFile(filePath);
     const metadataPool = new MetadataWorkerPool({ workerCount: 2 });
     const artworkPool = new ArtworkWorkerPool({ workerCount: 1 });
     try {
@@ -863,13 +885,14 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       await Promise.all([metadataPool.close(), artworkPool.close()]);
     }
   });
-  ipcMain.handle('read-file-bytes', async (event, filePath, expectedByteLength) => {
+  fileIpc.handle('read-file-bytes', async (event, filePath, expectedByteLength) => {
     if (expectedByteLength !== undefined &&
         (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0)) {
       const error = new TypeError('Expected file size must be a nonnegative safe integer');
       error.code = 'ERR_INVALID_EXPECTED_BYTE_LENGTH';
       throw error;
     }
+    assertFile(filePath);
     return await readFileBytes(filePath, expectedByteLength);
   });
 
@@ -1016,6 +1039,11 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       // The Browser controller owns this independently saved settings area.
       if (Object.hasOwn(stored, 'browser')) current.browser = stored.browser;
       else delete current.browser;
+      // Sharing and its identity belong to the network music host.
+      for (const key of ['networkMusicDeviceId', 'networkMusicSharing']) {
+        if (Object.hasOwn(stored, key)) current[key] = stored[key];
+        else delete current[key];
+      }
       const saved = config.saveConfig(current);
       if (saved !== true) {
         return { success: false, error: 'Failed to write config file' };
@@ -1119,7 +1147,8 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   });
 
   // Handle file exists request
-  ipcMain.handle('fileExists', (event, filePath) => {
+  fileIpc.handle('fileExists', (event, filePath) => {
+    assertFile(filePath);
     return fileHandlers.fileExists(filePath);
   });
 
@@ -1152,7 +1181,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
         return { success: true };
       } catch (error) {
         console.error('Failed to open Frequency Response Measurement:', error);
-        return { success: false, error: 'Frequency Response Measurement could not be opened.' };
+        return { success: false, error: 'Acoustic Measurement could not be opened.' };
       }
     })().finally(() => {
       openMeasurementNavigation = null;

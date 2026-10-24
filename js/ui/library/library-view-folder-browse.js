@@ -1,3 +1,4 @@
+import { libraryFolderCells, createLibraryBreadcrumbs } from './library-view-components.js';
 import { escapeHtml } from '../../utils/escape-html.js';
 import { createFolderNavigationKey, isMobileLayout } from './library-view-shared.js';
 
@@ -5,9 +6,6 @@ export const folderBrowseMethods = {
   createFolderBrowseHeaderControls() {
     const controls = document.createElement('div');
     controls.className = 'library-folder-browse-controls';
-    const breadcrumbs = document.createElement('nav');
-    breadcrumbs.className = 'library-folder-breadcrumbs';
-    breadcrumbs.setAttribute('aria-label', this.detail.title || this.t('library.nav.folders'));
     const segments = this.detail.path ? this.detail.path.split('/') : [];
     const crumbs = [{ label: this.detail.title || this.t('library.nav.folders'), path: '' }];
     let pathValue = '';
@@ -15,25 +13,7 @@ export const folderBrowseMethods = {
       pathValue = pathValue === '' ? segment : `${pathValue}/${segment}`;
       crumbs.push({ label: segment, path: pathValue });
     }
-    const visibleCrumbs = crumbs.length <= 4
-      ? crumbs
-      : [crumbs[0], crumbs[1], { label: '…', path: null }, ...crumbs.slice(-2)];
-    visibleCrumbs.forEach((crumb, index) => {
-      if (index > 0) breadcrumbs.append(' / ');
-      if (crumb.path === null) {
-        const ellipsis = document.createElement('span');
-        ellipsis.textContent = crumb.label;
-        breadcrumbs.appendChild(ellipsis);
-        return;
-      }
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'library-folder-breadcrumb';
-      button.textContent = crumb.label;
-      button.disabled = crumb.path === this.detail.path;
-      button.addEventListener('click', () => this.navigateToFolderPath(crumb.path));
-      breadcrumbs.appendChild(button);
-    });
+    const breadcrumbs = createLibraryBreadcrumbs(crumbs, this.detail.title || this.t('library.nav.folders'), this.detail.path, path => this.navigateToFolderPath(path));
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'library-button library-folder-view-toggle';
@@ -205,11 +185,7 @@ export const folderBrowseMethods = {
       row.className = 'library-folder-directory-row';
       row.dataset.folderPath = deepestPath;
       row.dataset.folderFirstPath = firstPath;
-      row.innerHTML = `
-        <span class="library-folder-directory-icon" aria-hidden="true">📁</span>
-        <span class="library-folder-directory-name">${escapeHtml(segments.join(' / '))}</span>
-        <span class="library-folder-directory-count">${escapeHtml(String(child.recursiveTrackCount))}</span>
-      `;
+      row.innerHTML = libraryFolderCells(segments.join(' / '), child.recursiveTrackCount);
       row.addEventListener('click', () => this.navigateToFolderPath(deepestPath));
       list.appendChild(row);
     }

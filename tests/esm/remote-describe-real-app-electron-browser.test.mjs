@@ -72,9 +72,10 @@ test('the real app describes every key of every effect and hand-written ranges m
             },
             timeout: 30_000
         });
-        const hello = await waitForServer();
-        assert.ok(hello.features.includes('describe1'));
+        const initialHello = await waitForServer();
+        assert.ok(initialHello.features.includes('describe1'));
         const { effects } = await request('describeEffects');
+        const hello = await request('hello');
         assert.deepEqual(effects.map(e => e.nm), [...hello.effects].sort());
 
         assert.deepEqual(effects.filter(e => e.error || e.uiError).map(e => e.nm), []);

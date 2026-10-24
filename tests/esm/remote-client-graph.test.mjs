@@ -57,21 +57,20 @@ test('remote.html is a plain page: same-origin scripts only and no inline code',
     const html = fs.readFileSync(path.join(root, 'remote.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
     assert.match(html, /script-src 'self'(?!\s+['"]?(unsafe|https))/);
     assert.ok(!/unsafe-eval/.test(html));
-    // The server's header pins connect-src to its exact host; the meta policy only has to let a ws: URL
-    // through (WebKit does not count ws:// as 'self'), and policies intersect.
-    assert.match(html, /connect-src 'self' ws:(?=[;"])/);
-    assert.ok(!/connect-src[^;"]*(https?:|\*)/.test(html), 'the meta policy opens nothing beyond ws:');
+    // The server's header pins connect-src to its exact host and transport; policies intersect.
+    assert.match(html, /connect-src 'self' ws: wss:(?=[;"])/);
+    assert.ok(!/connect-src[^;"]*(https?:|\*)/.test(html), 'the meta policy permits only WebSocket transports');
     for (const tag of html.matchAll(/<script\b([^>]*)>/g)) {
         assert.match(tag[1], /\bsrc="/, `inline script: ${tag[0]}`);
     }
     assert.match(html, /<script type="module" src="js\/remote\/remote-client\.js">/);
 });
 
-// The generator's list, not the committed sw-precache.js: that file is regenerated at release.
-const { collectPrecacheUrls } = createRequire(import.meta.url)('../../scripts/generate-sw-precache.js');
+// The running host reads the generated file, so generator eligibility alone is insufficient.
+const { createStaticHandler } = createRequire(import.meta.url)('../../electron/remote-static-server.cjs');
 
 test('every file the page loads is in the precache list the desktop host serves', () => {
-    const listed = new Set(collectPrecacheUrls(root));
+    const listed = createStaticHandler({ root }).allowed;
     assert.ok(listed.has('remote.html'));
     assert.ok(listed.has('css/effetune-remote.css'));
     const html = fs.readFileSync(path.join(root, 'remote.html'), 'utf8');

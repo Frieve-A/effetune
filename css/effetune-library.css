@@ -1824,3 +1824,32 @@ body.layout-mobile .library-paged-folder-row > .library-badge {
 body.layout-mobile .library-paged-folder-row > .library-paged-folder-actions {
   display: flex;
 }
+
+.library-source {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: var(--library-muted);
+  font-size: 12px;
+}
+
+.library-source .library-entity-sort-select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.library-pagination {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+body.layout-mobile .library-source {
+  flex: 0 0 160px;
+  margin: 0;
+}
+
+body.layout-mobile .library-source > span {
+  display: none;
+}

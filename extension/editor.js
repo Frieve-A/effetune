@@ -10,6 +10,7 @@ import { TelemetryHub } from '../js/audio/telemetry-hub.js';
 import { installRangeFillStyling } from '../js/ui/range-fill.js';
 import { installRangePrecisionControl } from '../js/ui/range-precision-controller.js';
 import { applySerializedState, getSerializablePluginStateShort, convertShortToLongFormat } from '../js/utils/serialization-utils.js';
+import { parseCommentedJSON } from '../js/utils/parse-commented-json.js';
 import dataStorage, { MeasurementImportError } from '../features/measurement/dataStorage.js';
 import { ExtensionMobileShell } from './mobile-shell.js';
 import { createUserDataBackupAdapter } from '../js/user-data-backup/adapters.js';
@@ -65,14 +66,10 @@ export function selectEditorSnapshot(snapshot, sessionId) {
   };
 }
 
-function parseJson5Object(text) {
-  return JSON.parse(text.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
-}
-
 async function loadEnglishTranslations() {
   try {
     const response = await fetch('js/locales/en.json5');
-    return response.ok ? parseJson5Object(await response.text()) : {};
+    return response.ok ? parseCommentedJSON(await response.text()) : {};
   } catch (error) {
     console.error('[EffeTune extension] English translations could not be loaded', error);
     return {};

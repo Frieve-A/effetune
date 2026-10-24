@@ -424,12 +424,22 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
-function createOpenHomeBridge(calls) {
+function createOpenHomeBridge(calls, status = { localControlEnabled: false }) {
+  const statusListeners = new Set();
   const subscribe = name => listener => {
     calls.push([`openHome.${name}`, listener]);
     return () => calls.push([`openHome.remove${name}`]);
   };
   return {
+    getStatus: async () => ({ ...status }),
+    onStatus(listener) {
+      statusListeners.add(listener);
+      return () => statusListeners.delete(listener);
+    },
+    async emitStatus(next) {
+      Object.assign(status, next);
+      await Promise.all([...statusListeners].map(listener => listener({ ...status })));
+    },
     rendererReady() {
       calls.push(['openHome.rendererReady']);
       return true;
@@ -1545,6 +1555,51 @@ test('shares URLs, opens music, manages presets, and creates audio players', asy
   }
 });
 
+test('initializing network playback preserves local player creation while a changed selection cancels it', async () => {
+  const originalLoadFiles = AudioPlayer.prototype.loadFiles;
+  const loaded = [];
+  AudioPlayer.prototype.loadFiles = function(files) { loaded.push(files); };
+  try {
+    for (const playerGeneration of [0, 1]) {
+      await withUIHarness({}, async ({ manager }) => {
+        manager.networkMusic = undefined;
+        const files = ['initial.wav'];
+        const pending = manager.createAudioPlayer(files);
+        manager.networkMusic = { selectedPlayerId: playerGeneration ? 'remote' : 'local', playerGeneration };
+        const player = await pending;
+        assert.equal(player !== null, playerGeneration === 0);
+        assert.equal(manager.audioPlayer !== null, playerGeneration === 0);
+      });
+    }
+    assert.deepEqual(loaded, [['initial.wav']]);
+  } finally {
+    AudioPlayer.prototype.loadFiles = originalLoadFiles;
+  }
+});
+
+test('web selection survives network initialization but cancels real target changes across both waits', async () => {
+  for (const stage of ['resolve', 'create']) {
+    for (const playerGeneration of [0, 1]) {
+      const loaded = [], file = { name: 'initial.wav' };
+      const target = { selectedPlayerId: playerGeneration ? 'remote' : 'local', playerGeneration };
+      const manager = Object.assign(Object.create(UIManager.prototype), {
+        playbackSelectionGeneration: 0,
+        playbackSelectionResolver: async () => {
+          if (stage === 'resolve') manager.networkMusic = target;
+          return { tracks: [file] };
+        },
+        createAudioPlayer: async () => {
+          if (stage === 'create') manager.networkMusic = target;
+          return { async loadFiles(files) { loaded.push(files); } };
+        },
+        setError() { assert.fail('A selection race must not produce an error'); }
+      });
+      assert.equal(await manager.openWebPlaybackSelection([file], true), playerGeneration === 0);
+      assert.deepEqual(loaded, playerGeneration === 0 ? [[file]] : []);
+    }
+  }
+});
+
 test('opening a web music file keeps Visualizer open and still selects Player from other views', async () => {
   for (const [initialView, expectedView] of [
     ['view-visualizer', 'view-visualizer'],
@@ -1565,6 +1620,65 @@ test('opening a web music file keeps Visualizer open and still selects Player fr
       assert.equal(document.body.classList.contains('view-visualizer'), initialView === 'view-visualizer');
     });
   }
+});
+
+test('local Remote Control starts and releases its renderer without enabling OpenHome advertisement', async () => {
+  const calls = [];
+  const bridge = createOpenHomeBridge(calls, { localControlEnabled: true });
+  await withUIHarness({ appConfig: { openHomeRemoteControl: false }, electronAPI: { openHomeV1: bridge } }, async ({ manager }) => {
+    assert.equal(manager.audioPlayer, null);
+    const player = await manager.setOpenHomeRemoteRuntimeReady();
+    assert.ok(player);
+    assert.equal(manager.openHomeRemoteControlEnabled, false);
+    assert.equal(manager.shouldRetainAudioPlayerForOpenHome(player), true);
+    assert.equal(calls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
+    await bridge.emitStatus({ localControlEnabled: false });
+    assert.equal(manager.audioPlayer, null);
+    assert.equal(calls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 1);
+  });
+});
+
+test('Remote Control status changes share renderer ownership with OpenHome advertisement', async () => {
+  const bridge = createOpenHomeBridge([]);
+  await withUIHarness({ appConfig: { openHomeRemoteControl: false }, electronAPI: { openHomeV1: bridge } }, async ({ manager }) => {
+    await manager.setOpenHomeRemoteRuntimeReady();
+    assert.equal(manager.audioPlayer, null);
+    await bridge.emitStatus({ localControlEnabled: true });
+    const player = manager.audioPlayer;
+    assert.ok(player);
+    await manager.setOpenHomeRemoteControlEnabled(true);
+    await bridge.emitStatus({ localControlEnabled: false });
+    assert.equal(manager.audioPlayer, player);
+    assert.equal(manager.shouldRetainAudioPlayerForOpenHome(player), true);
+    await manager.setOpenHomeRemoteControlEnabled(false);
+    assert.equal(manager.audioPlayer, null);
+  });
+});
+
+test('a newer Remote Control notification owns the renderer when the initial status arrives late', async () => {
+  const bridgeCalls = [], initialStatus = createDeferred();
+  const bridge = createOpenHomeBridge(bridgeCalls);
+  bridge.getStatus = () => initialStatus.promise;
+  await withUIHarness({ appConfig: { openHomeRemoteControl: false }, electronAPI: { openHomeV1: bridge } }, async ({ manager, calls }) => {
+    const ready = manager.setOpenHomeRemoteRuntimeReady();
+    await bridge.emitStatus({ localControlEnabled: true });
+    const player = manager.audioPlayer;
+    assert.ok(player);
+    initialStatus.resolve({ localControlEnabled: false });
+    assert.equal(await ready, player);
+    assert.equal(manager.audioPlayer, player);
+    assert.equal(manager.shouldRetainAudioPlayerForOpenHome(player), true);
+    assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererReady').length, 1);
+    assert.equal(bridgeCalls.filter(call => call[0] === 'openHome.rendererUnavailable').length, 0);
+
+    const pageHide = calls.findLast(call => call[0] === 'window.addEventListener' && call[1] === 'pagehide');
+    assert.ok(pageHide);
+    pageHide[2]();
+    await bridge.emitStatus({ localControlEnabled: false });
+    assert.equal(manager.openHomeLocalControlEnabled, true, 'Page teardown unsubscribes from later host status changes');
+    assert.equal(manager.audioPlayer, player);
+    player.close({ force: true });
+  });
 });
 
 test('saved OpenHome enablement waits for runtime readiness before creating its renderer', async () => {

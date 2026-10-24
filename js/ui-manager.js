@@ -1,4 +1,5 @@
 import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-stylesheets.js';
+import { parseCommentedJSON } from './utils/parse-commented-json.js';
 import { normalizeThemeId, getThemePreset } from './theme-registry.mjs';
 import { PluginListManager } from './ui/plugin-list-manager.js';
 import { PipelineManager } from './ui/pipeline-manager.js';
@@ -194,8 +195,10 @@ export class UIManager {
         // Audio player reference
         this.audioPlayer = null;
         this.openHomeRemoteControlEnabled = false;
+        this.openHomeLocalControlEnabled = false;
         this.openHomeRemoteRuntimeReady = false;
         this.openHomeRendererPlayer = null;
+        this.openHomeStatusUnsubscribe = null;
         this.miniPlayerMode = false;
         this.miniPlayerTargetMode = false;
         this.miniPlayerAlwaysOnTop = readStoredBoolean(MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY);
@@ -347,6 +350,7 @@ export class UIManager {
         this.localizationReady = this.initLocalization().then(() => {
             // Update UI texts after translations are loaded
             this.updateUITexts();
+            void this.initializeNetworkMusic();
             this.powerStateView?.setTranslator?.((key, fallback) => {
                 const translated = this.t?.(key);
                 return translated && translated !== key ? translated : fallback;
@@ -1201,13 +1205,7 @@ export class UIManager {
             // Get the JSON5 content as text
             const json5Content = await response.text();
 
-            // Remove comments from JSON5 (simple approach)
-            const jsonContent = json5Content
-                .replace(/\/\/.*$/gm, '') // Remove single-line comments
-                .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
-
-            // Parse the JSON content
-            this.englishTranslations = JSON.parse(jsonContent);
+            this.englishTranslations = parseCommentedJSON(json5Content);
 
             // If user language is English, set translations to English
             if (this.userLanguage === 'en') {
@@ -1257,13 +1255,7 @@ export class UIManager {
             // Get the JSON5 content as text
             const json5Content = await response.text();
 
-            // Remove comments from JSON5 (simple approach)
-            const jsonContent = json5Content
-                .replace(/\/\/.*$/gm, '') // Remove single-line comments
-                .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
-
-            // Parse the JSON content
-            publishTranslations(JSON.parse(jsonContent));
+            publishTranslations(parseCommentedJSON(json5Content));
         } catch (error) {
             console.error(`Error loading translations for ${targetLocale}:`, error);
             // Fall back to English translations
@@ -1336,6 +1328,7 @@ export class UIManager {
         this.updatePipelineEmptyContent();
         this.renderLibraryRecoveryShell();
         this.libraryView?.updateUITexts?.();
+        this.networkMusicView?.updateUITexts?.();
         this.visualizerView?.updateUITexts?.();
         const shareButton = document.getElementById('shareButton');
         this.stateManager?.updateLabels?.();
@@ -1731,6 +1724,11 @@ export class UIManager {
     }
 
     async openWebPlaybackSelection(files, gestureResume, { fileHandles = null } = {}) {
+        if (this.networkMusic && this.networkMusic.selectedPlayerId !== 'local') {
+            this.setError('networkMusic.libraryRequired', true);
+            return false;
+        }
+        const targetGeneration = this.networkMusic?.playerGeneration ?? 0;
         const selectedFiles = Array.from(files ?? []);
         const lrcFiles = selectedFiles.filter(file => fileExtension(file?.name) === 'lrc');
         files = selectedFiles.filter(file => fileExtension(file?.name) !== 'lrc');
@@ -1764,10 +1762,12 @@ export class UIManager {
                 Promise.resolve(gestureResume).then(value => value !== false, () => false)
             ]);
             if (generation !== this.playbackSelectionGeneration || controller.signal.aborted) return false;
+            if (targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return false;
 
             attachLyricsFiles(selection.tracks.map(track => track.file ?? track), lrcFiles);
 
             const player = await this.createAudioPlayer([], false);
+            if (targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return false;
             if (resumeReady) {
                 await player.loadFiles(selection.tracks, false);
             } else {
@@ -2088,6 +2088,7 @@ export class UIManager {
                 this.connectLibraryPlaybackBridge();
                 this.libraryView = this.createLibraryView(manager);
                 this.libraryView.mount();
+                this.networkMusicView?.attachLibrary(this.libraryView);
                 this.mobileNav?.attachLibraryView?.();
                 this.registerLibraryLifecycleCleanup();
                 return this.libraryManager;
@@ -2109,6 +2110,28 @@ export class UIManager {
 
     createLibraryManager() {
         return new this.libraryFeatureModules.LibraryManager({ uiManager: this });
+    }
+
+    async initializeNetworkMusic() {
+        if (this.networkMusic) return;
+        try {
+            const [{ NetworkMusicController }, { NetworkMusicView }] = await Promise.all([
+                import('./network-music/controller.js'), import('./network-music/view.js')
+            ]);
+            const api = window.electronAPI?.networkMusicGetState ? window.electronAPI
+                : new (await import('./network-music/pwa-transport.js')).PwaNetworkMusicTransport();
+            this.networkMusic = new NetworkMusicController({ api, uiManager: this });
+            this.networkMusicView = new NetworkMusicView({ controller: this.networkMusic, uiManager: this });
+            this.networkMusicView.mount();
+            if (this.libraryView) this.networkMusicView.attachLibrary(this.libraryView);
+            window.addEventListener('pagehide', () => {
+                this.networkMusicView.dispose();
+                this.networkMusic.dispose();
+            }, { once: true });
+            await this.networkMusic.initialize();
+        } catch (error) {
+            console.warn('Network music could not be initialized:', error);
+        }
     }
 
     createLibraryView(manager) {
@@ -2466,14 +2489,20 @@ export class UIManager {
 
     async setOpenHomeRemoteControlEnabled(enabled) {
         this.openHomeRemoteControlEnabled = enabled === true;
+        return this.updateOpenHomeRendererPlayer();
+    }
 
-        if (this.openHomeRemoteControlEnabled) {
+    async updateOpenHomeRendererPlayer() {
+        if (this.openHomeRemoteControlEnabled || this.openHomeLocalControlEnabled) {
             if (!this.openHomeRemoteRuntimeReady || !window.electronAPI?.openHomeV1) {
                 return this.audioPlayer;
             }
             const player = await this.createAudioPlayer([], false);
-            player.activateOpenHomePlaybackAdapter?.();
             this.openHomeRendererPlayer = player;
+            if (!this.openHomeRemoteControlEnabled && !this.openHomeLocalControlEnabled) {
+                return this.updateOpenHomeRendererPlayer();
+            }
+            player.activateOpenHomePlaybackAdapter?.();
             return player;
         }
 
@@ -2487,12 +2516,33 @@ export class UIManager {
 
     async setOpenHomeRemoteRuntimeReady() {
         this.openHomeRemoteRuntimeReady = true;
-        if (!this.openHomeRemoteControlEnabled) return this.audioPlayer;
-        return this.setOpenHomeRemoteControlEnabled(true);
+        const bridge = window.electronAPI?.openHomeV1;
+        if (bridge?.getStatus && !this.openHomeStatusUnsubscribe) {
+            let statusRevision = 0;
+            const applyStatus = status => {
+                statusRevision += 1;
+                const enabled = status?.localControlEnabled === true;
+                if (enabled === this.openHomeLocalControlEnabled) return this.audioPlayer;
+                this.openHomeLocalControlEnabled = enabled;
+                return this.updateOpenHomeRendererPlayer();
+            };
+            this.openHomeStatusUnsubscribe = bridge.onStatus?.(status => Promise.resolve(applyStatus(status)).catch(error => {
+                console.warn('Local playback control could not be updated:', error);
+            }));
+            const revision = statusRevision;
+            try {
+                const status = await bridge.getStatus();
+                if (revision === statusRevision) await applyStatus(status);
+            } catch (error) {
+                console.warn('Local playback control status could not be read:', error);
+            }
+            window.addEventListener?.('pagehide', () => this.openHomeStatusUnsubscribe?.(), { once: true });
+        }
+        return this.updateOpenHomeRendererPlayer();
     }
 
     shouldRetainAudioPlayerForOpenHome(player) {
-        return this.openHomeRemoteControlEnabled &&
+        return (this.openHomeRemoteControlEnabled || this.openHomeLocalControlEnabled) &&
             player === this.audioPlayer &&
             player === this.openHomeRendererPlayer;
     }
@@ -2503,6 +2553,11 @@ export class UIManager {
      * @param {boolean} replaceExisting - Whether to replace existing player or add to it
      */
     async createAudioPlayer(filePaths, replaceExisting = false) {
+        if (filePaths?.length && this.networkMusic && this.networkMusic.selectedPlayerId !== 'local') {
+            await this.networkMusic.playFiles(filePaths);
+            return this.audioPlayer;
+        }
+        const targetGeneration = this.networkMusic?.playerGeneration ?? 0;
         // If we already have an audio player and we're not replacing it,
         // just load the new files into the existing player
         if (this.audioPlayer && !replaceExisting) {
@@ -2521,6 +2576,7 @@ export class UIManager {
 
         // Load the player only when playback or remote control actually needs it.
         const AudioPlayer = await loadAudioPlayerClass();
+        if (filePaths?.length && targetGeneration !== (this.networkMusic?.playerGeneration ?? 0)) return null;
         if (this.audioPlayer && !replaceExisting) {
             if (filePaths && filePaths.length > 0) {
                 this.audioPlayer.loadFiles(filePaths, false);
@@ -2528,7 +2584,7 @@ export class UIManager {
             return this.audioPlayer;
         }
         this.audioPlayer = new AudioPlayer(this.audioManager);
-        if (this.openHomeRemoteControlEnabled && this.openHomeRemoteRuntimeReady) {
+        if ((this.openHomeRemoteControlEnabled || this.openHomeLocalControlEnabled) && this.openHomeRemoteRuntimeReady) {
             this.audioPlayer.activateOpenHomePlaybackAdapter?.();
             this.openHomeRendererPlayer = this.audioPlayer;
         }
@@ -2543,6 +2599,10 @@ export class UIManager {
         }
 
         return this.audioPlayer;
+    }
+
+    getPlaybackTarget() {
+        return this.audioPlayer?.ui?.audioPlayer ?? this.audioPlayer;
     }
 
     /**
@@ -2820,6 +2880,7 @@ export class UIManager {
             }
 
             // Only handle pipeline shortcuts when no modifier keys are pressed
+            if (this.networkMusic?.selectedPlayerId && this.networkMusic.selectedPlayerId !== 'local') return;
             if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) {
                 return;
             }

@@ -71,11 +71,11 @@ function isAllowedHost(header) {
 // An http(s) Origin must be this very server (same-origin page). A missing
 // Origin is a non-browser client (native apps, tests) and is allowed; the
 // literal "null" (sandboxed iframe, file:) and any other scheme are not.
-function isAllowedOrigin(origin, hostHeader) {
+function isAllowedOrigin(origin, hostHeader, secure = false) {
   if (origin === undefined) return true;
   if (typeof origin !== 'string') return false;
   const host = parseAllowedHost(hostHeader);
-  return host !== null && origin.toLowerCase() === `http://${host}`;
+  return host !== null && origin.toLowerCase() === `${secure ? 'https' : 'http'}://${host}`;
 }
 
 function loadAllowlist(root) {
@@ -106,7 +106,7 @@ function resolveRelativePath(rawUrl) {
   return { rel: rel === '' ? ENTRY : rel };
 }
 
-function createStaticHandler({ root, log = () => {} }) {
+function createStaticHandler({ root, log = () => {}, secure = false }) {
   const allowed = loadAllowlist(root);
   if (!allowed.has(ENTRY)) log(`[remote] ${ENTRY} is missing from the precache list; the browser client is unavailable`);
 
@@ -136,7 +136,7 @@ function createStaticHandler({ root, log = () => {} }) {
         'Content-Length': data.length,
         'Cache-Control': 'no-cache'
       };
-      if (rel === ENTRY) headers['Content-Security-Policy'] = `connect-src 'self' ws://${host}`;
+      if (rel === ENTRY) headers['Content-Security-Policy'] = `connect-src 'self' ${secure ? 'wss' : 'ws'}://${host}`;
       reply(res, 200, headers, req.method === 'HEAD' ? undefined : data);
     }).catch(() => {
       reply(res, 404, { 'Content-Type': 'text/plain' }, 'Not Found\n');

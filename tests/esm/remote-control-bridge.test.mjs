@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { startRemoteControl } from '../../js/remote/remote-control.js';
 import { IrLibraryStore } from '../../js/ir-library/ir-library-store.js';
+import { IrLibraryService } from '../../js/ir-library/service.js';
+import { identifySingleIr } from '../../js/ir-library/ir-library-id.js';
 import { HistoryManager } from '../../js/ui/pipeline/history-manager.js';
 import { PipelineItemBuilder } from '../../js/ui/pipeline/pipeline-item-builder.js';
 import { getSerializablePluginStateShort } from '../../js/utils/serialization-utils.js';
@@ -36,13 +38,17 @@ async function setup({ presets = { Demo: { plugins: [{ nm: 'Volume', en: true, v
     const published = [];
     const responses = [];
     const calls = [];
+    const pendingResponses = new Map();
     const api = {
         onRequest(callback) { api.request = callback; return () => {}; },
         onStatus(callback) { api.status = callback; return () => {}; },
         rendererReady: async () => ({ enabled: true }),
         rendererUnavailable: async () => {},
         publishState: async snapshot => { published.push(snapshot); },
-        respond: async response => { responses.push(response); },
+        respond: async response => {
+            responses.push(response);
+            pendingResponses.get(response.requestId)?.(response);
+        },
         notifyPresets: async () => { calls.push('notifyPresets'); },
         notifyIrs: async () => { calls.push('notifyIrs'); }
     };
@@ -122,13 +128,161 @@ async function setup({ presets = { Demo: { plugins: [{ nm: 'Volume', en: true, v
     // The safety poll would keep the test process alive; commits and requests are what is tested.
     clearInterval(controller.pollTimer);
     const ask = async message => {
-        const before = responses.length;
-        api.request({ requestId: `r${before}`, message });
-        for (let i = 0; i < 50 && responses.length === before; i += 1) await new Promise(resolve => setImmediate(resolve));
-        return responses[before];
+        const requestId = `r${responses.length}`;
+        let timer;
+        const response = new Promise((resolve, reject) => {
+            pendingResponses.set(requestId, resolve);
+            timer = setTimeout(() => reject(new Error(`No bridge response for ${message.op}`)), 2000);
+        });
+        try {
+            api.request({ requestId, message });
+            return await response;
+        } finally {
+            clearTimeout(timer);
+            pendingResponses.delete(requestId);
+        }
     };
-    return { controller, win, api, ask, published, calls, pipeline, audioManager, presetManager };
+    const dispose = () => {
+        controller.setActive(false);
+        clearTimeout(controller.publishTimer);
+        clearTimeout(controller.historyTimer);
+        controller.disposeRequestListener?.();
+        controller.disposeStatusListener?.();
+        controller.disposeIrWatch?.();
+    };
+    return { controller, win, api, ask, published, calls, pipeline, audioManager, presetManager, dispose };
 }
+
+function impulseWave(channels = 1, sample = 1000) {
+    const frames = 2, dataBytes = frames * channels * 2;
+    const bytes = new Uint8Array(44 + dataBytes), header = new DataView(bytes.buffer);
+    for (const [offset, text] of [[0, 'RIFF'], [8, 'WAVE'], [12, 'fmt '], [36, 'data']]) {
+        bytes.set(new TextEncoder().encode(text), offset);
+    }
+    header.setUint32(4, bytes.length - 8, true);
+    header.setUint32(16, 16, true);
+    header.setUint16(20, 1, true);
+    header.setUint16(22, channels, true);
+    header.setUint32(24, 48000, true);
+    header.setUint32(28, 48000 * channels * 2, true);
+    header.setUint16(32, channels * 2, true);
+    header.setUint16(34, 16, true);
+    header.setUint32(40, dataBytes, true);
+    header.setInt16(44, sample, true);
+    return bytes;
+}
+
+async function memoryIrLibrary() {
+    const files = new Map();
+    const backend = {
+        read: async name => files.get(name) ?? null,
+        exists: async name => files.has(name),
+        writeAtomic: async (name, bytes) => { files.set(name, bytes.slice()); },
+        remove: async name => { files.delete(name); },
+        list: async () => [...files.keys()],
+        cleanupTemporary: async () => {}
+    };
+    const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+    return { files, backend, store, service: new IrLibraryService(store, { onDiagnostic() {} }) };
+}
+
+test('the remote host rejects mismatched IR bytes before saving and returns a successfully imported original', async t => {
+    const { ask, win, dispose } = await setup();
+    t.after(dispose);
+    const { files, store, service } = await memoryIrLibrary();
+    win.irLibraryService = service;
+    const data = impulseWave();
+    const { irId } = await identifySingleIr(data);
+    const mismatch = await ask({ op: 'putIR', id: '0'.repeat(24), data, name: 'Room', ext: 'WAV' });
+    assert.equal(mismatch.ok, false);
+    assert.match(mismatch.error, /id mismatch/);
+    assert.deepEqual(store.list(), []);
+    assert.equal(files.size, 0, 'a hash mismatch must not reach the storage backend');
+    const uploaded = await ask({ op: 'putIR', id: irId, data, name: 'Room', ext: 'WAV' });
+    assert.equal(uploaded.ok, true);
+    assert.equal(store.list().length, 1);
+    assert.equal(service.get(irId).fileLabel, 'Room.wav');
+    const downloaded = await ask({ op: 'getIR', id: irId });
+    assert.equal(downloaded.ok, true);
+    assert.ok(downloaded.data instanceof Uint8Array);
+    assert.deepEqual(downloaded.data, data);
+    assert.equal(downloaded.name, 'Room.wav');
+    assert.equal(downloaded.ext, 'wav');
+});
+
+test('the remote host reports IR persistence failure and refuses to download a true-stereo pair', async t => {
+    const { ask, win, dispose } = await setup();
+    t.after(dispose);
+    const { files, backend, store, service } = await memoryIrLibrary();
+    win.irLibraryService = service;
+    const data = impulseWave();
+    const { irId } = await identifySingleIr(data);
+    const write = backend.writeAtomic;
+    backend.writeAtomic = async () => { throw new Error('storage unavailable'); };
+    const failed = await ask({ op: 'putIR', id: irId, data, name: 'Unsaved.wav', ext: 'wav' });
+    assert.equal(failed.ok, false);
+    assert.match(failed.error, /import failed/);
+    assert.deepEqual(store.list(), []);
+    assert.equal(files.size, 0);
+    backend.writeAtomic = write;
+    const pair = await service.importFiles([
+        new File([impulseWave(2, 1000)], 'Hall L.wav'), new File([impulseWave(2, 2000)], 'Hall R.wav')
+    ]);
+    assert.equal(pair.imported.length, 1);
+    assert.equal(pair.imported[0].composition, 'pair');
+    const readOriginal = t.mock.method(store, 'readOriginal', () => assert.fail('pair download must reject before reading either original'));
+    const rejected = await ask({ op: 'getIR', id: pair.imported[0].irId });
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.error, /pair entries are not supported/);
+    assert.equal(readOriginal.mock.callCount(), 0);
+});
+
+test('remote preset operations list loadable entries, read both formats and persist the client pipeline without changing host playback', async t => {
+    const short = [{ nm: 'Mute', en: true }];
+    const long = [{ name: 'Volume', enabled: false, parameters: { vl: -9 }, inputBus: 1, outputBus: 2, channel: 'R' }];
+    let saved = { Short: { plugins: short }, Long: { pipeline: long }, Unavailable: { plugins: [{ nm: 'Missing effect' }] } };
+    const { ask, pipeline, presetManager, calls, dispose } = await setup({ presets: saved });
+    t.after(dispose);
+    const live = new FakePlugin('Volume', 1);
+    live.parameters.vl = 3;
+    pipeline.push(live);
+    const current = getSerializablePluginStateShort(live);
+    const refreshed = [];
+    let failPersistence = false;
+    presetManager.getPresets = async () => structuredClone(saved);
+    presetManager.getLoadablePresets = async () => Object.fromEntries(Object.entries(saved).filter(([name]) => name !== 'Unavailable'));
+    presetManager.persistPresets = async next => {
+        if (failPersistence) throw new Error('preset storage unavailable');
+        saved = structuredClone(next);
+    };
+    presetManager.refreshPresetConsumers = async revision => refreshed.push(revision);
+    const listed = await ask({ op: 'listPresets' });
+    assert.equal(listed.ok, true);
+    assert.deepEqual(listed.names, ['Short', 'Long']);
+    const shortPreset = await ask({ op: 'getPreset', name: 'Short' });
+    const longPreset = await ask({ op: 'getPreset', name: 'Long' });
+    assert.equal(shortPreset.ok, true);
+    assert.equal(longPreset.ok, true);
+    assert.deepEqual(shortPreset.pipeline, short);
+    assert.deepEqual(longPreset.pipeline, [{ nm: 'Volume', en: false, vl: -9, ib: 1, ob: 2, ch: 'R' }]);
+    const supplied = [{ nm: 'Volume', en: false, vl: -12, ib: 2, ob: 1, ch: 'L' }];
+    assert.equal((await ask({ op: 'savePreset', name: '  Client mix  ', pipeline: supplied })).ok, true);
+    assert.deepEqual(saved['Client mix'], { plugins: supplied });
+    const retrieved = await ask({ op: 'getPreset', name: 'Client mix' });
+    assert.equal(retrieved.ok, true);
+    assert.deepEqual(retrieved.pipeline, supplied);
+    supplied[0].vl = -24;
+    assert.equal(saved['Client mix'].plugins[0].vl, -12, 'saved client values must be detached from the request');
+    failPersistence = true;
+    const failed = await ask({ op: 'savePreset', name: 'Unsaved mix', pipeline: [{ nm: 'Mute', en: true }] });
+    assert.equal(failed.ok, false);
+    assert.match(failed.error, /storage unavailable/);
+    assert.equal(Object.hasOwn(saved, 'Unsaved mix'), false);
+    assert.deepEqual(refreshed, [1], 'only a successful save refreshes preset consumers');
+    assert.deepEqual(pipeline, [live]);
+    assert.deepEqual(getSerializablePluginStateShort(live), current);
+    assert.equal(calls.some(call => /^(loadPreset:|commit:|worklet|saveState)/.test(call)), false);
+});
 
 function usePipelineHistory(win) {
     const { audioManager, pipelineManager, pluginManager } = win;
@@ -425,16 +579,7 @@ test('worklet commits and preset saves are announced without waiting for the pol
 
 test('an IR library change is announced to the host', async () => {
     const { controller, calls } = await setup();
-    const files = new Map();
-    const backend = {
-        read: async name => files.get(name) ?? null,
-        exists: async name => files.has(name),
-        writeAtomic: async (name, bytes) => { files.set(name, bytes); },
-        remove: async name => { files.delete(name); },
-        list: async () => [...files.keys()],
-        cleanupTemporary: async () => {}
-    };
-    const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+    const { store } = await memoryIrLibrary();
     const imported = await store.importSingle({ bytes: new TextEncoder().encode('bridge IR'), fileName: 'A.wav', analysis: {} });
     assert.equal(calls.filter(call => call === 'notifyIrs').length, 1);
     await store.remove(imported.entry.irId);

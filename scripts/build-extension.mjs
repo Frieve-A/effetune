@@ -105,7 +105,7 @@ export async function buildExtension() {
         'plugins/plugins.txt', 'plugins/dsp/effetune-dsp.wasm', 'plugins/dsp/effetune-dsp.simd.wasm',
         'plugins/dsp/effetune-dsp.meta.json', 'plugins/dsp/NOTICE.txt',
         ...vendorNotices.filter(([filename]) => scripts.has(filename)).map(([, notice]) => notice),
-        'css/effetune.css', 'css/effetune-theme.css', 'css/effetune-mobile.css', 'css/pipeline-analyzer.css',
+        'css/effetune.css', 'css/parameter-controls.css', 'css/effetune-theme.css', 'css/effetune-mobile.css', 'css/pipeline-analyzer.css',
         'css/user-data-backup.css', 'css/asset-library.css',
         'images/icon_128x128.png', 'images/icon_192x192.png', 'images/icon_64x64.png', 'LICENSE'
     ];

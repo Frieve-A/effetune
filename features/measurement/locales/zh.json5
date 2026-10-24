@@ -1,4 +1,84 @@
 {
+  "analysis:normalization": "归一化",
+  "analysis:normalizationNone": "无",
+  "analysis:normalizationGlobal": "整体峰值 = 0 dB",
+  "analysis:normalizationFrequency": "各频率峰值 = 0 dB",
+  "analysis:copyGraph": "复制图像",
+  "analysis:imageCopied": "已复制图表图像。",
+  "analysis:imageCopyFailed": "无法复制图像，请重试。",
+  "analysis:imageCopyUnavailable": "此浏览器不支持复制图像。请使用桌面应用或支持复制图像的浏览器。",
+  "analysis:imageCopyDenied": "剪贴板访问被拒绝。请允许访问剪贴板后重试。",
+  "analysis:mode": "分析模式",
+  "analysis:waterfallMode": "Waterfall",
+  "analysis:burstMode": "Burst Decay",
+  "analysis:depthUnit": "纵深轴",
+  "analysis:time": "时间",
+  "analysis:cycles": "周期数",
+  "analysis:elevation": "视角仰角",
+  "analysis:resetView": "重置视角",
+  "analysis:orbitHelp": "拖动以旋转，使用滚轮或 + / − 缩放。Shift + 方向键可旋转；Shift + Home 可重置视角。",
+  "analysis:burstNote": "Burst Decay 使用固定 1/3 倍频程带宽的高斯形音调脉冲。高度和颜色表示相同的相对 dB 电平。相同周期数在不同频率下对应不同的时间。估算时假定已保存响应开始前为静音；后段记录不足的值不予显示。",
+  "analysis:frequency": "频率响应",
+  "analysis:impulse": "脉冲响应",
+  "analysis:distortion": "失真",
+  "analysis:waterfall": "Waterfall (3D)",
+  "analysis:details": "测量详情",
+  "analysis:display": "显示设置",
+  "analysis:xMin": "最低频率",
+  "analysis:xMax": "最高频率",
+  "analysis:yMin": "最低电平",
+  "analysis:yMax": "最高电平",
+  "analysis:smoothing": "显示平滑（σ）",
+  "analysis:normalize": "相对归一化",
+  "analysis:reference": "参考电平",
+  "analysis:source": "响应来源",
+  "analysis:saved": "已保存响应",
+  "analysis:reanalysis": "加窗 IR",
+  "analysis:before": "起点前窗长",
+  "analysis:after": "起点后窗长",
+  "analysis:window": "窗形",
+  "analysis:tukey": "边缘渐变",
+  "analysis:hann": "Hann",
+  "analysis:rectangular": "矩形",
+  "analysis:auto": "自动范围",
+  "analysis:reset": "重置",
+  "analysis:fromTime": "开始时间",
+  "analysis:toTime": "结束时间",
+  "analysis:peak": "按峰值归一化",
+  "analysis:db": "以 dB 显示振幅",
+  "analysis:origin": "显示时间原点",
+  "analysis:unit": "单位",
+  "analysis:maxOrder": "THD 最高阶数",
+  "analysis:start": "第一个切片",
+  "analysis:end": "最后一个切片",
+  "analysis:length": "窗长",
+  "analysis:rise": "左侧上升时间",
+  "analysis:angle": "视角旋转",
+  "analysis:zoom": "视图缩放",
+  "analysis:correction": "校正",
+  "analysis:export": "导出测量（JSON）",
+  "analysis:unavailable": "此测量没有脉冲响应。请导入包含脉冲响应的测量文件。",
+  "analysis:noDistortion": "此测量没有可用的失真数据。请重新测量。",
+  "analysis:processing": "正在计算…",
+  "analysis:failed": "当前设置无法用于此分析。请调整窗口或选择其他测量。",
+  "analysis:combined": "所有扬声器的合成输出",
+  "analysis:sourceNote": "显示设置不会改变已保存的测量或校正设置。",
+  "analysis:smoothingNote": "0 表示不增加平滑。无法撤销已保存响应中的处理。宽度为以倍频程表示的高斯 σ。",
+  "analysis:distortionNote": "整个播放与录音链路的相对失真。未应用麦克风或音频接口校准。",
+  "analysis:waterfallNote": "曲面高度和颜色表示相同的相对 dB 电平。默认视角下，0 ms 位于后方，较晚的时刻靠近前方。仅显示完整落在已保存响应内的分析窗。",
+  "analysis:impulseNote": "时间以已保存的起点为基准。边框标出分析窗口的范围。显示变化不会改变 WAV 导出内容。",
+  "analysis:readoutHelp": "指向或触摸图形即可读取数值。使用键盘时，将焦点移到图形上，再按方向键读取。",
+  "analysis:available": "可用",
+  "analysis:notAvailable": "不可用",
+  "analysis:acquisition": "采集来源",
+  "analysis:sampleRate": "实际采样率",
+  "analysis:timeReference": "时间基准",
+  "analysis:relative": "相对于起点",
+  "analysis:observed": "已保存时间区间",
+  "analysis:calibration": "校准",
+  "analysis:relativeLevel": "相对电平；无绝对 SPL 校准",
+  "analysis:windowLimits": "窗口限制在录制的样本范围内",
+  "analysis:thdOrders": "THD 包含第 2–{order} 阶",
   "title:impulseResponse": "脉冲响应",
   "axis:impulseTime": "时间（ms）",
   "axis:normalizedAmplitude": "归一化幅度",
@@ -31,21 +111,21 @@
 "help:audioInput": "指定连接测量麦克风的音频输入设备。", // Help text for audio input
 "label:sampleRate": "采样频率：", // Label for sample rate selection
 "help:sampleRate": "指定测量时的采样频率。", // Help text for sample rate
-"label:sweepLength": "扫描长度（采样点）：", // Label for sweep length selection
-"help:sweepLength": "指定测量信号的采样长度。", // Help text for sweep length
+"label:sweepLength": "请求扫频长度（样本）:",
+"help:sweepLength": "指定 ESS 测量信号的长度。需要分离谐波响应时，扫频会自动延长。",
 "title:advancedSettings": "高级设置",
 "label:sweepBandMode": "扫描带宽：",
 "option:sweepBandOff": "关闭",
 "option:sweepBandCommon": "所有声道共用",
 "option:sweepBandPerChannel": "按声道",
 "label:sweepBandChannel": "要配置的声道：",
-"help:sweepBandMode": "选择是否限制扫描和测试信号的带宽。按声道可为每个选定的输出声道设置单独的频率范围。",
+"help:sweepBandMode": "选择所有声道共用或各声道独立的扫频范围。关闭限制时，ESS 使用 20 Hz～20 kHz，并受实际采样率限制。按声道设置可分别调整每个所选输出。",
 "label:sweepMinFreq": "扫描最低频率（Hz）：", // Label for sweep minimum frequency
 "help:sweepMinFreq": "扫描信号的最低频率（Hz）。可从 1 Hz 设置到所选采样频率的奈奎斯特频率以下。测试信号也会被限制在此频带。（默认：20 Hz）", // Help text for sweep min frequency
 "label:sweepMaxFreq": "扫描最高频率（Hz）：", // Label for sweep maximum frequency
 "help:sweepMaxFreq": "扫描信号的最高频率（Hz）。超过所选采样频率的奈奎斯特频率的值会被自动限制。测试信号也会被限制在此频带。（默认：20000 Hz）", // Help text for sweep max frequency
 "label:averaging": "同步平均：", // Label for synchronous averaging selection
-"help:averaging": "指定在同一测量点重复测量的次数，以提高测量精度。", // Help text for averaging
+"help:averaging": "在同一测量点重复的次数。每次包括扫频及等待响应衰减的 2.5 秒，因此增加次数会延长测量时间。",
 "label:interfaceCalibration": "音频接口校准：",
 "option:noInterfaceCalibration": "无（未校准）",
 "option:interfaceCalibrationPoint": "{measurement} — {point}（{date}，{sampleRate}）",
@@ -70,7 +150,7 @@
 
 // Sweep Measurement Screen
 "help:measurement": "一次额外测量的测量信号以及指定的测量次数的测量信号将被重放。",
-"title:frequencyResponseMeasurement": "频率响应测量", // Title for measurement screen
+"title:frequencyResponseMeasurement": "声学特性测量", // Title for measurement screen
 "title:currentMeasurement": "当前测量", // Title for current measurement graph
 "button:redo": "重新测量", // Button to redo measurement
 "button:saveAndContinue": "保存并测量另一个点", // Button to save and continue measuring
@@ -115,7 +195,7 @@
 "confirm:discardChanges": "您有未保存的更改。是否放弃更改并继续？", // Confirmation message for discarding unsaved changes
 
 // New translations
-"title:main": "EffeTune 频率响应测量", // Title for the main page
+"title:main": "EffeTune 声学特性测量", // Title for the main page
 "title:levelAdjustment": "电平调整", // Title for level adjustment screen
 "button:back": "返回 EffeTune", // Back button text
 "button:backSimple": "返回", // Simple back button text

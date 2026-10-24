@@ -45,6 +45,10 @@ export class CatalogPlaybackBridge {
     this.#assertOpen();
     const destination = PLAYBACK_DESTINATIONS[request?.operationKind];
     if (!destination) return this.service.start(request);
+    if (this.uiManager.networkMusic?.selectedPlayerId !== undefined &&
+        this.uiManager.networkMusic.selectedPlayerId !== 'local') {
+      return this.uiManager.networkMusic.playSelection(request);
+    }
     // Resume before lazy player loading or catalog reads can outlive user activation.
     const existingPlayer = this.#getExistingPlayer();
     if (request.operationKind === 'play') {

@@ -142,7 +142,7 @@ test('effetune.html permits blob artwork duplication fetches in connect-src', ()
   assert.equal(connectSrc.split(/\s+/).includes('blob:'), true);
 });
 
-test('effetune.html permits media only from its existing sources and the OpenHome loopback gateway', () => {
+test('effetune.html permits local media and registered HTTP or HTTPS network audio sources', () => {
   const mediaSrc = getCspDirective('media-src');
   assert.ok(mediaSrc, 'Missing media-src directive');
   assert.deepEqual(mediaSrc.split(/\s+/), [
@@ -150,6 +150,7 @@ test('effetune.html permits media only from its existing sources and the OpenHom
     "'self'",
     'blob:',
     'data:',
-    'http://127.0.0.1:*'
+    'http:',
+    'https:'
   ]);
 });

@@ -63,7 +63,9 @@ Dans l’application de bureau, **Navigateur** permet d’écouter le son des si
 2. Saisissez une adresse HTTP ou HTTPS, puis connectez-vous et lancez la musique depuis le site. Si vous omettez le protocole, HTTPS est utilisé.
 3. Passez à **Effect Pipeline** pour régler le son. Le changement de vue n’interrompt pas le son du navigateur.
 
-Utilisez Retour, Suivant, Actualiser et Arrêter le chargement pour naviguer. Ouvrez **Favoris** pour ajouter la page actuelle, ouvrir une page enregistrée, renommer un favori ou le supprimer. Le menu du navigateur propose **Ouvrir dans le navigateur par défaut**, **Définir comme page de démarrage** et **Effacer les données des sites**. Les favoris et la page de démarrage choisie sont enregistrés. Les connexions aux sites sont conservées séparément et restent disponibles après le redémarrage de l’application. Les pages du navigateur suivent le niveau de zoom de l’application.
+Utilisez Retour, Suivant, Actualiser et Arrêter le chargement pour naviguer. Ouvrez **Favoris** pour ajouter la page actuelle, ouvrir une page enregistrée, renommer un favori ou le supprimer. Le menu du navigateur propose **Afficher la page de démarrage**, **Ouvrir dans le navigateur par défaut**, **Définir comme page de démarrage** et **Effacer les données des sites**. Les favoris et la page de démarrage choisie sont enregistrés. Les connexions aux sites sont conservées séparément et restent disponibles après le redémarrage de l’application. Les pages du navigateur suivent le niveau de zoom de l’application.
+
+Lorsque la barre du navigateur a le focus, utilisez **F5** pour recharger, **F6** pour sélectionner l’adresse, **Alt+Gauche/Droite** pour reculer ou avancer et **Alt+Home** pour afficher la page de démarrage. Ces raccourcis fonctionnent aussi dans la page. Quand la page a le focus, **Ctrl/Cmd+L** sélectionne l’adresse, **Ctrl/Cmd+R** recharge et **Ctrl/Cmd+D** ouvre les favoris. Sur macOS, **Cmd+[/]** permet aussi de reculer ou d’avancer. **Échap** arrête le chargement. Un clic droit sur la page propose les commandes de navigation, sur un lien les options pour l’ouvrir ici ou dans le navigateur par défaut et copier son adresse, et sur du texte sélectionné ou un champ de saisie les commandes d’édition disponibles. Hors de la page, les raccourcis de l’application gardent leurs fonctions habituelles.
 
 Ouvrir **Navigateur** ou y revenir sélectionne automatiquement le son du navigateur. Le son du navigateur est mélangé à celui du périphérique d’entrée sélectionné. Choisissez **Aucun** comme périphérique d’entrée pour écouter uniquement le navigateur. L’option d’entrée du lecteur ne modifie pas la lecture dans le navigateur. La musique locale peut être lue en même temps que le son du navigateur. Si la capture s’arrête, cliquez à nouveau sur **Navigateur** pour réessayer. **Effacer les données des sites** vous déconnecte des sites et efface leurs données enregistrées, tout en conservant les favoris.
 
@@ -74,6 +76,10 @@ Dans **Paramètres > Configuration... > Navigateur** :
 - **Page de démarrage** définit l’adresse HTTP ou HTTPS affichée à la première ouverture du navigateur. Le champ est vide par défaut ; lorsqu’il est vide, le [guide de streaming d’EffeTune](https://effetune.frieve.com/streaming/) s’ouvre. **Réinitialiser** vide le champ sans changer la page actuelle.
 - **Ouvrir les nouveaux onglets dans le navigateur par défaut** est activé par défaut. Désactivez cette option pour ouvrir ces liens dans le navigateur d’EffeTune. Les fenêtres séparées, notamment pour la connexion à un compte, restent dans EffeTune dans les deux cas.
 - **User-Agent** est l’identification du navigateur transmise aux sites web. La valeur par défaut présente le navigateur comme compatible avec Chrome et inclut le nom EffeTune. Laissez le champ vide ou cliquez sur **Réinitialiser** pour rétablir la valeur par défaut. Après toute modification, rechargez la page dans le navigateur.
+
+Pour changer automatiquement d’effets selon le site, enregistrez d’abord vos chaînes comme préréglages. Sous **Règles d’URL**, cliquez sur **Ajouter une règle**, saisissez un site et un chemin comme `example.com/music/*`, puis choisissez un préréglage de chaîne. Omettez `http://` ou `https://`, les paramètres de requête et les fragments `#` ; `*` correspond à n’importe quel texte. Réglez la priorité avec les boutons de déplacement vers le haut et le bas, puis cliquez sur **Enregistrer les règles**. La première règle activée qui correspond et dont le préréglage est disponible est utilisée.
+
+Les règles s’appliquent tant que l’audio du navigateur est sélectionné, même dans une autre vue. L’enregistrement des règles, l’ouverture du navigateur ou la navigation vers une page correspondante peut charger son préréglage. La navigation entre des pages utilisant le même préréglage conserve vos réglages manuels. Sans règle correspondante, la chaîne actuelle reste inchangée.
 
 Certains sites refusent les navigateurs intégrés, la connexion, la lecture de contenus protégés ou la capture audio. La disponibilité dépend du site et du système d’exploitation ; la lecture avec DRM n’est pas garantie. Si la connexion est refusée, essayez une autre méthode proposée par le site ou utilisez votre navigateur habituel. S’y connecter ne vous connecte pas dans EffeTune. Le navigateur est réservé à l’application de bureau.
 
@@ -304,9 +310,9 @@ Dans **Colonnes de la chaîne d’effets**, choisissez **Manuel** pour régler l
 
 La version Microsoft Store reçoit ses mises à jour via Microsoft Store. Dans **Paramètres > Configuration...**, utilisez **Ouvrir les mises à jour du Microsoft Store** pour rechercher des mises à jour et **Ouvrir les paramètres de démarrage de Windows** pour choisir si EffeTune se lance automatiquement. Cette version conserve ses paramètres et ses connexions dans Browser séparément des autres versions de bureau.
 
-### Mesure et correction de la réponse en fréquence
+### Mesure acoustique
 
-Mesurez votre système audio avec un microphone et créez un EQ de correction importable dans EffeTune ; consultez [Mesure et correction de la réponse en fréquence](measurement.md) et le [guide de Pipeline Analyzer](pipeline-analyzer.md).
+Mesurez votre système audio avec un microphone pour examiner sa réponse en fréquence, sa réponse impulsionnelle, sa distorsion et sa décroissance, et créez un EQ de correction importable dans EffeTune ; consultez [Mesure acoustique](measurement.md) et le [guide de Pipeline Analyzer](pipeline-analyzer.md).
 
 ### Réinitialisation audio
 
@@ -315,9 +321,11 @@ Si vous rencontrez des problèmes audio (coupures, parasites) :
 2. Le pipeline audio sera reconstruit automatiquement
 3. La configuration de votre chaîne d'effets sera préservée
 
-### Télécommande OpenHome (application de bureau)
+### Musique en réseau et télécommande
 
-Les versions de bureau compatibles peuvent être pilotées par des applications OpenHome sur le même réseau local. Cette fonction est désactivée par défaut ; consultez [Télécommande OpenHome](openhome.md) pour la configuration, l'accès réseau, la compatibilité et les limites.
+**Application de bureau:** Parcourez les serveurs musicaux du réseau local, partagez les dossiers de votre choix et écoutez sur cet appareil ou un lecteur OpenHome. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md).
+
+La PWA peut aussi lire la musique partagée d’un ordinateur EffeTune enregistré avec les effets de cet appareil, ou piloter un autre ordinateur enregistré. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour connaître les conditions de navigateur et de connexion.
 
 ### Piloter EffeTune avec un assistant IA (MCP)
 
@@ -333,6 +341,8 @@ Lien de connexion : <coller ici le lien copié>
 ```
 
 Une fois la configuration terminée, redémarrez le client si cela vous est demandé, puis essayez : « Affiche mes effets actuels ». Gardez le lien de connexion confidentiel ; si vous cliquez sur **Nouveau jeton** ou changez de port, refaites la configuration avec le nouveau lien.
+
+Ajoutez des morceaux à Music Library dans l’EffeTune auquel vous êtes connecté, puis demandez : « Joue [morceau] ». L’assistant cherche d’abord dans la bibliothèque de cet EffeTune et utilise son lecteur par défaut ; nul besoin de partager son dossier musical. Pour utiliser une autre bibliothèque ou un autre lecteur, précisez-le : « Cherche [morceau] dans [bibliothèque] et lis-le sur [lecteur] ». Si la musique se trouve sur un autre ordinateur avec EffeTune, partagez d’abord son dossier musical.
 
 ## Combinaisons d'effets courantes
 

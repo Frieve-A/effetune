@@ -22,14 +22,14 @@ class CorrectionHandler {
     /**
      * Update the correction settings and displayed graph
      */
-    async updateCorrection(expectedGeneration = this.uiManager.measurementStateGeneration) {
+    async updateCorrection(expectedGeneration = this.uiManager.measurementStateGeneration, target = this.getCorrectionTarget()) {
         if (!this.uiManager.selectedMeasurementId) return;
-        if (expectedGeneration !== this.uiManager.measurementStateGeneration) return;
+        if (!this.isCurrentTarget(target, expectedGeneration)) return;
 
         const settings = this.getTargetSettings();
         this.uiManager.updateResultsGraph();
         this.updateFrequencyMarkers();
-        await this.calculatePEQParameters(settings, expectedGeneration);
+        await this.calculatePEQParameters(settings, expectedGeneration, target);
     }
     
     /**
@@ -55,9 +55,9 @@ class CorrectionHandler {
         }
         
         // Update UI display
-        document.getElementById('targetLowFreqValue').textContent = Math.round(lowFreq);
-        document.getElementById('targetHighFreqValue').textContent = Math.round(highFreq);
-        document.getElementById('smoothingValue').textContent = smoothing.toFixed(2);
+        document.getElementById('targetLowFreqValue').value = Math.round(lowFreq);
+        document.getElementById('targetHighFreqValue').value = Math.round(highFreq);
+        document.getElementById('smoothingValue').value = smoothing.toFixed(2);
         
         return {
             lowFreq,
@@ -311,7 +311,21 @@ class CorrectionHandler {
         }
     }
 
+    getCorrectionTarget() {
+        const measurementId = this.uiManager.selectedMeasurementId;
+        return { measurementId, measurement: dataStorage.getMeasurementById(measurementId),
+            channel: this.uiManager.measurementDisplay?.selectedChannel || 'all' };
+    }
+
+    isCurrentTarget(target, generation) {
+        return generation === this.uiManager.measurementStateGeneration &&
+            target.measurementId === this.uiManager.selectedMeasurementId &&
+            target.measurement === dataStorage.getMeasurementById(target.measurementId) &&
+            target.channel === (this.uiManager.measurementDisplay?.selectedChannel || 'all');
+    }
+
     requestCorrectionUpdate(expectedGeneration = this.uiManager.measurementStateGeneration) {
+        const target = this.getCorrectionTarget();
         const spinner = document.getElementById('loading-spinner-results');
         spinner.style.display = 'block';
 
@@ -321,7 +335,7 @@ class CorrectionHandler {
 
         this.updateCorrectionTimeout = setTimeout(() => {
             this.updateCorrectionTimeout = null;
-            Promise.resolve(this.updateCorrection(expectedGeneration)).catch(error => {
+            Promise.resolve(this.updateCorrection(expectedGeneration, target)).catch(error => {
                 console.error('Error updating correction:', error);
                 this.uiManager.showNotification(
                     i18n.t('error:correctionUpdateFailed') ||
@@ -339,14 +353,12 @@ class CorrectionHandler {
      * @param {Object} settings - Target settings object
      * @returns {Promise<Array>} - Promise resolving to PEQ parameters
      */
-    async calculatePEQParameters(settings, expectedGeneration = this.uiManager.measurementStateGeneration) {
-        const measurementId = this.uiManager.selectedMeasurementId;
-        const measurement = dataStorage.getMeasurementById(measurementId);
+    async calculatePEQParameters(settings, expectedGeneration = this.uiManager.measurementStateGeneration, target = this.getCorrectionTarget()) {
+        const { measurement, channel } = target;
         if (!measurement) return [];
-        if (expectedGeneration !== this.uiManager.measurementStateGeneration) return [];
+        if (!this.isCurrentTarget(target, expectedGeneration)) return [];
         
         // Correction uses the selected channel averaged across measurement points.
-        const channel = this.uiManager.measurementDisplay?.selectedChannel || 'all';
         const responseData = resolveDisplayedResponse(measurement, 'all', channel)?.frequencyResponse;
         
         const peqParameters = await this.calculatePEQParametersForResponse(
@@ -356,10 +368,7 @@ class CorrectionHandler {
             channel
         );
 
-        if (expectedGeneration !== this.uiManager.measurementStateGeneration ||
-            measurementId !== this.uiManager.selectedMeasurementId ||
-            measurement !== dataStorage.getMeasurementById(measurementId) ||
-            channel !== (this.uiManager.measurementDisplay?.selectedChannel || 'all')) {
+        if (!this.isCurrentTarget(target, expectedGeneration)) {
             return [];
         }
 

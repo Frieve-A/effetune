@@ -3,6 +3,8 @@
  */
 
 import FFT from './fft.js';
+import { createEssSignal } from '../../../js/utils/measurement-dsp/ess.js';
+import { resolveSweepBand } from '../measurement-model.js';
 import {
     MeasurementOutputError,
     prepareMeasurementOutputRoute,
@@ -360,238 +362,38 @@ function setNoiseLevel(levelDb) {
     }
 }
 
-/**
- * Generate a Time-Stretched Pulse (TSP) signal and its inverse filter
- * @param {number} length - Signal length in samples
- * @param {number} sampleRate - Sample rate in Hz
- * @param {string} channel - Output channel ('left', 'right', 'all', or specific zero-based channel number '2'-'15')
- * @param {number} minFreq - Lower frequency bound of the sweep in Hz (default 20)
- * @param {number} maxFreq - Upper frequency bound of the sweep in Hz (default 20000)
- * @param {boolean} bandLimited - Whether to limit the sweep to minFreq/maxFreq
- * @returns {{left: Float32Array, right: Float32Array, length: number, frequencyResponse: Array, peakOffset: number,
- *   inverseFilter: Float32Array
- * }}
- */
-function generateTSP(
-    length = 65536,
-    sampleRate = 48000,
-    channel = 'all',
-    minFreq = 20,
-    maxFreq = 20000,
-    bandLimited = true,
-    outputBands = null
-) {
+/** Generate the common ESS definition used by every output route. */
+function generateESS(length = 131072, sampleRate = 48000, channel = 'all',
+    minFreq = 20, maxFreq = 20000, bandLimited = true, outputBands = null) {
     validateSignalOutputChannel(channel);
-    if (!this.initialized) {
-        return null;
-    }
-    if (length <= 0 || sampleRate <= 0) {
-        return null;
-    }
-
-    // Round up to the nearest power of 2
-    const N = 1 << Math.ceil(Math.log2(length));
-    const halfN = N >>> 1;
-
-    // Clamp and sanitize limited sweeps. Unlimited sweeps use every FFT bin
-    // from the first non-DC bin through the bin immediately below Nyquist.
-    const nyquist = sampleRate / 2;
-    const nyquistLimit = Math.max(2, Math.floor(nyquist) - 1);
-    const fLo = bandLimited
-        ? Math.max(1, Math.min(minFreq, nyquistLimit - 1))
-        : sampleRate / N;
-    const fHi = bandLimited
-        ? Math.max(fLo + 1, Math.min(maxFreq, nyquistLimit))
-        : (halfN - 1) * sampleRate / N;
-
-    // Record sweep band on the instance so analysis code can reference it
-    this.sweepMinFreq = fLo;
-    this.sweepMaxFreq = fHi;
-
-    const mask = createBandMask(N, sampleRate, fLo, fHi);
-
-    // Create frequency-domain representation of TSP signal
-    const real = new Float32Array(N);
-    const imag = new Float32Array(N);
-    const invReal = new Float32Array(N);
-    const invImag = new Float32Array(N);
-
-    for (let k = 1; k < halfN; k++) {
-        const w = mask[k];
-        if (w === 0) continue;
-
-        // Phase function: -2πk²/N creates a quadratic phase shift
-        // This results in a logarithmic frequency sweep when converted to time domain
-        const phi = -2 * Math.PI * k * k / N;
-
-        // Calculate sine and cosine values, weighted by the taper
-        const c = w * Math.cos(phi);
-        const s = w * Math.sin(phi);
-
-        // Forward TSP (quadratic phase spectrum, tapered at band edges)
-        real[k] = c;
-        imag[k] = s;
-        real[N - k] = c;       // Conjugate symmetric for real output
-        imag[N - k] = -s;      // Negative for complex conjugate
-
-        // Inverse filter (negative quadratic phase, same taper so product is w²)
-        invReal[k] = c;
-        invImag[k] = -s;       // Negative sign for inverse filter
-        invReal[N - k] = c;    // Conjugate symmetric
-        invImag[N - k] = s;    // Positive for complex conjugate
-    }
-
-    if (!bandLimited) {
-        // Match the legacy full-band TSP spectrum at DC and Nyquist as well.
-        real[0] = 1;
-        real[halfN] = 1;
-    }
-
-    // Create FFT processor
-    const fft = new FFT(N);
-    
-    // Allocate time-domain arrays
-    const tdR = new Float32Array(N), tdI = new Float32Array(N);
-    const ifR = new Float32Array(N), ifI = new Float32Array(N);
-
-    // Transform to time domain
-    fft.inverseTransform(tdR, tdI, real, imag);
-    fft.inverseTransform(ifR, ifI, invReal, invImag);
-
-    // Extract the real parts for the time-domain signals
-    const tspSignal = new Float32Array(N);
-    tspSignal.set(tdR);
-    
-    const inverseFilter = new Float32Array(N);
-    inverseFilter.set(ifR);
-
-    // Simultaneous outputs share phase, reference and normalization, while each
-    // speaker receives only its configured band. The microphone records their sum.
-    const outputSignals = channel === 'all' && Array.isArray(outputBands)
-        ? outputBands.map(band => {
-            const channelMask = createBandMask(N, sampleRate, band.minFreq, band.maxFreq);
-            const channelReal = new Float32Array(N);
-            const channelImag = new Float32Array(N);
-            for (let k = 1; k < halfN; k++) {
-                const weight = channelMask[k];
-                if (weight === 0) continue;
-                const phi = -2 * Math.PI * k * k / N;
-                channelReal[k] = channelReal[N - k] = weight * Math.cos(phi);
-                channelImag[k] = weight * Math.sin(phi);
-                channelImag[N - k] = -channelImag[k];
+    if (!this.initialized) return null;
+    const { minFreq: startFrequency, maxFreq: endFrequency } = resolveSweepBand({
+        acquisitionMethod: 'ess', sweepBandLimited: bandLimited, sweepMinFreq: minFreq, sweepMaxFreq: maxFreq
+    }, channel, sampleRate, length);
+    const definition = createEssSignal({ length, sampleRate, startFrequency, endFrequency });
+    const width = channel === 'all' && Array.isArray(outputBands) ? outputBands.length
+        : Math.max(2, Number.isInteger(Number(channel)) ? Number(channel) + 1 : 2);
+    const selected = channel === 'left' ? 0 : channel === 'right' ? 1 : Number(channel);
+    const channels = Array.from({ length: width }, (_, index) => {
+        const data = new Float32Array(definition.length);
+        if (channel !== 'all' && channel !== 'both' && selected !== index) return data;
+        data.set(definition.signal);
+        if (channel === 'all' && outputBands) {
+            const band = outputBands[index];
+            for (let i = 0; i < data.length; i++) {
+                const frequency = startFrequency * Math.exp(i / (sampleRate * definition.sweepConstant));
+                if (frequency < band.minFreq || frequency > band.maxFreq) data[i] = 0;
+                else {
+                    const edge = Math.min(Math.log(frequency / band.minFreq), Math.log(band.maxFreq / frequency));
+                    if (edge < 0.02) data[i] *= 0.5 - 0.5 * Math.cos(Math.PI * edge / 0.02);
+                }
             }
-            const signal = new Float32Array(N);
-            fft.inverseTransform(signal, tdI, channelReal, channelImag);
-            return signal;
-        }) : null;
-
-    // Normalize TSP signal to target RMS level (-3dB)
-    let sumSq = 0;
-    for (let i = 0; i < N; i++) sumSq += tspSignal[i] * tspSignal[i];
-    const rms = Math.sqrt(sumSq / N);
-    const targetRms = Math.pow(10, -3 / 20); // -3dB
-    let norm = rms > 1e-9 ? targetRms / rms : 1;
-
-    // Narrowband TSPs can have a higher crest factor, so cap the peak below full scale
-    let tspPeak = 0;
-    for (let i = 0; i < N; i++) tspPeak = Math.max(tspPeak, Math.abs(tspSignal[i]));
-    for (const signal of outputSignals || []) {
-        for (const sample of signal) tspPeak = Math.max(tspPeak, Math.abs(sample));
-    }
-    const peakCeiling = 0.95;
-    if (tspPeak * norm > peakCeiling) {
-        norm = peakCeiling / tspPeak;
-    }
-    for (let i = 0; i < N; i++) tspSignal[i] *= norm;
-    for (const signal of outputSignals || []) {
-        for (let i = 0; i < N; i++) signal[i] *= norm;
-    }
-
-    // Normalize inverse filter to peak of 1.0
-    let peak = 0;
-    for (let i = 0; i < N; i++) peak = Math.max(peak, Math.abs(inverseFilter[i]));
-    const invNorm = peak > 1e-9 ? 1 / peak : 1;
-    for (let i = 0; i < N; i++) inverseFilter[i] *= invNorm;
-
-    // Get maximum number of channels this device might support
-    const MAX_CHANNELS = 16;
-    
-    // Create output buffers for all possible channels
-    const channelBuffers = [];
-    for (let i = 0; i < MAX_CHANNELS; i++) {
-        channelBuffers.push(new Float32Array(N));
-    }
-    
-    // For backward compatibility
-    const left = channelBuffers[0];
-    const right = channelBuffers[1];
-    
-    // Convert legacy 'both' value to 'all'
-    if (channel === 'both') {
-        channel = 'all';
-    }
-    
-    // Parse channel if it's a string number
-    const targetChannel = parseInt(channel);
-    
-    // Copy TSP signal to specified channel(s)
-    if (channel === 'left' || channel === '0') {
-        // Left channel only
-        left.set(tspSignal);
-    } else if (channel === 'right' || channel === '1') {
-        // Right channel only
-        right.set(tspSignal);
-    } else if (!isNaN(targetChannel) && targetChannel >= 2 && targetChannel < MAX_CHANNELS) {
-        // Specific channel (Ch 3-16)
-        channelBuffers[targetChannel].set(tspSignal);
-    } else if (channel === 'all') {
-        // All channels
-        for (let i = 0; i < MAX_CHANNELS; i++) {
-            if (!outputSignals) channelBuffers[i].set(tspSignal);
-            else if (outputSignals[i]) channelBuffers[i].set(outputSignals[i]);
         }
-    } else {
-        throw new MeasurementOutputError(`Unsupported measurement output channel: ${channel}`);
-    }
-
-    // Save the generated signals for future reference
-    this.lastTspSignal = tspSignal;
-    this.lastInverseFilter = inverseFilter;
-    this.lastDeconvolutionRefScale = norm * invNorm;
-    
-    // Find the peak position for later synchronization
-    let maxVal = 0;
-    let maxPos = 0;
-    for (let i = 0; i < N; i++) {
-        if (Math.abs(tspSignal[i]) > maxVal) {
-            maxVal = Math.abs(tspSignal[i]);
-            maxPos = i;
-        }
-    }
-    this.tspPeakOffset = maxPos;
-    
-    // Create a frequency response curve (flat for TSP) across the sweep band
-    const freqResponseLength = 128;
-    const freqResponse = new Array(freqResponseLength);
-    const logRatio = Math.log10(fHi / fLo);
-    for (let i = 0; i < freqResponseLength; i++) {
-        freqResponse[i] = {
-            frequency: fLo * Math.pow(10, i * logRatio / (freqResponseLength - 1)),
-            magnitude: 0
-        };
-    }
-    this.lastSweepFrequencyResponse = freqResponse;
-    
-    // Return buffer with all channels
-    return {
-        left,
-        right,
-        channels: channelBuffers,
-        length: N,
-        frequencyResponse: freqResponse,
-        peakOffset: maxPos,
-        inverseFilter
-    };
+        return data;
+    });
+    this.sweepMinFreq = startFrequency;
+    this.sweepMaxFreq = endFrequency;
+    return { ...definition, channels, left: channels[0], right: channels[1] };
 }
 
 /**
@@ -614,6 +416,6 @@ export {
     cancelPendingWhiteNoiseStart,
     waitForWhiteNoiseRouteIdle,
     setNoiseLevel,
-    generateTSP,
+    generateESS,
     applyWindow
 };

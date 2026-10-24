@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const Module = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
+const fileAccess = require('../../electron/file-access.cjs');
 
 const {
   createTempDir,
@@ -52,6 +53,7 @@ function createIpcMain() {
 function createMainWindow(calls, options = {}) {
   const loadFileResults = [...(options.loadFileResults ?? [])];
   const webContents = {
+    id: 7, mainFrame: {},
     sent: [],
     inputEvents: [],
     send(channel, ...args) {
@@ -171,6 +173,7 @@ function createHarness(options = {}) {
   let mainWindow = Object.prototype.hasOwnProperty.call(options, 'mainWindow')
     ? options.mainWindow
     : createMainWindow(calls, options.mainWindowOptions);
+  ipcMain.fileEvent = () => ({ sender: mainWindow.webContents, senderFrame: mainWindow.webContents.mainFrame });
   let applicationMenu = null;
   let triggerClose = options.triggerClose ?? (() => calls.push(['triggerClose']));
   let updateTrayMenuTemplate = options.updateTrayMenuTemplate ?? (template => calls.push(['updateTrayMenuTemplate', template]));
@@ -431,31 +434,35 @@ async function withHarness(options, callback) {
       )
     );
   } finally {
+    fileAccess.clear();
     fs.rmSync(harness.tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
-async function invokeAllDelegates(handlers) {
-  assert.deepEqual(await handlers.get('show-save-dialog')({}, { title: 'save' }), { canceled: false, filePath: 'save.wav' });
-  assert.deepEqual(await handlers.get('show-open-dialog')({}, { title: 'open' }), { canceled: false, filePaths: ['open.wav'] });
-  assert.deepEqual(await handlers.get('open-playback-selection')({}), {
+async function invokeAllDelegates(handlers, event) {
+  fileAccess.grantWrite('a.txt');
+  fileAccess.grantRead('a.bin');
+  fileAccess.grantRead('missing');
+  assert.deepEqual(await handlers.get('show-save-dialog')(event, { title: 'save' }), { canceled: false, filePath: 'save.wav' });
+  assert.deepEqual(await handlers.get('show-open-dialog')(event, { title: 'open' }), { canceled: false, filePaths: ['open.wav'] });
+  assert.deepEqual(await handlers.get('open-playback-selection')(event), {
     accepted: true,
     kind: 'normal',
     descriptors: []
   });
-  assert.deepEqual(await handlers.get('save-file')({}, 'a.txt', 'content'), { success: true });
-  assert.deepEqual(await handlers.get('read-file')({}, 'a.txt'), { success: true, content: 'data' });
+  assert.deepEqual(await handlers.get('save-file')(event, 'a.txt', 'content'), { success: true });
+  assert.deepEqual(await handlers.get('read-file')(event, 'a.txt'), { success: true, content: 'data' });
   assert.deepEqual(
-    [...new Uint8Array(await handlers.get('read-file-bytes')({}, 'a.bin', 3))],
+    [...new Uint8Array(await handlers.get('read-file-bytes')(event, 'a.bin', 3))],
     [1, 2, 3]
   );
   await assert.rejects(
-    handlers.get('read-file-bytes')({}, 'a.bin', null),
+    handlers.get('read-file-bytes')(event, 'a.bin', null),
     error => error?.code === 'ERR_INVALID_EXPECTED_BYTE_LENGTH'
   );
-  assert.equal(handlers.get('joinPaths')({}, 'a', 'b', 'c'), path.join('a', 'b', 'c'));
-  assert.equal(handlers.get('fileExists')({}, 'missing'), false);
-  assert.deepEqual(await handlers.get('save-pipeline-state-to-file')({}, { pipeline: [] }), { success: true });
+  assert.equal(handlers.get('joinPaths')(event, 'a', 'b', 'c'), path.join('a', 'b', 'c'));
+  assert.equal(handlers.get('fileExists')(event, 'missing'), false);
+  assert.deepEqual(await handlers.get('save-pipeline-state-to-file')(event, { pipeline: [] }), { success: true });
 }
 
 test('MSIX config saves preserve preferences without registering login items or downloading NSIS updates', async () => {
@@ -510,9 +517,11 @@ test('prepare-local-playback-source delegates to the main-owned converter', asyn
       alacPlaybackSource: { async prepare(filePath) { paths.push(filePath); return result; } }
     });
     const prepare = ipcMain.handlers.get('prepare-local-playback-source');
-    assert.deepEqual(await prepare({}, 'original.m4a'), result);
+    fileAccess.grantRead('original.m4a');
+    fileAccess.grantRead('another.mp4');
+    assert.deepEqual(await prepare(ipcMain.fileEvent(), 'original.m4a'), result);
     result = { success: false, code: 'alacRequiresMacDesktop' };
-    assert.deepEqual(await prepare({}, 'another.mp4'), result);
+    assert.deepEqual(await prepare(ipcMain.fileEvent(), 'another.mp4'), result);
     assert.deepEqual(paths, ['original.m4a', 'another.mp4']);
   });
 });
@@ -550,7 +559,7 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.deepEqual(await handlers.get('force-check-for-updates')(), { success: true });
     assert.deepEqual(await handlers.get('download-update')(), { success: true });
 
-    await invokeAllDelegates(handlers);
+    await invokeAllDelegates(handlers, ipcMain.fileEvent());
 
     assert.equal(await handlers.get('request-microphone-access')(), true);
     assert.deepEqual(await handlers.get('get-audio-devices')(), {
@@ -600,7 +609,7 @@ test('playlist file adapter publishes atomic writes', async () => {
     moduleUnderTest.registerIpcHandlers();
     const targetPath = path.join(tempDir, 'effetune_presets.json');
 
-    const event = { sender: { id: 7 } };
+    const event = ipcMain.fileEvent();
     assert.deepEqual(
       await ipcMain.handlers.get('begin-atomic-file-write')(event, null),
       { success: false, error: 'Invalid atomic file write target.' }
@@ -617,6 +626,32 @@ test('playlist file adapter publishes atomic writes', async () => {
       { success: true }
     );
     assert.equal(fs.readFileSync(targetPath, 'utf8'), '#EXTM3U\n');
+  });
+});
+
+test('file IPC rejects foreign frames and unselected paths before file operations', async () => {
+  await withHarness({}, async ({ ipcMain, moduleUnderTest, calls, tempDir }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const event = ipcMain.fileEvent();
+    const target = path.join(tempDir, 'private.txt');
+    fs.writeFileSync(target, 'private');
+    for (const channel of ['read-file', 'read-file-bytes', 'save-file', 'begin-atomic-file-write', 'fileExists']) {
+      const handler = ipcMain.handlers.get(channel);
+      for (const denied of [{}, { ...event, sender: {} }, { ...event, senderFrame: {} }]) {
+        assert.throws(() => handler(denied, target), /cannot access files/);
+      }
+      if (channel === 'save-file' || channel === 'begin-atomic-file-write') {
+        assert.equal((await handler(event, target)).success, false);
+      } else await assert.rejects(async () => handler(event, target), /Select this file/);
+    }
+    assert.equal(calls.some(call => call[0] === 'fileHandlers.readFile' || call[0] === 'fileHandlers.saveFile'), false);
+    const foreignDrop = { ...event, senderFrame: {} };
+    ipcMain.listeners.get('grant-dropped-file')(foreignDrop, target);
+    assert.equal(foreignDrop.returnValue, false);
+    ipcMain.listeners.get('grant-dropped-file')(event, target);
+    assert.equal(event.returnValue, true);
+    assert.equal((await ipcMain.handlers.get('read-file')(event, target)).success, true);
+    assert.equal((await ipcMain.handlers.get('save-file')(event, target, 'changed')).success, false);
   });
 });
 
@@ -654,8 +689,10 @@ test('read-track-tags validates the path before artwork and closes both worker p
     moduleUnderTest.registerIpcHandlers();
     const readTrackTags = ipcMain.handlers.get('read-track-tags');
     const filePath = path.join(tempDir, 'penia.flac');
+    fileAccess.grantRead(filePath);
+    fileAccess.grantRead('relative.flac');
 
-    const tags = await readTrackTags({}, filePath);
+    const tags = await readTrackTags(ipcMain.fileEvent(), filePath);
     assert.deepEqual(tags, {
       title: 'PENIA',
       artist: 'Frieve-A',
@@ -670,10 +707,10 @@ test('read-track-tags validates the path before artwork and closes both worker p
     ]);
 
     artworkError = new Error('artwork-source-changed');
-    assert.equal((await readTrackTags({}, filePath)).picture, null);
+    assert.equal((await readTrackTags(ipcMain.fileEvent(), filePath)).picture, null);
     poolCalls.length = 0;
 
-    await assert.rejects(readTrackTags({}, 'relative.flac'), error => error?.code === 'invalidMetadataRequest');
+    await assert.rejects(readTrackTags(ipcMain.fileEvent(), 'relative.flac'), error => error?.code === 'invalidMetadataRequest');
     assert.deepEqual(poolCalls.map(call => call[0]), ['metadata.parse', 'metadata.close', 'artwork.close']);
   });
 });
@@ -685,6 +722,20 @@ test('save-config preserves Browser settings independently of stale renderer sna
     const result = await ipcMain.handlers.get('save-config')({}, { theme: 'paper', browser: { bookmarks: [] } });
     assert.equal(result.success, true);
     assert.deepEqual(calls.find(call => call[0] === 'config.saveConfig')[1], { theme: 'paper', browser });
+  });
+});
+
+test('generic configuration saves cannot change network library sharing or device identity', async () => {
+  const networkMusicSharing = { enabled: false, folderIds: ['shared'] };
+  await withHarness({ config: { networkMusicDeviceId: 'uuid:stable', networkMusicSharing } }, async ({ calls, ipcMain, moduleUnderTest }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const result = await ipcMain.handlers.get('save-config')({}, {
+      language: 'ja', networkMusicDeviceId: 'uuid:changed', networkMusicSharing: { enabled: true, folderIds: ['private'] }
+    });
+    assert.equal(result.success, true);
+    assert.deepEqual(calls.find(call => call[0] === 'config.saveConfig')[1], {
+      language: 'ja', networkMusicDeviceId: 'uuid:stable', networkMusicSharing
+    });
   });
 });
 
@@ -749,7 +800,7 @@ test('save-file refuses to write the library folder mirror', async () => {
     moduleUnderTest.registerIpcHandlers();
     const mirrorPath = path.join(tempDir, 'subdir', '..', 'library-folders.json');
 
-    const result = await ipcMain.handlers.get('save-file')({}, mirrorPath, '{}');
+    const result = await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), mirrorPath, '{}');
 
     assert.equal(result.success, false);
     assert.match(result.error, /library-folders\.json/);
@@ -777,7 +828,7 @@ test('save-file blocks settings-dir writes and Windows alias bypasses of the mir
     ];
 
     for (const deniedPath of deniedPaths) {
-      const result = await ipcMain.handlers.get('save-file')({}, deniedPath, '{}');
+      const result = await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), deniedPath, '{}');
       assert.equal(result.success, false);
       assert.match(result.error, /library-folders\.json/);
       assert.equal(saveFileWasCalledFor(deniedPath), false);
@@ -788,10 +839,12 @@ test('save-file blocks settings-dir writes and Windows alias bypasses of the mir
     const playerStatePath = path.join(tempDir, 'player-state.json');
     const outsidePath = path.join(path.dirname(tempDir), `effetune-outside-${path.basename(tempDir)}.txt`);
 
-    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, presetsPath, '{}'), { success: true });
-    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, pluginPresetsPath, '{}'), { success: true });
-    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, playerStatePath, '{}'), { success: true });
-    assert.deepEqual(await ipcMain.handlers.get('save-file')({}, outsidePath, 'outside'), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), presetsPath, '{}'), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), pluginPresetsPath, '{}'), { success: true });
+    assert.deepEqual(await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), playerStatePath, '{}'), { success: true });
+    await assert.rejects(async () => ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), outsidePath, 'outside'), /Select this file/);
+    fileAccess.grantWrite(outsidePath);
+    assert.deepEqual(await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), outsidePath, 'outside'), { success: true });
     assert.equal(saveFileWasCalledFor(presetsPath), true);
     assert.equal(saveFileWasCalledFor(pluginPresetsPath), true);
     assert.equal(saveFileWasCalledFor(playerStatePath), true);
@@ -820,7 +873,7 @@ test('save-file canonicalizes an existing settings ancestor for missing nested t
       }
       return originalRealpathSync(filePath);
     }, async () => {
-      const result = await ipcMain.handlers.get('save-file')({}, missingPath, '{}');
+      const result = await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), missingPath, '{}');
       assert.equal(result.success, false);
       assert.match(result.error, /library-folders\.json/);
       assert.equal(calls.some(call => call[0] === 'fileHandlers.saveFile'), false);
@@ -850,7 +903,7 @@ test('save-file canonicalizes a missing settings directory from its existing anc
       }
       return originalRealpathSync(filePath);
     }, async () => {
-      const result = await ipcMain.handlers.get('save-file')({}, missingPath, '{}');
+      const result = await ipcMain.handlers.get('save-file')(ipcMain.fileEvent(), missingPath, '{}');
       assert.equal(result.success, false);
       assert.match(result.error, /library-folders\.json/);
       assert.equal(calls.some(call => call[0] === 'fileHandlers.saveFile'), false);
@@ -1201,7 +1254,7 @@ test('Measurement navigation failures preserve a previously completed restore', 
     });
     assert.deepEqual(await open({}, { pipelineA: [], pipelineB: null }), {
       success: false,
-      error: 'Frequency Response Measurement could not be opened.'
+      error: 'Acoustic Measurement could not be opened.'
     });
     assert.deepEqual(await back(), {
       success: false,

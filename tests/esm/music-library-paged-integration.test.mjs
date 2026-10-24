@@ -12,6 +12,8 @@ import {
 import { LibraryManagerV2 } from '../../js/library/library-manager-v2.js';
 import { PagedLibraryViewController } from '../../js/ui/library/paged-view-controller.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { LIBRARY_SEARCH_DEBOUNCE_MS } from '../../js/ui/library/library-view-shared.js';
+import { bindLibrarySearchInput } from '../../js/ui/library/library-view-components.js';
 
 class PagedDomElement {
   constructor(tagName = 'div') {
@@ -79,6 +81,27 @@ function createDeferred() {
   });
   return { promise, resolve, reject };
 }
+
+test('shared library search cancels pending input during IME composition and searches the committed text', () => {
+  const input = new PagedDomElement('input');
+  const requests = [];
+  bindLibrarySearchInput(input, () => requests.push(['search', input.value]), () => requests.push(['cancel']));
+  input.value = 'old query';
+  input.listeners.get('input')({ isComposing: false });
+  input.listeners.get('compositionstart')();
+  input.value = 'か';
+  input.listeners.get('input')({ isComposing: true });
+  input.listeners.get('input')({ isComposing: false });
+  assert.deepEqual(requests, [['search', 'old query'], ['cancel']]);
+  input.value = '歌';
+  input.listeners.get('compositionend')();
+  assert.deepEqual(requests.at(-1), ['search', '歌']);
+  input.listeners.get('input')({ isComposing: true });
+  assert.equal(requests.length, 3);
+  input.value = '歌 曲';
+  input.listeners.get('input')({ isComposing: false });
+  assert.deepEqual(requests, [['search', 'old query'], ['cancel'], ['search', '歌'], ['search', '歌 曲']]);
+});
 
 test('LibraryView maps every top-level collection and Search to a paged endpoint', () => {
   const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
@@ -2177,6 +2200,52 @@ test('paged action availability enables Deselect All as soon as a track is selec
   assert.equal(deselectAll.disabled, false);
 });
 
+test('PWA local music remains browsable while remote playback disables only sending actions', async () => {
+  const selectors = ['play', 'shuffle', 'play-next', 'queue', 'add-playlist'];
+  const controls = new Map(selectors.map(name => [`.library-paged-${name}`, new PagedDomElement('button')]));
+  const card = new PagedDomElement('button');
+  const view = new LibraryView({ manager: createPagedManager(), uiManager: {} });
+  view.manager.performSelectionAction = async () => ({ kind: 'started' });
+  view.localPlaybackUnavailable = true;
+  const state = { selectionProjection: { hasAny: true, selectedCount: 1 },
+    selectionDescriptor: { mode: 'explicit', contextToken: 'context', trackUids: ['track-1'] } };
+  view.pagedController = { contextToken: 'context', createViewState: () => state };
+  view.content = { querySelector: selector => controls.get(selector), querySelectorAll: () => [card] };
+  view.refreshPagedActionAvailability();
+  for (const name of selectors) assert.equal(controls.get(`.library-paged-${name}`).disabled, name !== 'add-playlist');
+  assert.equal(card.disabled, true);
+
+  const notices = [];
+  const operations = [];
+  view.t = key => key;
+  view.announcePagedStatus = message => notices.push(message);
+  view.pagedActionController = { track: async request => { operations.push(request.operationKind); return { kind: 'started' }; } };
+  for (const operationKind of ['play', 'playNext', 'queue']) {
+    assert.equal((await view.trackPreparedPagedAction({ operationKind, descriptor: state.selectionDescriptor })).kind, 'unavailable');
+  }
+  assert.equal((await view.startPagedEntityPlay('album', { id: 'album' })).kind, 'unavailable');
+  await view.trackPreparedPagedAction({ operationKind: 'addToPlaylist', descriptor: state.selectionDescriptor });
+  assert.deepEqual(operations, ['addToPlaylist']);
+  assert.deepEqual(notices, Array(4).fill('networkMusic.libraryRequired'));
+
+  const bar = new PagedDomElement('div');
+  bar.querySelector = () => null;
+  await withGlobals({ document: { createElement: () => bar } }, async () => {
+    view.detail = { type: 'playlist' };
+    view.createPagedActionBar(state);
+    for (const name of selectors) {
+      const button = bar.innerHTML.match(new RegExp(`<button[^>]+library-paged-${name}"[^>]*>`))[0];
+      assert.equal(button.includes(' disabled'), name !== 'add-playlist');
+    }
+  });
+  view.localPlaybackUnavailable = false;
+  view.refreshPagedActionAvailability();
+  for (const control of controls.values()) assert.equal(control.disabled, false);
+  assert.equal(card.disabled, false);
+  await view.trackPreparedPagedAction({ operationKind: 'play', descriptor: state.selectionDescriptor });
+  assert.deepEqual(operations, ['addToPlaylist', 'play']);
+});
+
 test('Add to Playlist targets carry the repository playlist version', () => {
   assert.deepEqual(getPagedPlaylistTarget({ playlistId: 'playlist-1', name: 'One', version: 7 }), {
     accepted: true,
@@ -3032,46 +3101,269 @@ test('playlist collection controls are rendered only for the pure Playlists coll
   });
 });
 
-test('paged track context menu restores playback, queue, playlist, and entity actions', async () => {
+async function withPlaylistPickerFixture(callback) {
   const body = new PagedDomElement('body');
   body.classList = { contains: () => false };
-  const menu = new PagedDomElement('div');
-  menu.classList = { contains: () => false, add() {} };
+  const actions = ['play', 'next', 'queue', 'playlist', 'album', 'artist', 'properties'];
+  const playlistFields = ['search', 'results', 'previous', 'next'];
+  const destination = new PagedDomElement('button');
+  destination.dataset = { playlistId: 'playlist-1', playlistVersion: '7', playlistName: 'Daily' };
   const document = {
     body,
-    createElement: () => menu,
+    createElement() {
+      const menu = new PagedDomElement('div');
+      menu.classList = { contains: () => false, add() {} };
+      const controls = new Map(actions.map(action => [`[data-action="${action}"]`, new PagedDomElement('button')]));
+      for (const field of playlistFields) controls.set(`.library-playlist-picker-${field}`, new PagedDomElement('div'));
+      controls.set('.library-playlist-menu-new', new PagedDomElement('button'));
+      menu.controls = controls;
+      controls.get('.library-playlist-picker-results').querySelectorAll = () => [destination];
+      menu.querySelector = selector => selector === 'button:not(:disabled)'
+        ? controls.get('[data-action="playlist"]') : controls.get(selector) ?? null;
+      return menu;
+    },
     addEventListener() {},
     removeEventListener() {}
   };
   await withGlobals({ document, window: { innerWidth: 800, innerHeight: 600 } }, async () => {
+    const dispatched = [], released = [];
     const manager = createPagedManager();
-    manager.performSelectionAction = async () => ({ kind: 'terminal' });
-    const view = new LibraryView({ manager, uiManager: {} });
-    view.pagedState = { phase: 'committed' };
-    view.pagedController = {
-      isSelected: () => true,
-      createViewState: () => ({
-        queryGeneration: 1,
-        pageAttemptId: 1,
-        selectionDescriptor: { mode: 'explicit', contextToken: 'context', trackUids: ['track-1'] }
-      })
+    manager.performSelectionAction = async (...args) => {
+      dispatched.push(args);
+      return { kind: 'terminal' };
     };
-    view.openPagedTrackContextMenu({
+    manager.playlists = {
+      async openListContext() { return { contextToken: 'playlists' }; },
+      async readListContext(token) {
+        assert.equal(token, 'playlists');
+        return { rows: [{ playlistId: 'playlist-1', name: 'Daily', version: 7, itemCount: 4 }] };
+      },
+      async releaseListContext(token) { released.push(token); }
+    };
+    const view = new LibraryView({ manager, uiManager: {} });
+    let selectedTrackUids = ['track-1', 'track-2'];
+    const state = { phase: 'committed', queryGeneration: 1, pageAttemptId: 1,
+      selectionProjection: { hasAny: true, selectedCount: 2 } };
+    view.pagedState = state;
+    view.content = new PagedDomElement('main');
+    view.localPlaybackUnavailable = true;
+    view.pagedActionController = { track: request => request.start() };
+    view.pagedController = {
+      contextToken: 'context',
+      isSelected: () => true,
+      createViewState: () => state,
+      getSelectionDescriptor: () => ({ mode: 'explicit', contextToken: 'context', trackUids: selectedTrackUids }),
+      getSelectedOrdinal: () => 1,
+      firstPage: { isCurrent: (generation, attempt) => generation === 1 && attempt === 1 }
+    };
+    let pendingCommand;
+    const runCommand = view.runLibraryCommand.bind(view);
+    view.runLibraryCommand = (...args) => {
+      pendingCommand = runCommand(...args);
+      return pendingCommand;
+    };
+    const event = {
       preventDefault() {},
       clientX: 10,
       clientY: 20
-    }, {
-      trackUid: 'track-1',
+    };
+    const track = {
+      trackUid: 'track-2',
       title: 'Song',
       artist: 'Artist',
       artistKey: 'artist-1',
       album: 'Album',
       albumKey: 'album-1'
-    }, { ordinal: 4 });
+    };
+    try {
+      await callback({ view, manager, state, dispatched, released, destination, actions, event, track,
+        setSelected: trackUids => { selectedTrackUids = trackUids; },
+        get pendingCommand() { return pendingCommand; } });
+    } finally {
+      view.closePlaylistMenu();
+      view.closeContextMenu();
+    }
+  });
+}
 
-    for (const action of ['play', 'next', 'queue', 'playlist', 'album', 'artist', 'properties']) {
+test('remote Player selection keeps the local context menu playlist action tied to its captured tracks', async () => {
+  await withPlaylistPickerFixture(async fixture => {
+    const { view, state, dispatched, released, destination, actions, event, track, setSelected } = fixture;
+    view.openPagedTrackContextMenu(event, track, { ordinal: 4 });
+    const menu = view.contextMenu;
+
+    for (const action of actions) {
       assert.match(menu.innerHTML, new RegExp(`data-action="${action}"`));
     }
+    for (const action of ['play', 'next', 'queue', 'playlist']) {
+      const button = menu.innerHTML.match(new RegExp(`<button[^>]+data-action="${action}"[^>]*>`))[0];
+      assert.equal(button.includes(' disabled'), action !== 'playlist');
+    }
+
+    setSelected(['track-2']);
+    state.selectionProjection.selectedCount = 1;
+    menu.querySelector('[data-action="playlist"]').listeners.get('click')();
+    await fixture.pendingCommand;
+    assert.equal(view.contextMenu, null);
+    assert.ok(view.playlistMenu);
+    assert.match(view.playlistMenu.querySelector('.library-playlist-picker-results').innerHTML,
+      /data-playlist-id="playlist-1" data-playlist-version="7" data-playlist-name="Daily"/);
+    destination.listeners.get('click')();
+    assert.deepEqual(dispatched, [['addToPlaylist',
+      { mode: 'explicit', contextToken: 'context', trackUids: ['track-1', 'track-2'] },
+      { target: { playlistId: 'playlist-1', name: 'Daily' }, expectedTargetVersion: 7 }
+    ]]);
+    assert.equal(view.playlistMenu, null);
+    assert.deepEqual(released, ['playlists']);
+
+    view.localPlaybackUnavailable = false;
+    view.openPagedTrackContextMenu(event, track, { ordinal: 4 });
+    const nextMenu = view.contextMenu;
+    assert.doesNotMatch(nextMenu.innerHTML, /data-action="next" disabled/);
+    nextMenu.querySelector('[data-action="next"]').listeners.get('click')();
+    assert.deepEqual(dispatched[1], ['playNext',
+      { mode: 'explicit', contextToken: 'context', trackUids: ['track-2'] }, {}
+    ]);
+    assert.equal(view.contextMenu, null);
+  });
+});
+
+test('New playlist dispatches the captured remote-player selection with the created version and cancels obsolete prompts', { timeout: 3000 }, async () => {
+  await withPlaylistPickerFixture(async fixture => {
+    const { view, manager, state, event, track, dispatched, setSelected } = fixture;
+    const prompt = createDeferred(), created = createDeferred(), creationStarted = createDeferred();
+    const names = [];
+    view.promptText = () => prompt.promise;
+    manager.playlists.create = name => {
+      names.push(name);
+      creationStarted.resolve();
+      return created.promise;
+    };
+    manager.playlists.get = () => assert.fail('The created playlist already supplies its authoritative version');
+    const openPicker = async () => {
+      view.openPagedTrackContextMenu(event, track, { ordinal: 4 });
+      view.contextMenu.querySelector('[data-action="playlist"]').listeners.get('click')();
+      await fixture.pendingCommand;
+    };
+    await openPicker();
+    setSelected(['different-track']);
+    state.selectionProjection.selectedCount = 1;
+    view.playlistMenu.querySelector('.library-playlist-menu-new').listeners.get('click')();
+    const pending = fixture.pendingCommand;
+    prompt.resolve('Road trip');
+    await creationStarted.promise;
+    assert.deepEqual(dispatched, [], 'No add is sent until playlist creation completes');
+    created.resolve({ playlistId: 'created-playlist', version: 23 });
+    await pending;
+    assert.deepEqual(names, ['Road trip']);
+    assert.deepEqual(dispatched, [['addToPlaylist',
+      { mode: 'explicit', contextToken: 'context', trackUids: ['track-1', 'track-2'] },
+      { target: { playlistId: 'created-playlist', name: 'Road trip' }, expectedTargetVersion: 23 }
+    ]]);
+    assert.equal(view.playlistMenu, null);
+
+    await openPicker();
+    view.promptText = async () => null;
+    view.playlistMenu.querySelector('.library-playlist-menu-new').listeners.get('click')();
+    await fixture.pendingCommand;
+    assert.equal(names.length, 1, 'Cancelling the name prompt never creates a playlist');
+    assert.equal(dispatched.length, 1);
+
+    const stalePrompt = createDeferred();
+    view.promptText = () => stalePrompt.promise;
+    view.playlistMenu.querySelector('.library-playlist-menu-new').listeners.get('click')();
+    const obsolete = fixture.pendingCommand;
+    state.pageAttemptId = 2;
+    stalePrompt.resolve('Obsolete');
+    await obsolete;
+    assert.equal(names.length, 1, 'A prompt from an obsolete Library attempt cannot create or add');
+    assert.equal(dispatched.length, 1);
+  });
+});
+
+test('playlist picker search and paging reject late query results and release contexts after closing', { timeout: 3000 }, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await withPlaylistPickerFixture(async fixture => {
+    const { view, manager, state, dispatched, released } = fixture;
+    const oldOpen = createDeferred(), oldRead = createDeferred();
+    const closingOpen = createDeferred(), closingRead = createDeferred();
+    const opened = [], reads = [];
+    let initialOpens = 0;
+    manager.playlists.openListContext = ({ query }) => {
+      opened.push(query);
+      if (query === 'old') return oldOpen.promise;
+      if (query === 'closing') return closingOpen.promise;
+      return { contextToken: query === 'new' ? 'new-context' : ++initialOpens === 1 ? 'initial-context' : 'reopened-context' };
+    };
+    const page = (name, nextCursor = null, previousCursor = null) => ({
+      rows: [{ playlistId: name, name, version: 1 }], nextCursor, previousCursor
+    });
+    manager.playlists.readListContext = (token, request) => {
+      reads.push([token, request]);
+      if (token === 'initial-context') return request.cursor ? oldRead.promise : page('Initial', 'old-next');
+      if (token === 'reopened-context') return request.cursor ? closingRead.promise : page('Reopened', 'reopened-next');
+      assert.equal(token, 'new-context');
+      return request.cursor === 'new-next' ? page('New page two', null, 'new-previous') : page('New page one', 'new-next');
+    };
+    const settle = () => new Promise(resolve => setImmediate(resolve));
+    const opening = view.openPagedAddToPlaylistMenu(null, state);
+    await opening;
+    const menu = view.playlistMenu;
+    const results = menu.querySelector('.library-playlist-picker-results');
+    const next = menu.querySelector('.library-playlist-picker-next');
+    const previous = menu.querySelector('.library-playlist-picker-previous');
+    const search = async query => {
+      menu.querySelector('.library-playlist-picker-search').listeners.get('input')({ target: { value: query } });
+      t.mock.timers.tick(LIBRARY_SEARCH_DEBOUNCE_MS);
+      await settle();
+    };
+    next.listeners.get('click')();
+    await search('old');
+    await search('new');
+    assert.deepEqual(opened, ['', 'old', 'new']);
+    assert.match(results.innerHTML, /New page one/);
+    const currentHtml = results.innerHTML;
+    oldOpen.resolve({ contextToken: 'obsolete-context' });
+    oldRead.resolve(page('Obsolete page', null, 'obsolete-previous'));
+    await settle();
+    assert.equal(results.innerHTML, currentHtml);
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, false);
+    assert.ok(released.includes('obsolete-context'), 'A late open releases its unused context');
+    assert.equal(reads.some(([token]) => token === 'obsolete-context'), false);
+    next.listeners.get('click')();
+    await settle();
+    assert.match(results.innerHTML, /New page two/);
+    assert.equal(next.disabled, true);
+    previous.listeners.get('click')();
+    await settle();
+    assert.match(results.innerHTML, /New page one/);
+    assert.deepEqual(reads.filter(([token]) => token === 'new-context').map(([, request]) => request),
+      [null, 'new-next', 'new-previous'].map(cursor => ({ cursor, limit: 100 })));
+
+    await search('closing');
+    view.closePlaylistMenu();
+    const closedHtml = results.innerHTML;
+    closingOpen.resolve({ contextToken: 'closed-open-context' });
+    await settle();
+    assert.equal(view.playlistMenu, null);
+    assert.equal(results.innerHTML, closedHtml);
+    assert.ok(released.includes('closed-open-context'));
+    assert.equal(reads.some(([token]) => token === 'closed-open-context'), false);
+
+    await view.openPagedAddToPlaylistMenu(null, state);
+    const reopened = view.playlistMenu;
+    const reopenedResults = reopened.querySelector('.library-playlist-picker-results');
+    reopened.querySelector('.library-playlist-picker-next').listeners.get('click')();
+    view.closePlaylistMenu();
+    const reopenedHtml = reopenedResults.innerHTML;
+    closingRead.resolve(page('Closed read must not render'));
+    await settle();
+    assert.equal(view.playlistMenu, null);
+    assert.equal(reopenedResults.innerHTML, reopenedHtml);
+    assert.deepEqual(dispatched, [], 'Search, page changes and retired reads never dispatch a selection action');
+    assert.deepEqual([...released].sort(),
+      ['initial-context', 'obsolete-context', 'new-context', 'closed-open-context', 'reopened-context'].sort());
   });
 });
 

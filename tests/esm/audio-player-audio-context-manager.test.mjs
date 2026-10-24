@@ -5,6 +5,10 @@ import { PowerPolicyController } from '../../js/audio/power-policy-controller.js
 import { AudioManager } from '../../js/audio-manager.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
+import { AudioPlayer } from '../../js/ui/audio-player.js';
+import { OpenHomePlaybackAdapter } from '../../js/ui/audio-player/openhome-playback-adapter.js';
+import { NetworkMusicController } from '../../js/network-music/controller.js';
+import { playPwaNetworkItems } from '../../js/network-music/pwa-playback-provider.js';
 import { TrackLyrics } from '../../js/ui/audio-player/track-lyrics.js';
 import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { PCM16_STEREO_44100_TO_96000_PROFILE } from '../../js/ui/audio-player/rolling-pcm-core.js';
@@ -5107,6 +5111,116 @@ test('playback controls operate on buffer sources and audio elements', async () 
     await rejectHarness.manager.playAudioElement();
     assert.equal(rejectHarness.state.isPaused, true);
     await createHarness({ calls, playbackMode: 'audioElement', audioElement: null }).manager.playAudioElement();
+  });
+});
+
+for (const boundary of ['media-start', 'activation-proof', 'timeout-late-completion']) {
+  test(`PWA initial playback cancellation at ${boundary} preserves the queue and never publishes buffered media`, async () => {
+    await withAudioContextGlobals({}, async ({ calls, timers }) => {
+      let release;
+      const blocked = new Promise(resolve => { release = resolve; });
+      const harness = createHarness({ calls, isStopped: true });
+      const { playbackManager } = installMaterializedPlaybackManager(harness, [{ name: 'Previous', path: '/previous.wav' }]);
+      playbackManager.savePlayerState = () => {};
+      const player = harness.audioPlayer;
+      player.play = AudioPlayer.prototype.play;
+      player.stop = () => playbackManager.stop();
+      player.resumeAudioContextForRemotePlayback = async () => true;
+      const adapter = new OpenHomePlaybackAdapter(player, { bridge: null });
+      player.activateOpenHomePlaybackAdapter = () => adapter;
+      adapter.followsPlayerQueue = true;
+      await adapter.synchronizePlayerQueue();
+      const previousIds = adapter.queue.map(entry => entry.id);
+      const api = {
+        playLocalItems: request => playPwaNetworkItems(api, request),
+        networkMusicResolveTrack: async () => ({ uri: 'http://192.168.1.10:47300/pwa/v1/media/abcdefghijklmnop' }),
+        networkMusicGetPlayerState: async () => ({ queue: [] })
+      };
+      const controller = new NetworkMusicController({ api, uiManager: { audioPlayer: player } });
+      let waitingForProof = false;
+      if (boundary === 'activation-proof') {
+        Object.assign(harness.audioManager, {
+          isStagedAudioActivationEnabled: () => true,
+          stageAudioActivation: async () => ({ generation: 1 }),
+          isSourceConnectedToPipeline: () => true,
+          async activateStagedAudioCandidate(stage, callbacks) {
+            const candidate = await callbacks.acquire(stage);
+            if (candidate === harness.manager.pendingMediaActivation) {
+              waitingForProof = true;
+              await blocked;
+            }
+            if (!callbacks.isCandidateCurrent(candidate, stage)) {
+              await callbacks.cleanup?.(candidate, stage);
+              return { activated: false };
+            }
+            callbacks.commit(candidate, stage);
+            return { activated: true };
+          }
+        });
+      } else FakeAudioElement.nextOptions.push({ playPromise: blocked });
+      try {
+        const pending = controller.playItems([{ serverId: 'a', trackId: 'song', title: 'Song' }]);
+        const rejected = assert.rejects(pending, { code: 'action-cancelled' });
+        for (let attempt = 0; attempt < 40; attempt++) {
+          if (boundary === 'activation-proof' ? waitingForProof : calls.some(call => call[0] === 'audio.play')) break;
+          await flushMicrotasks();
+        }
+        assert.ok(harness.manager.pendingMediaActivation, 'actual media activation must be pending');
+        assert.equal(harness.state.isPlaying, false);
+        const element = player.audioElement;
+        const gate = harness.manager.privatePipelineSourceGates.get(harness.manager.mediaSource);
+        assert.equal(gate?.gain.value, 0, 'browser buffering must remain inaudible before commit');
+        controller.selectPlayer('other-player');
+        if (boundary === 'timeout-late-completion') {
+          timers.filter(timer => timer.delay === 15000).at(-1).fn();
+          await rejected;
+          release();
+          await flushMicrotasks();
+        } else {
+          release();
+          await rejected;
+        }
+        await adapter.commandChain;
+        assert.equal(element.paused, true);
+        assert.equal(gate.gain.value, 0);
+        assert.equal(harness.manager.pendingMediaActivation, null);
+        assert.equal(harness.state.isPlaying, false);
+        assert.equal(harness.state.currentTrack.name, 'Previous');
+        assert.deepEqual(playbackManager.playlist.map(track => track.name), ['Previous']);
+        assert.deepEqual(adapter.queue.map(entry => entry.id), previousIds);
+      } finally {
+        release();
+        controller.dispose();
+        adapter.dispose();
+        harness.manager.disconnect();
+        playbackManager.dispose();
+      }
+    });
+  });
+}
+
+test('a cancelled initial media activation cannot pause a newer activation of the same element', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const element = new Audio();
+    const pending = [];
+    element.play = () => new Promise(resolve => pending.push(() => { element.paused = false; resolve(); }));
+    const harness = createHarness({ calls, playbackMode: 'audioElement', audioElement: element });
+    setConnectedMediaSource(harness, 'shared-element-source');
+    let current = true;
+    const first = harness.manager.playAudioElement(undefined, () => current);
+    await flushMicrotasks();
+    current = false;
+    const second = harness.manager.playAudioElement();
+    await flushMicrotasks();
+    pending[1]();
+    assert.equal(await second, true);
+    const pauseCount = calls.filter(call => call[0] === 'audio.pause').length;
+    pending[0]();
+    assert.equal(await first, false);
+    assert.equal(harness.state.isPlaying, true);
+    assert.equal(element.paused, false);
+    assert.equal(calls.filter(call => call[0] === 'audio.pause').length, pauseCount);
+    harness.manager.disconnect();
   });
 });
 

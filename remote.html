@@ -6,7 +6,7 @@
     <!-- The response header of the server that sends this page pins connect-src to its exact host (policies
          intersect). This one names ws: as well because Safari/WebKit does not let 'self' cover a ws:// URL of the
          same host, so without it the meta policy alone would block the WebSocket there. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:">
     <meta name="robots" content="noindex">
     <script src="js/theme-boot.js"></script>
     <title>EffeTune Remote</title>
@@ -25,6 +25,7 @@
         <span class="remote-dot" id="remoteDot" data-state="connecting"></span>
         <span class="remote-status" id="remoteStatus">Connecting…</span>
         <span class="remote-host" id="remoteHost"></span>
+        <button type="button" class="header-button" id="remoteChangeConnection" hidden>Change connection</button>
     </header>
     <p id="remoteMessage" class="remote-message" role="status" aria-live="polite" hidden></p>
     <p id="remoteNotice" class="remote-notice" role="alert" hidden></p>

@@ -1,4 +1,84 @@
 {
+  "analysis:normalization": "Normalización",
+  "analysis:normalizationNone": "Ninguna",
+  "analysis:normalizationGlobal": "Pico global = 0 dB",
+  "analysis:normalizationFrequency": "Pico de cada frecuencia = 0 dB",
+  "analysis:copyGraph": "Copiar imagen",
+  "analysis:imageCopied": "Imagen del gráfico copiada.",
+  "analysis:imageCopyFailed": "No se pudo copiar la imagen. Inténtalo de nuevo.",
+  "analysis:imageCopyUnavailable": "Este navegador no permite copiar imágenes. Usa la aplicación de escritorio o un navegador compatible con la copia de imágenes.",
+  "analysis:imageCopyDenied": "Se denegó el acceso al portapapeles. Permite el acceso e inténtalo de nuevo.",
+  "analysis:mode": "Modo de análisis",
+  "analysis:waterfallMode": "Waterfall",
+  "analysis:burstMode": "Burst Decay",
+  "analysis:depthUnit": "Eje de profundidad",
+  "analysis:time": "Tiempo",
+  "analysis:cycles": "Ciclos",
+  "analysis:elevation": "Elevación de la vista",
+  "analysis:resetView": "Restablecer vista",
+  "analysis:orbitHelp": "Arrastra para girar. Usa la rueda o + / − para ampliar. Mayús + flechas gira la vista; Mayús + Inicio la restablece.",
+  "analysis:burstNote": "Burst Decay usa ráfagas tonales gaussianas de ancho fijo de 1/3 de octava. La altura y el color representan el mismo nivel relativo en dB. Los ciclos corresponden a tiempos distintos según la frecuencia. Se supone silencio antes del inicio de la respuesta guardada; los valores finales sin datos suficientes no se muestran.",
+  "analysis:frequency": "Respuesta en frecuencia",
+  "analysis:impulse": "Respuesta impulsional",
+  "analysis:distortion": "Distorsión",
+  "analysis:waterfall": "Waterfall (3D)",
+  "analysis:details": "Detalles de la medición",
+  "analysis:display": "Ajustes de visualización",
+  "analysis:xMin": "Frecuencia desde",
+  "analysis:xMax": "Frecuencia hasta",
+  "analysis:yMin": "Nivel desde",
+  "analysis:yMax": "Nivel hasta",
+  "analysis:smoothing": "Suavizado de visualización (σ)",
+  "analysis:normalize": "Normalización relativa",
+  "analysis:reference": "Nivel de referencia",
+  "analysis:source": "Origen de la respuesta",
+  "analysis:saved": "Respuesta guardada",
+  "analysis:reanalysis": "IR con ventana",
+  "analysis:before": "Ventana antes del inicio",
+  "analysis:after": "Ventana después del inicio",
+  "analysis:window": "Forma de la ventana",
+  "analysis:tukey": "Bordes suavizados",
+  "analysis:hann": "Hann",
+  "analysis:rectangular": "Rectangular",
+  "analysis:auto": "Rango automático",
+  "analysis:reset": "Restablecer",
+  "analysis:fromTime": "Tiempo desde",
+  "analysis:toTime": "Tiempo hasta",
+  "analysis:peak": "Normalizar al pico",
+  "analysis:db": "Amplitud en dB",
+  "analysis:origin": "Origen temporal de la vista",
+  "analysis:unit": "Unidad",
+  "analysis:maxOrder": "Orden máximo de THD",
+  "analysis:start": "Primer corte",
+  "analysis:end": "Último corte",
+  "analysis:length": "Longitud de la ventana",
+  "analysis:rise": "Tiempo de subida izquierdo",
+  "analysis:angle": "Rotación de la vista",
+  "analysis:zoom": "Zoom de la vista",
+  "analysis:correction": "Corrección",
+  "analysis:export": "Exportar medición (JSON)",
+  "analysis:unavailable": "Esta medición no tiene respuesta impulsional. Importa un archivo de medición que la incluya.",
+  "analysis:noDistortion": "Esta medición no tiene datos de distorsión utilizables. Realiza una nueva medición.",
+  "analysis:processing": "Calculando…",
+  "analysis:failed": "Este análisis no está disponible con estos ajustes. Ajusta la ventana o selecciona otra medición.",
+  "analysis:combined": "Salida combinada de todos los altavoces",
+  "analysis:sourceNote": "Los ajustes de visualización no modifican la medición guardada ni los ajustes de corrección.",
+  "analysis:smoothingNote": "El valor cero no añade suavizado. No se puede deshacer el procesamiento de una respuesta guardada. El ancho es la σ gaussiana en octavas.",
+  "analysis:distortionNote": "Distorsión relativa de toda la cadena de reproducción y grabación. No se aplica la calibración del micrófono ni de la interfaz.",
+  "analysis:waterfallNote": "La altura y el color de la superficie representan el mismo nivel relativo en dB. La vista inicial sitúa 0 ms al fondo y los tiempos posteriores hacia delante. Solo se muestran ventanas completamente grabadas.",
+  "analysis:impulseNote": "El tiempo es relativo al inicio guardado. El contorno señala la ventana de análisis. Los cambios de visualización no modifican la exportación WAV.",
+  "analysis:readoutHelp": "Señala o toca el gráfico para leer valores. Dale el foco y usa las teclas de flecha para leerlos con el teclado.",
+  "analysis:available": "Disponible",
+  "analysis:notAvailable": "No disponible",
+  "analysis:acquisition": "Origen",
+  "analysis:sampleRate": "Frecuencia de muestreo real",
+  "analysis:timeReference": "Referencia temporal",
+  "analysis:relative": "Relativo al inicio",
+  "analysis:observed": "Intervalo de tiempo guardado",
+  "analysis:calibration": "Calibración",
+  "analysis:relativeLevel": "Nivel relativo; sin calibración SPL absoluta",
+  "analysis:windowLimits": "La ventana se limita a las muestras grabadas",
+  "analysis:thdOrders": "THD incluye los órdenes 2–{order}",
   "title:impulseResponse": "Respuesta impulsional",
   "axis:impulseTime": "Tiempo (ms)",
   "axis:normalizedAmplitude": "Amplitud normalizada",
@@ -31,21 +111,21 @@
 "help:audioInput": "Especifica el dispositivo de entrada de audio al que está conectado el micrófono de medición.", // Help text for audio input
 "label:sampleRate": "Frecuencia de muestreo:", // Label for sample rate selection
 "help:sampleRate": "Especifica la frecuencia de muestreo al realizar mediciones.", // Help text for sample rate
-"label:sweepLength": "Longitud de barrido (muestras):", // Label for sweep length selection
-"help:sweepLength": "Especifica la longitud de la señal de medición en muestras.", // Help text for sweep length
+"label:sweepLength": "Longitud solicitada del barrido (muestras):",
+"help:sweepLength": "Longitud solicitada de la señal ESS. El barrido se alarga cuando es necesario para separar las respuestas armónicas.",
 "title:advancedSettings": "Ajustes avanzados",
 "label:sweepBandMode": "Ancho de banda del barrido:",
 "option:sweepBandOff": "Desactivado",
 "option:sweepBandCommon": "El mismo para todos los canales",
 "option:sweepBandPerChannel": "Por canal",
 "label:sweepBandChannel": "Canal que se configurará:",
-"help:sweepBandMode": "Elige si quieres limitar el ancho de banda del barrido y la señal de prueba. Por canal permite ajustar un rango de frecuencias independiente para cada canal de salida seleccionado.",
+"help:sweepBandMode": "Elige un rango de barrido común o por canal. Desactivado usa de 20 Hz a 20 kHz para ESS, limitado por la frecuencia de muestreo real. Por canal permite ajustar cada salida seleccionada.",
 "label:sweepMinFreq": "Frecuencia mínima del barrido (Hz):", // Label for sweep minimum frequency
 "help:sweepMinFreq": "Frecuencia mínima de la señal de barrido en Hz. Configurable desde 1 Hz hasta justo por debajo de la frecuencia de Nyquist de la frecuencia de muestreo seleccionada. La señal de prueba también se limita a este rango. (Predeterminado: 20 Hz)", // Help text for sweep min frequency
 "label:sweepMaxFreq": "Frecuencia máxima del barrido (Hz):", // Label for sweep maximum frequency
 "help:sweepMaxFreq": "Frecuencia máxima de la señal de barrido en Hz. Los valores superiores a la frecuencia de Nyquist de la frecuencia de muestreo seleccionada se limitan automáticamente. La señal de prueba también se limita a este rango. (Predeterminado: 20000 Hz)", // Help text for sweep max frequency
 "label:averaging": "Promediado síncrono:", // Label for synchronous averaging selection
-"help:averaging": "Especifica el número de repeticiones de la medición en el mismo punto para mayor precisión.", // Help text for averaging
+"help:averaging": "Número de repeticiones en el mismo punto. Cada una incluye el barrido y 2,5 segundos para que decaiga la respuesta; más repeticiones requieren más tiempo.",
 "label:interfaceCalibration": "Calibración de la interfaz de audio:",
 "option:noInterfaceCalibration": "Ninguna (sin calibrar)",
 "option:interfaceCalibrationPoint": "{measurement} — {point} ({date}, {sampleRate})",
@@ -70,7 +150,7 @@
 
 // Sweep Measurement Screen
 "help:measurement": "Se reproduce la señal de medición para una medición adicional y para el número de mediciones especificado.",
-"title:frequencyResponseMeasurement": "Medición de respuesta en frecuencia", // Title for measurement screen
+"title:frequencyResponseMeasurement": "Medición acústica", // Title for measurement screen
 "title:currentMeasurement": "Medición actual", // Title for current measurement graph
 "button:redo": "Rehacer", // Button to redo measurement
 "button:saveAndContinue": "Guardar y medir otro punto", // Button to save and continue measuring
@@ -115,7 +195,7 @@
 "confirm:discardChanges": "Tienes cambios sin guardar. ¿Descartar cambios y continuar?", // Confirmation message for discarding unsaved changes
 
 // New translations
-"title:main": "Medición de respuesta en frecuencia de EffeTune", // Title for the main page
+"title:main": "Medición acústica de EffeTune", // Title for the main page
 "title:levelAdjustment": "Ajuste de nivel", // Title for level adjustment screen
 "button:back": "Volver a EffeTune", // Back button text
 "button:backSimple": "Volver", // Simple back button text

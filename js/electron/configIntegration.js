@@ -25,8 +25,10 @@ import {
   normalizeOfflineOutputSettings
 } from '../audio/offline-output-settings.js';
 import { isVisualSyncEnabled } from '../audio/visual-sync.js';
+import { validateRules } from '../browser/url-rules.js';
 import { SFZ_SIZE_LIMIT_MIB_OPTIONS, normalizeSfzSizeLimitMiB } from '../sfz/limits.js';
 import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
+import { getRemoteControlSettings } from '../remote/remote-control-settings.js';
 
 import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-registry.mjs';
 
@@ -40,7 +42,7 @@ const CONFIG_CATEGORY_LABEL_KEYS = {
   offlineOutput: 'dialog.config.offlineOutput.title',
   controllers: 'dialog.config.physicalControl',
   browser: 'dialog.config.browser.title',
-  remoteControl: 'dialog.config.openHome.title'
+  network: 'dialog.config.category.network'
 };
 
 // The dialog reopens on the category the user viewed last in this session.
@@ -88,10 +90,15 @@ export async function showConfigDialog(isElectron, currentConfig) {
       : await pipelinePresetManager.getPresets())
     : {};
   const presetNames = Object.keys(presets).sort();
+  let browserRulesDraft = structuredClone(config.browser?.urlRules || []);
+  const browserRuleLabels = [];
   const t = window.uiManager?.t
     ? window.uiManager.t.bind(window.uiManager)
     : key => key;
   const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1 : null;
+  const networkMusicAPI = isElectron ? window.electronAPI : null;
+  const remoteControlSettings = networkMusicAPI?.remoteV1?.settings
+    ? getRemoteControlSettings(networkMusicAPI.remoteV1.settings) : null;
   const isMsix = isElectron && window.electronAPI?.isMsix === true;
 
   // Fix for single preset case: auto-set startupPreset if pipelineStartup is 'preset' but startupPreset is empty
@@ -140,20 +147,51 @@ export async function showConfigDialog(isElectron, currentConfig) {
         <div class="power-mode-help" id="hardware-acceleration-help"></div>
       </div>` : '';
 
+  const networkNameSection = isElectron ? `
+      <div class="device-section" id="network-device-name-section">
+        <div class="network-name-row">
+          <label for="network-device-name" id="network-device-name-label"></label>
+          <input type="text" id="network-device-name" maxlength="128" disabled>
+        </div>
+      </div>` : '';
+
+  const remoteControlSection = isElectron ? `
+      <div class="device-section" id="network-remote-control-section">
+        <label class="section-label" id="network-remote-control-title"></label>
+        <div class="checkbox-container">
+          <input type="checkbox" id="network-remote-control-enabled" disabled>
+          <label for="network-remote-control-enabled" id="network-remote-control-enabled-label"></label>
+        </div>
+        <div class="network-remote-control-status" id="network-remote-control-status" role="status" aria-live="polite"></div>
+      </div>` : '';
+
   const openHomeSection = isElectron ? `
       <div class="device-section" id="openhome-section">
         <label class="section-label" id="openhome-title"></label>
-        <div class="openhome-name-row">
-          <label for="openhome-friendly-name" id="openhome-friendly-name-label"></label>
-          <input type="text" id="openhome-friendly-name" maxlength="128" aria-describedby="openhome-friendly-name-help">
-        </div>
-        <div class="openhome-help openhome-name-help" id="openhome-friendly-name-help"></div>
         <div class="checkbox-container">
           <input type="checkbox" id="openhome-enabled" disabled aria-describedby="openhome-risk">
           <label for="openhome-enabled" id="openhome-enabled-label"></label>
         </div>
         <div class="openhome-status" id="openhome-status" role="status" aria-live="polite"></div>
         <div class="openhome-help" id="openhome-risk"></div>
+      </div>` : '';
+
+  const librarySharingSection = isElectron ? `
+      <div class="device-section" id="library-sharing-section">
+        <label class="section-label" id="library-sharing-title"></label>
+        <div class="checkbox-container">
+          <input type="checkbox" id="library-sharing-enabled" disabled aria-describedby="library-sharing-help">
+          <label for="library-sharing-enabled" id="library-sharing-enabled-label"></label>
+        </div>
+        <div class="library-sharing-options">
+          <div class="power-mode-help" id="library-sharing-help"></div>
+          <div class="library-sharing-folders" id="library-sharing-folders"></div>
+          <div class="power-mode-help" id="library-sharing-empty" hidden></div>
+          <div class="library-sharing-actions">
+            <button type="button" class="library-button" id="library-sharing-save" disabled></button>
+            <div class="power-mode-help" id="library-sharing-status" role="status" aria-live="polite"></div>
+          </div>
+        </div>
       </div>` : '';
 
   const powerSavingSection = `
@@ -270,6 +308,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
             <div class="radio-container">
               <input type="radio" name="startup-view" id="startup-view-visualizer" value="visualizer" ${config.startupView === 'visualizer' ? 'checked' : ''}>
               <label for="startup-view-visualizer" id="config-startup-view-visualizer-label"></label>
+              <input type="checkbox" id="visualizer-startup-expanded" ${config.visualizerStartupExpanded === true ? 'checked' : ''} ${config.startupView === 'visualizer' ? '' : 'disabled'}>
+              <label for="visualizer-startup-expanded" id="config-visualizer-startup-expanded-label"></label>
             </div>
             ${isElectron ? `<div class="radio-container">
               <input type="radio" name="startup-view" id="startup-view-browser" value="browser" ${config.startupView === 'browser' ? 'checked' : ''}>
@@ -354,8 +394,18 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <button type="button" class="library-button" id="browser-reset-start-page"></button>
             </div>
             <div class="power-mode-help" id="browser-start-page-help"></div>
-          </div>`,
-      remoteControl: openHomeSection
+          </div>
+          <fieldset class="device-section browser-rules" id="browser-rules-controls">
+            <legend class="section-label" id="browser-rules-title"></legend>
+            <div class="power-mode-help" id="browser-rules-help"></div>
+            <div id="browser-rules-list"></div>
+            <div class="browser-setting-row">
+              <button type="button" class="library-button" id="browser-rules-add"></button>
+              <button type="button" class="library-button" id="browser-rules-save"></button>
+              <button type="button" class="library-button" id="browser-rules-cancel"></button>
+            </div>
+          </fieldset>`,
+      network: networkNameSection + remoteControlSection + openHomeSection + librarySharingSection
     } : {})
   };
   const categories = Object.keys(categoryPanels);
@@ -519,18 +569,18 @@ export async function showConfigDialog(isElectron, currentConfig) {
       font-size: 12px;
       line-height: 1.4;
     }
-    .openhome-name-row {
+    .network-name-row {
       display: flex;
       align-items: center;
       gap: 10px;
-      margin: 8px 0 0 26px;
+      margin: 0;
     }
-    .openhome-name-row label {
+    .network-name-row label {
       flex: 0 0 auto;
       color: var(--et-surface-89);
       font-size: 13px;
     }
-    .openhome-name-row input,
+    .network-name-row input,
     .browser-setting-input {
       min-width: 0;
       flex: 1 1 auto;
@@ -544,12 +594,12 @@ export async function showConfigDialog(isElectron, currentConfig) {
       flex: 1 1 0;
       box-sizing: border-box;
     }
-    .openhome-name-row input:focus,
+    .network-name-row input:focus,
     .browser-setting-input:focus {
       border-color: var(--et-surface-51);
       outline: none;
     }
-    .openhome-name-row input:disabled,
+    .network-name-row input:disabled,
     .browser-setting-input:disabled {
       opacity: 0.6;
     }
@@ -562,6 +612,37 @@ export async function showConfigDialog(isElectron, currentConfig) {
       flex: 0 0 auto;
       white-space: nowrap;
     }
+    .browser-rules {
+      min-width: 0;
+      border: 0;
+      padding: 0;
+      margin-inline: 0;
+    }
+    .browser-rules > .section-label {
+      padding: 0;
+    }
+    .browser-rules > .power-mode-help {
+      margin: 0 0 12px;
+    }
+    .browser-rules > .browser-setting-row {
+      flex-wrap: wrap;
+    }
+    .browser-rule-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .browser-rule-row .browser-setting-input {
+      min-width: 130px;
+    }
+    .browser-rule-row select {
+      flex: 1 1 120px;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .network-remote-control-status,
     .openhome-status {
       margin: 8px 0 0 26px;
       color: var(--et-surface-74);
@@ -572,6 +653,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     .openhome-status[data-state="published"] {
       color: var(--et-success);
     }
+    .network-remote-control-status[data-state="error"],
     .openhome-status[data-state="error"],
     .openhome-status[data-state="unavailable"] {
       color: var(--et-danger);
@@ -581,6 +663,31 @@ export async function showConfigDialog(isElectron, currentConfig) {
       color: var(--et-surface-74);
       font-size: 12px;
       line-height: 1.45;
+    }
+    .library-sharing-options {
+      display: grid;
+      gap: 12px;
+      margin: 6px 0 0 26px;
+    }
+    .library-sharing-options .power-mode-help {
+      margin: 0;
+    }
+    .library-sharing-folders {
+      display: grid;
+      gap: 6px;
+    }
+    .library-sharing-folders label {
+      overflow-wrap: anywhere;
+    }
+    .library-sharing-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .library-sharing-folders:empty,
+    #library-sharing-status:empty {
+      display: none;
     }
     .power-advanced-settings {
       margin: 12px 0 0 26px;
@@ -710,12 +817,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
       .power-mode-help,
       .power-saving-warning,
       .power-advanced-settings,
+      .library-sharing-options,
+      .network-remote-control-status,
       .openhome-status,
-      .openhome-name-row,
       .openhome-help {
         margin-left: 0;
       }
-      .openhome-name-row {
+      .network-name-row {
         align-items: stretch;
         flex-direction: column;
         gap: 4px;
@@ -910,9 +1018,113 @@ export async function showConfigDialog(isElectron, currentConfig) {
   let openHomeStatusReadFailed = false;
   let openHomeOperationFailed = false;
   let openHomeChangeInFlight = false;
-  let openHomeNameChangeInFlight = false;
+  let networkNameChangeInFlight = false;
   let openHomeRequestedEnabled = false;
   let removeOpenHomeStatusListener = null;
+  let removeRemoteControlSettingsListener = null;
+  const librarySharingControls = isElectron ? {
+    enabled: document.getElementById('library-sharing-enabled'),
+    folders: document.getElementById('library-sharing-folders'),
+    empty: document.getElementById('library-sharing-empty'),
+    save: document.getElementById('library-sharing-save'),
+    status: document.getElementById('library-sharing-status')
+  } : null;
+  let librarySharing = null;
+  let librarySharingSaving = false;
+  let librarySharingStatusKey = 'loading';
+  let librarySharingFolderInputs = [];
+
+  function renderRemoteControlSettings() {
+    const input = document.getElementById('network-remote-control-enabled');
+    const statusElement = document.getElementById('network-remote-control-status');
+    if (!input || !statusElement) return;
+    const status = remoteControlSettings?.status;
+    input.checked = status?.enabled === true;
+    input.disabled = !status || remoteControlSettings.busy;
+    const errorKey = remoteControlSettings?.errorKey || (status?.error ? 'startFailed' : null);
+    statusElement.textContent = errorKey ? t(`dialog.remoteControl.${errorKey}`)
+      : remoteControlSettings && !status ? t('dialog.remoteControl.loading') : '';
+    statusElement.setAttribute('data-state', errorKey ? 'error' : '');
+  }
+
+  function markLibrarySharingUnsaved() {
+    librarySharingStatusKey = 'unsaved';
+    renderLibrarySharing();
+  }
+
+  function renderLibrarySharing() {
+    if (!librarySharingControls) return;
+    const { enabled, save, empty, status } = librarySharingControls;
+    const disabled = !librarySharing || librarySharingSaving;
+    enabled.disabled = disabled;
+    save.disabled = disabled;
+    for (const input of librarySharingFolderInputs) input.disabled = disabled;
+    empty.hidden = !librarySharing || librarySharing.folders.length > 0;
+    status.textContent = librarySharingStatusKey
+      ? t(`dialog.config.librarySharing.${librarySharingStatusKey}`) : '';
+  }
+
+  function acceptLibrarySharing(state) {
+    const sharing = state?.sharing;
+    if (typeof sharing?.enabled !== 'boolean' || !Array.isArray(sharing.folderIds) ||
+        !Array.isArray(sharing.folders)) throw new Error('Invalid library sharing state');
+    librarySharing = sharing;
+    librarySharingControls.enabled.checked = sharing.enabled;
+    const folders = librarySharingControls.folders;
+    while (folders.children.length) folders.removeChild(folders.children[0]);
+    librarySharingFolderInputs = sharing.folders.map((folder, index) => {
+      const row = document.createElement('div');
+      row.className = 'checkbox-container';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.id = `library-sharing-folder-${index}`;
+      input.value = folder.id;
+      input.checked = sharing.folderIds.includes(folder.id);
+      input.addEventListener('change', markLibrarySharingUnsaved);
+      const label = document.createElement('label');
+      label.htmlFor = input.id;
+      label.textContent = folder.name;
+      row.appendChild(input);
+      row.appendChild(label);
+      folders.appendChild(row);
+      return input;
+    });
+  }
+
+  async function refreshLibrarySharing() {
+    if (!isElectron) return;
+    try {
+      acceptLibrarySharing(await networkMusicAPI.networkMusicGetState({ loadSharingFolders: true }));
+      librarySharingStatusKey = '';
+    } catch (error) {
+      console.error('Failed to read library sharing settings:', error);
+      librarySharing = null;
+      librarySharingStatusKey = 'loadFailed';
+    }
+    renderLibrarySharing();
+  }
+
+  async function saveLibrarySharing() {
+    if (!librarySharing || librarySharingSaving) return;
+    const request = {
+      enabled: librarySharingControls.enabled.checked,
+      folderIds: librarySharingFolderInputs.filter(input => input.checked).map(input => input.value)
+    };
+    librarySharingSaving = true;
+    librarySharingStatusKey = 'saving';
+    renderLibrarySharing();
+    try {
+      acceptLibrarySharing(await networkMusicAPI.networkMusicSetSharing(request));
+      librarySharingStatusKey = 'saved';
+    } catch (error) {
+      console.error('Failed to save library sharing settings:', error);
+      await refreshLibrarySharing();
+      if (librarySharing) librarySharingStatusKey = 'saveFailed';
+    } finally {
+      librarySharingSaving = false;
+      renderLibrarySharing();
+    }
+  }
 
   function publishOpenHomeEnabled(enabled) {
     const publishedConfig = window.appConfig || config;
@@ -926,7 +1138,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     });
   }
 
-  function publishOpenHomeFriendlyName(friendlyName) {
+  function publishNetworkDeviceName(friendlyName) {
     if (typeof friendlyName !== 'string' || !friendlyName) return;
     config.openHomeFriendlyName = friendlyName;
     publishElectronConfigSnapshot({
@@ -986,9 +1198,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     return { key: 'starting', state: 'pending' };
   }
 
-  function renderOpenHomeStatus() {
+  function renderNetworkStatus(updateDeviceName = false) {
     const input = document.getElementById('openhome-enabled');
-    const nameInput = document.getElementById('openhome-friendly-name');
+    const nameInput = document.getElementById('network-device-name');
     const statusElement = document.getElementById('openhome-status');
     if (!input || !nameInput || !statusElement) return;
     input.checked = openHomeChangeInFlight
@@ -996,10 +1208,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       : Boolean(openHomeStatus?.enabled);
     input.disabled = !openHomeAPI || openHomeChangeInFlight || !openHomeStatusLoaded ||
       (openHomeStatus?.available === false && openHomeStatus?.enabled !== true);
-    if (!openHomeNameChangeInFlight && document.activeElement !== nameInput) {
+    if (!networkNameChangeInFlight && (updateDeviceName || document.activeElement !== nameInput)) {
       nameInput.value = openHomeStatus?.friendlyName || config.openHomeFriendlyName || '';
     }
-    nameInput.disabled = !openHomeAPI || openHomeNameChangeInFlight || !openHomeStatusLoaded;
+    nameInput.disabled = typeof openHomeAPI?.setFriendlyName !== 'function' ||
+      networkNameChangeInFlight || !openHomeStatusLoaded;
     const presentation = getOpenHomeStatusPresentation();
     statusElement.textContent = t(`dialog.config.openHome.status.${presentation.key}`);
     statusElement.setAttribute('data-state', presentation.state);
@@ -1008,19 +1221,19 @@ export async function showConfigDialog(isElectron, currentConfig) {
   async function refreshOpenHomeStatus() {
     if (!openHomeAPI || typeof openHomeAPI.getStatus !== 'function') {
       openHomeStatusLoaded = true;
-      renderOpenHomeStatus();
+      renderNetworkStatus();
       return false;
     }
     try {
       const status = await openHomeAPI.getStatus();
       if (!acceptOpenHomeStatus(status)) throw new Error('Invalid OpenHome status response');
-      renderOpenHomeStatus();
+      renderNetworkStatus();
       return true;
     } catch (error) {
       openHomeStatusLoaded = true;
       openHomeStatusReadFailed = true;
       console.error('Failed to read OpenHome remote control status:', error);
-      renderOpenHomeStatus();
+      renderNetworkStatus();
       return false;
     }
   }
@@ -1030,7 +1243,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     openHomeChangeInFlight = true;
     openHomeRequestedEnabled = enabled;
     openHomeOperationFailed = false;
-    renderOpenHomeStatus();
+    renderNetworkStatus();
     try {
       const status = await openHomeAPI.setEnabled(enabled);
       if (!acceptOpenHomeStatus(status)) throw new Error('Invalid OpenHome status response');
@@ -1040,26 +1253,25 @@ export async function showConfigDialog(isElectron, currentConfig) {
       openHomeOperationFailed = true;
     } finally {
       openHomeChangeInFlight = false;
-      renderOpenHomeStatus();
+      renderNetworkStatus();
     }
   }
 
-  async function applyOpenHomeFriendlyName(friendlyName) {
-    if (openHomeNameChangeInFlight || typeof openHomeAPI?.setFriendlyName !== 'function') return;
-    openHomeNameChangeInFlight = true;
-    openHomeOperationFailed = false;
-    renderOpenHomeStatus();
+  async function applyNetworkDeviceName(friendlyName) {
+    if (networkNameChangeInFlight || typeof openHomeAPI?.setFriendlyName !== 'function') return;
+    networkNameChangeInFlight = true;
+    renderNetworkStatus();
     try {
       const status = await openHomeAPI.setFriendlyName(friendlyName);
       if (!acceptOpenHomeStatus(status)) throw new Error('Invalid OpenHome status response');
-      publishOpenHomeFriendlyName(status.friendlyName);
+      publishNetworkDeviceName(status.friendlyName);
     } catch (error) {
-      console.error('Failed to update the OpenHome player name:', error);
+      console.error('Failed to update the network device name:', error);
       await refreshOpenHomeStatus();
-      openHomeOperationFailed = true;
+      window.uiManager?.setError?.(t('dialog.config.network.deviceNameSaveFailed'), true);
     } finally {
-      openHomeNameChangeInFlight = false;
-      renderOpenHomeStatus();
+      networkNameChangeInFlight = false;
+      renderNetworkStatus(true);
     }
   }
 
@@ -1085,6 +1297,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const autoLaunchLabel = document.getElementById('config-auto-launch-label');
     if (autoLaunchLabel) autoLaunchLabel.textContent = t('dialog.config.autoLaunch');
     for (const [id, key] of [
+      ['network-remote-control-title', 'dialog.remoteControl.title'],
+      ['network-remote-control-enabled-label', 'dialog.remoteControl.enabled'],
       ['store-startup-help', 'dialog.store.startupHelp'],
       ['store-startup', 'dialog.store.openStartup'],
       ['store-updates-help', 'dialog.store.updatesHelp'],
@@ -1103,6 +1317,14 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (hardwareAccelerationLabel) hardwareAccelerationLabel.textContent = t('dialog.config.hardwareAcceleration');
     const hardwareAccelerationHelp = document.getElementById('hardware-acceleration-help');
     if (hardwareAccelerationHelp) hardwareAccelerationHelp.textContent = t('dialog.config.hardwareAccelerationHelp');
+    for (const key of ['title', 'help', 'add', 'save', 'cancel']) {
+      const element = document.getElementById(`browser-rules-${key}`);
+      if (element) element.textContent = t(`dialog.config.browser.rules.${key}`);
+    }
+    for (const [element, key, attribute] of browserRuleLabels) {
+      if (attribute) element.setAttribute(attribute, t(`dialog.config.browser.rules.${key}`));
+      else element.textContent = t(`dialog.config.browser.rules.${key}`);
+    }
     const browserUserAgentLabel = document.getElementById('browser-user-agent-label');
     if (browserUserAgentLabel) browserUserAgentLabel.textContent = t('dialog.config.browser.userAgent');
     const browserUserAgentHelp = document.getElementById('browser-user-agent-help');
@@ -1121,16 +1343,27 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (openHomeTitle) openHomeTitle.textContent = t('dialog.config.openHome.title');
     const openHomeEnabledLabel = document.getElementById('openhome-enabled-label');
     if (openHomeEnabledLabel) openHomeEnabledLabel.textContent = t('dialog.config.openHome.enable');
-    const openHomeFriendlyNameLabel = document.getElementById('openhome-friendly-name-label');
-    if (openHomeFriendlyNameLabel) {
-      openHomeFriendlyNameLabel.textContent = t('dialog.config.openHome.friendlyName');
+    const networkDeviceNameLabel = document.getElementById('network-device-name-label');
+    if (networkDeviceNameLabel) {
+      networkDeviceNameLabel.textContent = t('dialog.config.network.deviceName');
+      networkDeviceNameLabel.title = t('dialog.config.network.deviceNameHelp');
     }
-    const openHomeFriendlyNameHelp = document.getElementById('openhome-friendly-name-help');
-    if (openHomeFriendlyNameHelp) {
-      openHomeFriendlyNameHelp.textContent = t('dialog.config.openHome.friendlyNameHelp');
+    const networkDeviceName = document.getElementById('network-device-name');
+    if (networkDeviceName) {
+      networkDeviceName.title = t('dialog.config.network.deviceNameHelp');
     }
     const openHomeRisk = document.getElementById('openhome-risk');
     if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
+    for (const [id, key] of [
+      ['library-sharing-title', 'networkMusic.sharing'],
+      ['library-sharing-enabled-label', 'networkMusic.shareEnabled'],
+      ['library-sharing-help', 'networkMusic.shareNotice'],
+      ['library-sharing-empty', 'dialog.config.librarySharing.empty'],
+      ['library-sharing-save', 'networkMusic.save']
+    ]) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = t(key);
+    }
     document.getElementById('config-language-label').textContent = t('dialog.config.language');
     document.getElementById('library-include-video-label').textContent = t('dialog.config.libraryIncludeVideo');
     document.getElementById('library-include-video-help').textContent = t('dialog.config.libraryIncludeVideoHelp');
@@ -1158,6 +1391,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     document.getElementById('config-startup-view-effects-label').textContent = t('dialog.config.startupView.effects');
     document.getElementById('config-startup-view-library-label').textContent = t('dialog.config.startupView.library');
     document.getElementById('config-startup-view-visualizer-label').textContent = t('dialog.config.startupView.visualizer');
+    document.getElementById('config-visualizer-startup-expanded-label').textContent = t('dialog.config.visualizerStartupExpanded');
     const browserStartupLabel = document.getElementById('config-startup-view-browser-label');
     if (browserStartupLabel) browserStartupLabel.textContent = t('dialog.config.startupView.browser');
     document.getElementById('config-pipeline-label').textContent = t('dialog.config.pipeline');
@@ -1208,7 +1442,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     renderPowerSettingOptions();
     syncPowerSettingControls();
     renderOfflineOutputControls();
-    renderOpenHomeStatus();
+    renderNetworkStatus();
+    renderRemoteControlSettings();
+    renderLibrarySharing();
   }
 
   function publishElectronConfig(nextConfig) {
@@ -1247,6 +1483,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
     if (startupLibrary) startupLibrary.checked = startupView === 'library';
     const startupVisualizer = document.getElementById('startup-view-visualizer');
     if (startupVisualizer) startupVisualizer.checked = startupView === 'visualizer';
+    const visualizerStartupExpanded = document.getElementById('visualizer-startup-expanded');
+    if (visualizerStartupExpanded) {
+      visualizerStartupExpanded.checked = config.visualizerStartupExpanded === true;
+      visualizerStartupExpanded.disabled = startupView !== 'visualizer';
+    }
     const startupBrowser = document.getElementById('startup-view-browser');
     if (startupBrowser) startupBrowser.checked = startupView === 'browser';
     const libraryStartupView = document.getElementById('library-startup-view-select');
@@ -1477,16 +1718,18 @@ export async function showConfigDialog(isElectron, currentConfig) {
   openHomeEnabled?.addEventListener('change', async e => {
     await applyOpenHomeEnabled(e.target.checked);
   });
-  const openHomeFriendlyName = document.getElementById('openhome-friendly-name');
-  openHomeFriendlyName?.addEventListener('change', async e => {
-    await applyOpenHomeFriendlyName(e.target.value);
+  const networkDeviceName = document.getElementById('network-device-name');
+  networkDeviceName?.addEventListener('change', async e => {
+    await applyNetworkDeviceName(e.target.value);
   });
+  document.getElementById('network-remote-control-enabled')?.addEventListener('change', e =>
+    remoteControlSettings?.setEnabled(e.target.checked));
   const browserUserAgent = document.getElementById('browser-user-agent');
   const browserOpenTabs = document.getElementById('browser-open-tabs-externally');
   const browserStartPage = document.getElementById('browser-start-page');
   const browserResetStartPage = document.getElementById('browser-reset-start-page');
   const browserResetUserAgent = document.getElementById('browser-reset-user-agent');
-  const browserControls = [browserUserAgent, browserOpenTabs, browserStartPage, browserResetStartPage, browserResetUserAgent].filter(Boolean);
+  const browserControls = [browserUserAgent, browserOpenTabs, browserStartPage, browserResetStartPage, browserResetUserAgent, document.getElementById('browser-rules-controls')].filter(Boolean);
   function syncBrowserControls() {
     if (!browserUserAgent) return;
     browserUserAgent.value = config.browser?.userAgent || defaultBrowserUserAgent;
@@ -1498,6 +1741,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
     for (const control of browserControls) control.disabled = true;
     try {
       const result = await window.electronAPI.browser.saveSettings(patch);
+      if (result?.error === 'invalidRules') {
+        window.uiManager?.setError?.(t('dialog.config.browser.rules.invalid'), true);
+        return false;
+      }
       if (result?.error === 'invalidURL') {
         window.uiManager?.setError?.(t('dialog.config.browser.invalidStartPage'), true);
         return;
@@ -1505,9 +1752,11 @@ export async function showConfigDialog(isElectron, currentConfig) {
       if (!result?.ok) throw new Error('Browser settings save failed');
       config.browser = result.settings;
       publishElectronConfig({ ...(window.appConfig || config), browser: result.settings });
+      return true;
     } catch (error) {
       console.error('Failed to save Browser settings:', error);
       window.uiManager?.setError?.(t('dialog.config.browser.saveFailed'), true);
+      return false;
     } finally {
       syncBrowserControls();
     }
@@ -1520,6 +1769,88 @@ export async function showConfigDialog(isElectron, currentConfig) {
   browserOpenTabs?.addEventListener('change', () => saveBrowserSettings({ openTabsExternally: browserOpenTabs.checked }));
   browserStartPage?.addEventListener('change', () => saveBrowserSettings({ startPage: browserStartPage.value }));
   browserResetStartPage?.addEventListener('click', () => saveBrowserSettings({ startPage: '' }));
+  function labelBrowserRule(element, key, attribute) {
+    browserRuleLabels.push([element, key, attribute]);
+    if (attribute) element.setAttribute(attribute, t(`dialog.config.browser.rules.${key}`));
+    else element.textContent = t(`dialog.config.browser.rules.${key}`);
+  }
+  function renderBrowserRules() {
+    const list = document.getElementById('browser-rules-list');
+    if (!list) return;
+    list.innerHTML = '';
+    browserRuleLabels.length = 0;
+    for (const [index, rule] of browserRulesDraft.entries()) {
+      const row = document.createElement('div');
+      row.className = 'browser-rule-row';
+      const enabledLabel = document.createElement('label');
+      const enabled = document.createElement('input');
+      enabled.type = 'checkbox';
+      enabled.checked = rule.enabled;
+      enabled.addEventListener('change', () => { rule.enabled = enabled.checked; });
+      enabledLabel.appendChild(enabled);
+      const enabledText = document.createElement('span');
+      labelBrowserRule(enabledText, 'enabled');
+      enabledLabel.appendChild(enabledText);
+      row.appendChild(enabledLabel);
+      const pattern = document.createElement('input');
+      pattern.type = 'text';
+      pattern.className = 'browser-setting-input';
+      pattern.value = rule.pattern;
+      pattern.placeholder = 'example.com/*';
+      pattern.spellcheck = false;
+      labelBrowserRule(pattern, 'pattern', 'aria-label');
+      pattern.addEventListener('input', () => { rule.pattern = pattern.value; });
+      row.appendChild(pattern);
+      const preset = document.createElement('select');
+      labelBrowserRule(preset, 'preset', 'aria-label');
+      for (const name of new Set([rule.preset, ...presetNames])) {
+        const option = document.createElement('option');
+        option.value = name;
+        if (!name) labelBrowserRule(option, 'choosePreset');
+        else option.textContent = name;
+        preset.appendChild(option);
+      }
+      preset.value = rule.preset;
+      preset.addEventListener('change', () => { rule.preset = preset.value; });
+      row.appendChild(preset);
+      for (const [key, offset] of [['up', -1], ['down', 1], ['delete', 0]]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'library-button';
+        labelBrowserRule(button, key);
+        button.disabled = offset !== 0 && (index + offset < 0 || index + offset >= browserRulesDraft.length);
+        button.addEventListener('click', () => {
+          if (!offset) browserRulesDraft.splice(index, 1);
+          else [browserRulesDraft[index], browserRulesDraft[index + offset]] = [browserRulesDraft[index + offset], rule];
+          renderBrowserRules();
+        });
+        row.appendChild(button);
+      }
+      list.appendChild(row);
+    }
+    enableStandardSelects(list);
+  }
+  document.getElementById('browser-rules-add')?.addEventListener('click', () => {
+    browserRulesDraft.push({ pattern: '', preset: presetNames[0] || '', enabled: true });
+    renderBrowserRules();
+  });
+  document.getElementById('browser-rules-save')?.addEventListener('click', async () => {
+    let urlRules;
+    try { urlRules = validateRules(browserRulesDraft); }
+    catch {
+      window.uiManager?.setError?.(t('dialog.config.browser.rules.invalid'), true);
+      return;
+    }
+    if (await saveBrowserSettings({ urlRules })) {
+      browserRulesDraft = structuredClone(config.browser.urlRules);
+      renderBrowserRules();
+    }
+  });
+  document.getElementById('browser-rules-cancel')?.addEventListener('click', () => {
+    browserRulesDraft = structuredClone(config.browser?.urlRules || []);
+    renderBrowserRules();
+  });
+  renderBrowserRules();
   [
     [document.getElementById('power-mode-continuous'), PowerPolicy.CONTINUOUS],
     [document.getElementById('power-mode-balanced'), PowerPolicy.BALANCED],
@@ -1568,6 +1899,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
     });
   });
   const libraryStartupViewSelect = document.getElementById('library-startup-view-select');
+  document.getElementById('visualizer-startup-expanded').addEventListener('change', async e => {
+    await save({ visualizerStartupExpanded: e.target.checked });
+  });
   if (libraryStartupViewSelect) {
     libraryStartupViewSelect.addEventListener('change', async e => {
       await save({ libraryStartupView: normalizeMusicLibraryStartupView(e.target.value) });
@@ -1625,6 +1959,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     closeStandardSelect(document);
     removeOpenHomeStatusListener?.();
     removeOpenHomeStatusListener = null;
+    removeRemoteControlSettingsListener?.();
+    removeRemoteControlSettingsListener = null;
     document.body.removeChild(overlay);
     document.head.removeChild(style);
     document.removeEventListener('keydown', handleKeydown);
@@ -1638,6 +1974,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   }
 
   document.getElementById('close-btn').addEventListener('click', closeDialog);
+  document.getElementById('library-sharing-save')?.addEventListener('click', saveLibrarySharing);
+  document.getElementById('library-sharing-enabled')?.addEventListener('change', markLibrarySharingUnsaved);
   document.addEventListener('keydown', handleKeydown);
 
   if (typeof openHomeAPI?.onStatus === 'function') {
@@ -1647,8 +1985,9 @@ export async function showConfigDialog(isElectron, currentConfig) {
         return;
       }
       if (!openHomeChangeInFlight) openHomeOperationFailed = false;
-      renderOpenHomeStatus();
+      renderNetworkStatus();
     });
   }
-  await refreshOpenHomeStatus();
+  removeRemoteControlSettingsListener = remoteControlSettings?.subscribe(renderRemoteControlSettings);
+  await Promise.all([refreshOpenHomeStatus(), refreshLibrarySharing()]);
 }

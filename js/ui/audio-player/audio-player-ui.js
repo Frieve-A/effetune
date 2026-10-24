@@ -7,6 +7,7 @@
 import { validateSelectionDescriptor } from '../../library/repository/selection-descriptor.js';
 import { updateRangeFill } from '../range-fill.js';
 import { escapeHtml } from '../../utils/escape-html.js';
+import { isPwaNetworkArtworkUrl } from '../../network-music/pwa-connection.js';
 import { SynchronizedVideo } from './synchronized-video.js';
 import {
   PLAYBACK_SPEED_MAX,
@@ -74,6 +75,7 @@ const PLAYER_ARTWORK_PLACEHOLDER = '<svg width="72" height="72" viewBox="0 0 72 
 export class AudioPlayerUI {
   constructor(audioPlayer) {
     this.audioPlayer = audioPlayer;
+    this.localAudioPlayer = audioPlayer;
     this.container = null;
     this.trackNameDisplay = null;
     this.seekBar = null;
@@ -204,7 +206,7 @@ export class AudioPlayerUI {
     });
     
     addStateListener('currentTrackPosition', (position) => {
-      if (stateManager.getStateSnapshot().isPlaying) {
+      if (stateManager.getStateSnapshot().isPlaying && !this.audioPlayer.isRemote) {
         this.schedulePositionUpdate();
       } else {
         this.updateTimeDisplay();
@@ -233,6 +235,59 @@ export class AudioPlayerUI {
       this.updateTimeDisplay();
       this.updatePlayPauseButton();
     });
+  }
+
+  setPlaybackTarget(player = this.localAudioPlayer) {
+    if (this.audioPlayer === player) return;
+    this.closePlayerPopup();
+    this.resetVideoGestures();
+    this.setVideoExpanded(false);
+    this.removeStateListeners();
+    this.cancelArtworkPreload();
+    this.trackPresentationGeneration += 1;
+    this.mobileTrackPresentationPending = false;
+    this.audioPlayer = player;
+    if (this.closeButton) this.closeButton.disabled = false;
+    this.initStateMonitoring();
+    if (this.container) {
+      this.updateVideoPresentation();
+      this.updateTrackDisplay();
+      this.updateArtwork();
+      this.updatePlaylistDisplay();
+      this.updateTimeDisplay();
+      this.updatePlayPauseButton();
+      this.updatePlayerUIState();
+      this.updateLoadingState();
+    }
+    this.refreshPowerUiScheduling();
+    window.uiManager?.mobileNav?.attachPlayerState?.();
+  }
+
+  updateControlsState() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
+    const enabled = state?.controlsEnabled !== false;
+    const capabilities = state?.transportCapabilities;
+    for (const [control, action] of [
+      [this.playPauseButton, state?.isPlaying ? 'pause' : 'play'],
+      [this.stopButton, 'stop'], [this.prevButton, 'previous'], [this.nextButton, 'next'],
+      [this.repeatButton, 'repeat'], [this.shuffleButton, 'shuffle'], [this.speedButton, 'speed']
+    ]) {
+      if (control) control.disabled = !enabled || (capabilities && capabilities[action] !== true) ||
+        (control === this.shuffleButton && state?.repeatMode === 'ONE');
+    }
+    if (this.seekBar) this.seekBar.disabled = state?.seekBarEnabled === false;
+    if (this.speedButton) this.speedButton.hidden = this.audioPlayer.isRemote === true;
+    if (this.audioPlayer.isRemote) {
+      for (const item of this.playlistDisplay?.querySelectorAll('.player-playlist-item') ?? []) {
+        item.disabled = !enabled || capabilities?.seekId !== true;
+      }
+    }
+    if (this.volumeSlider) {
+      this.volumeSlider.hidden = capabilities?.volume !== true;
+      this.volumeSlider.disabled = !enabled;
+      this.volumeSlider.max = String(state?.volumeMax ?? 100);
+      if (document.activeElement !== this.volumeSlider) this.volumeSlider.value = String(state?.volume ?? 0);
+    }
   }
 
   canRunPlayerUi() {
@@ -284,7 +339,9 @@ export class AudioPlayerUI {
    * Handle state changes and update UI accordingly
    */
   handleStateChange(key, newValue, source) {
-    // UI updates are handled by specific listeners
+    if (['controlsEnabled', 'seekBarEnabled', 'transportCapabilities', 'repeatMode', 'shuffleMode', 'volume', 'volumeMax'].includes(key)) {
+      this.updatePlayerUIState();
+    }
   }
   
   /**
@@ -330,6 +387,7 @@ export class AudioPlayerUI {
         <button class="player-button repeat-button" title="${window.uiManager ? window.uiManager.t('ui.title.repeat') : 'Toggle repeat mode'}">${repeatIcon}</button>
         <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}">${ICON.shuffle}</button>
         <button class="player-button speed-button" type="button" title="${window.uiManager ? window.uiManager.t('ui.title.playbackSpeed') : 'Playback speed'}" aria-haspopup="dialog" aria-expanded="false">${state?.playbackSpeed ?? 1}x</button>
+        <input class="player-volume" type="range" min="0" max="100" step="1" aria-label="Volume" title="${window.uiManager ? window.uiManager.t('networkMusic.volume') : 'Volume'}" hidden>
         ${miniPlayerControls}
         <button class="player-button expand-button" title="${window.uiManager ? window.uiManager.t('ui.title.expandPlayer') : 'Expand player'}">${this.desktopQueueExpanded ? ICON.collapse : ICON.expand}</button>
         <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">${ICON.close}</button>
@@ -349,6 +407,8 @@ export class AudioPlayerUI {
     this.repeatButton = container.querySelector('.repeat-button');
     this.shuffleButton = container.querySelector('.shuffle-button');
     this.speedButton = container.querySelector('.speed-button');
+    this.volumeSlider = container.querySelector('.player-volume');
+    this.volumeSlider?.addEventListener('change', () => this.audioPlayer.setVolume?.(Number(this.volumeSlider.value)));
     this.closeButton = container.querySelector('.close-button');
     this.expandButton = container.querySelector('.expand-button');
     this.miniPlayerButton = container.querySelector('.mini-player-button');
@@ -438,9 +498,13 @@ export class AudioPlayerUI {
     this.nextButton.addEventListener('click', () => void runPlaybackCommand(() => this.audioPlayer.playNext()));
     this.closeButton.addEventListener('click', async () => {
       if (this.closeButton.disabled) return;
+      const player = this.audioPlayer;
       this.closeButton.disabled = true;
-      await runPlaybackCommand(() => this.audioPlayer.pause());
-      this.audioPlayer.close();
+      const paused = await runPlaybackCommand(() => player.pause());
+      if (this.audioPlayer === player) {
+        if (paused !== false) player.close();
+        else if (this.closeButton) this.closeButton.disabled = false;
+      }
     });
 
     this.expandButton?.addEventListener('click', () => {
@@ -470,7 +534,7 @@ export class AudioPlayerUI {
     this.updateLoadingState();
     this.updatePlaylistDisplay();
     
-    this.seekBar.addEventListener('input', () => {
+    const seek = () => {
       // Check if seeking is enabled
       if (this.audioPlayer.stateManager) {
         const state = this.audioPlayer.stateManager.getStateSnapshot();
@@ -504,6 +568,12 @@ export class AudioPlayerUI {
           }
         }
       }
+    };
+    this.seekBar.addEventListener('input', () => {
+      if (!this.audioPlayer.isRemote) seek();
+    });
+    this.seekBar.addEventListener('change', () => {
+      if (this.audioPlayer.isRemote) seek();
     });
 
     this.mountContainerForLayout();
@@ -680,6 +750,7 @@ export class AudioPlayerUI {
     // Update shuffle button state
     const shuffleActive = shuffleMode && repeatMode !== 'ONE';
     this.shuffleButton.setAttribute('data-active', shuffleActive ? 'true' : 'false');
+    this.updateControlsState();
   }
 
   /**
@@ -704,6 +775,7 @@ export class AudioPlayerUI {
     } else {
       this.playPauseButton.innerHTML = PLAYER_ICONS.play;
     }
+    this.updateControlsState();
   }
 
   /**
@@ -850,6 +922,7 @@ export class AudioPlayerUI {
     preloader.onerror = () => finish('');
     this.pendingArtworkPreload = preloader;
     this.pendingArtworkPreloadUrl = artworkUrl;
+    if (isPwaNetworkArtworkUrl(artworkUrl)) preloader.crossOrigin = 'anonymous';
     preloader.src = artworkUrl;
     if (preloader.complete && preloader.naturalWidth > 0) {
       queueMicrotask(() => preloader.onload?.());
@@ -907,6 +980,7 @@ export class AudioPlayerUI {
     };
     preloader.onerror = () => finish('');
     this.pendingArtworkPreload = preloader;
+    if (isPwaNetworkArtworkUrl(artworkUrl)) preloader.crossOrigin = 'anonymous';
     preloader.src = artworkUrl;
     if (preloader.complete && preloader.naturalWidth > 0) {
       queueMicrotask(() => preloader.onload?.());
@@ -953,6 +1027,8 @@ export class AudioPlayerUI {
     // Re-assigning an identical src forces a repaint that can blink, so only
     // touch the image when the URL actually changes.
     if (this.lastAppliedArtworkUrl !== nextUrl) {
+      if (isPwaNetworkArtworkUrl(nextUrl)) this.artworkImage.crossOrigin = 'anonymous';
+      else this.artworkImage.removeAttribute('crossorigin');
       this.artworkImage.src = nextUrl;
       this.lastAppliedArtworkUrl = nextUrl;
     }
@@ -1242,6 +1318,7 @@ export class AudioPlayerUI {
       item.className = 'player-playlist-item';
       setElementClass(item, 'active', index === state.currentTrackIndex);
       item.textContent = this.getDisplayTrackName(track) || `Track ${index + 1}`;
+      if (this.audioPlayer.isRemote) item.disabled = state.controlsEnabled === false || state.transportCapabilities?.seekId !== true;
       item.addEventListener('contextmenu', event => this.openLibraryTrackMenu(event, track));
       item.addEventListener('click', () => this.selectQueueOrdinal(index));
       this.playlistDisplay.appendChild(item);
@@ -1427,6 +1504,7 @@ export class AudioPlayerUI {
   async openLibraryTrackMenu(event, track) {
     if (!track) return;
     event.preventDefault?.();
+    if (this.audioPlayer.isRemote) return this.openRemoteQueueMenu(event, track);
     const manager = await this.getLibraryManager();
     const libraryTrack = manager?.findTrackForPlaybackEntry?.(track);
     const libraryTrackId = track?.libraryTrackId || track?.trackUid ||
@@ -1467,6 +1545,40 @@ export class AudioPlayerUI {
       this.closePlayerPopup();
       await this.saveQueueAsPlaylist();
     });
+    document.body.appendChild(menu);
+    this.playerPopup = menu;
+    this.playerPopupReturnFocus = event.currentTarget || event.target || null;
+    menu.addEventListener('keydown', keyEvent => this.handlePlayerMenuKeyDown(keyEvent));
+    this.attachPlayerPopupDismiss(menu);
+    clampMenuToViewport(menu);
+    menu.querySelector('button:not(:disabled)')?.focus?.();
+  }
+
+  openRemoteQueueMenu(event, track) {
+    this.closePlayerPopup();
+    const player = this.audioPlayer;
+    const state = player.stateManager.getStateSnapshot();
+    const menu = document.createElement('div');
+    menu.className = 'player-library-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.style.left = `${Math.max(4, event.clientX || 0)}px`;
+    menu.style.top = `${Math.max(4, event.clientY || 0)}px`;
+    for (const [label, key, action, command] of [
+      ['Remove', 'networkMusic.remove', 'delete', () => player.playbackManager.removeQueueEntry(track)],
+      ['Clear queue', 'networkMusic.clearQueue', 'clear', () => player.playbackManager.clearQueue()]
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.textContent = label;
+      button.title = this.t(key);
+      button.disabled = !state.controlsEnabled || state.transportCapabilities?.[action] !== true;
+      button.addEventListener('click', () => {
+        this.closePlayerPopup();
+        void player.playbackManager.runPlaybackCommand(command);
+      });
+      menu.appendChild(button);
+    }
     document.body.appendChild(menu);
     this.playerPopup = menu;
     this.playerPopupReturnFocus = event.currentTarget || event.target || null;

@@ -112,7 +112,8 @@ test('Clean Feed uses the same Counter descriptors as the main view', () => {
         visible: true, canvas: { style: {}, width: 128, height: 72 }, hdrCanvas: { style: {} },
         window: { closed: false, innerWidth: 128, innerHeight: 72, devicePixelRatio: 1, requestAnimationFrame: () => 1 },
         view: { layout: { aspect: '16:9' }, sources: { getStatus: () => 'ready' }, metadata: () => null,
-            lyrics: () => null, counters: () => counters, quality: 'auto', videoFrame: () => null },
+            lyrics: () => null, counters: () => counters, quality: 'auto', videoFrame: () => null,
+            playback: () => ({}), syncPlaybackControls() {} },
         renderer: { draw(...args) { rendered = args; } }
     });
     feed.frame(1000);

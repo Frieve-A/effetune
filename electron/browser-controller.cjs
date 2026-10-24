@@ -1,26 +1,32 @@
+const { validateRules } = require('../js/browser/url-rules.js');
+const { browserShortcut } = require('../js/browser/shortcuts.js');
+const path = require('node:path');
+
 const PARTITION = 'persist:effetune-browser';
 const CAPTURE_TIMEOUT_MS = 30000;
 const { name: APP_NAME, version: APP_VERSION } = require('../package.json');
 
-// Match the app's default scrollbar palette while letting site styles take precedence.
-const BROWSER_SCROLLBAR_CSS = `
+// User-origin normal declarations let site styles take precedence.
+function browserScrollbarCSS({ windowBackground, windowForeground }) {
+  return `
   ::-webkit-scrollbar { width: 15px; height: 15px; }
   ::-webkit-scrollbar-track {
-    background: color-mix(in srgb, #171717, #f6f8fb 7%);
+    background: color-mix(in srgb, ${windowBackground}, ${windowForeground} 7%);
   }
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, #171717, #f6f8fb 28%);
-    border: 3px solid color-mix(in srgb, #171717, #f6f8fb 7%);
+    background: color-mix(in srgb, ${windowBackground}, ${windowForeground} 28%);
+    border: 3px solid color-mix(in srgb, ${windowBackground}, ${windowForeground} 7%);
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, #171717, #f6f8fb 42%);
+    background: color-mix(in srgb, ${windowBackground}, ${windowForeground} 42%);
   }
   ::-webkit-scrollbar-thumb:active {
-    background: color-mix(in srgb, #171717, #f6f8fb 50%);
+    background: color-mix(in srgb, ${windowBackground}, ${windowForeground} 50%);
   }
-  ::-webkit-scrollbar-corner { background: color-mix(in srgb, #171717, #f6f8fb 7%); }
+  ::-webkit-scrollbar-corner { background: color-mix(in srgb, ${windowBackground}, ${windowForeground} 7%); }
 `;
+}
 
 function normalizeBrowserURL(value) {
   if (typeof value !== 'string' || value.length > 8192 || !value.trim()) return null;
@@ -47,7 +53,10 @@ function normalizeBrowserSettings(value) {
       bookmarks.push({ name: item.name.trim().slice(0, 120), url });
     }
   }
+  let urlRules = [];
+  try { urlRules = validateRules(value?.urlRules || []); } catch { /* Ignore invalid saved rules. */ }
   return {
+    urlRules,
     bookmarks,
     startPage: normalizeBrowserURL(value?.startPage) || '',
     userAgent: validUserAgent(value?.userAgent) && value.userAgent.trim() !== 'EffeTune' ? value.userAgent.trim() : '',
@@ -55,7 +64,7 @@ function normalizeBrowserSettings(value) {
   };
 }
 
-function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, components, getSettings, saveSettings, allowStartupCapture = false }) {
+function createBrowserController({ mainWindow, WebContentsView, session, ipcMain, shell, Menu, clipboard, translate, components, getSettings, saveSettings, themePreset, allowStartupCapture = false }) {
   const trusted = mainWindow.webContents;
   const chromiumUserAgent = trusted.getUserAgent().replace(/\sElectron\/\S+/g, '').trim();
   const defaultUserAgent = chromiumUserAgent.toLowerCase().includes(`${APP_NAME.toLowerCase()}/`) ?
@@ -80,6 +89,32 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   let presentation = { visible: false, zoomFactor: 1, bounds: { x: 0, y: 0, width: 0, height: 0 } };
   const listeners = [];
   const channels = [];
+  const scrollbarStyles = new WeakMap();
+  let scrollbarCSS = themePreset ? browserScrollbarCSS(themePreset) : '';
+
+  function applyScrollbarStyle(wc) {
+    let style = scrollbarStyles.get(wc);
+    if (!style) {
+      style = { pending: Promise.resolve(), key: null };
+      scrollbarStyles.set(wc, style);
+    }
+    style.pending = style.pending.then(async () => {
+      if (disposed || wc.isDestroyed() || !scrollbarCSS) return;
+      if (style.key) await wc.removeInsertedCSS(style.key);
+      style.key = await wc.insertCSS(scrollbarCSS, { cssOrigin: 'user' });
+    }).catch(failure => {
+      if (!wc.isDestroyed()) console.error('Browser scrollbar styling failed:', failure?.name || 'Error');
+    });
+    return style.pending;
+  }
+
+  function updateTheme(preset) {
+    const css = browserScrollbarCSS(preset);
+    if (css === scrollbarCSS || disposed) return Promise.resolve();
+    scrollbarCSS = css;
+    return Promise.all([view?.webContents, auxiliary?.webContents]
+      .filter(wc => wc && !wc.isDestroyed()).map(applyScrollbarStyle));
+  }
 
   function listen(target, name, callback) {
     target.on(name, callback);
@@ -167,11 +202,7 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
 
   function guardPage(wc, popup = false) {
     applyZoom(wc);
-    wc.on('dom-ready', () => {
-      void wc.insertCSS(BROWSER_SCROLLBAR_CSS, { cssOrigin: 'user' }).catch(failure => {
-        if (!wc.isDestroyed()) console.error('Browser scrollbar styling failed:', failure?.name || 'Error');
-      });
-    });
+    wc.on('dom-ready', () => { void applyScrollbarStyle(wc); });
     const guardNavigation = (event, url) => {
       if (!validNavigationURL(event.url || url)) event.preventDefault();
     };
@@ -184,13 +215,15 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       event.preventDefault();
       callback(false);
     });
-    wc.on('before-input-event', (_event, input) => {
-      if ((input.control || input.meta) && input.key.toLowerCase() === 'l' && !popup) {
-        _event.preventDefault();
-        trusted.focus();
-        trusted.send('browser:focus-address');
-      }
+    wc.on('before-input-event', (event, input) => {
+      if (popup || input.type !== 'keyDown' || !presentation.visible || disposed || clearing) return;
+      const action = browserShortcut(input, true);
+      if (!action || (action === 'stop' && (!wc.isLoading() || htmlFullscreen))) return;
+      event.preventDefault();
+      if (action === 'address' || action === 'bookmarks') trusted.focus();
+      trusted.send('browser:command', { action });
     });
+    wc.on('context-menu', (_event, params) => showContextMenu(wc, params, popup));
     if (popup) {
       wc.setWindowOpenHandler(() => ({ action: 'deny' }));
       wc.setAudioMuted(true);
@@ -253,6 +286,7 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   function remotePreferences() {
     return {
       partition: PARTITION, nodeIntegration: false, nodeIntegrationInSubFrames: false,
+      preload: path.join(__dirname, 'browser-fullscreen-preload.js'),
       zoomFactor: presentation.zoomFactor, zoomMode: 'isolated',
       contextIsolation: true, sandbox: true, webSecurity: true,
       allowRunningInsecureContent: false, backgroundThrottling: false
@@ -283,6 +317,44 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
   }
 
   function cancelDownload(event) { event.preventDefault(); }
+
+  function showContextMenu(wc, params, popup) {
+    if (disposed || clearing || wc.isDestroyed() || (!popup && !presentation.visible)) return;
+    const items = [];
+    const item = (key, click, enabled = true) => ({ label: translate(key), enabled, click: () => {
+      if (!disposed && !clearing && !wc.isDestroyed()) click();
+    } });
+    const command = (action, url) => trusted.send('browser:command', { action, url });
+    if (!popup) {
+      items.push(
+        item('browser.back', () => command('back'), wc.navigationHistory.canGoBack()),
+        item('browser.forward', () => command('forward'), wc.navigationHistory.canGoForward()),
+        item('browser.reload', () => command('reload')),
+        item('browser.home', () => command('home'))
+      );
+      if (validNavigationURL(params.linkURL)) {
+        const url = params.linkURL;
+        items.push({ type: 'separator' },
+          item('browser.openLink', () => command('navigate', url)),
+          item('browser.openLinkExternal', () => {
+            void shell.openExternal(url).catch(failure => {
+              console.error('Browser external link failed:', failure?.name || 'Error');
+              error = 'loadFailed'; publish();
+            });
+          }),
+          item('browser.copyLink', () => clipboard.writeText(url)));
+      }
+    }
+    if (params.isEditable || params.selectionText) {
+      if (items.length) items.push({ type: 'separator' });
+      const actions = params.isEditable ? ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'] : ['copy'];
+      for (const action of actions) {
+        const flag = `can${action[0].toUpperCase()}${action.slice(1)}`;
+        items.push(item(`menu.edit.${action}`, () => { wc.focus(); wc[action](); }, params.editFlags?.[flag] === true));
+      }
+    }
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: popup ? auxiliary : mainWindow });
+  }
 
   async function prepareView() {
     const revision = viewRevision;
@@ -432,6 +504,9 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
       ('startPage' in value && (typeof value.startPage !== 'string' || value.startPage.length > 8192)) ||
       ('userAgent' in value && !validUserAgent(value.userAgent)) ||
       ('openTabsExternally' in value && typeof value.openTabsExternally !== 'boolean')) return { ok: false, error: 'invalidRequest' };
+    if ('urlRules' in value) {
+      try { validateRules(value.urlRules); } catch { return { ok: false, error: 'invalidRules' }; }
+    }
     if (value.startPage?.trim() && !normalizeBrowserURL(value.startPage)) return { ok: false, error: 'invalidURL' };
     const previous = normalizeBrowserSettings(getSettings());
     const settings = normalizeBrowserSettings({ ...previous, ...value });
@@ -477,7 +552,7 @@ function createBrowserController({ mainWindow, WebContentsView, session, ipcMain
     if (partition) partition.removeListener('will-download', cancelDownload);
   }
   listen(mainWindow, 'closed', dispose);
-  return { dispose, getState: state };
+  return { dispose, getState: state, updateTheme };
 }
 
 module.exports = { createBrowserController, normalizeBrowserURL, normalizeBrowserSettings, PARTITION };

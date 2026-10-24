@@ -1,0 +1,215 @@
+/* Shared Effect parameter controls. Keep the application and measurement controls identical. */
+
+.plugin-parameter-ui .parameter-row {
+    display: flex;
+    align-items: center;
+    min-height: 26px;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 2px 0;
+}
+
+body.layout-mobile .plugin-parameter-ui .parameter-row {
+    min-height: var(--et-mobile-control-height);
+}
+
+/* Keep row spacing fixed while allowing wrapped text and glyphs to overflow vertically. */
+.plugin-parameter-ui .parameter-row:has(> input[type="number"], > input[type="range"], > select) > label:first-child {
+    display: flex;
+    align-items: center;
+    height: 26px;
+    line-height: normal;
+    overflow: visible;
+}
+
+body.layout-mobile .plugin-parameter-ui .parameter-row:has(> input[type="number"], > input[type="range"], > select) > label:first-child {
+    height: var(--et-mobile-control-height);
+}
+
+.plugin-parameter-ui .parameter-row input[type="range"] {
+    flex: 1 1 120px;
+    min-width: 120px;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.plugin-parameter-ui .parameter-row input[type="number"],
+.pipeline-analyzer-panel input[type='number'] {
+    width: 80px;
+    padding: 4px;
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-23);
+    color: var(--et-text-primary);
+    border-radius: 4px;
+}
+
+/* Single-line effect fields and compact EQ fields share the standard desktop height. */
+body:not(.layout-mobile) :is(
+    .plugin-parameter-ui input[type="number"],
+    .plugin-parameter-ui input[type="text"],
+    .plugin-parameter-ui select,
+    .plugin-parameter-ui .parameter-row input[type="number"],
+    .pipeline-analyzer-panel input[type="number"],
+    .five-band-peq-band input[type="number"],
+    .five-band-peq-filter-type,
+    .five-band-fir-peq-band input[type="number"],
+    .five-band-fir-peq-filter-type,
+    .group-delay-peq-band input[type="number"],
+    .group-delay-peq-band-type,
+    .room-eq-additional-eq-band input[type="number"],
+    .room-eq-additional-eq-filter-type,
+    .earphone-cable-sim-row-input,
+    .multichannel-panel-ui input[type="number"]
+) {
+    box-sizing: border-box;
+    height: 26px;
+    min-height: 26px;
+}
+
+body:not(.layout-mobile) .plugin-parameter-ui .parameter-row input[type="number"],
+body:not(.layout-mobile) .pipeline-analyzer-panel input[type="number"] {
+    padding: 4px;
+    border: 1px solid var(--et-surface-23);
+    border-radius: 4px;
+    font: inherit;
+    line-height: normal;
+}
+
+.plugin-parameter-ui .parameter-row input[type="text"] {
+    flex-grow: 1;
+    padding: 4px;
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-23);
+    color: var(--et-text-primary);
+    border-radius: 4px;
+}
+
+.plugin-parameter-ui label {
+    min-width: 80px;
+}
+
+.plugin-parameter-ui select,
+.pipeline-analyzer-panel select,
+.visualizer-editor-navigation select,
+.visualizer-quality {
+    background-color: var(--et-surface-17);
+    border: 1px solid var(--et-surface-23);
+    color: var(--et-text-primary);
+    border-radius: 4px;
+    padding: 4px;
+}
+
+.parameter-row label {
+    width: 120px;
+}
+
+.plugin-parameter-ui .parameter-row input[type="number"],
+.plugin-parameter-ui .parameter-row input[type="text"],
+.plugin-parameter-ui select,
+.pipeline-analyzer-panel input[type="number"],
+.pipeline-analyzer-panel select {
+    background: var(--et-input-gradient);
+    border-color: var(--et-surface-28);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.plugin-parameter-ui .parameter-row input[type="number"]:focus,
+.plugin-parameter-ui .parameter-row input[type="text"]:focus,
+.plugin-parameter-ui select:focus,
+.pipeline-analyzer-panel input[type="number"]:focus,
+.pipeline-analyzer-panel select:focus {
+    outline: none;
+    border-color: var(--et-accent);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.24), var(--et-focus-ring);
+}
+
+input[type="range"] {
+    --et-range-fill-start: min(var(--et-range-origin, 0%), var(--et-range-fill, 0%));
+    --et-range-fill-end: max(var(--et-range-origin, 0%), var(--et-range-fill, 0%));
+}
+
+input[type="range"]:not(.vertical-slider) {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 16px;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type="range"]:not(.vertical-slider):disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
+input[type="range"]:not(.vertical-slider)::-webkit-slider-runnable-track {
+    height: 6px;
+    border: 1px solid color-mix(in srgb, var(--et-text-primary) 7%, transparent);
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent 0 var(--et-range-fill-start), color-mix(in srgb, var(--et-accent) 82%, transparent) var(--et-range-fill-start) var(--et-range-fill-end), transparent var(--et-range-fill-end) 100%), linear-gradient(180deg, var(--et-surface-11), var(--et-surface-5));
+    background-repeat: no-repeat;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+input[type="range"]:not(.vertical-slider)::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -6px;
+    border: 1px solid var(--et-accent-hover);
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--et-accent-hover), var(--et-accent-pressed));
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px color-mix(in srgb, var(--et-accent) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    transition: border-color var(--et-transition-fast), box-shadow var(--et-transition-fast), filter var(--et-transition-fast);
+}
+
+input[type="range"]:not(.vertical-slider):hover::-webkit-slider-thumb {
+    border-color: var(--et-accent-hover);
+    box-shadow: 0 3px 9px rgba(0, 0, 0, 0.36), 0 0 14px color-mix(in srgb, var(--et-accent) 32%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+}
+
+input[type="range"]:not(.vertical-slider):focus-visible {
+    outline: none;
+}
+
+input[type="range"]:not(.vertical-slider):focus-visible::-webkit-slider-runnable-track {
+    border-color: color-mix(in srgb, var(--et-accent) 64%, transparent);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), var(--et-focus-ring);
+}
+
+input[type="range"]:not(.vertical-slider)::-moz-range-track {
+    height: 6px;
+    border: 1px solid color-mix(in srgb, var(--et-text-primary) 7%, transparent);
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent 0 var(--et-range-fill-start), color-mix(in srgb, var(--et-accent) 82%, transparent) var(--et-range-fill-start) var(--et-range-fill-end), transparent var(--et-range-fill-end) 100%), linear-gradient(180deg, var(--et-surface-11), var(--et-surface-5));
+    background-repeat: no-repeat;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+input[type="range"]:not(.vertical-slider):focus-visible::-moz-range-track {
+    border-color: color-mix(in srgb, var(--et-accent) 64%, transparent);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.54), var(--et-focus-ring);
+}
+
+input[type="range"]:not(.vertical-slider)::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+}
+
+input[type="range"]:not(.vertical-slider)::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--et-accent-hover);
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--et-accent-hover), var(--et-accent-pressed));
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.32), 0 0 10px color-mix(in srgb, var(--et-accent) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+
+
+.parameter-row label,
+.plugin-parameter-ui label {
+    color: var(--et-text-secondary);
+}

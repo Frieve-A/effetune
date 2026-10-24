@@ -13,6 +13,33 @@ function createDeferred() {
   return { promise, resolve };
 }
 
+test('remote individual presets never read or write the controller store and retain built-ins', async () => {
+  await withDialogGlobals(async () => {
+    const calls = [];
+    const core = createCore(calls);
+    core.audioManager = { hasLocalAudio: false };
+    class Plugin {
+      static getSystemPresetGroups() { return [{ presets: [{ id: 'built-in', label: 'Built-in', params: { gain: 4 } }] }]; }
+      setParameters(value) { calls.push(['params', value]); }
+    }
+    const plugin = new Plugin();
+    const store = new Proxy({}, { get() { assert.fail('Remote user presets must not access local storage'); } });
+    const provider = new PluginPresetProvider(core, plugin, store);
+    assert.deepEqual(await provider.listUserPresetNames(), []);
+    assert.equal(await provider.applyUserPreset('Local'), false);
+    assert.equal(await provider.saveUserPreset('Remote'), false);
+    assert.equal(provider.renameUserPreset('A', 'B'), false);
+    assert.equal(provider.deleteUserPresets(['A']), false);
+    assert.equal(await provider.applySystemPreset('built-in'), true);
+    const dialog = new PluginPresetDialog(core);
+    const shown = await dialog.show(provider, document.createElement('button'), { focusSaveName: true });
+    assert.equal(shown.querySelectorAll('.preset-dialog-user-preset').length, 0);
+    assert.equal(shown.querySelectorAll('.preset-dialog-save-row').length, 0);
+    assert.equal(shown.querySelectorAll('.preset-dialog-system-preset').length, 1);
+    dialog.close({ immediate: true });
+  });
+});
+
 class FakeElement {
   constructor(tagName, documentRef) {
     this.tagName = tagName.toUpperCase();
@@ -204,6 +231,22 @@ async function withDialogGlobals(callback, options = {}) {
     }
   }, () => callback({ documentRef, windowRef, calls, storage, timers }));
 }
+
+test('read-only preset providers show loadable presets without save or delete controls', async () => {
+  await withDialogGlobals(async ({ documentRef, calls }) => {
+    const dialog = new PluginPresetDialog(createCore(calls));
+    const provider = {
+      getTitleKey: () => 'ui.title.pipelinePresets',
+      listUserPresetNames: async () => ['Quiet'],
+      applyUserPreset: async () => true
+    };
+    const element = await dialog.show(provider, documentRef.createElement('button'), { focusSaveName: true });
+    assert.equal(findByClass(element, 'preset-dialog-save-row'), null);
+    assert.equal(findByClass(element, 'preset-dialog-delete-button'), null);
+    assert.equal(findAllByClass(element, 'preset-dialog-user-preset').length, 1);
+    dialog.close({ immediate: true });
+  });
+});
 
 test('plugin provider isolates persistence fields and applies presets with one history entry', async () => {
   const calls = [];

@@ -919,6 +919,27 @@ test('initializeAudioWorklet leaves splash handling to the audio-only document a
   });
 });
 
+test('startup Visualizer expands only when configured and successfully opened', async () => {
+  for (const [expanded, opened, search] of [
+    [true, true, ''], [false, true, ''], [undefined, true, ''],
+    [true, false, ''], [true, true, '?p=shared']
+  ]) {
+    await withAppModule({ search }, async ({ calls, mod }) => {
+      const dependencies = createDependencies(calls);
+      const app = new mod.App({
+        ...dependencies,
+        startupConfig: { startupView: 'visualizer', visualizerStartupExpanded: expanded }
+      });
+      app.uiManager.showVisualizerView = async () => opened;
+      app.uiManager.visualizerView = { setExpanded: value => calls.push(['expand', value]) };
+      await app.applyStartupViewPreference();
+      await app.applyStartupViewPreference();
+      assert.deepEqual(calls.filter(call => call[0] === 'expand'),
+        expanded && opened && !search ? [['expand', true]] : []);
+    });
+  }
+});
+
 test('startup view preference opens library unless explicit URL content takes priority', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: false };

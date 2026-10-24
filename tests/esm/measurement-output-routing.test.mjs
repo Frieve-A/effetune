@@ -11,7 +11,7 @@ import {
 import {
   startWhiteNoise,
   stopWhiteNoise,
-  generateTSP
+  generateESS
 } from '../../features/measurement/audio-utils/signal-generation.js';
 import {
   createRepeatedSweepAudioBuffer
@@ -58,7 +58,7 @@ test('measurement routing rejects unknown channel tokens instead of silently rou
     assert.throws(() => getMeasurementOutputChannelCount(token, 8), MeasurementOutputError);
   }
   const harness = { initialized: true };
-  assert.throws(() => generateTSP.call(harness, 8, 48000, 'multi'), MeasurementOutputError);
+  assert.throws(() => generateESS.call(harness, 8, 48000, 'multi'), MeasurementOutputError);
   await assert.rejects(startWhiteNoise.call({}, -12, null, 'multi'), MeasurementOutputError);
 });
 

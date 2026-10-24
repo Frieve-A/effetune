@@ -1,6 +1,6 @@
 {
   "name": "effetune-mcp",
-  "version": "0.14.0",
+  "version": "0.16.0",
   "description": "MCP server that drives a running EffeTune desktop app over its LAN Remote Control API",
   "type": "module",
   "bin": {

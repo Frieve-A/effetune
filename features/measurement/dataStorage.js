@@ -9,6 +9,7 @@ import {
     isMultiChannelMeasurement
 } from './measurement-model.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
+import { validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
 
 export class MeasurementImportError extends Error {
     constructor(kind, cause = null) {
@@ -51,6 +52,24 @@ function normalizeMeasurement(measurement) {
     return normalized;
 }
 
+function mapHarmonicSamples(analysis, transform) {
+    return {
+        ...analysis,
+        orders: analysis.orders.map(order => ({
+            ...order,
+            data: transform(order.data),
+            referenceData: transform(order.referenceData),
+            ...(order.order > 1 ? { harmonicReferenceData: transform(order.harmonicReferenceData) } : {})
+        }))
+    };
+}
+
+function hasValidHarmonicRecord(record) {
+    return record.harmonicAnalysis === undefined ||
+        (validateHarmonicAnalysis(record.harmonicAnalysis) &&
+            record.harmonicAnalysis.sampleRate === record.sampleRate);
+}
+
 export function validateMeasurementBackup(measurement, records) {
     if (!measurement || typeof measurement.id !== 'string' || !measurement.id ||
         typeof measurement.name !== 'string' || !Array.isArray(measurement.points) ||
@@ -64,7 +83,8 @@ export function validateMeasurementBackup(measurement, records) {
             !expected.has(record.pointId) || seen.has(record.pointId) ||
             !(record.data instanceof Float32Array) || !record.data.length ||
             !record.data.every(Number.isFinite) || !Number.isFinite(record.sampleRate) || record.sampleRate <= 0 ||
-            !Number.isSafeInteger(record.onsetIndex) || record.onsetIndex < 0 || record.onsetIndex >= record.data.length) {
+            !Number.isSafeInteger(record.onsetIndex) || record.onsetIndex < 0 || record.onsetIndex >= record.data.length ||
+            !hasValidHarmonicRecord(record)) {
             throw new MeasurementExportError(new TypeError('Invalid stored impulse response'));
         }
         seen.add(record.pointId);
@@ -782,7 +802,10 @@ export class DataStorage {
     async ensureImpulseResponseQuota(records) {
         const estimate = await this.getStorageEstimate();
         if (!estimate || !Number.isFinite(estimate.usage) || !Number.isFinite(estimate.quota)) return;
-        const addedBytes = records.reduce((total, record) => total + (record.data?.byteLength || 0), 0);
+        const addedBytes = records.reduce((total, record) => total + (record.data?.byteLength || 0) +
+            (record.harmonicAnalysis?.orders || []).reduce((bytes, order) =>
+                bytes + (order.data?.byteLength || 0) + (order.referenceData?.byteLength || 0) +
+                    (order.harmonicReferenceData?.byteLength || 0), 0), 0);
         if (estimate.usage + addedBytes > estimate.quota * 0.8) {
             throw new Error('Measurement storage is nearly full. Delete old measurements and try again.');
         }
@@ -1223,7 +1246,7 @@ export class DataStorage {
                     !Number.isSafeInteger(record.pointId) ||
                     !expectedPointIds.has(record.pointId) ||
                     recordPointIds.has(record.pointId) ||
-                    !(record.data instanceof Float32Array)) {
+                    !(record.data instanceof Float32Array) || !hasValidHarmonicRecord(record)) {
                     recordsComplete = false;
                     break;
                 }
@@ -1236,7 +1259,11 @@ export class DataStorage {
             }
             exported.impulseResponses = records.map(record => ({
                 ...record,
-                data: this.encodeFloat32Array(record.data)
+                data: this.encodeFloat32Array(record.data),
+                ...(record.harmonicAnalysis ? {
+                    harmonicAnalysis: mapHarmonicSamples(record.harmonicAnalysis,
+                        samples => this.encodeFloat32Array(samples))
+                } : {})
             }));
         }
         return JSON.stringify(exported, null, 2);
@@ -1355,7 +1382,7 @@ export class DataStorage {
 
             try {
                 const samples = this.decodeFloat32Array(record.data);
-                if (samples.length === 0 || record.onsetIndex >= samples.length) continue;
+                if (samples.length === 0 || record.onsetIndex >= samples.length || !samples.every(Number.isFinite)) continue;
                 const target = pointsById.get(record.pointId);
                 const decodedRecord = {
                     ...record,
@@ -1363,6 +1390,21 @@ export class DataStorage {
                     ...(target.channel ? { channel: target.channel } : {}),
                     data: samples
                 };
+                // An unusable optional analysis must not discard a valid linear impulse response.
+                delete decodedRecord.harmonicAnalysis;
+                if (record.harmonicAnalysis !== undefined) {
+                    try {
+                        const harmonicAnalysis = mapHarmonicSamples(record.harmonicAnalysis,
+                            encoded => this.decodeFloat32Array(encoded));
+                        if (!validateHarmonicAnalysis(harmonicAnalysis) ||
+                            harmonicAnalysis.sampleRate !== record.sampleRate) {
+                            throw new TypeError('Harmonic analysis data is invalid');
+                        }
+                        decodedRecord.harmonicAnalysis = harmonicAnalysis;
+                    } catch (error) {
+                        console.warn('Embedded harmonic analysis was ignored:', error);
+                    }
+                }
                 decodedRecords.push(decodedRecord);
                 decodedPointIds.add(record.pointId);
                 if (target.channel) target.target.irId = record.pointId;

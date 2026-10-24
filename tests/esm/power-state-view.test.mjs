@@ -1,3 +1,4 @@
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -79,9 +80,7 @@ function readLocale(locale) {
     new URL(`../../js/locales/${locale}.json5`, import.meta.url),
     'utf8'
   );
-  return JSON.parse(source
-    .replace(/\/\/.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, ''));
+  return parseCommentedJSON(source);
 }
 
 async function flushPromises() {

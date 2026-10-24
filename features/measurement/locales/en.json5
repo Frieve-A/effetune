@@ -1,4 +1,84 @@
 {
+  "analysis:normalization": "Normalization",
+  "analysis:normalizationNone": "None",
+  "analysis:normalizationGlobal": "Overall peak = 0 dB",
+  "analysis:normalizationFrequency": "Each frequency peak = 0 dB",
+  "analysis:copyGraph": "Copy image",
+  "analysis:imageCopied": "Graph image copied.",
+  "analysis:imageCopyFailed": "The image could not be copied. Try again.",
+  "analysis:imageCopyUnavailable": "Image copying is unavailable in this browser. Use the desktop app or a browser that supports image copying.",
+  "analysis:imageCopyDenied": "Clipboard access was denied. Allow clipboard access and try again.",
+  "analysis:mode": "Analysis mode",
+  "analysis:waterfallMode": "Waterfall",
+  "analysis:burstMode": "Burst Decay",
+  "analysis:depthUnit": "Depth axis",
+  "analysis:time": "Time",
+  "analysis:cycles": "Cycles",
+  "analysis:elevation": "View elevation",
+  "analysis:resetView": "Reset view",
+  "analysis:orbitHelp": "Drag to rotate. Use the wheel or + / − to zoom. Shift + arrow keys rotate; Shift + Home resets the view.",
+  "analysis:burstNote": "Burst Decay uses fixed 1/3-octave Gaussian tone bursts. Height and color show the same relative dB level. Cycles correspond to different times at different frequencies. The estimate assumes silence before the saved response begins; unavailable late values are not shown.",
+  "analysis:frequency": "Frequency Response",
+  "analysis:impulse": "Impulse Response",
+  "analysis:distortion": "Distortion",
+  "analysis:waterfall": "Waterfall (3D)",
+  "analysis:details": "Measurement Details",
+  "analysis:display": "Display settings",
+  "analysis:xMin": "Frequency from",
+  "analysis:xMax": "Frequency to",
+  "analysis:yMin": "Level from",
+  "analysis:yMax": "Level to",
+  "analysis:smoothing": "Display smoothing (σ)",
+  "analysis:normalize": "Relative normalization",
+  "analysis:reference": "Reference level",
+  "analysis:source": "Response source",
+  "analysis:saved": "Saved response",
+  "analysis:reanalysis": "Windowed IR",
+  "analysis:before": "Window before onset",
+  "analysis:after": "Window after onset",
+  "analysis:window": "Window shape",
+  "analysis:tukey": "Tapered",
+  "analysis:hann": "Hann",
+  "analysis:rectangular": "Rectangular",
+  "analysis:auto": "Auto range",
+  "analysis:reset": "Reset",
+  "analysis:fromTime": "Time from",
+  "analysis:toTime": "Time to",
+  "analysis:peak": "Normalize to peak",
+  "analysis:db": "Amplitude in dB",
+  "analysis:origin": "Display time origin",
+  "analysis:unit": "Unit",
+  "analysis:maxOrder": "THD highest order",
+  "analysis:start": "First slice",
+  "analysis:end": "Last slice",
+  "analysis:length": "Window length",
+  "analysis:rise": "Left rise time",
+  "analysis:angle": "View rotation",
+  "analysis:zoom": "View zoom",
+  "analysis:correction": "Correction",
+  "analysis:export": "Export measurement (JSON)",
+  "analysis:unavailable": "This measurement has no impulse response. Import a measurement file containing an impulse response.",
+  "analysis:noDistortion": "This measurement has no usable distortion data. Make a new measurement.",
+  "analysis:processing": "Calculating…",
+  "analysis:failed": "This analysis is unavailable with these settings. Adjust the window or select another measurement.",
+  "analysis:combined": "Combined output of all speakers",
+  "analysis:sourceNote": "Display settings do not change the saved measurement or correction settings.",
+  "analysis:smoothingNote": "Zero adds no smoothing. Existing processing in a saved response cannot be undone. The width is Gaussian σ in octaves.",
+  "analysis:distortionNote": "Relative distortion of the complete playback and recording path. Microphone and interface calibration are not applied.",
+  "analysis:waterfallNote": "Surface height and color show the same relative dB level. The default view places 0 ms at the back and later times toward the front. Only complete recorded windows are shown.",
+  "analysis:impulseNote": "Time is relative to the saved onset. The outline marks the analysis window. Display changes do not change WAV export.",
+  "analysis:readoutHelp": "Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.",
+  "analysis:available": "Available",
+  "analysis:notAvailable": "Unavailable",
+  "analysis:acquisition": "Source",
+  "analysis:sampleRate": "Actual sample rate",
+  "analysis:timeReference": "Time reference",
+  "analysis:relative": "Relative to onset",
+  "analysis:observed": "Saved time interval",
+  "analysis:calibration": "Calibration",
+  "analysis:relativeLevel": "Relative level; no absolute SPL calibration",
+  "analysis:windowLimits": "Window limited to the recorded samples",
+  "analysis:thdOrders": "THD includes orders 2–{order}",
   "title:impulseResponse": "Impulse Response",
   "axis:impulseTime": "Time (ms)",
   "axis:normalizedAmplitude": "Normalized amplitude",
@@ -31,21 +111,21 @@
   "help:audioInput": "Specify the audio input device to which the measurement microphone is connected.", // Help text for audio input
   "label:sampleRate": "Sampling Frequency:", // Label for sample rate selection
   "help:sampleRate": "Specify the sampling frequency when taking measurements.", // Help text for sample rate
-  "label:sweepLength": "Sweep Length (samples):", // Label for sweep length selection
-  "help:sweepLength": "Specifies the length of the measurement signal in samples.", // Help text for sweep length
+  "label:sweepLength": "Requested sweep length (samples):",
+  "help:sweepLength": "Requested length of the ESS measurement signal. The sweep is extended when needed to separate harmonic responses.",
   "title:advancedSettings": "Advanced Settings",
   "label:sweepBandMode": "Sweep Bandwidth:",
   "option:sweepBandOff": "Off",
   "option:sweepBandCommon": "Same for All Channels",
   "option:sweepBandPerChannel": "Per Channel",
   "label:sweepBandChannel": "Channel to Configure:",
-  "help:sweepBandMode": "Choose whether to limit the sweep and test signal bandwidth. Per Channel lets you set a separate frequency range for each selected output channel.",
+  "help:sweepBandMode": "Choose a common or per-channel sweep range. Off uses 20 Hz to 20 kHz for ESS, limited by the actual sample rate. Per Channel lets you set each selected output separately.",
   "label:sweepMinFreq": "Sweep Minimum Frequency (Hz):", // Label for sweep minimum frequency
   "help:sweepMinFreq": "The minimum frequency of the sweep signal in Hz. Set from 1 Hz up to just below the Nyquist frequency of the selected sampling rate. The test signal is also band-limited to this range. (Default: 20 Hz)", // Help text for sweep min frequency
   "label:sweepMaxFreq": "Sweep Maximum Frequency (Hz):", // Label for sweep maximum frequency
   "help:sweepMaxFreq": "The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. The test signal is also band-limited to this range. (Default: 20000 Hz)", // Help text for sweep max frequency
   "label:averaging": "Synchronous Averaging:", // Label for synchronous averaging selection
-  "help:averaging": "Specify the number of times to repeat the measurement at the same measurement point for more accurate measurement.", // Help text for averaging
+  "help:averaging": "Number of repeats at the same point. Each repeat includes the sweep and 2.5 seconds for the response to decay, so more repeats take longer.",
   "label:interfaceCalibration": "Audio Interface Calibration:",
   "option:noInterfaceCalibration": "None (uncalibrated)",
   "option:interfaceCalibrationPoint": "{measurement} — {point} ({date}, {sampleRate})",
@@ -70,7 +150,7 @@
   
   // Sweep Measurement Screen
   "help:measurement": "The measurement signal for one extra measurement plus the number of measurements is reproduced.",
-  "title:frequencyResponseMeasurement": "Frequency Response Measurement", // Title for measurement screen
+  "title:frequencyResponseMeasurement": "Acoustic Measurement", // Title for measurement screen
   "title:currentMeasurement": "Current Measurement", // Title for current measurement graph
   "button:redo": "Redo", // Button to redo measurement
   "button:saveAndContinue": "Save and Measure Another Point", // Button to save and continue measuring
@@ -115,7 +195,7 @@
   "confirm:discardChanges": "You have unsaved changes. Discard changes and continue?", // Confirmation message for discarding unsaved changes
   
   // New translations
-  "title:main": "EffeTune Frequency Response Measurement", // Title for the main page
+  "title:main": "EffeTune Acoustic Measurement", // Title for the main page
   "title:levelAdjustment": "Level Adjustment", // Title for level adjustment screen
   "button:back": "Back to EffeTune", // Back button text
   "button:backSimple": "Back", // Simple back button text

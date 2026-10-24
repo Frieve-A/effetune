@@ -33,8 +33,8 @@ body {
     -webkit-app-region: no-drag;
     -moz-user-select: none;
     -ms-user-select: none;
-    width: max-content;
-    display: inline-block;
+    width: 100%;
+    display: block;
     transition: padding-left 0.3s ease;
 }
 
@@ -49,6 +49,7 @@ body {
 /* Left Pane Styles */
 .left-pane {
     width: 360px;
+    flex: 0 0 360px;
     background-color: var(--et-surface-10);
     border-radius: 4px;
     border-right: none;
@@ -58,9 +59,31 @@ body {
     overflow-y: visible;
 }
 
-.measurement-history h3 {
-    margin-bottom: 10px;
+/* Both pane headers allow two-line labels without moving the section below. */
+.new-measurement-btn-container,
+.result-header {
+    min-height: calc(2 * 1.4em + 16px);
+}
+
+.new-measurement-btn-container {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 10px;
+}
+
+.new-measurement-btn-container button {
+    margin: 0;
+    min-width: 0;
+    font: inherit;
+    line-height: 1.4;
+}
+
+.measurement-history h3,
+#measurementResults .measurement-points > h3 {
+    margin: 27px 0 10px;
     font-size: 16px;
+    line-height: 1.4;
 }
 
 .measurement-list {
@@ -127,7 +150,8 @@ body {
     padding: var(--content-padding);
     overflow-y: visible;
     position: relative;
-    width: 940px;
+    width: auto;
+    min-width: 0;
 }
 
 .screen {
@@ -525,6 +549,16 @@ canvas {
     border: 1px solid var(--border-color);
 }
 
+.channel-filter-button {
+    line-height: 1.4;
+}
+
+.channel-filter-button:disabled,
+.point-item[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .channel-filter-button.selected {
     border-color: var(--primary-color);
     background-color: color-mix(in srgb, var(--et-accent) 20%, transparent);
@@ -708,6 +742,14 @@ canvas {
 
 .export-section {
     margin-top: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.export-section > .explanation-text,
+.export-section > .measurement-ir-export-option {
+    margin: 0;
 }
 
 .export-actions-row {
@@ -1250,3 +1292,89 @@ input[type="range"]::-moz-range-thumb,
 .measurement-storage-notice { color: var(--et-warning); }
 .measurement-ir-badge { display: block; margin-top: 2px; color: var(--et-success); font-size: 0.78rem; }
 .measurement-ir-export-option { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+
+/* Analysis panels reuse the application controls and theme surfaces. */
+#resultsDisplayScreen { max-width: none; }
+#measurementResults [hidden] { display: none !important; }
+.analysis-tabs {
+    display: flex; flex-wrap: wrap;
+    gap: 4px; margin-bottom: 12px;
+}
+.analysis-tabs .tab-button {
+    box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    flex: 1 1 auto; min-width: max-content; height: 36px; min-height: 36px; padding: 0 12px; margin: 0;
+    border: 1px solid var(--et-surface-28); border-bottom: none; border-radius: 4px 4px 0 0;
+    background: var(--et-control-gradient); color: var(--et-text-secondary);
+    font: inherit; font-weight: 500; line-height: 18px; white-space: nowrap; box-shadow: none;
+    transition: background var(--et-transition-fast), border-color var(--et-transition-fast);
+}
+.analysis-tabs .tab-button:hover {
+    background: var(--et-control-hover-gradient); border-color: var(--et-surface-38);
+    color: var(--et-text-primary);
+}
+.analysis-tabs .tab-button:is(.active, [aria-selected="true"]) {
+    background: var(--et-control-active-gradient); border-color: var(--et-surface-38); color: var(--et-text-primary);
+}
+#measurementResults :is(button, summary, canvas):focus-visible { outline: 2px solid var(--et-accent); outline-offset: 2px; }
+#measurementResults .analysis-tabs .tab-button:focus-visible { outline: none; box-shadow: var(--et-focus-ring); }
+.analysis-target, .analysis-conditions { color: var(--et-text-secondary); margin-bottom: 10px; overflow-wrap: anywhere; }
+.analysis-target { min-height: 1.4em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#measurementResults .graph-container, .analysis-graph-mount { position: relative; width: 100%; min-width: 0; }
+#measurementResults canvas:not(.measurement-item-preview canvas) {
+    display: block; width: 100%; height: clamp(280px, 48vh, 600px); max-width: 100%;
+}
+#measurementResults h3 { margin-bottom: 12px; }
+#measurementResults .graph-options { flex-wrap: wrap; }
+.analysis-settings, .analysis-correction { margin-top: 16px; border-top: 1px solid var(--et-surface-26); padding-top: 12px; }
+.analysis-settings summary, .analysis-correction summary { cursor: pointer; font-weight: bold; padding: 4px 0; margin-bottom: 12px; }
+.analysis-settings-grid, .correction-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 4px 24px; }
+#measurementResults .plugin-parameter-ui .parameter-row { flex-wrap: nowrap; min-width: 0; }
+#measurementResults .plugin-parameter-ui .parameter-row[hidden] { display: none; }
+#measurementResults .plugin-parameter-ui .parameter-row > label { display: flex; align-items: center; flex: 0 0 120px; margin: 0; white-space: nowrap; min-width: 0; }
+#measurementResults .plugin-parameter-ui .parameter-row > label > span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#measurementResults .plugin-parameter-ui .parameter-unit { flex-shrink: 0; white-space: pre; }
+#measurementResults .plugin-parameter-ui .parameter-row > input[type=number] { flex: 0 0 80px; margin: 0; }
+#measurementResults .plugin-parameter-ui .parameter-row > input[type=checkbox] { margin: 0; }
+#measurementResults .plugin-parameter-ui .parameter-row > select { flex: 1; min-width: 0; margin: 0; }
+#measurementResults .plugin-parameter-ui .parameter-row > input[type=range] { width: auto; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.correction-controls .explanation-text2 { margin: 2px 0 8px; }
+.correction-control { min-width: 0; }
+@media (max-width: 600px) {
+    #measurementResults .plugin-parameter-ui .parameter-row > input[type=range] { min-width: 30px; flex-basis: 30px; }
+}
+.analysis-setting-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; }
+.analysis-setting-actions button { margin: 0; }
+/* Compact result actions match the Effect reset button; point/channel selectors remain independent. */
+#measurementResults :is(.analysis-setting-actions, .analysis-correction, .export-section, .impulse-response-controls, .impulse-response-export, .analysis-graph-header) button,
+#measurementResults #exportAnalysisJson {
+    box-sizing: border-box; height: 24px; min-height: 24px; padding: 0 8px; font: inherit;
+}
+.analysis-status { padding: 12px 0; color: var(--et-text-secondary); }
+.analysis-keyboard-readout { display: block; min-height: 1.4em; font-size: 12px; overflow-wrap: anywhere; }
+
+#measurementResults .impulse-response-section { margin: 0; padding: 0; border: 0; }
+#measurementResults .result-metadata { margin-top: 0; }
+#measurementResults .explanation-text { white-space: normal; line-height: 1.5; }
+#measurementResults .parameter-row :disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 1000px) {
+    body:has(#measurementResults) .app-container { flex-direction: column; }
+    body:has(#measurementResults) .left-pane { flex: auto; width: 100%; }
+}
+
+.analysis-graph-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+#measurementResults .analysis-graph-header h3 { margin: 0; }
+.analysis-graph-header button { flex-shrink: 0; margin: 0; }
+#measurementResults .analysis-graph-header .graph-copy-button {
+    display: inline-flex; align-items: center; justify-content: center; width: 24px; padding: 0;
+    border: 1px solid var(--et-surface-32);
+}
+.graph-copy-button svg { display: block; flex: 0 0 auto; }
+.graph-copy-button:disabled { opacity: .5; cursor: not-allowed; }
+.graph-copy-button .graph-copy-label {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.analysis-image-status { min-height: 1.4em; color: var(--et-text-secondary); font-size: 12px; }
+
+[data-analysis-panel]:not([hidden]) { display: flow-root; }

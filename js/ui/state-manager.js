@@ -134,7 +134,7 @@ export class StateManager {
             this.benchmarkSettingsButton.hidden = isElectron;
         }
         if (this.measurementSettingsButton) {
-            this.measurementSettingsButton.textContent = this.translate('menu.settings.frequencyResponseMeasurement', 'Frequency Response Measurement');
+            this.measurementSettingsButton.textContent = this.translate('menu.settings.frequencyResponseMeasurement', 'Acoustic Measurement');
             this.measurementSettingsButton.hidden = isElectron;
         }
         if (this.backupRestoreSettingsButton) {

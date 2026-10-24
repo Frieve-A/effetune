@@ -63,7 +63,9 @@ En la aplicación de escritorio, **Navegador** reproduce el audio de los sitios 
 2. Introduce una dirección HTTP o HTTPS, inicia sesión y reproduce música con los controles del sitio. Si omites el protocolo, se utiliza HTTPS.
 3. Cambia a **Effect Pipeline** para ajustar el sonido. Cambiar de vista mantiene la reproducción del navegador.
 
-Usa Atrás, Adelante, Recargar y Detener carga para navegar. Abre **Marcadores** para añadir la página actual, abrir una página guardada, cambiar el nombre de un marcador o eliminarlo. El menú del navegador incluye **Abrir en el navegador predeterminado**, **Usar como página de inicio** y **Borrar datos de sitios**. Los marcadores y la página de inicio elegida se guardan. Las sesiones de los sitios se conservan por separado y siguen disponibles al reiniciar la aplicación. Las páginas del navegador siguen el nivel de zoom de la aplicación.
+Usa Atrás, Adelante, Recargar y Detener carga para navegar. Abre **Marcadores** para añadir la página actual, abrir una página guardada, cambiar el nombre de un marcador o eliminarlo. El menú del navegador incluye **Mostrar página de inicio**, **Abrir en el navegador predeterminado**, **Usar como página de inicio** y **Borrar datos de sitios**. Los marcadores y la página de inicio elegida se guardan. Las sesiones de los sitios se conservan por separado y siguen disponibles al reiniciar la aplicación. Las páginas del navegador siguen el nivel de zoom de la aplicación.
+
+Con el foco en la barra del navegador, usa **F5** para recargar, **F6** para seleccionar la dirección, **Alt+Izquierda/Derecha** para retroceder o avanzar y **Alt+Home** para abrir la página de inicio. También funcionan dentro de la página. Con el foco en la página, **Ctrl/Cmd+L** selecciona la dirección, **Ctrl/Cmd+R** recarga y **Ctrl/Cmd+D** abre Marcadores. En macOS, **Cmd+[/]** también permite retroceder o avanzar. **Escape** detiene la carga. Haz clic derecho en la página para navegar, en un enlace para abrirlo aquí o en el navegador predeterminado o copiar su dirección, y en texto seleccionado o un campo de texto para ver las opciones de edición disponibles. Fuera de la página, los atajos de la aplicación conservan sus funciones habituales.
 
 Al abrir **Navegador** o volver a él, se selecciona automáticamente el audio del navegador. El audio del navegador se mezcla con el dispositivo de entrada seleccionado. Elige **Ninguno** como dispositivo de entrada para escuchar solo el audio del navegador. La opción de entrada del reproductor no afecta a la reproducción del navegador. La música local puede reproducirse junto con el audio del navegador. Si la captura se detiene, pulsa **Navegador** otra vez para reintentar. **Borrar datos de sitios** cierra la sesión en los sitios y borra sus datos guardados, conservando los marcadores.
 
@@ -74,6 +76,10 @@ En **Configuración > Configuración... > Navegador**:
 - **Página de inicio** establece la dirección HTTP o HTTPS que se abre al abrir el navegador por primera vez. El campo está vacío de forma predeterminada; cuando está vacío, se abre la [guía de streaming de EffeTune](https://effetune.frieve.com/streaming/). **Restablecer** vacía el campo sin cambiar la página actual.
 - **Abrir nuevas pestañas en el navegador predeterminado** está activado de forma predeterminada. Desactívalo para abrir esos enlaces en el navegador de EffeTune. Las ventanas independientes, como las de inicio de sesión, permanecen dentro de EffeTune en ambos casos.
 - **User-Agent** es la identificación del navegador que se envía a los sitios web. El valor predeterminado identifica el navegador como compatible con Chrome e incluye el nombre EffeTune. Deja el campo vacío o pulsa **Restablecer** para recuperar el valor predeterminado. Después de cambiarlo, recarga la página en el navegador.
+
+Para cambiar los efectos automáticamente según el sitio, guarda primero tus cadenas como preajustes. En **Reglas de URL**, pulsa **Añadir regla**, introduce un sitio y una ruta como `example.com/music/*` y selecciona un preajuste de cadena. Omite `http://` o `https://`, las cadenas de consulta y los fragmentos `#`; `*` coincide con cualquier texto. Ajusta la prioridad con los botones de subir y bajar y pulsa **Guardar reglas**. Se usa la primera regla activada que coincida y tenga un preajuste disponible.
+
+Las reglas funcionan mientras esté seleccionado el audio del navegador, aunque cambies de vista. Al guardar las reglas, abrir el navegador o navegar a una página coincidente, se puede cargar su preajuste. La navegación entre páginas que usan el mismo preajuste conserva tus ajustes manuales. Si ninguna regla coincide, la cadena actual se mantiene.
 
 Algunos sitios no permiten navegadores integrados, el inicio de sesión, la reproducción protegida o la captura de audio. La disponibilidad depende del sitio y del sistema operativo; no se garantiza la reproducción con DRM. Si se rechaza el inicio de sesión, prueba otro método que ofrezca el sitio o usa tu navegador habitual. Iniciar sesión allí no inicia la sesión dentro de EffeTune. navegador solo está disponible en la aplicación de escritorio.
 
@@ -304,9 +310,9 @@ En **Columnas de la cadena de efectos**, elige **Manual** para ajustar el númer
 
 La edición de Microsoft Store recibe las actualizaciones a través de Microsoft Store. En **Configuración > Configuración...**, usa **Abrir las actualizaciones de Microsoft Store** para buscar actualizaciones y **Abrir la configuración de inicio de Windows** para elegir si EffeTune se inicia automáticamente. Esta edición guarda su configuración y las sesiones de Browser por separado de las demás ediciones de escritorio.
 
-### Medición y Corrección de Respuesta en Frecuencia
+### Medición acústica
 
-Mide tu sistema de audio con un micrófono y crea un EQ de corrección que se puede importar en EffeTune; consulta [Medición y corrección de la respuesta en frecuencia](measurement.md) y la [guía de Pipeline Analyzer](pipeline-analyzer.md).
+Mide tu sistema de audio con un micrófono para revisar la respuesta en frecuencia, la respuesta impulsional, la distorsión y el decaimiento, y crea un EQ de corrección que se puede importar en EffeTune; consulta [Medición acústica](measurement.md) y la [guía de Pipeline Analyzer](pipeline-analyzer.md).
 
 ### Reinicio de Audio
 
@@ -315,9 +321,11 @@ Si experimentas problemas de audio (interrupciones, fallos):
 2. El pipeline de audio se reconstruirá automáticamente
 3. La configuración de tu cadena de efectos se conservará
 
-### Control remoto OpenHome (aplicación de escritorio)
+### Música en red y control remoto
 
-Las versiones de escritorio compatibles pueden controlarse desde aplicaciones OpenHome en la misma red local. Esta función está desactivada de forma predeterminada; consulta [Control remoto OpenHome](openhome.md) para conocer la configuración, el acceso de red, la compatibilidad y las limitaciones.
+**Aplicación de escritorio:** Explora servidores de música de la red local, comparte carpetas seleccionadas y reproduce en este dispositivo o en un reproductor OpenHome. Tras emparejar un reproductor EffeTune, puedes editar sus efectos en la misma ventana. El uso compartido y el acceso por control remoto están desactivados inicialmente. Consulta [música en red y control remoto](openhome.md).
+
+La PWA también puede reproducir la música compartida de un ordenador EffeTune registrado con los efectos de este dispositivo o controlar otro ordenador registrado. Consulta [configuración y reproducción desde la PWA](openhome.md#pwa) para conocer los requisitos del navegador y de conexión.
 
 ### Controlar EffeTune con un asistente de IA (MCP)
 
@@ -333,6 +341,8 @@ Enlace de conexión: <pega aquí el enlace copiado>
 ```
 
 Tras la configuración, reinicia el cliente si se te indica y prueba a pedir: «Muéstrame mis efectos actuales». Mantén el enlace de conexión en privado; si pulsas **Nuevo token** o cambias el puerto, repite la configuración con el nuevo enlace.
+
+Añade canciones a Music Library en el EffeTune conectado y pide: «Reproduce [canción]». El asistente busca primero en la biblioteca de ese EffeTune y reproduce en su reproductor de forma predeterminada; no necesitas compartir su carpeta de música. Para usar otra biblioteca u otro reproductor, indícalo en la petición: «Busca [canción] en [biblioteca] y reprodúcela en [reproductor]». Si la música está en otro ordenador con EffeTune, comparte allí primero la carpeta.
 
 ## Combinaciones Comunes de Efectos
 

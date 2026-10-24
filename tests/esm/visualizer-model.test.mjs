@@ -728,7 +728,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
     const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope', 'Hi-Fi Deck', 'Vintage VU',
         'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala'];
     // Featured designs ship only in the aspect ratios they were composed for, after the shared set.
-    const featured = { '21:9': ['Fretboard', 'Power Amp', 'Cinema Strip', 'Meter Bridge'], '16:9': ['Power Amp', 'Beat Stage', 'Lyric Stage', 'Counter Gallery'],
+    const featured = { '21:9': ['Fretboard', 'Power Amp', 'Cinema Strip', 'Meter Bridge'], '16:9': ['Power Amp', 'Beat Stage', 'Lyric Stage', 'Counter Gallery', 'Listening Room'],
         '4:3': ['Meter Bridge'], '1:1': ['Round Dials'], '9:16': ['Fretboard', 'Round Dials', 'Beat Stage', 'Lyric Stage'] };
     for (const aspect of ASPECTS) {
         const presets = JSON.parse(readFileSync(new URL(`../../presets/visualizer/${ASPECT_FILES[aspect]}`, import.meta.url)));
@@ -760,7 +760,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 64);
+    assert.equal(count, 65);
     for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase', 'guitar', 'rhythm-analyzer', 'oscilloscope', 'lyrics'])
         assert.equal(types.has(type), true);
 });

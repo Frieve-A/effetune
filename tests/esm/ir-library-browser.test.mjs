@@ -60,6 +60,36 @@ test('a host library picker offers selection without local imports, deletion or 
   assert.equal(body.children.includes(modal.element), false);
 });
 
+test('remote IR capabilities offer one upload and single-file downloads without folder import or deletion', async t => {
+  const body = new Element('body');
+  t.after(replaceGlobal('document', { body, createElement: tag => new Element(tag) }));
+  t.after(replaceGlobal('window', {}));
+  const calls = [];
+  const service = {
+    readOnly: true, canImport: true, canLoad: true, multipleFiles: false,
+    list: async () => [
+      { irId: 'single', fileLabel: 'Hall.wav', downloadable: true },
+      { irId: 'pair', fileLabel: 'Hall L.wav + Hall R.wav', downloadable: false }
+    ],
+    importFiles: async files => { calls.push(['upload', files]); return { imported: [], failedCount: 0, unsupportedCount: 0 }; },
+    downloadEntry: async entry => calls.push(['download', entry.irId])
+  };
+  const modal = openIrLibraryBrowser({ service });
+  await modal.render();
+  const inputs = flatten(modal.element).filter(node => node.type === 'file');
+  assert.equal(inputs.length, 1);
+  assert.equal(inputs[0].multiple, false);
+  assert.ok(button(modal.element, 'Upload file…'));
+  assert.equal(button(modal.element, 'Import folder…'), undefined);
+  assert.equal(button(modal.element, 'Delete'), undefined);
+  assert.equal(flatten(modal.element).filter(node => node.textContent === 'Download').length, 1);
+  await button(modal.element, 'Download').click();
+  inputs[0].files = [{ name: 'New.wav' }];
+  await inputs[0].dispatch('change');
+  assert.deepEqual(calls, [['download', 'single'], ['upload', [{ name: 'New.wav' }]]]);
+  await modal.close();
+});
+
 test('IR library modal executes filename filtering, sorting, actions, previews, and cleanup', async () => {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;

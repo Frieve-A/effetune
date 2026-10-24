@@ -129,4 +129,20 @@ Lors de l’exportation d’une liste de lecture, activez **Chemins relatifs** s
 - Effacer les données de site du navigateur supprime le catalogue et les listes de lecture de l’application web ; exportez vos listes importantes pour les conserver.
 - Les grandes collections sont chargées progressivement au fil du défilement. Utilisez la Bibliothèque musicale dans une seule fenêtre EffeTune à la fois.
 
+## Musique sur votre réseau (application de bureau)
+
+Utilisez **Library** pour parcourir cet appareil ou un serveur détecté, et le sélecteur d’appareils en haut de la fenêtre pour choisir où écouter la musique. Changer de bibliothèque ne modifie que la navigation et la recherche. L’ajout de dossiers, leur nouvelle analyse et les autres tâches locales sont proposés lorsque **This device** est sélectionné.
+
+Pour parcourir la bibliothèque d’un autre EffeTune, utilisez **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added** et **Playlists** comme sur votre appareil. Recherchez dans la bibliothèque sélectionnée, triez ses listes et ouvrez un album, un artiste ou un genre pour afficher ses pistes. Dans **Folders**, utilisez **Tree** pour parcourir l’arborescence ou **Flat** pour afficher toutes les pistes du dossier sélectionné dans une seule liste. Seule la musique partagée apparaît. Vous pouvez parcourir et lire les playlists distantes ; modifiez-les sur l’ordinateur source.
+
+Les autres serveurs musicaux affichent les catégories et l’arborescence qu’ils publient ; la recherche et le tri ne sont disponibles que si le serveur les prend en charge.
+
+Pour lire des pistes de Music Library sur un autre lecteur, partagez d’abord son dossier dans **Paramètres > Configuration... > Réseau > Partage de la bibliothèque**. Les formats et effets disponibles dépendent de la destination ; les segments CUE ne sont pas disponibles comme pistes réseau distinctes. Consultez [musique en réseau et télécommande](openhome.md) pour la configuration, l’appairage des effets et le dépannage des connexions.
+
+Pour lire des fichiers locaux individuels sans activer le partage de la bibliothèque, choisissez un autre lecteur et utilisez **Open music files**. EffeTune rend uniquement les fichiers sélectionnés accessibles à ce lecteur ; laissez l’application ouverte sur l’ordinateur source.
+
+## Musique partagée dans la PWA
+
+La PWA peut parcourir la bibliothèque partagée d’un ordinateur EffeTune enregistré et la lire avec les effets de cet appareil ou sur un autre ordinateur enregistré. Les fichiers locaux de la PWA ne peuvent pas être envoyés à un autre lecteur. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour ajouter un appareil et connaître les autorisations du navigateur et les conditions de connexion.
+
 [← Retour au README](README.md)

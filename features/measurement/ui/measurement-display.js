@@ -1,3 +1,4 @@
+import { updateRangeFill } from '../../../js/ui/range-fill.js';
 /**
  * Handles measurement display and management
  */
@@ -261,22 +262,28 @@ class MeasurementDisplay {
         // Set PEQ control values
         document.getElementById('targetLowFreqSlider').value =
             this.uiManager.correctionHandler.valueToLogSlider(lowFreq, 20, 1000);
-        document.getElementById('targetLowFreqValue').textContent = Math.round(lowFreq);
+        document.getElementById('targetLowFreqValue').value = Math.round(lowFreq);
 
         document.getElementById('targetHighFreqSlider').value =
             this.uiManager.correctionHandler.valueToLogSlider(highFreq, 1000, 20000);
-        document.getElementById('targetHighFreqValue').textContent = Math.round(highFreq);
+        document.getElementById('targetHighFreqValue').value = Math.round(highFreq);
 
         document.getElementById('smoothing').value = smoothing;
-        document.getElementById('smoothingValue').textContent = smoothing.toFixed(2);
+        document.getElementById('smoothingValue').value = smoothing.toFixed(2);
 
         document.getElementById('eqBandCount').value = eqBandCount;
-        document.getElementById('eqBandCountValue').textContent = eqBandCount;
+        document.getElementById('eqBandCountValue').value = eqBandCount;
+        for (const id of ['targetLowFreqValue', 'targetHighFreqValue', 'smoothingValue', 'eqBandCountValue']) {
+            const input = document.getElementById(id);
+            if (input.applied) input.applied.value = Number(input.value);
+            updateRangeFill(input.slider);
+        }
 
         this.updateChannelFilter(measurement);
 
-        // Ensure 'All' is selected by default
-        this.selectPoint('all');
+        // Loading a measurement resets the Frequency target independently of the active analysis tab.
+        this.selectedPointIndex = 'all';
+        this.uiManager.updateResultsGraph();
 
         // Update frequency markers
         this.uiManager.correctionHandler.updateFrequencyMarkers();
@@ -546,6 +553,14 @@ class MeasurementDisplay {
             return;
         }
         
+        const analysis = this.uiManager.analysisController;
+        if (analysis && analysis.activeTab !== 'frequency') {
+            if (index === 'all') return;
+            analysis.analysisSelection.point = index;
+            analysis.refresh();
+            return;
+        }
+
         // Update selection in UI
         const pointItems = document.querySelectorAll('.point-item');
         pointItems.forEach(item => item.classList.remove('selected'));
@@ -560,7 +575,6 @@ class MeasurementDisplay {
         
         // Update graph to show selected point or average
         this.uiManager.updateResultsGraph(index);
-        this.uiManager.graphRenderer.updateImpulseResponseGraph(index, this.selectedChannel);
     }
 
     updateChannelFilter(measurement) {
@@ -601,6 +615,13 @@ class MeasurementDisplay {
             ? ['all', ...measurement.outputChannels]
             : ['all'];
         if (!available.includes(channel)) return;
+        const analysis = this.uiManager.analysisController;
+        if (analysis && analysis.activeTab !== 'frequency') {
+            if (channel === 'all') return;
+            analysis.analysisSelection.channel = channel;
+            analysis.refresh();
+            return;
+        }
         if (channel === this.selectedChannel) return;
         this.selectedChannel = channel;
         ++this.uiManager.measurementStateGeneration;
@@ -609,7 +630,6 @@ class MeasurementDisplay {
             button.classList.toggle('selected', button.dataset.channel === channel);
         });
         this.uiManager.updateResultsGraph(this.selectedPointIndex);
-        this.uiManager.graphRenderer.updateImpulseResponseGraph(this.selectedPointIndex, channel);
         this.uiManager.correctionHandler.requestCorrectionUpdate();
     }
 

@@ -1,4 +1,4 @@
-const MAX_QUEUE_LENGTH = 4096;
+export const MAX_QUEUE_LENGTH = 4096;
 const MAX_METADATA_LENGTH = 64 * 1024;
 const MAX_URI_LENGTH = 8192;
 const MAX_RESPONSE_FRAME_BYTES = 128 * 1024;
@@ -27,12 +27,16 @@ export class OpenHomePlaybackAdapter {
   constructor(audioPlayer, {
     bridge = getDefaultBridge(),
     domParserCtor = getDefaultDomParser(),
+    getLibraryManager = () => globalThis.window?.uiManager?.ensureLibraryManager?.(),
+    resolveNetworkTrack = request => globalThis.window?.electronAPI?.networkMusicResolveTrack?.(request),
     schedule = queueMicrotask,
     now = Date.now
   } = {}) {
     this.audioPlayer = audioPlayer;
     this.bridge = bridge;
     this.DomParserCtor = domParserCtor;
+    this.getLibraryManager = getLibraryManager;
+    this.resolveNetworkTrack = resolveNetworkTrack;
     this.schedule = callback => schedule(callback);
     this.now = now;
     this.queue = [];
@@ -42,6 +46,14 @@ export class OpenHomePlaybackAdapter {
     this.trackToken = 0;
     this.detailsToken = 0;
     this.commandChain = Promise.resolve();
+    this.ready = Promise.resolve();
+    this.followsPlayerQueue = false;
+    this.queueSequence = null;
+    this.queueEntryIds = new Map();
+    this.ownedQueueIds = new Set();
+    this.queueSyncScheduled = false;
+    this.queueSyncInProgress = false;
+    this.queueProjectionError = null;
     this.suppressState = 0;
     this.suppressedStateKeys = new Set();
     this.publishScheduled = false;
@@ -52,6 +64,8 @@ export class OpenHomePlaybackAdapter {
     this.removeCancelListener = null;
     this.removeResetListener = null;
     this.removeRepeatModeNormalizer = null;
+    this.removeQueueChangeListener = this.audioPlayer?.playbackManager
+      ?.setQueueChangeListener?.(() => this.handleQueueChange()) ?? null;
 
     if (!bridge?.onAction || !bridge?.onCancel || !bridge?.rendererReady ||
         !bridge?.respond || !bridge?.publishState || !bridge?.onReset || !bridge?.resetComplete) {
@@ -63,9 +77,9 @@ export class OpenHomePlaybackAdapter {
     this.audioPlayer?.stateManager?.addListener?.('*', this.stateListener);
     this.removeRepeatModeNormalizer = this.audioPlayer?.playbackManager
       ?.setRepeatModeNormalizer?.(repeatMode => (
-        repeatMode === 'ONE' && this.playerOwnsRemoteQueue() ? 'OFF' : repeatMode
+        repeatMode === 'ONE' && this.ownsPlayerQueue() ? 'OFF' : repeatMode
       )) ?? null;
-    void Promise.resolve(bridge.rendererReady())
+    this.ready = Promise.resolve(bridge.rendererReady())
       .then(() => this.publishState())
       .catch(() => {});
   }
@@ -99,6 +113,7 @@ export class OpenHomePlaybackAdapter {
           this.rollbackQueueMutation(context);
         }
       } catch (error) {
+        const mutationStarted = Boolean(context.queueTransaction);
         this.rollbackQueueMutation(context);
         if (!context.active || this.disposed) return;
         const code = normalizeActionError(error?.code);
@@ -108,7 +123,7 @@ export class OpenHomePlaybackAdapter {
         await this.bridge.respond({
           requestId,
           ok: false,
-          error: { code }
+          error: { code, ...(action?.service === 'Catalog' ? { phase: mutationStarted ? 'mutation' : 'preflight' } : {}) }
         });
       } finally {
         if (!context.active) this.rollbackQueueMutation(context);
@@ -159,13 +174,17 @@ export class OpenHomePlaybackAdapter {
   }
 
   async resetRemoteQueue() {
-    if (this.playerOwnsRemoteQueue()) {
+    if (this.ownsPlayerQueue()) {
       await this.audioPlayer.stop();
-      if (this.playerOwnsRemoteQueue()) {
+      if (this.ownsPlayerQueue()) {
         this.audioPlayer.playbackManager.replaceMaterializedPlaylist([], 0);
       }
     }
     this.queue = [];
+    this.followsPlayerQueue = false;
+    this.queueSequence = null;
+    this.queueEntryIds.clear();
+    this.ownedQueueIds.clear();
     this.nextTrackId = 1;
     this.idArrayToken = 0;
     this.transportToken = 0;
@@ -176,6 +195,8 @@ export class OpenHomePlaybackAdapter {
 
   playerOwnsRemoteQueue() {
     if (this.queue.length === 0) return false;
+    if (this.queueProjectionError) return false;
+    if (this.followsPlayerQueue && this.queueSequence === this.audioPlayer?.playbackManager?.sequence) return true;
     const playlist = this.audioPlayer?.playbackManager?.playlist;
     if (!Array.isArray(playlist) || playlist.length !== this.queue.length) return false;
     const queueIds = new Set(this.queue.map(entry => entry.id));
@@ -191,8 +212,59 @@ export class OpenHomePlaybackAdapter {
     return true;
   }
 
+  ownsPlayerQueue() {
+    // Observing a Player queue never grants ownership of its lifetime or repeat policy.
+    return this.queue.some(entry => this.ownedQueueIds.has(entry.id)) && this.playerOwnsRemoteQueue();
+  }
+
+  handleQueueChange() {
+    if (!this.followsPlayerQueue || this.disposed || this.queueSyncScheduled ||
+        this.queueSequence === this.audioPlayer.playbackManager.sequence) return;
+    this.queueSyncScheduled = true;
+    this.commandChain = this.commandChain.then(async () => {
+      this.queueSyncScheduled = false;
+      this.queueSyncInProgress = true;
+      try {
+        await this.synchronizePlayerQueue();
+      } catch (error) {
+        if (error.code === 'action-cancelled' && !this.disposed) {
+          this.handleQueueChange();
+        } else if (!this.disposed) {
+          this.queue = [];
+          this.queueEntryIds.clear();
+          this.queueProjectionError = error;
+          this.bumpIdArrayToken();
+          console.warn('[OpenHomePlaybackAdapter] Player queue could not be exported.', error);
+          if (error.code === 'queue-full') globalThis.window?.uiManager?.setError?.('networkMusic.queueFull', true);
+        }
+      } finally {
+        this.queueSyncInProgress = false;
+        this.publishState();
+      }
+    }).catch(() => {});
+  }
+
+  async synchronizePlayerQueue() {
+    const manager = this.audioPlayer.playbackManager;
+    if (this.queueSequence === manager.sequence) return;
+    const context = { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER };
+    const imported = await this.captureLocalQueue(0, context, true);
+    const entries = imported.entries.map(entry => {
+      const id = entry.id ?? this.allocateTrackId();
+      return Object.freeze({ ...entry, id, metadata: entry.metadata ?? localTrackMetadata(entry.meta.title, id) });
+    });
+    if (entries.length !== this.queue.length || entries.some((entry, index) => entry.id !== this.queue[index].id)) {
+      this.bumpIdArrayToken();
+    }
+    this.queue = entries;
+    this.ownedQueueIds = new Set(entries.filter(entry => this.ownedQueueIds.has(entry.id)).map(entry => entry.id));
+    this.queueSequence = manager.sequence;
+    this.queueEntryIds = new Map(entries.filter(entry => entry.entryInstanceId).map(entry => [entry.entryInstanceId, entry.id]));
+    this.queueProjectionError = null;
+  }
+
   assertActionActive(context) {
-    if (this.disposed || context?.active !== true) {
+    if (this.disposed || context?.active !== true || context.isCurrent?.() === false) {
       throw createActionError('action-cancelled');
     }
     if (!Number.isSafeInteger(context.deadlineEpochMs)) {
@@ -210,6 +282,8 @@ export class OpenHomePlaybackAdapter {
     if (!playerSnapshot) throw createActionError('action-failed');
     context.queueTransaction = {
       queue: [...this.queue],
+      queueEntryIds: new Map(this.queueEntryIds),
+      ownedQueueIds: new Set(this.ownedQueueIds),
       nextTrackId: this.nextTrackId,
       idArrayToken: this.idArrayToken,
       transportToken: this.transportToken,
@@ -262,6 +336,8 @@ export class OpenHomePlaybackAdapter {
     if (!transaction || transaction.rolledBack) return false;
     transaction.rolledBack = true;
     this.queue = [...transaction.queue];
+    this.queueEntryIds = new Map(transaction.queueEntryIds);
+    this.ownedQueueIds = new Set(transaction.ownedQueueIds);
     this.nextTrackId = transaction.nextTrackId;
     this.idArrayToken = transaction.idArrayToken;
     this.transportToken = transaction.transportToken;
@@ -295,11 +371,24 @@ export class OpenHomePlaybackAdapter {
   async executeAction(request, context) {
     this.assertActionActive(context);
     validateActionRequest(request);
+    if (request.service === 'Catalog') {
+      if (request.action !== 'PlayItems') throw createActionError('unsupported-action');
+      return this.playCatalogItems(request.args, context);
+    }
+    // Local controls can adopt the Player's first queue without replacing a staged OpenHome queue.
+    if (this.followsPlayerQueue || (request.localControl === true && this.queue.length === 0)) {
+      await this.synchronizePlayerQueue();
+      this.assertActionActive(context);
+      this.followsPlayerQueue = true;
+    }
     if (request.service === 'Product' || request.service === 'Info' || request.service === 'Time') {
       if (request.action !== 'Snapshot') throw createActionError('unsupported-action');
       return this.getSnapshot();
     }
     if (request.service !== 'Playlist') throw createActionError('unsupported-service');
+    if (this.followsPlayerQueue && this.queueProjectionError && request.action !== 'Snapshot') {
+      throw this.queueProjectionError;
+    }
 
     const args = request.args || {};
     if (!['Read', 'ReadList', 'IdArray', 'Snapshot'].includes(request.action)) {
@@ -314,10 +403,14 @@ export class OpenHomePlaybackAdapter {
         if (resumed !== true) throw createActionError('play-failed');
         const playbackManager = this.audioPlayer.playbackManager;
         const previousPlayRequest = playbackManager?.activePlayRequest || null;
-        const playPromise = this.audioPlayer.play(false);
+        const playPromise = this.audioPlayer.play(false, { isCurrent: context.isCurrent });
         const playRequest = playbackManager?.activePlayRequest || null;
         if (playRequest && playRequest !== previousPlayRequest) context.playRequest = playRequest;
+        this.markQueueMutationOwner(context, true);
         const started = await playPromise;
+        // Target selection only owns the pending initial activation. Once audio
+        // starts, this queue and its providers belong to the local player.
+        if (started === true && context.queueTransaction) context.isCurrent = undefined;
         this.assertActionActive(context);
         context.playRequest = null;
         if (started !== true) throw createActionError('play-failed');
@@ -382,26 +475,182 @@ export class OpenHomePlaybackAdapter {
 
   async insert(args, context) {
     this.assertActionActive(context);
-    if (this.queue.length >= MAX_QUEUE_LENGTH) throw createActionError('queue-full');
+    const entry = this.createNetworkEntry(args);
+    return this.insertEntries([entry], requireUint32(args.afterId ?? 0, true), context);
+  }
+
+  createNetworkEntry(args) {
     const uri = normalizeRemoteUri(args.uri);
     const playbackUrl = normalizePlaybackUrl(args.playbackUrl);
     const artworkUrl = args.artworkUrl === undefined
       ? ''
       : normalizePlaybackUrl(args.artworkUrl);
     const metadata = normalizeMetadata(args.metadata);
-    const afterId = requireUint32(args.afterId ?? 0, true);
-    let insertIndex = 0;
-    if (afterId !== 0) insertIndex = this.findQueueIndex(afterId) + 1;
     const meta = parseDidlLite(metadata, uri, this.DomParserCtor, artworkUrl);
-    const currentId = this.getCurrentOpenHomeId();
-    const hadRemoteOwnership = this.playerOwnsRemoteQueue();
+    return { uri, playbackUrl, metadata, meta };
+  }
+
+  async playNetworkTracks(tracks, operationKind = 'play', isCurrent = () => true, startIndex = 0) {
+    const entries = tracks.map(track => ({
+      ...this.createNetworkEntry({ uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata }),
+      meta: Object.freeze({ title: track.title, artist: track.artist || '', album: track.album || '', duration: track.duration })
+    }));
+    return this.playPreparedEntries(entries, operationKind, isCurrent, startIndex);
+  }
+
+  async playProviderTracks(tracks, operationKind = 'play', isCurrent = () => true, startIndex = 0) {
+    const entries = tracks.map(track => {
+      if (typeof track?.provider !== 'function') throw createActionError('invalid-action');
+      return { uri: '', playerTrack: track, meta: track.meta, metadata: '' };
+    });
+    return this.playPreparedEntries(entries, operationKind, isCurrent, startIndex);
+  }
+
+  async playPreparedEntries(entries, operationKind = 'play', isCurrent = () => true, startIndex = 0) {
+    await this.ready;
+    const pending = this.commandChain.then(async () => {
+      const context = { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER, isCurrent };
+      this.suppressState += 1;
+      try {
+        const result = await this.applyPreparedEntries(entries, operationKind, startIndex, context);
+        this.finalizeQueueMutation(context);
+        return result;
+      } catch (error) {
+        this.rollbackQueueMutation(context);
+        throw error;
+      } finally {
+        this.suppressState -= 1;
+        if (this.suppressState === 0) this.flushSuppressedStateChanges();
+        this.publishState();
+      }
+    });
+    this.commandChain = pending.catch(() => {});
+    return pending;
+  }
+
+  async applyPreparedEntries(entries, operationKind, startIndex, context) {
+    this.assertActionActive(context);
+    if (!['play', 'playNext', 'queue'].includes(operationKind)) throw createActionError('invalid-action');
+    if (operationKind === 'play') requireQueueIndex(startIndex, entries.length);
+    if (!entries.length) throw createActionError('empty-queue');
+    const replace = operationKind === 'play';
+    const imported = !replace && !this.playerOwnsRemoteQueue()
+      ? await this.captureLocalQueue(entries.length, context) : null;
+    this.assertActionActive(context);
+    const afterId = replace || imported ? 0 : operationKind === 'playNext'
+      ? this.getCurrentOpenHomeId() : this.queue.at(-1)?.id || 0;
+    await this.insertEntries(entries, afterId, context, { replace, imported, operationKind });
+    this.assertActionActive(context);
+    this.followsPlayerQueue = true;
+    if (replace) {
+      await this.executeAction({ requestId: 'network-local-play', service: 'Playlist',
+        action: startIndex === 0 ? 'Play' : 'SeekIndex', args: startIndex === 0 ? {} : { index: startIndex },
+        deadlineEpochMs: context.deadlineEpochMs }, context);
+    }
+    return { accepted: true };
+  }
+
+  async playCatalogItems(args, context) {
+    const { items, operationKind, startIndex = 0 } = args;
+    if (!Array.isArray(items) || items.length < 1 || items.length > MAX_QUEUE_LENGTH) throw createActionError('invalid-action');
+    const entries = [];
+    let manager = null;
+    for (const item of items) {
+      if (item.serverId === 'local') {
+        manager ??= await this.getLibraryManager();
+        this.assertActionActive(context);
+        if (!manager || typeof item.trackId !== 'string' || !item.trackId || item.trackId.length > 1024) throw createActionError('invalid-action');
+        const row = await manager.getTrack(item.trackId);
+        if (!row) throw createActionError('trackUnavailable');
+        try { await manager.resolvePlaybackSource(item.trackId); }
+        catch (_) { throw createActionError('trackUnavailable'); }
+        this.assertActionActive(context);
+        const meta = { title: row.title || 'Track', artist: row.artist || '', album: row.album || '', duration: row.durationSec || 0 };
+        const sourceKey = `catalog:${item.trackId}`;
+        entries.push({ uri: '', meta, playerTrack: {
+          name: meta.title, meta, sourceKind: 'catalog', sourceKey, libraryTrackId: item.trackId,
+          provider: () => manager.resolvePlaybackSource(item.trackId)
+        } });
+      } else {
+        if (typeof item.serverId !== 'string' || !item.serverId || typeof item.trackId !== 'string' || !item.trackId) throw createActionError('invalid-action');
+        const track = await this.resolveNetworkTrack({ serverId: item.serverId, trackId: item.trackId, localPlayback: true });
+        this.assertActionActive(context);
+        if (track?.playable === false) throw createActionError('unsupportedFormat');
+        entries.push({ ...this.createNetworkEntry({ uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata }),
+          meta: { title: track.title || 'Track', artist: track.artist || '', album: track.album || '', duration: track.duration || 0 } });
+      }
+    }
+    return this.applyPreparedEntries(entries, operationKind, startIndex, context);
+  }
+
+  async captureLocalQueue(addedCount, context, canonical = false) {
+    const manager = this.audioPlayer.playbackManager;
+    const sequence = manager.catalogSequence;
+    const playlist = manager.playlist;
+    const sourceTracks = canonical && !sequence ? manager.originalPlaylist : playlist;
+    const generation = manager.trackCommandGeneration;
+    const count = sequence?.itemCount ?? playlist.length;
+    if (count + addedCount > MAX_QUEUE_LENGTH) throw createActionError('queue-full');
+    const entries = [];
+    const existing = new Map(this.queue.map(entry => [entry.id, entry]));
+    for (let index = 0; index < count; index += 1) {
+      const ordinal = canonical && sequence ? sequence.toTransportOrdinal(index) : index;
+      const track = sequence ? await sequence.getEntry(ordinal) : sourceTracks[index];
+      this.assertActionActive(context);
+      const retained = existing.get(this.getTrackId(track)) ?? track.meta?.openHomeQueueEntry;
+      if (retained) {
+        entries.push({ ...retained, meta: retained.meta ?? track.meta, entryInstanceId: track.entryInstanceId,
+          ...(!retained.playbackUrl && !retained.playerTrack ? { playerTrack: { ...track } } : {}) });
+        continue;
+      }
+      const title = track.meta?.title || track.title || String(track.name || track.fileName || 'Local track').split(/[\\/]/).pop();
+      const meta = { ...track.meta, title };
+      entries.push({ uri: '', meta, entryInstanceId: track.entryInstanceId,
+        playerTrack: { ...track, meta, ...(sequence ? { provider: () => sequence.resolveEntrySource(track) } : {}) }
+      });
+    }
+    if (manager.playlist !== playlist || manager.trackCommandGeneration !== generation) throw createActionError('action-cancelled');
+    const state = this.getPlayerState();
+    const currentIndex = canonical
+      ? entries.findIndex(entry => entry.entryInstanceId === state.currentTrack?.entryInstanceId)
+      : state.currentTrackIndex || 0;
+    if (entries[currentIndex]?.playerTrack && state.currentTrack) {
+      entries[currentIndex].playerTrack = { ...entries[currentIndex].playerTrack, ...state.currentTrack };
+    }
+    return { entries, currentIndex };
+  }
+
+  async insertEntries(entries, afterId, context, { replace = false, imported = null, operationKind } = {}) {
+    const baseCount = replace ? 0 : imported?.entries.length ?? this.queue.length;
+    if (baseCount + entries.length > MAX_QUEUE_LENGTH) throw createActionError('queue-full');
+    let insertIndex = afterId === 0 ? 0 : this.findQueueIndex(afterId) + 1;
+    let currentId = this.getCurrentOpenHomeId();
+    const hadRemoteOwnership = imported !== null || this.playerOwnsRemoteQueue();
     const wasPlaying = this.getPlayerState().isPlaying === true;
     this.beginQueueMutation(context);
+    if (replace) {
+      await this.audioPlayer.stop();
+      this.captureQueueMutationTransport(context);
+      this.markQueueMutationOwner(context);
+      this.assertActionActive(context);
+      currentId = 0;
+    }
     const wasShuffle = await this.disableShuffleForMutation(context);
     this.assertActionActive(context);
-    const id = this.allocateTrackId();
-    const entry = Object.freeze({ id, uri, playbackUrl, metadata, meta });
-    this.queue.splice(insertIndex, 0, entry);
+    if (replace || imported) this.queue = [];
+    if (imported) {
+      for (const entry of imported.entries) {
+        const id = entry.id ?? this.allocateTrackId();
+        this.queue.push(Object.freeze({ ...entry, id, metadata: entry.metadata ?? localTrackMetadata(entry.meta.title, id) }));
+      }
+      currentId = this.queue[imported.currentIndex]?.id || 0;
+      insertIndex = operationKind === 'playNext' && currentId ? imported.currentIndex + 1 : this.queue.length;
+    }
+    const added = entries.map(entry => {
+      const id = this.allocateTrackId();
+      return Object.freeze({ ...entry, id, metadata: entry.metadata ?? localTrackMetadata(entry.meta, id) });
+    });
+    this.queue.splice(insertIndex, 0, ...added);
     await this.transitionToRemoteQueueOwnership(context, {
       preferredId: currentId,
       queueChanged: true,
@@ -411,7 +660,7 @@ export class OpenHomePlaybackAdapter {
     this.assertActionActive(context);
     this.bumpIdArrayToken();
     context.queueTransaction.rollbackReady = true;
-    return { newId: id };
+    return { newId: added[0]?.id };
   }
 
   async deleteId(idValue, context) {
@@ -525,23 +774,31 @@ export class OpenHomePlaybackAdapter {
     await this.transitionToRemoteQueueOwnership(context, {
       preferredId: this.getCurrentOpenHomeId()
     });
+    this.assertActionActive(context);
+    this.followsPlayerQueue = true;
   }
 
   async seekQueueIndex(queueIndex, context) {
     await this.ensureQueueActive(context);
     this.assertActionActive(context);
     const id = this.queue[queueIndex].id;
-    const playlistIndex = this.audioPlayer.playbackManager.playlist
-      .findIndex(track => trackIdFromPlayerTrack(track) === id);
+    const manager = this.audioPlayer.playbackManager;
+    const playlistIndex = manager.catalogSequence
+      ? manager.catalogSequence.toTransportOrdinal(queueIndex)
+      : manager.playlist.findIndex(track => this.getTrackId(track) === id);
     if (playlistIndex < 0) throw createActionError('track-not-found');
     const resumed = await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
     this.assertActionActive(context);
     if (resumed !== true) throw createActionError('seek-failed');
-    const result = await this.audioPlayer.playbackManager.selectQueueOrdinal(playlistIndex, {
+    const pending = this.audioPlayer.playbackManager.selectQueueOrdinal(playlistIndex, {
       play: true,
       userInitiated: false,
-      playbackReady: resumed
+      playbackReady: resumed,
+      ...(context.isCurrent ? { isCurrent: context.isCurrent } : {})
     });
+    this.markQueueMutationOwner(context, true);
+    const result = await pending;
+    if (result?.accepted === true && context.queueTransaction) context.isCurrent = undefined;
     this.assertActionActive(context);
     if (result?.accepted === false) throw createActionError('seek-failed');
   }
@@ -562,7 +819,7 @@ export class OpenHomePlaybackAdapter {
       throw createActionError(`${direction}-failed`);
     }
     this.assertActionActive(context);
-    if (moved !== true) throw createActionError(`${direction}-failed`);
+    if (moved !== true && moved?.accepted !== true) throw createActionError(`${direction}-failed`);
   }
 
   async seekSecond(seconds, context) {
@@ -642,13 +899,17 @@ export class OpenHomePlaybackAdapter {
     if (this.queue.length > 0 && !this.audioPlayer.ui?.container) {
       this.audioPlayer.ui?.createPlayerUI?.();
     }
-    const tracks = this.queue.map(entry => ({
-      path: entry.playbackUrl,
-      name: entry.meta.title,
-      meta: entry.meta,
-      sourceKind: 'openhome',
-      sourceKey: `openhome:${entry.id}`
-    }));
+    const tracks = this.queue.map(entry => {
+      const sourceKey = `openhome:${entry.id}`;
+      const track = entry.playerTrack ?? {
+        path: entry.playbackUrl, name: entry.meta.title, meta: entry.meta, sourceKind: 'openhome'
+      };
+      return { ...track, sourceKey, meta: { ...track.meta, openHomeQueueEntry: {
+        id: entry.id, uri: entry.uri, metadata: entry.metadata
+      } }, ...(track.provider ? {
+        provider: async () => ({ ...await track.provider(), sourceKey })
+      } : {}) };
+    });
     const currentIndex = preferredId
       ? Math.max(0, this.queue.findIndex(entry => entry.id === preferredId))
       : 0;
@@ -656,6 +917,11 @@ export class OpenHomePlaybackAdapter {
     this.audioPlayer.playbackManager.replaceMaterializedPlaylist(tracks, currentIndex, {
       applyShuffleMode
     });
+    this.ownedQueueIds = new Set(this.queue.map(entry => entry.id));
+    this.queueSequence = this.audioPlayer.playbackManager.sequence;
+    this.queueEntryIds = new Map(this.audioPlayer.playbackManager.playlist.filter(track => track.entryInstanceId)
+      .map(track => [track.entryInstanceId, trackIdFromPlayerTrack(track)]));
+    this.queueProjectionError = null;
     this.markQueueMutationOwner(context);
   }
 
@@ -676,7 +942,11 @@ export class OpenHomePlaybackAdapter {
   }
 
   getCurrentOpenHomeId() {
-    return trackIdFromPlayerTrack(this.getPlayerState().currentTrack);
+    return this.getTrackId(this.getPlayerState().currentTrack);
+  }
+
+  getTrackId(track) {
+    return trackIdFromPlayerTrack(track) || (track?.entryInstanceId ? this.queueEntryIds.get(track.entryInstanceId) : 0) || 0;
   }
 
   getPlayerState() {
@@ -685,8 +955,8 @@ export class OpenHomePlaybackAdapter {
 
   getSnapshot() {
     const state = this.getPlayerState();
-    const currentId = trackIdFromPlayerTrack(state.currentTrack);
-    const currentEntry = this.queue.find(entry => entry.id === currentId) || null;
+    const currentEntry = this.queue.find(entry => entry.id === this.getTrackId(state.currentTrack)) || null;
+    const currentId = currentEntry?.id || 0;
     return Object.freeze({
       protocolVersion: 1,
       source: 'Playlist',
@@ -715,8 +985,13 @@ export class OpenHomePlaybackAdapter {
 
   handleStateChange(key) {
     if (!RELEVANT_STATE_KEYS.has(key) || this.disposed) return;
-    if (key === 'repeatMode' && this.getPlayerState().repeatMode === 'ONE' &&
-        this.playerOwnsRemoteQueue()) {
+    const state = this.getPlayerState();
+    // A staged incoming queue also becomes shared when playback starts locally.
+    if (!this.followsPlayerQueue && state.isPlaying === true && this.playerOwnsRemoteQueue()) {
+      this.followsPlayerQueue = true;
+    }
+    if (key === 'repeatMode' && state.repeatMode === 'ONE' &&
+        this.ownsPlayerQueue()) {
       void Promise.resolve(this.audioPlayer.playbackManager.setRepeatMode('ALL')).catch(error => {
         console.error('[OpenHomePlaybackAdapter] Failed to normalize repeat mode.', error);
       });
@@ -756,7 +1031,7 @@ export class OpenHomePlaybackAdapter {
   }
 
   publishState() {
-    if (this.disposed || !this.bridge?.publishState) return;
+    if (this.disposed || this.queueSyncScheduled || this.queueSyncInProgress || !this.bridge?.publishState) return;
     void Promise.resolve(this.bridge.publishState(this.getSnapshot())).catch(() => {});
   }
 
@@ -771,6 +1046,8 @@ export class OpenHomePlaybackAdapter {
     this.removeResetListener = null;
     this.removeRepeatModeNormalizer?.();
     this.removeRepeatModeNormalizer = null;
+    this.removeQueueChangeListener?.();
+    this.removeQueueChangeListener = null;
     for (const context of this.actionContexts.values()) context.active = false;
     this.actionContexts.clear();
     this.audioPlayer?.stateManager?.removeListener?.('*', this.stateListener);
@@ -865,6 +1142,14 @@ function titleFromUri(uri) {
 
 function serializeTrack(entry) {
   return Object.freeze({ id: entry.id, uri: entry.uri, metadata: entry.metadata });
+}
+
+function localTrackMetadata(meta, id) {
+  const escape = value => String(value || '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
+  })[character]);
+  const details = typeof meta === 'string' ? { title: meta } : meta || {};
+  return `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="${id}" parentID="0" restricted="1"><dc:title>${escape(details.title)}</dc:title><upnp:artist>${escape(details.artist)}</upnp:artist><upnp:album>${escape(details.album)}</upnp:album><upnp:class>object.item.audioItem.musicTrack</upnp:class></item></DIDL-Lite>`;
 }
 
 function trackIdFromPlayerTrack(track) {

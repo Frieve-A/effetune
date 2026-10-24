@@ -17,6 +17,15 @@ function getPresetNameFromPath(filePath) {
     : fileName;
 }
 
+function captureLocalPresetTarget() {
+  const uiManager = window.uiManager;
+  const generation = uiManager.networkMusic?.playerGeneration ?? 0;
+  const isCurrent = () => window.uiManager === uiManager &&
+    (uiManager.networkMusic?.selectedPlayerId ?? 'local') === 'local' &&
+    (uiManager.networkMusic?.playerGeneration ?? 0) === generation;
+  return isCurrent() ? { uiManager, isCurrent } : null;
+}
+
 function reportAudioFileProcessingFailure(context, error = null) {
   if (error === null) console.error(context);
   else console.error(context, error);
@@ -33,6 +42,9 @@ export async function openPresetFile(isElectron, filePath) {
     console.error('Cannot open preset file: Electron integration or UI manager not available');
     return Promise.reject(new Error('Electron integration or UI manager not available'));
   }
+
+  const target = captureLocalPresetTarget();
+  if (!target) return;
 
   try {
     // Set pipeline state flags to false
@@ -62,6 +74,7 @@ export async function openPresetFile(isElectron, filePath) {
     // Read file
     // Reading preset file
     const readResult = await window.electronAPI.readFile(filePath);
+    if (!target.isCurrent()) return;
     
     if (!readResult.success) {
       console.error('Failed to read preset file:', readResult.error);
@@ -201,7 +214,7 @@ export async function openPresetFile(isElectron, filePath) {
     }
     
     // Display message with filename using translation key
-    window.uiManager.showTransientMessage('success.presetLoaded', false, { name: fileName }, 3000);
+    if (target.isCurrent()) target.uiManager.showTransientMessage('success.presetLoaded', false, { name: fileName }, 3000);
     
     return Promise.resolve(true);
   } catch (error) {
@@ -217,6 +230,8 @@ export async function openPresetFile(isElectron, filePath) {
  */
 export async function exportPreset(isElectron) {
   if (!isElectron || !window.uiManager) return;
+  const target = captureLocalPresetTarget();
+  if (!target) return;
 
   try {
     // Get current preset data
@@ -236,7 +251,7 @@ export async function exportPreset(isElectron) {
       ]
     });
 
-    if (result.canceled || !result.filePath) return;
+    if (result.canceled || !result.filePath || !target.isCurrent()) return;
 
     // Remove name property from preset data before saving
     const { name, ...presetDataWithoutName } = presetData;
@@ -246,6 +261,7 @@ export async function exportPreset(isElectron) {
       result.filePath,
       JSON.stringify(presetDataWithoutName, null, 2)
     );
+    if (!target.isCurrent()) return;
 
     if (!saveResult.success) {
       console.error('Failed to save preset:', saveResult.error);
@@ -270,6 +286,8 @@ export async function exportPreset(isElectron) {
  */
 export async function importPreset(isElectron) {
   if (!isElectron || !window.uiManager) return;
+  const target = captureLocalPresetTarget();
+  if (!target) return;
 
   try {
     // Show open dialog
@@ -282,10 +300,11 @@ export async function importPreset(isElectron) {
       properties: ['openFile']
     });
 
-    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return;
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0 || !target.isCurrent()) return;
 
     // Read file
     const readResult = await window.electronAPI.readFile(result.filePaths[0]);
+    if (!target.isCurrent()) return;
     
     if (!readResult.success) {
       console.error('Failed to read preset:', readResult.error);
@@ -341,6 +360,9 @@ export async function importPreset(isElectron) {
  */
 export async function openMusicFile(isElectron) {
   if (!isElectron) return;
+  const network = window.uiManager?.networkMusic;
+  const playerId = network?.selectedPlayerId ?? 'local';
+  const generation = network?.playerGeneration;
   
   try {
     const result = await window.electronAPI.openPlaybackSelection();
@@ -359,6 +381,12 @@ export async function openMusicFile(isElectron) {
     }
     const tracks = result.kind === 'cue' ? result.tracks : result.descriptors;
     if (!Array.isArray(tracks) || tracks.length === 0) return;
+    if (generation !== network?.playerGeneration) return;
+    if (playerId !== 'local') {
+      if (result.kind === 'cue') window.uiManager?.setError?.('networkMusic.cueUnsupported', true);
+      else await network.playFiles(tracks, playerId);
+      return;
+    }
     await window.uiManager?.createAudioPlayer?.(tracks, false);
   } catch (error) {
     console.error('Open Music diagnostic:', error);

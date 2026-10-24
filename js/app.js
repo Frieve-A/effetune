@@ -772,7 +772,11 @@ class App {
             return;
         }
         if (startupConfig.startupView === 'visualizer' && !hasExplicitStartupViewRequest(window)) {
-            try { await this.uiManager?.showVisualizerView?.(); }
+            try {
+                if (await this.uiManager?.showVisualizerView?.() && startupConfig.visualizerStartupExpanded === true) {
+                    this.uiManager.visualizerView.setExpanded(true);
+                }
+            }
             catch (error) { console.error('Error opening Visualizer startup view:', error); }
             return;
         }

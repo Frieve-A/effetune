@@ -1,3 +1,4 @@
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import test from 'node:test';
@@ -197,7 +198,7 @@ test('every shipped language contains the tour text and progress placeholders', 
     ];
     for (const locale of ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh']) {
         const source = await fs.readFile(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8');
-        const translations = JSON.parse(source.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
+        const translations = parseCommentedJSON(source);
         for (const key of keys) assert.equal(typeof translations[key], 'string', `${locale}: ${key}`);
         assert.ok(translations['tour.progress'].includes('{current}'), locale);
         assert.ok(translations['tour.progress'].includes('{total}'), locale);

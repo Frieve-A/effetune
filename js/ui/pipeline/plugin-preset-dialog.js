@@ -37,7 +37,9 @@ export class PluginPresetProvider {
     constructor(pipelineCore, plugin, store = new PluginPresetStore()) {
         this.pipelineCore = pipelineCore;
         this.plugin = plugin;
-        this.store = store;
+        // The remote API has pipeline presets, but no individual user presets.
+        this.userPresetsAvailable = pipelineCore.audioManager?.hasLocalAudio !== false;
+        this.store = this.userPresetsAvailable ? store : null;
         this.errorKeys = {
             save: 'error.failedToSavePluginPreset',
             delete: 'error.failedToDeletePluginPreset'
@@ -92,6 +94,7 @@ export class PluginPresetProvider {
     }
 
     async listUserPresetNames() {
+        if (!this.store) return [];
         return Object.keys(await this.store.getForPlugin(this.plugin.name));
     }
 
@@ -109,6 +112,7 @@ export class PluginPresetProvider {
     }
 
     async applyUserPreset(name) {
+        if (!this.store) return false;
         const presets = await this.store.getForPlugin(this.plugin.name);
         if (!Object.hasOwn(presets, name)) return false;
         return this.applyParameters(() => {
@@ -141,7 +145,7 @@ export class PluginPresetProvider {
     }
 
     async saveUserPreset(name) {
-        if (!this.isAttachedToPipeline()) return false;
+        if (!this.store || !this.isAttachedToPipeline()) return false;
         const params = clone(this.plugin.getSerializableParameters());
         delete params.enabled;
         delete params.ib;
@@ -151,10 +155,12 @@ export class PluginPresetProvider {
     }
 
     renameUserPreset(oldName, newName) {
+        if (!this.store) return false;
         return this.store.rename(this.plugin.name, oldName, newName);
     }
 
     deleteUserPresets(names) {
+        if (!this.store) return false;
         return this.store.remove(this.plugin.name, names);
     }
 }
@@ -235,7 +241,7 @@ export class PluginPresetDialog {
         this.setupCloseHandler(dialog, anchorButton, generation);
         this.setupKeyboardNavigation(dialog, content, provider, generation, saveRow);
 
-        if (focusSaveName) {
+        if (focusSaveName && provider.userPresetsAvailable !== false && typeof provider.saveUserPreset === 'function') {
             nameInput.focus();
             nameInput.select();
         } else if (!this.focusInitialPreset(content, provider)) {
@@ -306,7 +312,7 @@ export class PluginPresetDialog {
         }
 
         const userSection = this.createSection(t('ui.title.userPresets', 'User Presets'));
-        if (saveRow) userSection.appendChild(saveRow);
+        if (saveRow && typeof provider.saveUserPreset === 'function') userSection.appendChild(saveRow);
         if (names.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'preset-dialog-empty';
@@ -344,9 +350,9 @@ export class PluginPresetDialog {
                 }
                 await this.renderContent(content, provider, generation, saveRow);
             });
-            userSection.appendChild(deleteButton);
+            if (typeof provider.deleteUserPresets === 'function') userSection.appendChild(deleteButton);
         }
-        sections.push(userSection);
+        if (provider.userPresetsAvailable !== false) sections.push(userSection);
         content.textContent = '';
         for (const section of sections) content.appendChild(section);
     }
@@ -381,7 +387,7 @@ export class PluginPresetDialog {
         nameButton.addEventListener('click', async () => {
             await this.activatePreset(content, provider, generation, saveRow, 'user', name);
         });
-        row.appendChild(checkbox);
+        if (typeof provider.deleteUserPresets === 'function') row.appendChild(checkbox);
         row.appendChild(nameButton);
         if (typeof provider.renameUserPreset === 'function') {
             const renameButton = document.createElement('button');

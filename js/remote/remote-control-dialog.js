@@ -1,10 +1,12 @@
 import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
+import { getRemoteControlSettings } from './remote-control-settings.js';
 
 export class RemoteControlDialog {
     constructor(win, api) {
         this.win = win;
         this.doc = win.document;
         this.api = api;
+        this.settings = getRemoteControlSettings(api);
         this.overlay = null;
     }
 
@@ -18,7 +20,6 @@ export class RemoteControlDialog {
             return;
         }
         this.previousFocus = this.doc.activeElement;
-        this.status = null;
         this.busy = false;
         this.selected = 0;
         const overlay = this.doc.createElement('div');
@@ -78,7 +79,7 @@ export class RemoteControlDialog {
 
         el.enabled.addEventListener('change', () => {
             const enabled = el.enabled.checked;
-            void this.updateSettings(() => this.api.setEnabled(enabled));
+            void this.settings.setEnabled(enabled);
         });
         el.token.addEventListener('click', () => this.updateSettings(() => this.api.regenerateToken()));
         el.network.addEventListener('change', () => {
@@ -116,23 +117,24 @@ export class RemoteControlDialog {
             }
         };
         this.doc.addEventListener('keydown', this.handleKeydown, true);
-        this.removeStatusListener = this.api.onStatus(status => {
-            this.status = status;
+        this.removeStatusListener = this.settings.subscribe(() => {
+            el.error.hidden = !this.settings.errorKey;
+            if (this.settings.errorKey) this.showError(this.settings.errorKey);
             this.render();
         });
         this.render();
         this.dialog.focus();
-        void this.updateSettings(() => this.api.getStatus());
     }
 
     render() {
         const el = this.elements;
-        const s = this.status;
+        const s = this.settings.status;
+        const busy = this.busy || this.settings.busy;
         el.enabled.checked = s?.enabled === true;
-        el.enabled.disabled = this.busy || !s;
-        el.token.disabled = this.busy || !s;
-        el.copy.disabled = this.busy;
-        el.join.disabled = this.busy;
+        el.enabled.disabled = busy || !s;
+        el.token.disabled = busy || !s;
+        el.copy.disabled = busy;
+        el.join.disabled = busy;
         let text;
         if (!s) text = this.t('loading');
         else if (s.error) text = this.t('startFailed');
@@ -176,7 +178,7 @@ export class RemoteControlDialog {
     }
 
     updateSettings(task) {
-        return this.run(task, 'updateFailed', status => { this.status = status; });
+        return this.settings.update(task);
     }
 
     async run(task, errorKey, applyResult) {

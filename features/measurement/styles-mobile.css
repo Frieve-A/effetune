@@ -56,14 +56,11 @@ body.layout-mobile .options-menu {
 }
 
 body.layout-mobile .new-measurement-btn-container {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) max-content;
 }
 
 body.layout-mobile .new-measurement-btn-container button {
     width: 100%;
-    margin-left: 0;
 }
 
 body.layout-mobile .save-button,
@@ -257,3 +254,16 @@ body.layout-mobile .measurement-item-preview canvas {
         touch-action: manipulation;
     }
 }
+
+body.layout-mobile .left-pane { flex: auto; }
+body.layout-mobile #measurementResults canvas { height: 300px; }
+body.layout-mobile .analysis-tabs .tab-button { height: 40px; min-height: 40px; }
+body.layout-mobile #measurementResults :is(.analysis-setting-actions, .analysis-correction, .export-section, .impulse-response-controls, .impulse-response-export, .analysis-graph-header) button,
+body.layout-mobile #measurementResults #exportAnalysisJson { height: 40px; min-height: 40px; }
+body.layout-mobile #measurementResults .analysis-graph-header .graph-copy-button { width: 40px; }
+
+/* Match the Effect UI's touch-size parameter fields. */
+body.layout-mobile .plugin-parameter-ui { --et-mobile-control-height: 40px; }
+body.layout-mobile #measurementResults .plugin-parameter-ui .parameter-row { min-height: 40px; }
+body.layout-mobile #measurementResults .plugin-parameter-ui .parameter-row > input[type=number],
+body.layout-mobile #measurementResults .plugin-parameter-ui .parameter-row > select { height: 40px; min-height: 40px; font-size: 16px; }
