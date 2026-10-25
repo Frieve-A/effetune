@@ -89,6 +89,8 @@ test('helper methods handle absent processors, non-array pipelines, sample rates
   });
   assert.equal(contextRuntime.sync.getAudioSampleRate(), 48000);
   assert.equal(contextRuntime.sync.getAudioOutputChannelCount(), 6);
+  contextRuntime.audioManager.getOutputChannelCount = () => 4;
+  assert.equal(contextRuntime.sync.getAudioOutputChannelCount(), 4);
 
   const fallbackRuntime = createRuntime({
     audioContext: { sampleRate: 96000, destination: { channelCount: 16 } }

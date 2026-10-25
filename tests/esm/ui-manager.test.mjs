@@ -1208,6 +1208,13 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     manager.sampleRate.textContent = 'Sleep';
     manager.updateSleepModeDisplay(false, 44100);
     assert.equal(manager.sampleRate.textContent, '44100 Hz');
+    manager.audioManager.getOutputChannelCount = () => 4;
+    manager.sampleRate.textContent = 'Sleep';
+    manager.updateSleepModeDisplay(false, 44100);
+    assert.equal(manager.sampleRate.textContent, '44100 Hz 4ch');
+    manager.updateSampleRateDisplay();
+    assert.equal(manager.sampleRate.textContent, '48000 Hz 4ch');
+    delete manager.audioManager.getOutputChannelCount;
     manager.audioManager.audioContext.destination.channelCount = 0;
     manager.sampleRate.textContent = 'Sleep';
     manager.updateSleepModeDisplay(false, 32000);

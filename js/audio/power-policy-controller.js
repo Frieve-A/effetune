@@ -703,7 +703,9 @@ export class PowerPolicyController {
     }
 
     _deriveCurrentZeroOutputProof(coordinator, pipeline, context, worklets) {
-        const channelCount = context?.destination?.channelCount;
+        const channelCount = context
+            ? this.audioManager.getOutputChannelCount?.() ?? context.destination?.channelCount
+            : null;
         const physicalOutputCount = Number.isSafeInteger(channelCount) && channelCount > 0
             ? channelCount
             : 1;

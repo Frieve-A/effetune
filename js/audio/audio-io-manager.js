@@ -569,6 +569,50 @@ export class AudioIOManager {
         return true;
     }
 
+    async _initMultichannelMediaStreamOutput(preferences) {
+        const channels = this.contextManager.outputChannelCount;
+        try {
+            // Chromium's Linux PulseAudio backend can underreport the selected
+            // sink's channel count. Local MediaStream playback preserves the
+            // source layout without using AudioContext.destination's limit.
+            this.destinationNode = this.contextManager.audioContext.createMediaStreamDestination();
+            this.destinationNode.channelCount = channels;
+            this.destinationNode.channelCountMode = 'explicit';
+            this.destinationNode.channelInterpretation = 'discrete';
+            this.audioElement = new Audio();
+            this.audioElement.volume = 1;
+            this.audioElement.muted = false;
+            if (typeof this.audioElement.setSinkId !== 'function') {
+                throw new Error('Multichannel media output requires audio element device selection.');
+            }
+            const deviceId = preferences?.outputDeviceId || 'default';
+            await this._setSinkIdWithTimeout(this.audioElement, deviceId);
+            this.currentOutputDeviceId = deviceId;
+            this.audioElement.srcObject = this.destinationNode.stream;
+            await this.audioElement.play();
+            const outputElement = this.audioElement;
+            this.audioElement.addEventListener('error', () => {
+                if (this.audioElement !== outputElement) return;
+                outputElement.pause();
+                const message = `Audio Error: ${channels}-channel media output failed. Reopen audio settings to select an available output device.`;
+                console.error(message);
+                window.app?.setStartupWarning?.(message);
+            });
+            return '';
+        } catch (error) {
+            // Falling back to the context here would discard channels and could
+            // send audio to a different device. Keep the user's selection.
+            this.audioElement?.pause();
+            if (this.audioElement) this.audioElement.srcObject = null;
+            this.audioElement = null;
+            for (const track of this.destinationNode?.stream?.getTracks?.() || []) track.stop();
+            this.destinationNode?.disconnect?.();
+            this.destinationNode = null;
+            this.currentOutputDeviceId = null;
+            return `Audio Error: Failed to initialize ${channels}-channel media output: ${error.message}`;
+        }
+    }
+
     /**
      * Initialize audio output
      * @returns {Promise<string>} - Empty string on success, error message on failure
@@ -587,14 +631,17 @@ export class AudioIOManager {
             this.outputGainNode.gain.value = 0;
 
             const preferences = await this._loadAudioPreferences();
+            if (this.contextManager.useMediaStreamOutput) {
+                return await this._initMultichannelMediaStreamOutput(preferences);
+            }
             const isMultiChannel = preferences && preferences.outputChannels && preferences.outputChannels > 2;
             const lowLatencyStereo = preferences && preferences.outputChannels === 2 && preferences.lowLatencyOutput;
             const isElectron = this._isElectronEnvironment();
             const requestedOutputDeviceId = preferences?.outputDeviceId || 'default';
             const hasExplicitOutputDevice = requestedOutputDeviceId !== 'default';
             
-            // For multichannel mode, we'll use direct connection to AudioContext.destination
-            // rather than MediaStreamDestination which only supports stereo
+            // Prefer AudioContext.destination when it supports the requested
+            // width. The MediaStream alternative above supports up to 8 channels.
             if (isMultiChannel || lowLatencyStereo) {
                 console.log(`Using direct connection for ${preferences.outputChannels} channel output${lowLatencyStereo ? ' (low latency)' : ''}`);
                 // Skip MediaStreamDestination for multichannel mode
@@ -1017,6 +1064,7 @@ export class AudioIOManager {
             try {
                 await this.audioElement.play();
             } catch (e) {
+                if (this.contextManager.useMediaStreamOutput) return false;
                 // Ignore play errors
             }
             console.log('Reapplied output device (el):', deviceId);
@@ -1411,6 +1459,10 @@ export class AudioIOManager {
 
         // Clear nodes
         this.sourceNode = null;
+        if (this.contextManager?.useMediaStreamOutput) {
+            for (const track of this.destinationNode?.stream?.getTracks?.() || []) track.stop();
+            this.destinationNode?.disconnect?.();
+        }
         this.destinationNode = null;
         this.defaultDestinationConnection = null;
     }

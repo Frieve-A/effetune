@@ -125,7 +125,8 @@ class RemoteControl {
             epoch: this.epoch,
             audio: {
                 sampleRate: audioManager?.audioContext?.sampleRate || 48000,
-                channelCount: audioManager?.audioContext?.destination?.channelCount || 2,
+                channelCount: audioManager?.getOutputChannelCount?.() ??
+                    audioManager?.audioContext?.destination?.channelCount ?? 2,
                 routingChannelCount: audioManager?.outputChannelCount ?? 16
             }
         };

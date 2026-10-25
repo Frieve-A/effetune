@@ -2126,7 +2126,8 @@ class PluginBase {
 
     // UI layout preview only. Never use this count to configure audio processing.
     // See UIManager.setDebugChannelCount for the intentionally unsupported operations.
-    getChannelCountForUI(actualChannelCount = window.audioContext?.destination?.channelCount || 2) {
+    getChannelCountForUI(actualChannelCount = window.audioManager?.getOutputChannelCount?.() ??
+        window.audioContext?.destination?.channelCount ?? 2) {
         return window.uiManager?.debugChannelCount ?? actualChannelCount;
     }
 

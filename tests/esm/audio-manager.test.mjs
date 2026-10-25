@@ -2156,6 +2156,30 @@ test('builds, routes, aligns, selects, and disables parallel blind-test pipeline
   });
 });
 
+test('MediaStream output uses DSP width for power, plugin data and parallel worklets', async () => {
+  await withAudioManager({ audioContextOptions: { channelCount: 2 } }, async ({ calls, manager }) => {
+    manager.contextManager.outputChannelCount = 4;
+    assert.equal(manager.getOutputChannelCount(), 4);
+    assert.equal(manager.getPowerChannelFanInBound(), 4);
+
+    const plugin = createPlugin('AlphaPlugin', { id: 'width-check', calls });
+    manager._buildBlindPluginData([plugin]);
+    assert.equal(calls.find(call => call[0] === 'plugin.getParameters' &&
+      call[1] === 'width-check')?.[2].outputChannelCount, 4);
+
+    assert.equal(await manager.enableParallelPipelines('A'), true);
+    const workletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[2];
+    assert.equal(workletOptions.channelCount, 4);
+    assert.deepEqual(workletOptions.outputChannelCount, [4]);
+    assert.equal(workletOptions.processorOptions.initialOutputChannelCount, 4);
+    await manager.disableParallelPipelines();
+
+    manager.contextManager.outputChannelCount = null;
+    assert.equal(manager.getOutputChannelCount(), 2);
+    assert.equal(manager.getPowerChannelFanInBound(), 2);
+  });
+});
+
 test('parallel routing rejects source connection failures and tolerates ramp assignment failures', async () => {
   await withAudioManager({
     sourceNodeOptions: { throwDisconnect: true, throwConnect: true },

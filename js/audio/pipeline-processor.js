@@ -141,7 +141,8 @@ export class PipelineProcessor {
      */
     prepareSectionAwarePluginData() {
         const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
-        const destinationChannels = this.contextManager?.audioContext?.destination?.channelCount;
+        const destinationChannels = this.contextManager?.outputChannelCount ??
+            this.contextManager?.audioContext?.destination?.channelCount;
         const outputChannelCount = Number.isInteger(destinationChannels) &&
             destinationChannels >= 1 && destinationChannels <= 16
             ? destinationChannels
