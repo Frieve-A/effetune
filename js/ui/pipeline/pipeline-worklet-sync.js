@@ -35,7 +35,8 @@ export class PipelineWorkletSync {
     }
 
     getAudioOutputChannelCount() {
-        const value = this.audioManager?.contextManager?.audioContext?.destination?.channelCount ??
+        const value = this.audioManager?.getOutputChannelCount?.() ??
+            this.audioManager?.contextManager?.audioContext?.destination?.channelCount ??
             this.audioManager?.audioContext?.destination?.channelCount;
         return Number.isInteger(value) && value >= 1 && value <= 16 ? value : 2;
     }

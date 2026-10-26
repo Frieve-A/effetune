@@ -255,6 +255,21 @@ test('channel debug exposes sixteen UI choices on a stereo device without emulat
   assert.deepEqual(values(), ['', 'A', 'L', 'R']);
 });
 
+test('channel selector follows the active multichannel output instead of the context destination', () => {
+  const window = {
+    audioContext: { destination: { channelCount: 2 } },
+    audioManager: { getOutputChannelCount: () => 4 },
+    uiManager: { debugChannelCount: null }
+  };
+  const { PluginBase } = loadPluginBase({ window });
+  const plugin = new PluginBase('Channels', 'Channel selection');
+  const values = plugin.createChannelSelectControl().children[1].children.map(option => option.value);
+  assert.deepEqual(values, ['', 'A', 'L', 'R', '34', '3', '4']);
+  assert.equal(plugin.getChannelCountForUI(6), 6);
+  window.uiManager.debugChannelCount = 8;
+  assert.equal(plugin.getChannelCountForUI(), 8);
+});
+
 function loadModulationPlugin(sourcePath, exportName) {
   const { context } = loadPluginBase();
   const source = fs.readFileSync(new URL(sourcePath, import.meta.url), 'utf8');

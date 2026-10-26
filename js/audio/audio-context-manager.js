@@ -9,6 +9,8 @@ export class AudioContextManager {
         this.audioContext = null;
         this.offlineContext = null;
         this.workletNode = null;
+        this.outputChannelCount = null;
+        this.useMediaStreamOutput = false;
         this.realtimeOutputKeepaliveNode = null;
         this._realtimeOutputKeepaliveContext = null;
         this._skipAudioInitDuringSampleRateChange = false;
@@ -60,7 +62,8 @@ export class AudioContextManager {
     }
 
     createPluginProcessorNode(context = this.audioContext, {
-        channelCount = context?.destination?.channelCount || 2,
+        channelCount = (context === this.audioContext ? this.outputChannelCount : null) ??
+            context?.destination?.channelCount ?? 2,
         lowLatencyMode = this.lowLatencyMode ?? false
     } = {}) {
         return new AudioWorkletNode(context, 'plugin-processor', {
@@ -227,6 +230,16 @@ export class AudioContextManager {
                         const maxChannels = this.audioContext.destination.maxChannelCount || 2;
                         const requestedChannels = activePreferences.outputChannels;
                         const actualChannels = requestedChannels > maxChannels ? maxChannels : requestedChannels;
+
+                        // Linux Pulse can report only its server default width. Preserve
+                        // the requested DSP width when MediaStream output is available.
+                        this.useMediaStreamOutput = this._isElectronEnvironment() &&
+                            window.electronAPI?.platform === 'linux' &&
+                            requestedChannels > maxChannels && Number.isInteger(requestedChannels) &&
+                            requestedChannels >= 3 && requestedChannels <= 8 &&
+                            activePreferences.lowLatencyOutput !== true &&
+                            typeof this.audioContext.createMediaStreamDestination === 'function';
+                        const outputChannels = this.useMediaStreamOutput ? requestedChannels : actualChannels;
                         
                         // Log channel count information
                         console.log(`Audio output: requested=${requestedChannels}, maximum=${maxChannels}, actual=${actualChannels}`);
@@ -237,14 +250,14 @@ export class AudioContextManager {
                         this.audioContext.destination.channelCountMode = 'explicit';
                         
                         // Update global audio preferences for AudioWorklet context
-                        activePreferences.outputChannels = actualChannels;
+                        activePreferences.outputChannels = outputChannels;
                         activePreferences.sampleRate = this.audioContext.sampleRate;
                         this._setEffectiveAudioPreferences(activePreferences);
                         
                         // Notify the worklet about audio config update
                         // (Will be applied after the worklet is created)
                         this._pendingAudioConfig = {
-                            outputChannels: actualChannels,
+                            outputChannels,
                             ...(this.audioContext.sampleRate !== undefined && {
                                 sampleRate: this.audioContext.sampleRate
                             })
@@ -266,6 +279,7 @@ export class AudioContextManager {
                             })
                         };
                     }
+                    this.outputChannelCount = this._pendingAudioConfig.outputChannels;
                 }
                 
             }
@@ -373,7 +387,7 @@ export class AudioContextManager {
 
             // Create worklet node
             this.workletNode = this.createPluginProcessorNode(this.audioContext, {
-                channelCount: this.audioContext.destination.channelCount,
+                channelCount: this.outputChannelCount ?? this.audioContext.destination.channelCount,
                 lowLatencyMode: lowLatency
             });
             window.workletNode = this.workletNode;
@@ -529,6 +543,8 @@ export class AudioContextManager {
                 console.warn('[closeAudioContext] close() failed or timed out:', err.message);
             }
             this.audioContext = null;
+            this.outputChannelCount = null;
+            this.useMediaStreamOutput = false;
             this._intentionalPowerSuspend = false;
             window.audioContext = null;
         }

@@ -1136,12 +1136,12 @@ export class AudioManager {
     }
 
     getPowerChannelFanInBound() {
-        const channels = this.audioContext?.destination?.channelCount || 1;
+        const channels = this.audioContext ? this.getOutputChannelCount() : 1;
         return Number.isInteger(channels) && channels > 0 ? channels : 1;
     }
 
     getPowerGraphAmplitudeBound(pipeline = this.getCurrentPipeline()) {
-        const physicalOutputCount = this.audioContext?.destination?.channelCount || 1;
+        const physicalOutputCount = this.audioContext ? this.getOutputChannelCount() : 1;
         const outputGainValue = this.ioManager?.outputGainNode?.gain?.value;
         const outputGainUpperBound = Number.isFinite(outputGainValue) && outputGainValue > 1
             ? outputGainValue
@@ -3509,7 +3509,7 @@ export class AudioManager {
     _buildBlindPluginData(pipeline) {
         if (!Array.isArray(pipeline)) return [];
         const sampleRate = this.contextManager?.audioContext?.sampleRate ?? null;
-        const outputChannelCount = this._getActualOutputChannelCount();
+        const outputChannelCount = this.getOutputChannelCount();
         let sectionOn = true;
         for (let i = 0; i < pipeline.length; i++) {
             const p = pipeline[i];
@@ -3543,8 +3543,13 @@ export class AudioManager {
         });
     }
 
-    _getActualOutputChannelCount() {
-        const value = this.contextManager?.audioContext?.destination?.channelCount;
+    /**
+     * Return the effective DSP output width, including MediaStream output.
+     * @returns {number} The effective output channel count.
+     */
+    getOutputChannelCount() {
+        const value = this.contextManager?.outputChannelCount ??
+            this.contextManager?.audioContext?.destination?.channelCount;
         return Number.isInteger(value) && value >= 1 && value <= 16 ? value : 2;
     }
 
@@ -3894,7 +3899,7 @@ export class AudioManager {
                 pluginDataA,
                 pluginDataB
             );
-            const ch = ctx.destination.channelCount || 2;
+            const ch = this.getOutputChannelCount();
             const lowLatency = !!this.contextManager.lowLatencyMode;
             const WorkletNode = globalThis.AudioWorkletNode;
             if (typeof WorkletNode !== 'function') {

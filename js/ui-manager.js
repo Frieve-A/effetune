@@ -1005,8 +1005,9 @@ export class UIManager {
 
         const sleepModeText = this.t('ui.sleepMode');
         
-        // Get current channel count from audio context destination
+        // Show the effective DSP output width, including MediaStream output.
         const channelCount = this.debugChannelCount ??
+            this.audioManager.getOutputChannelCount?.() ??
             (this.audioManager.audioContext.destination.channelCount || 2);
         const showChannelCount = channelCount > 2;
 
@@ -1043,8 +1044,9 @@ export class UIManager {
             // Get the current sample rate from the audio context
             const currentSampleRate = this.audioManager.audioContext.sampleRate;
             
-            // Get current channel count from audio context destination
+            // Show the effective DSP output width, including MediaStream output.
             const channelCount = this.debugChannelCount ??
+                this.audioManager.getOutputChannelCount?.() ??
                 (this.audioManager.audioContext.destination.channelCount || 2);
 
             // Preserve sleep mode indicator if present

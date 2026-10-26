@@ -56,6 +56,9 @@ function createAudioContextClass(calls, AudioNodeClass, options = {}) {
       this.audioWorklet = options.audioWorklet;
       this.state = options.state ?? 'running';
       this.onstatechange = null;
+      if (options.mediaStreamDestinationAvailable) {
+        this.createMediaStreamDestination = () => ({ stream: {} });
+      }
     }
 
     createGain() {
@@ -209,6 +212,8 @@ test('initAudioContext applies Electron preferences and handles macOS context st
       sinkId: 'hdmi'
     });
     assert.equal(manager.audioContext.destination.channelCount, 6);
+    assert.equal(manager.outputChannelCount, 6);
+    assert.equal(manager.useMediaStreamOutput, false);
     assert.equal(manager.audioContext.destination.channelInterpretation, 'discrete');
     assert.equal(manager.audioContext.destination.channelCountMode, 'explicit');
     assert.deepEqual(manager._pendingAudioConfig, { outputChannels: 6 });
@@ -251,6 +256,81 @@ test('initAudioContext applies Web audioPreferences without Electron APIs', asyn
     assert.equal(manager.audioContext.destination.channelCount, 4);
     assert.equal(globalThis.window.audioPreferences.outputChannels, 4);
   });
+});
+
+test('Linux Electron retains four processing channels through a stereo AudioContext output', async () => {
+  await withAudioGlobals({
+    window: {
+      electronAPI: { platform: 'linux' },
+      audioPreferences: { outputChannels: 4, lowLatencyOutput: false }
+    },
+    AudioWorkletNode: null
+  }, async ({ calls, AudioNodeClass }) => {
+    globalThis.AudioWorkletNode = createAudioWorkletNodeClass(calls);
+    globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+      maxChannelCount: 2,
+      mediaStreamDestinationAvailable: true,
+      audioWorklet: { addModule: async () => {} }
+    });
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.equal(manager.audioContext.destination.channelCount, 2);
+    assert.equal(manager.outputChannelCount, 4);
+    assert.equal(manager.useMediaStreamOutput, true);
+    assert.equal(globalThis.window.audioPreferences.outputChannels, 4);
+    assert.deepEqual(manager._pendingAudioConfig, { outputChannels: 4 });
+    assert.equal(await manager.loadAudioWorklet(), '');
+    const workletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[3];
+    assert.equal(workletOptions.channelCount, 4);
+    assert.deepEqual(workletOptions.outputChannelCount, [4]);
+    assert.equal(workletOptions.processorOptions.initialOutputChannelCount, 4);
+    assert.ok(calls.some(call => call[0] === 'workletPostMessage' &&
+      call[1].type === 'updateAudioConfig' && call[1].outputChannels === 4));
+  });
+});
+
+test('output outside the Linux MediaStream path is limited to the destination capacity', async t => {
+  for (const { platform, channels, lowLatency, available } of [
+    { platform: 'win32', channels: 4, lowLatency: false, available: true },
+    { platform: 'win32', channels: 32, lowLatency: false, available: true },
+    { platform: undefined, channels: 4, lowLatency: false, available: true },
+    { platform: 'linux', channels: 10, lowLatency: false, available: true },
+    { platform: 'linux', channels: 3.5, lowLatency: false, available: true },
+    { platform: 'linux', channels: 4, lowLatency: true, available: true },
+    { platform: 'linux', channels: 4, lowLatency: false, available: false }
+  ]) {
+    await t.test(`${platform ?? 'Web'}: ${channels}ch, direct=${lowLatency}, MediaStream=${available}`, async () => {
+      await withAudioGlobals({
+        window: {
+          ...(platform && { electronAPI: { platform } }),
+          audioPreferences: { outputChannels: channels, lowLatencyOutput: lowLatency }
+        },
+        AudioWorkletNode: null
+      }, async ({ calls, AudioNodeClass }) => {
+        globalThis.AudioWorkletNode = createAudioWorkletNodeClass(calls);
+        globalThis.window.AudioContext = createAudioContextClass(calls, AudioNodeClass, {
+          maxChannelCount: 2,
+          mediaStreamDestinationAvailable: available,
+          audioWorklet: { addModule: async () => {} }
+        });
+        const manager = new AudioContextManager();
+        assert.equal(await manager.initAudioContext(), '');
+        assert.equal(manager.audioContext.destination.channelCount, 2);
+        assert.equal(manager.outputChannelCount, 2);
+        assert.equal(manager.useMediaStreamOutput, false);
+        assert.equal(globalThis.window.audioPreferences.outputChannels, 2);
+        assert.deepEqual(manager._pendingAudioConfig, { outputChannels: 2 });
+        assert.equal(await manager.loadAudioWorklet(), '');
+        const workletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[3];
+        assert.equal(workletOptions.channelCount, 2);
+        assert.deepEqual(workletOptions.outputChannelCount, [2]);
+        assert.equal(workletOptions.processorOptions.initialOutputChannelCount, 2);
+        assert.ok(calls.some(call => call[0] === 'workletPostMessage' &&
+          call[1].type === 'updateAudioConfig' && call[1].outputChannels === 2));
+        assert.equal(calls.some(call => call[0] === 'audioContextClose'), false);
+      });
+    });
+  }
 });
 
 test('initAudioContext uses an explicit preference override without loading a persisted mirror', async () => {

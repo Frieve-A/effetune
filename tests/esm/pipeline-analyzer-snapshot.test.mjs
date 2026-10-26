@@ -84,6 +84,12 @@ test('analyzer audio format accepts sixteen channels and rejects Ch 17', () => {
     assert.equal(getAnalyzerAudioFormat(seventeen), null);
 });
 
+test('analyzer reports DSP width when the context destination is narrower', () => {
+    const audioManager = harness([], { channelCount: 2 }).audioManager;
+    audioManager.getOutputChannelCount = () => 4;
+    assert.deepEqual(getAnalyzerAudioFormat(audioManager), { sampleRate: 48000, channelCount: 4 });
+});
+
 test('requirements metadata accepts every type and derives required WASM from prepared data', () => {
     assert.deepEqual(getPipelineAnalysisRequirements(plugin('UnknownPlugin', 1)), {
         requiresWasm: false,

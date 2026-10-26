@@ -54,7 +54,8 @@ function pluginType(plugin, prepared) {
 export function getAnalyzerAudioFormat(audioManager) {
     const context = audioManager?.contextManager?.audioContext || audioManager?.audioContext;
     const sampleRate = context?.sampleRate;
-    const channelCount = context?.destination?.channelCount;
+    const channelCount = audioManager?.getOutputChannelCount?.() ??
+        context?.destination?.channelCount;
     if (!(Number.isFinite(sampleRate) && sampleRate > 0) ||
         !Number.isInteger(channelCount) || channelCount < 1 || channelCount > 16) {
         return null;

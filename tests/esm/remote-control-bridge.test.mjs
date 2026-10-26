@@ -269,6 +269,9 @@ test('snapshots carry the host audio format and the host routing limit', async (
     });
     audioManager.outputChannelCount = 8;
     assert.equal(controller.takeSnapshot().audio.routingChannelCount, 8);
+    audioManager.audioContext.destination.channelCount = 2;
+    audioManager.getOutputChannelCount = () => 4;
+    assert.equal(controller.takeSnapshot().audio.channelCount, 4);
 });
 
 test('IR selection loads on the host and rejects stale or unrelated target stages', async () => {
