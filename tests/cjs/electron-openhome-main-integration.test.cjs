@@ -19,6 +19,45 @@ test('Electron bootstrap keeps OpenHome off by default and gates it on renderer 
   assert.match(source, /mainWindow\.on\('closed'[\s\S]*openHomeControlHost\?\.setRendererUnavailable\(\)/);
 });
 
+test('Electron network traces require explicit opt-in while failures remain visible', () => {
+  const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
+  const cases = [
+    {
+      factory: 'createOpenHomeControlHost', variable: 'openHomeControlHost', next: 'disposeOpenHomeIpc',
+      label: 'OpenHome diagnostic:', traces: ['sidecar-stderr'], failure: 'sidecar-exited'
+    },
+    {
+      factory: 'createAirPlayReceiverHost', variable: 'airPlayReceiverHost', next: 'disposeAirPlayIpc',
+      label: 'AirPlay diagnostic:', traces: ['airplay-helper-output', 'invalid-rtp', 'rtp-rebuffer',
+        'rtp-packet-loss', 'rtp-clock-discontinuity', 'airplay-pcm-rebuffer'], failure: 'airplay-helper-failed'
+    }
+  ];
+  for (const entry of cases) {
+    const start = source.indexOf(`${entry.variable} = ${entry.factory}({`);
+    const end = source.indexOf(`\n  ${entry.next} = `, start);
+    assert.ok(start >= 0 && end > start);
+    for (const enabled of [undefined, '0', '1']) {
+      const logs = [];
+      let options;
+      vm.runInNewContext(source.slice(start, end), {
+        path, process: { env: { EFFETUNE_NETWORK_DEBUG: enabled }, platform: process.platform },
+        airPlayResourceDirectory: '/resources/airplay', constants: {}, configModule: {},
+        app: { getPath: () => '/user-data' },
+        [entry.factory](value) { options = value; return {}; },
+        console: { error: (...args) => logs.push(args) }
+      });
+      const output = 'audio progress\rOpen connections: 0\n';
+      const failure = new Error('test helper failure');
+      for (const code of entry.traces) options.onDiagnostic(code, output);
+      options.onDiagnostic(entry.failure, failure);
+      assert.deepEqual(logs, [
+        ...(enabled === '1' ? entry.traces.map(code => [entry.label, code, output]) : []),
+        [entry.label, entry.failure, failure]
+      ]);
+    }
+  }
+});
+
 test('Electron 44 preserves disabled features while enabling explicitly permitted basic Web MIDI', () => {
   const source = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
 
@@ -61,6 +100,7 @@ test('Windows power resume notifies the current registered window without a glob
   assert.ok(start >= 0 && end > start);
   const notifications = [];
   const availability = [];
+  const airPlayAvailability = [];
   const powerMonitor = new EventEmitter();
   const makeWindow = name => ({
     isDestroyed: () => false,
@@ -81,6 +121,12 @@ test('Windows power resume notifies the current registered window without a glob
         return Promise.resolve();
       }
     },
+    airPlayReceiverHost: {
+      setEnvironmentAvailable(available) {
+        airPlayAvailability.push(available);
+        return Promise.resolve();
+      }
+    },
     console
   }, { filename: mainPath });
 
@@ -97,6 +143,7 @@ test('Windows power resume notifies the current registered window without a glob
   powerMonitor.emit('resume');
   assert.deepEqual(notifications, [['first', 'system-resume'], ['replacement', 'system-resume']]);
   assert.deepEqual(availability, [false, true, true, true, true, true]);
+  assert.deepEqual(airPlayAvailability, availability);
 });
 
 test('Electron splash generates a valid module import from an installation path containing an apostrophe', () => {

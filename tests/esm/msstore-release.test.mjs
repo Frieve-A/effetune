@@ -62,22 +62,21 @@ test('only stable published desktop releases have Store versions', () => {
   assert.equal(compareVersions('2.15.0.0', '2.9.0.0'), 1);
 });
 
-test('MSIX evidence must match the exact source, real identity, hash and installed test', () => {
+test('MSIX evidence checks the exact source, real identity and hash without an installed report', () => {
   const bytes = Buffer.from('verified fixture package');
   const metadata = {
     ...payload, commit: 'a'.repeat(40),
     sha256: createHash('sha256').update(bytes).digest('hex')
   };
-  const validation = { ...metadata, passed: true };
-  const evidence = { metadata, validation, identity, tag: payload.tag, commit: metadata.commit, bytes };
+  const evidence = { metadata, identity, tag: payload.tag, commit: metadata.commit, bytes };
   verifyEvidence(evidence);
   for (const patch of [{ testIdentity: true }, { testOnly: true }, { commit: 'b'.repeat(40) },
-    { sha256: '0'.repeat(64) }, { identity: { ...identity, productId: 'other' } }]) {
+    { sha256: '0'.repeat(64) }, { identity: { ...identity, productId: 'other' } },
+    { identity: { ...identity, name: 'Other.App' } }, { identity: { ...identity, publisher: 'CN=Other' } },
+    { tag: 'v2.14.0' }, { packageVersion: '2.14.0' }, { version: '2.14.0.0' }]) {
     assert.throws(() => verifyEvidence({ ...evidence, metadata: { ...metadata, ...patch } }));
   }
-  for (const patch of [{ passed: false }, { sha256: '0'.repeat(64) }, { tag: 'v2.14.0' }]) {
-    assert.throws(() => verifyEvidence({ ...evidence, validation: { ...validation, ...patch } }));
-  }
+  assert.throws(() => verifyEvidence({ ...evidence, bytes: Buffer.from('changed package') }));
 });
 
 test('fresh metadata updates preserve pricing, listings and images', () => {
@@ -174,14 +173,16 @@ test('credential expiry can be checked without authenticating to Store', () => {
   assert.throws(() => checkCredentialExpiry('2020-01-01'), /expired/);
 });
 
-test('workflow gates keep unprovisioned validation runners and Store credentials unused', () => {
+test('Store releases use hosted package checks without a VM job or installed report', () => {
   const read = name => readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8');
   const build = read('build.yml');
   const desktop = read('desktop-release.yml');
   const store = read('store-release.yml');
   assert.match(desktop, /store_msix:.*MSSTORE_BUILD_ENABLED == 'true'/);
-  assert.match(desktop, /if: vars.MSSTORE_BUILD_ENABLED == 'true' && vars.MSSTORE_VALIDATION_ENABLED == 'true'/);
-  assert.match(desktop, /needs: windows/);
+  assert.doesNotMatch(desktop, /self-hosted|store-validation|MSSTORE_VALIDATION_ENABLED|test-msix-installed|store-msix-validation/);
+  for (const job of ['linux', 'windows', 'macos']) {
+    assert.match(desktop, new RegExp(`  ${job}:[\\s\\S]*?needs: preflight[\\s\\S]*?uses: \\./\\.github/workflows/build\\.yml`));
+  }
   assert.ok(build.indexOf('name: Package Microsoft Store MSIX') < build.indexOf('name: Package Windows release ZIPs'));
   assert.match(store, /types: \[published\]/);
   assert.match(store, /MSSTORE_AUTOPUBLISH_ENABLED == 'true'/);

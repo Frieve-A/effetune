@@ -18,6 +18,7 @@ export class Element {
     this.children = [];
     this.listeners = new Map();
     this.attributes = new Map();
+    this.dataset = {};
     this.style = {
       setProperty(name, value) { this[name] = value; },
       removeProperty(name) { delete this[name]; }

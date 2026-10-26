@@ -5,6 +5,7 @@ import { VisualizerPresetStore } from './visualizer-preset-store.js';
 import { VisualizerSources } from './visualizer-sources.js';
 import { VisualizerRenderer } from './visualizer-renderer.js';
 import { SynchronizedVideo } from '../ui/audio-player/synchronized-video.js';
+import { formatTrackInformation, getTrackInformation } from '../ui/audio-player/track-information.js';
 import { hasPlaybackRegionDescriptor } from '../ui/audio-player/playback-region.js';
 import { VisualizerFeed } from './visualizer-feed.js';
 import { VisualizerEditor } from './visualizer-editor.js';
@@ -381,7 +382,13 @@ export class VisualizerView {
         // OpenHome can retain the player and its last track after the UI closes.
         if (!player?.ui?.container) return null;
         const snapshot = player?.stateManager?.getStateSnapshot();
-        return snapshot?.currentTrack ? player.mediaSessionManager?.buildMetadata(snapshot) : null;
+        if (!snapshot?.currentTrack && !snapshot?.liveInputActive) return null;
+        const metadata = player.mediaSessionManager?.buildMetadata(snapshot);
+        if (!metadata) return null;
+        const information = snapshot.liveInputActive ? snapshot.liveInputInformation
+            : getTrackInformation(snapshot.currentTrack, metadata);
+        return { ...metadata, 'track-info': formatTrackInformation(information,
+            (key, fallback) => this.t(key, fallback), snapshot.liveInputActive ? 'AirPlay' : '') };
     }
     lyrics() {
         const player = this.uiManager.audioPlayer;
@@ -407,7 +414,7 @@ export class VisualizerView {
         const state = target?.ui?.container ? target.stateManager?.getStateSnapshot?.() : null;
         const present = !!state;
         const available = !!state && state.controlsEnabled !== false &&
-            (target.isRemote || !!state.currentTrack || state.playlistLength > 0);
+            (target.isRemote || state.liveInputActive || !!state.currentTrack || state.playlistLength > 0);
         const enabled = Object.fromEntries(Object.entries(PLAYBACK_METHODS).map(([action, method]) => {
             const receiver = action === 'shuffle' || action === 'repeat' ? target?.playbackManager : target;
             const capability = action === 'play-pause' ? (state?.isPlaying ? 'pause' : 'play') : action;
@@ -601,16 +608,17 @@ export class VisualizerView {
         if (!items.length) return new Map();
         const player = this.uiManager.audioPlayer;
         const snapshot = player?.ui?.container ? player.stateManager.getStateSnapshot() : null;
-        const external = !snapshot?.currentTrack;
+        const live = snapshot?.liveInputActive === true;
+        const external = !snapshot?.currentTrack && !live;
         const position = external ? 0 : snapshot.isPlaying ? player.contextManager.getCurrentPlaybackTime() : snapshot.currentTrackPosition;
         return new Map(items.map(item => {
             if (!this.counterOrigins.has(item.id)) this.counterOrigins.set(item.id, now);
             return [item.id, {
                 time: external ? Math.max(0, (now - this.counterOrigins.get(item.id)) / 1000) : Math.max(0, position || 0),
-                trackIndex: external ? 0 : Math.max(0, snapshot.currentTrackIndex + 1), external,
+                trackIndex: external || live ? 0 : Math.max(0, snapshot.currentTrackIndex + 1), external,
                 playing: external || !!snapshot.isPlaying,
                 speed: external ? 1 : snapshot.playbackSpeed || 1,
-                source: external ? this.counterOrigins.get(item.id) : snapshot.currentTrack,
+                source: external ? this.counterOrigins.get(item.id) : live ? player.airPlayPlayback : snapshot.currentTrack,
                 stamp: now / 1000
             }];
         }));

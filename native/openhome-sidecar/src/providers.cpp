@@ -29,9 +29,6 @@ using OpenHome::Net::DvProviderAvOpenhomeOrgProduct1Cpp;
 using OpenHome::Net::DvProviderAvOpenhomeOrgTime1Cpp;
 using OpenHome::Net::IDvInvocationStd;
 
-constexpr std::string_view kProtocolInfo =
-    "http-get:*:audio/mpeg:*,http-get:*:audio/flac:*,"
-    "http-get:*:audio/x-flac:*";
 constexpr std::string_view kSourceXml =
     "<SourceList><Source><SystemName>Playlist</SystemName>"
     "<Type>Playlist</Type><Name>Playlist</Name><Visible>true</Visible>"
@@ -415,7 +412,7 @@ public:
     SetPropertyId(0);
     SetPropertyIdArray("");
     SetPropertyTracksMax(4096);
-    SetPropertyProtocolInfo(std::string(kProtocolInfo));
+    SetPropertyProtocolInfo(std::string(kAudioProtocolInfo));
   }
 
   void Apply(const SnapshotValues &values) {
@@ -559,7 +556,7 @@ private:
     value = token != RequireUint(invocation, snapshot, "idArrayToken");
   }
   void ProtocolInfo(IDvInvocationStd &, std::string &value) override {
-    value = kProtocolInfo;
+    value = kAudioProtocolInfo;
   }
 
   ProtocolBridge &bridge_;

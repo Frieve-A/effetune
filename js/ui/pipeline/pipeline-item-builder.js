@@ -4,6 +4,7 @@
  */
 import { getPluginExecutionCapabilities } from '../../audio/plugin-execution-capabilities.js';
 import { createWasmExecutionNotice, updateWasmExecutionNotice } from './wasm-execution-notice.js';
+import { flashParameterLock, installParameterEditLock } from './parameter-edit-lock.js';
 
 export class PipelineItemBuilder {
     /**
@@ -15,6 +16,7 @@ export class PipelineItemBuilder {
         this.audioManager = pipelineCore.audioManager;
         this.pluginManager = pipelineCore.pluginManager;
         this.expandedPlugins = pipelineCore.expandedPlugins;
+        installParameterEditLock();
     }
 
     get pipelineManager() {
@@ -43,6 +45,7 @@ export class PipelineItemBuilder {
         // Toggle UI visibility and handle selection
         const name = header.querySelector('.plugin-name');
         this.setupNameClickHandler(name, plugin, ui);
+        this.updatePluginUIState(plugin, item);
 
         // Setup drag events (will be handled by UIEventHandler)
         const handle = header.querySelector('.handle');
@@ -163,11 +166,12 @@ export class PipelineItemBuilder {
         const aiBtn = this.createAIButton(plugin);
         actions.appendChild(aiBtn);
 
+        header.appendChild(actions);
+        header.appendChild(this.createLockButton(plugin, item));
+
         // Delete button
         const deleteBtn = this.createDeleteButton(plugin);
-        actions.appendChild(deleteBtn);
-
-        header.appendChild(actions);
+        header.appendChild(deleteBtn);
 
         return header;
     }
@@ -300,6 +304,7 @@ export class PipelineItemBuilder {
             // Make the bus info clickable to open the routing dialog
             busInfo.onclick = (e) => {
                 e.stopPropagation(); // Prevent event bubbling
+                if (plugin._uiLocked) return;
                 
                 // Use the common selection function
                 this.pipelineCore.handlePluginSelection(plugin, e);
@@ -344,6 +349,7 @@ export class PipelineItemBuilder {
         
         routingBtn.onclick = (e) => {
             e.stopPropagation(); // Prevent event bubbling
+            if (plugin._uiLocked) return;
             
             // Use the common selection function
             this.pipelineCore.handlePluginSelection(plugin, e);
@@ -363,6 +369,7 @@ export class PipelineItemBuilder {
         presetBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
         presetBtn.onclick = event => {
             event.stopPropagation();
+            if (plugin._uiLocked) return;
             this.pipelineCore.handlePluginSelection(plugin, event);
             this.pipelineCore.showPluginPresetDialog(plugin, presetBtn);
         };
@@ -394,7 +401,7 @@ export class PipelineItemBuilder {
      * @param {Object} plugin - The plugin to reset
      */
     resetPluginToDefaults(plugin) {
-        if (!plugin || typeof plugin.setParameters !== 'function') {
+        if (!plugin || plugin._uiLocked || typeof plugin.setParameters !== 'function') {
             return;
         }
 
@@ -613,6 +620,67 @@ export class PipelineItemBuilder {
         return deleteBtn;
     }
 
+    createLockButton(plugin, item) {
+        const button = document.createElement('button');
+        button.className = 'lock-button';
+        button.type = 'button';
+        button.onclick = event => {
+            event.stopPropagation();
+            plugin._uiLocked = !plugin._uiLocked;
+            this.updatePluginUIState(plugin, item);
+            this.saveUIState();
+        };
+        item.addEventListener('pointerdown', event => {
+            if (!plugin._uiLocked || event.button !== 0) return;
+
+            // The bus label is inert and the editing buttons are disabled.
+            const overLockedControl = [...item.querySelectorAll(
+                '.bus-info, .routing-button, .preset-button, .reset-effect-button'
+            )].some(control => {
+                const bounds = control.getBoundingClientRect();
+                return event.clientX >= bounds.left && event.clientX < bounds.right &&
+                    event.clientY >= bounds.top && event.clientY < bounds.bottom;
+            });
+            if (!overLockedControl) return;
+
+            flashParameterLock(item);
+        }, true);
+        button.addEventListener('animationend', () => button.classList.remove('lock-feedback'));
+        return button;
+    }
+
+    updatePluginUIState(plugin, item = document.querySelector(`.pipeline-item[data-plugin-id="${plugin.id}"]`)) {
+        this.setPluginExpanded(plugin, plugin._uiCollapsed !== true, item);
+        if (!item) return;
+
+        const locked = plugin._uiLocked === true;
+        const ui = item.querySelector('.plugin-ui');
+        if (ui) ui.dataset.parametersLocked = String(locked);
+        const busInfo = item.querySelector('.bus-info');
+        if (busInfo) busInfo.inert = locked;
+        for (const button of item.querySelectorAll('.routing-button, .preset-button, .reset-effect-button')) {
+            button.disabled = locked;
+        }
+
+        const button = item.querySelector('.lock-button');
+        if (button) {
+            if (!locked) button.classList.remove('lock-feedback');
+            button.title = window.uiManager
+                ? window.uiManager.t(locked ? 'ui.title.unlockEffect' : 'ui.title.lockEffect')
+                : (locked ? 'Unlock effect settings' : 'Lock effect settings');
+            button.setAttribute('aria-label', button.title);
+            button.setAttribute('aria-pressed', String(locked));
+            button.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true">'
+                + (locked ? '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' : '<path d="M7 11V7a5 5 0 0 1 9.8-1.4"/>')
+                + '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M12 15v2"/></svg>';
+        }
+    }
+
+    saveUIState() {
+        this.pipelineManager?.historyManager?.saveState();
+        this.pipelineCore.updateURL();
+    }
+
     /**
      * Create plugin UI container
      * @param {Object} plugin - The plugin
@@ -620,7 +688,9 @@ export class PipelineItemBuilder {
      */
     createPluginUI(plugin) {
         const ui = document.createElement('div');
-        ui.className = 'plugin-ui' + (this.pipelineCore.expandedPlugins.has(plugin) ? ' expanded' : '');
+        plugin._uiCollapsed ??= !this.expandedPlugins.has(plugin);
+        ui.className = 'plugin-ui' + (plugin._uiCollapsed ? '' : ' expanded');
+        ui.dataset.parametersLocked = String(plugin._uiLocked === true);
         
         // Optimize parameter update handling to avoid unnecessary pipeline rebuilds
         this.setupParameterUpdateHandling(plugin);
@@ -709,190 +779,74 @@ export class PipelineItemBuilder {
      * @param {HTMLElement} ui - The UI container
      */
     setupNameClickHandler(name, plugin, ui) {
-        name.onclick = (e) => {
-            // Ctrl/Cmd+Click collapses or expands all effects based on the clicked effect's state
-            if (e.ctrlKey || e.metaKey) {
-                // Only handle normal selection without modifying selectedPlugins set for Ctrl+Click on name
-                this.pipelineCore.handlePluginSelection(plugin, e);
-                
-                // Determine if we should expand or collapse based on the clicked plugin's current state
-                const shouldExpand = !this.pipelineCore.expandedPlugins.has(plugin);
-                
-                // Apply the same expand/collapse state to all plugins
-                this.audioManager.pipeline.forEach(p => {
-                    // Find the corresponding pipeline item using plugin ID instead of index
-                    const itemEl = document.querySelector(`.pipeline-item[data-plugin-id="${p.id}"]`);
-                    if (!itemEl) return;
-                    
-                    const pluginUI = itemEl.querySelector('.plugin-ui');
-                    if (!pluginUI) return;
-                    
-                    if (shouldExpand) {
-                        pluginUI.classList.add('expanded');
-                        this.pipelineCore.expandedPlugins.add(p);
-                        if (p.updateMarkers && p.updateResponse) {
-                            requestAnimationFrame(() => {
-                                p.updateMarkers();
-                                p.updateResponse();
-                            });
-                        }
-                    } else {
-                        pluginUI.classList.remove('expanded');
-                        this.pipelineCore.expandedPlugins.delete(p);
-                    }
-                });
-
-                // Update all tooltips - using correct element selection
-                document.querySelectorAll('.pipeline-item').forEach(item => {
-                    const pluginId = parseInt(item.dataset.pluginId);
-                    const p = this.audioManager.pipeline.find(plugin => plugin.id === pluginId);
-                    if (!p) return;
-                    
-                    const nameEl = item.querySelector('.plugin-name');
-                    if (!nameEl) return;
-                    
-                    nameEl.title = this.pipelineCore.expandedPlugins.has(p)
-                        ? (window.uiManager ? window.uiManager.t('ui.title.collapse') : 'Click to collapse')
-                        : (window.uiManager ? window.uiManager.t('ui.title.expand') : 'Click to expand');
-                });
-
-                return; // Skip individual toggle
-            }
-
-            // Handle selection for regular click
-            // Special handling for Section plugin - select from this section to next section
-            if (plugin.constructor.name === 'SectionPlugin') {
-                this.pipelineCore.handleSectionSelection(plugin, e);
-            } else {
-                this.pipelineCore.handlePluginSelection(plugin, e);
-            }
-            
-            // Handle Shift+Click to collapse/expand effects
-            if (e.shiftKey) {
-                this.handleShiftClickExpansion(plugin);
-                return; // Skip individual toggle since we've handled all plugins
-            }
-            
-            // Then toggle expanded state for individual plugin (non-shift click)
-            const isExpanded = ui.classList.toggle('expanded');
-            if (isExpanded) {
-                this.pipelineCore.expandedPlugins.add(plugin);
-                if (plugin.updateMarkers && plugin.updateResponse) {
-                    requestAnimationFrame(() => {
-                        plugin.updateMarkers();
-                        plugin.updateResponse();
-                    });
+        name.onclick = event => {
+            const expand = !this.expandedPlugins.has(plugin);
+            if (event.ctrlKey || event.metaKey) {
+                this.pipelineCore.handlePluginSelection(plugin, event);
+                for (const effect of this.audioManager.pipeline) {
+                    this.setPluginExpanded(effect, expand);
                 }
             } else {
-                this.pipelineCore.expandedPlugins.delete(plugin);
+                if (plugin.constructor.name === 'SectionPlugin') {
+                    this.pipelineCore.handleSectionSelection(plugin, event);
+                } else {
+                    this.pipelineCore.handlePluginSelection(plugin, event);
+                }
+                if (event.shiftKey) {
+                    this.handleShiftClickExpansion(plugin);
+                } else {
+                    this.setPluginExpanded(plugin, expand, ui.parentNode);
+                }
             }
-            name.title = isExpanded
-                ? (window.uiManager ? window.uiManager.t('ui.title.collapse') : 'Click to collapse')
-                : (window.uiManager ? window.uiManager.t('ui.title.expand') : 'Click to expand');
+            this.saveUIState();
         };
-        name.title = this.pipelineCore.expandedPlugins.has(plugin)
+        name.title = this.expandedPlugins.has(plugin)
             ? (window.uiManager ? window.uiManager.t('ui.title.collapse') : 'Click to collapse')
             : (window.uiManager ? window.uiManager.t('ui.title.expand') : 'Click to expand');
     }
 
-    /**
-     * Handle Shift+Click expansion logic
-     * @param {Object} plugin - The plugin that was shift-clicked
-     */
-    handleShiftClickExpansion(plugin) {
-        // Determine if we're expanding or collapsing based on current state
-        const shouldExpand = !this.pipelineCore.expandedPlugins.has(plugin);
-        
-        // Special handling for Section plugins - expand/collapse entire section
-        if (plugin.constructor.name === 'SectionPlugin') {
-            const pipeline = this.audioManager.pipeline;
-            const sectionIndex = pipeline.findIndex(p => p.id === plugin.id);
-            
-            if (sectionIndex !== -1) {
-                // Find the next Section plugin or end of pipeline
-                let endIndex = pipeline.length;
-                for (let i = sectionIndex + 1; i < pipeline.length; i++) {
-                    if (pipeline[i].constructor.name === 'SectionPlugin') {
-                        endIndex = i;
-                        break;
-                    }
-                }
-                
-                // Process all plugins in this section
-                for (let i = sectionIndex; i < endIndex; i++) {
-                    const p = pipeline[i];
-                    
-                    // Find the corresponding pipeline item using plugin ID
-                    const itemEl = document.querySelector(`.pipeline-item[data-plugin-id="${p.id}"]`);
-                    if (!itemEl) continue;
-                    
-                    const pluginUI = itemEl.querySelector('.plugin-ui');
-                    if (!pluginUI) continue;
-                    
-                    // Set expanded state
-                    if (shouldExpand) {
-                        pluginUI.classList.add('expanded');
-                        this.pipelineCore.expandedPlugins.add(p);
-                        if (p.updateMarkers && p.updateResponse) {
-                            requestAnimationFrame(() => {
-                                p.updateMarkers();
-                                p.updateResponse();
-                            });
-                        }
-                    } else {
-                        pluginUI.classList.remove('expanded');
-                        this.pipelineCore.expandedPlugins.delete(p);
-                    }
-                }
-            }
-        } else {
-            // Process all plugins except Analyzer category
-            this.audioManager.pipeline.forEach(p => {
-                // Check if this plugin is in the Analyzer category
-                const category = Object.entries(this.pluginManager.effectCategories)
-                    .find(([_, {plugins}]) => plugins.includes(p.name))?.[0];
-                
-                if (category && category.toLowerCase() === 'analyzer') {
-                    return; // Always skip Analyzer category plugins
-                }
-                
-                // Find the corresponding pipeline item using plugin ID instead of index
-                const itemEl = document.querySelector(`.pipeline-item[data-plugin-id="${p.id}"]`);
-                if (!itemEl) return;
-                
-                const pluginUI = itemEl.querySelector('.plugin-ui');
-                if (!pluginUI) return;
-                
-                // Set expanded state
-                if (shouldExpand) {
-                    pluginUI.classList.add('expanded');
-                    this.pipelineCore.expandedPlugins.add(p);
-                    if (p.updateMarkers && p.updateResponse) {
-                        requestAnimationFrame(() => {
-                            p.updateMarkers();
-                            p.updateResponse();
-                        });
-                    }
-                } else {
-                    pluginUI.classList.remove('expanded');
-                    this.pipelineCore.expandedPlugins.delete(p);
-                }
-            });
-        }
-        
-        // Update all tooltips - using correct element selection
-        document.querySelectorAll('.pipeline-item').forEach(item => {
-            const pluginId = parseInt(item.dataset.pluginId);
-            const p = this.audioManager.pipeline.find(plugin => plugin.id === pluginId);
-            if (!p) return;
-            
-            const nameEl = item.querySelector('.plugin-name');
-            if (!nameEl) return;
-            
-            nameEl.title = this.pipelineCore.expandedPlugins.has(p)
+    setPluginExpanded(plugin, expand, item = document.querySelector(`.pipeline-item[data-plugin-id="${plugin.id}"]`)) {
+        plugin._uiCollapsed = !expand;
+        if (expand) this.expandedPlugins.add(plugin);
+        else this.expandedPlugins.delete(plugin);
+
+        const ui = item?.querySelector('.plugin-ui');
+        const wasExpanded = ui?.classList.contains('expanded');
+        ui?.classList.toggle('expanded', expand);
+        const name = item?.querySelector('.plugin-name');
+        if (name) {
+            name.title = expand
                 ? (window.uiManager ? window.uiManager.t('ui.title.collapse') : 'Click to collapse')
                 : (window.uiManager ? window.uiManager.t('ui.title.expand') : 'Click to expand');
-        });
+        }
+        if (ui && expand && !wasExpanded && plugin.updateMarkers && plugin.updateResponse) {
+            requestAnimationFrame(() => {
+                plugin.updateMarkers();
+                plugin.updateResponse();
+            });
+        }
+    }
+
+    handleShiftClickExpansion(plugin) {
+        const expand = !this.expandedPlugins.has(plugin);
+        if (plugin.constructor.name === 'SectionPlugin') {
+            const pipeline = this.audioManager.pipeline;
+            const start = pipeline.indexOf(plugin);
+            if (start === -1) return;
+            for (let index = start; index < pipeline.length; index++) {
+                const effect = pipeline[index];
+                if (index > start && effect.constructor.name === 'SectionPlugin') break;
+                this.setPluginExpanded(effect, expand);
+            }
+        } else {
+            for (const effect of this.audioManager.pipeline) {
+                const category = Object.entries(this.pluginManager.effectCategories)
+                    .find(([, { plugins }]) => plugins.includes(effect.name))?.[0];
+                if (category?.toLowerCase() !== 'analyzer') {
+                    this.setPluginExpanded(effect, expand);
+                }
+            }
+        }
     }
 
     // When a Section's ON/OFF state changes, pause or resume the per-frame

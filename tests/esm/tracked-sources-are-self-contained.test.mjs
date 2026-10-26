@@ -10,6 +10,29 @@ import { openHomeSidecarBuildContract } from '../../scripts/build-openhome-sidec
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+const nativePackageBuildContracts = [
+  { name: 'OpenHome', script: 'build:openhome-sidecar', ...openHomeSidecarBuildContract },
+  {
+    name: 'AirPlay', script: 'build:airplay-receiver',
+    output: 'out/native/airplay-receiver/win32-x64',
+    producer: 'scripts/build-airplay-receiver.mjs',
+    inputs: [
+      'native/airplay-receiver/CMakeLists.txt',
+      'native/airplay-receiver/dependencies.lock.json',
+      'native/airplay-receiver/package-probe.c',
+      'native/airplay-receiver/THIRD_PARTY_NOTICES.txt',
+      'native/airplay-receiver/README.md',
+      'native/airplay-receiver/BUILD-POSIX.md',
+      'native/airplay-receiver/licenses/Apache-2.0.txt',
+      'native/airplay-receiver/licenses/Apple-BSD-3-Clause.txt',
+      'scripts/airplay/build-posix.mjs',
+      'tools/openhome-linux-provenance.mjs',
+      'tools/verify-airplay-package.mjs',
+      'electron/airplay-discovery-installer.nsi'
+    ]
+  }
+];
+
 // A shipped file must never depend on a path that happens to exist on the
 // developer's machine but would be absent from a clean checkout. Such a
 // dependency leaves every local run green while every CI job fails, and because
@@ -46,6 +69,7 @@ const URL_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 
 function gitFiles(args) {
   const result = spawnSync('git', ['ls-files', '-z', ...args], {
+    windowsHide: true,
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024
@@ -147,9 +171,9 @@ function existingRepositoryFile(relativePath) {
   }
 }
 
-function isOpenHomeGeneratedPackageReference(file, candidate) {
-  return candidate === openHomeSidecarBuildContract.output &&
-    (file === 'package.json' || file === openHomeSidecarBuildContract.producer);
+function isNativeGeneratedPackageReference(file, candidate) {
+  return nativePackageBuildContracts.some(contract => candidate === contract.output &&
+    (file === 'package.json' || file === contract.producer));
 }
 
 test('review-visible scripts, tools, and tests reference no hidden repository file', () => {
@@ -165,7 +189,7 @@ test('review-visible scripts, tools, and tests reference no hidden repository fi
     readSource: file => fs.readFileSync(path.join(repoRoot, file), 'utf8'),
     fileExists: existingRepositoryFile,
     isTracked: candidate => reviewable.has(candidate),
-    isGeneratedOutput: isOpenHomeGeneratedPackageReference
+    isGeneratedOutput: isNativeGeneratedPackageReference
   });
   assert.deepEqual(
     violations,
@@ -183,71 +207,65 @@ test('review-visible scripts, tools, and tests reference no hidden repository fi
   }
 });
 
-test('the OpenHome package input is produced from review-visible sources before packaging', () => {
+test('native package inputs are produced from review-visible sources before packaging', () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
   const tracked = gitTrackedFiles();
   const reviewable = gitReviewableFiles();
-  const contract = openHomeSidecarBuildContract;
-
-  assert.equal(tracked.has(contract.output), false, 'generated sidecar must not be tracked');
-  assert.equal(reviewable.has(contract.output), false, 'generated sidecar must remain ignored');
-  for (const input of [contract.producer, ...contract.inputs]) {
-    assert.equal(
-      reviewable.has(input),
-      true,
-      `OpenHome sidecar build input must be visible for review: ${input}`
-    );
-  }
-
-  assert.equal(
-    packageJson.scripts['build:openhome-sidecar'],
-    `node ${contract.producer}`,
-    'the package producer must invoke the canonical sidecar build script'
-  );
   const resources = packageJson.build?.win?.extraResources ?? [];
-  assert.equal(
-    resources.filter(resource => resource.from === contract.output).length,
-    1,
-    'the Windows package must contain exactly one canonical sidecar output'
-  );
-  for (const resource of resources) {
-    if (resource.from === contract.output) continue;
-    assert.equal(
-      reviewable.has(resource.from),
-      true,
-      `non-generated package resource must be visible for review: ${resource.from}`
-    );
-  }
+  const windowsPackageScripts = ['build', 'build:portable', 'build:installer', 'pack', 'pack:win', 'pack:ecs:win', 'dist'];
 
-  const windowsPackageScripts = ['build', 'build:portable', 'build:installer', 'pack:win'];
-  for (const scriptName of windowsPackageScripts) {
-    const command = packageJson.scripts[scriptName];
-    const producerIndex = command.indexOf('npm run build:openhome-sidecar');
-    const builderIndex = command.indexOf('electron-builder');
-    assert.ok(
-      producerIndex >= 0 && builderIndex > producerIndex,
-      `${scriptName} must build the sidecar before electron-builder`
-    );
+  for (const contract of nativePackageBuildContracts) {
+    const withinOutput = candidate => candidate === contract.output || candidate.startsWith(`${contract.output}/`);
+    assert.equal([...tracked].some(withinOutput), false, `${contract.name} generated output must not be tracked`);
+    assert.equal([...reviewable].some(withinOutput), false, `${contract.name} generated output must remain ignored`);
+    const ignored = spawnSync('git', ['check-ignore', '--no-index', '--quiet', contract.output], {
+      cwd: repoRoot, windowsHide: true, encoding: 'utf8'
+    });
+    assert.equal(ignored.status, 0, `${contract.name} generated output must be ignored: ${ignored.stderr}`);
+    for (const input of [contract.producer, ...contract.inputs]) {
+      assert.equal(reviewable.has(input), true, `${contract.name} build input must be visible for review: ${input}`);
+    }
+    assert.equal(packageJson.scripts[contract.script], `node ${contract.producer}`,
+      'the package producer must invoke the canonical native build script');
+    assert.equal(resources.filter(resource => resource.from === contract.output).length, 1,
+      `the Windows package must contain exactly one canonical ${contract.name} output`);
+    for (const scriptName of windowsPackageScripts) {
+      const command = packageJson.scripts[scriptName];
+      const producerIndex = command.indexOf(`npm run ${contract.script}`);
+      const packager = scriptName === 'pack:ecs:win' ? 'node scripts/pack-ecs.mjs' : 'electron-builder';
+      const builderIndex = command.indexOf(packager);
+      assert.ok(producerIndex >= 0 && builderIndex > producerIndex,
+        `${scriptName} must build ${contract.name} before ${packager}`);
+    }
+  }
+  for (const resource of resources) {
+    if (nativePackageBuildContracts.some(contract => resource.from === contract.output)) continue;
+    assert.equal(reviewable.has(resource.from), true,
+      `non-generated package resource must be visible for review: ${resource.from}`);
   }
 });
 
 test('the generated-output exemption is limited to its package and producer', () => {
   const generated = openHomeSidecarBuildContract.output;
+  const airPlayGeneratedFile = `${nativePackageBuildContracts[1].output}/runtime-manifest.json`;
+  const unrelatedOutput = 'out/native/unrelated/hidden.json';
+  const present = new Set([generated, airPlayGeneratedFile, unrelatedOutput]);
   const sources = new Map([
     ['package.json', `{"from":"${generated}"}`],
     [openHomeSidecarBuildContract.producer, `const output = '${generated}';`],
-    ['tools/unrelated.mjs', `const hiddenInput = '${generated}';`]
+    ['tools/unrelated.mjs', `const hiddenInput = '${generated}'; const airPlay = '${airPlayGeneratedFile}'; const unrelated = '${unrelatedOutput}';`]
   ]);
 
   const violations = findUntrackedReferences({
     files: [...sources.keys()],
     readSource: file => sources.get(file),
-    fileExists: candidate => candidate === generated,
+    fileExists: candidate => present.has(candidate),
     isTracked: () => false,
-    isGeneratedOutput: isOpenHomeGeneratedPackageReference
+    isGeneratedOutput: isNativeGeneratedPackageReference
   });
 
-  assert.deepEqual(violations, [`tools/unrelated.mjs -> ${generated}`]);
+  assert.deepEqual(violations, [generated, airPlayGeneratedFile, unrelatedOutput]
+    .map(candidate => `tools/unrelated.mjs -> ${candidate}`).sort());
 });
 
 test('the DSP wasm source digest reads only review-visible repository files', () => {

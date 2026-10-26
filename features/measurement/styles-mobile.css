@@ -73,7 +73,7 @@ body.layout-mobile .point-item {
     padding-right: 48px;
 }
 
-body.layout-mobile .form-group {
+body.layout-mobile #configForm .form-group {
     margin-top: 20px;
 }
 
@@ -192,7 +192,8 @@ body.layout-mobile .export-actions-row {
 }
 
 body.layout-mobile .impulse-response-controls {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: flex-end;
 }
 
 body.layout-mobile .impulse-response-controls button {
@@ -201,8 +202,16 @@ body.layout-mobile .impulse-response-controls button {
 }
 
 body.layout-mobile .impulse-response-controls label {
-    order: -1;
-    flex-basis: 100%;
+    flex-basis: 0;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+body.layout-mobile .impulse-response-controls input[type="range"] {
+    width: 100%;
+    min-width: 0;
 }
 
 body.layout-mobile .metadata-table th,
@@ -260,10 +269,25 @@ body.layout-mobile #measurementResults canvas { height: 300px; }
 body.layout-mobile .analysis-tabs .tab-button { height: 40px; min-height: 40px; }
 body.layout-mobile #measurementResults :is(.analysis-setting-actions, .analysis-correction, .export-section, .impulse-response-controls, .impulse-response-export, .analysis-graph-header) button,
 body.layout-mobile #measurementResults #exportAnalysisJson { height: 40px; min-height: 40px; }
-body.layout-mobile #measurementResults .analysis-graph-header .graph-copy-button { width: 40px; }
+body.layout-mobile #measurementResults :is(.analysis-graph-header .graph-copy-button, .analysis-graph-header .analysis-reset-button, .impulse-response-controls .impulse-zoom-button) { width: 40px; }
+body.layout-mobile .analysis-graph-header:has(.analysis-graph-actions) { flex-wrap: wrap; row-gap: 6px; }
+body.layout-mobile #measurementResults .analysis-graph-header:has(.analysis-graph-actions) h3 { flex-basis: 100%; line-height: 1.4; }
+body.layout-mobile .analysis-graph-actions { flex-basis: 100%; }
 
-/* Match the Effect UI's touch-size parameter fields. */
+/* Match the Effect UI's intrinsic labels and naturally wrapped touch-size controls. */
 body.layout-mobile .plugin-parameter-ui { --et-mobile-control-height: 40px; }
-body.layout-mobile #measurementResults .plugin-parameter-ui .parameter-row { min-height: 40px; }
-body.layout-mobile #measurementResults .plugin-parameter-ui .parameter-row > input[type=number],
-body.layout-mobile #measurementResults .plugin-parameter-ui .parameter-row > select { height: 40px; min-height: 40px; font-size: 16px; }
+body.layout-mobile .plugin-parameter-ui .parameter-row {
+    flex-wrap: wrap; align-items: center; min-width: 0; max-width: 100%; box-sizing: border-box;
+}
+body.layout-mobile .plugin-parameter-ui .parameter-row > :is(label, .setting-label) {
+    width: auto; min-width: 0; max-width: 100%; flex: 0 0 auto; height: 40px;
+}
+body.layout-mobile .plugin-parameter-ui .parameter-row > input[type=range] {
+    flex: 1 1 96px; width: auto; min-width: 80px; max-width: 100%; touch-action: pan-y;
+}
+body.layout-mobile .plugin-parameter-ui .parameter-row > :is(input[type=number], input[type=text], select) {
+    min-height: 40px; font-size: 16px;
+}
+body.layout-mobile .plugin-parameter-ui .parameter-row > :is(input[type=text], select) {
+    flex: 1 1 180px; width: auto; min-width: 80px; max-width: 100%; box-sizing: border-box;
+}

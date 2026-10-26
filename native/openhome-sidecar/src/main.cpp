@@ -1,3 +1,4 @@
+#include "av-providers.h"
 #include "protocol.h"
 #include "providers.h"
 
@@ -53,19 +54,39 @@ public:
       if (udn.empty())
         throw std::runtime_error("Invalid device identifier");
 
-      device_ = std::make_unique<OpenHome::Net::DvDeviceStdStandard>(udn);
-      device_->SetAttribute("Upnp.Domain", "av.openhome.org");
-      device_->SetAttribute("Upnp.Type", "Source");
-      device_->SetAttribute("Upnp.Version", "1");
-      device_->SetAttribute("Upnp.FriendlyName",
-                            configuration.friendlyName.c_str());
-      device_->SetAttribute("Upnp.Manufacturer", "EffeTune");
-      device_->SetAttribute("Upnp.ModelName", "EffeTune");
-      device_->SetAttribute("Upnp.ModelDescription",
-                            "EffeTune OpenHome player");
-      providers_ = std::make_unique<OpenHomeProviders>(
-          *device_, bridge_, configuration.friendlyName);
-      device_->SetEnabled();
+      if (configuration.openHomeEnabled) {
+        device_ = std::make_unique<OpenHome::Net::DvDeviceStdStandard>(udn);
+        device_->SetAttribute("Upnp.Domain", "av.openhome.org");
+        device_->SetAttribute("Upnp.Type", "Source");
+        device_->SetAttribute("Upnp.Version", "1");
+        device_->SetAttribute("Upnp.FriendlyName",
+                              configuration.friendlyName.c_str());
+        device_->SetAttribute("Upnp.Manufacturer", "EffeTune");
+        device_->SetAttribute("Upnp.ModelName", "EffeTune");
+        device_->SetAttribute("Upnp.ModelDescription",
+                              "EffeTune OpenHome player");
+        providers_ = std::make_unique<OpenHomeProviders>(
+            *device_, bridge_, configuration.friendlyName);
+        device_->SetEnabled();
+      }
+      if (configuration.upnpAvEnabled) {
+        std::string avUdn = configuration.upnpAvUdn;
+        if (avUdn.compare(0, prefix.size(), prefix) == 0)
+          avUdn.erase(0, prefix.size());
+        avDevice_ = std::make_unique<OpenHome::Net::DvDeviceStdStandard>(avUdn);
+        avDevice_->SetAttribute("Upnp.Domain", "upnp.org");
+        avDevice_->SetAttribute("Upnp.Type", "MediaRenderer");
+        avDevice_->SetAttribute("Upnp.Version", "1");
+        avDevice_->SetAttribute(
+            "Upnp.FriendlyName",
+            (configuration.friendlyName + " (UPnP)").c_str());
+        avDevice_->SetAttribute("Upnp.Manufacturer", "EffeTune");
+        avDevice_->SetAttribute("Upnp.ModelName", "EffeTune");
+        avDevice_->SetAttribute("Upnp.ModelDescription",
+                                "EffeTune audio renderer");
+        avProviders_ = std::make_unique<AvProviders>(*avDevice_, bridge_);
+        avDevice_->SetEnabled();
+      }
       started_ = true;
       return true;
     } catch (...) {
@@ -78,10 +99,23 @@ public:
     if (providers_ && !providers_->ApplySnapshot(snapshot)) {
       bridge_.SendDiagnostic("invalid-state");
     }
+    if (avProviders_ && !avProviders_->ApplySnapshot(snapshot))
+      bridge_.SendDiagnostic("invalid-av-state");
   }
 
   void Stop() noexcept {
     bridge_.Stop();
+    if (avDevice_ && started_) {
+      try {
+        OpenHome::Semaphore disabled("AVDS", 0);
+        avDevice_->SetDisabled(
+            OpenHome::MakeFunctor(disabled, &OpenHome::Semaphore::Signal));
+        disabled.Wait();
+      } catch (...) {
+      }
+    }
+    avProviders_.reset();
+    avDevice_.reset();
     if (device_ && started_) {
       try {
         OpenHome::Semaphore disabled("OHDS", 0);
@@ -108,6 +142,8 @@ private:
   StderrLogger logger_;
   std::unique_ptr<OpenHome::Net::DvDeviceStdStandard> device_;
   std::unique_ptr<OpenHomeProviders> providers_;
+  std::unique_ptr<OpenHome::Net::DvDeviceStdStandard> avDevice_;
+  std::unique_ptr<AvProviders> avProviders_;
 };
 
 bool ParseArguments(int argc, char *argv[], bool &useLoopback) {

@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-test('the HTML entry and feature imports keep splash and optional features off the eager path', () => {
+test('the HTML entry and feature imports load the application once and keep optional features lazy', () => {
   const html = fs.readFileSync(new URL('../../effetune.html', import.meta.url), 'utf8');
-  const startupHtml = fs.readFileSync(new URL('../../startup-audio.html', import.meta.url), 'utf8');
   const main = fs.readFileSync(new URL('../../electron/main.js', import.meta.url), 'utf8');
   const app = fs.readFileSync(new URL('../../js/app.js', import.meta.url), 'utf8');
   const electronIntegration = fs.readFileSync(
@@ -15,10 +14,8 @@ test('the HTML entry and feature imports keep splash and optional features off t
   const uiManager = fs.readFileSync(new URL('../../js/ui-manager.js', import.meta.url), 'utf8');
 
   assert.match(html, /<script type="module" src="js\/startup\.js"><\/script>/);
-  assert.match(startupHtml, /<script type="module" src="js\/startup\.js"><\/script>/);
-  assert.doesNotMatch(startupHtml, /effetune\.css|app\.js|jszip|jsmediatags|pipeline-analyzer/);
-  assert.match(main, /loadFile\(constants\.getIsFirstLaunch\(\) \? 'startup-audio\.html' : 'effetune\.html'\)/);
-  assert.match(main, /mainWindow\.loadFile\('effetune\.html'\)/);
+  assert.equal((main.match(/mainWindow\.loadFile\('effetune\.html'\)/g) || []).length, 1);
+  assert.doesNotMatch(main, /startup-audio|IsFirstLaunch|IsSplashReload/);
   assert.doesNotMatch(main, /mainWindow\.reload\(\)/);
   assert.doesNotMatch(html, /<script[^>]+src="js\/app\.js"/);
   assert.doesNotMatch(html, /<script[^>]+src="js\/vendor\/(?:jszip|jsmediatags)/);

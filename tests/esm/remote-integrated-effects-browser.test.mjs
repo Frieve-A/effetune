@@ -143,6 +143,7 @@ test('Connect effects explains unavailable requests and keeps approval and conne
     pairing.resolve({ status: 'approved', token: 'fixture-token' });
     assert.deepEqual(await page.evaluate(() => window.lastRequest), { ok: true }, JSON.stringify(diagnostics));
     await page.waitForFunction(() => effects.port !== null);
+    const savedConnection = await readFile(path.join(scratch, 'remote-connections.json'), 'utf8');
     const connectedRename = await page.evaluate(() => {
       const frame = effects.frame;
       const generation = effects.generation;
@@ -156,15 +157,24 @@ test('Connect effects explains unavailable requests and keeps approval and conne
       connectionId: 'fixture-connection', sameGeneration: true });
     assert.equal(await page.locator('section > .pipeline-header').count(), 0);
     assert.equal(await page.locator('iframe').getAttribute('title'), 'Effect Pipeline · Studio PC');
-    const savedConnection = await readFile(path.join(scratch, 'remote-connections.json'), 'utf8');
+    assert.equal(await readFile(path.join(scratch, 'remote-connections.json'), 'utf8'), savedConnection, 'a name change preserves existing approval');
+    assert.deepEqual(pairingRequests, ['uuid:bedroom', 'uuid:bedroom'], 'a name change must not request approval again');
+    origin = 'http://192.168.1.21:8080';
     await page.frameLocator('iframe').getByRole('button', { name: 'Change connection', exact: true }).click();
     await page.waitForFunction(() => effects.frame === null);
     assert.equal(await page.locator('iframe').count(), 0);
+    pairingStarted = new Promise(resolve => { announcePairing = resolve; });
     await page.getByRole('button', { name: 'Connect effects', exact: true }).click();
+    await pairingStarted;
+    assert.equal(pairing.origin, origin);
+    assert.equal(await page.locator('iframe').count(), 0, 'replacement waits for new approval');
+    assert.equal(calls.filter(call => call.channel === 'request-connection').at(-1).args[2], true);
+    pairing.resolve({ status: 'approved', token: 'replacement-fixture-token' });
     assert.deepEqual(await page.evaluate(() => window.lastRequest), { ok: true });
     await page.waitForFunction(() => effects.frame !== null);
-    assert.deepEqual(pairingRequests, ['uuid:bedroom', 'uuid:bedroom'], 'reconnecting a saved player must not request approval again');
-    assert.equal(await readFile(path.join(scratch, 'remote-connections.json'), 'utf8'), savedConnection);
+    assert.deepEqual(pairingRequests, ['uuid:bedroom', 'uuid:bedroom', 'uuid:bedroom'], 'Change connection requests replacement approval');
+    assert.deepEqual(JSON.parse(await readFile(path.join(scratch, 'remote-connections.json'), 'utf8')),
+      { 'uuid:bedroom': `${origin}/?t=replacement-fixture-token` });
     assert.equal(await page.locator('iframe').getAttribute('title'), 'Effect Pipeline · Studio PC');
     assert.equal(calls.filter(call => call.channel === 'cancel-connection-request').length, 1);
     assert.equal(calls.filter(call => call.channel === 'request-connection').length, 4);
@@ -175,6 +185,6 @@ test('Connect effects explains unavailable requests and keeps approval and conne
   } finally {
     await browser?.close();
     dispose();
-    await rm(scratch, { recursive: true, force: true });
+    await rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });

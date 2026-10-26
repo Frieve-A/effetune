@@ -113,7 +113,7 @@ async function waitForExit(child, timeoutMs) {
 }
 
 function startIdleChild() {
-  return spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  return spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
 }
 
 function armForChild(child, overrides = {}) {
@@ -166,7 +166,7 @@ test('quit deadline helper outlives the process that armed it', async t => {
     "const { armQuitDeadline } = require('./electron/quit-deadline.cjs');",
     `armQuitDeadline({ pid: ${target.pid}, execPath: ${JSON.stringify(process.execPath)}, startedAt: ${Date.now()}, timeoutSeconds: 1 });`,
     'process.exit(0);'
-  ].join('\n')], { stdio: 'ignore', cwd: process.cwd() });
+  ].join('\n')], { stdio: 'ignore', cwd: process.cwd(), windowsHide: true });
   assert.equal(await waitForExit(armer, 30000), true);
   assert.equal(await waitForExit(target, 60000), true);
 });

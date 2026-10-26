@@ -1764,6 +1764,7 @@ class PluginBase {
     }
 
     bindGraphPointer(element, { onDragStart, onDragMove, onDragEnd, onTap } = {}) {
+        element.setAttribute('data-parameter-control', 'edit');
         let activePointerId = null;
         let startX = 0;
         let startY = 0;
@@ -1773,7 +1774,7 @@ class PluginBase {
         element.style.touchAction = 'none';
 
         const onPointerDown = event => {
-            if (activePointerId !== null || event.isPrimary === false) return;
+            if (event.defaultPrevented || activePointerId !== null || event.isPrimary === false) return;
             activePointerId = event.pointerId;
             startX = event.clientX;
             startY = event.clientY;

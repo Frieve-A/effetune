@@ -100,9 +100,15 @@ test('startup-created player uses the canonical AudioContext for buffer and medi
     const audioManager = createAudioManager();
     const startupContext = audioManager.audioContext;
     const decodedBuffer = { duration: 10 };
-    const mediaSource = { disconnect() {} };
+    const volumeGain = { gain: { value: 1 } };
+    const connections = [];
+    const mediaSource = { connect: node => connections.push(node), disconnect() {} };
     startupContext.decodeAudioData = (_bytes, resolve) => resolve(decodedBuffer);
     startupContext.createMediaElementSource = () => mediaSource;
+    startupContext.createGain = function () {
+      assert.equal(this, startupContext);
+      return volumeGain;
+    };
     audioManager.audioContext = null;
     audioManager.contextManager = { audioContext: null };
     const player = new AudioPlayer(audioManager);
@@ -132,6 +138,8 @@ test('startup-created player uses the canonical AudioContext for buffer and medi
       playableTrack: { name: 'Track 1', path: '/music/track-1.flac' }
     }, 1, () => false);
     assert.equal(mediaCandidate.source, mediaSource);
+    assert.deepEqual(connections, [volumeGain]);
+    assert.equal(player.contextManager.playerVolumeGains.get(mediaSource), volumeGain);
 
     const rebuiltContext = { sampleRate: 96000 };
     audioManager.contextManager.audioContext = rebuiltContext;

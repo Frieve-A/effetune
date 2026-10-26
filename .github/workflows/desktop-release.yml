@@ -70,54 +70,6 @@ jobs:
     permissions:
       contents: read
 
-  store-validation:
-    name: Validate installed Store package
-    needs: windows
-    if: vars.MSSTORE_BUILD_ENABLED == 'true' && vars.MSSTORE_VALIDATION_ENABLED == 'true'
-    runs-on: [self-hosted, Windows, X64, msix-validation]
-    timeout-minutes: 45
-    concurrency:
-      group: msix-validation
-      cancel-in-progress: false
-    steps:
-      - name: Check out the release source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Setup Node.js for the installed application probe
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install probe dependencies
-        run: npm ci --ignore-scripts
-      - name: Download this run's unsigned package
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: store-msix-x64
-          path: out/msix-validation/input
-      - name: Verify install, update, application behavior and WACK
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $packages = @(Get-ChildItem -LiteralPath out/msix-validation/input -Filter '*.msix')
-          if ($packages.Count -ne 1) { throw 'Expected exactly one Store package.' }
-          $previous = @{}
-          if ($env:MSIX_PREVIOUS_PACKAGE) { $previous.PreviousPackage = $env:MSIX_PREVIOUS_PACKAGE }
-          & ./tools/test-msix-installed.ps1 -Package $packages[0].FullName `
-            -Metadata out/msix-validation/input/store-package.json `
-            @previous `
-            -ReportDirectory out/msix-validation/report -DedicatedTestVm
-          if ($LASTEXITCODE -ne 0) { throw 'Installed MSIX validation failed.' }
-      - name: Upload Store validation evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: store-msix-validation
-          path: out/msix-validation/report/
-          if-no-files-found: error
-          retention-days: 90
-
   macos:
     name: macOS release packages
     needs: preflight

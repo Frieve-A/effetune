@@ -181,6 +181,10 @@ const openHomeV1 = Object.freeze({
     if (typeof enabled !== 'boolean') throw new TypeError('OpenHome enabled state must be boolean');
     return ipcRenderer.invoke('openhome-v1:set-enabled', { enabled });
   },
+  setUpnpAvEnabled: enabled => {
+    if (typeof enabled !== 'boolean') throw new TypeError('UPnP AV enabled state must be boolean');
+    return ipcRenderer.invoke('openhome-v1:set-upnp-av-enabled', { enabled });
+  },
   setFriendlyName: friendlyName => {
     if (typeof friendlyName !== 'string') throw new TypeError('Network device name must be a string');
     return ipcRenderer.invoke('openhome-v1:set-friendly-name', { friendlyName });
@@ -194,6 +198,24 @@ const openHomeV1 = Object.freeze({
   onCancel: callback => addSingleArgIpcListener('openhome-v1:cancel', callback),
   onReset: callback => addSingleArgIpcListener('openhome-v1:reset', callback),
   onStatus: callback => addSingleArgIpcListener('openhome-v1:status', callback)
+});
+
+const airPlayV1 = Object.freeze({
+  getStatus: () => ipcRenderer.invoke('airplay-v1:get-status', {}),
+  setEnabled: enabled => {
+    if (typeof enabled !== 'boolean') throw new TypeError('AirPlay enabled state must be boolean');
+    return ipcRenderer.invoke('airplay-v1:set-enabled', { enabled });
+  },
+  rendererReady: () => ipcRenderer.invoke('airplay-v1:renderer-ready', {}),
+  rendererUnavailable: () => ipcRenderer.invoke('airplay-v1:renderer-unavailable', {}),
+  stopSession: () => ipcRenderer.invoke('airplay-v1:stop-session', {}),
+  onStatus: callback => addSingleArgIpcListener('airplay-v1:status', callback)
+});
+
+ipcRenderer.on('airplay-v1:port', event => {
+  if (event.ports?.length === 1) {
+    window.postMessage({ type: 'effetune-airplay-v1-port' }, '*', [event.ports[0]]);
+  }
 });
 
 // LAN remote control (remote-v1). The WebSocket server lives in main; the
@@ -227,6 +249,9 @@ function withoutOpenHomeOwnedConfig(config) {
     openHomeRemoteControl: _openHomeRemoteControl,
     openHomeDeviceId: _openHomeDeviceId,
     openHomeFriendlyName: _openHomeFriendlyName,
+    upnpAvRemoteControl: _upnpAvRemoteControl,
+    upnpAvDeviceId: _upnpAvDeviceId,
+    airPlayReceiver: _airPlayReceiver,
     networkMusicDeviceId: _networkMusicDeviceId,
     networkMusicSharing: _networkMusicSharing,
     // Owned by the remote-control host in main (Settings > Remote Control).
@@ -374,6 +399,7 @@ contextBridge.exposeInMainWorld(
 
     // Versioned OpenHome bridge exposes only bounded player actions and state snapshots.
     openHomeV1,
+    airPlayV1,
 
     networkMusicGetState: request => invokeNetworkMusic('GetState', request),
     networkMusicDiscover: () => invokeNetworkMusic('Discover'),
@@ -387,7 +413,7 @@ contextBridge.exposeInMainWorld(
     onNetworkMusicState: callback => addSingleArgIpcListener('network-music:state', callback),
     remoteClient: Object.freeze({
       getConnection: playerId => ipcRenderer.invoke('remote-client:get-connection', playerId),
-      requestConnection: (playerId, requestId) => ipcRenderer.invoke('remote-client:request-connection', playerId, requestId),
+      requestConnection: (playerId, requestId, replace = false) => ipcRenderer.invoke('remote-client:request-connection', playerId, requestId, replace),
       cancelConnectionRequest: requestId => ipcRenderer.invoke('remote-client:cancel-connection-request', requestId),
       saveConnection: (playerId, link) => ipcRenderer.invoke('remote-client:save-connection', playerId, link),
       connect: playerId => ipcRenderer.invoke('remote-client:connect', playerId),
@@ -565,9 +591,12 @@ contextBridge.exposeInMainWorld(
     
     // Signal that the renderer is ready to receive music files
     signalReadyForMusicFiles: () => {
-      ipcRenderer.send('renderer-ready-for-music-files');
+      return ipcRenderer.invoke('renderer-ready-for-music-files');
     },
     
+    // Reveal the prepared application (or its startup error).
+    signalReadyForPresentation: () => ipcRenderer.send('renderer-ready-for-presentation'),
+
     // Signal that the renderer is ready to receive update notifications
     signalReadyForUpdates: () => {
       return ipcRenderer.invoke('renderer-ready-for-updates');

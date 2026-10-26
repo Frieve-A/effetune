@@ -623,6 +623,7 @@ class FiveBandDynamicEQ extends PluginBase {
         for (let i = 0; i < this.numBands; i++) {
             const button = document.createElement('button');
             button.className = `fbdyn-band-tab ${i === this.currentBandIndex ? 'active' : ''}`;
+            button.setAttribute('data-parameter-control', 'view');
             button.dataset.bandIndex = i;
             button.setAttribute('data-instance-id', this.instanceId);
             button.setAttribute('role', 'tab');

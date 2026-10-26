@@ -71,7 +71,7 @@ export class WebFileSystemScanAdapter {
       assertRepositoryContract(Number.isSafeInteger(file.lastModified) && file.lastModified >= 0, 'transient-io', 'File timestamp is invalid');
       return file;
     } catch (error) {
-      if (error?.code) throw error;
+      if (signal?.aborted || typeof error?.code === 'string' || error?.name === 'AbortError') throw error;
       throw fileSystemError(error, 'transient-io');
     }
   }
@@ -87,7 +87,7 @@ export class WebFileSystemScanAdapter {
       }
       return names;
     } catch (error) {
-      if (error?.name === 'AbortError') throw error;
+      if (signal?.aborted || error?.name === 'AbortError') throw error;
       throw fileSystemError(error, 'transient-io');
     }
   }

@@ -7475,6 +7475,7 @@ class TubeSimulatorPlugin extends PluginBase {
             tab.type = 'button';
             tab.id = `${instanceId}-${definition.id}-tab`;
             tab.className = `tube-simulator-tab ${active ? 'active' : ''}`;
+            tab.setAttribute('data-parameter-control', 'view');
             tab.textContent = definition.label;
             tab.setAttribute('role', 'tab');
             tab.setAttribute('aria-selected', active ? 'true' : 'false');

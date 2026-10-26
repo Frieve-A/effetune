@@ -13,6 +13,7 @@ import i18n from './i18n.js'; // Import the i18n module
 import { startRendererWatchdogHeartbeat } from '../../js/electron-watchdog.js';
 import { copyTextToClipboard } from '../../js/utils/clipboard-utils.js';
 import { installRangePrecisionControl } from '../../js/ui/range-precision-controller.js';
+import { updateRangeFill } from '../../js/ui/range-fill.js';
 import { copyPEQClipboardPayload } from './ui/peq-clipboard.js';
 import {
     channelDisplayLabel,
@@ -21,6 +22,7 @@ import {
     resolveCheckboxToggle
 } from './audio-utils/channel-selection.js';
 import { SUPPORTED_OUTPUT_CHANNEL_COUNTS } from './audio-utils/output-routing.js';
+import { essFrequencyLimit } from './measurement-model.js';
 
 let isAudioInitialized = false;
 let audioInitializationPromise = null;
@@ -195,15 +197,20 @@ function rebuildPerChannelCalibrationRows(selection = getOutputChannelSelection(
     const previous = new Map([...rows.querySelectorAll('select')].map(select => [select.dataset.channel, select.value]));
     rows.replaceChildren();
     for (const channel of selection) {
-        const row = document.createElement('label');
-        row.className = 'per-channel-calibration-row';
-        row.textContent = `${channelDisplayLabel(channel)}: `;
+        const row = document.createElement('div');
+        row.className = 'per-channel-calibration-row parameter-row';
+        const label = document.createElement('label');
+        const text = document.createElement('span'); text.className = 'parameter-label-text';
+        text.textContent = `${channelDisplayLabel(channel)}:`;
+        label.append(text); label.title = text.textContent;
         const select = common.cloneNode(true);
-        select.removeAttribute('id');
+        select.hidden = false;
+        select.id = `channelCalibration-${channel}`;
+        label.htmlFor = select.id;
         select.className = 'channel-calibration-select';
         select.dataset.channel = channel;
         select.value = previous.get(channel) || '';
-        row.appendChild(select);
+        row.append(label, select);
         rows.appendChild(row);
     }
     const perChannel = selection.length > 1 &&
@@ -378,8 +385,8 @@ function setupEventConnections() {
             return;
         }
 
-        // Validate each configured sweep frequency range: 1 <= min < max <= Nyquist - 1.
-        const nyquistLimit = Math.max(2, Math.floor(config.sampleRate / 2) - 1);
+        // Validate against the same upper frequency used by ESS acquisition.
+        const nyquistLimit = essFrequencyLimit(config.sampleRate);
         const sweepRanges = config.sweepBand.mode === 'perChannel'
             ? config.sweepBand.perChannel.filter(({ channel }) =>
                 getSweepBandEditorChannels(outputChannels).includes(channel))
@@ -737,7 +744,7 @@ function loadPEQSettings() {
             const smoothingValue = document.getElementById('smoothingValue');
             if (smoothingSlider && smoothingValue) {
                 smoothingSlider.value = peqSettings.smoothing;
-                smoothingValue.textContent = parseFloat(peqSettings.smoothing).toFixed(2);
+                smoothingValue.value = parseFloat(smoothingSlider.value).toFixed(2);
             }
         }
         
@@ -746,7 +753,8 @@ function loadPEQSettings() {
             const lowFreqValue = document.getElementById('targetLowFreqValue');
             if (lowFreqSlider && lowFreqValue) {
                 lowFreqSlider.value = peqSettings.lowFreq;
-                lowFreqValue.textContent = Math.round(window.app.uiManager.logSliderToValue(peqSettings.lowFreq, 20, 1000));
+                lowFreqValue.value = Math.round(window.app.uiManager.logSliderToValue(lowFreqSlider.value, 20, 1000));
+                lowFreqSlider.value = window.app.uiManager.valueToLogSlider(Number(lowFreqValue.value), 20, 1000);
             }
         }
         
@@ -755,7 +763,8 @@ function loadPEQSettings() {
             const highFreqValue = document.getElementById('targetHighFreqValue');
             if (highFreqSlider && highFreqValue) {
                 highFreqSlider.value = peqSettings.highFreq;
-                highFreqValue.textContent = Math.round(window.app.uiManager.logSliderToValue(peqSettings.highFreq, 1000, 20000));
+                highFreqValue.value = Math.round(window.app.uiManager.logSliderToValue(highFreqSlider.value, 1000, 20000));
+                highFreqSlider.value = window.app.uiManager.valueToLogSlider(Number(highFreqValue.value), 1000, 20000);
             }
         }
         
@@ -764,10 +773,15 @@ function loadPEQSettings() {
             const eqBandCountValue = document.getElementById('eqBandCountValue');
             if (eqBandCountSlider && eqBandCountValue) {
                 eqBandCountSlider.value = peqSettings.eqBandCount;
-                eqBandCountValue.textContent = peqSettings.eqBandCount;
+                eqBandCountValue.value = eqBandCountSlider.value;
             }
         }
         
+        for (const id of ['smoothingValue', 'targetLowFreqValue', 'targetHighFreqValue', 'eqBandCountValue']) {
+            const input = document.getElementById(id);
+            if (input.applied) input.applied.value = Number(input.value);
+            updateRangeFill(input.slider);
+        }
         // Apply settings to current measurement display if any
         if (window.app.uiManager.selectedMeasurementId) {
             window.app.uiManager.updateResultsGraph();
@@ -828,13 +842,12 @@ window.app = {
 
 /**
  * Update min/max attributes of the sweep frequency inputs based on current
- * sampling rate. The usable range is [1, Nyquist - 1] Hz. Existing values are
+ * sampling rate and ESS acquisition limit. Existing values are
  * clamped into range so the UI never presents an invalid configuration.
  */
 function updateSweepFreqLimits() {
     const sampleRate = parseInt(document.getElementById('sampleRate').value) || 48000;
-    const nyquist = Math.floor(sampleRate / 2);
-    const maxAllowed = Math.max(2, nyquist - 1);
+    const maxAllowed = Math.floor(essFrequencyLimit(sampleRate));
 
     saveSweepBandChannelEditor();
     const inputPairs = [
@@ -846,23 +859,17 @@ function updateSweepFreqLimits() {
         const maxInput = document.getElementById(maxId);
         if (!minInput || !maxInput) continue;
         minInput.max = String(maxAllowed - 1);
-        maxInput.max = String(maxAllowed);
+        maxInput.min = '2'; maxInput.max = String(maxAllowed);
         const currentMax = Number(maxInput.value);
         const currentMin = Number(minInput.value);
-        maxInput.value = !Number.isFinite(currentMax) || currentMax > maxAllowed ? maxAllowed : currentMax;
-        minInput.value = !Number.isFinite(currentMin) || currentMin < 1
-            ? 1
-            : currentMin >= Number(maxInput.value) ? Math.max(1, Number(maxInput.value) - 1) : currentMin;
+        maxInput.value = Math.max(2, Math.min(maxAllowed, Number.isFinite(currentMax) ? Math.round(currentMax) : maxAllowed));
+        minInput.value = Math.max(1, Math.min(Number(maxInput.value) - 1, Number.isFinite(currentMin) ? Math.round(currentMin) : 1));
     }
     saveSweepBandChannelEditor();
     const common = sweepBandDefaultValues();
     for (const [channel, values] of sweepBandChannelValues) {
-        const maxFreq = !Number.isFinite(values.maxFreq) || values.maxFreq > maxAllowed
-            ? maxAllowed
-            : values.maxFreq;
-        const minFreq = !Number.isFinite(values.minFreq) || values.minFreq < 1
-            ? 1
-            : values.minFreq >= maxFreq ? Math.max(1, maxFreq - 1) : values.minFreq;
+        const maxFreq = Math.max(2, Math.min(maxAllowed, Number.isFinite(values.maxFreq) ? Math.round(values.maxFreq) : maxAllowed));
+        const minFreq = Math.max(1, Math.min(maxFreq - 1, Number.isFinite(values.minFreq) ? Math.round(values.minFreq) : 1));
         sweepBandChannelValues.set(channel, { minFreq, maxFreq });
     }
     if (!sweepBandChannelValues.size) {
@@ -919,15 +926,17 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSweepBandLimitControls();
         saveUserSettings();
     });
-    document.getElementById('sweepMinFreq').addEventListener('change', saveUserSettings);
-    document.getElementById('sweepMaxFreq').addEventListener('change', saveUserSettings);
+    for (const id of ['sweepMinFreq', 'sweepMaxFreq']) document.getElementById(id).addEventListener('change', () => {
+        updateSweepFreqLimits(); saveUserSettings();
+    });
     document.getElementById('sweepBandChannel').addEventListener('change', () => {
         saveSweepBandChannelEditor();
         loadSweepBandChannelEditor(document.querySelector('#sweepBandChannel input:checked')?.value);
+        updateSweepFreqLimits();
     });
     for (const id of ['sweepBandChannelMinFreq', 'sweepBandChannelMaxFreq']) {
         document.getElementById(id).addEventListener('change', () => {
-            saveSweepBandChannelEditor();
+            updateSweepFreqLimits();
             saveUserSettings();
         });
     }
@@ -941,28 +950,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('targetHighFreqSlider').addEventListener('change', savePEQSettings);
     document.getElementById('eqBandCount').addEventListener('change', savePEQSettings);
     
-    // Add input handlers to update the display immediately
-    document.getElementById('smoothing').addEventListener('input', () => {
-        const value = document.getElementById('smoothing').value;
-        document.getElementById('smoothingValue').textContent = parseFloat(value).toFixed(2);
-    });
-    
-    document.getElementById('targetLowFreqSlider').addEventListener('input', () => {
-        const value = document.getElementById('targetLowFreqSlider').value;
-        const freq = window.app.uiManager.logSliderToValue(value, 20, 1000);
-        document.getElementById('targetLowFreqValue').textContent = Math.round(freq);
-    });
-    
-    document.getElementById('targetHighFreqSlider').addEventListener('input', () => {
-        const value = document.getElementById('targetHighFreqSlider').value;
-        const freq = window.app.uiManager.logSliderToValue(value, 1000, 20000);
-        document.getElementById('targetHighFreqValue').textContent = Math.round(freq);
-    });
-    
-    document.getElementById('eqBandCount').addEventListener('input', () => {
-        const value = document.getElementById('eqBandCount').value;
-        document.getElementById('eqBandCountValue').textContent = value;
-    });
 });
 
 // Handle errors

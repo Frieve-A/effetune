@@ -12,7 +12,8 @@ const RELEVANT_STATE_KEYS = new Set([
   'isStopped',
   'isTransitioning',
   'repeatMode',
-  'shuffleMode'
+  'shuffleMode', 'playerVolume', 'playerMute', 'liveInputActive', 'playbackSpeed', 'playbackErrorTrack',
+  'seekBarEnabled', 'playbackMode', 'transportCapabilities'
 ]);
 
 function getDefaultBridge() {
@@ -90,6 +91,7 @@ export class OpenHomePlaybackAdapter {
       requestId,
       deadlineEpochMs: action?.deadlineEpochMs,
       active: true,
+      abortController: new AbortController(),
       playRequest: null,
       queueTransaction: null
     };
@@ -144,6 +146,11 @@ export class OpenHomePlaybackAdapter {
     const context = this.actionContexts.get(requestId);
     if (!context) return false;
     context.active = false;
+    context.abortController?.abort();
+    const manager = this.audioPlayer.contextManager;
+    if (context.loadRequest && manager?.activeLoadRequest === context.loadRequest) {
+      manager.invalidatePendingPlaybackOperations();
+    }
     if (context.queueTransaction?.rollbackReady) this.rollbackQueueMutation(context);
 
     const playbackManager = this.audioPlayer?.playbackManager;
@@ -371,6 +378,8 @@ export class OpenHomePlaybackAdapter {
   async executeAction(request, context) {
     this.assertActionActive(context);
     validateActionRequest(request);
+    if (request.service === 'AVTransport') return this.executeAvTransport(request, context);
+    if (request.service === 'RenderingControl') return this.executeRenderingControl(request);
     if (request.service === 'Catalog') {
       if (request.action !== 'PlayItems') throw createActionError('unsupported-action');
       return this.playCatalogItems(request.args, context);
@@ -479,22 +488,133 @@ export class OpenHomePlaybackAdapter {
     return this.insertEntries([entry], requireUint32(args.afterId ?? 0, true), context);
   }
 
-  createNetworkEntry(args) {
+  async executeAvTransport(request, context) {
+    const args = request.args || {};
+    if (request.action === 'Snapshot') return this.getSnapshot().avTransport;
+    if (request.action === 'SetAVTransportURI') {
+      if (args.uri === '') {
+        await this.deleteAll(context);
+        return {};
+      }
+      const entry = this.createNetworkEntry(args);
+      const wasLive = this.getPlayerState().liveInputActive === true;
+      const wasPlaying = !wasLive && this.getPlayerState().isPlaying === true;
+      this.beginQueueMutation(context);
+      const id = this.allocateTrackId();
+      this.queue = [Object.freeze({ ...entry, id })];
+      this.syncQueueToPlayer(id, context);
+      const track = this.audioPlayer.playbackManager.playlist[0];
+      // The existing candidate loader keeps the current backend until preparation succeeds.
+      // Selecting a URI is one queue transaction, never DeleteAll followed by Insert.
+      const manager = this.audioPlayer.contextManager;
+      const resumed = !wasPlaying || await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
+      this.assertActionActive(context);
+      const preparation = resumed && (wasLive
+        ? manager.prepareTrackSelection(track, () => context.active && !this.disposed)
+        : wasPlaying
+        ? manager.transitionToNextTrack(track, 0, false, null, null, { signal: context.abortController?.signal })
+        : manager.loadTrack(track, 0));
+      if (!wasPlaying && !wasLive) context.loadRequest = manager.activeLoadRequest;
+      const prepared = await preparation;
+      context.loadRequest = null;
+      this.markQueueMutationOwner(context);
+      this.assertActionActive(context);
+      if (prepared !== true) throw createActionError('play-failed');
+      this.audioPlayer.stateManager.updateState({ playbackErrorTrack: null }, 'UPnP URI selected');
+      this.bumpIdArrayToken();
+      context.queueTransaction.rollbackReady = true;
+      this.followsPlayerQueue = true;
+      return { newId: id };
+    }
+    if (!['Play', 'Pause', 'Stop', 'Next', 'Previous', 'Seek'].includes(request.action)) {
+      throw createActionError('unsupported-action');
+    }
+    if (!this.queue.length || (this.getPlayerState().liveInputActive && request.action !== 'Play')) throw createActionError('no-media');
+    if (request.action === 'Play' && this.getPlayerState().liveInputActive) {
+      await this.audioPlayer.airPlayPlayback.stopSession();
+      this.assertActionActive(context);
+    }
+    if (request.action === 'Play') this.audioPlayer.playbackManager.setPlaybackSpeed?.(1);
+    if (request.action === 'Seek' && !this.getSnapshot().avTransport.seekable) throw createActionError('seek-not-supported');
+    if (request.action === 'Seek' && (!Number.isFinite(args.seconds) || args.seconds < 0 ||
+        args.seconds > this.getSnapshot().avTransport.duration)) throw createActionError('invalid-seek');
+    if (request.action === 'Next' || request.action === 'Previous') {
+      const state = this.getPlayerState();
+      const ordinal = this.getPlaybackOrdinal(this.queue.findIndex(entry => entry.id === this.getCurrentOpenHomeId()));
+      const index = ordinal + (request.action === 'Next' ? 1 : -1);
+      const manager = this.audioPlayer.playbackManager;
+      if (ordinal < 0 || index < 0 || index >= (manager.sequence?.itemCount ?? manager.playlist.length)) throw createActionError('invalid-seek');
+      const selected = await this.audioPlayer.playbackManager.selectQueueOrdinal(index, {
+        play: state.isPlaying === true, userInitiated: false, isCurrent: () => context.active && !this.disposed
+      });
+      this.assertActionActive(context);
+      if (selected === false || selected?.accepted === false) throw createActionError('no-media');
+      if (state.isPaused) await this.audioPlayer.pause();
+      this.assertActionActive(context);
+      return {};
+    }
+    return this.executeAction({ ...request, service: 'Playlist',
+      action: request.action === 'Seek' ? 'SeekSecondAbsolute' : request.action }, context);
+  }
+
+  executeRenderingControl(request) {
+    const manager = this.audioPlayer.contextManager;
+    if (request.action === 'Snapshot') return this.getSnapshot().renderingControl;
+    if (request.action === 'SetVolume') {
+      const volume = request.args.volume;
+      if (!Number.isInteger(volume) || volume < 0 || volume > 100) throw createActionError('invalid-action');
+      manager.setPlayerVolume(volume);
+    } else if (request.action === 'SetMute') {
+      if (typeof request.args.mute !== 'boolean') throw createActionError('invalid-action');
+      manager.setPlayerMute(request.args.mute);
+    } else if (request.action === 'SelectPreset') {
+      if (request.args.preset !== 'FactoryDefaults') throw createActionError('invalid-preset');
+      manager.setPlayerVolume(100);
+      manager.setPlayerMute(false);
+    } else throw createActionError('unsupported-action');
+    return {};
+  }
+
+  async clearForLiveInput(isCurrent = () => true) {
+    if (this.disposed || !isCurrent()) return false;
+    for (const requestId of this.actionContexts.keys()) this.cancelAction({ requestId });
+    const pending = this.commandChain.then(async () => {
+      if (this.disposed || !isCurrent()) return false;
+      await this.audioPlayer.stop();
+      if (this.disposed || !isCurrent()) return false;
+      this.queue = [];
+      this.queueEntryIds.clear();
+      this.ownedQueueIds.clear();
+      this.audioPlayer.playbackManager.replaceMaterializedPlaylist([], 0);
+      this.queueSequence = this.audioPlayer.playbackManager.sequence;
+      this.followsPlayerQueue = true;
+      this.bumpIdArrayToken();
+      this.publishState();
+      return true;
+    });
+    this.commandChain = pending.catch(() => {});
+    return pending;
+  }
+
+  createNetworkEntry(args, summary = {}) {
     const uri = normalizeRemoteUri(args.uri);
     const playbackUrl = normalizePlaybackUrl(args.playbackUrl);
     const artworkUrl = args.artworkUrl === undefined
       ? ''
       : normalizePlaybackUrl(args.artworkUrl);
     const metadata = normalizeMetadata(args.metadata);
-    const meta = parseDidlLite(metadata, uri, this.DomParserCtor, artworkUrl);
-    return { uri, playbackUrl, metadata, meta };
+    const meta = { ...parseDidlLite(metadata, uri, this.DomParserCtor, artworkUrl) };
+    for (const key of ['title', 'artist', 'album']) {
+      if (typeof summary[key] === 'string' && summary[key].trim()) meta[key] = summary[key].trim().slice(0, 4096);
+    }
+    if (typeof summary.duration === 'number' && Number.isFinite(summary.duration) && summary.duration > 0) meta.duration = summary.duration;
+    return { uri, playbackUrl, metadata, meta: Object.freeze(meta) };
   }
 
   async playNetworkTracks(tracks, operationKind = 'play', isCurrent = () => true, startIndex = 0) {
-    const entries = tracks.map(track => ({
-      ...this.createNetworkEntry({ uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata }),
-      meta: Object.freeze({ title: track.title, artist: track.artist || '', album: track.album || '', duration: track.duration })
-    }));
+    const entries = tracks.map(track => this.createNetworkEntry({
+      uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata
+    }, track));
     return this.playPreparedEntries(entries, operationKind, isCurrent, startIndex);
   }
 
@@ -576,8 +696,7 @@ export class OpenHomePlaybackAdapter {
         const track = await this.resolveNetworkTrack({ serverId: item.serverId, trackId: item.trackId, localPlayback: true });
         this.assertActionActive(context);
         if (track?.playable === false) throw createActionError('unsupportedFormat');
-        entries.push({ ...this.createNetworkEntry({ uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata }),
-          meta: { title: track.title || 'Track', artist: track.artist || '', album: track.album || '', duration: track.duration || 0 } });
+        entries.push(this.createNetworkEntry({ uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata }, track));
       }
     }
     return this.applyPreparedEntries(entries, operationKind, startIndex, context);
@@ -781,16 +900,13 @@ export class OpenHomePlaybackAdapter {
   async seekQueueIndex(queueIndex, context) {
     await this.ensureQueueActive(context);
     this.assertActionActive(context);
-    const id = this.queue[queueIndex].id;
     const manager = this.audioPlayer.playbackManager;
-    const playlistIndex = manager.catalogSequence
-      ? manager.catalogSequence.toTransportOrdinal(queueIndex)
-      : manager.playlist.findIndex(track => this.getTrackId(track) === id);
+    const playlistIndex = this.getPlaybackOrdinal(queueIndex);
     if (playlistIndex < 0) throw createActionError('track-not-found');
     const resumed = await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
     this.assertActionActive(context);
     if (resumed !== true) throw createActionError('seek-failed');
-    const pending = this.audioPlayer.playbackManager.selectQueueOrdinal(playlistIndex, {
+    const pending = manager.selectQueueOrdinal(playlistIndex, {
       play: true,
       userInitiated: false,
       playbackReady: resumed,
@@ -953,27 +1069,67 @@ export class OpenHomePlaybackAdapter {
     return this.audioPlayer?.stateManager?.getStateSnapshot?.() || {};
   }
 
+  getPlaybackOrdinal(queueIndex) {
+    if (queueIndex < 0 || queueIndex >= this.queue.length) return -1;
+    const manager = this.audioPlayer.playbackManager;
+    return manager.catalogSequence ? manager.catalogSequence.toTransportOrdinal(queueIndex)
+      : manager.playlist.findIndex(track => this.getTrackId(track) === this.queue[queueIndex].id);
+  }
+
   getSnapshot() {
     const state = this.getPlayerState();
     const currentEntry = this.queue.find(entry => entry.id === this.getTrackId(state.currentTrack)) || null;
-    const currentId = currentEntry?.id || 0;
+    const currentId = state.liveInputActive ? 0 : currentEntry?.id || 0;
+    const uri = currentEntry?.uri || '';
+    const duration = state.liveInputActive ? 0 : positiveNumber(state.currentTrackDuration) || positiveNumber(currentEntry?.meta.duration);
+    const seekable = !state.liveInputActive && !!uri && duration > 0 && state.seekBarEnabled !== false &&
+      !state.isTransitioning && !state.isPlaybackPending &&
+      (this.audioPlayer.contextManager?.canSeekCurrentTrack?.() ?? true);
+    const transportState = !uri ? 'NO_MEDIA_PRESENT' : state.liveInputActive ? 'STOPPED' : state.isPlaybackPending || state.isTransitioning
+      ? 'TRANSITIONING' : state.isPlaying ? 'PLAYING' : state.isPaused ? 'PAUSED_PLAYBACK' : 'STOPPED';
+    const index = currentEntry ? this.queue.indexOf(currentEntry) : 0;
+    const playbackIndex = currentEntry ? this.getPlaybackOrdinal(index) : -1;
+    const manager = this.audioPlayer.playbackManager;
+    const playbackCount = manager.sequence?.itemCount ?? manager.playlist.length;
+    const technical = { ...currentEntry?.meta, ...state.currentTrack?.meta };
+    for (const field of ['sampleRate', 'bitsPerSample', 'bitrate']) {
+      if (positiveNumber(state.currentTrack?.[field])) technical[field] = state.currentTrack[field];
+    }
+    if (state.currentTrack?.codec) technical.codec = state.currentTrack.codec;
+    const playbackError = state.playbackErrorTrack && (state.playbackErrorTrack === state.currentTrack ||
+      this.getTrackId(state.playbackErrorTrack) === currentEntry?.id);
+    const playMode = state.shuffleMode ? 'SHUFFLE' : state.repeatMode === 'ONE' ? 'REPEAT_ONE'
+      : state.repeatMode === 'ALL' ? 'REPEAT_ALL' : 'NORMAL';
+    const canMove = !state.isTransitioning && !state.isPlaybackPending;
     return Object.freeze({
       protocolVersion: 1,
+      avTransport: {
+        state: transportState, uri, metadata: uri ? currentEntry?.metadata || '' : '',
+        duration: uri ? duration : 0, position: uri && !state.liveInputActive ? positiveNumber(state.currentTrackPosition) : 0,
+        status: playbackError && !state.liveInputActive ? 'ERROR_OCCURRED' : 'OK',
+        speed: upnpSpeed(positiveNumber(state.playbackSpeed) || 1), playMode,
+        protocolInfo: uri ? currentEntry?.meta.protocolInfo || '' : '',
+        seekable, actions: !uri ? '' : state.liveInputActive ? 'Play' : `${state.isPlaying ? 'Pause,Stop' : 'Play,Stop'}${seekable ? ',Seek' : ''}${canMove && playbackIndex >= 0 && playbackIndex < playbackCount - 1 ? ',Next' : ''}${canMove && playbackIndex > 0 ? ',Previous' : ''}`
+      },
+      renderingControl: {
+        volume: this.audioPlayer.contextManager?.getPlayerVolume?.() ?? 100,
+        mute: this.audioPlayer.contextManager?.getPlayerMute?.() ?? false
+      },
       source: 'Playlist',
-      transportState: getTransportState(state),
+      transportState: state.liveInputActive ? 'Stopped' : getTransportState(state),
       repeat: state.repeatMode === 'ALL' || state.repeatMode === 'ONE',
       shuffle: state.shuffleMode === true,
       currentId,
       currentIndex: currentEntry ? this.queue.indexOf(currentEntry) : 0,
-      uri: currentEntry?.uri || '',
-      metadata: currentEntry?.metadata || '',
-      duration: toOpenHomeSeconds(state.currentTrackDuration),
-      seconds: toOpenHomeSeconds(state.currentTrackPosition),
-      bitrate: 0,
-      bitDepth: 0,
-      sampleRate: 0,
-      lossless: false,
-      codecName: '',
+      uri: state.liveInputActive ? '' : uri,
+      metadata: uri && !state.liveInputActive ? currentEntry?.metadata || '' : '',
+      duration: state.liveInputActive ? 0 : toOpenHomeSeconds(state.currentTrackDuration),
+      seconds: state.liveInputActive ? 0 : toOpenHomeSeconds(state.currentTrackPosition),
+      bitrate: state.liveInputActive ? 0 : positiveNumber(technical.bitrate),
+      bitDepth: state.liveInputActive ? 0 : positiveNumber(technical.bitsPerSample),
+      sampleRate: state.liveInputActive ? 0 : positiveNumber(technical.sampleRate),
+      lossless: !state.liveInputActive && technical.codec === 'FLAC',
+      codecName: state.liveInputActive ? '' : technical.codec || '',
       tracksMax: MAX_QUEUE_LENGTH,
       idArray: encodeIdArray(this.queue.map(track => track.id)),
       idArrayToken: this.idArrayToken,
@@ -1048,7 +1204,7 @@ export class OpenHomePlaybackAdapter {
     this.removeRepeatModeNormalizer = null;
     this.removeQueueChangeListener?.();
     this.removeQueueChangeListener = null;
-    for (const context of this.actionContexts.values()) context.active = false;
+    for (const requestId of this.actionContexts.keys()) this.cancelAction({ requestId });
     this.actionContexts.clear();
     this.audioPlayer?.stateManager?.removeListener?.('*', this.stateListener);
     void Promise.resolve(this.bridge?.rendererUnavailable?.()).catch(() => {});
@@ -1113,22 +1269,73 @@ function parseDidlLite(metadata, uri, DomParserCtor, artworkUrl = '') {
   try {
     const document = new DomParserCtor().parseFromString(metadata, 'application/xml');
     if (document.querySelector?.('parsererror')) throw new Error('Invalid XML');
-    const textByLocalName = localName => {
-      const elements = document.getElementsByTagName?.('*') || [];
-      for (const element of elements) {
-        if (element.localName === localName) return String(element.textContent || '').trim().slice(0, 1024);
-      }
-      return '';
+    const elements = Array.from(document.getElementsByTagName?.('*') || []);
+    const items = elements.filter(element => element.localName === 'item');
+    const matchesUri = element => {
+      if (element.localName !== 'res') return false;
+      try { return new URL(String(element.textContent).trim()).href === uri; } catch (_) { return false; }
     };
-    return Object.freeze({
-      title: textByLocalName('title') || fallbackTitle,
-      artist: textByLocalName('artist'),
-      album: textByLocalName('album'),
-      artworkUrl
-    });
+    const descendants = element => Array.from(element.getElementsByTagName?.('*') || []);
+    const item = items.find(element => descendants(element).some(matchesUri)) ?? (items.length === 1 ? items[0] : null);
+    if (items.length && !item) return Object.freeze(fallback);
+    const fields = item ? descendants(item) : elements;
+    const text = element => String(element?.textContent || '').trim().slice(0, 4096);
+    const textByLocalName = localName => fields.filter(element => element.localName === localName).map(text).filter(Boolean).join('; ');
+    const meta = { ...fallback, title: textByLocalName('title') || fallbackTitle };
+    for (const key of ['album', 'genre', 'date', 'originalTrackNumber', 'description', 'publisher', 'language']) {
+      const value = textByLocalName(key);
+      if (value) meta[key] = value;
+    }
+    const contributors = fields.filter(element => ['artist', 'creator', 'contributor', 'composer'].includes(element.localName))
+      .map(element => ({ name: text(element), role: element.getAttribute?.('role') ||
+        (element.localName === 'composer' ? 'Composer' : element.localName === 'artist' || element.localName === 'creator' ? 'Artist' : '') }))
+      .filter(value => value.name);
+    if (contributors.length) meta.contributors = contributors;
+    for (const [key, role] of [['artist', 'artist'], ['albumArtist', 'albumartist'], ['composer', 'composer']]) {
+      const names = contributors.filter(value => value.role.toLowerCase().replace(/\s/g, '') === role).map(value => value.name);
+      if (names.length) meta[key] = [...new Set(names)].join('; ');
+    }
+    const resource = fields.find(matchesUri);
+    if (resource) {
+      const duration = parseUpnpTime(resource.getAttribute('duration'));
+      if (duration !== null) meta.duration = duration;
+      for (const [attribute, key] of [['sampleFrequency', 'sampleRate'], ['bitsPerSample', 'bitsPerSample'],
+        ['nrAudioChannels', 'channels'], ['bitrate', 'bitrate']]) {
+        const number = positiveNumber(resource.getAttribute(attribute));
+        if (number) meta[key] = attribute === 'bitrate' ? number * 8 : number;
+      }
+      const protocol = resource.getAttribute('protocolInfo') || '';
+      if (protocol.length <= 2048 && protocol.split(':').length === 4) {
+        meta.protocolInfo = protocol;
+        const mime = protocol.split(':')[2].toLowerCase();
+        if (mime === 'audio/mpeg') meta.codec = 'MP3';
+        else if (mime === 'audio/flac' || mime === 'audio/x-flac') meta.codec = 'FLAC';
+      }
+    }
+    return Object.freeze(meta);
   } catch (_) {
     return Object.freeze(fallback);
   }
+}
+
+function positiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function upnpSpeed(speed) {
+  let numerator = Math.round(speed * 1000), denominator = 1000;
+  let a = numerator, b = denominator;
+  while (b) [a, b] = [b, a % b];
+  numerator /= a; denominator /= a;
+  return denominator === 1 ? String(numerator) : `${numerator}/${denominator}`;
+}
+
+function parseUpnpTime(value) {
+  const match = /^(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)$/.exec(value || '');
+  if (!match) return null;
+  const seconds = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  return Number.isFinite(seconds) && seconds <= 0xffffffff ? seconds : null;
 }
 
 function titleFromUri(uri) {

@@ -533,6 +533,7 @@ test('helper functions save, load, and display app state', async () => {
 test('app module auto-start wires top-level bootstrap side effects', async () => {
   const childPath = fileURLToPath(new URL('../helpers/app-auto-start-smoke-child.mjs', import.meta.url));
   const result = spawnSync(process.execPath, [childPath], {
+    windowsHide: true,
     cwd: fileURLToPath(new URL('../..', import.meta.url)),
     encoding: 'utf8'
   });
@@ -540,33 +541,30 @@ test('app module auto-start wires top-level bootstrap side effects', async () =>
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('renderer startup selects either the audio-only warm-up or the full application', async () => {
+test('renderer startup loads the full application on its first navigation', async () => {
   const calls = [];
-  const logger = { warn: (...args) => calls.push(['warn', ...args]) };
-  const warmupWindow = {
-    document: { documentElement: { dataset: { effetuneStartup: 'audio-warmup' } } }
-  };
   assert.equal(await rendererStartup.startRenderer({
-    windowRef: warmupWindow,
-    logger,
-    warmUpAudioOutput: async () => calls.push(['warmup']),
-    loadApplication: async () => calls.push(['application'])
-  }), 'audio-warmup');
-  assert.deepEqual(calls, [['warmup']]);
-  assert.equal(warmupWindow.isFirstLaunchConfirmed, true);
-
-  calls.length = 0;
-  const applicationWindow = {
-    document: { documentElement: { dataset: {} } }
-  };
-  assert.equal(await rendererStartup.startRenderer({
-    windowRef: applicationWindow,
-    logger,
-    warmUpAudioOutput: async () => calls.push(['warmup']),
-    loadApplication: async () => calls.push(['application'])
+    windowRef: {},
+    loadApplication: async () => calls.push('application')
   }), 'application');
-  assert.deepEqual(calls, [['application']]);
-  assert.equal(applicationWindow.isFirstLaunchConfirmed, false);
+  assert.deepEqual(calls, ['application']);
+});
+
+test('module loading failure releases desktop presentation after revealing its error message', () => {
+  const calls = [];
+  const errorDisplay = {};
+  rendererStartup.presentStartupFailure({
+    error: new Error('Module unavailable'), logger: { error() {} },
+    windowRef: {
+      document: {
+        getElementById: () => errorDisplay,
+        documentElement: { classList: { remove: () => calls.push('revealed') } }
+      },
+      electronAPI: { signalReadyForPresentation: () => calls.push('ready') }
+    }
+  });
+  assert.deepEqual(calls, ['revealed', 'ready']);
+  assert.equal(errorDisplay.textContent, 'EffeTune could not start. Reload the app and try again.');
 });
 
 test('bootstrap helpers wire close-state and tray preset listeners', async () => {
@@ -881,19 +879,27 @@ test('onboarding saved-state detection ignores Electron restore flags and report
 
 test('startup stays private until localization settles and also reveals initialization failures', async () => {
   for (const loadPluginsReject of [false, true]) {
-    await withAppModule({}, async ({ calls, document, mod, timers }) => {
+    await withAppModule({}, async ({ calls, document, mod, timers, window }) => {
       const classes = new Set(['app-starting']);
       document.documentElement = { classList: { remove: name => classes.delete(name) } };
       const dependencies = createDependencies(calls, { loadPluginsReject });
       let finishLocalization;
       dependencies.uiManager.localizationReady = new Promise(resolve => { finishLocalization = resolve; });
       const app = new mod.App(dependencies);
+      let presented = 0;
+      window.electronAPI.signalReadyForPresentation = () => {
+        assert.equal(classes.has('app-starting'), false);
+        assert.equal(app.initialized, true);
+        presented += 1;
+      };
       const initialized = app.initialize();
       await flushAndRunTimers(timers);
       assert.equal(classes.has('app-starting'), true);
       assert.notEqual(app.initialized, true);
+      assert.equal(presented, 0);
       finishLocalization();
       await initialized;
+      assert.equal(presented, 1);
       assert.equal(classes.has('app-starting'), false);
       assert.equal(app.initialized, true);
       if (loadPluginsReject) {
@@ -903,7 +909,7 @@ test('startup stays private until localization settles and also reveals initiali
   }
 });
 
-test('initializeAudioWorklet leaves splash handling to the audio-only document and honors forced skip', async () => {
+test('initializeAudioWorklet initializes on the first navigation and honors forced skip', async () => {
   await withAppModule({}, async ({ calls, mod, window }) => {
     window.electronIntegration = { isElectron: true };
     const deps = createDependencies(calls);
@@ -1685,10 +1691,10 @@ test('initialization recovers from startup readiness and config failures', async
     window.appConfig = { startMinimized: true };
     const app = new mod.App(createDependencies(calls));
     const initializePromise = app.initialize();
-    const delays = await flushAndRunTimers(timers);
+    await flushAndRunTimers(timers);
     await initializePromise;
     await flushMicrotasks();
-    assert.equal(delays.includes(50), true);
+    assert.equal(app.initialized, true);
     assert.equal(calls.some(call => call[0] === 'console.error' && call[1] === 'Error signaling ready for updates:'), true);
   });
 
@@ -2720,11 +2726,12 @@ test('autoStartApplication starts bootstrap only when auto-start is enabled', as
   });
 });
 
-test('Browser startup waits for the audio graph and power controller and preserves explicit startup requests', async () => {
+test('Browser startup waits for presentation and the audio graph and preserves explicit startup requests', async () => {
   for (const [search, desktop, expected] of [['', true, true], ['?p=shared', true, false], ['', false, false]]) {
     await withAppModule({ search }, async ({ calls, mod, timers, window, document }) => {
       window.appConfig = { startupView: 'browser' };
       window.electronIntegration = { isElectron: desktop };
+      window.electronAPI.signalReadyForPresentation = () => calls.push(['present']);
       if (desktop) window.electronAPI.browser = {};
       const app = new mod.App(createDependencies(calls));
       const pending = app.initialize();
@@ -2736,6 +2743,7 @@ test('Browser startup waits for the audio graph and power controller and preserv
         assert.equal(names.filter(name => name === 'ui.showBrowserView').length, 1);
         assert.ok(names.indexOf('ui.showBrowserView') > names.indexOf('audio.startPowerPolicyController'));
         assert.ok(names.indexOf('ui.showBrowserView') > names.indexOf('audio.fadeInOutputWhenReady'));
+        assert.ok(names.indexOf('ui.showBrowserView') > names.indexOf('present'));
         assert.equal(document.body.className.split(/\s+/).includes('view-browser'), true);
       }
     });

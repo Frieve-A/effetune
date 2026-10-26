@@ -11,6 +11,7 @@ import { TrackLyrics } from './audio-player/track-lyrics.js';
 import { MediaSessionManager } from './audio-player/media-session-manager.js';
 import { createMediaSessionAnchor } from './audio-player/media-session-anchor.js';
 import { OpenHomePlaybackAdapter } from './audio-player/openhome-playback-adapter.js';
+import { AirPlayPlayback } from './audio-player/airplay-playback.js';
 import { WakeLockManager } from '../utils/wake-lock-manager.js';
 import { createRecentlyPlayedTracker } from '../library/playlists/recently-played-tracker.js';
 import { normalizeGaplessPlayback } from './audio-player/rolling-pcm-policy.js';
@@ -52,6 +53,7 @@ export class AudioPlayer {
     this.trackLyrics = new TrackLyrics(this);
     this.mediaSessionManager = new MediaSessionManager(this);
     this.openHomePlaybackAdapter = null;
+    this.airPlayPlayback = new AirPlayPlayback(this);
     // Mobile browsers only surface mediaSession metadata, headset keys, and
     // background playback for pages that play a media element. The player
     // renders through Web Audio only, so anchor the session with a silent
@@ -102,6 +104,10 @@ export class AudioPlayer {
   applyPlaybackSpeed(speed) {
     this.stateManager.updateState({ playbackSpeed: speed }, 'playback_speed_change');
     this.contextManager.applyPlaybackSpeed();
+  }
+
+  setVolume(volume) {
+    this.contextManager.setPlayerVolume(volume);
   }
 
   applyPreservePitch(enabled) {
@@ -236,6 +242,7 @@ export class AudioPlayer {
    * Stop playback and reset position
    */
   async stop() {
+    if (this.airPlayPlayback?.active) return this.airPlayPlayback.stopSession();
     await this.playbackManager.stop();
   }
   
@@ -319,6 +326,7 @@ export class AudioPlayer {
     this.playbackManager.savePlayerState();
     
     // Disconnect audio context
+    this.airPlayPlayback?.dispose();
     this.contextManager.disconnect();
     this.contextManager.clearNextTrackBuffer();
     

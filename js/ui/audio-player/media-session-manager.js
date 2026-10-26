@@ -8,6 +8,8 @@ const MEDIA_SESSION_ACTIONS = [
   'seekforward',
   'seekto'
 ];
+const ACTION_CAPABILITIES = { play: 'play', pause: 'pause', stop: 'stop',
+  previoustrack: 'previous', nexttrack: 'next', seekbackward: 'seek', seekforward: 'seek', seekto: 'seek' };
 
 function getDefaultNavigator() {
   return typeof navigator !== 'undefined' ? navigator : null;
@@ -70,6 +72,9 @@ export class MediaSessionManager {
   setupActionHandlers() {
     const session = this.session;
     if (!session?.setActionHandler || this.disposed) return;
+    const capabilitiesKey = JSON.stringify(this.getState().transportCapabilities || null);
+    if (this.actionCapabilitiesKey === capabilitiesKey) return;
+    this.actionCapabilitiesKey = capabilitiesKey;
 
     this.setActionHandler(session, 'play', () => {
       return this.runPlayerCommand(() => this.audioPlayer?.play?.());
@@ -102,6 +107,8 @@ export class MediaSessionManager {
   }
 
   setActionHandler(session, action, handler) {
+    const capabilities = this.getState().transportCapabilities;
+    if (handler && capabilities && capabilities[ACTION_CAPABILITIES[action]] !== true) handler = null;
     try {
       session.setActionHandler(action, handler);
       if (handler) {
@@ -147,6 +154,7 @@ export class MediaSessionManager {
     if (!session) return;
 
     const state = this.getState();
+    this.setupActionHandlers();
     const trackChanged = this.clearTrackScopedOverridesIfNeeded(session, state);
     this.syncMetadata(session, state, force);
     this.syncPlaybackState(session, state, force);
@@ -220,8 +228,8 @@ export class MediaSessionManager {
 
   buildMetadata(state) {
     const track = state.currentTrack || null;
-    const trackMeta = track?.meta || {};
-    const override = this.metadataOverride || {};
+    const trackMeta = state.liveInputActive ? state.liveInputInformation?.metadata || {} : track?.meta || {};
+    const override = state.liveInputActive ? {} : this.metadataOverride || {};
     const title = normalizeText(override.title) ||
       normalizeText(trackMeta.title) ||
       normalizeText(state.currentTrackName) ||

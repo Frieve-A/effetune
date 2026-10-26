@@ -35,6 +35,10 @@ async function withMutedConsole(method, callback) {
 function createConfigHarness(options = {}) {
   const calls = [];
   const openHomeCalls = [];
+  const airPlayCalls = [];
+  const airPlayStatusListeners = new Set();
+  const receptionStates = [];
+  let airPlayStatus = { enabled: false, available: true, state: 'off', ...(options.airPlayStatus || {}) };
   const openHomeRendererStates = [];
   const openHomeStatusListeners = new Set();
   const remoteControlCalls = [];
@@ -50,6 +54,7 @@ function createConfigHarness(options = {}) {
   let openHomeStatus = {
     apiVersion: 1,
     enabled: false,
+    upnpAvEnabled: false,
     rendererReady: true,
     available: true,
     state: 'stopped',
@@ -122,6 +127,12 @@ function createConfigHarness(options = {}) {
         openHomeStatus = { ...openHomeStatus, friendlyName: friendlyName.trim() || 'Test PC' };
         return { ...openHomeStatus };
       },
+      async setUpnpAvEnabled(enabled) {
+        openHomeCalls.push(['setUpnpAvEnabled', enabled]);
+        if (options.upnpAvSetEnabledError) throw options.upnpAvSetEnabledError;
+        openHomeStatus = { ...openHomeStatus, upnpAvEnabled: enabled, state: enabled || openHomeStatus.enabled ? 'ready' : 'stopped' };
+        return { ...openHomeStatus };
+      },
       onStatus(listener) {
         openHomeCalls.push(['onStatus']);
         openHomeStatusListeners.add(listener);
@@ -130,6 +141,22 @@ function createConfigHarness(options = {}) {
           openHomeStatusListeners.delete(listener);
         };
       }
+    },
+    airPlayV1: {
+      async getStatus() {
+        airPlayCalls.push(['getStatus']);
+        return { ...airPlayStatus };
+      },
+      async setEnabled(enabled) {
+        airPlayCalls.push(['setEnabled', enabled]);
+        if (options.airPlaySetEnabledError) throw options.airPlaySetEnabledError;
+        airPlayStatus = { ...airPlayStatus, enabled, state: enabled ? 'ready' : 'off' };
+        return { ...airPlayStatus };
+      },
+      onStatus(listener) {
+        airPlayStatusListeners.add(listener);
+        return () => airPlayStatusListeners.delete(listener);
+      }
     }
   };
   const uiManager = {
@@ -137,6 +164,8 @@ function createConfigHarness(options = {}) {
     setOpenHomeRemoteControlEnabled(enabled) {
       openHomeRendererStates.push(enabled);
     },
+    setUpnpAvRemoteControlEnabled: enabled => receptionStates.push(['upnpAv', enabled]),
+    setAirPlayReceiverEnabled: enabled => receptionStates.push(['airPlay', enabled]),
     ...options.uiManager
   };
   const windowObject = {
@@ -163,6 +192,9 @@ function createConfigHarness(options = {}) {
     calls,
     document,
     openHomeCalls,
+    airPlayCalls,
+    airPlayStatusListeners,
+    receptionStates,
     openHomeRendererStates,
     remoteControlCalls,
     remoteControlStatusListeners,
@@ -176,6 +208,10 @@ function createConfigHarness(options = {}) {
     emitRemoteControlStatus(status) {
       remoteControlStatus = { ...remoteControlStatus, ...status };
       for (const listener of remoteControlStatusListeners) listener({ ...remoteControlStatus });
+    },
+    emitAirPlayStatus(status) {
+      airPlayStatus = { ...airPlayStatus, ...status };
+      for (const listener of airPlayStatusListeners) listener({ ...airPlayStatus });
     }
   };
 }
@@ -1728,6 +1764,65 @@ test('OpenHome setting changes use setEnabled without generic config saves', asy
   assert.deepEqual(harness.openHomeRendererStates, [false, true]);
 });
 
+test('UPnP AV permission is independent of OpenHome and uses its host-owned API', async () => {
+  const harness = createConfigHarness();
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('upnp-av-enabled');
+    assert.equal(input.checked, false);
+    input.checked = true;
+    await input.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.upnpAvRemoteControl, true);
+    assert.equal(harness.window.appConfig.openHomeRemoteControl, false);
+    assert.equal(harness.document.getElementById('upnp-av-status').textContent, 'label:dialog.config.upnpAv.status.published');
+    assert.equal(harness.document.getElementById('openhome-status').textContent, 'label:dialog.config.openHome.status.stopped');
+    assert.ok(harness.receptionStates.some(state => state[0] === 'upnpAv' && state[1]));
+    assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+    assert.deepEqual(harness.openHomeCalls.at(-1), ['setUpnpAvEnabled', true]);
+  });
+});
+
+test('AirPlay settings show actual reception state and unsubscribe when the dialog closes', async () => {
+  const harness = createConfigHarness();
+  await withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    const input = harness.document.getElementById('airplay-enabled');
+    input.checked = true;
+    await input.dispatchEvent('change');
+    assert.equal(harness.window.appConfig.airPlayReceiver, true);
+    assert.ok(harness.receptionStates.some(state => state[0] === 'airPlay' && state[1]));
+    harness.emitAirPlayStatus({ enabled: true, state: 'receiving' });
+    assert.equal(harness.document.getElementById('airplay-status').textContent, 'label:dialog.config.airPlay.status.receiving');
+    harness.emitAirPlayStatus({ available: false, state: 'unavailable' });
+    assert.equal(input.disabled, false);
+    assert.equal(input.checked, true);
+    harness.emitAirPlayStatus({ enabled: false, state: 'off' });
+    assert.equal(input.disabled, true);
+    assert.equal(harness.document.getElementById('airplay-status').textContent, 'label:dialog.config.airPlay.status.unavailable');
+    assert.equal(harness.calls.some(call => call[0] === 'saveConfig'), false);
+    harness.document.getElementById('close-btn').dispatchEvent('click');
+    assert.equal(harness.airPlayStatusListeners.size, 0);
+  });
+  assert.deepEqual(harness.airPlayCalls, [['getStatus'], ['setEnabled', true]]);
+});
+
+test('receiver setting failures restore the confirmed permission and show translated feedback', async () => {
+  const harness = createConfigHarness({ upnpAvSetEnabledError: new Error('private native diagnostic'),
+    airPlaySetEnabledError: new Error('private helper path') });
+  await withMutedConsole('error', async () => withGlobals({ window: harness.window, document: harness.document }, async () => {
+    await showConfigDialog(true, {});
+    for (const prefix of ['upnp-av', 'airplay']) {
+      const input = harness.document.getElementById(`${prefix}-enabled`);
+      input.checked = true;
+      await input.dispatchEvent('change');
+      assert.equal(input.checked, false);
+      assert.equal(input.disabled, false);
+    }
+    assert.equal(harness.document.getElementById('upnp-av-status').textContent, 'label:dialog.config.openHome.status.updateFailed');
+    assert.equal(harness.document.getElementById('airplay-status').textContent, 'label:dialog.config.airPlay.status.updateFailed');
+  }));
+});
+
 test('Network device name saves while only library sharing is enabled and blank uses the host name', async () => {
   const harness = createConfigHarness({
     config: { language: 'en', openHomeRemoteControl: false },
@@ -2192,7 +2287,13 @@ test('all locales include the Network settings copy', () => {
     'dialog.config.openHome.status.stopped',
     'dialog.config.openHome.status.unavailable',
     'dialog.config.openHome.status.error',
-    'dialog.config.openHome.status.updateFailed'
+    'dialog.config.openHome.status.updateFailed',
+    'dialog.config.upnpAv.title', 'dialog.config.upnpAv.enable', 'dialog.config.upnpAv.risk',
+    'dialog.config.upnpAv.status.published', 'dialog.config.upnpAv.status.error',
+    'dialog.config.airPlay.title', 'dialog.config.airPlay.enable', 'dialog.config.airPlay.help',
+    'dialog.config.airPlay.status.loading', 'dialog.config.airPlay.status.off', 'dialog.config.airPlay.status.starting',
+    'dialog.config.airPlay.status.ready', 'dialog.config.airPlay.status.receiving', 'dialog.config.airPlay.status.unavailable',
+    'dialog.config.airPlay.status.failed', 'dialog.config.airPlay.status.updateFailed', 'airPlay.playbackFailed'
   ];
 
   for (const locale of locales) {

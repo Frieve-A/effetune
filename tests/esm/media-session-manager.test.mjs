@@ -133,6 +133,22 @@ function createHarness(options = {}) {
   };
 }
 
+test('MediaSessionManager shares received AirPlay metadata and only offers supported live actions', () => {
+  const { manager, mediaSession, stateManager } = createHarness();
+  manager.updateMetadataFromTags('Previous local title', 'Previous artist', 'Previous album', 'previous.jpg');
+  stateManager.update({ currentTrack: null, liveInputActive: true, isPlaying: true, isPaused: false,
+    currentTrackName: 'Received title', artworkUrl: 'blob:cover', transportCapabilities: { stop: true },
+    liveInputInformation: { metadata: { title: 'Received title', artist: 'Received artist', album: 'Received album' } } });
+  assert.deepEqual(mediaSession.metadata.metadata, { title: 'Received title', artist: 'Received artist',
+    album: 'Received album', artwork: [{ src: 'blob:cover' }] });
+  assert.deepEqual([...mediaSession.handlers.keys()], ['stop']);
+  stateManager.update({ liveInputActive: false, liveInputInformation: null, currentTrackName: '', artworkUrl: '',
+    isPlaying: false, isStopped: true, transportCapabilities: undefined });
+  assert.equal(mediaSession.metadata, null);
+  assert.ok(mediaSession.handlers.has('seekto'), 'ordinary local controls are restored after live release');
+  manager.dispose();
+});
+
 test('MediaSessionManager syncs player metadata, playback state, and position', () => {
   const { calls, mediaSession, setNow, stateManager } = createHarness();
 

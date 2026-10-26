@@ -1,3 +1,5 @@
+import { createLinearTicks, createFrequencyTicks, finerDecimalStep } from './analysis-axis-ticks.js';
+
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const palette = name => globalThis.window?.ThemePalette?.get(name) || '#888'; // theme-allow: Neutral fallback only when ThemePalette is unavailable; the theme palette remains authoritative.
@@ -116,12 +118,13 @@ function barycentric(triangle, x, y) {
 
 // A bounded software depth buffer avoids painter-order errors where ridges overlap.
 // The same winning triangle supplies the displayed color and the pointer readout.
-export function rasterizeWaterfallSurface(triangles, plot, resolution, colors, depthUnit = 'ms', contours = null, frequencyTicks = 0) {
+export function rasterizeWaterfallSurface(triangles, plot, resolution, colors, depthUnit = 'ms', contours = null, frequencyTicks = []) {
     const width = Math.max(1, Math.ceil(plot.width * resolution));
     const height = Math.max(1, Math.ceil(plot.height * resolution));
     const pixels = new Uint8ClampedArray(width * height * 4);
     const owners = new Int32Array(width * height).fill(-1);
     const depths = new Float32Array(width * height).fill(-Infinity);
+    const frequencyMidpoints = frequencyTicks.slice(1).map((tick, index) => (frequencyTicks[index] + tick) / 2);
     for (let id = 0; id < triangles.length; id++) {
         const triangle = triangles[id];
         const [a, b, c] = triangle;
@@ -143,9 +146,10 @@ export function rasterizeWaterfallSurface(triangles, plot, resolution, colors, d
         // a consistent width while sharing the surface's depth test.
         const levelGradient = contours ? Math.hypot(ax * a.level + bx * b.level + cx * c.level,
             ay * a.level + by * b.level + cy * c.level) : 0;
-        const frequencyGradient = frequencyTicks ? Math.hypot(ax * a.u + bx * b.u + cx * c.u,
+        const frequencyGradient = frequencyTicks.length ? Math.hypot(ax * a.u + bx * b.u + cx * c.u,
             ay * a.u + by * b.u + cy * c.u) : 0;
         for (let y = top; y <= bottom; y++) {
+            let frequencyIndex = 0;
             let wa = origin[0] + ay * (y - top);
             let wb = origin[1] + by * (y - top);
             let wc = origin[2] + cy * (y - top);
@@ -165,17 +169,30 @@ export function rasterizeWaterfallSurface(triangles, plot, resolution, colors, d
                 if (levelGradient > 1e-9) {
                     const level = wa * a.level + wb * b.level + wc * c.level;
                     const contour = Math.round(level / contours.step) * contours.step;
+                    let opacity = 0;
                     if (contour > contours.min && contour < contours.max) {
                         const distance = Math.abs(level - contour) / levelGradient;
-                        const opacity = clamp(0.65 * resolution + 0.5 - distance, 0, 0.75);
-                        for (let channel = 0; channel < 3; channel++) pixels[pixel + channel] *= 1 - opacity;
+                        opacity = clamp(0.65 * resolution + 0.5 - distance, 0, 0.75);
                     }
+                    if (contours.minorStep) {
+                        const minor = Math.round(level / contours.minorStep) * contours.minorStep;
+                        if (minor > contours.min && minor < contours.max) {
+                            const distance = Math.abs(level - minor) / levelGradient;
+                            opacity = Math.max(opacity, clamp(0.35 * resolution + 0.5 - distance, 0, 0.45));
+                        }
+                    }
+                    // Apply coincident major/minor lines once, retaining the stronger major line.
+                    for (let channel = 0; channel < 3; channel++) pixels[pixel + channel] *= 1 - opacity;
                 }
                 // Constant log-frequency lines follow the surface at the same
                 // ticks as the axis. The winning face also owns these lines.
                 if (frequencyGradient > 1e-9) {
                     const u = wa * a.u + wb * b.u + wc * c.u;
-                    const tick = Math.round(u * frequencyTicks) / frequencyTicks;
+                    // Frequency is monotonic along each scanline, so locating the
+                    // nearest nonuniform guide needs only occasional index changes.
+                    while (frequencyIndex < frequencyMidpoints.length && u > frequencyMidpoints[frequencyIndex]) frequencyIndex++;
+                    while (frequencyIndex > 0 && u < frequencyMidpoints[frequencyIndex - 1]) frequencyIndex--;
+                    const tick = frequencyTicks[frequencyIndex];
                     const distance = Math.abs(u - tick) / frequencyGradient;
                     const opacity = clamp(0.6 * resolution + 0.5 - distance, 0, 0.65);
                     for (let channel = 0; channel < 3; channel++) pixels[pixel + channel] += (255 - pixels[pixel + channel]) * opacity;
@@ -304,6 +321,10 @@ export class WaterfallSurface {
             this.data = state.waterfall;
             this.meshKey = key;
         }
+        if (!mesh.triangles.length) {
+            if (!exporting) this.raster = null;
+            return false;
+        }
         const buffer = exporting ? this.canvas.ownerDocument.createElement('canvas') :
             (this.buffer ||= this.canvas.ownerDocument.createElement('canvas'));
         const bufferCtx = buffer.getContext('2d');
@@ -321,13 +342,13 @@ export class WaterfallSurface {
         ctx.restore();
         const levelBottom = projectWaterfallPoint({ u: 0, v: 0, w: 0 }, view, fittedPlot);
         const levelTop = projectWaterfallPoint({ u: 0, v: 1, w: 0 }, view, fittedPlot);
-        const count = clamp(Math.floor(Math.abs(levelBottom.y - levelTop.y) / 35), 2, 6);
-        const roughStep = (state.yMax - state.yMin) / count;
-        const magnitude = 10 ** Math.floor(Math.log10(roughStep));
-        const step = [1, 2, 5, 10].find(value => value * magnitude >= roughStep) * magnitude;
-        const contours = { min: state.yMin, max: state.yMax, step };
-        const frequencyTicks = tickCount(projectWaterfallPoint({ u: 0, v: 0, w: 1 }, view, fittedPlot),
-            projectWaterfallPoint({ u: 1, v: 0, w: 1 }, view, fittedPlot), 65, 5);
+        const count = clamp(Math.floor(Math.abs(levelBottom.y - levelTop.y) / 35), 1, 6);
+        const contours = { min: state.yMin, max: state.yMax, ...createLinearTicks(state.yMin, state.yMax, count) };
+        contours.minorStep = finerDecimalStep(contours.step, 2);
+        const frequencyStart = projectWaterfallPoint({ u: 0, v: 0, w: 1 }, view, fittedPlot);
+        const frequencyEnd = projectWaterfallPoint({ u: 1, v: 0, w: 1 }, view, fittedPlot);
+        const frequencyTicks = createFrequencyTicks(state.xMin, state.xMax,
+            Math.hypot(frequencyEnd.x - frequencyStart.x, frequencyEnd.y - frequencyStart.y));
         const points = new Map();
         const projected = mesh.triangles.map(triangle => triangle.map(point => {
             if (!points.has(point)) points.set(point, projectWaterfallPoint(point, view, fittedPlot));
@@ -335,7 +356,8 @@ export class WaterfallSurface {
         }));
         const viewport = { left: 0, top: 0, width, height };
         const resolution = exporting ? dpr : Math.min(dpr, 1.5, Math.sqrt(600000 / (width * height)));
-        const raster = rasterizeWaterfallSurface(projected, viewport, resolution, colors, mesh.depthUnit, contours, frequencyTicks);
+        const raster = rasterizeWaterfallSurface(projected, viewport, resolution, colors, mesh.depthUnit, contours,
+            frequencyTicks.map(tick => tick.fraction));
         if (!exporting) this.raster = raster;
         this.drawAxes(ctx, state, fittedPlot, stops, false, view, mesh, contours, frequencyTicks);
         buffer.width = raster.width; buffer.height = raster.height;
@@ -344,6 +366,7 @@ export class WaterfallSurface {
         bufferCtx.putImageData(image, 0, 0);
         ctx.drawImage(buffer, 0, 0, width, height);
         this.drawAxes(ctx, state, fittedPlot, stops, true, view, mesh, contours, frequencyTicks);
+        return true;
     }
 
     drawAxes(ctx, state, plot, stops, labelsOnly, view, mesh, contours, frequencyTicks) {
@@ -362,29 +385,27 @@ export class WaterfallSurface {
         ctx.setLineDash([]); ctx.lineWidth = 1;
         ctx.strokeStyle = palette('graph-grid'); ctx.fillStyle = palette('graph-label-strong');
         ctx.font = '12px Arial';
-        for (let i = 0; i <= frequencyTicks; i++) {
-            const fraction = i / frequencyTicks;
+        for (const { fraction, label: frequencyLabel } of frequencyTicks) {
             const front = project(fraction, 0, 1);
             line(project(fraction, 0, 0), front);
-            const frequency = state.xMin * (state.xMax / state.xMin) ** fraction;
             ctx.textAlign = 'center';
-            label(frequency >= 1000 ? `${Number((frequency / 1000).toPrecision(2))}k` : `${Math.round(frequency)}`, front.x, front.y + 18);
+            label(frequencyLabel, front.x, front.y + 18);
         }
-        const depthTicks = tickCount(project(1, 0, 0), project(1, 0, 1), 60, 4);
-        for (let i = 0; i <= depthTicks; i++) {
-            const fraction = i / depthTicks;
-            const depth = mesh.depthMin + (mesh.depthMax - mesh.depthMin) * fraction;
+        const depthCount = tickCount(project(1, 0, 0), project(1, 0, 1), 60, 4);
+        const depthTicks = createLinearTicks(mesh.depthMin, mesh.depthMax, depthCount).ticks;
+        for (const { value: depth, label: depthLabel } of depthTicks) {
+            const fraction = (depth - mesh.depthMin) / (mesh.depthMax - mesh.depthMin);
             line(project(0, 0, fraction), project(1, 0, fraction));
             const edge = project(1, 0, fraction);
             ctx.textAlign = 'left';
-            label(`${Number(depth.toPrecision(3))} ${mesh.depthUnit}`, edge.x + 7, edge.y + 4);
+            label(`${depthLabel} ${mesh.depthUnit}`, edge.x + 7, edge.y + 4);
         }
-        for (let level = Math.ceil(state.yMin / contours.step) * contours.step; level <= state.yMax; level += contours.step) {
+        for (const { value: level, label: levelLabel } of contours.ticks) {
             const fraction = (level - state.yMin) / (state.yMax - state.yMin);
             line(project(0, fraction, 0), project(1, fraction, 0));
             const levelEdge = project(0, fraction, 0);
             ctx.textAlign = 'right';
-            label(`${Number(level.toPrecision(3))}`, levelEdge.x - 7, levelEdge.y + 4);
+            label(levelLabel, levelEdge.x - 7, levelEdge.y + 4);
         }
         line(project(0, 0, 0), project(0, 1, 0));
         const frequencyLabel = project(0.5, 0, 1);

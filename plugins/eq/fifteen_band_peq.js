@@ -643,6 +643,7 @@ class FifteenBandPEQPlugin extends PluginBase {
       this.boundEventListeners.push(cleanupPointer);
       
       marker.addEventListener('contextmenu', (e) => { 
+        if (e.defaultPrevented) return;
         e.preventDefault(); 
         suppressTapUntil = now() + 700;
         this.toggleBandEnabled(i); 
@@ -682,6 +683,7 @@ class FifteenBandPEQPlugin extends PluginBase {
     for (let i = 0; i < 15; i++) {
       const button = document.createElement('button');
       button.className = `fifteen-band-peq-band-tab ${i === this.currentBandIndex ? 'active' : ''}`;
+      button.setAttribute('data-parameter-control', 'view');
       button.dataset.bandIndex = i;
       button.setAttribute('data-instance-id', this.instanceId);
       button.setAttribute('role', 'tab');

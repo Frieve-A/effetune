@@ -17,17 +17,21 @@ const TOKEN = 'tok-real-app-describe';
 function request(op) {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${PORT}/?t=${TOKEN}`);
-        const timer = setTimeout(() => { ws.close(); reject(new Error(`timeout waiting for ${op}`)); }, 60_000);
-        ws.on('error', reject);
+        const finish = (error, message) => {
+            clearTimeout(timer);
+            ws.close();
+            if (error) reject(error);
+            else resolve(message);
+        };
+        const timer = setTimeout(() => finish(new Error(`timeout waiting for ${op}`)), 60_000);
+        ws.on('error', error => finish(error));
         ws.on('open', () => ws.send(JSON.stringify({ op, seq: 1 })));
         ws.on('message', data => {
             const message = JSON.parse(data.toString());
             if (message.seq !== 1) return;
-            if (message.op === 'ack' && !message.ok) reject(new Error(message.error));
+            if (message.op === 'ack' && !message.ok) return finish(new Error(message.error));
             if (message.op !== 'ack') {
-                clearTimeout(timer);
-                ws.close();
-                resolve(message);
+                finish(null, message);
             }
         });
     });
@@ -62,7 +66,7 @@ test('the real app describes every key of every effect and hand-written ranges m
     let application = null;
     try {
         application = await electron.launch({
-            args: [repoRoot, `--user-data-dir=${path.join(profile, 'profile')}`],
+            args: [path.join(repoRoot, 'tests/helpers/remote-describe-electron-main.cjs'), `--user-data-dir=${path.join(profile, 'profile')}`],
             env: {
                 ...process.env,
                 ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
@@ -88,6 +92,14 @@ test('the real app describes every key of every effect and hand-written ranges m
                 && !/not clamped/i.test(p.description || ''))
             .map(p => ({ nm: e.nm, key: p.key, min: p.min, max: p.max, minKey: p.minKey })));
         const page = await mainWindow(application);
+        if (process.platform === 'win32' || process.platform === 'darwin') {
+            const windows = await application.evaluate(({ BrowserWindow }) =>
+                BrowserWindow.getAllWindows().map(window => ({
+                    opacity: window.getOpacity(), focusable: window.isFocusable(), focused: window.isFocused()
+                })));
+            assert.ok(windows.length > 0);
+            assert.ok(windows.every(window => window.opacity === 0 && !window.focusable && !window.focused));
+        }
         const outside = await page.evaluate(entries => entries.flatMap(({ nm, key, min, max, minKey }) => {
             const span = Math.max(1, max - min);
             const stateOf = plugin => plugin.getSerializableParameters?.() || plugin.getParameters();

@@ -309,7 +309,7 @@ test('capture stop and failed startup close intentionally without triggering aud
             const audio = new AudioManager(null, { externalInput: true });
             audio.reset = async () => { resetCount++; };
             assert.equal(await audio.contextManager.initAudioContext({
-                sampleRate: 48000, outputChannels: 2, lowLatencyOutput: true
+                sampleRate: 48000, outputChannels: 2
             }), '');
             const context = audio.contextManager.audioContext;
             const track = { readyState: 'live', stop() { this.readyState = 'ended'; } };
@@ -339,7 +339,7 @@ test('capture stop and failed startup close intentionally without triggering aud
         const audio = new AudioManager(null, { externalInput: true });
         audio.reset = async () => { resetCount++; };
         assert.equal(await audio.contextManager.initAudioContext({
-            sampleRate: 48000, outputChannels: 2, lowLatencyOutput: true
+            sampleRate: 48000, outputChannels: 2
         }), '');
         await audio.contextManager.audioContext.close();
         assert.equal(resetCount, 1);

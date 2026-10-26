@@ -29,11 +29,12 @@ export function getSerializablePluginStateShort(plugin) {
     params = params || {};
     
     // Remove id, type, and enabled from params if they exist
-    const { id, type, enabled, ...cleanParams } = params;
+    const { id, type, enabled, _uiCollapsed, _uiLocked, ...cleanParams } = params;
     
     // Create the final state object with short names
     const result = {
         ...cleanParams,
+        ...getPluginUIState(plugin),
         nm: plugin.name,
         en: plugin.enabled
     };
@@ -83,13 +84,13 @@ export function getSerializablePluginStateLong(plugin, useDeepCopy = false) {
     }
     
     // Remove id and enabled from params if they exist
-    const { id, enabled, ...cleanParams } = params;
+    const { id, enabled, _uiCollapsed, _uiLocked, ...cleanParams } = params;
     
     // Create the final state object with long names
     const result = {
         name: plugin.name,
         enabled: plugin.enabled,
-        parameters: cleanParams
+        parameters: { ...cleanParams, ...getPluginUIState(plugin) }
     };
     
     // Add input and output bus at the top level if they exist
@@ -103,6 +104,14 @@ export function getSerializablePluginStateLong(plugin, useDeepCopy = false) {
         result.channel = plugin.channel;
     }
     return result;
+}
+
+// Reserved host UI keys stay outside effect/DSP parameters. Defaults cost no space.
+function getPluginUIState(plugin) {
+    return {
+        ...(plugin._uiCollapsed === true && { _uiCollapsed: true }),
+        ...(plugin._uiLocked === true && { _uiLocked: true })
+    };
 }
 
 /**
@@ -142,6 +151,11 @@ export function applySerializedState(plugin, state) {
         ? 'short'
         : (state.name !== undefined ? 'long' : null);
     const applyState = () => {
+        if (format) {
+            const uiState = format === 'short' ? state : state.parameters;
+            plugin._uiCollapsed = uiState?._uiCollapsed === true;
+            plugin._uiLocked = uiState?._uiLocked === true;
+        }
         // Handle both short and long format
         if (format === 'short') {
             // Short format (nm/en/ib/ob/ch)
@@ -162,11 +176,12 @@ export function applySerializedState(plugin, state) {
             plugin.channel = normalizeChannel(state.ch);
 
             // Extract parameters from state
-            const { nm, en, ib, ob, ch, ...params } = state;
+            const { _uiCollapsed, _uiLocked, ...effectState } = state;
+            const { nm, en, ib, ob, ch, ...params } = effectState;
 
             // Apply parameters
             if (plugin.setSerializedParameters) {
-                plugin.setSerializedParameters(state);
+                plugin.setSerializedParameters(effectState);
             } else if (plugin.setParameters) {
                 plugin.setParameters(params);
             } else if (plugin.parameters) {
@@ -193,12 +208,13 @@ export function applySerializedState(plugin, state) {
 
             // Apply parameters
             if (state.parameters) {
+                const { _uiCollapsed, _uiLocked, ...params } = state.parameters;
                 if (plugin.setSerializedParameters) {
-                    plugin.setSerializedParameters(state.parameters);
+                    plugin.setSerializedParameters(params);
                 } else if (plugin.setParameters) {
-                    plugin.setParameters(state.parameters);
+                    plugin.setParameters(params);
                 } else if (plugin.parameters) {
-                    Object.assign(plugin.parameters, state.parameters);
+                    Object.assign(plugin.parameters, params);
                 }
             }
         }
@@ -212,6 +228,7 @@ export function applySerializedState(plugin, state) {
         // from script dispatches no input/change event, so this cannot feed back into
         // the model (see plugins/plugin-base.js syncUIControls()).
         plugin.syncUIControls?.();
+        plugin.audioManager?.pipelineManager?.core?.itemBuilder?.updatePluginUIState(plugin);
     };
 
     const historyManager = plugin.audioManager?.pipelineManager?.historyManager;

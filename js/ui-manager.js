@@ -195,10 +195,13 @@ export class UIManager {
         // Audio player reference
         this.audioPlayer = null;
         this.openHomeRemoteControlEnabled = false;
+        this.upnpAvRemoteControlEnabled = window.appConfig?.upnpAvRemoteControl === true;
+        this.airPlayReceiverEnabled = window.appConfig?.airPlayReceiver === true;
         this.openHomeLocalControlEnabled = false;
         this.openHomeRemoteRuntimeReady = false;
         this.openHomeRendererPlayer = null;
         this.openHomeStatusUnsubscribe = null;
+        this.airPlayStatusUnsubscribe = null;
         this.miniPlayerMode = false;
         this.miniPlayerTargetMode = false;
         this.miniPlayerAlwaysOnTop = readStoredBoolean(MINI_PLAYER_ALWAYS_ON_TOP_STORAGE_KEY);
@@ -2492,14 +2495,29 @@ export class UIManager {
         return this.updateOpenHomeRendererPlayer();
     }
 
+    isNetworkPlayerRequired() {
+        return this.openHomeRemoteControlEnabled || this.upnpAvRemoteControlEnabled ||
+            this.airPlayReceiverEnabled || this.openHomeLocalControlEnabled;
+    }
+
+    async setUpnpAvRemoteControlEnabled(enabled) {
+        this.upnpAvRemoteControlEnabled = enabled === true;
+        return this.updateOpenHomeRendererPlayer();
+    }
+
+    async setAirPlayReceiverEnabled(enabled) {
+        this.airPlayReceiverEnabled = enabled === true;
+        return this.updateOpenHomeRendererPlayer();
+    }
+
     async updateOpenHomeRendererPlayer() {
-        if (this.openHomeRemoteControlEnabled || this.openHomeLocalControlEnabled) {
-            if (!this.openHomeRemoteRuntimeReady || !window.electronAPI?.openHomeV1) {
+        if (this.isNetworkPlayerRequired()) {
+            if (!this.openHomeRemoteRuntimeReady || (!window.electronAPI?.openHomeV1 && !window.electronAPI?.airPlayV1)) {
                 return this.audioPlayer;
             }
             const player = await this.createAudioPlayer([], false);
             this.openHomeRendererPlayer = player;
-            if (!this.openHomeRemoteControlEnabled && !this.openHomeLocalControlEnabled) {
+            if (!this.isNetworkPlayerRequired()) {
                 return this.updateOpenHomeRendererPlayer();
             }
             player.activateOpenHomePlaybackAdapter?.();
@@ -2516,33 +2534,40 @@ export class UIManager {
 
     async setOpenHomeRemoteRuntimeReady() {
         this.openHomeRemoteRuntimeReady = true;
-        const bridge = window.electronAPI?.openHomeV1;
-        if (bridge?.getStatus && !this.openHomeStatusUnsubscribe) {
+        const observers = [
+            { bridge: window.electronAPI?.openHomeV1, key: 'openHomeStatusUnsubscribe', apply: status => {
+                this.openHomeLocalControlEnabled = status?.localControlEnabled === true;
+                this.upnpAvRemoteControlEnabled = status?.upnpAvEnabled === true;
+            } },
+            { bridge: window.electronAPI?.airPlayV1, key: 'airPlayStatusUnsubscribe', apply: status => {
+                this.airPlayReceiverEnabled = status?.enabled === true;
+            } }
+        ];
+        for (const { bridge, key, apply } of observers) {
+            if (!bridge?.getStatus || this[key]) continue;
             let statusRevision = 0;
             const applyStatus = status => {
                 statusRevision += 1;
-                const enabled = status?.localControlEnabled === true;
-                if (enabled === this.openHomeLocalControlEnabled) return this.audioPlayer;
-                this.openHomeLocalControlEnabled = enabled;
+                apply(status);
                 return this.updateOpenHomeRendererPlayer();
             };
-            this.openHomeStatusUnsubscribe = bridge.onStatus?.(status => Promise.resolve(applyStatus(status)).catch(error => {
-                console.warn('Local playback control could not be updated:', error);
+            this[key] = bridge.onStatus?.(status => Promise.resolve(applyStatus(status)).catch(error => {
+                console.warn('Network playback control could not be updated:', error);
             }));
             const revision = statusRevision;
             try {
                 const status = await bridge.getStatus();
                 if (revision === statusRevision) await applyStatus(status);
             } catch (error) {
-                console.warn('Local playback control status could not be read:', error);
+                console.warn('Network playback control status could not be read:', error);
             }
-            window.addEventListener?.('pagehide', () => this.openHomeStatusUnsubscribe?.(), { once: true });
+            window.addEventListener?.('pagehide', () => this[key]?.(), { once: true });
         }
         return this.updateOpenHomeRendererPlayer();
     }
 
     shouldRetainAudioPlayerForOpenHome(player) {
-        return (this.openHomeRemoteControlEnabled || this.openHomeLocalControlEnabled) &&
+        return this.isNetworkPlayerRequired() &&
             player === this.audioPlayer &&
             player === this.openHomeRendererPlayer;
     }
@@ -2584,7 +2609,7 @@ export class UIManager {
             return this.audioPlayer;
         }
         this.audioPlayer = new AudioPlayer(this.audioManager);
-        if ((this.openHomeRemoteControlEnabled || this.openHomeLocalControlEnabled) && this.openHomeRemoteRuntimeReady) {
+        if (this.isNetworkPlayerRequired() && this.openHomeRemoteRuntimeReady) {
             this.audioPlayer.activateOpenHomePlaybackAdapter?.();
             this.openHomeRendererPlayer = this.audioPlayer;
         }

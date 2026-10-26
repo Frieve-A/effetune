@@ -72,6 +72,8 @@ function createAudioContextClass(calls, AudioNodeClass, options = {}) {
       return Promise.resolve();
     }
 
+    async setSinkId(id) { this.sinkId = id; }
+
     resume() {
       calls.push(['audioContextResume']);
       if (options.resumeError) return Promise.reject(options.resumeError);
@@ -250,6 +252,23 @@ test('initAudioContext applies Web audioPreferences without Electron APIs', asyn
     });
     assert.equal(manager.audioContext.destination.channelCount, 4);
     assert.equal(globalThis.window.audioPreferences.outputChannels, 4);
+  });
+});
+
+test('Web contexts without sink selection preserve the selected device for the media output path', async () => {
+  await withAudioGlobals({ window: {
+    audioPreferences: { outputDeviceId: 'speaker', outputChannels: 2 }
+  } }, async ({ calls, AudioNodeClass }) => {
+    const Context = createAudioContextClass(calls, AudioNodeClass, {
+      throwWhenOptions: options => Object.hasOwn(options, 'sinkId')
+    });
+    delete Context.prototype.setSinkId;
+    globalThis.window.AudioContext = Context;
+    const manager = new AudioContextManager();
+    assert.equal(await manager.initAudioContext(), '');
+    assert.equal(globalThis.window.audioPreferences.outputDeviceId, 'speaker');
+    assert.equal(calls.filter(call => call[0] === 'newAudioContext').length, 1);
+    assert.equal(Object.hasOwn(manager.audioContext.options, 'sinkId'), false);
   });
 });
 
@@ -520,7 +539,6 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
     manager._pendingAudioConfig = { outputChannels: 4 };
 
     assert.equal(await manager.loadAudioWorklet(), '');
-    assert.equal(manager.lowLatencyMode, true);
     assert.equal(globalThis.window.workletNode, manager.workletNode);
     assert.equal(manager._pendingAudioConfig, null);
     const workletOptions = calls.find(call => call[0] === 'newAudioWorkletNode')?.[3];
@@ -529,8 +547,7 @@ test('loadAudioWorklet creates a configured worklet and applies pending audio co
     assert.equal(workletOptions.channelInterpretation, 'discrete');
     assert.equal(calls.some(call => call[0] === 'addModule' && call[1] === '/nested/player/plugins/audio-processor.js'), true);
     assert.deepEqual(calls.filter(call => call[0] === 'workletPostMessage').map(call => call[1]), [
-      { type: 'updateAudioConfig', outputChannels: 4 },
-      { type: 'setLowLatencyMode', enabled: true }
+      { type: 'updateAudioConfig', outputChannels: 4 }
     ]);
   });
 
@@ -613,11 +630,7 @@ test('loadAudioWorklet waits for delayed registration and reports actual module 
     };
 
     assert.equal(await manager.loadAudioWorklet(), '');
-    assert.equal(manager.lowLatencyMode, false);
-    assert.deepEqual(calls.find(call => call[0] === 'workletPostMessage')?.[1], {
-      type: 'setLowLatencyMode',
-      enabled: false
-    });
+    assert.equal(calls.some(call => call[0] === 'workletPostMessage'), false);
   });
 
   await withAudioGlobals({ window: {} }, async () => {

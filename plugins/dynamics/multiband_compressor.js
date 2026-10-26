@@ -1405,6 +1405,7 @@ class MultibandCompressorPlugin extends PluginBase {
     for (let i = 0; i < this.bands.length; i++) {
       const tab = document.createElement('button');
       tab.className = `multiband-compressor-band-tab ${i === 0 ? 'active' : ''}`;
+      tab.setAttribute('data-parameter-control', 'view');
       tab.textContent = `Band ${i + 1}`;
       // Add instance ID to elements
       tab.setAttribute('data-instance-id', this.instanceId);

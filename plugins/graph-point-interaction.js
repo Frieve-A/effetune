@@ -84,8 +84,9 @@ class PeqMarkerWheel {
     }
 
     static bind(marker, { getQ, setQ, minimumQ = 0.1, maximumQ }) {
+        marker.setAttribute('data-parameter-control', 'edit');
         marker.addEventListener('wheel', event => {
-            if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+            if (event.defaultPrevented || !Number.isFinite(event.deltaY) || event.deltaY === 0) return;
             event.preventDefault();
             const current = getQ();
             const maximum = typeof maximumQ === 'function' ? maximumQ() : maximumQ;
@@ -108,6 +109,7 @@ class MobileBandSelector {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'mobile-band-tab';
+            button.setAttribute('data-parameter-control', 'view');
             button.textContent = String(index + 1);
             button.setAttribute('aria-label', `Band ${index + 1}`);
             button.setAttribute('aria-controls', panel.id);

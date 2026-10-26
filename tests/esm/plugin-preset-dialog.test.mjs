@@ -289,6 +289,12 @@ test('plugin provider isolates persistence fields and applies presets with one h
     assert.equal(calls.filter(call => call[0] === 'withHistorySuppressed').length, 2);
     assert.equal(core.pipelineManager.historyManager.isHistorySuppressed, false);
 
+    plugin._uiLocked = true;
+    assert.equal(await provider.applyUserPreset('User'), false);
+    assert.equal(await provider.applySystemPreset('system'), false);
+    assert.equal(calls.filter(call => call[0] === 'saveState').length, 2);
+    plugin._uiLocked = false;
+
     assert.equal(await provider.saveUserPreset('Saved'), true);
     const saveCall = calls.find(call => call[0] === 'storeSave');
     assert.deepEqual(saveCall.slice(1), ['Tone', 'Saved', { gain: 5 }]);

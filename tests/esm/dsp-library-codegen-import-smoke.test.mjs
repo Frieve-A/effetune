@@ -68,6 +68,7 @@ test('generated Python classes import through the real package runtime', t => {
     'assert ir.assets == {"impulseResponse": "room"}'
   ].join('\n');
   const result = spawnSync('python', ['-c', script], {
+    windowsHide: true,
     cwd: repoRoot,
     encoding: 'utf8',
     env: {

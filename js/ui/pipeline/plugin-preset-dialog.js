@@ -127,7 +127,7 @@ export class PluginPresetProvider {
     }
 
     applyParameters(apply) {
-        if (!this.isAttachedToPipeline()) return false;
+        if (!this.isAttachedToPipeline() || this.plugin._uiLocked) return false;
         const historyManager = this.pipelineCore.pipelineManager?.historyManager;
         const applyAndUpdate = () => {
             const applied = apply();

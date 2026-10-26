@@ -41,7 +41,7 @@ async function openVolumePipeline(t, count) {
         window.uiManager = new UIManager(pluginManager, audioManager);
         window.pipelineManager = uiManager.pipelineManager;
         audioManager.pipelineManager = pipelineManager;
-        audioManager.pipelineA.forEach(plugin => uiManager.expandedPlugins.add(plugin));
+        audioManager.pipelineA.forEach(plugin => pipelineManager.core.itemBuilder.setPluginExpanded(plugin, true));
         await uiManager.localizationReady;
         uiManager.initDragAndDrop();
         uiManager.initRangeFillStyling();

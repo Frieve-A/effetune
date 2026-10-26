@@ -274,8 +274,11 @@ function createHarness(options = {}) {
       return options.isFirstLaunch ?? true;
     },
     getCommandLinePresetFile() {
-      return options.commandLinePresetFile ?? 'startup.effetune_preset';
+      return Object.hasOwn(options, 'commandLinePresetFile') ? options.commandLinePresetFile : 'startup.effetune_preset';
     },
+    setCommandLinePresetFile(value) { options.commandLinePresetFile = value; },
+    getCommandLineMusicFiles() { return options.commandLineMusicFiles || []; },
+    clearCommandLineMusicFiles() { options.commandLineMusicFiles = []; },
     setAppConfig(config) {
       calls.push(['constants.setAppConfig', config]);
     },
@@ -526,6 +529,33 @@ test('prepare-local-playback-source delegates to the main-owned converter', asyn
   });
 });
 
+test('startup music admission is awaited, consumed once, and restricted to the main frame', async () => {
+  await withHarness({ commandLineMusicFiles: ['first.wav', 'second.flac'] }, async ({
+    ipcMain, constants, fileHandlers, moduleUnderTest
+  }) => {
+    moduleUnderTest.registerIpcHandlers();
+    const contents = constants.getMainWindow().webContents;
+    contents.mainFrame = {};
+    const receive = ipcMain.handlers.get('renderer-ready-for-music-files');
+    let resolveAdmission;
+    const descriptors = [{ path: 'first.wav', byteLength: 12 }];
+    fileHandlers.admitLocalPlaybackPaths = async files => {
+      assert.deepEqual(files, ['first.wav', 'second.flac']);
+      return new Promise(resolve => { resolveAdmission = resolve; });
+    };
+    assert.deepEqual(await receive({ sender: {}, senderFrame: contents.mainFrame }), []);
+    assert.deepEqual(await receive({ sender: contents, senderFrame: {} }), []);
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    let settled = false;
+    const pending = receive(event).then(value => { settled = true; return value; });
+    await Promise.resolve();
+    assert.equal(settled, false);
+    assert.deepEqual(await receive(event), []);
+    resolveAdmission(descriptors);
+    assert.deepEqual(await pending, descriptors);
+  });
+});
+
 test('registers core handlers and delegates file, config, update, path, and URL work', async () => {
   await withHarness({}, async ({ calls, electron, ipcMain, moduleUnderTest, tempDir }) => {
     const visibleMainWindow = createMainWindow(calls);
@@ -553,6 +583,7 @@ test('registers core handlers and delegates file, config, update, path, and URL 
     assert.deepEqual(handlers.get('get-window-visibility')(), { hidden: true });
     moduleUnderTest.setMainWindow(visibleMainWindow);
     assert.equal(handlers.get('get-command-line-preset-file')(), 'startup.effetune_preset');
+    assert.equal(handlers.get('get-command-line-preset-file')(), null);
     listeners.get('update-available')({}, { version: '2.0.0' });
     assert.deepEqual(handlers.get('renderer-ready-for-updates')(), { success: true });
     assert.deepEqual(handlers.get('get-update-info')(), { version: '2.0.0' });
@@ -582,7 +613,6 @@ test('registers core handlers and delegates file, config, update, path, and URL 
         outputDeviceLabel: '',
         sampleRate: 96000,
         useInputWithPlayer: false,
-        lowLatencyOutput: false,
         useWasmDsp: true,
         gaplessPlayback: true,
         outputChannels: 2,
@@ -725,16 +755,18 @@ test('save-config preserves Browser settings independently of stale renderer sna
   });
 });
 
-test('generic configuration saves cannot change network library sharing or device identity', async () => {
+test('generic configuration saves cannot change network sharing, permissions, or device identities', async () => {
   const networkMusicSharing = { enabled: false, folderIds: ['shared'] };
-  await withHarness({ config: { networkMusicDeviceId: 'uuid:stable', networkMusicSharing } }, async ({ calls, ipcMain, moduleUnderTest }) => {
+  await withHarness({ config: { networkMusicDeviceId: 'uuid:stable', networkMusicSharing, upnpAvRemoteControl: false, upnpAvDeviceId: 'uuid:upnp-stable', airPlayReceiver: false } }, async ({ calls, ipcMain, moduleUnderTest }) => {
     moduleUnderTest.registerIpcHandlers();
     const result = await ipcMain.handlers.get('save-config')({}, {
-      language: 'ja', networkMusicDeviceId: 'uuid:changed', networkMusicSharing: { enabled: true, folderIds: ['private'] }
+      language: 'ja', networkMusicDeviceId: 'uuid:changed', networkMusicSharing: { enabled: true, folderIds: ['private'] },
+      upnpAvRemoteControl: true, upnpAvDeviceId: 'uuid:changed', airPlayReceiver: true
     });
     assert.equal(result.success, true);
     assert.deepEqual(calls.find(call => call[0] === 'config.saveConfig')[1], {
-      language: 'ja', networkMusicDeviceId: 'uuid:stable', networkMusicSharing
+      language: 'ja', networkMusicDeviceId: 'uuid:stable', networkMusicSharing,
+      upnpAvRemoteControl: false, upnpAvDeviceId: 'uuid:upnp-stable', airPlayReceiver: false
     });
   });
 });
@@ -1390,7 +1422,6 @@ test('audio preference IPC skips reload only for a verified renderer-managed sil
       outputDeviceId: 'default',
       sampleRate: 96000,
       useInputWithPlayer: false,
-      lowLatencyOutput: false,
       useWasmDsp: true,
       outputChannels: 2,
       latencyHint: 'interactive'
@@ -1455,7 +1486,6 @@ test('audio preference IPC persists a verified output-device fallback without re
       outputDeviceLabel: 'Desk speakers',
       sampleRate: 96000,
       useInputWithPlayer: false,
-      lowLatencyOutput: false,
       useWasmDsp: true,
       outputChannels: 2,
       latencyHint: 'interactive'

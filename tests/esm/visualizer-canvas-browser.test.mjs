@@ -1744,3 +1744,51 @@ test('Heatmap keeps native colors on black while its dark values reveal the scen
         await browser.close();
     }
 });
+
+test('PWA network artwork stays origin clean through Visualizer canvas handoff', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        const artworkUrl = 'https://192.168.1.10:8443/pwa/v1/artwork/abcdefghijklmnop';
+        let requestOrigin;
+        const artwork = await page.evaluate(() => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+            const context = canvas.getContext('2d'); context.fillStyle = '#ff0000'; context.fillRect(0, 0, 1, 1);
+            return canvas.toDataURL().split(',')[1];
+        });
+        await page.route('https://visualizer.test/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Visualizer</title>' }));
+        await page.route(artworkUrl, route => {
+            requestOrigin = route.request().headers().origin;
+            return route.fulfill({ contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' },
+                body: Buffer.from(artwork, 'base64') });
+        });
+        await page.goto('https://visualizer.test/');
+        await page.addScriptTag({ content: moduleScript('../../js/network-music/pwa-connection.js') });
+        for (const name of ['visualizer-model', 'visualizer-effects', 'visualizer-text', 'visualizer-renderer']) {
+            await page.addScriptTag({ content: moduleScript(`../../js/visualizer/${name}.js`) });
+        }
+        const result = await page.evaluate(async url => {
+            const canvas = createLayer(64, 64), renderer = new VisualizerRenderer(canvas);
+            if (renderer.image(url) !== null) throw new Error('Artwork unexpectedly loaded synchronously');
+            await renderer.images.get(url).decode();
+            const artwork = renderer.image(url), item = createItem('artwork', 'network-cover');
+            item.rect = { x: 0, y: 0, w: 1, h: 1 };
+            const layout = { ...createDefaultLayout(), items: [item] };
+            renderer.draw(layout, { getModulators: () => ({}), getFrame: () => null }, { artwork: [{ src: url }] }, 0);
+            const frame = [...canvas.getContext('2d').getImageData(32, 32, 1, 1).data];
+            const copyCanvas = createLayer(64, 64), copy = new VisualizerRenderer(copyCanvas);
+            const copied = copy.copyFrom(renderer);
+            const copiedFrame = [...copyCanvas.getContext('2d').getImageData(32, 32, 1, 1).data];
+            const result = { cors: artwork.crossOrigin, rendered: renderer.layers.get(item.id).image === artwork,
+                frame, copied, copiedFrame };
+            renderer.dispose(); copy.dispose();
+            return result;
+        }, artworkUrl);
+        assert.equal(requestOrigin, 'https://visualizer.test');
+        assert.equal(result.cors, 'anonymous');
+        assert.equal(result.rendered, true);
+        assert.deepEqual(result.frame, [255, 0, 0, 255]);
+        assert.equal(result.copied, true);
+        assert.deepEqual(result.copiedFrame, result.frame);
+    } finally { await browser.close(); }
+});

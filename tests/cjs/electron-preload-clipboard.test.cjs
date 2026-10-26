@@ -202,11 +202,11 @@ test('Browser subscriptions hide IPC events and unsubscribe independently', () =
   harness.listeners.get('browser:focus-address')(event);
   assert.equal(focusRequests.length, 2);
   unsubscribeFocus();
-  assert.equal(harness.listeners.size, 0);
+  assert.deepEqual([...harness.listeners.keys()], ['airplay-v1:port']);
 
   assert.throws(() => browser.onState(null), TypeError);
   assert.throws(() => browser.onFocusAddress(null), TypeError);
-  assert.equal(harness.listeners.size, 0);
+  assert.deepEqual([...harness.listeners.keys()], ['airplay-v1:port']);
 });
 
 test('SFZ library preload forwards file and folder selection modes', async () => {
@@ -277,6 +277,7 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
     ['fileExists', ['file'], ['fileExists', 'file']],
     ['savePipelineStateToFile', [[{ name: 'Volume' }]], ['save-pipeline-state-to-file', [{ name: 'Volume' }]]],
     ['signalReadyForUpdates', [], ['renderer-ready-for-updates']],
+    ['signalReadyForMusicFiles', [], ['renderer-ready-for-music-files']],
     ['getUpdateInfo', [], ['get-update-info']],
     ['forceCheckForUpdates', [], ['force-check-for-updates']],
     ['downloadUpdate', [], ['download-update']],
@@ -323,12 +324,12 @@ test('preload exposes electronAPI invoke and send wrappers', async () => {
 
   api.rendererPing();
   api.sendPipelineStateForClose({ plugins: [] });
-  api.signalReadyForMusicFiles();
+  api.signalReadyForPresentation();
 
   assert.deepEqual(harness.sends.slice(0, 3), [
     ['renderer-ping'],
     ['pipeline-state-for-close', { plugins: [] }],
-    ['renderer-ready-for-music-files']
+    ['renderer-ready-for-presentation']
   ]);
 });
 
@@ -347,6 +348,9 @@ test('preload keeps OpenHome settings under the versioned host API', async () =>
     openHomeRemoteControl: false,
     openHomeDeviceId: 'renderer-controlled-id',
     openHomeFriendlyName: 'renderer-controlled-name',
+    upnpAvRemoteControl: true,
+    upnpAvDeviceId: 'renderer-controlled-upnp-id',
+    airPlayReceiver: true,
     remoteControlEnabled: true,
     remoteControlToken: 'renderer-controlled-token'
   };
@@ -359,6 +363,9 @@ test('preload keeps OpenHome settings under the versioned host API', async () =>
     openHomeRemoteControl: false,
     openHomeDeviceId: 'renderer-controlled-id',
     openHomeFriendlyName: 'renderer-controlled-name',
+    upnpAvRemoteControl: true,
+    upnpAvDeviceId: 'renderer-controlled-upnp-id',
+    airPlayReceiver: true,
     remoteControlEnabled: true,
     remoteControlToken: 'renderer-controlled-token'
   });
@@ -406,15 +413,17 @@ test('preload exposes only the versioned OpenHome control bridge', async () => {
   assert.equal(bridge.apiVersion, 1);
   await bridge.getStatus();
   await bridge.setEnabled(true);
+  await bridge.setUpnpAvEnabled(true);
   await bridge.setFriendlyName('EffeTune Living Room');
   await bridge.rendererReady();
   await bridge.rendererUnavailable();
   await bridge.respond({ requestId: 'a1', ok: true, result: {} });
   await bridge.resetComplete({ resetId: 'reset-1', ok: true });
   await bridge.publishState({ transportState: 'Stopped' });
-  assert.deepEqual(harness.invocations.slice(-8), [
+  assert.deepEqual(harness.invocations.slice(-9), [
     ['openhome-v1:get-status', {}],
     ['openhome-v1:set-enabled', { enabled: true }],
+    ['openhome-v1:set-upnp-av-enabled', { enabled: true }],
     ['openhome-v1:set-friendly-name', { friendlyName: 'EffeTune Living Room' }],
     ['openhome-v1:renderer-ready', {}],
     ['openhome-v1:renderer-unavailable', {}],
@@ -423,6 +432,7 @@ test('preload exposes only the versioned OpenHome control bridge', async () => {
     ['openhome-v1:state', { transportState: 'Stopped' }]
   ]);
   assert.throws(() => bridge.setEnabled('yes'), TypeError);
+  assert.throws(() => bridge.setUpnpAvEnabled('yes'), TypeError);
   assert.throws(() => bridge.setFriendlyName(false), TypeError);
 
   const actions = [];
@@ -447,6 +457,38 @@ test('preload exposes only the versioned OpenHome control bridge', async () => {
   assert.equal(harness.listeners.has('openhome-v1:reset'), false);
   assert.equal(Object.hasOwn(bridge, 'invoke'), false);
   assert.equal(Object.hasOwn(bridge, 'send'), false);
+});
+
+test('preload exposes the bounded AirPlay control bridge', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const bridge = harness.exposed.electronAPI.airPlayV1;
+  await bridge.getStatus();
+  await bridge.setEnabled(true);
+  await bridge.rendererReady();
+  await bridge.rendererUnavailable();
+  await bridge.stopSession();
+  assert.deepEqual(harness.invocations, [
+    ['airplay-v1:get-status', {}],
+    ['airplay-v1:set-enabled', { enabled: true }],
+    ['airplay-v1:renderer-ready', {}],
+    ['airplay-v1:renderer-unavailable', {}],
+    ['airplay-v1:stop-session', {}]
+  ]);
+  assert.throws(() => bridge.setEnabled('yes'), TypeError);
+});
+
+test('preload transfers only a single AirPlay port to the renderer without exposing IPC events', () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const messages = [];
+  const port = {};
+  withPatchedProperty(globalThis, 'window', { postMessage: (...args) => messages.push(args) }, () => {
+    harness.listeners.get('airplay-v1:port')({ ports: [] });
+    harness.listeners.get('airplay-v1:port')({ ports: [port, {}] });
+    harness.listeners.get('airplay-v1:port')({ ports: [port], sender: 'private' });
+  });
+  assert.deepEqual(messages, [[{ type: 'effetune-airplay-v1-port' }, '*', [port]]]);
 });
 
 test('preload exposes the versioned remote control bridge', async () => {
@@ -534,6 +576,43 @@ test('preload forwards only the safe oversized-index read code', async () => {
 
   response = { ok: false, code: 'C:\\private\\raw-error' };
   assert.deepEqual(await library.read({ name: 'index.json' }), { ok: false, code: 'storage-failed' });
+});
+
+test('every IR storage operation validates its namespace before crossing the preload bridge', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const library = harness.exposed.electronAPI.irLibraryV1;
+  const operations = [
+    ['read', 'read'], ['exists', 'exists'], ['writeAtomic', 'write-atomic'],
+    ['remove', 'remove'], ['list', 'list'], ['cleanupTemporary', 'cleanup-temporary'],
+    ['readCache', 'cache-read'], ['writeCacheAtomic', 'cache-write-atomic'],
+    ['removeCache', 'cache-remove'], ['listCache', 'cache-list']
+  ];
+  for (const [method] of operations) {
+    assert.throws(() => library[method]({ namespace: '../private', name: 'index.json', bytes: new Uint8Array(0) }),
+      /Invalid audio library namespace/);
+  }
+  assert.deepEqual(harness.invocations, []);
+  for (const namespace of ['ir-library', 'sfz-library']) {
+    for (const [method, channel] of operations) {
+      const request = { namespace, name: 'index.json', bytes: Uint8Array.of(123, 125) };
+      await library[method](request);
+      assert.deepEqual(harness.invocations.at(-1), [`ir-library-v1:${channel}`, request]);
+    }
+  }
+});
+
+test('measurement backup requests preserve their payloads and propagate storage failures', async () => {
+  const harness = createPreloadHarness();
+  loadPreload(harness);
+  const api = harness.exposed.electronAPI.measurementBackupV1;
+  for (const method of ['write', 'remove', 'list']) {
+    const request = { id: 'measurement-1', json: '{}' };
+    await api[method](request);
+    assert.deepEqual(harness.invocations.at(-1), [`measurement-backup-v1:${method}`, request]);
+    harness.rejectInvokeChannels.add(`measurement-backup-v1:${method}`);
+    await assert.rejects(api[method](request), /invoke rejected/);
+  }
 });
 
 test('preload exposes catalog recovery independently from the catalog API', async () => {

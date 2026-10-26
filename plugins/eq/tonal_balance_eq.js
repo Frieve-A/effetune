@@ -623,12 +623,14 @@ class TonalBalanceEQPlugin extends PluginBase {
 
         const resetButton = document.createElement('button');
         resetButton.className = 'analog-meter-reset-button';
+        resetButton.setAttribute('data-parameter-control', 'view');
         resetButton.textContent = 'Reset';
         resetButton.title = 'Restart the measurement from the current audio';
         resetButton.addEventListener('click', () => this.resetMeasurement());
 
         const copyPeqButton = this.copyPeqButton = document.createElement('button');
         copyPeqButton.className = 'analog-meter-reset-button tonal-balance-eq-copy-peq-button';
+        copyPeqButton.setAttribute('data-parameter-control', 'view');
         copyPeqButton.textContent = 'Copy as PEQ';
         copyPeqButton.title = 'Copy the EQ curve as 5Band PEQ settings to paste into the Effect Pipeline ' +
             '(available once the graph shows an EQ curve)';

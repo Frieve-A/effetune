@@ -285,6 +285,7 @@ class RoomEqAdditionalEqEditor {
             this.boundEventListeners = this.boundEventListeners || [];
             this.boundEventListeners.push(cleanupPointer);
             marker.addEventListener('contextmenu', event => {
+                if (event.defaultPrevented) return;
                 event.preventDefault();
                 suppressTapUntil = now() + 700;
                 this.toggleBandEnabled(index);
@@ -3095,6 +3096,7 @@ class RoomEqPlugin extends PluginBase {
             tab.type = 'button';
             tab.id = `${instanceId}-${definition.id}-tab`;
             tab.className = `room-eq-tab ${active ? 'active' : ''}`;
+            tab.setAttribute('data-parameter-control', 'view');
             tab.textContent = definition.label;
             tab.setAttribute('role', 'tab');
             tab.setAttribute('aria-selected', active ? 'true' : 'false');

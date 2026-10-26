@@ -1,0 +1,69 @@
+EffeTune AirPlay audio receiver
+=============================
+
+UxPlay 1.73.7
+https://github.com/FDH2/UxPlay
+Pinned source revision: df67c212a433cf6dda3676dd40c097900d24e645
+Copyright the UxPlay authors and the authors identified in its source files.
+Distributed under GNU GPL version 3 or later, with the upstream component
+licenses preserved in the accompanying source archive. The GPL text is in
+licenses/UxPlay-GPL-3.0.txt. This program is provided without warranty.
+
+The source/ directory contains the exact upstream source archives, dependency
+source archives (including their original notices and build recipes), and
+EffeTune's build instructions and build-only adaptations. The source filenames,
+revisions, versions, license metadata, and SHA-256 checksums are recorded in
+runtime-manifest.json and source/effetune-airplay-build/native/airplay-receiver/
+dependencies.lock.json. These materials may be used to rebuild, modify, and
+replace the receiver and its libraries. EffeTune does not restrict replacement
+of the receiver. UxPlay is a separate executable; its GNU GPL licensing and
+the licenses of every redistributed dependency continue to apply.
+
+The fixed UxPlay build promotes its existing connection-count diagnostics to
+normal log level and flushes log output. This exposes actual connection
+teardown without guessing from audio silence. Its existing volume callback
+also emits the computed sender slider fraction as a flushed framed record;
+the volume calculation and application are unchanged. It does not change its AirPlay,
+authentication, cryptography, discovery, or media protocol implementation.
+The build recipe contains the complete, checked adaptation.
+
+UxPlay's upstream README contains a FairPlay-related disclaimer concerning
+third-party code and the legal uncertainty identified by its authors. That
+README and all source notices are included unchanged in the source archive.
+This distribution makes no claim of Apple certification, DRM playback,
+AirPlay 2 multiroom support, or compatibility with future Apple software.
+
+Apple mDNSResponder (Windows discovery service and DNS-SD client)
+https://github.com/apple-oss-distributions/mDNSResponder
+Pinned revision: 641cdf73ef46e1824895cbc44ad8ac7647da2479
+Copyright Apple Inc. and the contributors identified in the source files.
+The source license file describes the Apache-2.0 and BSD-3-Clause components.
+All original notices accompany the complete source archive. Apple names and
+trademarks do not imply endorsement of EffeTune.
+
+The Windows build restores the missing LOG_ERR Windows debug-level mapping,
+removes obsolete references to the already-removed legacy NAT implementation,
+and compiles source as UTF-8. The source-built service is installed only by
+the normal elevated installer when no Bonjour Service already exists.
+Portable builds require an existing compatible discovery service. EffeTune
+does not replace or uninstall a preexisting shared discovery service.
+
+GStreamer, FFmpeg, GLib, OpenSSL, libplist and runtime dependencies
+---------------------------------------------------------------
+Exact redistributed packages and licenses are listed in runtime-manifest.json.
+Their original license files are included under licenses/ and their complete
+corresponding source archives under source/. GStreamer components are generally
+LGPL-2.1-or-later; UxPlay's complete combined binary retains its GNU GPL terms.
+FFmpeg is built from the fixed upstream source with AAC/ALAC codecs and no
+external codec libraries. Unneeded GStreamer video sinks are not included.
+The upstream-required parser/autodetection plugins remain available because
+the fixed UxPlay version checks their presence even in audio-only mode.
+
+Windows dependency binaries are obtained from the official MSYS2 UCRT64
+repository, verified against locked SHA-256 checksums, and selected by their
+actual PE imports. FFmpeg is rebuilt with the small audio-only configuration
+in the build recipe rather than using the general-purpose vendor FFmpeg
+binary and its unrelated video and speech-recognition dependencies.
+
+Linux uses the system's existing Avahi/DNS-SD service. macOS uses the operating
+system's Bonjour service. EffeTune does not start or stop those system services.

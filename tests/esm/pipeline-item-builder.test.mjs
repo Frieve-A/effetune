@@ -337,6 +337,9 @@ function createCore(options = {}) {
     updatePipelineUI(force) {
       calls.push(['updatePipelineUI', force ?? null]);
     },
+    updateURL() {
+      calls.push(['updateURL']);
+    },
     moveSectionUp(plugin) {
       calls.push(['moveSectionUp', plugin.name]);
     },
@@ -436,7 +439,10 @@ test('creates pipeline items and exercises header controls for regular plugins',
     assert.equal(find(item, '.routing-button').parentNode, actions);
     assert.equal(find(item, '.preset-button').parentNode, actions);
     assert.ok(actions.children.indexOf(find(item, '.preset-button')) > actions.children.indexOf(find(item, '.routing-button')));
-    assert.equal(find(item, '.delete-button').parentNode, actions);
+    assert.equal(find(item, '.lock-button').parentNode, header);
+    assert.equal(find(item, '.delete-button').parentNode, header);
+    assert.equal(header.children.at(-2).className, 'lock-button');
+    assert.equal(header.children.at(-1).className, 'delete-button');
 
     item.dispatch('click', { target: find(item, '.plugin-ui') });
     item.dispatch('click', { target: find(item, '.plugin-name') });
@@ -480,6 +486,50 @@ test('creates pipeline items and exercises header controls for regular plugins',
     assert.ok(core.calls.some(call => call[0] === 'showAIDialog'));
     assert.ok(core.calls.some(call => call[0] === 'deleteSelectedPlugins'));
     assert.ok(core.calls.filter(call => call[0] === 'saveState').length >= 1);
+  });
+});
+
+test('restored locks disable editing and unlocking preserves the effect and collapse state', async () => {
+  await withBuilderGlobals({ uiManager: false }, async ({ documentRef }) => {
+    const plugin = new TestPlugin({ inputBus: 1 });
+    plugin._uiCollapsed = true;
+    plugin._uiLocked = true;
+    const core = createCore({ pipeline: [plugin], expandedPlugins: new Set([plugin]) });
+    const builder = new PipelineItemBuilder(core);
+    const item = builder.createPipelineItem(plugin);
+    documentRef.body.appendChild(item);
+    const ui = find(item, '.plugin-ui');
+    const lock = find(item, '.lock-button');
+    assert.equal(core.expandedPlugins.has(plugin), false);
+    assert.equal(ui.classList.contains('expanded'), false);
+    assert.equal(ui.dataset.parametersLocked, 'true');
+    assert.equal(lock.attributes['aria-pressed'], 'true');
+    assert.equal(lock.title, 'Unlock effect settings');
+    assert.equal(find(item, '.bus-info').inert, true);
+    const parameters = plugin.parameters;
+    for (const selector of ['.routing-button', '.preset-button', '.reset-effect-button']) {
+      const control = find(item, selector);
+      assert.equal(control.disabled, true);
+      control.onclick(createEvent(control));
+    }
+    find(item, '.bus-info').onclick(createEvent(find(item, '.bus-info')));
+    assert.equal(plugin.parameters, parameters);
+    assert.equal(core.calls.some(call => ['showRoutingDialog', 'showPluginPresetDialog', 'updateWorkletPlugin'].includes(call[0])), false);
+
+    const name = find(item, '.plugin-name');
+    name.onclick(createEvent(name));
+    assert.equal(plugin._uiCollapsed, false);
+    assert.equal(ui.classList.contains('expanded'), true);
+    assert.equal(ui.dataset.parametersLocked, 'true');
+    lock.onclick(createEvent(lock));
+    assert.equal(plugin._uiLocked, false);
+    assert.equal(ui.dataset.parametersLocked, 'false');
+    assert.equal(lock.title, 'Lock effect settings');
+    assert.equal(lock.attributes['aria-pressed'], 'false');
+    assert.equal(find(item, '.reset-effect-button').disabled, false);
+    assert.equal(plugin.parameters, parameters);
+    assert.equal(core.calls.filter(call => call[0] === 'saveState').length, 2);
+    assert.equal(core.calls.filter(call => call[0] === 'updateURL').length, 2);
   });
 });
 
@@ -946,18 +996,22 @@ test('name clicks toggle individual, global, and section expansion behavior', as
     const name = find(item, '.plugin-name');
     name.onclick(createEvent(name));
     assert.equal(find(item, '.plugin-ui').classList.contains('expanded'), true);
+    assert.equal(plugin._uiCollapsed, false);
     assert.equal(plugin.markersUpdated, true);
     name.onclick(createEvent(name));
     assert.equal(find(item, '.plugin-ui').classList.contains('expanded'), false);
+    assert.equal(plugin._uiCollapsed, true);
 
     name.onclick(createEvent(name, { ctrlKey: true }));
     assert.equal(core.expandedPlugins.has(plugin), true);
     name.onclick(createEvent(name, { metaKey: true }));
     assert.equal(core.expandedPlugins.has(plugin), false);
+    assert.equal(analyzer._uiCollapsed, true);
 
     name.onclick(createEvent(name, { shiftKey: true }));
     assert.equal(core.expandedPlugins.has(plugin), true);
     assert.equal(core.expandedPlugins.has(analyzer), false);
+    assert.equal(analyzer._uiCollapsed, true);
     name.onclick(createEvent(name, { shiftKey: true }));
     assert.equal(core.expandedPlugins.has(plugin), false);
   });

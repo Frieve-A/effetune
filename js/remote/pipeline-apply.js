@@ -46,7 +46,9 @@ export function applyParamsToPlugin(plugin, params, unset = []) {
         for (const key of unset) delete state[key];
         applySerializedState(plugin, state);
     } else {
-        const { nm, en, ib, ob, ch, ...rest } = params;
+        const { nm, en, ib, ob, ch, _uiCollapsed, _uiLocked, ...rest } = params;
+        if (_uiCollapsed !== undefined) plugin._uiCollapsed = _uiCollapsed === true;
+        if (_uiLocked !== undefined) plugin._uiLocked = _uiLocked === true;
         if (Object.keys(rest).length > 0) plugin.setParameters(rest);
         if (typeof en === 'boolean') plugin.setEnabled(en);
         if (ib !== undefined) plugin.inputBus = ib;
@@ -218,6 +220,7 @@ export function finishBatch(win, result, { saveHistory = null, scheduleHistorySa
     for (const plugin of result.touched) {
         core.updateWorkletPlugin(plugin);
         plugin.syncUIControls?.();
+        core.itemBuilder?.updatePluginUIState(plugin);
     }
     if (result.touched.size > 0) {
         core.updateAllPluginDisplayState?.();

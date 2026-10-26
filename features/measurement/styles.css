@@ -809,6 +809,13 @@ canvas {
     margin-left: 0;
 }
 
+.impulse-response-zoom {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+}
+
 .impulse-response-controls label {
     display: flex;
     flex: 1 1 240px;
@@ -1328,20 +1335,32 @@ input[type="range"]::-moz-range-thumb,
 .analysis-settings, .analysis-correction { margin-top: 16px; border-top: 1px solid var(--et-surface-26); padding-top: 12px; }
 .analysis-settings summary, .analysis-correction summary { cursor: pointer; font-weight: bold; padding: 4px 0; margin-bottom: 12px; }
 .analysis-settings-grid, .correction-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 4px 24px; }
-#measurementResults .plugin-parameter-ui .parameter-row { flex-wrap: nowrap; min-width: 0; }
-#measurementResults .plugin-parameter-ui .parameter-row[hidden] { display: none; }
-#measurementResults .plugin-parameter-ui .parameter-row > label { display: flex; align-items: center; flex: 0 0 120px; margin: 0; white-space: nowrap; min-width: 0; }
-#measurementResults .plugin-parameter-ui .parameter-row > label > span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-#measurementResults .plugin-parameter-ui .parameter-unit { flex-shrink: 0; white-space: pre; }
-#measurementResults .plugin-parameter-ui .parameter-row > input[type=number] { flex: 0 0 80px; margin: 0; }
-#measurementResults .plugin-parameter-ui .parameter-row > input[type=checkbox] { margin: 0; }
-#measurementResults .plugin-parameter-ui .parameter-row > select { flex: 1; min-width: 0; margin: 0; }
-#measurementResults .plugin-parameter-ui .parameter-row > input[type=range] { width: auto; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.plugin-parameter-ui .parameter-row { min-width: 0; }
+.plugin-parameter-ui .parameter-row[hidden] { display: none; }
+.plugin-parameter-ui .parameter-row > :is(label, .setting-label) {
+    display: flex; align-items: center; flex: 0 0 120px; width: 120px; min-width: 0;
+    height: 26px; margin: 0; font: inherit; line-height: normal; white-space: normal;
+    color: var(--et-text-secondary);
+}
+/* Match the Effect label's centered line boxes, with a measurement-only two-line limit. */
+.parameter-label-text {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    overflow: hidden; overflow-wrap: anywhere; max-width: 100%;
+}
+.plugin-parameter-ui .parameter-row > input[type=number] { flex: 0 0 80px; margin: 0; }
+.plugin-parameter-ui .parameter-row > input[type=checkbox] { margin: 0; }
+.plugin-parameter-ui .parameter-row > :is(select, input[type=text]) { flex: 1; min-width: 0; margin: 0; }
+.plugin-parameter-ui .parameter-row > input[type=range] { width: auto; margin: 0 2px; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+#configForm .form-group { margin-top: 30px; }
+#configForm .parameter-row > :is(.explanation-text, #calibrationAssignmentControls) { flex-basis: 100%; }
+#configForm .parameter-row > :is(.channel-checkbox-group, .radio-choice-group),
+#noiseChannelControls .radio-choice-group { flex: 1 1 180px; min-width: min-content; }
+.plugin-parameter-ui :is(.channel-checkbox-group, .radio-choice-group) label { width: auto; min-width: 0; flex: 0 0 auto; }
+#configForm .parameter-row > :is(select, input[type=text]) { padding: 4px; }
+#noiseChannelControls .parameter-row { margin-top: 12px; }
+#noiseLevelValue { flex: 0 0 80px; }
 .correction-controls .explanation-text2 { margin: 2px 0 8px; }
 .correction-control { min-width: 0; }
-@media (max-width: 600px) {
-    #measurementResults .plugin-parameter-ui .parameter-row > input[type=range] { min-width: 30px; flex-basis: 30px; }
-}
 .analysis-setting-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; }
 .analysis-setting-actions button { margin: 0; }
 /* Compact result actions match the Effect reset button; point/channel selectors remain independent. */
@@ -1363,15 +1382,18 @@ input[type="range"]::-moz-range-thumb,
 }
 
 .analysis-graph-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
-#measurementResults .analysis-graph-header h3 { margin: 0; }
+#measurementResults .analysis-graph-header h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .analysis-graph-header button { flex-shrink: 0; margin: 0; }
-#measurementResults .analysis-graph-header .graph-copy-button {
-    display: inline-flex; align-items: center; justify-content: center; width: 24px; padding: 0;
+.analysis-graph-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; margin-left: auto; }
+#measurementResults .analysis-graph-actions :is(.analysis-auto-button, .analysis-view-reset-button) { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
+#measurementResults :is(.analysis-graph-header .graph-copy-button, .analysis-graph-header .analysis-reset-button, .impulse-response-controls .impulse-zoom-button) {
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 24px; padding: 0;
     border: 1px solid var(--et-surface-32);
 }
-.graph-copy-button svg { display: block; flex: 0 0 auto; }
+.graph-copy-button svg, .analysis-reset-button svg, .impulse-zoom-button svg { display: block; flex: 0 0 auto; }
+#measurementResults .analysis-reset-button { color: var(--et-accent); }
 .graph-copy-button:disabled { opacity: .5; cursor: not-allowed; }
-.graph-copy-button .graph-copy-label {
+.graph-copy-button .graph-copy-label, .analysis-action-label, .impulse-zoom-label {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
 }

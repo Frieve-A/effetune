@@ -93,13 +93,15 @@ export class UIManager {
             input.dataset.bound = 'true';
             const row = slider.closest('.parameter-row'); const label = row.querySelector('label');
             const text = document.createElement('span'); text.textContent = label.textContent.replace(/[:：]\s*$/, '');
-            const key = label.dataset.i18n; label.removeAttribute('data-i18n');
+            const key = label.querySelector('[data-i18n]').dataset.i18n;
             // Existing correction translations include punctuation; keep the live translated label separate from its unit.
             text.dataset.i18n = key; text.dataset.i18nLabel = '';
             const colon = document.createElement('span'); colon.className = 'parameter-colon';
             colon.textContent = label.textContent.match(/([:：])\s*$/)?.[1] || ':';
             const suffix = document.createElement('span'); suffix.className = 'parameter-unit'; suffix.textContent = unit ? ` (${unit})` : '';
-            label.replaceChildren(text, suffix, colon); label.id = `${numberId}-label`;
+            const caption = document.createElement('span'); caption.className = 'parameter-label-text';
+            caption.append(text, suffix, colon); label.replaceChildren(caption); label.id = `${numberId}-label`;
+            label.title = label.textContent;
             input.setAttribute('aria-labelledby', label.id);
             if (logarithmic) slider.step = 'any';
             const format = value => String(Number(Number(value).toFixed(min < 1 ? 2 : 0)));
@@ -111,6 +113,15 @@ export class UIManager {
                 if (document.activeElement === input) input.value = typed;
             }, toSlider, format);
             input.applied = applied; input.slider = slider;
+            slider.dataset.rangeFineTarget = input.id;
+            slider.dataset.rangeFineStep = input.step;
+            const commit = () => {
+                input.value = format(logarithmic ? this.logSliderToValue(Number(slider.value), min, max) : Number(slider.value));
+                applied.value = Number(input.value);
+                slider.value = toSlider(applied.value); updateRangeFill(slider);
+            };
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', event => { if (event.key === 'Enter') commit(); });
             slider.addEventListener('input', () => { applied.value = Number(input.value); updateRangeFill(slider); });
             updateRangeFill(slider);
             const group = document.createElement('div'); group.className = 'correction-control';
@@ -163,8 +174,9 @@ export class UIManager {
         document.getElementById('targetLowFreqSlider').addEventListener('input', (e) => {
             // Update slider value display
             const value = e.target.value;
-            const freq = this.logSliderToValue(value, 20, 1000);
-            document.getElementById('targetLowFreqValue').value = Math.round(freq);
+            const freq = Math.round(this.logSliderToValue(value, 20, 1000));
+            e.target.value = this.valueToLogSlider(freq, 20, 1000);
+            document.getElementById('targetLowFreqValue').value = freq;
             // Show spinner
             document.getElementById('loading-spinner-results').style.display = 'block';
             // Update markers and graph immediately, but don't recalculate PEQ parameters
@@ -180,8 +192,9 @@ export class UIManager {
         document.getElementById('targetHighFreqSlider').addEventListener('input', (e) => {
             // Update slider value display
             const value = e.target.value;
-            const freq = this.logSliderToValue(value, 1000, 20000);
-            document.getElementById('targetHighFreqValue').value = Math.round(freq);
+            const freq = Math.round(this.logSliderToValue(value, 1000, 20000));
+            e.target.value = this.valueToLogSlider(freq, 1000, 20000);
+            document.getElementById('targetHighFreqValue').value = freq;
             // Show spinner
             document.getElementById('loading-spinner-results').style.display = 'block';
             // Update markers and graph immediately, but don't recalculate PEQ parameters

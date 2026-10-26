@@ -3,6 +3,9 @@ import test from 'node:test';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { VisualizerFeed } from '../../js/visualizer/visualizer-feed.js';
 import { createFakeDocument } from '../helpers/fake-dom.mjs';
+import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
+import { MediaSessionManager } from '../../js/ui/audio-player/media-session-manager.js';
+import { createItem, encodeLayoutShare, decodeLayoutShare } from '../../js/visualizer/visualizer-model.js';
 
 function setup() {
     const commands = [], state = { currentTrack: {}, playlistLength: 2, isPlaying: false, isStopped: true,
@@ -22,6 +25,45 @@ function setup() {
     });
     return { view, player, state, commands };
 }
+
+test('Visualizer shares AirPlay metadata, artwork and reported time without a playable URL', () => {
+    const { view, player, state } = setup();
+    Object.assign(state, { currentTrack: null, playlistLength: 0, isPlaying: true, isStopped: false,
+        liveInputActive: true, currentTrackName: 'AirPlay', artworkUrl: 'blob:cover',
+        currentTrackPosition: 292, currentTrackDuration: 319, seekBarEnabled: false,
+        transportCapabilities: { stop: true }, liveInputInformation: { metadata: { title: 'Song', artist: 'Artist',
+            album: 'Album', genre: 'Jazz', composer: 'Composer' }, sender: { name: 'iPad' },
+            format: { codec: 'ALAC', sampleRate: 44100, channels: 2, bitsPerSample: 16 } } });
+    player.mediaSessionManager = { buildMetadata: snapshot => MediaSessionManager.prototype.buildMetadata.call({}, snapshot) };
+    player.contextManager = { getCurrentState: () => state,
+        getCurrentPlaybackTime: AudioContextManager.prototype.getCurrentPlaybackTime };
+    player.airPlayPlayback = {};
+    assert.equal(view.metadata().title, 'Song');
+    assert.equal(view.metadata().artwork[0].src, 'blob:cover');
+    assert.match(view.metadata()['track-info'], /Genre: Jazz/);
+    assert.equal(view.playback().position, 292);
+    assert.equal(view.playback().seekEnabled, false);
+    assert.deepEqual(Object.entries(view.playback().enabled).filter(([, enabled]) => enabled).map(([action]) => action), ['stop']);
+    view.layout.items = [createItem('counter', 'time'), createItem('track-info', 'details')];
+    assert.equal(view.counters(1000).get('time').time, 292);
+    assert.equal(view.counters(9000).get('time').time, 292, 'Counter must not invent a wall clock while sender progress is unchanged');
+    assert.equal(view.counters(9000).get('time').external, false);
+    const shared = decodeLayoutShare(encodeLayoutShare({ ...view.layout, aspect: '16:9' }));
+    assert.equal(shared.items[1].type, 'track-info');
+    Object.assign(state, { liveInputActive: false, liveInputInformation: null,
+        currentTrackName: '', artworkUrl: '', currentTrackPosition: 0, currentTrackDuration: 0, isStopped: true, isPlaying: false });
+    assert.equal(view.metadata(), null);
+    assert.equal(view.playback().position, 0);
+    state.currentTrack = { sampleRate: 48000, codec: 'FLAC',
+        meta: { title: 'Local song', artist: 'Local artist', composer: 'Local composer', date: '2026',
+            originalTrackNumber: 4, sampleRate: 44100, bitsPerSample: 24, channels: 2, bitrate: 960000 } };
+    assert.equal(view.metadata().title, 'Local song');
+    assert.match(view.metadata()['track-info'], /Composer: Local composer/);
+    assert.match(view.metadata()['track-info'], /Date: 2026\nTrack number: 4/);
+    assert.match(view.metadata()['track-info'], /Source audio: FLAC \/ 48 kHz \/ 24-bit \/ 2 ch \/ 960 kbps/);
+    assert.doesNotMatch(view.metadata()['track-info'], /Receiver PCM/);
+    assert.doesNotMatch(view.metadata()['track-info'], /AirPlay|ALAC|iPad/);
+});
 
 function setupPlaybackControls() {
     const fixture = setup(), document = createFakeDocument();

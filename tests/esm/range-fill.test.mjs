@@ -25,6 +25,28 @@ test('classic plugins and mobile commits use the shared number binding', () => {
   assert.deepEqual(values, [-30, -20]);
 });
 
+test('number binding reads opt-in live bounds for typing and commits', () => {
+  const input = Object.assign(new EventTarget(), { value: '10' });
+  const slider = { value: 10 };
+  const values = [];
+  let bounds = [0, 180];
+  const applied = bindNumberInput(input, slider, 0, 180, 10,
+    value => values.push(value), value => value + 200, String, () => bounds);
+  const documentRef = { defaultView: { Event } };
+  bounds = [-180, 180];
+  assert.equal(commitMobileNumberInput(input, '-80', documentRef), true);
+  assert.equal(applied.value, -80);
+  assert.equal(slider.value, 120);
+  bounds = [0, 180];
+  input.value = '-80'; input.dispatchEvent(new Event('input'));
+  assert.equal(applied.value, -80);
+  input.dispatchEvent(new Event('blur'));
+  assert.equal(input.value, '0');
+  assert.equal(applied.value, 0);
+  assert.equal(slider.value, 200);
+  assert.deepEqual(values, [-80, 0]);
+});
+
 function fill(min, max, value, origin) {
   const properties = new Map();
   updateRangeFill({

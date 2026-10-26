@@ -1,20 +1,48 @@
 ---
-title: "Télécommande OpenHome (application de bureau) - EffeTune"
-description: "Commandez l’application de bureau EffeTune depuis des applications de contrôle OpenHome de votre réseau local : configuration, accès réseau, compatibilité et limites."
+title: "Musique en réseau et télécommande (application de bureau) - EffeTune"
+description: "Écoutez la musique du réseau avec EffeTune, recevez l’audio OpenHome, UPnP AV / DLNA et AirPlay, partagez votre musique et commandez la lecture sur votre réseau local."
 lang: fr
 ---
 
-# Télécommande OpenHome (application de bureau)
+# Musique en réseau et télécommande (application de bureau)
+
+L’application de bureau peut recevoir la musique d’autres appareils du réseau local et la faire passer par vos effets EffeTune. Les réglages de réception OpenHome, UPnP AV / DLNA et AirPlay sont indépendants et désactivés par défaut. Activez uniquement ceux dont vous avez besoin dans **Paramètres > Configuration... > Réseau**.
+
+## Recevoir de la musique avec OpenHome
 
 Dans les versions de bureau compatibles (Windows x64, macOS sur Intel ou Apple silicon et Linux x64), EffeTune peut apparaître comme lecteur OpenHome auprès des applications de contrôle du même réseau local. Ouvrez **Paramètres > Configuration... > Réseau**, activez **Autoriser les contrôleurs OpenHome sur ce réseau** (désactivé par défaut), puis attendez que l’état indique qu’EffeTune est disponible.
 
-Le champ **Nom de l’appareil** dans **Réseau** définit le nom commun au lecteur OpenHome et à la bibliothèque partagée. Par défaut, le nom de cet ordinateur est utilisé. Saisissez un nom personnalisé, comme `Living Room`, ou videz le champ pour revenir au nom de l’ordinateur.
+Le champ **Nom de l’appareil** dans **Réseau** définit le nom du lecteur réseau, du récepteur AirPlay et de la bibliothèque partagée. Par défaut, le nom de cet ordinateur est utilisé. Saisissez un nom personnalisé, comme `Living Room`, ou videz le champ pour revenir au nom de l’ordinateur. UPnP AV / DLNA apparaît comme une destination distincte, avec un court suffixe ; les deux destinations utilisent le même lecteur EffeTune.
 
 OpenHome ne demande aucune connexion. Tant que l’option est active, les autres appareils du réseau local peuvent consulter les métadonnées de lecture, modifier la file d’attente du lecteur et commander la lecture. Si le Pare-feu Windows demande une autorisation, autorisez EffeTune uniquement sur les **réseaux privés**, et non sur les **réseaux publics**. Désactivez l’option lorsque la télécommande n’est pas nécessaire.
 
-Les contrôleurs peuvent ajouter des flux audio HTTP ou HTTPS, gérer la file de lecture distante et commander la lecture, la pause, l’arrêt, le saut, la recherche, la répétition et la lecture aléatoire. L’audio distant passe comme d’habitude par le pipeline d’effets EffeTune actif. Les opérations de base sur la file et la lecture ont été vérifiées avec BubbleUPnP sur Android ; d’autres applications OpenHome peuvent afficher les services différemment. EffeTune fonctionne comme une source OpenHome Playlist (et non comme un UPnP AV MediaRenderer) et ne propose via OpenHome ni la modification des effets, ni les chemins de fichiers locaux, ni le volume principal, Radio, Songcast ou la synchronisation multiroom.
+Les contrôleurs peuvent ajouter des flux audio HTTP ou HTTPS, gérer la file de lecture distante et commander la lecture, la pause, l’arrêt, le saut, la recherche, la répétition et la lecture aléatoire. L’audio distant passe comme d’habitude par le pipeline d’effets EffeTune actif. Les opérations OpenHome de base sur la file et la lecture ont été vérifiées avec BubbleUPnP sur Android ; d’autres applications OpenHome peuvent afficher les services différemment. La destination OpenHome fournit une source OpenHome Playlist et ne propose via OpenHome ni la modification des effets, ni les chemins de fichiers locaux, ni le volume principal, Radio, Songcast ou la synchronisation multiroom.
 
 La lecture sans interruption n’est pas garantie, et les informations techniques peuvent rester inconnues tant que la source ne les fournit pas. Après une mise en veille, un réveil, une connexion VPN ou un changement de réseau, le lecteur peut disparaître brièvement le temps de se reconnecter.
+
+## Recevoir de la musique avec UPnP AV / DLNA
+
+Activez **Autoriser la lecture UPnP AV / DLNA sur ce réseau** dans **Paramètres > Configuration... > Réseau**. Dans votre application de contrôle, choisissez la destination UPnP AV / DLNA d’EffeTune, puis un morceau sur un serveur accessible depuis l’ordinateur. L’autorisation OpenHome est indépendante et peut rester désactivée.
+
+Cette destination reçoit du MP3, du FLAC, du WAV en PCM et de l’AAC (ADTS ou MP4/M4A) par HTTP ou HTTPS. Ogg (Vorbis/Opus/FLAC), WebM (Vorbis/Opus) et l’audio Matroska (PCM/FLAC/MP3/Opus/Vorbis/AAC) sont également pris en charge. Un type de fichier compatible doit aussi contenir un codec pris en charge ; ALAC n’est pas pris en charge.
+
+Les contrôleurs peuvent lancer la lecture, mettre en pause, arrêter, changer de piste, avancer dans le morceau si la source le permet et régler le volume ou couper le son du lecteur. Ce volume s’applique aussi à la musique locale et OpenHome, sans modifier le volume de l’ordinateur ni les effets. Choisir un nouveau morceau remplace la file par ce seul morceau. Le contrôleur et EffeTune affichent le même état de lecture. Lorsqu’ils sont fournis par le serveur musical, les tags et les détails de l’audio source sont aussi disponibles dans l’élément **Informations sur le morceau** de Visualizer.
+
+Utilisez un réseau local de confiance : les contrôleurs autorisés peuvent modifier la lecture sans connexion. Si le pare-feu le demande, autorisez l’accès au réseau privé. L’audio n’est pas converti ; la compatibilité dépend du contrôleur et de la source. Il s’agit d’un récepteur audio, sans garantie de certification DLNA, de lecture vidéo ni de prise en charge de tous les formats DLNA.
+
+## Recevoir de l’audio avec AirPlay
+
+Activez **Autoriser l’audio AirPlay sur ce réseau** dans **Paramètres > Configuration... > Réseau**, puis choisissez le **Nom de l’appareil** dans la liste des sorties audio AirPlay de l’appareil émetteur. L’état indique si le récepteur est disponible ou reçoit de l’audio. Gardez EffeTune ouvert et les deux appareils sur le même réseau local de confiance. Tout appareil pouvant accéder au récepteur activé peut envoyer de l’audio sans connexion.
+
+AirPlay reçoit le son stéréo d’un seul émetteur à la fois. Lancez ou arrêtez la lecture et réglez le volume sur l’émetteur. Les réglages locaux et UPnP AV de volume et de sourdine s’appliquent uniquement à la lecture de fichiers et d’URL. Dès que l’audio AirPlay est prêt, il remplace la musique en cours. Lancer de la musique locale, OpenHome ou UPnP AV met fin à la réception AirPlay. La piste précédente ne reprend pas automatiquement à la fin d’AirPlay. Fermer le lecteur EffeTune avec **×**, ou utiliser **Arrêter**, met fin à la session AirPlay en cours ; le récepteur reste activé et disponible pour une nouvelle connexion.
+
+Lorsque l’émetteur les fournit, le lecteur affiche le titre, l’artiste, la pochette et le temps de lecture. Survolez le titre pour consulter d’autres informations, comme l’album, le compositeur, le genre, les commentaires, l’émetteur et le format audio. Les informations disponibles dépendent de l’application émettrice et du contenu ; le temps de lecture est actualisé lorsque l’émetteur le communique. Vous pouvez aussi les afficher dans [Visualizer](visualizer.md).
+
+**Audio reçu** indique le codec AirPlay, par exemple ALAC ou AAC-ELD. **PCM du récepteur** décrit le son reçu par EffeTune pour le traitement : stéréo, 44.1 kHz, 16 bits. Ces valeurs ne décrivent pas la qualité du fichier musical d’origine. Lorsqu’il est fourni, **Volume de l’émetteur** indique la position du curseur de volume de l’appareil émetteur sous forme de pourcentage en lecture seule ; réglez le volume sur cet appareil.
+
+La mise en mémoire tampon du réseau et les effets EffeTune ajoutent du retard : le son peut être décalé par rapport à la vidéo. Les fonctions AirPlay 2, la synchronisation multiroom, la recopie d’écran, la vidéo et les contenus protégés ne sont pas pris en charge. La compatibilité varie selon l’appareil et l’application émettrice.
+
+La détection AirPlay nécessite Bonjour sous Windows et macOS, ou un service Avahi / DNS-SD actif sous Linux. L’installateur Windows standard fournit le service de détection si nécessaire ; les versions portable et Microsoft Store exigent qu’il soit déjà installé. Sous Linux, installez le service Avahi / DNS-SD de votre distribution et activez-le avec ses outils habituels de gestion des services. Si le récepteur est indisponible, vérifiez ces conditions et l’accès au réseau privé dans le pare-feu, puis réessayez. Un Wi-Fi invité, un VPN ou l’isolation réseau peut empêcher les appareils de se trouver.
 
 ## Choisir une bibliothèque et un lecteur
 

@@ -1,10 +1,10 @@
 import FFT from './fft.js';
 import { smoothFrequencyResponse } from './smoothing.js';
 
-const MAX_SAMPLES = 2 ** 20;
+export const MAX_ANALYSIS_WINDOW_SAMPLES = 2 ** 20;
 
 function finiteSamples(data) {
-    return data instanceof Float32Array && data.length > 1 && data.length <= MAX_SAMPLES &&
+    return data instanceof Float32Array && data.length > 1 && data.length <= MAX_ANALYSIS_WINDOW_SAMPLES &&
         data.every(Number.isFinite);
 }
 
@@ -20,7 +20,7 @@ export function validateHarmonicAnalysis(value) {
         excitation.durationSeconds <= 0 || !Number.isFinite(excitation.levelDb) ||
         !Number.isSafeInteger(excitation.sweepSamples) || excitation.sweepSamples < 2 ||
         Math.abs(excitation.durationSeconds * value.sampleRate - excitation.sweepSamples) > 1) return false;
-    if (!Array.isArray(value.orders) || value.orders.length !== 3) return false;
+    if (!Array.isArray(value.orders) || value.orders.length < 2 || value.orders.length > 10) return false;
     return value.orders.every((entry, index) => entry?.order === index + 1 && finiteSamples(entry.data) &&
         finiteSamples(entry.referenceData) && entry.referenceData.length === entry.data.length &&
         (entry.order === 1 || (finiteSamples(entry.harmonicReferenceData) && entry.harmonicReferenceData.length === entry.data.length)) &&
@@ -47,6 +47,12 @@ function finiteSetting(settings, key, fallback, minimum = 0) {
 function windowWeight(index, length, shape, riseSamples) {
     if (shape === 'rectangular') return 1;
     if (shape === 'hann') return 0.5 - 0.5 * Math.cos(2 * Math.PI * index / (length - 1));
+    if (shape === 'onset-hann') {
+        const center = Math.min(riseSamples, length - 1);
+        const distance = index - center;
+        const sideLength = distance < 0 ? center : length - 1 - center;
+        return sideLength > 0 ? 0.5 + 0.5 * Math.cos(Math.PI * distance / sideLength) : 1;
+    }
     if (shape !== 'tukey') throw new RangeError('Invalid window');
     const rise = Math.min(riseSamples, Math.floor((length - 1) / 2));
     const fall = Math.max(1, Math.floor(length * 0.1));
@@ -57,7 +63,7 @@ function windowWeight(index, length, shape, riseSamples) {
 
 function spectrum(data, start, end, shape, riseSamples, scale = 1) {
     const length = end - start;
-    if (length < 2 || length > MAX_SAMPLES) throw new RangeError('Invalid analysis window');
+    if (length < 2 || length > MAX_ANALYSIS_WINDOW_SAMPLES) throw new RangeError('Invalid analysis window');
     const size = 2 ** Math.ceil(Math.log2(length));
     const real = new Float64Array(size);
     const imaginary = new Float64Array(size);
@@ -94,9 +100,13 @@ function magnitudeAt(spectrumResult, frequency, sampleRate) {
     return spectrumResult.magnitudes[left] * (1 - t) + spectrumResult.magnitudes[left + 1] * t;
 }
 
+export function analysisFrequencyLimit(sampleRate, maximumFrequency = 20000) {
+    return Math.min(sampleRate / 2 * 0.999, maximumFrequency);
+}
+
 function frequencyGrid(sampleRate, settings, resolution) {
     const lo = Math.max(resolution, finiteSetting(settings, 'minFrequency', 20, Number.MIN_VALUE));
-    const hi = Math.min(sampleRate / 2 * 0.999, finiteSetting(settings, 'maxFrequency', 20000, Number.MIN_VALUE));
+    const hi = analysisFrequencyLimit(sampleRate, finiteSetting(settings, 'maxFrequency', 20000, Number.MIN_VALUE));
     if (hi <= lo) return [];
     return Array.from({ length: 512 }, (_, i) => lo * (hi / lo) ** (i / 511));
 }
@@ -113,7 +123,9 @@ export function analyzeImpulseResponse(record, settings = {}) {
     const after = finiteSetting(settings, 'afterSeconds', (data.length - onsetIndex) / sampleRate);
     const startIndex = Math.max(0, onsetIndex - Math.round(before * sampleRate));
     const endIndex = Math.min(data.length, onsetIndex + Math.ceil(after * sampleRate));
-    const result = spectrum(data, startIndex, endIndex, settings.window || 'tukey', onsetIndex - startIndex,
+    const riseSamples = Math.min(onsetIndex - startIndex,
+        Math.round(finiteSetting(settings, 'riseSeconds', (onsetIndex - startIndex) / sampleRate) * sampleRate));
+    const result = spectrum(data, startIndex, endIndex, settings.window || 'tukey', riseSamples,
         Number.isFinite(record.refScale) && record.refScale > 0 ? record.refScale : 1);
     const resolutionHz = sampleRate / result.length;
     const frequencies = frequencyGrid(sampleRate, settings, resolutionHz);
@@ -128,11 +140,15 @@ export function analyzeImpulseResponse(record, settings = {}) {
 }
 
 export function analyzeDistortion(payload, settings = {}) {
-    if (!validateHarmonicAnalysis(payload) || !payload.quality.valid) throw new TypeError('Distortion unavailable');
-    const maxOrder = settings.maxOrder ?? 3;
-    if (maxOrder !== 2 && maxOrder !== 3) throw new RangeError('Invalid maximum order');
+    if (!validateHarmonicAnalysis(payload)) throw new TypeError('Distortion unavailable');
+    const harmonicLimit = settings.harmonicLimit ?? Math.min(3, payload.orders.length);
+    if (!Number.isSafeInteger(harmonicLimit) || harmonicLimit < 2 || harmonicLimit > payload.orders.length) {
+        throw new RangeError('Invalid harmonic limit');
+    }
+    const maxOrder = settings.maxOrder ?? Math.min(3, harmonicLimit);
+    if (!Number.isSafeInteger(maxOrder) || maxOrder < 2 || maxOrder > harmonicLimit) throw new RangeError('Invalid maximum order');
     // The THD ceiling does not remove independently displayed harmonic orders.
-    const entries = payload.orders;
+    const entries = payload.orders.slice(0, harmonicLimit);
     const sampleRate = payload.sampleRate;
     const available = entries.filter(entry => entry.validMaxFrequency > entry.validMinFrequency);
     const availableBefore = Math.min(...available.map(entry => entry.onsetIndex / sampleRate));
@@ -142,10 +158,13 @@ export function analyzeDistortion(payload, settings = {}) {
     if (before > availableBefore + 1 / sampleRate || after > availableAfter + 1 / sampleRate) {
         throw new RangeError('Window exceeds separated harmonic responses');
     }
+    // The onset is the unit reference, including for asymmetric pre/post windows.
+    // A midpoint-centered Hann would amplify delayed harmonics relative to that reference.
+    const shape = settings.window === 'hann' ? 'onset-hann' : settings.window || 'tukey';
     const analyze = (entry, data) => spectrum(data,
         Math.max(0, entry.onsetIndex - Math.round(before * sampleRate)),
         Math.min(entry.data.length, entry.onsetIndex + Math.ceil(after * sampleRate)),
-        settings.window || 'tukey', Math.round(before * sampleRate));
+        shape, Math.round(before * sampleRate));
     const spectra = entries.map(entry => entry.validMaxFrequency <= entry.validMinFrequency ? null
         : analyze(entry, entry.order === 1 ? entry.data
             : Float32Array.from(entry.data, (value, i) => value - entry.referenceData[i])));
@@ -167,10 +186,13 @@ export function analyzeDistortion(payload, settings = {}) {
             return Number.isFinite(amplitude) ? amplitude / fundamentals[i] : null;
         })
     }));
+    if (!series.some(entry => entry.ratios.some(Number.isFinite))) {
+        throw new RangeError('No observed harmonic ratios');
+    }
     const included = series.filter(entry => entry.order <= maxOrder);
     const thd = frequencies.map((_, i) => included.some(entry => entry.ratios[i] === null)
         ? null : Math.hypot(...included.map(entry => entry.ratios[i])));
-    return { frequencies, series, thd, maxOrder, resolutionHz,
+    return { frequencies, series, thd, maxOrder, harmonicLimit, resolutionHz,
         availableBeforeSeconds: availableBefore, availableAfterSeconds: availableAfter };
 }
 
@@ -206,7 +228,9 @@ export function analyzeWaterfall(record, settings = {}) {
 // ARTA section 6.5 / REW Burst Decay: convolve the IR with a unit-peak
 // complex Morlet burst. Fixed one-third-octave half-power bandwidth.
 const BURST_BANDWIDTH = 1 / 3;
-const BURST_TAU_CYCLES = Math.sqrt(2 * Math.log(2)) /
+export const BURST_FREQUENCY_COUNT = 96;
+export const BURST_MINIMUM_SLICES = 16;
+export const BURST_TAU_CYCLES = Math.sqrt(2 * Math.log(2)) /
     (Math.PI * (2 ** (BURST_BANDWIDTH / 2) - 2 ** (-BURST_BANDWIDTH / 2)));
 const BURST_SAMPLE_BUDGET = 256_000_000;
 
@@ -258,10 +282,10 @@ export function analyzeBurstDecay(record, settings = {}) {
     const high = Math.min(finiteSetting(settings, 'maxFrequency', 20000, 10),
         record.sampleRate / 2 / 2 ** (BURST_BANDWIDTH / 2));
     if (end <= start || high <= low) throw new RangeError('Invalid burst analysis range');
-    const frequencyCount = 96;
+    const frequencyCount = BURST_FREQUENCY_COUNT;
     const frequencies = Array.from({ length: frequencyCount }, (_, i) => low * (high / low) ** (i / (frequencyCount - 1)));
     let sliceCount = Math.min(64, Math.floor(finiteSetting(settings, 'maxSlices', 48, 2)));
-    const minimumSlices = Math.min(16, sliceCount);
+    const minimumSlices = Math.min(BURST_MINIMUM_SLICES, sliceCount);
     let depths, work;
     // Preserve frequency density so ordinary resonances remain visible even at
     // high sample rates. Bound work by reducing temporal mesh density only;

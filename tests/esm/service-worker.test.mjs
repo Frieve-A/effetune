@@ -349,6 +349,7 @@ test('precache check succeeds for fresh output and rejects stale output without 
   generatePrecache({ root });
 
   const fresh = spawnSync(process.execPath, [fixtureScript, '--check'], {
+    windowsHide: true,
     cwd: root,
     encoding: 'utf8'
   });
@@ -357,6 +358,7 @@ test('precache check succeeds for fresh output and rejects stale output without 
   const generatedSource = fs.readFileSync(path.join(root, 'sw-precache.js'), 'utf8');
   writeFixtureFile(root, 'js/app.js', 'console.log("stale");\n');
   const stale = spawnSync(process.execPath, [fixtureScript, '--check'], {
+    windowsHide: true,
     cwd: root,
     encoding: 'utf8'
   });

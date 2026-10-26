@@ -60,15 +60,13 @@ export class AudioContextManager {
     }
 
     createPluginProcessorNode(context = this.audioContext, {
-        channelCount = context?.destination?.channelCount || 2,
-        lowLatencyMode = this.lowLatencyMode ?? false
+        channelCount = context?.destination?.channelCount || 2
     } = {}) {
         return new AudioWorkletNode(context, 'plugin-processor', {
             channelCount,
             outputChannelCount: [channelCount],
             processorOptions: {
                 initialOutputChannelCount: channelCount,
-                lowLatencyMode,
                 maxFrameCount: this.getRenderQuantumSize(context)
             },
             channelCountMode: 'explicit',
@@ -156,7 +154,8 @@ export class AudioContextManager {
                 }
 
                 // Try to set sinkId if available (experimental Chrome/Chromium feature)
-                if (preferences?.outputDeviceId && preferences.outputDeviceId !== 'default') {
+                if (preferences?.outputDeviceId && preferences.outputDeviceId !== 'default' &&
+                    (this._isElectronEnvironment() || typeof AudioContext.prototype?.setSinkId === 'function')) {
                     audioContextOptions.sinkId = preferences.outputDeviceId;
                     console.log('Attempting to use sinkId in AudioContext:', preferences.outputDeviceId);
                 }
@@ -364,22 +363,8 @@ export class AudioContextManager {
                 throw new Error('AudioWorklet is not supported in this browser. Please use a modern browser.');
             }
             
-            // Determine low latency mode from preferences
-            let preferences = window.audioPreferences;
-            if (!preferences) {
-                preferences = await this._loadAudioPreferences();
-            }
-            const lowLatency = preferences?.lowLatencyOutput || false;
-
-            // Create worklet node
-            this.workletNode = this.createPluginProcessorNode(this.audioContext, {
-                channelCount: this.audioContext.destination.channelCount,
-                lowLatencyMode: lowLatency
-            });
+            this.workletNode = this.createPluginProcessorNode(this.audioContext);
             window.workletNode = this.workletNode;
-            // Remember the low-latency mode so any auxiliary worklet (e.g. the
-            // Double Blind Test parallel pipeline) can be created to match.
-            this.lowLatencyMode = lowLatency;
 
             // Apply pending audio configuration if exists
             if (this._pendingAudioConfig) {
@@ -393,12 +378,6 @@ export class AudioContextManager {
                 this._pendingAudioConfig = null;
             }
 
-            // Inform processor about low latency mode
-            this.workletNode.port.postMessage({
-                type: 'setLowLatencyMode',
-                enabled: lowLatency
-            });
-            
             // We'll set up the message handler in the AudioManager class
             // to ensure proper event dispatching
             

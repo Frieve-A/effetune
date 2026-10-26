@@ -46,14 +46,10 @@ test('constants stores independent window and launch state', () => {
 
   constants.setMainWindow(mainWindow);
   constants.setWindowState(windowState);
-  constants.setIsFirstLaunch(false);
-  constants.setIsSplashReload(true);
   constants.setShouldLoadPipelineState(false);
 
   assert.equal(constants.getMainWindow(), mainWindow);
   assert.equal(constants.getWindowState(), windowState);
-  assert.equal(constants.getIsFirstLaunch(), false);
-  assert.equal(constants.getIsSplashReload(), true);
   assert.equal(constants.getShouldLoadPipelineState(), false);
 });
 
@@ -61,10 +57,8 @@ test('constants stores command line preset paths', () => {
   const constants = loadFreshModule('../../electron/constants.js');
 
   constants.setCommandLinePresetFile('current.effetune_preset');
-  constants.setSavedCommandLinePresetFile('saved.effetune_preset');
 
   assert.equal(constants.getCommandLinePresetFile(), 'current.effetune_preset');
-  assert.equal(constants.getSavedCommandLinePresetFile(), 'saved.effetune_preset');
 });
 
 test('constants manages command line music queues', () => {
@@ -76,35 +70,22 @@ test('constants manages command line music queues', () => {
   constants.clearCommandLineMusicFiles();
   assert.deepEqual(constants.getCommandLineMusicFiles(), []);
 
-  constants.setSavedCommandLineMusicFiles(['saved.wav']);
-  constants.addSavedCommandLineMusicFile('saved.wav');
-  constants.addSavedCommandLineMusicFile('saved.flac');
-  assert.deepEqual(constants.getSavedCommandLineMusicFiles(), ['saved.wav', 'saved.flac']);
-  constants.clearSavedCommandLineMusicFiles();
-  assert.deepEqual(constants.getSavedCommandLineMusicFiles(), []);
 
-  constants.setPendingCommandLineMusicFiles(['pending.ogg']);
-  assert.deepEqual(constants.getPendingCommandLineMusicFiles(), ['pending.ogg']);
-  constants.clearPendingCommandLineMusicFiles();
-  assert.deepEqual(constants.getPendingCommandLineMusicFiles(), []);
 });
 
 test('constants stores app metadata and callbacks', () => {
   const constants = loadFreshModule('../../electron/constants.js');
   const config = { autoLaunch: true };
-  const startupPreset = { name: 'Startup' };
   const updateTrayMenuTemplate = () => {};
   const triggerClose = () => {};
 
   constants.setAppVersion('1.2.3');
   constants.setAppConfig(config);
-  constants.setStartupPreset(startupPreset);
   constants.setUpdateTrayMenuTemplate(updateTrayMenuTemplate);
   constants.setTriggerClose(triggerClose);
 
   assert.equal(constants.getAppVersion(), '1.2.3');
   assert.equal(constants.getAppConfig(), config);
-  assert.equal(constants.getStartupPreset(), startupPreset);
   assert.equal(constants.getUpdateTrayMenuTemplate(), updateTrayMenuTemplate);
   assert.equal(constants.getTriggerClose(), triggerClose);
 });

@@ -75,6 +75,36 @@ test('first connection requests approval without accepting a pairing link and mo
     } finally { controller.dispose(); }
 });
 
+test('Change connection requests replacement approval on every retry without affecting normal selection', async () => {
+    const requests = [];
+    let result = { ok: false, status: 'denied' };
+    const { controller, container } = fixture({
+        getConnection: async () => ({ registered: true, requestAvailable: true }),
+        requestConnection: async (playerId, requestId, replace) => { requests.push({ playerId, requestId, replace }); return result; },
+        disconnect: async () => {}
+    });
+    try {
+        await controller.selectPlayer({ id: 'A', name: 'Living room' });
+        assert.ok(controller.frame, 'saved registration mounts automatically');
+        assert.equal(requests.length, 0);
+        controller.changeConnection();
+        assert.equal(controller.frame, null);
+        assert.equal(requests.length, 0, 'Change connection waits for the explicit Connect effects action');
+        await descendants(container).find(element => element.tagName === 'form').dispatch('submit');
+        assert.equal(requests[0].playerId, 'A');
+        assert.equal(requests[0].replace, true);
+        assert.equal(controller.frame, null);
+        result = { ok: true };
+        await controller.requestConnection();
+        assert.equal(requests[1].replace, true, 'a denied replacement must not fall back to saved credentials');
+        assert.ok(controller.frame);
+        await controller.selectPlayer({ id: 'B', name: 'Bedroom' });
+        await controller.requestConnection();
+        assert.equal(requests[2].playerId, 'B');
+        assert.equal(requests[2].replace, false);
+    } finally { controller.dispose(); }
+});
+
 test('approval refusal, expiry and availability failures keep the editor closed and allow a retry', async () => {
     const labels = { denied: 'Permission denied', expired: 'Request expired', unavailable: 'Effect editing unavailable', busy: 'Player busy', error: 'Connection failed' };
     for (const [status, label] of Object.entries(labels)) {

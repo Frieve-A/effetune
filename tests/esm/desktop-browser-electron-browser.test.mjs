@@ -103,7 +103,7 @@ async function closeApplication(application) {
     process.stderr.write(`Browser integration shutdown required cleanup: ${error.message}\n`);
     if (child.exitCode === null) {
       if (process.platform === 'win32') {
-        await new Promise(resolve => execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], resolve));
+        await new Promise(resolve => execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, resolve));
       } else child.kill('SIGKILL');
     }
   } finally { clearTimeout(timer); }

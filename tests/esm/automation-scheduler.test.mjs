@@ -259,6 +259,7 @@ test('daily local schedules use host DST semantics exactly once in America/New_Y
     if (spring !== 1 || fall !== 1 || nextDay !== 1) process.exit(1);
   `;
   assert.doesNotThrow(() => execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+    windowsHide: true,
     env: { ...process.env, TZ: 'America/New_York' }, stdio: 'pipe'
   }));
 });

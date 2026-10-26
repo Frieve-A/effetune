@@ -117,13 +117,13 @@ test('token renewal cancels pending local media registration without committing 
 });
 
 test('PWA TLS API and read grants stay on the trusted listener and reject mismatched certificates', { timeout: 15000 }, async t => {
-  try { execFileSync('openssl', ['version'], { stdio: 'ignore' }); }
+  try { execFileSync('openssl', ['version'], { stdio: 'ignore', windowsHide: true }); }
   catch (error) { if (error.code !== 'ENOENT') throw error; t.skip('OpenSSL unavailable'); return; }
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-pwa-tls-')));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const cert = path.join(directory, 'cert.pem'); const key = path.join(directory, 'key.pem'); const config = path.join(directory, 'openssl.cnf');
   fs.writeFileSync(config, '[req]\ndistinguished_name=dn\n[dn]\n');
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-config', config, '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', key, '-out', cert], { stdio: 'ignore' });
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-config', config, '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', key, '-out', cert], { stdio: 'ignore', windowsHide: true });
   const fixture = await createPwaNetworkFixture({ env: { EFFETUNE_REMOTE_TLS_CERT: cert, EFFETUNE_REMOTE_TLS_KEY: key } }); t.after(fixture.close);
   const ca = fs.readFileSync(cert);
   assert.equal((await request(fixture, '/pwa/v1/info', { ca })).status, 200);

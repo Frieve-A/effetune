@@ -9,6 +9,7 @@ const {
   clipboard,
   dialog,
   ipcMain,
+  MessageChannelMain,
   nativeImage,
   nativeTheme,
   net,
@@ -32,6 +33,7 @@ if (process.windowsStore === true) {
 const constants = require('./constants');
 const configModule = require('./config');
 const windowState = require('./window-state');
+const { createStartupPresentation } = require('./startup-presentation.cjs');
 const ipcHandlers = require('./ipc-handlers');
 const visualizerFeed = require('./visualizer-feed');
 const { createBrowserController } = require('./browser-controller.cjs');
@@ -52,6 +54,8 @@ const {
   createOpenHomeControlHost,
   registerOpenHomeIpc
 } = require('./openhome-control-host.cjs');
+const { createAirPlayReceiverHost } = require('./airplay-receiver.cjs');
+const { registerAirPlayIpc } = require('./airplay-ipc.cjs');
 const { RemoteControlHost, registerRemoteControlIpc } = require('./remote-control-host.cjs');
 const { LocalOpenHomePlayer } = require('./pwa-network-host.cjs');
 const { NetworkMusicHost, registerNetworkMusicIpc } = require('./network-music-host.cjs');
@@ -127,6 +131,8 @@ let libraryCatalogRecovery = null;
 let disposeLibraryCatalogRecoveryIpc = null;
 let libraryCatalogClosePromise = null;
 let openHomeControlHost = null;
+let airPlayReceiverHost = null;
+let disposeAirPlayIpc = null;
 let networkMusicHost = null;
 let disposeNetworkMusicIpc = null;
 let disposeIntegratedRemoteClientIpc = null;
@@ -257,6 +263,8 @@ async function closeApplicationServices() {
   disposePowerMonitorEvents = null;
   disposeOpenHomeIpc?.();
   disposeOpenHomeIpc = null;
+  disposeAirPlayIpc?.();
+  disposeAirPlayIpc = null;
   disposeNetworkMusicIpc?.();
   disposeNetworkMusicIpc = null;
   disposeIntegratedRemoteClientIpc?.();
@@ -265,6 +273,8 @@ async function closeApplicationServices() {
   networkMusicHost = null;
   const openHomeHost = openHomeControlHost;
   openHomeControlHost = null;
+  const airPlayHost = airPlayReceiverHost;
+  airPlayReceiverHost = null;
   const remoteHost = remoteControlHost;
   remoteControlHost = null;
   const playbackSource = alacPlaybackSource;
@@ -272,16 +282,28 @@ async function closeApplicationServices() {
   appServicesClosePromise = Promise.all([
     Promise.resolve(musicHost?.dispose()).then(() => closeLibraryCatalogRecovery()),
     openHomeHost?.dispose(),
+    airPlayHost?.dispose(),
     remoteHost?.dispose(),
     playbackSource?.dispose()
   ]);
   return appServicesClosePromise;
 }
 
-// When true, mainWindow.show() is deferred from its ready-to-show handler to
-// the splash flow's post-warm-up did-finish-load — so the main UI is never
-// visible behind the splash.  Set only when a splash is going to be shown.
+// Keep the main window hidden until the renderer has prepared its initial view.
 let pendingMainWindowShow = false;
+let splashWindow = null;
+let splashCloseTimer = null;
+const SPLASH_DURATION_MS = 3000;
+let startupUpdateCheckPending = !process.argv.includes(constants.AUTO_RESTART_FLAG);
+
+function closeSplashScreen() {
+  clearTimeout(splashCloseTimer);
+  splashCloseTimer = null;
+  const window = splashWindow;
+  splashWindow = null;
+  if (!window || window.isDestroyed()) return;
+  window.close();
+}
 
 // Renderer watchdog state — delayed pings diagnose a stall, but cannot
 // distinguish a frozen renderer from CPU or I/O contention. Keep the process
@@ -352,6 +374,9 @@ function stopWatchdog() {
 }
 
 function updateOpenHomeEnvironmentAvailability(available) {
+  void airPlayReceiverHost?.setEnvironmentAvailable(available)?.catch(error => {
+    console.error('AirPlay power lifecycle diagnostic:', error);
+  });
   const host = openHomeControlHost;
   if (!host) return;
   void host.setEnvironmentAvailable(available).catch(error => {
@@ -561,11 +586,13 @@ function createWindow() {
       ipcHandlers.restoreNormalWindowShape?.();
       disarmRendererWatchdog(`navigation:${url}`);
       void openHomeControlHost?.setRendererUnavailable();
+      void airPlayReceiverHost?.setRendererUnavailable();
       remoteControlHost?.setRendererUnavailable();
     }
   });
   mainWindow.webContents.on('render-process-gone', () => {
     void openHomeControlHost?.setRendererUnavailable();
+    void airPlayReceiverHost?.setRendererUnavailable();
     remoteControlHost?.setRendererUnavailable();
   });
 
@@ -586,50 +613,39 @@ function createWindow() {
   // F1 key is now handled in the renderer process (js/app.js)
   // This allows the same behavior in both web and Electron environments
 
-  // When the window is ready to show
-  mainWindow.once('ready-to-show', () => {
-    if (constants.getAppConfig().startMinimized) {
-      if (constants.getAppConfig().minimizeToTray) {
-        mainWindow.hide();
-        createTray();
+  pendingMainWindowShow = true;
+  const startupPresentation = createStartupPresentation({
+    window: mainWindow,
+    ipcMain,
+    isQuitting: () => isAppQuitting,
+    present: () => {
+      if (isAppQuitting || mainWindow.isDestroyed()) return;
+      pendingMainWindowShow = false;
+      if (constants.getAppConfig().startMinimized) {
+        if (constants.getAppConfig().minimizeToTray) {
+          mainWindow.hide();
+          createTray();
+        } else {
+          mainWindow.minimize();
+        }
+        windowState.markRestoreComplete();
       } else {
-        // For minimize to taskbar: show and minimize immediately
-        mainWindow.minimize();
+        windowState.showWindowInRestoredState(mainWindow);
       }
-      // Final state reached (hidden/minimized) — allow state saving.
-      windowState.markRestoreComplete();
-    } else if (!pendingMainWindowShow) {
-      // Windows already prepared its maximized client size while invisible.
-      // Presentation still waits for the splash when one is pending.
-      windowState.showWindowInRestoredState(mainWindow);
+      if (startupUpdateCheckPending) {
+        startupUpdateCheckPending = false;
+        if (constants.getAppConfig().checkForUpdatesOnStartup !== false) {
+          void checkForUpdates();
+        }
+      }
     }
   });
-  
-  // The sacrificial startup renderer only opens and drives the audio output.
-  // It deliberately avoids parsing the application UI and its assets.
-  mainWindow.loadFile(constants.getIsFirstLaunch() ? 'startup-audio.html' : 'effetune.html');
 
+  const shouldLoadPipelineState = !constants.getCommandLinePresetFile() && constants.getShouldLoadPipelineState();
   // Combined event handler for page load
   mainWindow.webContents.on('did-finish-load', () => {
-    // The audio warm-up document has no application UI or command handlers.
-    // Defer all renderer setup until the real application document is loaded.
-    if (constants.getIsFirstLaunch()) return;
-     
-    // 1. Disable Electron's built-in zoom functionality
     mainWindow.webContents.setZoomFactor(1.0);
-    
-    // If this is a splash reload, restore the saved command line preset file path
-    if (constants.getIsSplashReload() && constants.getSavedCommandLinePresetFile()) {
-      constants.setCommandLinePresetFile(constants.getSavedCommandLinePresetFile());
-      constants.setSavedCommandLinePresetFile(null);
-    }
-    
-    // If this is a splash reload, process command line arguments
-    if (constants.getIsSplashReload()) {
-      fileHandlers.processCommandLineArgs(constants.getSavedCommandLineMusicFiles());
-      constants.clearSavedCommandLineMusicFiles();
-    }
-    
+
     // 2. Set initial zoom level to 1.0 (100%) on every page load and set critical flags
     mainWindow.webContents.executeJavaScript(`
       // Ensure zoom is always reset to 100% on page load
@@ -638,13 +654,10 @@ function createWindow() {
       // Set initial zoom value (will be stored in settings file for portable mode)
       window.initialZoom = 1.0;
       
-      // Set first launch flag for audio workaround
-      window.isFirstLaunch = ${constants.getIsFirstLaunch()};
-      
       // Set pipeline state loaded flag based on commandLinePresetFile and portable mode
       // If commandLinePresetFile is set, don't load previous pipeline state
       // For portable mode, we always want to load the pipeline state unless a command line preset is specified
-      window.pipelineStateLoaded = ${constants.getCommandLinePresetFile() ? false : constants.getShouldLoadPipelineState()};
+      window.pipelineStateLoaded = ${shouldLoadPipelineState};
       
       // Store this in a global constant that can't be changed
       window.ORIGINAL_PIPELINE_STATE_LOADED = window.pipelineStateLoaded;
@@ -684,64 +697,10 @@ function createWindow() {
       console.error('Error setting up wheel zoom:', err.message || String(err));
     });
     
-    // 4. Handle file to open if specified via command line
-    if (constants.getCommandLinePresetFile()) {
-      // Process files immediately after page load
-      // Set a minimal timeout to ensure the app is ready to receive events
-      setTimeout(() => {
-        if (constants.getCommandLinePresetFile()) {
-          // Send the file path to the renderer process
-          mainWindow.webContents.send('open-preset-file', constants.getCommandLinePresetFile());
-          // Always reset commandLinePresetFile after use to prevent it from being loaded again on manual reload
-          constants.setCommandLinePresetFile(null);
-          constants.setSavedCommandLinePresetFile(null);
-        }
-        
-        // Store music files for later sending when renderer is ready
-        // Don't send them immediately to ensure pipeline is built first
-        if (constants.getCommandLineMusicFiles().length > 0) {
-          // Store the music files for later use
-          constants.setPendingCommandLineMusicFiles([...constants.getCommandLineMusicFiles()]);
-          
-          // Reset command line music files after storing
-          constants.clearCommandLineMusicFiles();
-          constants.clearSavedCommandLineMusicFiles();
-        }
-        
-        // Reset the splash reload flag if it was set
-        if (constants.getIsSplashReload()) {
-          constants.setIsSplashReload(false);
-        }
-
-        if (constants.getStartupPreset()) {
-          mainWindow.webContents.send('load-user-preset', constants.getStartupPreset());
-          constants.setStartupPreset(null);
-        }
-      }, 300);
-    } else if (constants.getCommandLineMusicFiles().length > 0) {
-      // If there's no preset file but there are music files, store them for later
-      // Store the music files for later use
-      constants.setPendingCommandLineMusicFiles([...constants.getCommandLineMusicFiles()]);
-      
-      // Reset command line music files after storing
-      constants.clearCommandLineMusicFiles();
-      constants.clearSavedCommandLineMusicFiles();
-      
-      // Reset the splash reload flag if it was set
-      if (constants.getIsSplashReload()) {
-        constants.setIsSplashReload(false);
-      }
-    } else if (constants.getIsSplashReload()) {
-      // If there's no file to open but this is a splash screen reload, reset the flag
-      // Make sure we set pipelineStateLoaded to the correct value based on shouldLoadPipelineState
-      mainWindow.webContents.executeJavaScript(`
-        window.pipelineStateLoaded = ${constants.getShouldLoadPipelineState()};
-      `).catch(err => {
-        console.error('Error setting pipelineStateLoaded flag:', err.message || String(err));
-      });
-      constants.setIsSplashReload(false);
-    }
   });
+
+  // Start the real application once, after every startup handler is installed.
+  mainWindow.loadFile('effetune.html');
 
   // Enable file drop events
   mainWindow.webContents.on('will-navigate', (e) => {
@@ -754,7 +713,6 @@ function createWindow() {
   // Set up the application menu
   ipcHandlers.createMenu();
   
-  // Note: File opening from command line is now handled in the combined did-finish-load event handler
 
   // Save window state when window is moved or resized
   mainWindow.on('resize', () => {
@@ -839,10 +797,8 @@ function createWindow() {
     // Prevent the window from closing immediately
     event.preventDefault();
 
-    // The sacrificial audio-only warm-up document has no application state
-    // and no listener for 'request-pipeline-state-for-close', so waiting on
-    // it would always burn the full timeout. Close it immediately instead.
-    if (constants.getIsFirstLaunch()) {
+    // An unfinished renderer may not have installed its state-save listener yet.
+    if (!startupPresentation.isReady()) {
       finalizeClose();
       return;
     }
@@ -867,19 +823,16 @@ function createWindow() {
   });
   
   mainWindow.on('closed', () => {
+    closeSplashScreen();
+    pendingMainWindowShow = false;
     void openHomeControlHost?.setRendererUnavailable();
+    void airPlayReceiverHost?.setRendererUnavailable();
     constants.setMainWindow(null);
   });
 }
 
 // Initialize variables in constants module
 function initGlobalVariables() {
-  // Flag to track if this is the first launch (for audio workaround)
-  constants.setIsFirstLaunch(true);
-  
-  // Flag to track if the current reload is from the splash screen
-  constants.setIsSplashReload(false);
-  
   // Flag to track if pipeline state should be loaded
   // Set to true by default, will be set to false if command line preset file is provided
   constants.setShouldLoadPipelineState(true);
@@ -887,16 +840,8 @@ function initGlobalVariables() {
   // Store command line preset file path
   constants.setCommandLinePresetFile(null);
   
-  // Store command line preset file path for splash reload
-  // This ensures the value is preserved across the splash screen reload
-  constants.setSavedCommandLinePresetFile(null);
-  
-  // Store command line music files
   constants.setCommandLineMusicFiles([]);
-  
-  // Store command line music files for splash reload
-  constants.setSavedCommandLineMusicFiles([]);
-  
+
   // Store app version - already set in the imports section
 }
 
@@ -1035,7 +980,7 @@ function sendPendingUpdateInfo() {
 function createSplashScreen() {
   const preset = themeRegistry.getThemePreset(constants.getAppConfig()?.theme);
   // Create splash window with About dialog content
-  let splashWindow = new BrowserWindow({
+  splashWindow = new BrowserWindow({
     width: 400,
     height: 300,
     frame: false,
@@ -1164,6 +1109,7 @@ function createSplashScreen() {
   
   // Show splash window when ready (only if not starting minimized)
   splashWindow.once('ready-to-show', () => {
+    if (!splashWindow || splashWindow.isDestroyed() || isAppQuitting) return;
     // Check if starting minimized - if so, don't show splash screen
     const appConfig = constants.getAppConfig();
     if (appConfig && appConfig.startMinimized) {
@@ -1171,9 +1117,8 @@ function createSplashScreen() {
       return;
     }
     
-    // Position splash window in the center of the main window's final
-    // restored bounds. Maximized startup is deferred until after the splash,
-    // so derive that final bounds explicitly while the main window is hidden.
+    // Position the splash over the main window's final restored bounds,
+    // whether the application has finished preparing or is still hidden.
     const mainWindow = constants.getMainWindow();
     if (mainWindow) {
       const mainBounds = windowState.getSplashTargetBounds();
@@ -1189,68 +1134,19 @@ function createSplashScreen() {
     
     // Show the splash window
     splashWindow.show();
+    splashCloseTimer = setTimeout(closeSplashScreen, SPLASH_DURATION_MS);
   });
   
-  // Keep the audio-only renderer active for the legacy warm-up interval.
-  setTimeout(() => {
-    // A quit started during the warm-up keeps the main window alive while
-    // before-quit awaits the service shutdown, so bail out instead of loading
-    // and showing the application document in the middle of that teardown.
-    if (isAppQuitting) return;
-
-    // The warm-up window has elapsed, regardless of whether the main window
-    // survived it. This flag gates which document createWindow() loads next
-    // (see the loadFile call above), so it must not stay stuck on true just
-    // because the window that started the warm-up was closed in the meantime
-    // — otherwise a later activate/createWindow would keep re-opening the
-    // sacrificial audio-only document forever.
-    constants.setIsFirstLaunch(false);
-
-    const mainWindow = constants.getMainWindow();
-    if (mainWindow) {
-      // Set flag to indicate this is a splash screen reload
-      constants.setIsSplashReload(true);
-      
-      // Save command line preset file path before reload
-      constants.setSavedCommandLinePresetFile(constants.getCommandLinePresetFile());
-      
-      // Save command line music files before reload
-      constants.setSavedCommandLineMusicFiles([...process.argv]);
-      
-      // Close the visual splash before loading the application document.
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.close();
-        splashWindow = null;
-      }
-
-      // Present only after the application document loads. Windows already
-      // has its saved maximized geometry before either document starts loading.
-      if (pendingMainWindowShow) {
-        mainWindow.webContents.once('did-finish-load', () => {
-          pendingMainWindowShow = false;
-          windowState.showWindowInRestoredState(mainWindow);
-        });
-      }
-
-      // Replace the audio-only renderer with the application document.
-      mainWindow.loadFile('effetune.html');
-      
-      // Check for updates after the application document loads if enabled in config
-      setTimeout(() => {
-        const cfg = constants.getAppConfig();
-        if (cfg && cfg.checkForUpdatesOnStartup !== false) {
-          checkForUpdates();
-        }
-      }, 1000);
-      
-      // Clean up temporary splash file
-      try {
-        fs.unlinkSync(splashPath);
-      } catch (error) {
-        console.error('Error removing temporary splash file:', error);
-      }
+  splashWindow.once('closed', () => {
+    clearTimeout(splashCloseTimer);
+    splashCloseTimer = null;
+    splashWindow = null;
+    try {
+      fs.unlinkSync(splashPath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error('Error removing temporary splash file:', error);
     }
-  }, 3000);
+  });
 }
 
 // Store tray menu labels for translation
@@ -1388,7 +1284,9 @@ async function initializeApp() {
     startupPreset: '',
     checkForUpdatesOnStartup: true,
     hardwareAcceleration: true,
-    openHomeRemoteControl: false
+    openHomeRemoteControl: false,
+    upnpAvRemoteControl: false,
+    airPlayReceiver: false
   };
   const cfg = { ...cfgDefaults, ...configModule.loadConfig() };
   delete cfg.graphicsFallbackPending;
@@ -1405,7 +1303,6 @@ async function initializeApp() {
     constants.setShouldLoadPipelineState(true);
   } else if (cfg.pipelineStartup === 'preset') {
     constants.setShouldLoadPipelineState(false);
-    constants.setStartupPreset(cfg.startupPreset);
   }
 
   // Register the lightweight recovery endpoint before creating the renderer.
@@ -1433,13 +1330,56 @@ async function initializeApp() {
     constants,
     config: configModule,
     getMainWindow: () => constants.getMainWindow(),
-    onFriendlyNameChanged: () => networkMusicHost?.refreshFriendlyName(),
-    onDiagnostic: code => console.error('OpenHome diagnostic:', code)
+    onFriendlyNameChanged: () => {
+      networkMusicHost?.refreshFriendlyName();
+      void airPlayReceiverHost?.setConfiguration({
+        enabled: constants.getAppConfig().airPlayReceiver === true,
+        friendlyName: openHomeControlHost.getFriendlyName()
+      });
+    },
+    onDiagnostic: (code, detail) => {
+      if (code !== 'sidecar-stderr' || process.env.EFFETUNE_NETWORK_DEBUG === '1') {
+        console.error('OpenHome diagnostic:', code, detail);
+      }
+    }
   });
   disposeOpenHomeIpc = registerOpenHomeIpc({
     ipcMain,
     host: openHomeControlHost,
     getMainWindow: () => constants.getMainWindow()
+  });
+
+  const airPlayResourceDirectory = app.isPackaged
+    ? path.join(process.resourcesPath, 'airplay')
+    : path.join(app.getAppPath(), 'out', 'native', 'airplay-receiver', `${process.platform}-${process.arch}`);
+  airPlayReceiverHost = createAirPlayReceiverHost({
+    executablePath: path.join(airPlayResourceDirectory, process.platform === 'win32' ? 'uxplay.exe' : 'uxplay'),
+    resourceDirectory: airPlayResourceDirectory,
+    registryPath: path.join(app.getPath('userData'), 'airplay-gstreamer.bin'),
+    onDiagnostic: (diagnostic, detail) => {
+      if (process.env.EFFETUNE_NETWORK_DEBUG === '1' || ![
+        'airplay-helper-output', 'invalid-rtp', 'rtp-rebuffer', 'rtp-packet-loss',
+        'rtp-clock-discontinuity', 'airplay-pcm-rebuffer'
+      ].includes(diagnostic)) {
+        console.error('AirPlay diagnostic:', diagnostic, detail);
+      }
+    },
+    onStatus: status => {
+      const window = constants.getMainWindow();
+      if (window?.webContents && !window.webContents.isDestroyed()) {
+        window.webContents.send('airplay-v1:status', status);
+      }
+    }
+  });
+  disposeAirPlayIpc = registerAirPlayIpc({
+    ipcMain, MessageChannelMain, host: airPlayReceiverHost,
+    getMainWindow: () => constants.getMainWindow(),
+    config: configModule, constants,
+    getFriendlyName: () => openHomeControlHost.getFriendlyName()
+  });
+  void airPlayReceiverHost.setConfiguration({
+    enabled: cfg.airPlayReceiver === true,
+    friendlyName: openHomeControlHost.getFriendlyName()
   });
 
   const localPlayer = new LocalOpenHomePlayer(openHomeControlHost);
@@ -1491,54 +1431,19 @@ async function initializeApp() {
   });
   void remoteControlHost.start();
 
-  // Every normal launch uses a sacrificial audio-only renderer. Auto-restarts
-  // skip it so their startup-grace clock is not reset by a second navigation.
-  const useStartupAudioWarmup = !process.argv.includes(constants.AUTO_RESTART_FLAG);
-  if (!useStartupAudioWarmup) {
-    constants.setIsFirstLaunch(false);
-  } else if (!constants.getAppConfig().startMinimized) {
-    pendingMainWindowShow = true;
-  }
-
-  // The audio-only document is intentionally tiny and can invoke its preference
-  // bridge immediately, so its IPC handlers must exist before navigation starts.
+  // Register IPC before the application can request its startup preferences/files.
   alacPlaybackSource = new AlacPlaybackSource();
   ipcHandlers.registerIpcHandlers({ onConfigSaved: applyNativeTheme, alacPlaybackSource });
-
-  // Create the main window
   createWindow();
-  
-  // Register IPC handler for renderer-ready-for-music-files event
-  ipcMain.on('renderer-ready-for-music-files', async (event) => {
-    // Check if we have pending music files to send
-    const pendingFiles = constants.getPendingCommandLineMusicFiles();
-    if (pendingFiles && pendingFiles.length > 0) {
-      // Send music files to the renderer process
-      const mainWindow = constants.getMainWindow();
-      if (mainWindow && mainWindow.webContents) {
-        const admittedFiles = [...pendingFiles];
-        constants.clearPendingCommandLineMusicFiles();
-        try {
-          const descriptors = await fileHandlers.admitLocalPlaybackPaths(admittedFiles);
-          mainWindow.webContents.send('open-music-files', descriptors);
-        } catch (error) {
-          console.error('Initial music file admission diagnostic:', error?.code || error?.name || 'unknown');
-        }
-      }
-    }
-  });
-
-  // Run the splash + 3s audio warm-up on every normal launch (Windows workaround for
-  // audio instability at startup). Skip on auto-restart (such as HDMI-recovery
-  // IPC), since another navigation would reset the renderer's
-  // startup-grace clock and could mask the recovery.
-  if (useStartupAudioWarmup) {
+  if (!process.argv.includes(constants.AUTO_RESTART_FLAG) && !constants.getAppConfig().startMinimized) {
     createSplashScreen();
   }
+
 }
 
 // Initialize global variables
 initGlobalVariables();
+fileHandlers.processCommandLineArgs(process.argv);
 
 // Hardware acceleration is the default. Repeated GPU process failures switch
 // the next launch to software rendering; the user can retry from Config.
@@ -1548,9 +1453,6 @@ const graphicsStartup = initializeGpuAcceleration({
   queueRestart: queueAutoRestart,
   isQuitting: () => isAppQuitting
 });
-
-// Store command line arguments for processing after splash screen
-constants.setSavedCommandLineMusicFiles([...process.argv]);
 
 // Handle second instance (when user tries to open another instance of the app)
 const gotTheLock = app.requestSingleInstanceLock();
@@ -1571,8 +1473,7 @@ if (!gotTheLock) {
     // Focus the main window if it exists
     const mainWindow = constants.getMainWindow();
     if (mainWindow) {
-      // Skip presenting the window while the startup splash still owns the
-      // screen — the deferred show in the splash flow will present it.
+      // Initial presentation waits for the renderer to finish preparing.
       if (!pendingMainWindowShow) {
         presentMainWindow(mainWindow);
       }
@@ -1638,8 +1539,6 @@ app.on('open-file', async (event, path) => {
         } else {
           // If app is not yet running, store the path to be opened when the app is ready
           constants.addCommandLineMusicFile(path);
-          // Also store in savedCommandLineMusicFiles for splash reload
-          constants.addSavedCommandLineMusicFile(path);
         }
       } else {
         console.error('Music file does not exist:', path);
@@ -1709,7 +1608,7 @@ app.on('before-quit', (event) => {
   isAppQuitting = true;
   stopWatchdog();
   armQuitProtection();
-  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || alacPlaybackSource)) {
+  if (!appServicesShutdownReady && (libraryCatalogRecovery || openHomeControlHost || airPlayReceiverHost || alacPlaybackSource)) {
     event.preventDefault();
     closeApplicationServices()
       .catch(error => {

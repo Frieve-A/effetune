@@ -41,9 +41,10 @@ function measurementErrorMessage(controller) {
 }
 
 const SweepMeasurement = {
-    startChannelLevelGraph() {
+    startChannelLevelGraph(durationSeconds) {
         if (this.levelGraphInterval) clearInterval(this.levelGraphInterval);
         this.levelGraphData = [];
+        this.levelGraphDurationSeconds = durationSeconds;
         this.startTime = Date.now();
         this.updateLevelGraph();
         this.levelGraphInterval = setInterval(() => this.updateLevelGraph(), 50);
@@ -165,9 +166,6 @@ const SweepMeasurement = {
             const multiChannel = isMultiChannelSelection(selection);
             const routeWidth = this.measurementConfig.outputChannelCount ?? (multiChannel
                 ? maxRequiredChannelCount(selection) : this.currentMeasurement.outputChannelCount);
-            // Update the graph to show the entire measurement duration
-            this.drawLevelGraphGrid(ctx, canvas.width, canvas.height);
-
             const results = [];
             for (let index = 0; index < selection.length; index += 1) {
                 const outputChannel = selection[index];
@@ -190,7 +188,6 @@ const SweepMeasurement = {
                 // Sweep generation and deconvolution share mutable inverse-filter state,
                 // so every channel must complete before the next one is generated.
                 const sweepBuffer = this.generateChannelSweep(outputChannel);
-                this.startChannelLevelGraph();
                 const measurementResult = await this.playAndRecordSweep(
                     sweepBuffer, outputChannel, routeWidth
                 );
@@ -454,7 +451,6 @@ const SweepMeasurement = {
                     this.interfaceCalibrationImpulseResponsesByChannel.get(channelToken) || null;
             }
             const sweepBuffer = this.generateChannelSweep(channelToken);
-            this.startChannelLevelGraph();
             const result = await this.playAndRecordSweep(sweepBuffer, channelToken, routeWidth);
             let nextPointId = this.currentMeasurement.nextPointId;
             const merged = mergeChannelRedoResult(

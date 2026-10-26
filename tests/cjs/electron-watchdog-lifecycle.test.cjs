@@ -44,6 +44,8 @@ function createMainHarness() {
     libraryCatalogRecovery: {},
     closeLibraryCatalogRecovery: async () => {},
     openHomeControlHost: null,
+    airPlayReceiverHost: null,
+    disposeAirPlayIpc: null,
     disposeOpenHomeIpc: null,
     networkMusicHost: null,
     disposeNetworkMusicIpc: null,
@@ -66,7 +68,7 @@ function createMainHarness() {
       [level, (...args) => logs.push([level, ...args])]))
   });
   vm.runInContext([
-    sourceBetween('async function closeApplicationServices()', '// When true, mainWindow.show()'),
+    sourceBetween('async function closeApplicationServices()', '// Keep the main window hidden'),
     sourceBetween('// Renderer watchdog state', '// macOS only:'),
     sourceBetween("app.on('before-quit'", '// Export functions')
   ].join('\n'), context, { filename: mainPath });

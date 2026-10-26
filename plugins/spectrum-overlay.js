@@ -151,6 +151,7 @@
             this.button = document.createElement('button');
             this.button.type = 'button';
             this.button.className = 'spectrum-overlay-toggle';
+            this.button.setAttribute('data-parameter-control', 'view');
             this.button.innerHTML = '<svg viewBox="0 0 22 22" aria-hidden="true"><path fill="currentColor" d="M2 7h2v12H2z M6 12h2v7H6z M10 3h2v16h-2z M14 14h2v5h-2z M18 10h2v9h-2z"/></svg>';
             Object.assign(this.button.style, target.toggleAnchor);
             this.button.addEventListener('mousedown', event => event.stopPropagation());

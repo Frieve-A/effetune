@@ -67,19 +67,19 @@
             <!-- This area will dynamically change based on the current screen -->
             <div id="measurementConfigScreen" class="screen" style="display: none;">
                 <h2 data-i18n="title:measurementConfig">Measurement Configuration</h2>
-                <form id="configForm">
-                    <div class="form-group">
-                        <label for="measurementName" data-i18n="label:measurementName">Measurement Name:</label>
+                <form id="configForm" class="plugin-parameter-ui">
+                    <div class="form-group parameter-row">
+                        <label for="measurementName"><span class="parameter-label-text" data-i18n="label:measurementName">Measurement Name:</span></label>
                         <input type="text" id="measurementName" required data-i18n="placeholder:measurementName" placeholder="Enter a name for this measurement">
                         <div class="explanation-text" data-i18n="help:measurementName">Give a name to the measurement you are about to make.</div>
                     </div>
-                    <div class="form-group">
-                        <label for="audioInput" data-i18n="label:audioInput">Audio Input Device:</label>
+                    <div class="form-group parameter-row">
+                        <label for="audioInput"><span class="parameter-label-text" data-i18n="label:audioInput">Audio Input Device:</span></label>
                         <select id="audioInput"></select>
                         <div class="explanation-text" data-i18n="help:audioInput">Specify the audio input device to which the measurement microphone is connected.</div>
                     </div>
-                    <div class="form-group">
-                        <label for="inputChannel" data-i18n="label:inputChannel">Input Channel:</label>
+                    <div class="form-group parameter-row">
+                        <label for="inputChannel"><span class="parameter-label-text" data-i18n="label:inputChannel">Input Channel:</span></label>
                         <select id="inputChannel" required>
                             <option value="left" data-i18n="option:left">Left Channel</option>
                             <option value="right" data-i18n="option:right">Right Channel</option>
@@ -87,13 +87,13 @@
                         </select>
                         <div class="explanation-text" data-i18n="help:inputChannel">Select the channel to which the calibration microphone is connected for the selected audio input device.</div>
                     </div>
-                    <div class="form-group">
-                        <label for="audioOutput" data-i18n="label:audioOutput">Audio Output Device:</label>
+                    <div class="form-group parameter-row">
+                        <label for="audioOutput"><span class="parameter-label-text" data-i18n="label:audioOutput">Audio Output Device:</span></label>
                         <select id="audioOutput"></select>
                     </div>
                     <div class="explanation-text" data-i18n="help:audioOutput">Select the audio device that outputs the measurement signal.</div>
-                    <div class="form-group">
-                        <label for="outputChannelCount" data-i18n="label:outputChannelCount">Output Device Channels:</label>
+                    <div class="form-group parameter-row">
+                        <label for="outputChannelCount"><span class="parameter-label-text" data-i18n="label:outputChannelCount">Output Device Channels:</span></label>
                         <select id="outputChannelCount" required>
                             <option value="2" selected>2</option>
                             <option value="4">4</option>
@@ -106,8 +106,8 @@
                         </select>
                     </div>
                     <div class="explanation-text" data-i18n="help:outputChannelCount">Match the output device's channel layout (6 for 5.1, 8 for 7.1). Test signals and measurements always use this channel count, even when measuring only some channels.</div>
-                    <div class="form-group">
-                        <label for="outputChannel" data-i18n="label:outputChannel">Output Channel:</label>
+                    <div class="form-group parameter-row">
+                        <label for="outputChannel"><span class="parameter-label-text" data-i18n="label:outputChannel">Output Channel:</span></label>
                         <div id="outputChannel" class="channel-checkbox-group">
                             <label class="all-channels-choice"><input type="checkbox" value="all" checked><span data-i18n="option:all">All Channels</span></label>
                             <div class="individual-channel-choices">
@@ -133,8 +133,8 @@
                     <div class="explanation-text" data-i18n="help:outputChannel">Specify the channel (left/right speaker or headphones, etc.) to measure.</div>
                     <details id="advancedSettings" class="advanced-settings">
                         <summary data-i18n="title:advancedSettings">Advanced Settings</summary>
-                        <div class="form-group">
-                            <label for="sampleRate" data-i18n="label:sampleRate">Sampling Frequency:</label>
+                        <div class="form-group parameter-row">
+                            <label for="sampleRate"><span class="parameter-label-text" data-i18n="label:sampleRate">Sampling Frequency:</span></label>
                             <select id="sampleRate" required>
                                 <option value="44100" data-i18n="option:sampleRate44100">44.1 kHz</option>
                                 <option value="48000" selected data-i18n="option:sampleRate48000">48 kHz (Default)</option>
@@ -145,8 +145,8 @@
                             </select>
                             <div class="explanation-text" data-i18n="help:sampleRate">Specify the sampling frequency when taking measurements.</div>
                         </div>
-                        <div class="form-group">
-                            <label for="sweepLength" data-i18n="label:sweepLength">Sweep Length (samples):</label>
+                        <div class="form-group parameter-row">
+                            <label for="sweepLength"><span class="parameter-label-text" data-i18n="label:sweepLength">Sweep Length (samples):</span></label>
                             <select id="sweepLength" required>
                                 <option value="16384" data-i18n="option:sweepLength16384">16,384 (2¹⁴)</option>
                                 <option value="32768" data-i18n="option:sweepLength32768">32,768 (2¹⁵)</option>
@@ -158,8 +158,8 @@
                             </select>
                             <div class="explanation-text" data-i18n="help:sweepLength">Specifies the length of the measurement signal in samples.</div>
                         </div>
-                        <div class="form-group">
-                            <span class="setting-label" data-i18n="label:sweepBandMode">Sweep Bandwidth:</span>
+                        <div class="form-group parameter-row">
+                            <span class="setting-label"><span class="parameter-label-text" data-i18n="label:sweepBandMode">Sweep Bandwidth:</span></span>
                             <div id="sweepBandMode" class="radio-choice-group" role="radiogroup">
                                 <label><input type="radio" name="sweepBandMode" value="off"><span data-i18n="option:sweepBandOff">Off</span></label>
                                 <label><input type="radio" name="sweepBandMode" value="common" checked><span data-i18n="option:sweepBandCommon">All Channels</span></label>
@@ -168,33 +168,33 @@
                             <div class="explanation-text" data-i18n="help:sweepBandMode">Choose whether to limit the sweep bandwidth, and whether the limit is shared by all output channels or set for each channel.</div>
                         </div>
                         <div id="sweepBandCommonInputs" class="sweep-band-inputs" hidden>
-                            <div class="form-group">
-                                <label for="sweepMinFreq" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</label>
+                            <div class="form-group parameter-row">
+                                <label for="sweepMinFreq"><span class="parameter-label-text" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</span></label>
                                 <input type="number" id="sweepMinFreq" required min="1" step="1" value="20">
                                 <div class="explanation-text" data-i18n="help:sweepMinFreq">The minimum frequency of the sweep signal in Hz. Range: 1 Hz to just below the Nyquist frequency of the selected sampling rate. (Default: 20 Hz)</div>
                             </div>
-                            <div class="form-group">
-                                <label for="sweepMaxFreq" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</label>
+                            <div class="form-group parameter-row">
+                                <label for="sweepMaxFreq"><span class="parameter-label-text" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</span></label>
                                 <input type="number" id="sweepMaxFreq" required min="1" step="1" value="20000">
                                 <div class="explanation-text" data-i18n="help:sweepMaxFreq">The maximum frequency of the sweep signal in Hz. Values above the Nyquist frequency of the selected sampling rate are automatically clamped. (Default: 20000 Hz)</div>
                             </div>
                         </div>
                         <div id="sweepBandChannelInputs" class="sweep-band-inputs" hidden>
-                            <div class="form-group">
-                                <span id="sweepBandChannelLabel" class="setting-label" data-i18n="label:sweepBandChannel">Output Channel:</span>
+                            <div class="form-group parameter-row">
+                                <span id="sweepBandChannelLabel" class="setting-label"><span class="parameter-label-text" data-i18n="label:sweepBandChannel">Output Channel:</span></span>
                                 <div id="sweepBandChannel" class="radio-choice-group" role="radiogroup" aria-labelledby="sweepBandChannelLabel"></div>
                             </div>
-                            <div class="form-group">
-                                <label for="sweepBandChannelMinFreq" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</label>
+                            <div class="form-group parameter-row">
+                                <label for="sweepBandChannelMinFreq"><span class="parameter-label-text" data-i18n="label:sweepMinFreq">Sweep Minimum Frequency (Hz):</span></label>
                                 <input type="number" id="sweepBandChannelMinFreq" required min="1" step="1" value="20">
                             </div>
-                            <div class="form-group">
-                                <label for="sweepBandChannelMaxFreq" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</label>
+                            <div class="form-group parameter-row">
+                                <label for="sweepBandChannelMaxFreq"><span class="parameter-label-text" data-i18n="label:sweepMaxFreq">Sweep Maximum Frequency (Hz):</span></label>
                                 <input type="number" id="sweepBandChannelMaxFreq" required min="1" step="1" value="20000">
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="averaging" data-i18n="label:averaging">Synchronous Averaging:</label>
+                        <div class="form-group parameter-row">
+                            <label for="averaging"><span class="parameter-label-text" data-i18n="label:averaging">Synchronous Averaging:</span></label>
                             <select id="averaging" required>
                             <option value="1" data-i18n="option:averaging1">1</option>
                             <option value="2" data-i18n="option:averaging2">2</option>
@@ -210,18 +210,20 @@
                             </select>
                             <div class="explanation-text" data-i18n="help:averaging">Specify the number of times to repeat the measurement at the same measurement point for more accurate measurement.</div>
                         </div>
-                        <div class="form-group">
-                            <label for="interfaceCalibration" data-i18n="label:interfaceCalibration">Audio Interface Calibration:</label>
+                        <div class="form-group parameter-row">
+                            <label for="interfaceCalibration"><span class="parameter-label-text" data-i18n="label:interfaceCalibration">Audio Interface Calibration:</span></label>
                             <select id="interfaceCalibration">
                             <option value="" data-i18n="option:noInterfaceCalibration">None (uncalibrated)</option>
                             </select>
                             <div id="interfaceCalibrationHelp" class="explanation-text" data-i18n="help:interfaceCalibration">Use a saved loopback measurement to remove the audio interface response. Keep the same interface, input/output channels, sampling rate, and input/output gains, and do not change the gains after the calibration measurement.</div>
                             <div id="calibrationAssignmentControls" hidden>
-                            <label for="calibrationAssignMode" data-i18n="label:calibrationAssignMode">Calibration Assignment:</label>
+                            <div class="parameter-row">
+                            <label for="calibrationAssignMode"><span class="parameter-label-text" data-i18n="label:calibrationAssignMode">Calibration Assignment:</span></label>
                             <select id="calibrationAssignMode">
                                 <option value="common" data-i18n="option:calibrationCommon">Common</option>
                                 <option value="perChannel" data-i18n="option:calibrationPerChannel">Per Channel</option>
                             </select>
+                            </div>
                                 <div id="perChannelCalibrationRows"></div>
                             </div>
                         </div>
@@ -237,20 +239,25 @@
                     <button id="backFromLevelBtn" class="back-btn"><span class="back-arrow">&larr;</span> <span data-i18n="button:backSimple">Back</span></button>
                     <h2 data-i18n="title:levelAdjustment">Level Adjustment</h2>
                 </div>
-                <div class="noise-controls">
+                <div class="noise-controls plugin-parameter-ui">
                     <button id="noiseToggleBtn" class="primary-btn" data-i18n="button:playbackTestSignal">Playback test signal for checking volume</button>
-                    <div class="level-control">
-                        <label for="noiseLevel"><span data-i18n="label:signalLevel">Signal Level:</span> <span id="noiseLevelValue">-6 dB</span></label>
+                    <div class="level-control parameter-row">
+                        <label for="noiseLevel"><span class="parameter-label-text" data-i18n="label:signalLevel">Signal Level:</span></label>
                         <input type="range" id="noiseLevel" min="-36" max="0" value="-6" step="1">
+                        <span id="noiseLevelValue">-6 dB</span>
                     </div>
                     <div class="explanation-text" data-i18n="help:signalLevel">Adjust the level of the measurement signal that is played back for measurement.</div>
                     <div id="noiseChannelControls" hidden>
-                        <span class="setting-label" data-i18n="label:noiseChannel">Test Signal Channel:</span>
+                        <div class="parameter-row">
+                        <span class="setting-label"><span class="parameter-label-text" data-i18n="label:noiseChannel">Test Signal Channel:</span></span>
                         <div id="noiseChannel" class="radio-choice-group" role="radiogroup"></div>
-                        <span class="setting-label" data-i18n="label:noiseChannelMode">Channel Mode:</span>
+                        </div>
+                        <div class="parameter-row">
+                        <span class="setting-label"><span class="parameter-label-text" data-i18n="label:noiseChannelMode">Channel Mode:</span></span>
                         <div id="noiseChannelMode" class="radio-choice-group" role="radiogroup">
                             <label><input type="radio" name="noiseChannelMode" value="manual"><span data-i18n="option:noiseModeManual">Manual</span></label>
                             <label><input type="radio" name="noiseChannelMode" value="auto" checked><span data-i18n="option:noiseModeAuto">Auto</span></label>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -339,7 +346,7 @@
 <p id="analysisTarget" class="analysis-target"></p>
 <section id="frequencyAnalysisPanel" data-analysis-panel="frequency" role="tabpanel" aria-labelledby="frequencyAnalysisTab">
                     <div class="frequency-response">
-                        <div class="analysis-graph-header"><h3 data-i18n="title:frequencyResponse">Frequency Response</h3><button id="frequencyCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="frequencyCopyGraphStatus" class="analysis-image-status" role="status"></p>
+                        <div class="analysis-graph-header"><h3 data-i18n="title:frequencyResponse">Frequency Response</h3><div id="frequencyAnalysisActions" class="analysis-graph-actions"><button id="frequencyCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div></div><p id="frequencyCopyGraphStatus" class="analysis-image-status" role="status"></p>
                         <div class="graph-options">
                             <label><input type="checkbox" id="showOriginal" checked> <span data-i18n="label:showOriginal">Original Response</span> <span class="legend-line original-line"></span></label>
                             <label><input type="checkbox" id="showCorrection" checked> <span data-i18n="label:showCorrection">Correction EQ</span> <span class="legend-line correction-line"></span></label>
@@ -358,25 +365,25 @@
 </div>
 <details class="analysis-correction" open><summary data-i18n="analysis:correction">Correction</summary>                        <div class="correction-controls plugin-parameter-ui">
                             <div class="parameter-row">
-                                <label for="smoothing" data-i18n="label:smoothing">Smoothing (σ):</label>
+                                <label for="smoothing"><span class="parameter-label-text" data-i18n="label:smoothing">Smoothing (σ):</span></label>
                                 <input type="range" id="smoothing" min="0.01" max="1.00" value="0.3" step="0.01">
                                 <input type="number" id="smoothingValue" min="0.01" max="1" step="0.01" value="0.3">
                             </div>
                             <div class="explanation-text2" data-i18n="help:smoothing">Amount of frequency response smoothing to adjust sensitivity to peaks and dips.</div>
                             <div class="parameter-row">
-                                <label for="targetLowFreqSlider" data-i18n="label:targetLowFreq">Low Freq:</label>
+                                <label for="targetLowFreqSlider"><span class="parameter-label-text" data-i18n="label:targetLowFreq">Low Freq:</span></label>
                                 <input type="range" id="targetLowFreqSlider" min="20" max="1000" value="0" step="1" class="slider">
                                 <input type="number" id="targetLowFreqValue" min="20" max="1000" step="1" value="20">
                             </div>
                             <div class="explanation-text2" data-i18n="help:targetLowFreq">The lower limit frequency for frequency response correction. It is usually best to set it at the lower limit of the system's playback capabilities.</div>
                             <div class="parameter-row">
-                                <label for="targetHighFreqSlider" data-i18n="label:targetHighFreq">High Freq:</label>
+                                <label for="targetHighFreqSlider"><span class="parameter-label-text" data-i18n="label:targetHighFreq">High Freq:</span></label>
                                 <input type="range" id="targetHighFreqSlider" min="1000" max="20000" value="20000" step="100" class="slider">
                                 <input type="number" id="targetHighFreqValue" min="1000" max="20000" step="1" value="20000">
                             </div>
                             <div class="explanation-text2" data-i18n="help:targetHighFreq">The upper frequency limit for frequency response correction. It is recommended to determine this based on the upper frequency limit of the measurement microphone.</div>
                             <div class="parameter-row eq-type">
-                                <label for="eqBandCount" data-i18n="label:eqBandCount">PEQ Band:</label>
+                                <label for="eqBandCount"><span class="parameter-label-text" data-i18n="label:eqBandCount">PEQ Band:</span></label>
                                 <input type="range" id="eqBandCount" min="3" max="15" value="5" step="1">
                                 <input type="number" id="eqBandCountValue" min="3" max="15" step="1" value="5">
                             </div>
@@ -398,20 +405,21 @@
 </section>
 <section id="impulseAnalysisPanel" data-analysis-panel="impulse" role="tabpanel" aria-labelledby="impulseAnalysisTab" hidden>
                         <div id="impulseResponseSection" class="impulse-response-section">
-                            <div class="analysis-graph-header"><h3 data-i18n="title:impulseResponse">Impulse Response</h3><button id="impulseCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="impulseCopyGraphStatus" class="analysis-image-status" role="status"></p>
+                            <div class="analysis-graph-header"><h3 data-i18n="title:impulseResponse">Impulse Response</h3><div id="impulseAnalysisActions" class="analysis-graph-actions"><button id="impulseCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div></div><p id="impulseCopyGraphStatus" class="analysis-image-status" role="status"></p>
                             <div class="impulse-response-meta">
                                 <span id="impulseResponsePointName"></span>
                                 <output id="impulseResponseRange">0.00–10.00 ms</output>
                             </div>
                             <div class="analysis-graph-mount"><canvas id="impulseResponseGraph" width="800" height="300" tabindex="0" role="img" aria-label="Impulse response"></canvas></div>
                             <div class="impulse-response-controls">
-                                <button id="impulseResponseZoomOut" type="button" class="secondary-btn" data-i18n="button:zoomOut">Zoom Out</button>
                                 <label for="impulseResponseScroll">
                                     <span data-i18n="label:impulseTimePosition">Time Position</span>
                                     <input id="impulseResponseScroll" type="range" min="0" max="1000" value="0" step="1">
                                 </label>
-                                <button id="impulseResponseZoomIn" type="button" class="secondary-btn" data-i18n="button:zoomIn">Zoom In</button>
-                                <button id="impulseResponseReset" type="button" class="secondary-btn" data-i18n="button:resetZoom">Reset</button>
+                                <div class="impulse-response-zoom">
+                                <button id="impulseResponseZoomOut" type="button" class="secondary-btn impulse-zoom-button" title="Zoom Out" data-i18n-title="button:zoomOut"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 6.5 6.5M7 10h6"/></svg><span class="impulse-zoom-label" data-i18n="button:zoomOut">Zoom Out</span></button>
+                                <button id="impulseResponseZoomIn" type="button" class="secondary-btn impulse-zoom-button" title="Zoom In" data-i18n-title="button:zoomIn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 6.5 6.5M7 10h6M10 7v6"/></svg><span class="impulse-zoom-label" data-i18n="button:zoomIn">Zoom In</span></button>
+                                </div>
                             </div>
                             <div class="impulse-response-export">
                                 <button id="exportImpulseResponseWav" type="button" class="secondary-btn" data-i18n="button:exportImpulseResponseWav">Export Impulse Response (WAV)</button>
@@ -424,14 +432,14 @@
 <p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
 </section>
 <section id="distortionAnalysisPanel" data-analysis-panel="distortion" role="tabpanel" aria-labelledby="distortionAnalysisTab" hidden>
-<div class="analysis-graph-header"><h3 data-i18n="analysis:distortion">Distortion</h3><button id="distortionCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="distortionCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="distortionAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Distortion"></canvas></div><p id="distortionAnalysisStatus" class="analysis-status" role="status" hidden></p>
+<div class="analysis-graph-header"><h3 data-i18n="analysis:distortion">Distortion</h3><div id="distortionAnalysisActions" class="analysis-graph-actions"><button id="distortionCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div></div><p id="distortionCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="distortionAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Distortion"></canvas></div><p id="distortionAnalysisStatus" class="analysis-status" role="status" hidden></p>
                         <p id="distortionAnalysisConditions" class="analysis-conditions"></p>
                         <output id="distortionAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
                             <div id="distortionAnalysisSettings" class="analysis-settings-grid"></div></details><p class="explanation-text" data-i18n="analysis:distortionNote"></p>
 <p class="explanation-text" data-i18n="analysis:readoutHelp">Point or touch the graph to read values. Focus the graph and use the arrow keys for keyboard reading.</p>
 </section>
 <section id="waterfallAnalysisPanel" data-analysis-panel="waterfall" role="tabpanel" aria-labelledby="waterfallAnalysisTab" hidden>
-<div class="analysis-graph-header"><h3 data-i18n="analysis:waterfall">Waterfall (3D)</h3><button id="waterfallCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div><p id="waterfallCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="waterfallAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Waterfall (3D)"></canvas></div><p id="waterfallAnalysisStatus" class="analysis-status" role="status" hidden></p>
+<div class="analysis-graph-header"><h3 data-i18n="analysis:waterfall">Waterfall (3D)</h3><div id="waterfallAnalysisActions" class="analysis-graph-actions"><button id="waterfallCopyGraph" type="button" class="secondary-btn graph-copy-button" title="Copy image" data-i18n-title="analysis:copyGraph" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13.5" r="4"/></svg><span class="graph-copy-label" data-i18n="analysis:copyGraph">Copy image</span></button></div></div><p id="waterfallCopyGraphStatus" class="analysis-image-status" role="status"></p><div class="analysis-graph-mount"><canvas id="waterfallAnalysisGraph" width="800" height="400" tabindex="0" role="img" aria-label="Waterfall (3D)"></canvas></div><p id="waterfallAnalysisStatus" class="analysis-status" role="status" hidden></p>
                         <p id="waterfallAnalysisConditions" class="analysis-conditions"></p>
                         <output id="waterfallAnalysisReadout" class="analysis-keyboard-readout" aria-live="polite"></output><details class="analysis-settings" open><summary data-i18n="analysis:display">Display settings</summary>
                             <div id="waterfallAnalysisSettings" class="analysis-settings-grid"></div></details><p id="waterfallAnalysisNote" class="explanation-text" data-i18n="analysis:waterfallNote"></p><p class="explanation-text" data-i18n="analysis:orbitHelp">Drag to rotate. Use the wheel or + / − to zoom. Shift + arrow keys rotate; Shift + Home resets the view.</p>

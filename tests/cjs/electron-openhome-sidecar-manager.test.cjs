@@ -59,7 +59,8 @@ test('OpenHome sidecar waits for the protocol handshake and bounds actions', asy
   assert.deepEqual(parseWrites(child)[0], {
     type: 'configure',
     protocolVersion: PROTOCOL_VERSION,
-    device: { friendlyName: 'Living Room', udn: 'uuid:test' }
+    device: { friendlyName: 'Living Room', udn: 'uuid:test', openHomeEnabled: true,
+      upnpAvEnabled: false, upnpAvUdn: '' }
   });
 
   child.stdout.emit('data', `${JSON.stringify({

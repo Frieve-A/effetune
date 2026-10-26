@@ -39,6 +39,9 @@ function createRenderer() {
             case 'bypass': model.masterBypass = message.on; return {};
             case 'listPresets': return { names: Object.keys(presets) };
             case 'getPreset': return { name: message.name, pipeline: presets[message.name] };
+            case 'savePreset': presets[message.name] = structuredClone(message.pipeline); return {};
+            case 'loadPreset': model.pipeline = structuredClone(presets[message.name]); model.ids = model.pipeline.map(() => `h.${++next}`); return {};
+            case 'slot': model.slot = message.slot; return {};
             case 'edit': {
                 if (message.epoch !== model.epoch) return { ok: false, error: 'stale-epoch' };
                 for (const op of message.ops) {
@@ -211,6 +214,41 @@ test('preset tools, raw requests and app errors', async t => {
     assert.deepEqual(raw.data.names, ['Quiet']);
     assert.ok(renderer.requests.some(r => r.op === 'listPresets'));
     assert.match((await call('raw_request', { message: { op: 'noSuchOp' } })).error, /unknown-op/);
+});
+
+test('preset saves use the current or supplied pipeline without changing playback and load returns the new state', async t => {
+    const { call, renderer } = await setup(t);
+    const initial = structuredClone(renderer.model.pipeline);
+    assert.equal(await call('save_preset', { name: 'Current' }), 'saved "Current" (1 stages)');
+    assert.deepEqual((await call('get_preset', { name: 'Current' })).pipeline, initial);
+    const supplied = [{ nm: 'Mute', en: true }];
+    assert.equal(await call('save_preset', { name: 'Silent', pipeline: supplied }), 'saved "Silent" (1 stages)');
+    assert.deepEqual((await call('get_preset', { name: 'Silent' })).pipeline, supplied);
+    assert.equal(await call('save_preset', { name: 'Empty', pipeline: [] }), 'saved "Empty" (0 stages)');
+    assert.deepEqual((await call('get_preset', { name: 'Empty' })).pipeline, []);
+    assert.deepEqual(renderer.model.pipeline, initial);
+    const loaded = await call('load_preset', { name: 'Quiet' });
+    assert.equal(loaded.stages[0].vl, -20);
+    assert.deepEqual(renderer.requests.filter(request => request.op === 'loadPreset').map(({ name }) => name), ['Quiet']);
+});
+
+test('history tools forward undo and redo to the app and return its current pipeline', async t => {
+    const { call, renderer } = await setup(t);
+    for (const dir of ['undo', 'redo']) {
+        const state = await call(dir);
+        assert.deepEqual(state.stages.map(({ nm, en, vl }) => ({ nm, en, vl })), renderer.model.pipeline);
+    }
+    assert.deepEqual(renderer.requests.filter(request => request.op === 'history').map(({ dir }) => dir), ['undo', 'redo']);
+});
+
+test('slot tools preserve the requested source and destination and return the active slot', async t => {
+    const { call, renderer } = await setup(t);
+    assert.equal((await call('switch_slot', { slot: 'B' })).slot, 'B');
+    assert.equal((await call('copy_slot', { from: 'B', to: 'A' })).slot, 'B');
+    const copy = renderer.requests.find(request => request.op === 'copySlot');
+    assert.deepEqual({ from: copy.from, to: copy.to }, { from: 'B', to: 'A' });
+    assert.equal((await call('switch_slot', { slot: 'A' })).slot, 'A');
+    assert.deepEqual(renderer.requests.filter(request => request.op === 'slot').map(({ slot }) => slot), ['B', 'A']);
 });
 
 test('a missing link is reported by the tools instead of crashing the server', async () => {

@@ -21,11 +21,14 @@ test('Windows first presents saved window geometry without a visible maximize tr
     });
     const results = await application.evaluate(() => globalThis.startupWindowResults);
     for (const result of results) {
+      assert.equal(result.hiddenWhilePreparing, true);
+      assert.deepEqual(result.handoff, ['main-shown', 'splash-still-visible']);
       assert.equal(result.prepared.visible, false);
       assert.equal(result.prepared.maximized, result.isMaximized);
       assert.ok(result.preparationShows.every(opacity => opacity === 0));
       assert.deepEqual(result.prepared.normalBounds, result.normalBounds);
       assert.equal(result.presented.visible, true);
+      assert.equal(result.presented.focused, false);
       assert.equal(result.presented.maximized, result.isMaximized);
       assert.deepEqual(result.presentationShows, [{
         maximized: result.isMaximized, bounds: result.prepared.bounds

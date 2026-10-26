@@ -80,6 +80,36 @@ This runs:
 - `npm run lint`: ESLint checks for JavaScript syntax and high-confidence correctness hazards across Electron, renderer, plugin, feature, tool, and test code
 - `npm test`: Node.js tests with the repository's coverage thresholds and test hygiene checks
 
+The Node coverage gates include `.js`, `.cjs`, and `.mjs` modules under `electron/`
+and `js/`. Each phase requires 90% lines, 90% functions, and 80% branches.
+Upstream bundles under `js/vendor/` are excluded; additional runtime exclusions
+are listed in `tools/run-tests.mjs`. Node reports
+only code loaded by that phase, so these percentages are not whole-product
+coverage. Review unloaded modules and the owning feature, plugin, browser,
+Electron, and native DSP tests when assessing a gap. Add assertions for observable
+results, failure recovery, and resource cleanup instead of testing unreachable
+defensive paths or duplicating existing integration assertions to raise a number.
+
+Keep test subprocesses in the background on Windows with `windowsHide: true`.
+Browser tests use headless Chromium. The desktop parameter-inspection test keeps
+its real windows transparent, unfocusable, and off the taskbar on Windows/macOS;
+the Windows startup-geometry test also avoids taking focus. Desktop browser tests
+that verify native keyboard focus, window activation, or screen capture still
+need visible windows. Do not hide those windows if doing so changes the behavior
+being tested.
+
+Desktop startup loads `effetune.html` once while the splash is visible. The main
+window is presented when the renderer finishes its initial pipeline and view
+setup. Independently, the splash closes three seconds after it appears.
+Browser audio capture starts after presentation because Chromium needs a visible
+capture target; the audio graph and power controller are already initialized.
+`npm run test:rolling-pcm:electron` checks
+this with fresh settings, a command-line preset and music file, minimized startup,
+and tray startup, including the real preload readiness signal. Maximized startup
+also runs without a debugger attached: Chromium can withhold animation frames
+and `ready-to-show` while the restored window is hidden, so neither event may
+gate application preparation or presentation.
+
 The precache check never regenerates a stale `sw-precache.js`; if it fails, run
 `npm run assets:web` and then rerun `npm run verify`.
 
@@ -173,7 +203,7 @@ The smoke-test runner starts and stops its own temporary loopback server; do not
 separate development server for this command.
 
 Windows sleep-resume recovery also requires `npm run test:rolling-pcm:electron`.
-For hardware verification, play audio through both standard and low-latency output,
+For hardware verification, play audio through the desktop direct output,
 put Windows to sleep, and confirm that playback and live input recover without a
 page reload after waking. Check that the effect settings and playback position are
 preserved. With audio intentionally suspended by the power policy, waking Windows
@@ -836,6 +866,56 @@ do not combine a regenerated installer with metadata from another build. The
 updater reads them from the `v<version>` release it selected, never from the
 newest release of the repository, which is often a DSP library release.
 
+### AirPlay Receiver
+
+For AirPlay packaging, use Node.js 22.17 or newer for Zstandard source-archive
+support. The POSIX toolchain and source-collection requirements are described
+in [the native build recipe](native/airplay-receiver/BUILD-POSIX.md).
+
+Build the pinned UxPlay receiver and its runtime resources before packaging:
+
+```bash
+npm run build:airplay-receiver
+```
+
+The resource directory is `out/native/airplay-receiver/<platform>-<arch>/`.
+Package that directory intact as `resources/airplay/`, including the receiver,
+its runtime libraries and audio plugins, `runtime-manifest.json`,
+`THIRD_PARTY_NOTICES.txt`, licenses, and corresponding source/build material.
+Do not replace it with an executable found on the developer's PATH. Build the
+matching slice for Windows x64, macOS x64/arm64, or Linux x64; do not reuse a
+different architecture's resources.
+
+Windows discovery uses the source-built mDNSResponder service and DNS-SD DLL.
+The producer compiles `electron/airplay-discovery-installer.nsi` with NSIS,
+defining `AIRPLAY_DISCOVERY_DIR` as the directory holding `mDNSResponder.exe`
+and its required DLLs, and `AIRPLAY_DISCOVERY_INSTALLER` as the output
+`discovery/install-discovery.exe`. The NSIS application installer uses
+`electron/airplay-installer.nsh` to request elevation for this helper only when
+`Bonjour Service` is absent. The helper rechecks after elevation and installs
+into the machine's Common Files directory. It does not replace an existing
+service, and app uninstall leaves the shared service available. Portable and
+MSIX builds require an existing discovery service; packaging must not install,
+start, stop, or remove a host service as a build or smoke-check side effect.
+
+macOS uses the system's Bonjour service. Linux requires an active system
+Avahi / DNS-SD service; bundling its client libraries does not provide the
+daemon. App startup must not manage that system service. Resolve runtime
+libraries from the packaged resources rather than development-only framework
+or package-manager paths.
+
+Check the packaged resource closure with:
+
+```bash
+npm run smoke:airplay-package
+```
+
+The smoke check must verify the runtime manifest and packaged loader paths.
+On an available matching host, also check helper startup and shutdown without
+leaving child processes or sockets behind. Signing and notarization cover the
+bundled native helpers and libraries as well as the main application. Keep
+unavailable platform execution or signing checks explicit in release records.
+
 ## Build Output
 
 After a successful build, you'll find the following in the `dist` directory:
@@ -938,6 +1018,20 @@ Application stylesheets in `css/` and root web assets such as `sw.js`, `sw-preca
    - Reinstall the application using the installer
    - Manually associate `.effetune_preset` files with the application
 
+### Network Receiver Diagnostics
+
+Routine OpenHome and AirPlay diagnostic output is quiet by default; errors still
+appear in the console. To enable detailed network receiver logs when launching
+from the checkout, set `EFFETUNE_NETWORK_DEBUG=1` before starting Electron:
+
+```powershell
+$env:EFFETUNE_NETWORK_DEBUG = '1'
+npm start
+```
+
+Remove the variable with `Remove-Item Env:EFFETUNE_NETWORK_DEBUG` before the next
+launch to restore the default logging.
+
 ## DSP Library documentation verification
 
 Generate the public library pages with `npm run docs:dsp`, then check them with
@@ -1013,12 +1107,18 @@ application version, four-part Windows version (`X.Y.Z.0`), Identity, hashes,
 ECS version, SDK version, and test-only status. The Store signs the submitted
 original. Do not distribute the unsigned package as a general installation file.
 
-### Installed-package and WACK trial
+### Optional local installed-package and WACK trial
 
-Use a dedicated Windows 11 VM with an interactive test-user session, Node/npm
+Routine desktop releases use GitHub-hosted checks and do not start a VM or
+require an installed-test report. Run this local trial when changes to MSIX
+packaging, package identity, activation, startup, or other Windows integration
+need installed-package verification. Keep the results as local evidence; they
+are not an input to Actions or Store publication.
+
+Use a dedicated local Windows 11 VM with an interactive test-user session, Node/npm
 dependencies, the Windows SDK, and the Windows App Certification Kit. Provision
 one QA administrator account with UAC enabled and an active desktop session, then
-run the orchestrator elevated as that same account. The routine job must use this
+run the orchestrator elevated as that same account. The local trial must use this
 interactive session, not a Session 0 service. Certificate trust, WACK and cleanup
 run in the administrative orchestrator without per-release UAC prompts. Registered
 launch, restart, file and protocol activation use a temporary Task Scheduler task
@@ -1060,7 +1160,6 @@ The report evaluator can be checked without installing or launching an app:
 The runner removes its packages, test certificate, processes, and scratch files, while
 preserving `installed-test.json`, probe JSON/screenshots, and `wack.xml`.
 
-VM execution is required before enabling routine validation or publishing.
 The initial Windows 10/11 compatibility trial, actual audio devices, LAN clients
 and Firewall behavior, login-triggered StartupTask operation, and Store-delivered
 Widevine playback still require their dedicated environment checks. A successful
@@ -1070,11 +1169,11 @@ SDK pack or `-DryRun` does not establish those results.
 
 After the formal Identity is configured, repository variable
 `MSSTORE_BUILD_ENABLED=true` adds the unsigned `store-msix-x64` artifact to the
-desktop release build. `MSSTORE_VALIDATION_ENABLED=true` also selects the dedicated
-`[self-hosted, Windows, X64, msix-validation]` runner. Both artifacts, including
-`store-msix-validation`, are retained for 90 days. Leave these variables unset
-until their inputs and VM are ready. The runner may set `MSIX_PREVIOUS_PACKAGE`
-to override the automatically retained validation baseline.
+desktop release build. The artifact is retained for 90 days. Configure this
+variable only when the formal Identity and packaging inputs are ready. Store
+release automation uses GitHub-hosted runners; it does not consume
+`MSSTORE_VALIDATION_ENABLED`, start a local VM, or upload/download an installed-test
+report. The optional local trial above retains its own validation baseline.
 
 Configure the `microsoft-store` GitHub Environment with variables
 `MSSTORE_TENANT_ID`, `MSSTORE_SELLER_ID`, and `MSSTORE_CLIENT_ID`, and secret
@@ -1085,9 +1184,9 @@ Only after initial Partner Center publication and Store-installed validation,
 enable `MSSTORE_AUTOPUBLISH_ENABLED=true` once to connect subsequent formal
 GitHub Release publication to Store updates.
 
-The release workflow checks the exact published tag, commit, MSIX hash and
-installed-test report from a successful desktop build. GitHub Deployments record
-the release input and submission ID; six-hour checks resume pending work without
+The release workflow checks the exact published tag, commit and MSIX hash from a
+successful desktop build, including its signed Windows package checks. GitHub
+Deployments record the release input and submission ID; six-hour checks resume pending work without
 holding a runner during certification. A submitted package remains pending until
 the Store confirms publication. Manual workflow dispatch with an empty
 `release_tag` resumes recorded work; an explicit tag must already be published.

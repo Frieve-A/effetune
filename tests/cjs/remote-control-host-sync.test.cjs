@@ -4,13 +4,13 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 const { WebSocket } = require('ws');
-const { RemoteControlHost, CHANNELS, webPairingUrl } = require('../../electron/remote-control-host.cjs');
+const { RemoteControlHost, CHANNELS, webPairingUrl, registerRemoteControlIpc } = require('../../electron/remote-control-host.cjs');
 
 const PORT = 47392;
 const TOKEN = 'tok-sync';
 
 // A stand-in for the renderer: answers forwarded requests from a tiny model.
-function createFakeRenderer(host) {
+function createFakeRenderer(invoke) {
   const model = { epoch: 'abcd0123', ids: ['h.1'], pipeline: [{ nm: 'Volume', en: true, vl: 0 }], slot: 'A', masterBypass: false,
     audio: { sampleRate: 96000, channelCount: 8, routingChannelCount: 16 } };
   const requests = [];
@@ -37,7 +37,7 @@ function createFakeRenderer(host) {
           } else if (message.op === 'selectIR') {
             model.pipeline[0].ir = message.ir;
           }
-          host.handleRendererResponse({ requestId, ...result, snapshot: snapshot() });
+          invoke(CHANNELS.response, { requestId, ...result, snapshot: snapshot() });
         });
       }
     }
@@ -45,7 +45,7 @@ function createFakeRenderer(host) {
   return { model, requests, window, snapshot };
 }
 
-function makeHost() {
+function makeHost(t) {
   const app = { getAppPath: () => path.resolve(__dirname, '..', '..'), getVersion: () => '9.9.9', isPackaged: true };
   let renderer = null;
   const host = new RemoteControlHost({
@@ -55,8 +55,19 @@ function makeHost() {
     argv: [],
     log: () => {}
   });
-  renderer = createFakeRenderer(host);
-  return { host, renderer };
+  const handlers = new Map();
+  const dispose = registerRemoteControlIpc({
+    ipcMain: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      removeHandler: channel => handlers.delete(channel)
+    },
+    getHost: () => host,
+    getMainWindow: () => renderer?.window || null
+  });
+  t.after(dispose);
+  const invoke = (channel, ...args) => handlers.get(channel)({ sender: renderer.window.webContents }, ...args);
+  renderer = createFakeRenderer(invoke);
+  return { host, renderer, invoke };
 }
 
 function open() {
@@ -89,11 +100,11 @@ function open() {
   });
 }
 
-test('hello reply carries sync fields, features and per-client flags', async () => {
-  const { host } = makeHost();
+test('hello reply carries sync fields, features and per-client flags', async t => {
+  const { host, invoke } = makeHost(t);
   try {
     assert.equal(await host.start(), true);
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const client = await open();
     client.send({ op: 'hello', v: 1, seq: 1, app: 'EffeTune', version: '2.11.0', build: 'browser', sync: 1 });
     const state = await client.next(m => m.op === 'state' && m.seq === 1);
@@ -114,11 +125,11 @@ test('hello reply carries sync fields, features and per-client flags', async () 
   }
 });
 
-test('IR selection is forwarded to the renderer and broadcasts an acknowledged state revision', async () => {
-  const { host, renderer } = makeHost();
+test('IR selection is forwarded to the renderer and broadcasts an acknowledged state revision', async t => {
+  const { host, renderer, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const client = await open();
     client.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
     await client.next(message => message.op === 'state' && message.seq === 1);
@@ -137,11 +148,11 @@ test('IR selection is forwarded to the renderer and broadcasts an acknowledged s
   }
 });
 
-test('edit acks carry the host revision and skipped ops; stale epochs fail', async () => {
-  const { host, renderer } = makeHost();
+test('edit acks carry the host revision and skipped ops; stale epochs fail', async t => {
+  const { host, renderer, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const client = await open();
     client.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
     await client.next(m => m.op === 'state' && m.seq === 1);
@@ -162,11 +173,11 @@ test('edit acks carry the host revision and skipped ops; stale epochs fail', asy
   }
 });
 
-test('legacy params acks carry rev and a legacy client never sees presetsChanged', async () => {
-  const { host } = makeHost();
+test('legacy params acks carry rev and a legacy client never sees presetsChanged', async t => {
+  const { host, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const legacy = await open();
     const sync = await open();
     legacy.send({ op: 'hello', v: 1, seq: 1, app: 'NativeClient' });
@@ -179,7 +190,7 @@ test('legacy params acks carry rev and a legacy client never sees presetsChanged
     const push = await sync.next(m => m.op === 'state' && m.pipeline[0].vl === -9);
     assert.equal('seq' in push, false, 'unsolicited pushes carry no seq');
     assert.equal(push.origin, 'remote');
-    host.handlePresetsChanged();
+    invoke(CHANNELS.presetsChanged);
     await sync.next(m => m.op === 'presetsChanged');
     await new Promise(resolve => setTimeout(resolve, 150));
     assert.equal(legacy.messages.some(m => m.op === 'presetsChanged'), false);
@@ -194,23 +205,23 @@ test('legacy params acks carry rev and a legacy client never sees presetsChanged
   }
 });
 
-test('irsChanged reaches sync clients once per burst and never legacy clients', async () => {
-  const { host } = makeHost();
+test('irsChanged reaches sync clients once per burst and never legacy clients', async t => {
+  const { host, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const legacy = await open();
     const sync = await open();
     legacy.send({ op: 'hello', v: 1, seq: 1, app: 'EffectDeck' });
     sync.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
     await legacy.next(m => m.op === 'state' && m.seq === 1);
     await sync.next(m => m.op === 'state' && m.seq === 1);
-    for (let i = 0; i < 20; i += 1) assert.equal(host.handleIrsChanged(), true);
+    for (let i = 0; i < 20; i += 1) assert.equal(invoke(CHANNELS.irsChanged), true);
     const first = await sync.next(m => m.op === 'irsChanged');
     assert.equal('seq' in first, false);
     await new Promise(resolve => setTimeout(resolve, 700));
     assert.equal(sync.messages.filter(m => m.op === 'irsChanged').length, 1, 'a burst is one notice');
-    host.handleIrsChanged();
+    invoke(CHANNELS.irsChanged);
     await sync.next(m => m.op === 'irsChanged');
     assert.equal(legacy.messages.some(m => m.op === 'irsChanged'), false);
     legacy.ws.close();
@@ -220,25 +231,25 @@ test('irsChanged reaches sync clients once per burst and never legacy clients', 
   }
 });
 
-test('a pending irsChanged is dropped when the host stops', async () => {
-  const { host } = makeHost();
+test('a pending irsChanged is dropped when the host stops', async t => {
+  const { host, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
-    host.handleIrsChanged();
+    invoke(CHANNELS.rendererReady);
+    invoke(CHANNELS.irsChanged);
     await host.stop({ reason: 'test' });
     assert.equal(host.irsChangedTimer, null);
-    assert.equal(host.handleIrsChanged(), false);
+    assert.equal(invoke(CHANNELS.irsChanged), false);
   } finally {
     await host.dispose();
   }
 });
 
-test('presets op replies with the stored presets', async () => {
-  const { host } = makeHost();
+test('presets op replies with the stored presets', async t => {
+  const { host, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const client = await open();
     client.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
     await client.next(m => m.op === 'state' && m.seq === 1);
@@ -251,18 +262,18 @@ test('presets op replies with the stored presets', async () => {
   }
 });
 
-test('a command coalesced with the first snapshot of a session keeps its origin and seq', async () => {
-  const { host, renderer } = makeHost();
+test('a command coalesced with the first snapshot of a session keeps its origin and seq', async t => {
+  const { host, renderer, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const sender = await open();
     const bystander = await open();
     const baseline = renderer.snapshot();
     const changed = renderer.snapshot();
     changed.pipeline[0].vl = -3;
     // Same tick: the first snapshot is still waiting for its broadcast when the command lands.
-    host.handleRendererState(baseline);
+    invoke(CHANNELS.state, baseline);
     host.ingestSnapshot(changed, { ws: [...host.wss.clients][0], seq: 7 });
     const sent = await sender.next(m => m.op === 'state');
     const seen = await bystander.next(m => m.op === 'state');
@@ -278,11 +289,11 @@ test('a command coalesced with the first snapshot of a session keeps its origin 
   }
 });
 
-test('a client that was behind gets its own echo with its seq, but other changes without one', async () => {
-  const { host } = makeHost();
+test('a client that was behind gets its own echo with its seq, but other changes without one', async t => {
+  const { host, invoke } = makeHost(t);
   try {
     await host.start();
-    host.setRendererReady();
+    invoke(CHANNELS.rendererReady);
     const client = await open();
     const other = await open();
     client.send({ op: 'hello', v: 1, seq: 1, sync: 1 });
@@ -324,6 +335,27 @@ test('a client that was behind gets its own echo with its seq, but other changes
     assert.equal(mixed.origin, 'remote');
     client.ws.close();
     other.ws.close();
+  } finally {
+    await host.dispose();
+  }
+});
+
+test('renderer IPC cancellation clears pending requests, rejects stale responses, and permits retry', { timeout: 5000 }, async t => {
+  const { host, renderer, invoke } = makeHost(t);
+  try {
+    invoke(CHANNELS.rendererReady);
+    const pending = host.request({ op: 'get' }, 1000);
+    const [requestId] = host.pending.keys();
+    assert.equal(typeof requestId, 'string');
+    assert.equal(invoke(CHANNELS.rendererUnavailable), true);
+    assert.deepEqual(await pending, { ok: false, error: 'renderer-unavailable' });
+    assert.equal(host.pending.size, 0);
+    assert.equal(invoke(CHANNELS.response, { requestId, ok: true, snapshot: renderer.snapshot() }), false);
+    invoke(CHANNELS.rendererReady);
+    const retry = await host.request({ op: 'get' }, 1000);
+    assert.equal(retry.ok, true);
+    assert.deepEqual(retry.snapshot, renderer.snapshot());
+    assert.equal(host.pending.size, 0);
   } finally {
     await host.dispose();
   }

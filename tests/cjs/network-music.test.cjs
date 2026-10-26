@@ -45,6 +45,19 @@ test('XML and DIDL preserve escaped metadata and reject external entity definiti
   assert.ok(parseXml(scpd('ConnectionManager')));
 });
 
+test('XML consumes attributes and markup in order and rejects malformed long input', () => {
+  const node = parseXml(`<?xml version="1.0"?><root a="A > B" b='C &amp; D'><!--ignored--><x/></root>`).children[0];
+  assert.deepEqual({ ...node.attrs }, { a: 'A > B', b: 'C & D' });
+  assert.equal(node.children[0].name, 'x');
+  for (const malformed of [
+    '<root ' + 'a'.repeat(32768) + '/>',
+    '<root ' + 'a'.repeat(32768) + '="unterminated/>',
+    '<root a="1"b="2"/>', '<root a "1"/>', '<root a="<"/>',
+    '<root/> <', '<root><!--unterminated</root>', '<root><![CDATA[unterminated</root>',
+    '<root><?unterminated</root>', '<root></root extra>', '<'.repeat(32768)
+  ]) assert.throws(() => parseXml(malformed), /Invalid device response/);
+});
+
 test('SSDP discovery uses stable UDNs, same-host services, and byebye availability', async () => {
   let requests = 0;
   const discovery = new Discovery({ fetchXml: async () => {

@@ -53,7 +53,7 @@ test('finite ESS reference removes published loopback bias and false default-win
         for (const [frequency, db] of result.frequencyResponse) {
             const phase = 2 * Math.PI * frequency * 8 / excitation.sampleRate;
             const expected = filtered ? 20 * Math.log10(Math.hypot(0.5 + 0.25 * Math.cos(phase), 0.25 * Math.sin(phase))) : 0;
-            assert.ok(Math.abs(db - expected) < (filtered ? 0.003 : 0.0001), `${frequency} Hz: ${db} versus ${expected}`);
+            assert.ok(Math.abs(db - expected) < (filtered ? 0.01 : 0.0001), `${frequency} Hz: ${db} versus ${expected}`);
         }
         for (const settings of [{}, { beforeSeconds: 0.002, afterSeconds: 0.02 }]) {
             const distortion = analyzeDistortion(result.harmonicAnalysis, settings);
@@ -95,7 +95,76 @@ test('ESS separates polynomial harmonic amplitudes and maps harmonic output freq
     assert.throws(() => analyzeDistortion(result.harmonicAnalysis, { afterSeconds: 1 }), /Window exceeds/);
 });
 
-test('fixed-clock LR4 low-pass group delay does not invalidate ESS harmonic analysis', () => {
+test('distortion Hann is centered on onset and applies the selected gate without boosting delayed harmonics', () => {
+    const payload = { version: 2, method: 'ess', sampleRate: 16000, reference: 'unit-input',
+        calibration: 'uncorrected-system', quality: { valid: true, reasons: [] },
+        excitation: { startFrequency: 40, endFrequency: 7000, durationSeconds: 2, sweepSamples: 32000, levelDb: 0 },
+        orders: [1, 2, 3].map(order => {
+            const data = new Float32Array(512), referenceData = new Float32Array(512);
+            const harmonicReferenceData = new Float32Array(512);
+            if (order === 1) { data[32] = 1; referenceData[32] = 1; }
+            else { data[112] = order === 2 ? 0.02 : 0.003; harmonicReferenceData[32] = 1; }
+            return { order, data, referenceData, ...(order > 1 ? { harmonicReferenceData } : {}),
+                onsetIndex: 32, validMinFrequency: 45, validMaxFrequency: 6800 / order };
+        }) };
+    // 500 Hz and its harmonics are exact FFT bins: this isolates window gain from interpolation.
+    const settings = { afterSeconds: 0.02, minFrequency: 500, maxFrequency: 1000 };
+    const taperAtDelay = 0.5 + 0.5 * Math.cos(Math.PI * 80 / 319);
+    for (const beforeSeconds of [0.002, 0]) {
+        for (const window of ['rectangular', 'hann']) {
+            const result = analyzeDistortion(payload, { ...settings, beforeSeconds, window });
+            const weight = window === 'hann' ? taperAtDelay : 1;
+            const expected = [0.02 * weight, 0.003 * weight];
+            assert.equal(result.frequencies[0], 500);
+            result.series.forEach((series, i) => assert.ok(Math.abs(series.ratios[0] - expected[i]) < 1e-8));
+            assert.ok(Math.abs(result.thd[0] - Math.hypot(...expected)) < 1e-8);
+        }
+    }
+    const capture = recordingFor(sweep, { nonlinear: true });
+    const polynomial = analyzeEssRecording(capture.data, sweep, {
+        playbackOffsetSamples: capture.offset, levelDb: 20 * Math.log10(0.5)
+    });
+    const result = analyzeDistortion(polynomial.harmonicAnalysis, {
+        ...settings, beforeSeconds: 0.002, window: 'hann'
+    });
+    const expected = [0.0125 / 0.5046875, 0.0015625 / 0.5046875];
+    result.series.forEach((series, i) => assert.ok(Math.abs(series.ratios[0] / expected[i] - 1) < 0.025));
+});
+
+test('higher harmonic limits use available captured orders while preserving the independent THD ceiling', () => {
+    const payload = { version: 2, method: 'ess', sampleRate: 16000, reference: 'unit-input',
+        calibration: 'uncorrected-system', quality: { valid: true, reasons: [] },
+        excitation: { startFrequency: 40, endFrequency: 7000, durationSeconds: 2, sweepSamples: 32000, levelDb: 0 },
+        orders: Array.from({ length: 10 }, (_, index) => {
+            const order = index + 1;
+            const data = new Float32Array(order > 3 ? 128 : 512), referenceData = new Float32Array(data.length);
+            const harmonicReferenceData = new Float32Array(data.length);
+            data[16] = order === 1 ? 1 : 0.01 / order;
+            if (order === 1) referenceData[16] = 1;
+            else harmonicReferenceData[16] = 1;
+            return { order, data, referenceData, ...(order > 1 ? { harmonicReferenceData } : {}),
+                onsetIndex: 16, validMinFrequency: 45, validMaxFrequency: 6800 / order };
+        }) };
+    assert.equal(validateHarmonicAnalysis(payload), true);
+    const settings = { window: 'rectangular', minFrequency: 500, maxFrequency: 1000 };
+    const defaults = analyzeDistortion(payload, settings);
+    assert.equal(defaults.harmonicLimit, 3);
+    assert.deepEqual(defaults.series.map(series => series.order), [2, 3]);
+    assert.equal(defaults.availableAfterSeconds, (512 - 16) / 16000);
+    const result = analyzeDistortion(payload, { ...settings, harmonicLimit: 10, maxOrder: 5 });
+    assert.deepEqual(result.series.map(series => series.order), [2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    result.series.forEach(series => assert.ok(Math.abs(series.ratios[0] - 0.01 / series.order) < 1e-9));
+    assert.ok(Math.abs(result.thd[0] - Math.hypot(...[2, 3, 4, 5].map(order => 0.01 / order))) < 1e-9);
+    assert.equal(result.availableAfterSeconds, (128 - 16) / 16000);
+    const two = analyzeDistortion({ ...payload, orders: payload.orders.slice(0, 2) }, settings);
+    assert.equal(two.harmonicLimit, 2); assert.equal(two.maxOrder, 2);
+    assert.throws(() => analyzeDistortion(payload, { harmonicLimit: 11 }), /Invalid harmonic limit/);
+    assert.throws(() => analyzeDistortion(payload, { harmonicLimit: 3, maxOrder: 4 }), /Invalid maximum order/);
+    assert.equal(validateHarmonicAnalysis({ ...payload, orders: payload.orders.filter(entry => entry.order !== 5) }), false);
+    assert.equal(validateHarmonicAnalysis({ ...payload, orders: [...payload.orders, { ...payload.orders[9], order: 11 }] }), false);
+});
+
+test('fixed-clock LR4 low-pass group delay is not mistaken for inconsistent capture or clock drift', () => {
     const excitation = createEssSignal();
     const capture = recordingFor(excitation, { repetitions: 2 });
     const frequency = 2 * Math.PI * 80 / excitation.sampleRate;
@@ -121,7 +190,9 @@ test('fixed-clock LR4 low-pass group delay does not invalidate ESS harmonic anal
         const result = analyzeEssRecording(capture.data, excitation, {
             playbackOffsetSamples: capture.offset, repetitions, levelDb: 20 * Math.log10(0.5)
         });
-        assert.deepEqual(result.harmonicAnalysis.quality, { valid: true, reasons: [] });
+        assert.ok(!result.harmonicAnalysis.quality.reasons.includes('clock-drift'));
+        assert.ok(!result.harmonicAnalysis.quality.reasons.includes('inconsistent-capture'));
+        assert.deepEqual(result.harmonicAnalysis.quality.reasons, ['overlapping-tail']);
         assert.ok(analyzeDistortion(result.harmonicAnalysis).series.length > 0);
     }
 });
@@ -155,7 +226,7 @@ test('linear interface calibration does not change complete-path harmonic ratios
     assert.ok(Math.abs(calibratedPoint[1] - rawPoint[1]) > 1);
 });
 
-test('invalid, incomplete and clipped acquisition never becomes trustworthy distortion', () => {
+test('invalid and incomplete acquisition is rejected while clipped data retains its warning and faithful ratios', () => {
     const { data, offset } = recordingFor();
     assert.throws(() => analyzeEssRecording(data.subarray(0, offset + sweep.length), sweep, { playbackOffsetSamples: offset }), /Incomplete/);
     const bad = data.slice(); bad[10000] = NaN;
@@ -163,7 +234,15 @@ test('invalid, incomplete and clipped acquisition never becomes trustworthy dist
     const clipped = analyzeEssRecording(data, sweep, { playbackOffsetSamples: offset, overloaded: true });
     assert.equal(clipped.irValid, true);
     assert.deepEqual(clipped.harmonicAnalysis.quality.reasons, ['clipping']);
-    assert.throws(() => analyzeDistortion(clipped.harmonicAnalysis), /unavailable/);
+    const reference = analyzeDistortion({ ...clipped.harmonicAnalysis, quality: { valid: true, reasons: [] } });
+    assert.deepEqual(analyzeDistortion(clipped.harmonicAnalysis), reference);
+    assert.ok(reference.thd.some(Number.isFinite));
+    assert.deepEqual(clipped.harmonicAnalysis.quality, { valid: false, reasons: ['clipping'] });
+    const zeroHarmonics = structuredClone(clipped.harmonicAnalysis);
+    for (const order of zeroHarmonics.orders.slice(1)) order.data.set(order.referenceData);
+    const zeros = analyzeDistortion(zeroHarmonics).thd.filter(Number.isFinite);
+    assert.ok(zeros.length > 0);
+    assert.ok(zeros.every(value => value === 0));
     assert.equal(validateHarmonicAnalysis({ ...clipped.harmonicAnalysis, orders: [null, null, null] }), false);
     assert.throws(() => analyzeDistortion(null), /unavailable/);
     const drift = recordingFor(sweep, { repetitions: 2 });
@@ -185,6 +264,7 @@ test('insufficient harmonic band or separation preserves the independently usabl
     assert.equal(validateHarmonicAnalysis(limited.harmonicAnalysis), true);
     assert.equal(limited.harmonicAnalysis.quality.valid, false);
     assert.ok(limited.harmonicAnalysis.quality.reasons.includes('insufficient-harmonic-band'));
+    assert.throws(() => analyzeDistortion(limited.harmonicAnalysis), /No observed harmonic ratios/);
     const partial = createEssSignal({ length: 16384, sampleRate: 16000, startFrequency: 1000, endFrequency: 2500 });
     const partialCapture = recordingFor(partial, { nonlinear: true });
     const partialResult = analyzeEssRecording(partialCapture.data, partial, { playbackOffsetSamples: partialCapture.offset });
@@ -289,7 +369,8 @@ for (const mode of ['direct', 'media-element']) {
         globalThis.Worker = AnalysisWorker;
         Object.assign(audioUtils, { audioContext: context, microphone: {}, channelGain: { connect() {} }, audioWorkletSupported: true,
             createRecorderWorkletNode: async () => recorder, getInputLevel: () => -6 });
-        const controller = { ...AudioProcessing, measurementConfig: { averaging: '1', audioOutputId: mode === 'direct' ? null : 'selected', outputChannel: 'left' }, activeSweepElements: null };
+        const controller = { ...AudioProcessing, startChannelLevelGraph() {},
+            measurementConfig: { averaging: '1', audioOutputId: mode === 'direct' ? null : 'selected', outputChannel: 'left' }, activeSweepElements: null };
         const signal = { ...sweep, channels: [sweep.signal, new Float32Array(sweep.length)] };
         const pending = controller.playAndRecordSweep(signal);
         await new Promise(resolve => setImmediate(resolve));

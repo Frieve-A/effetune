@@ -8,6 +8,23 @@ import { chromium } from 'playwright';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json5': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
+const labelGeometry = () => [...document.querySelectorAll('.plugin-parameter-ui .parameter-row > :is(label, .setting-label)')]
+    .filter(label => label.getBoundingClientRect().height).map(label => {
+        const rect = label.getBoundingClientRect(), css = getComputedStyle(label);
+        const text = label.querySelector('.parameter-label-text'), textRect = text.getBoundingClientRect();
+        const controls = [...label.parentElement.children].filter(el => el.matches('input, select') && !el.hidden);
+        return { text: label.textContent, title: label.title, rowWidth: label.parentElement.getBoundingClientRect().width,
+            width: rect.width, height: rect.height, textHeight: textRect.height,
+            numeric: controls.some(el => el.type === 'range') && controls.some(el => el.type === 'number'),
+            style: Object.fromEntries(['font', 'lineHeight', 'display', 'alignItems', 'whiteSpace'].map(key => [key, css[key]])),
+            clamp: getComputedStyle(text).webkitLineClamp,
+            controls: controls.map(el => { const r = el.getBoundingClientRect(); return {
+                width: r.width, inside: r.left >= -0.5 && r.right <= innerWidth + 0.5,
+                separate: r.left >= rect.right || r.right <= rect.left || r.top >= rect.bottom || r.bottom <= rect.top,
+                wrapped: r.top >= rect.bottom
+            }; }) };
+    });
+
 test('measurement shared layout keeps actions, history and analysis selectors stable across tabs and languages', { timeout: 120000 }, async () => {
     const browser = await chromium.launch({ headless: true,
         ...(process.env.MEASUREMENT_BROWSER_CHANNEL ? { channel: process.env.MEASUREMENT_BROWSER_CHANNEL } : {}) });
@@ -17,7 +34,14 @@ test('measurement shared layout keeps actions, history and analysis selectors st
             const url = new URL(route.request().url());
             if (url.hostname !== 'measurement.test') return route.abort();
             if (url.pathname === '/effect-controls.html') return route.fulfill({ contentType: 'text/html', body:
-                '<!doctype html><link rel="stylesheet" href="/css/effetune.css"><link rel="stylesheet" href="/css/effetune-mobile.css"><link rel="stylesheet" href="/plugins/eq/room_eq.css"><body><div class="room-eq-tabs"><button class="room-eq-tab">Measurement</button><button class="room-eq-tab active">Filter</button></div><button class="reset-effect-button">R</button></body>' });
+                '<!doctype html><link rel="stylesheet" href="/css/effetune.css"><link rel="stylesheet" href="/css/effetune-mobile.css"><link rel="stylesheet" href="/plugins/eq/room_eq.css"><script src="/plugins/plugin-base.js"></script><body><div class="room-eq-tabs"><button class="room-eq-tab">Measurement</button><button class="room-eq-tab active">Filter</button></div><button class="reset-effect-button">R</button><div class="plugin-parameter-ui" id="label-reference"></div></body>' });
+            if (url.pathname === '/calibration-controls.js') {
+                // Exercise the production row builder without starting acquisition or application initialization.
+                const source = await fs.readFile(path.join(root, 'features/measurement/app.js'), 'utf8');
+                const builder = source.slice(source.indexOf('function rebuildPerChannelCalibrationRows('), source.indexOf('\nfunction parseCalibrationValue('));
+                return route.fulfill({ contentType: 'text/javascript', body:
+                    `import { channelDisplayLabel } from '/features/measurement/audio-utils/channel-selection.js';\nexport ${builder}` });
+            }
             const filename = path.resolve(root, '.' + decodeURIComponent(url.pathname));
             if (!filename.startsWith(root)) return route.abort();
             if (url.pathname === '/features/measurement/app.js') return route.fulfill({ body: '', contentType: 'text/javascript' });
@@ -75,6 +99,11 @@ test('measurement shared layout keeps actions, history and analysis selectors st
         const evidence = [];
         const reference = await context.newPage();
         await reference.goto('http://measurement.test/effect-controls.html');
+        await reference.evaluate(async () => {
+            await import('/js/ui/range-fill.js');
+            const plugin = Object.create(PluginBase.prototype); plugin.id = 'label-reference'; plugin._registerUIControl = () => {};
+            window.labelPlugin = plugin;
+        });
         // Compare settled visual states without sampling border transitions midway.
         for (const target of [page, reference]) await target.addStyleTag({ content: '* { transition-duration: 0s !important; animation: none !important; }' });
         await page.bringToFront();
@@ -94,9 +123,52 @@ test('measurement shared layout keeps actions, history and analysis selectors st
         }
         const screenshotDir = process.env.MEASUREMENT_LAYOUT_SCREENSHOTS;
         if (screenshotDir) await fs.mkdir(screenshotDir, { recursive: true });
+        let wrappedLabels = 0, wrappedControls = 0;
+        const checkLabels = async (language, width, screen) => {
+            const actual = await page.evaluate(labelGeometry);
+            const expected = await reference.evaluate(({ actual, mobile }) => {
+                document.body.classList.toggle('layout-mobile', mobile);
+                const host = document.getElementById('label-reference'); host.replaceChildren();
+                return actual.map(item => {
+                    const row = window.labelPlugin.createParameterControl('Reference', 0, 100, 1, 50, () => {});
+                    row.style.width = `${item.rowWidth}px`; host.append(row);
+                    const label = row.querySelector('label'); label.textContent = item.text;
+                    const css = getComputedStyle(label);
+                    const rect = label.getBoundingClientRect();
+                    return { width: rect.width, height: rect.height,
+                        controls: [...row.querySelectorAll('input')].map(el => ({ width: el.getBoundingClientRect().width, wrapped: el.getBoundingClientRect().top >= rect.bottom })),
+                        style: Object.fromEntries(['font', 'lineHeight', 'display', 'alignItems', 'whiteSpace'].map(key => [key, css[key]])) };
+                });
+            }, { actual, mobile: width <= 1158 });
+            for (const [index, label] of actual.entries()) {
+                const prefix = `${language} ${width} ${screen} ${label.text}`;
+                assert.deepEqual(label.style, expected[index].style, `${prefix}: actual Effect label style`);
+                assert.equal(label.height, expected[index].height, `${prefix}: Effect centered label height`);
+                assert.ok(Math.abs(label.width - Math.min(expected[index].width, label.rowWidth)) < 1, `${prefix}: Effect intrinsic/fixed label width`);
+                assert.equal(label.title, label.text, `${prefix}: complete translated title`);
+                assert.equal(label.clamp, '2', `${prefix}: two-line ceiling`);
+                assert.ok(label.textHeight <= 2 * parseFloat(label.style.font) * 1.6, `${prefix}: two line boxes fit`);
+                if (label.textHeight > 24) wrappedLabels++;
+                for (const control of label.controls) {
+                    assert.ok(control.inside && control.separate, `${prefix}: control stays visible without label overlap`);
+                    if (control.wrapped) wrappedControls++;
+                }
+                if (label.numeric) for (const [controlIndex, control] of label.controls.entries()) {
+                    assert.equal(control.wrapped, expected[index].controls[controlIndex].wrapped, `${prefix}: Effect control wrapping`);
+                    assert.ok(Math.abs(control.width - expected[index].controls[controlIndex].width) < 1, `${prefix}: Effect field width ${control.width}/${expected[index].controls[controlIndex].width}`);
+                }
+            }
+            evidence.push({ language, width, screen, labels: actual });
+            const choices = await page.locator('.plugin-parameter-ui :is(.channel-checkbox-group, .radio-choice-group) label:visible').evaluateAll(elements => elements.map(element => {
+                const rect = element.getBoundingClientRect();
+                return { text: element.textContent, left: rect.left, right: rect.right, scroll: element.scrollWidth, client: element.clientWidth,
+                    inside: rect.left >= -0.5 && rect.right <= innerWidth + 0.5, unclipped: element.scrollWidth <= element.clientWidth };
+            }));
+            for (const choice of choices) assert.ok(choice.inside && choice.unclipped, `${language} ${width} ${screen}: channel choice keeps its full label: ${JSON.stringify(choice)}`);
+        };
         const scenarios = ['en', 'ja', 'ar', 'es', 'fr', 'hi', 'ko', 'pt', 'ru', 'zh'].flatMap(language =>
-            [1100, 360, 1160].map(width => ({ language, width })));
-        scenarios.push({ language: 'ja', width: 1450 }, { language: 'ja', width: 430 });
+            [1450, 360, 1160].map(width => ({ language, width })));
+        scenarios.push({ language: 'ja', width: 430 });
         for (const { language, width } of scenarios) {
             await page.setViewportSize({ width, height: 1100 });
             await page.waitForFunction(width => document.body.classList.contains('layout-mobile') === (width <= 1158), width);
@@ -152,7 +224,8 @@ test('measurement shared layout keeps actions, history and analysis selectors st
                             rect.top >= previous.bottom || rect.bottom <= previous.top, `${label}: tab ${index} does not overlap another tab`);
                     }
                 }
-                for (const row of result.controlRows) near(row.height, width <= 1158 ? 40 : 26, `${row.type} Effect row height`);
+                for (const row of result.controlRows) assert.ok(row.height >= (width <= 1158 ? 40 : 26), `${row.type} Effect minimum row height`);
+                await checkLabels(language, width, tab);
                 const expected = effectStyles[width <= 1158];
                 assert.deepEqual(await page.locator('.analysis-tabs .active').evaluate(tabStyle), expected.active, `${label}: RoomEQ active tab style`);
                 assert.deepEqual(await page.locator('.analysis-tabs .tab-button:not(.active)').first().evaluate(tabStyle), expected.inactive, `${label}: RoomEQ inactive tab style`);
@@ -186,14 +259,35 @@ test('measurement shared layout keeps actions, history and analysis selectors st
                     await page.locator('.analysis-tabs').screenshot({ path: path.join(screenshotDir, `ru-${width}-tabs.png`) });
                     await page.locator('.impulse-response-export').screenshot({ path: path.join(screenshotDir, `ru-${width}-wav-action.png`) });
                 }
-                if (screenshotDir && language === 'ja' && [1450, 430].includes(width)) {
+                if (screenshotDir && language === 'ja' && [1450, 430, 360].includes(width)) {
                     await page.screenshot({ path: path.join(screenshotDir, `${language}-${width}-${tab}.png`) });
                     if (tab !== 'details') await page.locator(`#${tab}AnalysisSettings`).screenshot({ path: path.join(screenshotDir, `${language}-${width}-${tab}-settings.png`) });
                     if (tab === 'frequency') await page.locator('.correction-controls').screenshot({ path: path.join(screenshotDir, `${language}-${width}-correction.png`) });
                     if (tab === 'impulse') await page.locator('#impulseResponseGraph').screenshot({ path: path.join(screenshotDir, `${language}-${width}-impulse-graph.png`) });
                 }
             }
+            await page.evaluate(async () => {
+                const { rebuildPerChannelCalibrationRows } = await import('/calibration-controls.js');
+                document.getElementById('advancedSettings').open = true;
+                for (const id of ['sweepBandCommonInputs', 'sweepBandChannelInputs', 'calibrationAssignmentControls']) document.getElementById(id).hidden = false;
+                document.getElementById('calibrationAssignMode').value = 'perChannel';
+                rebuildPerChannelCalibrationRows(['left', 'right']);
+                rebuildPerChannelCalibrationRows(['left', 'right']);
+                window.analysisFixture.ui.showScreen('measurementConfigScreen');
+            });
+            await checkLabels(language, width, 'setup');
+            assert.equal(await page.locator('.channel-calibration-select:visible').count(), 2);
+            if (screenshotDir && ['ja', 'ru'].includes(language)) await page.locator('#measurementConfigScreen').screenshot({ path: path.join(screenshotDir, `${language}-${width}-setup.png`) });
+            await page.evaluate(() => {
+                document.getElementById('noiseChannelControls').hidden = false;
+                window.analysisFixture.ui.showScreen('levelAdjustmentScreen');
+            });
+            await checkLabels(language, width, 'level');
+            if (screenshotDir && language === 'ja') await page.locator('#levelAdjustmentScreen').screenshot({ path: path.join(screenshotDir, `${language}-${width}-level.png`) });
+            await page.evaluate(() => window.analysisFixture.ui.showScreen('resultsDisplayScreen'));
         }
+        assert.ok(wrappedLabels > 0, 'long setting labels actually use a second line');
+        assert.ok(wrappedControls > 0, 'narrow Effect controls naturally wrap below intrinsic labels');
         await page.setViewportSize({ width: 1450, height: 1100 });
         await page.waitForFunction(() => !document.body.classList.contains('layout-mobile'));
         for (const mode of ['hover', 'focus']) {

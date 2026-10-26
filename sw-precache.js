@@ -1,4 +1,4 @@
-self.EFFECTUNE_CACHE_VERSION = "effetune-v2.16.0-35710d8abb7da19c";
+self.EFFECTUNE_CACHE_VERSION = "effetune-v2.16.0-ac14907a85dc996d";
 self.EFFECTUNE_PRECACHE_URLS = [
   "./LICENSE",
   "./css/asset-library.css",
@@ -70,7 +70,6 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/audio/power-session-journal.js",
   "./js/audio/power-snapshot.js",
   "./js/audio/power-topology.js",
-  "./js/audio/startup-audio-warmup.js",
   "./js/audio/telemetry-hub.js",
   "./js/audio/visual-sync.js",
   "./js/bass-management/design-core.js",
@@ -252,10 +251,13 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui-manager.js",
   "./js/ui/asset-library-browser.js",
   "./js/ui/audio-player.js",
+  "./js/ui/audio-player/airplay-playback.js",
   "./js/ui/audio-player/audio-context-manager-metadata.js",
   "./js/ui/audio-player/audio-context-manager.js",
   "./js/ui/audio-player/audio-player-ui.js",
   "./js/ui/audio-player/catalog-playback-bridge.js",
+  "./js/ui/audio-player/live-pcm-core.js",
+  "./js/ui/audio-player/live-pcm-worklet.js",
   "./js/ui/audio-player/lyrics-file-links.js",
   "./js/ui/audio-player/media-session-anchor.js",
   "./js/ui/audio-player/media-session-manager.js",
@@ -272,6 +274,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/audio-player/rolling-pcm-worker-entry.js",
   "./js/ui/audio-player/state-manager.js",
   "./js/ui/audio-player/synchronized-video.js",
+  "./js/ui/audio-player/track-information.js",
   "./js/ui/audio-player/track-lyrics.js",
   "./js/ui/brand-animation.js",
   "./js/ui/double-blind-test/double-blind-test.js",
@@ -302,6 +305,7 @@ self.EFFECTUNE_PRECACHE_URLS = [
   "./js/ui/pipeline/file-processor.js",
   "./js/ui/pipeline/history-manager.js",
   "./js/ui/pipeline/keyboard-shortcut-handler.js",
+  "./js/ui/pipeline/parameter-edit-lock.js",
   "./js/ui/pipeline/pipeline-ai-dialog.js",
   "./js/ui/pipeline/pipeline-column-manager.js",
   "./js/ui/pipeline/pipeline-core.js",

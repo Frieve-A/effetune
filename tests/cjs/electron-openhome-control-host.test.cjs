@@ -119,6 +119,30 @@ function createHarness(initialConfig = {}, hostOptions = {}) {
   return { gateway, getConfig: () => config, host, saves, sends, sidecar, window };
 }
 
+function registerRendererIpc(t, harness) {
+  const handlers = new Map();
+  const dispose = registerOpenHomeIpc({
+    ipcMain: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      removeHandler: channel => handlers.delete(channel)
+    },
+    host: harness.host,
+    getMainWindow: () => harness.window
+  });
+  t.after(dispose);
+  const invoke = (channel, ...args) => handlers.get(channel)({ sender: harness.window.webContents }, ...args);
+  return { handlers, invoke, dispose };
+}
+
+test('sidecar diagnostics preserve bounded detail for the console mirror', async () => {
+  const diagnostics = [];
+  const harness = createHarness({}, { onDiagnostic: (...args) => diagnostics.push(args) });
+  const detail = 'ohNet startup trace';
+  harness.sidecar.emit('diagnostic', { code: 'sidecar-stderr', detail });
+  assert.deepEqual(diagnostics, [['sidecar-stderr', detail]]);
+  await harness.host.dispose();
+});
+
 test('only main-process local actions carry local queue observation authority', async () => {
   const harness = createHarness({ openHomeRemoteControl: true });
   await harness.host.setRendererReady();
@@ -205,14 +229,15 @@ test('Catalog preflight phase reaches the local command owner', async () => {
   } finally { await harness.host.dispose(); }
 });
 
-test('OpenHome host remains stopped until both enablement and renderer readiness are present', async () => {
+test('OpenHome host remains stopped until both enablement and renderer readiness are present', async t => {
   const harness = createHarness({ openHomeRemoteControl: false });
+  const { invoke } = registerRendererIpc(t, harness);
 
-  await harness.host.setRendererReady();
+  await invoke(CHANNELS.rendererReady);
   assert.equal(harness.sidecar.startCalls.length, 0);
   assert.equal(harness.host.getStatus().enabled, false);
 
-  const status = await harness.host.setEnabled(true);
+  const status = await invoke(CHANNELS.setEnabled, { enabled: true });
   assert.equal(status.enabled, true);
   assert.equal(harness.sidecar.startCalls.length, 1);
   assert.equal(harness.sidecar.startCalls[0].friendlyName, 'EffeTune (Test PC)');
@@ -220,13 +245,13 @@ test('OpenHome host remains stopped until both enablement and renderer readiness
   assert.equal(harness.getConfig().openHomeRemoteControl, true);
   assert.match(harness.getConfig().openHomeDeviceId, /^[0-9a-f-]{36}$/i);
 
-  await harness.host.setRendererUnavailable();
+  await invoke(CHANNELS.rendererUnavailable);
   assert.equal(harness.sidecar.stopCalls, 1);
   assert.equal(harness.gateway.closeCalls, 1);
   assert.equal(harness.host.getStatus().rendererReady, false);
 });
 
-test('OpenHome player name defaults to the computer name and can be changed while published', async () => {
+test('OpenHome player name defaults to the computer name and can be changed while published', async t => {
   assert.equal(createDefaultFriendlyName('LISTENING-PC'), 'LISTENING-PC');
   assert.equal(createDefaultFriendlyName(''), 'EffeTune');
 
@@ -234,9 +259,10 @@ test('OpenHome player name defaults to the computer name and can be changed whil
     openHomeRemoteControl: true,
     openHomeDeviceId: '11111111-2222-4333-8444-555555555555'
   });
-  await harness.host.setRendererReady();
+  const { invoke } = registerRendererIpc(t, harness);
+  await invoke(CHANNELS.rendererReady);
 
-  const status = await harness.host.setFriendlyName('  EffeTune Living Room  ');
+  const status = await invoke(CHANNELS.setFriendlyName, { friendlyName: '  EffeTune Living Room  ' });
 
   assert.equal(status.friendlyName, 'EffeTune Living Room');
   assert.equal(harness.getConfig().openHomeFriendlyName, 'EffeTune Living Room');
@@ -540,12 +566,13 @@ test('OpenHome host safely restarts advertisement after a network change', async
   await harness.host.dispose();
 });
 
-test('OpenHome host gateways Insert media and DIDL artwork and releases both with queue actions', async () => {
+test('OpenHome host gateways Insert media and DIDL artwork and releases both with queue actions', async t => {
   const harness = createHarness({
     openHomeRemoteControl: true,
     openHomeDeviceId: '11111111-2222-4333-8444-555555555555'
   }, { now: () => 1234 });
-  await harness.host.setRendererReady();
+  const { invoke } = registerRendererIpc(t, harness);
+  await invoke(CHANNELS.rendererReady);
 
   harness.sidecar.emit('action', {
     requestId: 'insert-1',
@@ -569,7 +596,7 @@ test('OpenHome host gateways Insert media and DIDL artwork and releases both wit
   assert.equal(actionSend[1].args.playbackUrl, 'http://127.0.0.1:43123/openhome-media/token');
   assert.equal(actionSend[1].args.artworkUrl, 'http://127.0.0.1:43123/openhome-media/token');
 
-  assert.equal(harness.host.handleRendererResponse({
+  assert.equal(invoke(CHANNELS.response, {
     requestId: 'insert-1', ok: true, result: { newId: 17 }
   }), true);
   assert.deepEqual(harness.sidecar.responses, [{ requestId: 'insert-1', result: { newId: 17 } }]);
@@ -582,7 +609,7 @@ test('OpenHome host gateways Insert media and DIDL artwork and releases both wit
     args: { id: 17 }
   });
   await delay();
-  harness.host.handleRendererResponse({ requestId: 'delete-1', ok: true, result: {} });
+  invoke(CHANNELS.response, { requestId: 'delete-1', ok: true, result: {} });
   assert.deepEqual(harness.gateway.releaseCalls, ['token-1', 'token-2']);
   await harness.host.dispose();
 });
@@ -805,13 +832,14 @@ test('OpenHome host rejects and releases its only pending action when disabled',
   }), false);
 });
 
-test('OpenHome disable resets the renderer before stopping advertisement and releasing tokens', async () => {
+test('OpenHome disable resets the renderer before stopping advertisement and releasing tokens', async t => {
   const order = [];
   let finishStop;
   const harness = createHarness({
     openHomeRemoteControl: true,
     openHomeDeviceId: '11111111-2222-4333-8444-555555555555'
   }, { autoResetAck: false });
+  const { invoke } = registerRendererIpc(t, harness);
   harness.sidecar.stop = () => {
     order.push('sidecar-stop');
     return new Promise(resolve => { finishStop = resolve; });
@@ -826,27 +854,27 @@ test('OpenHome disable resets the renderer before stopping advertisement and rel
     harness.gateway.closeCalls += 1;
     return Promise.resolve();
   };
-  await harness.host.setRendererReady();
+  await invoke(CHANNELS.rendererReady);
   harness.sidecar.emit('action', {
     requestId: 'insert-disable-order', service: 'Playlist', action: 'Insert',
     args: { afterId: 0, uri: 'http://media.test/order.flac', metadata: '' }
   });
   await delay();
-  harness.host.handleRendererResponse({
+  invoke(CHANNELS.response, {
     requestId: 'insert-disable-order', ok: true, result: { newId: 9 }
   });
-  harness.host.publishState({ transportState: 'Playing', idArray: 'stale' });
+  invoke(CHANNELS.state, { transportState: 'Playing', idArray: 'stale' });
   const snapshotCount = harness.sidecar.snapshots.length;
 
-  const disabling = harness.host.setEnabled(false);
+  const disabling = invoke(CHANNELS.setEnabled, { enabled: false });
   await delay();
   const reset = harness.sends.find(([channel]) => channel === CHANNELS.reset);
   assert.equal(harness.host.getStatus().enabled, false);
-  assert.equal(harness.host.publishState({ transportState: 'Playing', idArray: 'new-stale' }), false);
+  assert.equal(invoke(CHANNELS.state, { transportState: 'Playing', idArray: 'new-stale' }), false);
   assert.equal(harness.sidecar.snapshots.length, snapshotCount);
   assert.deepEqual(order, []);
 
-  assert.equal(harness.host.handleRendererResetAck({ resetId: reset[1].resetId, ok: true }), true);
+  assert.equal(invoke(CHANNELS.resetAck, { resetId: reset[1].resetId, ok: true }), true);
   await delay();
   assert.deepEqual(order, ['sidecar-stop']);
   finishStop();
@@ -855,7 +883,7 @@ test('OpenHome disable resets the renderer before stopping advertisement and rel
   assert.equal(harness.host.latestSnapshot, null);
 
   harness.sidecar.stop = () => Promise.resolve();
-  await harness.host.setEnabled(true);
+  await invoke(CHANNELS.setEnabled, { enabled: true });
   harness.sidecar.emit('ready');
   assert.equal(harness.sidecar.snapshots.length, snapshotCount);
   await harness.host.dispose();
@@ -1001,26 +1029,27 @@ test('OpenHome reset timeout preserves renderer liveness and enable retries the 
   await harness.host.dispose();
 });
 
-test('OpenHome renderer disappearance fails an in-flight reset and stops without early token release', async () => {
+test('OpenHome renderer disappearance fails an in-flight reset and stops without early token release', async t => {
   let finishStop;
   const harness = createHarness({
     openHomeRemoteControl: true,
     openHomeDeviceId: '11111111-2222-4333-8444-555555555555'
   }, { autoResetAck: false });
+  const { invoke } = registerRendererIpc(t, harness);
   harness.sidecar.stop = () => new Promise(resolve => { finishStop = resolve; });
-  await harness.host.setRendererReady();
+  await invoke(CHANNELS.rendererReady);
   harness.sidecar.emit('action', {
     requestId: 'insert-renderer-loss', service: 'Playlist', action: 'Insert',
     args: { afterId: 0, uri: 'http://media.test/loss.flac', metadata: '' }
   });
   await delay();
-  harness.host.handleRendererResponse({
+  invoke(CHANNELS.response, {
     requestId: 'insert-renderer-loss', ok: true, result: { newId: 10 }
   });
 
-  const disabling = harness.host.setEnabled(false);
+  const disabling = invoke(CHANNELS.setEnabled, { enabled: false });
   await delay();
-  const unavailable = harness.host.setRendererUnavailable();
+  const unavailable = invoke(CHANNELS.rendererUnavailable);
   await delay();
   assert.deepEqual(harness.gateway.releaseCalls, []);
   finishStop();
@@ -1028,6 +1057,14 @@ test('OpenHome renderer disappearance fails an in-flight reset and stops without
   assert.equal(harness.host.getStatus().rendererReady, false);
   assert.equal(harness.host.resetRequired, true);
   assert.deepEqual(harness.gateway.releaseCalls, ['token-1']);
+  const reloading = invoke(CHANNELS.rendererReady);
+  await delay();
+  assert.equal(invoke(CHANNELS.state, { transportState: 'Playing', idArray: 'stale-before-reset' }), false);
+  const reset = harness.sends.filter(([channel]) => channel === CHANNELS.reset).at(-1)[1];
+  assert.equal(invoke(CHANNELS.resetAck, { resetId: reset.resetId, ok: true }), true);
+  await reloading;
+  assert.equal(harness.host.resetRequired, false);
+  assert.equal(harness.host.latestSnapshot, null);
   await harness.host.dispose();
 });
 
@@ -1048,28 +1085,68 @@ test('OpenHome host rejects actions while renderer is unavailable', async () => 
   await harness.host.dispose();
 });
 
-test('OpenHome IPC accepts requests only from the current renderer', async () => {
+test('OpenHome IPC accepts requests only from the current renderer', async t => {
   const harness = createHarness();
-  const handlers = new Map();
-  const ipcMain = {
-    handle: (channel, handler) => handlers.set(channel, handler),
-    removeHandler: channel => handlers.delete(channel)
-  };
-  const dispose = registerOpenHomeIpc({
-    ipcMain,
-    host: harness.host,
-    getMainWindow: () => harness.window
-  });
+  const { handlers, invoke, dispose } = registerRendererIpc(t, harness);
 
   assert.throws(
     () => handlers.get(CHANNELS.getStatus)({ sender: {} }),
     error => error?.code === 'invalid-sender'
   );
-  assert.equal((await handlers.get(CHANNELS.getStatus)({
-    sender: harness.window.webContents
-  })).apiVersion, 1);
+  assert.equal((await invoke(CHANNELS.getStatus)).apiVersion, 1);
 
   dispose();
   assert.equal(handlers.size, 0);
   await harness.host.dispose();
+});
+
+test('UPnP AV has independent permission and persistent identity while sharing the sidecar', async t => {
+  const h = createHarness();
+  const { invoke } = registerRendererIpc(t, h);
+  await invoke(CHANNELS.rendererReady);
+  await invoke(CHANNELS.setUpnpAvEnabled, { enabled: true });
+  assert.equal(h.host.getStatus().enabled, false);
+  assert.equal(h.host.getStatus().upnpAvEnabled, true);
+  const config = h.getConfig();
+  assert.notEqual(config.upnpAvDeviceId, config.openHomeDeviceId);
+  assert.equal(h.sidecar.startCalls.at(-1).openHomeEnabled, false);
+  assert.equal(h.sidecar.startCalls.at(-1).upnpAvEnabled, true);
+  await invoke(CHANNELS.setEnabled, { enabled: true });
+  await invoke(CHANNELS.setEnabled, { enabled: false });
+  assert.equal(h.host.getDesiredServiceMode(), 'running');
+  assert.equal(h.sidecar.startCalls.at(-1).upnpAvUdn, `uuid:${config.upnpAvDeviceId}`);
+  assert.equal(h.sends.filter(([channel]) => channel === CHANNELS.reset).length, 0);
+  await invoke(CHANNELS.setUpnpAvEnabled, { enabled: false });
+  assert.equal(h.host.getDesiredServiceMode(), 'stopped');
+  assert.equal(h.sends.filter(([channel]) => channel === CHANNELS.reset).length, 1);
+  await h.host.dispose();
+});
+
+test('UPnP URI replacement keeps old gateway registrations until its single queue commit', async () => {
+  const h = createHarness({ upnpAvRemoteControl: true });
+  await h.host.setRendererReady();
+  h.host.tokensByTrackId.set(7, 'old');
+  await h.host.handleSidecarAction({ requestId: 'av-uri', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: 'https://example.test/new.mp3', metadata: '' } });
+  const action = h.sends.find(([channel]) => channel === CHANNELS.action)[1];
+  assert.match(action.args.playbackUrl, /^http:\/\/127\.0\.0\.1:/);
+  assert.deepEqual(h.gateway.releaseCalls, []);
+  h.host.handleRendererResponse({ requestId: 'av-uri', ok: true, result: { newId: 9 } });
+  assert.deepEqual(h.gateway.releaseCalls, ['old']);
+  assert.equal(h.host.tokensByTrackId.get(9), 'token-1');
+  await h.host.dispose();
+});
+
+test('development receiver resolves the freshly built platform helper without replacing a running old helper', async () => {
+  const path = require('node:path');
+  const { createOpenHomeControlHost } = require('../../electron/openhome-control-host.cjs');
+  for (const packaged of [false, true]) {
+    const host = createOpenHomeControlHost({ app: { isPackaged: packaged, getAppPath: () => '/workspace' },
+      processRef: { platform: 'win32', arch: 'x64', resourcesPath: '/resources' },
+      constants: { setAppConfig() {} }, config: { loadConfig: () => ({}), saveConfig: () => true }, getMainWindow: () => null });
+    assert.equal(host.sidecar.sidecarPath, packaged
+      ? path.join('/resources', 'openhome', 'effetune-openhome-sidecar.exe')
+      : path.join('/workspace', 'out', 'native', 'openhome-sidecar', 'win32-x64', 'effetune-openhome-sidecar.exe'));
+    await host.dispose();
+  }
 });

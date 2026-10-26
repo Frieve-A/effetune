@@ -953,6 +953,7 @@ class BassManagementPlugin extends PluginBase {
       const selectButton = document.createElement('button');
       selectButton.type = 'button';
       selectButton.className = 'bass-management-channel-button';
+      selectButton.setAttribute('data-parameter-control', 'view');
       selectButton.textContent = `Ch ${channel + 1}`;
       selectButton.setAttribute('aria-label', `Show Ch ${channel + 1} response`);
       selectButton.addEventListener('click', () => this._selectGraphChannel(channel));

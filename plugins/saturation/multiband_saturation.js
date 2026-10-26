@@ -773,6 +773,7 @@ class MultibandSaturationPlugin extends PluginBase {
         for (let i = 0; i < this.bands.length; i++) {
             const tab = document.createElement('button');
             tab.className = `mbs-band-tab ${i === 0 ? 'active' : ''}`;
+            tab.setAttribute('data-parameter-control', 'view');
             tab.textContent = bandNames[i];
             tab.setAttribute('data-instance-id', this.instanceId);
             

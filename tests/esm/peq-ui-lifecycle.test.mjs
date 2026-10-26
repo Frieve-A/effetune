@@ -360,6 +360,10 @@ test('PEQ marker wheel changes Q proportionally and respects a dynamic limit', (
   let q = 1;
   let maximumQ = 10;
   const marker = {
+    setAttribute(name, value) {
+      assert.equal(name, 'data-parameter-control');
+      assert.equal(value, 'edit');
+    },
     addEventListener(type, handler, options) {
       assert.equal(type, 'wheel');
       wheelHandler = handler;
@@ -373,6 +377,8 @@ test('PEQ marker wheel changes Q proportionally and respects a dynamic limit', (
   });
 
   let prevented = false;
+  wheelHandler({ deltaY: -100, defaultPrevented: true });
+  assert.equal(q, 1);
   wheelHandler({ deltaY: -100, preventDefault: () => { prevented = true; } });
   assert.equal(prevented, true);
   assert.equal(q, 1.06);

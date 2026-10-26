@@ -131,7 +131,6 @@ function audioPipelineConfigurationEqual(left, right) {
     outputDeviceId: 'default',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     outputChannels: 2,
     latencyHint: 'interactive'
@@ -233,10 +232,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         <div class="device-section">
           <label for="output-channels">${t('dialog.audioConfig.outputChannels')}</label>
           <select id="output-channels"></select>
-          <div class="checkbox-container">
-            <input type="checkbox" id="low-latency-output" ${audioPreferences?.lowLatencyOutput ? 'checked' : ''}>
-            <label for="low-latency-output">${t('dialog.audioConfig.lowLatencyOutput')}</label>
-          </div>
           <div class="checkbox-container">
             <input type="checkbox" id="use-wasm-dsp" ${audioPreferences?.useWasmDsp !== false ? 'checked' : ''}>
             <label for="use-wasm-dsp">${t('dialog.audioConfig.useWasmDsp')}</label>
@@ -446,7 +441,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const sampleRateSelect = document.getElementById('sample-rate');
       const useInputWithPlayerCheckbox = document.getElementById('use-input-with-player');
       const outputChannelsSelect = document.getElementById('output-channels');
-      const lowLatencyOutputCheckbox = document.getElementById('low-latency-output');
       const useWasmDspCheckbox = document.getElementById('use-wasm-dsp');
       const gaplessPlaybackCheckbox = document.getElementById('gapless-playback');
       const latencySelect = document.getElementById('latency');
@@ -457,16 +451,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
       const selectedSampleRate = parseInt(sampleRateSelect.value, 10);
       const useInputWithPlayer = useInputWithPlayerCheckbox.checked;
       const outputChannels = parseInt(outputChannelsSelect.value, 10);
-      const lowLatencyOutput = lowLatencyOutputCheckbox.checked;
       const useWasmDsp = useWasmDspCheckbox.checked;
       const selectedLatency = latencySelect.value;
-      const directOutputRequested = outputChannels > 2 || lowLatencyOutput;
       if (!isElectron &&
         selectedOutputDeviceId !== 'default' &&
-        directOutputRequested &&
+        outputChannels > 2 &&
         !outputSupport.hasAudioContextSink
       ) {
-        console.warn('Output device selection requires AudioContext.setSinkId in direct or multichannel mode, using default output.');
+        console.warn('Output device selection requires AudioContext.setSinkId for multichannel output, using default output.');
         selectedOutputDeviceId = 'default';
         outputDevice = outputDevices.find(d => d.deviceId === 'default') || null;
       }
@@ -492,7 +484,6 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
         outputDeviceLabel: outputDevice?.label || '',
         sampleRate: selectedSampleRate,
         useInputWithPlayer: useInputWithPlayer,
-        lowLatencyOutput: lowLatencyOutput,
         useWasmDsp: useWasmDsp,
         gaplessPlayback: gaplessPlaybackCheckbox.checked,
         outputChannels: outputChannels,

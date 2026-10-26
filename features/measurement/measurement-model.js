@@ -1,6 +1,8 @@
 import { INDIVIDUAL_CHANNELS } from './audio-utils/channel-selection.js';
 import { validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
 
+export const essFrequencyLimit = sampleRate => sampleRate * 0.49;
+
 export function resolveSweepBand(config, channel, sampleRate, sweepLength,
     outputChannelCount = config?.outputChannelCount ?? INDIVIDUAL_CHANNELS.length) {
     const setting = config?.sweepBand;
@@ -8,7 +10,7 @@ export function resolveSweepBand(config, channel, sampleRate, sweepLength,
     const ess = config?.acquisitionMethod === 'ess';
     const fftLength = 2 ** Math.ceil(Math.log2(Number(sweepLength) || 65536));
     if (!bandLimited) {
-        if (ess) return { minFreq: 20, maxFreq: Math.min(20000, sampleRate * 0.49), bandLimited: false };
+        if (ess) return { minFreq: 20, maxFreq: Math.min(20000, essFrequencyLimit(sampleRate)), bandLimited: false };
         return {
             minFreq: sampleRate / fftLength,
             maxFreq: (fftLength / 2 - 1) * sampleRate / fftLength,
@@ -26,7 +28,7 @@ export function resolveSweepBand(config, channel, sampleRate, sweepLength,
     const band = (setting?.mode === 'perChannel'
         ? setting.perChannel?.find(entry => entry.channel === channel) : null) ||
         setting?.common || { minFreq: config?.sweepMinFreq, maxFreq: config?.sweepMaxFreq };
-    const nyquistLimit = ess ? sampleRate * 0.49 : Math.max(2, Math.floor(sampleRate / 2) - 1);
+    const nyquistLimit = ess ? essFrequencyLimit(sampleRate) : Math.max(2, Math.floor(sampleRate / 2) - 1);
     const minFreq = Math.max(1, Math.min(Number(band.minFreq) || 20, nyquistLimit - 1));
     const maxFreq = Math.max(minFreq + 1, Math.min(Number(band.maxFreq) || 20000, nyquistLimit));
     return { minFreq, maxFreq, bandLimited: true };
@@ -233,17 +235,22 @@ export function resolveAnalysisRecord(measurement, pointIndex = 'all', channelTo
     return candidates.find(record => previous && record.irKey === previous.irKey) || candidates[0] || null;
 }
 
+export function getValidHarmonicAnalysis(record) {
+    const harmonic = record?.harmonicAnalysis;
+    return validateHarmonicAnalysis(harmonic) && harmonic.sampleRate === record.sampleRate
+        ? harmonic : null;
+}
+
 export function getAnalysisCapabilities(record, frequencyResponse = null) {
     const impulse = record?.data instanceof Float32Array && record.data.length > 0 &&
         Number.isFinite(record.sampleRate) && record.sampleRate > 0 &&
         Number.isSafeInteger(record.onsetIndex) && record.onsetIndex >= 0 &&
         record.onsetIndex < record.data.length && record.data.every(Number.isFinite);
-    const harmonic = record?.harmonicAnalysis;
+    const harmonic = getValidHarmonicAnalysis(record);
     return {
         frequency: validResponse(frequencyResponse) || impulse,
         impulse,
-        distortion: impulse && validateHarmonicAnalysis(harmonic) &&
-            harmonic.sampleRate === record.sampleRate && harmonic.quality.valid,
+        distortion: impulse && Boolean(harmonic),
         waterfall: impulse
     };
 }

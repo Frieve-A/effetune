@@ -1,26 +1,19 @@
 // electron/constants.js
 
 // CLI flag injected into argv when the app restarts itself (watchdog or
-// HDMI-recovery IPC).  Splash + 3s reload is skipped on these auto-restarts
-// to avoid resetting the renderer's startup-grace clock.
+// HDMI-recovery IPC). The visual splash is skipped on these auto-restarts.
 const AUTO_RESTART_FLAG = '--from-auto-restart';
 
 let mainWindow = null;
 let windowState = {
   bounds: { width: 1440, height: 900 },
-  isMaximized: false
+  isMaximized: true
 };
-let isFirstLaunch = true;
-let isSplashReload = false;
 let shouldLoadPipelineState = true;
 let commandLinePresetFile = null;
-let savedCommandLinePresetFile = null;
 let commandLineMusicFiles = [];
-let savedCommandLineMusicFiles = [];
-let pendingCommandLineMusicFiles = [];
 let appVersion = null;
 let appConfig = {};
-let startupPreset = null;
 let updateTrayMenuTemplate = null;
 let closeTimeout = null;
 let triggerClose = null;
@@ -34,47 +27,22 @@ module.exports = {
   getWindowState: () => windowState,
   setWindowState: (state) => { windowState = state; },
 
-  getIsFirstLaunch: () => isFirstLaunch,
-  setIsFirstLaunch: (flag) => { isFirstLaunch = flag; },
-
-  getIsSplashReload: () => isSplashReload,
-  setIsSplashReload: (flag) => { isSplashReload = flag; },
-
   getShouldLoadPipelineState: () => shouldLoadPipelineState,
   setShouldLoadPipelineState: (flag) => { shouldLoadPipelineState = flag; },
 
   getCommandLinePresetFile: () => commandLinePresetFile,
   setCommandLinePresetFile: (file) => { commandLinePresetFile = file; },
 
-  getSavedCommandLinePresetFile: () => savedCommandLinePresetFile,
-  setSavedCommandLinePresetFile: (file) => { savedCommandLinePresetFile = file; },
-
   getCommandLineMusicFiles: () => commandLineMusicFiles,
   setCommandLineMusicFiles: (files) => { commandLineMusicFiles = files },
   addCommandLineMusicFile: (file) => { commandLineMusicFiles.push(file) },
   clearCommandLineMusicFiles: () => { commandLineMusicFiles = [] },
-
-  getSavedCommandLineMusicFiles: () => savedCommandLineMusicFiles,
-  setSavedCommandLineMusicFiles: (files) => { savedCommandLineMusicFiles = files },
-  addSavedCommandLineMusicFile: (file) => { 
-    if (!savedCommandLineMusicFiles.includes(file)) {
-      savedCommandLineMusicFiles.push(file);
-    }
-  },
-  clearSavedCommandLineMusicFiles: () => { savedCommandLineMusicFiles = [] },
-
-  getPendingCommandLineMusicFiles: () => pendingCommandLineMusicFiles,
-  setPendingCommandLineMusicFiles: (files) => { pendingCommandLineMusicFiles = files },
-  clearPendingCommandLineMusicFiles: () => { pendingCommandLineMusicFiles = [] },
 
   getAppVersion: () => appVersion,
   setAppVersion: (version) => { appVersion = version },
 
   getAppConfig: () => appConfig,
   setAppConfig: (config) => { appConfig = config },
-
-  getStartupPreset: () => startupPreset,
-  setStartupPreset: (preset) => { startupPreset = preset },
 
   getUpdateTrayMenuTemplate: () => updateTrayMenuTemplate,
   setUpdateTrayMenuTemplate: (func) => { updateTrayMenuTemplate = func },

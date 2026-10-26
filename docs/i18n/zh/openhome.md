@@ -1,20 +1,48 @@
 ---
-title: "OpenHome 远程控制（桌面应用） - EffeTune"
-description: "通过局域网中的 OpenHome 控制器应用操作 EffeTune 桌面应用：设置方法、网络访问、兼容性与限制。"
+title: "网络音乐与远程控制（桌面应用） - EffeTune"
+description: "通过 EffeTune 播放网络音乐，接收 OpenHome、UPnP AV / DLNA 和 AirPlay 音频，并在局域网中共享音乐和控制播放。"
 lang: zh
 ---
 
-# OpenHome 远程控制（桌面应用）
+# 网络音乐与远程控制（桌面应用）
+
+桌面应用可以接收局域网内其他设备的音乐，并通过 EffeTune 效果链播放。OpenHome、UPnP AV / DLNA 和 AirPlay 的接收设置相互独立，默认均关闭。在 **设置 > 配置... > 网络** 中启用需要的接收方式即可。
+
+## 通过 OpenHome 接收音乐
 
 在受支持的桌面版本（Windows x64、macOS Intel/Apple silicon 和 Linux x64）中，EffeTune 可以作为 OpenHome 播放器出现在同一局域网内的控制器应用中。打开 **设置 > 配置... > 网络**，启用 **允许此网络中的 OpenHome 控制器**（默认关闭），并等待状态显示 EffeTune 已就绪。
 
-**网络**中的**设备名称**用于同时标识 OpenHome 播放器和共享音乐库。默认使用此电脑的名称。输入 `Living Room` 等自定义名称即可更改，清空此字段可恢复使用电脑名称。
+**网络**中的**设备名称**用于标识网络播放器、AirPlay 接收端和共享音乐库。默认使用此电脑的名称。输入 `Living Room` 等自定义名称即可更改，清空此字段可恢复使用电脑名称。UPnP AV / DLNA 会带上简短后缀，显示为单独的播放目标；两个目标均使用同一个 EffeTune 播放器。
 
 OpenHome 不需要登录。启用期间，同一局域网内的其他设备可以查看播放元数据、编辑播放器队列并控制播放。如果 Windows 防火墙请求权限，请只允许 EffeTune 访问 **专用网络**，不要允许 **公用网络**。不需要远程控制时请关闭此选项。
 
-控制器可以添加 HTTP 或 HTTPS 音频流、管理远程播放队列，以及控制播放、暂停、停止、切歌、跳转、循环和随机播放。远程音频同样会照常经过当前的 EffeTune 效果链。基本的队列与播放控制已在 Android 版 BubbleUPnP 上验证；其他 OpenHome 应用显示服务的方式可能有所不同。EffeTune 作为 OpenHome Playlist 源运行（而非 UPnP AV MediaRenderer），不会通过 OpenHome 提供效果编辑、本地文件路径、主音量、Radio、Songcast 或多房间同步。
+控制器可以添加 HTTP 或 HTTPS 音频流、管理远程播放队列，以及控制播放、暂停、停止、切歌、跳转、循环和随机播放。远程音频同样会照常经过当前的 EffeTune 效果链。OpenHome 的基本队列与播放控制已在 Android 版 BubbleUPnP 上验证；其他 OpenHome 应用显示服务的方式可能有所不同。OpenHome 播放目标提供 OpenHome Playlist 源，不会通过 OpenHome 提供效果编辑、本地文件路径、主音量、Radio、Songcast 或多房间同步。
 
 无法保证无间隙播放；在音源提供之前，技术元数据可能一直显示为未知。睡眠、唤醒、连接 VPN 或网络变化后，播放器可能会在重新连接期间短暂消失。
+
+## 通过 UPnP AV / DLNA 接收音乐
+
+在 **设置 > 配置... > 网络** 中启用 **允许此网络中的 UPnP AV / DLNA 播放**。在控制器应用中选择 EffeTune 的 UPnP AV / DLNA 播放目标，然后选择电脑可以访问的音乐服务器上的曲目。OpenHome 权限单独控制，无需启用。
+
+此目标通过 HTTP 或 HTTPS 接收 MP3、FLAC、PCM 编码的 WAV，以及 AAC（ADTS 或 MP4/M4A）。也支持 Ogg（Vorbis/Opus/FLAC）、WebM（Vorbis/Opus）和 Matroska 音频（PCM/FLAC/MP3/Opus/Vorbis/AAC）。文件格式受支持并不代表其中的所有编解码器都可播放；不支持 ALAC。
+
+控制器可以播放、暂停、停止、切歌、在音源支持时跳转，以及调节播放器音量或静音。该音量也适用于本地和 OpenHome 音乐播放，不会更改电脑音量或效果设置。选择新曲目会将当前播放队列替换为该曲目。控制器和 EffeTune 会显示相同的播放状态。 音乐服务器提供相关信息时，还可以在 Visualizer 的**曲目信息**项目中显示曲目标签和源音频格式。
+
+请仅在可信的局域网中使用：启用后，控制器无需登录即可更改播放。防火墙询问时，请允许专用网络访问。音频不会转换格式，具体支持情况取决于控制器和音源。这是音频接收功能，不代表获得 DLNA 认证，也不保证支持视频或所有 DLNA 格式。
+
+## 通过 AirPlay 接收音频
+
+在 **设置 > 配置... > 网络** 中启用 **允许此网络中的 AirPlay 音频**，然后在发送设备的 AirPlay 音频输出列表中选择 **设备名称**。状态会显示接收端是否可用或正在接收。请保持 EffeTune 运行，并将两个设备连接到同一个可信局域网。能够访问已启用接收端的设备无需登录即可发送音频。
+
+AirPlay 一次接收一台设备发送的立体声音频。请在发送端开始或停止播放并调节音量。本地和 UPnP AV 的音量与静音设置仅适用于文件和 URL 播放。AirPlay 音频准备好后会替换当前音乐播放。开始播放本地、OpenHome 或 UPnP AV 音乐会结束 AirPlay 接收。结束 AirPlay 后，先前的曲目不会自动恢复播放。 用 **×** 关闭 EffeTune 播放器或选择**停止**，会结束当前 AirPlay 会话；接收功能仍保持启用，可以再次连接。
+
+发送端提供相关信息时，播放器会显示曲名、艺术家、封面和播放时间。将指针悬停在曲名上，可以查看专辑、作曲者、流派、备注、发送设备和音频格式等详细信息。可显示的信息取决于发送应用和内容；播放时间会在发送端报告时更新。也可以在 [Visualizer](visualizer.md) 中显示这些信息。
+
+**接收音频**表示 AirPlay 编解码器，例如 ALAC 或 AAC-ELD。**接收端 PCM**表示 EffeTune 收到并用于处理的音频格式：44.1 kHz、16 位立体声。这些数值不代表原始音乐文件的音质。收到相关信息时，**发送端音量**会以只读百分比显示发送设备音量滑块的位置；请在发送设备上调节音量。
+
+网络缓冲和 EffeTune 效果会增加延迟，因此声音可能落后于视频。不支持 AirPlay 2 功能、多房间同步、屏幕镜像、视频和受保护内容。兼容性可能因发送应用和设备而异。
+
+AirPlay 发现功能在 Windows 和 macOS 上需要 Bonjour，在 Linux 上需要运行中的 Avahi / DNS-SD 服务。标准 Windows 安装程序会在需要时安装发现服务；便携版和 Microsoft Store 版要求预先安装该服务。在 Linux 上，请安装发行版提供的 Avahi / DNS-SD 服务，并通过常规服务管理工具启用。如果接收端不可用，请检查这些要求及专用网络的防火墙权限后重试。访客 Wi-Fi、VPN 或网络隔离可能导致设备无法相互发现。
 
 ## 选择音乐库和播放设备
 

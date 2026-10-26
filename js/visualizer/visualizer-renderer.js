@@ -1,10 +1,11 @@
+import { isPwaNetworkArtworkUrl } from '../network-music/pwa-connection.js';
 import { createLayer, drawBackplates, paletteGradient, VisualizerEffects, applyEdgeFade, effectAmount, animatedEffects } from './visualizer-effects.js';
 
 import { drawStyledText } from './visualizer-text.js';
 import { lyricsFrame, lyricsOpacity, drawLyrics } from './visualizer-lyrics.js';
 import { counterFrame, animateCounterFrame, drawCounter } from './visualizer-counter.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
-import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS } from './visualizer-model.js';
+import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS, META_TEXT_TYPES } from './visualizer-model.js';
 import { VisualizerHDROutput } from './visualizer-hdr.js';
 import { drawPlaybackControl, playbackControlContains } from './visualizer-playback-control.js';
 import { drawSeekBar } from './visualizer-seek-bar.js';
@@ -49,7 +50,12 @@ export class VisualizerRenderer {
     image(url) {
         if (!url) return null;
         let image = this.images.get(url);
-        if (!image) { image = new Image(); image.src = url; this.images.set(url, image); }
+        if (!image) {
+            image = new Image();
+            if (isPwaNetworkArtworkUrl(url)) image.crossOrigin = 'anonymous';
+            image.src = url;
+            this.images.set(url, image);
+        }
         return image.complete && image.naturalWidth ? image : null;
     }
 
@@ -169,7 +175,7 @@ export class VisualizerRenderer {
                 state.counterAnimation = animation.state;
             }
             const frame = sources.getFrame(item.id);
-            const text = counterDisplay || (lyricFrame ? lyricFrame.key : item.type === 'text' ? item.params.text : ['title', 'album', 'artist'].includes(item.type) ? metadata?.[item.type] : null);
+            const text = counterDisplay || (lyricFrame ? lyricFrame.key : item.type === 'text' ? item.params.text : META_TEXT_TYPES.includes(item.type) ? metadata?.[item.type] : null);
             // Image identity is checked separately; never copy data URLs into a
             // per-frame signature, including the artwork metadata of other items.
             const signature = JSON.stringify([item.type, item.rect, item.channel,
@@ -379,9 +385,9 @@ export class VisualizerRenderer {
                 if (item.style.rounded) { ctx.beginPath(); ctx.roundRect(cx, cy, cw, ch, Math.min(cw, ch) * .06); ctx.clip(); }
                 ctx.drawImage(image, x, y, iw, ih); ctx.restore();
             }
-        } else if (['title', 'album', 'artist', 'text'].includes(item.type)) {
+        } else if (META_TEXT_TYPES.includes(item.type) || item.type === 'text') {
             const raw = item.type === 'text' ? item.params.text
-                : metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist' }[item.type] : '');
+                : metadata?.[item.type] || (editing ? { title: 'Track title', album: 'Album', artist: 'Artist', 'track-info': 'Track information' }[item.type] : '');
             drawStyledText(ctx, raw, item.style, w, h, this.canvas.width / REFERENCE_WIDTH,
                 item.palette.mode === 'solid' ? item.palette.color : paletteGradient(ctx, item.palette, w, time, false, h));
         } else if (item.type === 'seek-bar') {

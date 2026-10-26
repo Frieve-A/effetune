@@ -1719,16 +1719,15 @@ test('core graph connections and source management preserve playback wiring', as
     assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), false);
 
     calls.length = 0;
-    assert.equal(
-      centralSilent.manager.connectBufferSource(createNode(calls, 'centralBuffer')),
-      true
-    );
+    const centralBuffer = createNode(calls, 'centralBuffer');
+    assert.equal(centralSilent.manager.connectBufferSource(centralBuffer), true);
     const silentConnectIndex = calls.findIndex(call =>
       call[0] === 'connectSourceToPipeline' && call[1] === 'runningSilentSource');
     const oldInputDisconnectIndex = calls.findIndex(call =>
       call[0] === 'disconnectSourceFromPipeline' && call[1] === 'originalSource');
     const playerConnectIndex = calls.findIndex(call =>
-      call[0] === 'connectSourceToPipeline' && call[1] === 'centralBuffer');
+      call[0] === 'connectSourceToPipeline' &&
+      call[1] === centralSilent.manager.getPipelineSourceNode(centralBuffer).name);
     assert.ok(silentConnectIndex >= 0 && silentConnectIndex < oldInputDisconnectIndex);
     assert.ok(oldInputDisconnectIndex < playerConnectIndex);
 
@@ -1762,14 +1761,18 @@ test('core graph connections and source management preserve playback wiring', as
     assert.equal(calls.some(call => call[0] === 'unexpectedCanonicalReconnect'), false);
     window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
 
-    assert.equal(manager.connectBufferSource(createNode(calls, 'bufferA')), true);
-    assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' && call[1] === 'bufferA'), true);
+    const bufferA = createNode(calls, 'bufferA');
+    assert.equal(manager.connectBufferSource(bufferA), true);
+    assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' &&
+      call[1] === manager.getPipelineSourceNode(bufferA).name), true);
     assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
       call[1] === 'originalSource'), true);
 
     window.electronIntegration.audioPreferences = { useInputWithPlayer: true };
-    assert.equal(manager.connectBufferSource(createNode(calls, 'bufferB')), true);
-    assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' && call[1] === 'bufferB'), true);
+    const bufferB = createNode(calls, 'bufferB');
+    assert.equal(manager.connectBufferSource(bufferB), true);
+    assert.equal(calls.some(call => call[0] === 'connectSourceToPipeline' &&
+      call[1] === manager.getPipelineSourceNode(bufferB).name), true);
 
     const noWorklet = createHarness({ calls, noWorklet: true });
     assert.equal(noWorklet.manager.connectBufferSource(createNode(calls, 'bufferC')), false);
@@ -1778,8 +1781,10 @@ test('core graph connections and source management preserve playback wiring', as
     const mediaSource = createNode(calls, 'mediaA');
     window.electronIntegration.audioPreferences = { useInputWithPlayer: false };
     const retryHarness = createHarness({ calls, connectSourceThrowsOnce: true });
+    const mediaConnectStart = calls.length;
     assert.equal(retryHarness.manager.connectMediaSource(mediaSource), false);
-    assert.equal(calls.filter(call => call[0] === 'connectSourceToPipeline' && call[1] === 'mediaA').length, 1);
+    assert.equal(calls.slice(mediaConnectStart).filter(call => call[0] === 'connectSourceToPipeline' &&
+      call[1] === retryHarness.manager.getPipelineSourceNode(mediaSource).name).length, 1);
 
     const innerFail = createHarness({ calls, connectSourceThrows: true });
     assert.equal(
@@ -3266,6 +3271,68 @@ test('staged rolling freshness rejects a transport that became unprepared', asyn
   });
 });
 
+test('every player source retains volume and mute through seek, scheduling, and private publication', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const harness = createHarness({ calls, isPlaying: true });
+    const { manager, audioContext, audioManager } = harness;
+    audioManager.ioManager.browserInput = { selected: true };
+    let gainSequence = 0;
+    audioContext.createGain = () => createNode(calls, `player-gain-${++gainSequence}`);
+    manager.setPlayerVolume(12);
+    manager.setPlayerMute(true);
+    manager.currentBuffer = { duration: 20, numberOfChannels: 2 };
+    const first = manager.createBufferSource(manager.currentBuffer, manager.currentInstanceId);
+    manager.currentBufferSource = first;
+    const firstVolume = manager.playerVolumeGains.get(first);
+    assert.equal(firstVolume.gain.value, 0);
+    assert.strictEqual(manager.getPipelineSourceNode(first), firstVolume);
+
+    await manager.seekBufferSource(3);
+    const seek = manager.currentBufferSource;
+    const seekVolume = manager.playerVolumeGains.get(seek);
+    assert.notStrictEqual(seek, first);
+    assert.equal(manager.playerVolumeGains.has(first), false);
+    assert.equal(manager.playerVolumeNodes.has(firstVolume), false);
+    assert.equal(seekVolume.gain.value, 0);
+    assert.strictEqual(manager.getPipelineSourceNode(seek), seekVolume);
+
+    const scheduled = createNode(calls, 'scheduled-player-source');
+    scheduled.buffer = manager.currentBuffer;
+    assert.equal(manager.connectScheduledBufferSource(scheduled), true);
+    const media = createNode(calls, 'media-player-source');
+    assert.equal(manager.connectMediaSource(media, 2), true);
+    const privateSource = manager.createBufferSource(manager.currentBuffer, manager.currentInstanceId,
+      { privateUntilCommit: true });
+    const gate = manager.privatePipelineSourceGates.get(privateSource);
+    const privateVolume = manager.playerVolumeGains.get(privateSource);
+    assert.strictEqual(manager.getPipelineSourceNode(privateSource), gate);
+    assert.equal(gate.gain.value, 0);
+    assert.equal(manager.setPrivatePipelineSourceMuted(privateSource, false), true);
+    assert.equal(privateVolume.gain.value, 0, 'publication must preserve player mute');
+    assert.equal(calls.some(call => call[0] === 'node.connect' &&
+      call[1] === privateVolume.name && call[2] === gate.name), true);
+
+    for (const playerSource of [seek, scheduled, media, privateSource]) {
+      const volume = manager.playerVolumeGains.get(playerSource);
+      assert.equal(volume.gain.value, 0);
+      assert.equal(calls.some(call => call[0] === 'node.connect' &&
+        call[1] === playerSource.name && call[2] === volume.name), true);
+    }
+    manager.setPlayerMute(false);
+    assert.ok([...manager.playerVolumeNodes].every(node => node.gain.value === .12));
+    manager.setPlayerVolume(35);
+    assert.ok([...manager.playerVolumeNodes].every(node => node.gain.value === .35));
+    const microphone = manager.originalSourceNode;
+    assert.equal(manager.ensurePipelineSourceConnected(microphone), true);
+    assert.strictEqual(manager.getPipelineSourceNode(microphone), microphone);
+    assert.equal(manager.playerVolumeGains.has(microphone), false);
+    assert.equal(microphone.gain.value, 1);
+    for (const playerSource of [seek, scheduled, media, privateSource]) manager.releasePipelineSource(playerSource);
+    assert.equal(manager.playerVolumeNodes.size, 0);
+    manager.disconnect();
+  });
+});
+
 test('known mono playback is routed only to front left and right for every output layout', async () => {
   await withAudioContextGlobals({}, async ({ calls }) => {
     for (const outputChannels of [2, 4, 6, 8]) {
@@ -3302,9 +3369,11 @@ test('known mono playback is routed only to front left and right for every outpu
         ['splitter-1', `merger-${outputChannels}`, 0, 0],
         ['splitter-1', `merger-${outputChannels}`, 0, 1]
       ]);
+      assert.equal(routing.some(([from, to]) =>
+        from === `merger-${outputChannels}` && to === harness.manager.playerVolumeGains.get(source).name), true);
       assert.equal(calls.some(call =>
         call[0] === 'connectSourceToPipeline' &&
-        call[1] === `merger-${outputChannels}`), true);
+        call[1] === harness.manager.getPipelineSourceNode(source).name), true);
       harness.manager.releasePipelineSource(source);
     }
   });
@@ -3349,8 +3418,10 @@ test('mono channel adapters are shared by private A/B, scheduled, and metadata-k
     const scheduled = makeRoutingNode('scheduled-source');
     scheduled.buffer = { numberOfChannels: 1 };
     assert.equal(harness.manager.connectScheduledBufferSource(scheduled), true);
+    assert.equal(routing.some(([from, to]) =>
+      from.startsWith('merger-8-') && to === harness.manager.playerVolumeGains.get(scheduled).name), true);
     assert.equal(calls.some(call =>
-      call[0] === 'connectSourceToPipeline' && call[1].startsWith('merger-8-')), true);
+      call[0] === 'connectSourceToPipeline' && call[1] === harness.manager.getPipelineSourceNode(scheduled).name), true);
 
     const media = makeRoutingNode('media-source');
     assert.equal(harness.manager.connectMediaSource(media, 1), true);
@@ -3372,7 +3443,7 @@ test('mono channel adapters are shared by private A/B, scheduled, and metadata-k
     multichannel.buffer = { numberOfChannels: 4 };
     assert.equal(harness.manager.connectBufferSource(multichannel), true);
     assert.equal(calls.some(call =>
-      call[0] === 'connectSourceToPipeline' && call[1] === 'multichannel-source'), true);
+      call[0] === 'connectSourceToPipeline' && call[1] === harness.manager.getPipelineSourceNode(multichannel).name), true);
   });
 });
 
@@ -3384,10 +3455,11 @@ test('buffer source lifecycle and graph rebuilds keep playback recoverable', asy
     manager.handleTrackEnded = () => calls.push(['manager.handleTrackEnded']);
     manager.currentInstanceId = 7;
     const bufferSource = manager.createBufferSource({ duration: 8 }, 7);
+    const pipelineSource = manager.getPipelineSourceNode(bufferSource);
     bufferSource.onended();
     assert.equal(calls.some(call => call[0] === 'manager.handleTrackEnded'), true);
     assert.equal(calls.some(call => call[0] === 'disconnectSourceFromPipeline' &&
-      call[1] === bufferSource.name), true);
+      call[1] === pipelineSource.name), true);
 
     state.isStopped = true;
     bufferSource.onended();
@@ -4681,6 +4753,7 @@ test('audio element setup, metadata, media session, and fallback naming stay syn
     audioPlayer.audioElement.error = { code: 1, message: 'broken' };
     window.uiManager = { setError: (...args) => playbackErrors.push(args) };
     audioPlayer.audioElement.dispatch('error', { target: audioPlayer.audioElement });
+    assert.equal(state.playbackErrorTrack, state.currentTrack);
     assert.deepEqual(playbackErrors, [['error.audioPlaybackFailed', true]]);
     assert.equal(playbackErrors.flat().includes('broken'), false);
     audioPlayer.audioElement.error = { code: MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED, message: 'unsupported' };
@@ -4783,6 +4856,35 @@ test('audio element setup, metadata, media session, and fallback naming stay syn
     mediaSession.handlers.get('stop')();
     mediaSession.handlers.get('seekto')({ seekTime: 4 });
     mediaSession.handlers.get('seekto')({});
+  });
+});
+
+test('UPnP capability and media error observations follow the committed playback owner', async () => {
+  await withAudioContextGlobals({}, async ({ calls }) => {
+    const { audioPlayer, manager, state } = createHarness({ calls });
+    const track = { name: 'Current', path: 'https://example.test/current.mp3' };
+    manager.setupAudioElement(track);
+    manager.currentPlaybackDecision = { playableTrack: track };
+    state.playbackMode = 'audioElement';
+    state.currentTrackDuration = 120;
+    audioPlayer.audioElement.seekable = { length: 0 };
+    assert.equal(manager.canSeekCurrentTrack(), false);
+    audioPlayer.audioElement.seekable = { length: 1 };
+    assert.equal(manager.canSeekCurrentTrack(), true);
+    state.isTransitioning = true;
+    assert.equal(manager.canSeekCurrentTrack(), false);
+    state.isTransitioning = false;
+    audioPlayer.audioElement.error = { code: 2 };
+    audioPlayer.audioElement.dispatch('error');
+    assert.equal(state.playbackErrorTrack, track);
+    manager.updateState({ isPlaying: true });
+    assert.equal(state.playbackErrorTrack, null);
+    manager.pendingMediaActivation = { element: audioPlayer.audioElement };
+    audioPlayer.audioElement.dispatch('error');
+    assert.equal(manager.pendingMediaActivation.invalid, true);
+    assert.equal(state.playbackErrorTrack, null);
+    manager.pendingMediaActivation = null;
+    manager.disconnect();
   });
 });
 
@@ -7489,7 +7591,9 @@ test('automatic buffer handoff schedules one transparent source at the current e
       calls.filter(call => call[0] === 'node.start'),
       [['node.start', scheduled.source.name, 15]]
     );
-    assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), false);
+    assert.equal(calls.filter(call => call[0] === 'audioContext.createGain').length, 1);
+    assert.equal(harness.manager.privatePipelineSourceGates.has(scheduled.source), false);
+    assert.equal(harness.manager.playerVolumeGains.get(scheduled.source).gain.value, 1);
     assert.equal(harness.audioManager.sourceNode.name, 'originalSource');
     assert.equal(harness.state.isTransitioning, false);
 
@@ -7515,9 +7619,10 @@ test('automatic buffer handoff schedules one transparent source at the current e
       calls.slice(boundaryCallIndex).some(call => call[2] === 'Buffer monitoring position update'),
       false
     );
-    assert.equal(harness.audioManager.sourceNode, scheduled.source);
-    assert.equal(harness.audioManager.ioManager.sourceNode, scheduled.source);
-    assert.equal(calls.some(call => call[0] === 'audioContext.createGain'), false);
+    const scheduledOutput = harness.manager.getPipelineSourceNode(scheduled.source);
+    assert.equal(harness.audioManager.sourceNode, scheduledOutput);
+    assert.equal(harness.audioManager.ioManager.sourceNode, scheduledOutput);
+    assert.equal(calls.slice(boundaryCallIndex).some(call => call[0] === 'audioContext.createGain'), false);
   });
 });
 

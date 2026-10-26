@@ -8,6 +8,7 @@ const { OpenHomeSidecarManager } = require('./openhome-sidecar-manager.cjs');
 const CHANNELS = Object.freeze({
   getStatus: 'openhome-v1:get-status',
   setEnabled: 'openhome-v1:set-enabled',
+  setUpnpAvEnabled: 'openhome-v1:set-upnp-av-enabled',
   setFriendlyName: 'openhome-v1:set-friendly-name',
   rendererReady: 'openhome-v1:renderer-ready',
   rendererUnavailable: 'openhome-v1:renderer-unavailable',
@@ -58,6 +59,7 @@ class OpenHomeControlHost {
     this.onDiagnostic = onDiagnostic;
     const config = this.loadConfig();
     this.enabled = config.openHomeRemoteControl === true;
+    this.upnpAvEnabled = config.upnpAvRemoteControl === true;
     this.localControlEnabled = false;
     this.rendererReady = false;
     this.latestSnapshot = null;
@@ -81,6 +83,7 @@ class OpenHomeControlHost {
     this.actionEpoch = 0;
     this.reconciliation = Promise.resolve();
     this.requestedEnabled = this.enabled;
+    this.requestedUpnpAvEnabled = this.upnpAvEnabled;
     this.pendingDisableTransitions = 0;
     this.settingsTransitionEpoch = 0;
     this.completedSettingsTransitionEpoch = 0;
@@ -99,7 +102,7 @@ class OpenHomeControlHost {
       this.sendStatus();
     });
     this.sidecar.on('diagnostic', diagnostic => {
-      this.onDiagnostic(String(diagnostic?.code || 'sidecar-diagnostic').slice(0, 64));
+      this.onDiagnostic(String(diagnostic?.code || 'sidecar-diagnostic').slice(0, 64), diagnostic?.detail);
     });
   }
 
@@ -108,6 +111,7 @@ class OpenHomeControlHost {
     return Object.freeze({
       apiVersion: 1,
       enabled: this.enabled,
+      upnpAvEnabled: this.upnpAvEnabled,
       localControlEnabled: this.localControlEnabled,
       friendlyName: this.getFriendlyName(),
       rendererReady: this.rendererReady,
@@ -118,7 +122,7 @@ class OpenHomeControlHost {
 
   setEnabled(enabled) {
     if (typeof enabled !== 'boolean') throw createHostError('invalid-setting');
-    const gateDisable = enabled === false && this.requestedEnabled === true;
+    const gateDisable = enabled === false && this.requestedEnabled === true && !this.requestedUpnpAvEnabled;
     this.requestedEnabled = enabled;
     const epoch = ++this.settingsTransitionEpoch;
     if (gateDisable) {
@@ -140,6 +144,29 @@ class OpenHomeControlHost {
     ));
     this.settingsTransition = result.catch(() => {});
     return result;
+  }
+
+  setUpnpAvEnabled(enabled) {
+    if (typeof enabled !== 'boolean') throw createHostError('invalid-setting');
+    const gateDisable = !enabled && this.requestedUpnpAvEnabled && !this.requestedEnabled;
+    this.requestedUpnpAvEnabled = enabled;
+    const epoch = ++this.settingsTransitionEpoch;
+    if (gateDisable) {
+      this.pendingDisableTransitions += 1;
+      this.resetRequired = true;
+    }
+    const result = this.settingsTransition.then(() =>
+      this.applyEnabledTransition(enabled, epoch, gateDisable, 'upnpAvEnabled'));
+    this.settingsTransition = result.catch(() => {});
+    return result;
+  }
+
+  async restartDeviceConfiguration() {
+    this.resetSidecarRetry();
+    this.advanceLifecycle('service-stopped');
+    await this.stopAdvertisement();
+    this.reconciledMode = 'paused';
+    await this.scheduleReconciliation();
   }
 
   async applyFriendlyNameTransition(friendlyName, restoreDefault) {
@@ -168,25 +195,34 @@ class OpenHomeControlHost {
     return resolveFriendlyName(config, this.defaultFriendlyName);
   }
 
-  async applyEnabledTransition(enabled, epoch, disableTransition) {
-    if (this.enabled !== enabled) {
+  async applyEnabledTransition(enabled, epoch, disableTransition, property = 'enabled') {
+    if (this[property] !== enabled) {
+      const wasRunning = this.enabled || this.upnpAvEnabled;
       const current = this.loadConfig();
-      const next = { ...current, openHomeRemoteControl: enabled };
+      const next = { ...current, [property === 'enabled' ? 'openHomeRemoteControl' : 'upnpAvRemoteControl']: enabled };
       if (!this.saveConfig(next)) {
         if (disableTransition) this.finishDisableTransition(true);
         throw createHostError('save-failed');
       }
       this.setAppConfig(next);
-      this.enabled = enabled;
-      if (enabled) this.resetSidecarRetry();
+      this[property] = enabled;
+      const anyEnabled = this.enabled || this.upnpAvEnabled;
+      if (wasRunning && anyEnabled) {
+        if (disableTransition) this.finishDisableTransition(true);
+        await this.restartDeviceConfiguration();
+        this.completedSettingsTransitionEpoch = epoch;
+        this.sendStatus();
+        return this.getStatus();
+      }
+      if (anyEnabled) this.resetSidecarRetry();
       else this.cancelSidecarRetry();
       this.advanceLifecycle(enabled ? null : 'service-stopped');
-      if (enabled && this.rendererReady && this.resetRequired &&
+      if (anyEnabled && this.rendererReady && this.resetRequired &&
           this.pendingDisableTransitions === 0) {
         const resetSucceeded = await this.requestRendererReset();
         this.latestSnapshot = null;
         if (resetSucceeded) this.resetRequired = false;
-      } else if (!enabled) {
+      } else if (!anyEnabled) {
         this.resetRequired = true;
         const resetSucceeded = await this.requestRendererReset();
         this.latestSnapshot = null;
@@ -230,7 +266,7 @@ class OpenHomeControlHost {
     this.finishPendingReset(false);
     if (this.rendererReady) {
       this.rendererReady = false;
-      if (this.enabled) this.resetRequired = true;
+      if (this.enabled || this.upnpAvEnabled) this.resetRequired = true;
       this.advanceLifecycle('renderer-unavailable');
     }
     this.latestSnapshot = null;
@@ -244,9 +280,9 @@ class OpenHomeControlHost {
 
   publishState(snapshot) {
     requireBoundedObject(snapshot, 'invalid-state');
-    if ((!this.enabled && !this.localControlEnabled) || !this.rendererReady || this.resetRequired || this.disposed) return false;
+    if ((!this.enabled && !this.upnpAvEnabled && !this.localControlEnabled) || !this.rendererReady || this.resetRequired || this.disposed) return false;
     this.latestSnapshot = snapshot;
-    return this.enabled ? this.sidecar.publishState(snapshot) : true;
+    return this.enabled || this.upnpAvEnabled ? this.sidecar.publishState(snapshot) : true;
   }
 
   setLocalControlEnabled(enabled) {
@@ -363,7 +399,8 @@ class OpenHomeControlHost {
         this.failPendingAction(pending, 'action-timeout', true);
       }, pending.timeoutMs);
 
-      if (action.service === 'Playlist' && action.action === 'Insert') {
+      if ((action.service === 'Playlist' && action.action === 'Insert') ||
+          (action.service === 'AVTransport' && action.action === 'SetAVTransportURI' && action.args.uri)) {
         const registration = await this.gateway.register(action.args.uri);
         if (!this.isCurrentAction(pending)) {
           this.gateway.release(registration.token);
@@ -483,6 +520,14 @@ class OpenHomeControlHost {
 
   commitMediaRegistration(pending, result) {
     const action = pending.action;
+    if (action.service === 'AVTransport' && action.action === 'SetAVTransportURI') {
+      this.releaseAllRegistrations();
+      if (pending.registration && Number.isSafeInteger(result?.newId) && result.newId > 0) {
+        this.tokensByTrackId.set(result.newId, pending.registration.token);
+        if (pending.artworkRegistration) this.artworkTokensByTrackId.set(result.newId, pending.artworkRegistration.token);
+      }
+      return;
+    }
     if (action.service !== 'Playlist') return;
     if (action.action === 'Insert' && pending.registration) {
       const newId = Number(result?.newId);
@@ -548,7 +593,7 @@ class OpenHomeControlHost {
   }
 
   getDesiredServiceMode() {
-    if (this.disposed || !this.enabled || !this.rendererReady || this.resetRequired) {
+    if (this.disposed || (!this.enabled && !this.upnpAvEnabled) || !this.rendererReady || this.resetRequired) {
       return 'stopped';
     }
     return this.environmentAvailable ? 'running' : 'paused';
@@ -651,7 +696,9 @@ class OpenHomeControlHost {
         const config = this.ensureDeviceId();
         const started = await this.sidecar.start({
           friendlyName: this.getFriendlyName(config),
-          udn: `uuid:${config.openHomeDeviceId}`
+          udn: `uuid:${config.openHomeDeviceId}`,
+          openHomeEnabled: this.enabled, upnpAvEnabled: this.upnpAvEnabled,
+          upnpAvUdn: `uuid:${config.upnpAvDeviceId}`
         });
         if (started !== true) {
           this.reconciledMode = 'paused';
@@ -671,8 +718,11 @@ class OpenHomeControlHost {
 
   ensureDeviceId() {
     const current = this.loadConfig();
-    if (/^[0-9a-f-]{36}$/i.test(current.openHomeDeviceId || '')) return current;
-    const next = { ...current, openHomeDeviceId: crypto.randomUUID() };
+    const validId = value => /^[0-9a-f-]{36}$/i.test(value || '');
+    if (validId(current.openHomeDeviceId) && (!this.upnpAvEnabled || validId(current.upnpAvDeviceId))) return current;
+    const next = { ...current,
+      ...(!validId(current.openHomeDeviceId) ? { openHomeDeviceId: crypto.randomUUID() } : {}),
+      ...(this.upnpAvEnabled && !validId(current.upnpAvDeviceId) ? { upnpAvDeviceId: crypto.randomUUID() } : {}) };
     if (!this.saveConfig(next)) throw createHostError('save-failed');
     this.setAppConfig(next);
     return next;
@@ -721,6 +771,7 @@ function registerOpenHomeIpc({ ipcMain, host, getMainWindow }) {
   const handlers = new Map([
     [CHANNELS.getStatus, () => host.getStatus()],
     [CHANNELS.setEnabled, (_event, request) => host.setEnabled(request?.enabled)],
+    [CHANNELS.setUpnpAvEnabled, (_event, request) => host.setUpnpAvEnabled(request?.enabled)],
     [CHANNELS.setFriendlyName, (_event, request) => host.setFriendlyName(request?.friendlyName)],
     [CHANNELS.rendererReady, () => host.setRendererReady()],
     [CHANNELS.rendererUnavailable, () => host.setRendererUnavailable()],
@@ -756,7 +807,7 @@ function createOpenHomeControlHost({
     : 'effetune-openhome-sidecar';
   const basePath = app.isPackaged
     ? path.join(processRef.resourcesPath, 'openhome')
-    : path.join(app.getAppPath(), 'out', 'native', 'openhome-sidecar');
+    : path.join(app.getAppPath(), 'out', 'native', 'openhome-sidecar', `${processRef.platform}-${processRef.arch}`);
   const sidecar = new OpenHomeSidecarManager({
     sidecarPath: path.join(basePath, executableName)
   });

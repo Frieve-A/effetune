@@ -1,11 +1,12 @@
 // Apply valid typing immediately without rewriting partial input. Blur or Enter
 // clamps the value, restores invalid input, and formats the committed number.
-export function bindNumberInput(valueInput, slider, min, max, initialValue, setter, toSlider, format) {
+export function bindNumberInput(valueInput, slider, min, max, initialValue, setter, toSlider, format, getBounds = () => [min, max]) {
     const initial = parseFloat(initialValue);
     const applied = { value: Number.isFinite(initial) ? initial : min };
 
     valueInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
+        const [min, max] = getBounds();
         if (!(val >= min && val <= max)) return;
         slider.value = toSlider(val);
         setter(val);
@@ -14,6 +15,7 @@ export function bindNumberInput(valueInput, slider, min, max, initialValue, sett
 
     const commit = (e) => {
         const val = parseFloat(e.target.value);
+        const [min, max] = getBounds();
         const finiteVal = Number.isFinite(val) ? val : applied.value;
         const clampedVal = finiteVal < min ? min : (finiteVal > max ? max : finiteVal);
         e.target.value = format(clampedVal);

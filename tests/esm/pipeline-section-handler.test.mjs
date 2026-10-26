@@ -30,6 +30,9 @@ function createRuntime(pipeline, options = {}) {
     updatePipelineUI() {
       calls.push(['updatePipelineUI']);
     },
+    updateURL() {
+      calls.push(['updateURL']);
+    },
     updateWorkletPlugins() {
       calls.push(['updateWorkletPlugins']);
     },
@@ -329,6 +332,7 @@ test('expandCollapseSection expands plugins, updates markers, and localizes tool
 
   assert.equal(runtime.pipelineCore.expandedPlugins.has(section), true);
   assert.equal(runtime.pipelineCore.expandedPlugins.has(pluginA), true);
+  assert.equal(pluginA._uiCollapsed, false);
   assert.equal(items.get(1).nameEl.title, 'T:ui.title.collapse');
   assert.equal(items.get(4).nameEl.title, 'T:ui.title.expand');
   assert.ok(runtime.calls.some(call => call[0] === 'updateMarkers'));
@@ -367,6 +371,7 @@ test('expandCollapseSection collapses plugins and uses fallback tooltip text', a
   });
 
   assert.equal(runtime.pipelineCore.expandedPlugins.size, 0);
+  assert.equal(plugin._uiCollapsed, true);
   assert.equal(items.get(1).nameEl.title, 'Click to expand');
   assert.deepEqual(runtime.calls.filter(call => call[0] === 'pluginUiRemove'), [
     ['pluginUiRemove', 1, 'expanded'],

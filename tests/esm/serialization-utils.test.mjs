@@ -37,6 +37,59 @@ function createPlugin(overrides = {}) {
   return plugin;
 }
 
+test('UI flags round-trip in both formats and only occupy space when true', () => {
+  for (const collapsed of [false, true]) {
+    for (const locked of [false, true]) {
+      const plugin = createPlugin({
+        _uiCollapsed: collapsed,
+        _uiLocked: locked,
+        getSerializableParameters: () => ({ gain: 3, cl: 2, lk: 4 })
+      });
+      const expected = {
+        gain: 3, cl: 2, lk: 4,
+        ...(collapsed && { _uiCollapsed: true }),
+        ...(locked && { _uiLocked: true })
+      };
+      const short = getSerializablePluginStateShort(plugin);
+      const long = getSerializablePluginStateLong(plugin);
+      assert.deepEqual(short, { ...expected, nm: plugin.name, en: true });
+      assert.deepEqual(long.parameters, expected);
+      assert.deepEqual(convertLongToShortFormat(long), short);
+      assert.deepEqual(convertShortToLongFormat(short), long);
+      for (const state of [short, long]) {
+        for (const serializedSetter of [false, true]) {
+          const restored = createPlugin(serializedSetter ? {
+            setSerializedParameters(params) { this.received = params; }
+          } : {});
+          applySerializedState(restored, JSON.parse(JSON.stringify(state)));
+          assert.equal(restored._uiCollapsed, collapsed);
+          assert.equal(restored._uiLocked, locked);
+          const received = restored.received || restored.parameters;
+          assert.equal(received.gain, 3);
+          assert.equal(Object.hasOwn(received, '_uiCollapsed'), false);
+          assert.equal(Object.hasOwn(received, '_uiLocked'), false);
+        }
+      }
+    }
+  }
+});
+
+test('restoring a legacy pipeline clears UI flags and refreshes the live controls', () => {
+  const refreshed = [];
+  const plugin = createPlugin({
+    _uiCollapsed: true,
+    _uiLocked: true,
+    audioManager: { pipelineManager: { core: {
+      itemBuilder: { updatePluginUIState: plugin => refreshed.push(plugin) }
+    } } }
+  });
+  applySerializedState(plugin, { name: 'Legacy', parameters: { gain: -2 } });
+  assert.equal(plugin._uiCollapsed, false);
+  assert.equal(plugin._uiLocked, false);
+  assert.deepEqual(refreshed, [plugin]);
+  assert.deepEqual(getSerializablePluginStateLong(plugin).parameters, {});
+});
+
 test('getSerializablePluginStateShort removes internal fields and keeps routing aliases', () => {
   const plugin = createPlugin({
     name: 'Tone Control',

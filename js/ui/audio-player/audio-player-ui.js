@@ -9,6 +9,7 @@ import { updateRangeFill } from '../range-fill.js';
 import { escapeHtml } from '../../utils/escape-html.js';
 import { isPwaNetworkArtworkUrl } from '../../network-music/pwa-connection.js';
 import { SynchronizedVideo } from './synchronized-video.js';
+import { formatTrackInformation, getTrackInformation } from './track-information.js';
 import {
   PLAYBACK_SPEED_MAX,
   PLAYBACK_SPEED_MIN,
@@ -87,6 +88,7 @@ export class AudioPlayerUI {
     this.repeatButton = null;
     this.shuffleButton = null;
     this.speedButton = null;
+    this.volumeSlider = null;
     this.closeButton = null;
     this.expandButton = null;
     this.miniPlayerButton = null;
@@ -176,6 +178,7 @@ export class AudioPlayerUI {
     addStateListener('currentTrackName', () => {
       this.updateTrackDisplay();
     });
+    addStateListener('liveInputInformation', () => this.updateTrackDisplay());
 
     addStateListener('artworkUrl', (artworkUrl) => {
       this.handleArtworkUrlChange(artworkUrl);
@@ -250,6 +253,7 @@ export class AudioPlayerUI {
     if (this.closeButton) this.closeButton.disabled = false;
     this.initStateMonitoring();
     if (this.container) {
+      this.syncRemoteVolumeControl();
       this.updateVideoPresentation();
       this.updateTrackDisplay();
       this.updateArtwork();
@@ -288,6 +292,28 @@ export class AudioPlayerUI {
       this.volumeSlider.max = String(state?.volumeMax ?? 100);
       if (document.activeElement !== this.volumeSlider) this.volumeSlider.value = String(state?.volume ?? 0);
     }
+  }
+
+  syncRemoteVolumeControl() {
+    this.volumeSlider?.parentNode?.removeChild(this.volumeSlider);
+    this.volumeSlider = null;
+    if (!this.container || !this.audioPlayer.isRemote) return;
+    const target = this.audioPlayer;
+    const slider = document.createElement('input');
+    slider.className = 'player-volume';
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.step = '1';
+    slider.hidden = true;
+    slider.title = window.uiManager ? window.uiManager.t('networkMusic.volume') : 'Volume';
+    slider.setAttribute('aria-label', slider.title);
+    slider.addEventListener('change', () => {
+      if (this.audioPlayer === target) return target.setVolume?.(Number(slider.value));
+    });
+    this.container.querySelector('.player-controls').insertBefore(slider,
+      this.miniPlayerButton || this.expandButton || this.closeButton);
+    this.volumeSlider = slider;
   }
 
   canRunPlayerUi() {
@@ -387,7 +413,6 @@ export class AudioPlayerUI {
         <button class="player-button repeat-button" title="${window.uiManager ? window.uiManager.t('ui.title.repeat') : 'Toggle repeat mode'}">${repeatIcon}</button>
         <button class="player-button shuffle-button" title="${window.uiManager ? window.uiManager.t('ui.title.shuffle') : 'Toggle shuffle'}">${ICON.shuffle}</button>
         <button class="player-button speed-button" type="button" title="${window.uiManager ? window.uiManager.t('ui.title.playbackSpeed') : 'Playback speed'}" aria-haspopup="dialog" aria-expanded="false">${state?.playbackSpeed ?? 1}x</button>
-        <input class="player-volume" type="range" min="0" max="100" step="1" aria-label="Volume" title="${window.uiManager ? window.uiManager.t('networkMusic.volume') : 'Volume'}" hidden>
         ${miniPlayerControls}
         <button class="player-button expand-button" title="${window.uiManager ? window.uiManager.t('ui.title.expandPlayer') : 'Expand player'}">${this.desktopQueueExpanded ? ICON.collapse : ICON.expand}</button>
         <button class="player-button close-button" title="${window.uiManager ? window.uiManager.t('ui.title.closePlayer') : 'Close player'}">${ICON.close}</button>
@@ -407,13 +432,12 @@ export class AudioPlayerUI {
     this.repeatButton = container.querySelector('.repeat-button');
     this.shuffleButton = container.querySelector('.shuffle-button');
     this.speedButton = container.querySelector('.speed-button');
-    this.volumeSlider = container.querySelector('.player-volume');
-    this.volumeSlider?.addEventListener('change', () => this.audioPlayer.setVolume?.(Number(this.volumeSlider.value)));
     this.closeButton = container.querySelector('.close-button');
     this.expandButton = container.querySelector('.expand-button');
     this.miniPlayerButton = container.querySelector('.mini-player-button');
     this.restoreButton = container.querySelector('.restore-button');
     this.pinButton = container.querySelector('.pin-button');
+    this.syncRemoteVolumeControl();
     this.artworkImage = container.querySelector('.player-artwork-image');
     this.videoExpandButton = document.createElement('button');
     this.videoExpandButton.className = 'player-button player-video-expand';
@@ -783,6 +807,7 @@ export class AudioPlayerUI {
    */
   updateTrackDisplay(track = null) {
     if (!this.trackNameDisplay || this.shouldDeferMobileTrackPresentation()) return;
+    const snapshot = this.audioPlayer.stateManager?.getStateSnapshot?.();
     
     // Get track from state if not provided
     let currentTrackName = '';
@@ -791,6 +816,11 @@ export class AudioPlayerUI {
       track = state.currentTrack;
       currentTrackName = state.currentTrackName || '';
     }
+    const information = snapshot?.liveInputActive ? snapshot.liveInputInformation : getTrackInformation(track);
+    this.trackNameDisplay.title = formatTrackInformation(information, (key, fallback) => {
+      const value = this.t(key);
+      return value && value !== key ? value : fallback;
+    }, snapshot?.liveInputActive ? 'AirPlay' : '');
     
     const displayName = this.getDisplayTrackName(track);
     if (currentTrackName) {
@@ -1943,6 +1973,7 @@ export class AudioPlayerUI {
     this.repeatButton = null;
     this.shuffleButton = null;
     this.speedButton = null;
+    this.volumeSlider = null;
     this.closeButton = null;
     this.expandButton = null;
     this.miniPlayerButton = null;

@@ -9,7 +9,7 @@ import {
 } from '../../features/measurement/audio-utils/signal-generation.js';
 import { DataStorage } from '../../features/measurement/dataStorage.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
-import { resolveSweepBand, resolveResponseSweepBand } from '../../features/measurement/measurement-model.js';
+import { resolveSweepBand, resolveResponseSweepBand, essFrequencyLimit } from '../../features/measurement/measurement-model.js';
 
 const measurementHtml = fs.readFileSync(
     new URL('../../features/measurement/measurement.html', import.meta.url),
@@ -26,6 +26,17 @@ function spectrumMagnitude(signal, bin) {
     fft.transform(real, imag, signal, new Float32Array(signal.length));
     return Math.hypot(real[bin], imag[bin]);
 }
+
+test('ESS setup endpoints share the acquisition frequency ceiling at every offered sample rate', () => {
+    for (const sampleRate of [44100, 48000, 88200, 96000, 176400, 192000]) {
+        const maxFreq = Math.floor(essFrequencyLimit(sampleRate)), minFreq = maxFreq - 1;
+        for (const mode of ['common', 'perChannel']) {
+            const config = { acquisitionMethod: 'ess', sweepBand: { mode, common: { minFreq, maxFreq },
+                perChannel: [{ channel: 'left', minFreq, maxFreq }] } };
+            assert.deepEqual(resolveSweepBand(config, 'left', sampleRate, 131072), { minFreq, maxFreq, bandLimited: true });
+        }
+    }
+});
 
 test('ESS full-band mode uses a finite audible sweep below Nyquist', () => {
     const sweep = generateESS.call({ initialized: true }, 16384, 48000, 'left', 5000, 10000, false);

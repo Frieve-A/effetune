@@ -14,10 +14,7 @@ const {
 function createHarness(options = {}) {
   const userDataPath = options.userDataPath || createTempDir('effetune-window-state');
   const constantsCalls = [];
-  let windowState = options.windowState || {
-    bounds: { width: 1440, height: 900 },
-    isMaximized: false
-  };
+  let windowState = options.windowState || loadFreshModule('../../electron/constants.js').getWindowState();
   let mainWindow = options.mainWindow || null;
   const primaryWorkArea = options.primaryWorkArea || { x: 0, y: 0, width: 1920, height: 1080 };
   const matchingWorkArea = options.matchingWorkArea || primaryWorkArea;
@@ -67,6 +64,40 @@ function createHarness(options = {}) {
 function readSavedWindowState(userDataPath) {
   return JSON.parse(fs.readFileSync(path.join(userDataPath, 'window-state.json'), 'utf8'));
 }
+
+test('first launch maximizes and later launches restore saved bounds and maximized state', t => {
+  const first = createHarness();
+  t.after(() => fs.rmSync(first.userDataPath, { recursive: true, force: true }));
+  first.module.loadWindowState();
+  const calls = [];
+  const window = {
+    isDestroyed: () => false,
+    isMinimized: () => false,
+    isMaximized: () => false,
+    show: () => calls.push('show'),
+    maximize: () => calls.push('maximize')
+  };
+  first.module.showWindowInRestoredState(window);
+  assert.deepEqual(calls, ['maximize']);
+
+  for (const isMaximized of [false, true]) {
+    const bounds = { x: 100, y: 80, width: 1200, height: 800 };
+    first.setMainWindow({
+      ...window,
+      isMaximized: () => isMaximized,
+      getNormalBounds: () => bounds
+    });
+    first.module.saveWindowState();
+
+    const next = createHarness({ userDataPath: first.userDataPath });
+    next.module.loadWindowState();
+    assert.deepEqual(next.windowState, { bounds, isMaximized });
+    assert.deepEqual(next.module.resolveWindowBoundsForRestore(), bounds);
+    calls.length = 0;
+    next.module.showWindowInRestoredState(window);
+    assert.deepEqual(calls, [isMaximized ? 'maximize' : 'show']);
+  }
+});
 
 test('Windows prepares maximized geometry invisibly before restoring opacity', () => {
   const { module } = createHarness({ windowState: { isMaximized: true } });

@@ -11,11 +11,12 @@ export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo'
 // so the same geometry looks identical regardless of the output canvas size or window scale.
 export const REFERENCE_WIDTH = 1280;
 export const GRADIENT_DIRECTION_TYPES = ['spectrum', 'spectrogram', 'notes', 'guitar', 'chroma', 'phase'];
-export const META_TYPES = ['artwork', 'video', 'title', 'album', 'artist'];
+export const META_TEXT_TYPES = ['title', 'album', 'artist', 'track-info'];
+export const META_TYPES = ['artwork', 'video', ...META_TEXT_TYPES];
 // Picture items show the playing track's artwork or video frames and have no palette.
 export const PICTURE_TYPES = ['artwork', 'video'];
 export const VIDEO_FITS = ['contain', 'cover', 'stretch'];
-export const TEXT_STYLE_TYPES = ['title', 'album', 'artist', 'text', 'lyrics', 'counter', 'rhythm-analyzer', 'playback-control'];
+export const TEXT_STYLE_TYPES = [...META_TEXT_TYPES, 'text', 'lyrics', 'counter', 'rhythm-analyzer', 'playback-control'];
 export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'counter', 'shape', 'playback-control', 'seek-bar'];
 export const SEEK_APPEARANCES = Object.freeze({
     slim: { thickness: 3, showThumb: false },

@@ -24,22 +24,75 @@ function parseXml(source) {
   if (typeof source !== 'string' || source.length > 4 * 1024 * 1024 || /<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('Invalid device response');
   const root = { name: '', children: [], text: '', attrs: Object.create(null) };
   const stack = [root];
-  const tokens = source.match(/<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->|<[^>]*>|[^<]+/g) ?? [];
-  for (const token of tokens) {
-    if (token.startsWith('<?') || token.startsWith('<!--')) continue;
-    if (token.startsWith('<![CDATA[')) { stack.at(-1).text += token.slice(9, -3); continue; }
-    if (token.startsWith('</')) {
-      if (stack.length === 1 || stack.at(-1).qualified !== token.slice(2, -1).trim()) throw new Error('Invalid device response');
+  const namePattern = /[\w:.-]+/y;
+  const whitespacePattern = /\s*/y;
+  let position = 0;
+  const readName = () => {
+    namePattern.lastIndex = position;
+    const match = namePattern.exec(source);
+    if (!match) throw new Error('Invalid device response');
+    position = namePattern.lastIndex;
+    return match[0];
+  };
+  const skipWhitespace = () => {
+    whitespacePattern.lastIndex = position;
+    whitespacePattern.exec(source);
+    position = whitespacePattern.lastIndex;
+  };
+  while (position < source.length) {
+    if (source[position] !== '<') {
+      const end = source.indexOf('<', position);
+      const next = end < 0 ? source.length : end;
+      stack.at(-1).text += decode(source.slice(position, next));
+      position = next;
+      continue;
+    }
+    const section = source.startsWith('<!--', position) ? ['-->', 4] :
+      source.startsWith('<![CDATA[', position) ? [']]>', 9] :
+        source.startsWith('<?', position) ? ['?>', 2] : null;
+    if (section) {
+      const end = source.indexOf(section[0], position + section[1]);
+      if (end < 0) throw new Error('Invalid device response');
+      if (section[1] === 9) stack.at(-1).text += source.slice(position + section[1], end);
+      position = end + section[0].length;
+      continue;
+    }
+    if (source.startsWith('</', position)) {
+      position += 2;
+      const name = readName();
+      skipWhitespace();
+      if (source[position] !== '>' || stack.length === 1 || stack.at(-1).qualified !== name) throw new Error('Invalid device response');
+      position += 1;
       stack.pop();
-    } else if (token[0] === '<') {
-      const match = /^<([\w:.-]+)/.exec(token);
-      if (!match || stack.length > 64) throw new Error('Invalid device response');
-      const node = { name: match[1].split(':').at(-1), qualified: match[1], children: [], text: '', attrs: Object.create(null), namespaces: { ...stack.at(-1).namespaces } };
-      for (const attr of token.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) node.attrs[attr[1]] = decode(attr[2] ?? attr[3]);
+    } else {
+      position += 1;
+      const name = readName();
+      if (stack.length > 64) throw new Error('Invalid device response');
+      const node = { name: name.split(':').at(-1), qualified: name, children: [], text: '', attrs: Object.create(null), namespaces: { ...stack.at(-1).namespaces } };
+      let selfClosing = false;
+      while (true) {
+        const beforeWhitespace = position;
+        skipWhitespace();
+        if (source.startsWith('/>', position)) { position += 2; selfClosing = true; break; }
+        if (source[position] === '>') { position += 1; break; }
+        if (position === beforeWhitespace) throw new Error('Invalid device response');
+        const attribute = readName();
+        skipWhitespace();
+        if (source[position++] !== '=') throw new Error('Invalid device response');
+        skipWhitespace();
+        const quote = source[position++];
+        if (quote !== '"' && quote !== "'") throw new Error('Invalid device response');
+        const end = source.indexOf(quote, position);
+        if (end < 0) throw new Error('Invalid device response');
+        const content = source.slice(position, end);
+        if (content.includes('<')) throw new Error('Invalid device response');
+        node.attrs[attribute] = decode(content);
+        position = end + 1;
+      }
       for (const [key, uri] of Object.entries(node.attrs)) if (key === 'xmlns' || key.startsWith('xmlns:')) node.namespaces[key === 'xmlns' ? '' : key.slice(6)] = uri;
       stack.at(-1).children.push(node);
-      if (!token.endsWith('/>')) stack.push(node);
-    } else stack.at(-1).text += decode(token);
+      if (!selfClosing) stack.push(node);
+    }
   }
   if (stack.length !== 1) throw new Error('Invalid device response');
   return root;

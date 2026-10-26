@@ -1,5 +1,6 @@
 import { WaterfallSurface } from './waterfall-surface.js';
 import { sampleImpulseEnvelope, findImpulsePeak } from './impulse-response-plot.js';
+import { createLinearTicks, createFrequencyTicks } from './analysis-axis-ticks.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const palette = name => window.ThemePalette?.get(name) || '#888'; // theme-allow: Neutral fallback only when ThemePalette is unavailable; the theme palette remains authoritative.
@@ -37,6 +38,8 @@ export class AnalysisPlot {
         this.output = output;
         this.mount = canvas.parentElement;
         this.state = null;
+        this.hoveredSeries = null;
+        this.legendKey = null;
         this.keyboardPosition = 0.5;
         this.surface = new WaterfallSurface(canvas, { onViewChange: view => {
             this.readout?.clear(); this.output.textContent = ''; onViewChange?.(view);
@@ -48,7 +51,15 @@ export class AnalysisPlot {
             plot: () => this.plot && Object.fromEntries(Object.entries(this.state?.type === 'waterfall' ?
                 { left: 0, top: 0, width: this.width, height: this.height } : this.plot).map(([key, value]) => [key, value * this.dpr])),
             read: (x, y) => this.read(x / this.dpr, y / this.dpr),
-            legend: []
+            legend: [],
+            onLegendHover: index => {
+                const supported = ['frequency', 'distortion'].includes(this.state?.type);
+                const hovered = supported && Number.isInteger(index) && this.state.series[index] ? index : null;
+                if (hovered === this.hoveredSeries) return;
+                this.hoveredSeries = hovered;
+                this.readout?.clear();
+                if (this.state) this.draw(this.state);
+            }
         });
         canvas.addEventListener('keydown', event => {
             if (event.shiftKey || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
@@ -75,14 +86,16 @@ export class AnalysisPlot {
 
     clear() {
         this.state = null;
+        this.hoveredSeries = null;
+        this.legendKey = null;
         this.surface.setEnabled(false);
         this.readout?.clear();
         this.readout?.setLegend([]);
-        this.output.textContent = '';
+        if (this.output) this.output.textContent = '';
         this.canvas.getContext('2d').clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
-    prepare(dimensions) {
+    prepare(state, dimensions) {
         const rect = dimensions || this.canvas.getBoundingClientRect();
         if (rect.width < 1 || rect.height < 1) return null;
         this.dpr = dimensions?.dpr || window.devicePixelRatio || 1;
@@ -96,13 +109,28 @@ export class AnalysisPlot {
         ctx.fillRect(0, 0, this.width, this.height);
         this.plot = { left: 60, top: 28, width: Math.max(1, this.width - 82), height: Math.max(1, this.height - 76) };
         ctx.font = '12px Arial';
+        if (state.type !== 'waterfall') {
+            this.levelTicks = createLinearTicks(state.yMin, state.yMax,
+                Math.max(1, Math.min(6, Math.floor(this.plot.height / 35))),
+                state.type !== 'distortion' && state.unit === 'dB' ? 'decibels' : 'decimal').ticks;
+            ctx.textAlign = 'right';
+            const widest = Math.max(...this.levelTicks.map(({ label }) => {
+                const metrics = ctx.measureText(label);
+                return Math.max(metrics.width, metrics.actualBoundingBoxLeft || 0);
+            }));
+            this.plot.left = Math.max(this.plot.left, Math.ceil(widest + 16));
+            this.plot.width = Math.max(1, this.width - this.plot.left - 22);
+        }
         return ctx;
     }
 
     draw(state, dimensions) {
         if (this.output) this.output.textContent = '';
+        const legend = state.type === 'waterfall' ? [] : state.series.map(series => ({ label: seriesLabel(series, state.unit), color: series.color }));
+        const legendKey = JSON.stringify(legend);
+        if (state !== this.state || legendKey !== this.legendKey) this.hoveredSeries = null;
         this.state = state;
-        const ctx = this.prepare(dimensions);
+        const ctx = this.prepare(state, dimensions);
         if (!ctx) return;
         this.surface.setEnabled(state.type === 'waterfall' && !dimensions?.exporting);
         const { xMin, xMax, yMin, yMax, logX = true } = state;
@@ -111,7 +139,8 @@ export class AnalysisPlot {
         this.scaleY = y => p.top + p.height * (1 - (y - yMin) / (yMax - yMin));
         this.inverseX = x => logX ? xMin * (xMax / xMin) ** ((x - p.left) / p.width) : xMin + (x - p.left) / p.width * (xMax - xMin);
         if (state.type === 'waterfall') {
-            this.surface.draw(ctx, state, this.plot, { width: this.width, height: this.height, dpr: this.dpr, exporting: dimensions?.exporting });
+            const drawn = this.surface.draw(ctx, state, this.plot, { width: this.width, height: this.height, dpr: this.dpr, exporting: dimensions?.exporting });
+            if (!drawn) { this.clear(); return false; }
         } else {
             this.grid(ctx, state);
             ctx.save();
@@ -119,21 +148,26 @@ export class AnalysisPlot {
             ctx.rect(p.left, p.top, p.width, p.height);
             ctx.clip();
             if (state.type === 'impulse') this.drawImpulse(ctx, state);
-            else state.series.forEach((series, index) => {
-                ctx.strokeStyle = series.color;
-                ctx.lineWidth = 1.6;
-                ctx.setLineDash(index % 3 === 0 ? [] : index % 3 === 1 ? [6, 3] : [2, 3]);
-                ctx.beginPath();
-                let connected = false;
-                for (const [x, y] of series.points) {
-                    if (!finite(y) || !(x > 0)) { connected = false; continue; }
-                    const px = this.scaleX(x);
-                    const py = this.scaleY(y);
-                    if (connected) ctx.lineTo(px, py); else ctx.moveTo(px, py);
-                    connected = true;
+            else {
+                const order = state.series.map((_, index) => index);
+                if (this.hoveredSeries !== null) order.push(...order.splice(this.hoveredSeries, 1));
+                for (const index of order) {
+                    const series = state.series[index];
+                    ctx.strokeStyle = series.color;
+                    ctx.lineWidth = index === this.hoveredSeries ? 3.5 : 1.6;
+                    ctx.setLineDash(index % 3 === 0 ? [] : index % 3 === 1 ? [6, 3] : [2, 3]);
+                    ctx.beginPath();
+                    let connected = false;
+                    for (const [x, y] of series.points) {
+                        if (!finite(y) || !(x > 0)) { connected = false; continue; }
+                        const px = this.scaleX(x);
+                        const py = this.scaleY(y);
+                        if (connected) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+                        connected = true;
+                    }
+                    ctx.stroke();
                 }
-                ctx.stroke();
-            });
+            }
             if (state.type === 'frequency' && state.frequencyMarkers) {
                 ctx.strokeStyle = palette('text-primary');
                 ctx.lineWidth = 1;
@@ -146,8 +180,13 @@ export class AnalysisPlot {
             }
             ctx.restore();
         }
-        this.readout?.setLegend(state.type === 'waterfall' ? [] : state.series.map(series => ({ label: seriesLabel(series, state.unit), color: series.color })));
+        // Preserve the legend's pointer targets while redrawing a hovered curve.
+        if (legendKey !== this.legendKey) {
+            this.readout?.setLegend(legend);
+            this.legendKey = legendKey;
+        }
         this.readout?.refresh();
+        return true;
     }
 
     renderImage({ title, subtitle = '' }) {
@@ -155,7 +194,11 @@ export class AnalysisPlot {
         const dpr = Math.min(4096 / Math.max(this.width, this.height), Math.max(2, 1600 / this.width));
         const graph = document.createElement('canvas');
         const renderer = new AnalysisPlot(graph, null);
-        try { renderer.draw(this.state, { width: this.width, height: this.height, dpr, exporting: true }); }
+        try {
+            if (renderer.draw(this.state, { width: this.width, height: this.height, dpr, exporting: true }) === false) {
+                throw new Error('No plotted data to copy');
+            }
+        }
         finally { renderer.surface.destroy(); }
         const image = document.createElement('canvas');
         const measure = graph.getContext('2d'); measure.font = '12px Arial';
@@ -197,25 +240,24 @@ export class AnalysisPlot {
         const p = this.plot;
         ctx.setLineDash([]);
         ctx.lineWidth = 1;
-        for (let i = 0; i <= 6; i++) {
-            const yValue = state.yMin + (state.yMax - state.yMin) * i / 6;
-            const y = this.scaleY(yValue);
+        for (const { value, label } of this.levelTicks) {
+            const y = this.scaleY(value);
             ctx.strokeStyle = palette('graph-grid');
             ctx.beginPath(); ctx.moveTo(p.left, y); ctx.lineTo(p.left + p.width, y); ctx.stroke();
             ctx.fillStyle = palette('graph-label');
             ctx.textAlign = 'right';
-            ctx.fillText(Number(yValue.toPrecision(3)).toString(), p.left - 8, y + 4);
+            ctx.fillText(label, p.left - 8, y + 4);
         }
-        const tickCount = this.width < 500 ? 4 : 8;
-        for (let i = 0; i <= tickCount; i++) {
-            const x = p.left + p.width * i / tickCount;
-            const value = this.inverseX(x);
+        const xTicks = state.logX === false ?
+            createLinearTicks(state.xMin, state.xMax, Math.max(1, Math.floor(p.width / 65))).ticks :
+            createFrequencyTicks(state.xMin, state.xMax, p.width);
+        for (const { value, label } of xTicks) {
+            const x = this.scaleX(value);
             ctx.strokeStyle = palette('graph-grid');
             ctx.beginPath(); ctx.moveTo(x, p.top); ctx.lineTo(x, p.top + p.height); ctx.stroke();
             ctx.fillStyle = palette('graph-label');
             ctx.textAlign = 'center';
-            ctx.fillText(state.logX === false ? Number(value.toPrecision(3)).toString() :
-                value >= 1000 ? `${Number((value / 1000).toPrecision(2))}k` : `${Math.round(value)}`, x, p.top + p.height + 18);
+            ctx.fillText(label, x, p.top + p.height + 18);
         }
         ctx.textAlign = 'left';
         ctx.fillText(state.unit, p.left, 17);
@@ -271,6 +313,7 @@ export class AnalysisPlot {
     read(x, y) {
         const state = this.state;
         if (!state || !this.plot) return null;
+        if (this.hoveredSeries !== null) return null;
         if (state.type === 'waterfall') {
             const point = this.surface.read(x, y);
             if (!point) return null;
@@ -299,6 +342,6 @@ export class AnalysisPlot {
                 value: value === null ? '—' : `${state.type === 'distortion' ? Number(value.toPrecision(4)) : value.toFixed(2)} ${state.unit}`,
                 y: value === null ? undefined : this.scaleY(value) * this.dpr };
         });
-        return { cursor: frequencyReadout(coordinate), rows };
+        return { cursor: [frequencyReadout(coordinate), state.qualityWarning].filter(Boolean).join(' · '), rows };
     }
 }

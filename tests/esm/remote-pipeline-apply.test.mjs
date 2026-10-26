@@ -68,6 +68,22 @@ function seed(win, registry, names) {
     return win.audioManager.pipeline.map(plugin => registry.idOf(plugin));
 }
 
+test('remote UI flags update the editor without becoming effect parameters', () => {
+    const { win, pipeline } = makeWin();
+    const registry = createIdRegistry('h');
+    const [id] = seed(win, registry, ['Volume']);
+    const refreshed = [];
+    win.pipelineManager.core.itemBuilder = {
+        updatePluginUIState: plugin => refreshed.push([plugin._uiCollapsed, plugin._uiLocked])
+    };
+    const apply = operation => finishBatch(win, applyOpsToPipeline(win, [operation], { registry }));
+    apply({ t: 'set', id, p: { _uiCollapsed: true, _uiLocked: true, gain: 2 } });
+    assert.deepEqual(pipeline[0].parameters, { gain: 2 });
+    apply({ t: 'set', id, p: {}, d: ['_uiCollapsed', '_uiLocked'] });
+    assert.deepEqual(pipeline[0].parameters, { gain: 2 });
+    assert.deepEqual(refreshed, [[true, true], [false, false]]);
+});
+
 test('remote enabled edits synchronize the header toggle independently of master and section bypass', async () => {
     const { win, pipeline } = makeWin();
     const registry = createIdRegistry('h');

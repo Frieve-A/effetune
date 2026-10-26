@@ -18,7 +18,7 @@ const steps = ['welcome', 'sound', 'effects', 'presets', 'item', 'bypass', 'save
 const targets = {
     sound: '#openMusicButton', effects: '#pluginList', presets: '#systemPresetsTab',
     item: '#pipelineList .pipeline-item:first-child', bypass: '.master-toggle',
-    save: '#pipelinePresetButton', views: '#openLibraryButton', settings: '#settingsMenuButton', help: '#whatsThisLink'
+    save: '#pipelinePresetButton', browser: '#browserButton', views: '#openLibraryButton', settings: '#settingsMenuButton', help: '#whatsThisLink'
 };
 const mobileTargets = {
     ...targets, sound: '#mobilePlayerView .mobile-open-music', effects: '.mobile-plugin-fab',
@@ -101,7 +101,7 @@ async function settleLayout(page) {
     });
 }
 
-async function assertStep(page, step, mobile) {
+async function assertStep(page, step, mobile, tourSteps = steps) {
     await page.waitForFunction(step => document.querySelector('.onboarding-tour')?.dataset.step === step, step);
     await settleLayout(page);
     const selector = (mobile ? mobileTargets : targets)[step];
@@ -126,7 +126,7 @@ async function assertStep(page, step, mobile) {
             playerView: document.body.classList.contains('view-player')
         };
     }, selector || null);
-    assert.equal(geometry.progress, `${steps.indexOf(step) + 1} / 10`);
+    assert.equal(geometry.progress, `${tourSteps.indexOf(step) + 1} / ${tourSteps.length}`);
     assert.ok(geometry.title && !geometry.title.startsWith('tour.'));
     assert.ok(geometry.body && !geometry.body.startsWith('tour.'));
     assert.equal(geometry.cardInsideViewport, true, `${step} card must fit on screen`);
@@ -199,6 +199,41 @@ for (const mobile of [false, true]) {
         }
     });
 }
+
+test('tour highlights Browser before Music Library when browser playback is available', { timeout: 60_000 }, async () => {
+    const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+    try {
+        const { page, errors } = await openPage(browser, { config: { onboardingTourShown: true } });
+        await ready(page);
+        await page.evaluate(async () => {
+            document.getElementById('browserButton').hidden = false;
+            const previousAPI = window.electronAPI;
+            window.electronAPI = { browser: {} };
+            try { await window.uiManager.startOnboardingTour(); }
+            finally { window.electronAPI = previousAPI; }
+        });
+        const browserSteps = [...steps];
+        browserSteps.splice(browserSteps.indexOf('views'), 0, 'browser');
+        for (const step of browserSteps) {
+            await assertStep(page, step, false, browserSteps);
+            if (step === 'browser') {
+                assert.equal(await page.locator('.onboarding-tour-title').textContent(), 'Browser');
+                assert.match(await page.locator('.onboarding-tour-body').textContent(), /streaming service/);
+            }
+            if (step === 'views') {
+                await page.locator('.onboarding-tour-back').click();
+                await assertStep(page, 'browser', false, browserSteps);
+                await page.locator('.onboarding-tour-next').click();
+                await assertStep(page, 'views', false, browserSteps);
+            }
+            await page.locator('.onboarding-tour-next').click();
+        }
+        await page.locator('.onboarding-tour').waitFor({ state: 'detached' });
+        assert.deepEqual(errors, []);
+    } finally {
+        await browser.close();
+    }
+});
 
 test('tour keyboard focus, language, zoom, and layout changes work in the real app', { timeout: 60_000 }, async () => {
     const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });

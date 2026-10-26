@@ -358,7 +358,6 @@ function configureParallelManager(manager, mainWorklet) {
   manager.contextManager = {
     audioContext: context,
     workletNode: mainWorklet,
-    lowLatencyMode: false,
     createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
     getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize
   };
@@ -4576,7 +4575,6 @@ test('AudioManager auxiliary worklet receives DSP bytes and returns telemetry pa
     manager.contextManager = {
       audioContext: context,
       workletNode: mainWorklet,
-      lowLatencyMode: false,
       createPluginProcessorNode: AudioContextManager.prototype.createPluginProcessorNode,
       getRenderQuantumSize: AudioContextManager.prototype.getRenderQuantumSize
     };

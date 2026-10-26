@@ -988,6 +988,7 @@ test('per-channel sweeps retain the configured output width, bands and calibrati
         updateFrequencyResponseGraph() {},
         async playAndRecordSweep(_buffer, channel, width) {
             assert.equal(width, 6);
+            this.startChannelLevelGraph(10);
             observed.push(['play', channel, this.interfaceCalibrationImpulseResponse]);
             now += 10000;
             return { frequencyResponse: [[100, 0]], maxSignalLevel: -20 };

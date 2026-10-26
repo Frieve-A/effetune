@@ -28,6 +28,7 @@ function executeNpmSnippet(name, args = []) {
   );
   try {
     const result = spawnSync(process.execPath, [target, ...args], {
+      windowsHide: true,
       cwd: npmRoot,
       encoding: 'utf8'
     });

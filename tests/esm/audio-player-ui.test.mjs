@@ -2,11 +2,81 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioPlayerUI } from '../../js/ui/audio-player/audio-player-ui.js';
+import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { NetworkPlaybackAdapter } from '../../js/network-music/playback-adapter.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
 import { SynchronizedVideo } from '../../js/ui/audio-player/synchronized-video.js';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+
+test('AirPlay uses reported time and metadata while keeping live controls read-only', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createAudioPlayer(calls, { state: { liveInputActive: true, currentTrack: null,
+      currentTrackName: 'Artist - Song', isPlaying: true, isStopped: false,
+      currentTrackPosition: 292, currentTrackDuration: 319, seekBarEnabled: false,
+      transportCapabilities: { stop: true }, liveInputInformation: { metadata: { title: 'Song', artist: 'Artist',
+        album: 'Album', composer: 'Composer', sortName: 'Private sorting text' }, sender: { name: 'iPad', volumePercent: 0 },
+        format: { codec: 'ALAC', sampleRate: 44100, channels: 2, bitsPerSample: 16 } } } });
+    player.contextManager = { getCurrentState: () => player.stateManager.getStateSnapshot(),
+      getCurrentPlaybackTime: AudioContextManager.prototype.getCurrentPlaybackTime,
+      getPlaybackBackendAdapter() { assert.fail('Live input must not read a finite-file clock'); },
+      seek() { assert.fail('AirPlay has no seek command'); } };
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    try {
+      assert.equal(ui.timeDisplay.textContent, '04:52 / 05:19');
+      assert.equal(Number(ui.seekBar.value), 292 / 319 * 100);
+      assert.equal(ui.seekBar.disabled, true);
+      assert.equal(ui.playPauseButton.disabled, true);
+      assert.equal(ui.stopButton.disabled, false);
+      assert.equal(ui.volumeSlider, null);
+      assert.equal(ui.container.querySelector('.player-volume'), null);
+      assert.doesNotMatch(ui.container.innerHTML, /class="player-volume"/);
+      assert.match(ui.trackNameDisplay.title, /airPlay.information.composer: Composer/);
+      assert.match(ui.trackNameDisplay.title, /airPlay.information.senderVolume: 0%/);
+      assert.match(ui.trackNameDisplay.title, /airPlay.information.receiverFormat: 44.1 kHz \/ 16-bit \/ 2 ch/);
+      assert.doesNotMatch(ui.trackNameDisplay.title, /Private sorting text/);
+      ui.seekBar.value = 50;
+      ui.seekBar.dispatchEvent('input');
+      ui.updateTimeDisplay();
+      assert.equal(ui.timeDisplay.textContent, '04:52 / 05:19', 'silence or pause does not advance reported time');
+      player.stateManager.setState({ liveInputActive: false, liveInputInformation: null,
+        currentTrackName: '', isPlaying: false, isStopped: true, currentTrackPosition: 0, currentTrackDuration: 0 });
+      player.stateManager.emit('currentTrackName', '');
+      ui.updateTimeDisplay();
+      assert.equal(ui.trackNameDisplay.title, '');
+      assert.equal(ui.timeDisplay.textContent, '00:00 / 00:00');
+    } finally { ui.removeUI(); }
+  });
+});
+
+test('Player information uses decoder format before available file or UPnP resource metadata', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const file = { name: 'local.flac', sampleRate: 48000, bitsPerSample: 24, channels: 2, bitrate: 960000, codec: 'FLAC',
+      meta: { title: 'Local song', albumArtist: 'Album artist', composer: 'Composer', genre: 'Jazz',
+        date: '2026', originalTrackNumber: 4, sampleRate: 44100 } };
+    const player = createAudioPlayer(calls, { state: { currentTrack: file, currentTrackName: 'Local song' } });
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    try {
+      assert.match(ui.trackNameDisplay.title, /airPlay.information.composer: Composer/);
+      assert.match(ui.trackNameDisplay.title, /airPlay.information.originalTrackNumber: 4/);
+      assert.match(ui.trackNameDisplay.title, /Source|sourceFormat/);
+      assert.match(ui.trackNameDisplay.title, /FLAC \/ 48 kHz \/ 24-bit \/ 2 ch \/ 960 kbps/);
+      const url = { sampleRate: 0, codec: '', meta: { title: 'Network song', artist: 'Network artist',
+        sampleRate: 44100, bitsPerSample: 16, channels: 2, bitrate: 320000, codec: 'MP3',
+        protocolInfo: 'http-get:*:audio/mpeg:*' } };
+      player.stateManager.setState({ currentTrack: url, currentTrackName: 'Network artist - Network song' });
+      ui.updateTrackDisplay();
+      assert.match(ui.trackNameDisplay.title, /MP3 \/ 44.1 kHz \/ 16-bit \/ 2 ch \/ 320 kbps/);
+      assert.match(ui.trackNameDisplay.title, /Network song/);
+      assert.doesNotMatch(ui.trackNameDisplay.title, /Local song|Receiver PCM|receiverFormat|http-get/);
+      player.stateManager.setState({ currentTrack: null, currentTrackName: '' });
+      ui.updateTrackDisplay();
+      assert.equal(ui.trackNameDisplay.title, '');
+    } finally { ui.removeUI(); }
+  });
+});
 
 test('starting a selected video unfolds once, preserving a later manual fold through maintenance and resume', async () => {
   await withAudioPlayerGlobals({}, async ({ calls, documentRef }) => {
@@ -1082,6 +1152,40 @@ test('one Player view follows its selected destination while local playback and 
   });
 });
 
+test('volume control belongs only to the remote target and is removed on return to the ordinary Player', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const local = createAudioPlayer(calls);
+    local.setVolume = () => assert.fail('Remote volume must never change local source gain');
+    const ui = new AudioPlayerUI(local);
+    const container = ui.createPlayerUI();
+    const commands = [];
+    const controller = { playerStates: new Map([['remote', { available: true, volume: 35, volumeMax: 100,
+      capabilities: { volume: true } }]]), command: async (...args) => commands.push(args),
+    reportError: error => { throw error; } };
+    const remote = new NetworkPlaybackAdapter(controller, 'remote', ui);
+    try {
+      assert.equal(ui.volumeSlider, null);
+      assert.equal(container.querySelector('.player-volume'), null);
+      assert.doesNotMatch(container.innerHTML, /class="player-volume"/);
+      ui.setPlaybackTarget(remote);
+      const remoteVolume = ui.volumeSlider;
+      assert.equal(container.querySelector('.player-volume'), remoteVolume);
+      assert.equal(remoteVolume.hidden, false);
+      assert.equal(Number(remoteVolume.value), 35);
+      remoteVolume.value = '50';
+      await Promise.all(remoteVolume.dispatchEvent('change'));
+      assert.deepEqual(commands, [['volume', { value: 50 }, 'remote']]);
+      ui.setPlaybackTarget(local);
+      assert.equal(ui.container, container);
+      assert.equal(ui.volumeSlider, null);
+      assert.equal(container.querySelector('.player-volume'), null);
+      assert.equal(remoteVolume.parentNode, null);
+      await Promise.all(remoteVolume.dispatchEvent('change'));
+      assert.equal(commands.length, 1, 'detached remote controls no longer own a target');
+    } finally { ui.removeUI(); }
+  });
+});
+
 test('remote queue menus respect host capabilities and send mutations only to their selected player', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
     const local = createAudioPlayer(calls, { state: {
@@ -1316,6 +1420,7 @@ test('creates translated controls, inserts before the double blind panel, and wi
       'isPlaybackPending',
       'isPlaying',
       'isStopped',
+      'liveInputInformation',
       'playbackMode',
       'playbackSpeed',
       'playlist',
@@ -2817,7 +2922,7 @@ test('removeUI cancels position animation and cleans up DOM nodes and references
     assert.equal(calls.filter(call =>
       call[0] === 'warn' && call[1].includes('Time display')
     ).length, warningCountAfterRemove);
-    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 16);
+    assert.equal(calls.filter(call => call[0] === 'removeListener').length, 17);
     assert.equal(documentRef.body.children.includes(container), false);
     assert.equal(ui.container, null);
     assert.equal(ui.trackNameDisplay, null);

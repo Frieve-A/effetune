@@ -682,7 +682,23 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
 
   // Get command line preset file
   ipcMain.handle('get-command-line-preset-file', () => {
-    return constants.getCommandLinePresetFile();
+    const preset = constants.getCommandLinePresetFile();
+    constants.setCommandLinePresetFile(null);
+    return preset;
+  });
+
+  ipcMain.handle('renderer-ready-for-music-files', async (event) => {
+    const window = constants.getMainWindow();
+    if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return [];
+    const files = [...constants.getCommandLineMusicFiles()];
+    constants.clearCommandLineMusicFiles();
+    if (!files.length) return [];
+    try {
+      return await fileHandlers.admitLocalPlaybackPaths(files);
+    } catch (error) {
+      console.error('Initial music file admission diagnostic:', error?.code || error?.name || 'unknown');
+      return [];
+    }
   });
 
   // Handle update notifications
@@ -1039,8 +1055,8 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       // The Browser controller owns this independently saved settings area.
       if (Object.hasOwn(stored, 'browser')) current.browser = stored.browser;
       else delete current.browser;
-      // Sharing and its identity belong to the network music host.
-      for (const key of ['networkMusicDeviceId', 'networkMusicSharing']) {
+      // Network hosts own their independently saved permissions and identities.
+      for (const key of ['networkMusicDeviceId', 'networkMusicSharing', 'upnpAvRemoteControl', 'upnpAvDeviceId', 'airPlayReceiver']) {
         if (Object.hasOwn(stored, key)) current[key] = stored[key];
         else delete current[key];
       }

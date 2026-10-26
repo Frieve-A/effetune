@@ -9,41 +9,29 @@ const {
   loadFreshModule,
   withModuleLoadStub,
   withMutedConsole,
-  withMutedConsoleAsync,
   withPatchedProperty
 } = require('../helpers/cjs-module-utils.cjs');
 
 function createHarness(options = {}) {
   const calls = [];
   let mainWindow = options.mainWindow || { id: 'main-window' };
-  let isFirstLaunch = Boolean(options.isFirstLaunch);
   const commandLineMusicFiles = [];
-  const savedCommandLineMusicFiles = [];
   const constants = {
     setMainWindow: win => {
       calls.push(['setMainWindow', win]);
       mainWindow = win;
     },
     getMainWindow: () => mainWindow,
-    getIsFirstLaunch: () => isFirstLaunch,
-    setIsFirstLaunch: value => {
-      isFirstLaunch = value;
-    },
     clearCommandLineMusicFiles: () => {
       calls.push(['clearCommandLineMusicFiles']);
       commandLineMusicFiles.length = 0;
     },
     setCommandLinePresetFile: file => calls.push(['setCommandLinePresetFile', file]),
-    setSavedCommandLinePresetFile: file => calls.push(['setSavedCommandLinePresetFile', file]),
     setShouldLoadPipelineState: flag => calls.push(['setShouldLoadPipelineState', flag]),
     addCommandLineMusicFile: file => {
       calls.push(['addCommandLineMusicFile', file]);
       commandLineMusicFiles.push(file);
     },
-    addSavedCommandLineMusicFile: file => {
-      calls.push(['addSavedCommandLineMusicFile', file]);
-      savedCommandLineMusicFiles.push(file);
-    }
   };
   const dialog = {
     async showSaveDialog(win, dialogOptions) {
@@ -100,7 +88,6 @@ function createHarness(options = {}) {
     constants,
     fileUtils,
     module,
-    savedCommandLineMusicFiles,
     setMainWindow: win => {
       mainWindow = win;
     },
@@ -294,109 +281,55 @@ test('file operation helpers delegate to file-utils', async () => {
   });
 });
 
-test('processCommandLineArgs skips first launch and empty arguments', () => {
-  const firstLaunch = createHarness({ isFirstLaunch: true });
-  firstLaunch.module.processCommandLineArgs(['electron', 'app', 'song.wav']);
-  assert.deepEqual(firstLaunch.calls, []);
-
-  const noArgs = createHarness({ isFirstLaunch: false });
-  withPatchedProperty(process, 'defaultApp', false, () => {
-    noArgs.module.processCommandLineArgs(['app.exe']);
-  });
-  assert.deepEqual(noArgs.calls, []);
-});
-
-test('processCommandLineArgs loads the first existing preset and notifies an active renderer', () => {
-  const dir = createTempDir('effetune-cli');
+test('processCommandLineArgs parses first-launch preset and music together without contacting the renderer', t => {
+  const dir = fs.realpathSync(createTempDir('effetune-cli'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const presetPath = path.join(dir, 'preset.effetune_preset');
-  const laterMusicPath = path.join(dir, 'later.wav');
+  const secondPresetPath = path.join(dir, 'second.effetune_preset');
+  const musicPath = path.join(dir, 'later.wav');
   fs.writeFileSync(presetPath, '{}');
-  fs.writeFileSync(laterMusicPath, 'audio');
-  const rendererCalls = [];
-  const harness = createHarness({
-    isFirstLaunch: false,
-    mainWindow: {
-      webContents: {
-        send: (...args) => rendererCalls.push(['send', ...args]),
-        executeJavaScript: script => {
-          rendererCalls.push(['executeJavaScript', script]);
-          return Promise.resolve();
-        }
-      }
-    }
-  });
-
+  fs.writeFileSync(secondPresetPath, '{}');
+  fs.writeFileSync(musicPath, 'audio');
+  const harness = createHarness({ mainWindow: {
+    webContents: { send() { throw new Error('Renderer is not ready'); } }
+  } });
   withPatchedProperty(process, 'defaultApp', true, () => {
-    harness.module.processCommandLineArgs(['electron', 'app', presetPath, laterMusicPath]);
+    harness.module.processCommandLineArgs(['electron', 'app', presetPath, musicPath, secondPresetPath]);
   });
-
-  assert.deepEqual(harness.calls.slice(0, 4), [
+  assert.deepEqual(harness.calls, [
     ['clearCommandLineMusicFiles'],
     ['setCommandLinePresetFile', presetPath],
-    ['setSavedCommandLinePresetFile', presetPath],
-    ['setShouldLoadPipelineState', false]
+    ['setShouldLoadPipelineState', false],
+    ['addCommandLineMusicFile', musicPath]
   ]);
-  assert.equal(rendererCalls[0][0], 'send');
-  assert.deepEqual(rendererCalls[0].slice(1), ['open-preset-file', presetPath]);
-  assert.equal(rendererCalls[1][0], 'executeJavaScript');
-  assert.equal(harness.commandLineMusicFiles.length, 0);
+  assert.deepEqual(harness.commandLineMusicFiles, [musicPath]);
 });
 
-test('processCommandLineArgs logs renderer flag update failures after loading a preset', async () => {
-  const dir = createTempDir('effetune-cli');
-  const errorPresetPath = path.join(dir, 'error.effetune_preset');
-  const stringPresetPath = path.join(dir, 'string.effetune_preset');
-  fs.writeFileSync(errorPresetPath, '{}');
-  fs.writeFileSync(stringPresetPath, '{}');
-
-  const runFailureCase = async rejection => {
-    const rendererCalls = [];
-    const harness = createHarness({
-      isFirstLaunch: false,
-      mainWindow: {
-        webContents: {
-          send: (...args) => rendererCalls.push(['send', ...args]),
-          executeJavaScript: script => {
-            rendererCalls.push(['executeJavaScript', script]);
-            return Promise.reject(rejection);
-          }
-        }
-      }
-    });
-
-    await withMutedConsoleAsync('error', async () => {
-      withPatchedProperty(process, 'defaultApp', true, () => {
-        harness.module.processCommandLineArgs(['electron', 'app', rejection instanceof Error ? errorPresetPath : stringPresetPath]);
-      });
-      await Promise.resolve();
-    });
-
-    assert.equal(rendererCalls[0][0], 'send');
-    assert.equal(rendererCalls[1][0], 'executeJavaScript');
-  };
-
-  await runFailureCase(new Error('renderer unavailable'));
-  await runFailureCase('renderer unavailable');
+test('processCommandLineArgs leaves queued OS file-open events intact when there are no arguments', () => {
+  const harness = createHarness();
+  withPatchedProperty(process, 'defaultApp', false, () => {
+    harness.module.processCommandLineArgs(['app.exe']);
+  });
+  assert.deepEqual(harness.calls, []);
 });
 
 test('processCommandLineArgs stores existing music files in packaged mode', () => {
-  const dir = createTempDir('effetune-cli');
+  const dir = fs.realpathSync(createTempDir('effetune-cli'));
   const musicPath = path.join(dir, 'song.OPUS');
   const mp4Path = path.join(dir, 'movie.MP4');
   fs.writeFileSync(musicPath, 'audio');
   fs.writeFileSync(mp4Path, 'media');
-  const harness = createHarness({ isFirstLaunch: false, mainWindow: null });
+  const harness = createHarness({ mainWindow: null });
 
   withPatchedProperty(process, 'defaultApp', false, () => {
     harness.module.processCommandLineArgs(['app.exe', musicPath, mp4Path, path.join(dir, 'missing.wav'), 'notes.txt']);
   });
 
   assert.deepEqual(harness.commandLineMusicFiles, [musicPath, mp4Path]);
-  assert.deepEqual(harness.savedCommandLineMusicFiles, [path.resolve(musicPath), path.resolve(mp4Path)]);
 });
 
 test('processCommandLineArgs recovers from fs errors while checking preset and music files', () => {
-  const harness = createHarness({ isFirstLaunch: false });
+  const harness = createHarness({});
   let calls = 0;
 
   withMutedConsole('error', () => {

@@ -96,6 +96,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     ? window.uiManager.t.bind(window.uiManager)
     : key => key;
   const openHomeAPI = isElectron ? window.electronAPI?.openHomeV1 : null;
+  const airPlayAPI = isElectron ? window.electronAPI?.airPlayV1 : null;
   const networkMusicAPI = isElectron ? window.electronAPI : null;
   const remoteControlSettings = networkMusicAPI?.remoteV1?.settings
     ? getRemoteControlSettings(networkMusicAPI.remoteV1.settings) : null;
@@ -174,6 +175,26 @@ export async function showConfigDialog(isElectron, currentConfig) {
         </div>
         <div class="openhome-status" id="openhome-status" role="status" aria-live="polite"></div>
         <div class="openhome-help" id="openhome-risk"></div>
+      </div>` : '';
+
+  const networkReceptionSections = isElectron ? `
+      <div class="device-section" id="upnp-av-section">
+        <label class="section-label" id="upnp-av-title"></label>
+        <div class="checkbox-container">
+          <input type="checkbox" id="upnp-av-enabled" disabled aria-describedby="upnp-av-risk">
+          <label for="upnp-av-enabled" id="upnp-av-enabled-label"></label>
+        </div>
+        <div class="openhome-status" id="upnp-av-status" role="status" aria-live="polite"></div>
+        <div class="openhome-help" id="upnp-av-risk"></div>
+      </div>
+      <div class="device-section" id="airplay-section">
+        <label class="section-label" id="airplay-title"></label>
+        <div class="checkbox-container">
+          <input type="checkbox" id="airplay-enabled" disabled aria-describedby="airplay-help">
+          <label for="airplay-enabled" id="airplay-enabled-label"></label>
+        </div>
+        <div class="openhome-status" id="airplay-status" role="status" aria-live="polite"></div>
+        <div class="openhome-help" id="airplay-help"></div>
       </div>` : '';
 
   const librarySharingSection = isElectron ? `
@@ -405,7 +426,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
               <button type="button" class="library-button" id="browser-rules-cancel"></button>
             </div>
           </fieldset>`,
-      network: networkNameSection + remoteControlSection + openHomeSection + librarySharingSection
+      network: networkNameSection + remoteControlSection + openHomeSection + networkReceptionSections + librarySharingSection
     } : {})
   };
   const categories = Object.keys(categoryPanels);
@@ -529,6 +550,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
       margin-bottom: 2px;
     }
     .power-mode-help {
+      margin-top: 6px;
       margin-left: 26px;
       color: var(--et-surface-74);
       font-size: 12px;
@@ -1018,6 +1040,16 @@ export async function showConfigDialog(isElectron, currentConfig) {
   let openHomeStatusReadFailed = false;
   let openHomeOperationFailed = false;
   let openHomeChangeInFlight = false;
+  let upnpAvOperationFailed = false;
+  let upnpAvChangeInFlight = false;
+  let upnpAvRequestedEnabled = false;
+  let airPlayStatus = null;
+  let airPlayStatusLoaded = false;
+  let airPlayStatusReadFailed = false;
+  let airPlayOperationFailed = false;
+  let airPlayChangeInFlight = false;
+  let airPlayRequestedEnabled = false;
+  let removeAirPlayStatusListener = null;
   let networkNameChangeInFlight = false;
   let openHomeRequestedEnabled = false;
   let removeOpenHomeStatusListener = null;
@@ -1155,38 +1187,48 @@ export async function showConfigDialog(isElectron, currentConfig) {
     openHomeStatusLoaded = true;
     openHomeStatusReadFailed = false;
     publishOpenHomeEnabled(status.enabled);
+    const upnpAvEnabled = status.upnpAvEnabled === true;
+    if ((config.upnpAvRemoteControl === true) !== upnpAvEnabled) {
+      config.upnpAvRemoteControl = upnpAvEnabled;
+      publishElectronConfigSnapshot({ ...(window.appConfig || config), upnpAvRemoteControl: upnpAvEnabled });
+    }
+    window.uiManager?.setUpnpAvRemoteControlEnabled?.(upnpAvEnabled);
     if (typeof status.friendlyName === 'string' && status.friendlyName) {
       config.openHomeFriendlyName = status.friendlyName;
     }
     return true;
   }
 
-  function getOpenHomeStatusPresentation() {
+  function getNetworkPlayerStatusPresentation(upnpAv = false) {
+    const enabled = upnpAv ? openHomeStatus?.upnpAvEnabled : openHomeStatus?.enabled;
+    const changing = upnpAv ? upnpAvChangeInFlight : openHomeChangeInFlight;
+    const requested = upnpAv ? upnpAvRequestedEnabled : openHomeRequestedEnabled;
+    const operationFailed = upnpAv ? upnpAvOperationFailed : openHomeOperationFailed;
     if (!openHomeAPI) {
       return { key: 'unavailable', state: 'unavailable' };
     }
     if (!openHomeStatusLoaded) {
       return { key: 'loading', state: 'pending' };
     }
-    if (openHomeOperationFailed) {
+    if (operationFailed) {
       return { key: 'updateFailed', state: 'error' };
     }
-    if (openHomeStatusReadFailed || openHomeStatus?.state === 'failed') {
+    if (openHomeStatusReadFailed || enabled && openHomeStatus?.state === 'failed') {
       return { key: 'error', state: 'error' };
     }
     if (openHomeStatus?.available === false || openHomeStatus?.state === 'unavailable') {
       return { key: 'unavailable', state: 'unavailable' };
     }
-    if (openHomeChangeInFlight) {
+    if (changing) {
       return {
-        key: openHomeRequestedEnabled ? 'enabling' : 'disabling',
+        key: requested ? 'enabling' : 'disabling',
         state: 'pending'
       };
     }
     if (openHomeStatus?.state === 'stopping') {
       return { key: 'stopping', state: 'pending' };
     }
-    if (!openHomeStatus?.enabled) {
+    if (!enabled) {
       return { key: 'stopped', state: 'stopped' };
     }
     if (!openHomeStatus.rendererReady) {
@@ -1213,9 +1255,84 @@ export async function showConfigDialog(isElectron, currentConfig) {
     }
     nameInput.disabled = typeof openHomeAPI?.setFriendlyName !== 'function' ||
       networkNameChangeInFlight || !openHomeStatusLoaded;
-    const presentation = getOpenHomeStatusPresentation();
+    const presentation = getNetworkPlayerStatusPresentation();
     statusElement.textContent = t(`dialog.config.openHome.status.${presentation.key}`);
     statusElement.setAttribute('data-state', presentation.state);
+    const upnpAvInput = document.getElementById('upnp-av-enabled');
+    const upnpAvStatus = document.getElementById('upnp-av-status');
+    if (upnpAvInput && upnpAvStatus) {
+      upnpAvInput.checked = upnpAvChangeInFlight ? upnpAvRequestedEnabled : Boolean(openHomeStatus?.upnpAvEnabled);
+      upnpAvInput.disabled = typeof openHomeAPI?.setUpnpAvEnabled !== 'function' || upnpAvChangeInFlight || !openHomeStatusLoaded ||
+        (openHomeStatus?.available === false && openHomeStatus?.upnpAvEnabled !== true);
+      const upnpPresentation = getNetworkPlayerStatusPresentation(true);
+      const namespace = ['published', 'error'].includes(upnpPresentation.key) ? 'upnpAv' : 'openHome';
+      upnpAvStatus.textContent = t(`dialog.config.${namespace}.status.${upnpPresentation.key}`);
+      upnpAvStatus.setAttribute('data-state', upnpPresentation.state);
+    }
+  }
+
+  function acceptAirPlayStatus(status) {
+    if (!status || typeof status.enabled !== 'boolean' ||
+        !['off', 'unavailable', 'starting', 'ready', 'receiving', 'failed'].includes(status.state)) return false;
+    airPlayStatus = { ...status };
+    airPlayStatusLoaded = true;
+    airPlayStatusReadFailed = false;
+    if ((config.airPlayReceiver === true) !== status.enabled) {
+      config.airPlayReceiver = status.enabled;
+      publishElectronConfigSnapshot({ ...(window.appConfig || config), airPlayReceiver: status.enabled });
+    }
+    window.uiManager?.setAirPlayReceiverEnabled?.(status.enabled);
+    return true;
+  }
+
+  function renderAirPlayStatus() {
+    const input = document.getElementById('airplay-enabled');
+    const element = document.getElementById('airplay-status');
+    if (!input || !element) return;
+    input.checked = airPlayChangeInFlight ? airPlayRequestedEnabled : airPlayStatus?.enabled === true;
+    input.disabled = !airPlayAPI || airPlayChangeInFlight || !airPlayStatusLoaded ||
+      (airPlayStatus?.available === false && airPlayStatus?.enabled !== true);
+    const key = !airPlayAPI ? 'unavailable' : !airPlayStatusLoaded ? 'loading' : airPlayOperationFailed ? 'updateFailed'
+      : airPlayStatusReadFailed ? 'failed'
+      : airPlayChangeInFlight ? (airPlayRequestedEnabled ? 'starting' : 'disabling')
+        : airPlayStatus?.available === false ? 'unavailable' : airPlayStatus?.state || 'failed';
+    element.textContent = t(`dialog.config.${key === 'disabling' ? 'openHome' : 'airPlay'}.status.${key}`);
+    element.setAttribute('data-state', ['ready', 'receiving'].includes(key) ? 'published'
+      : ['unavailable', 'failed', 'updateFailed'].includes(key) ? 'error' : key === 'off' ? 'stopped' : 'pending');
+  }
+
+  async function refreshAirPlayStatus() {
+    if (!airPlayAPI) {
+      airPlayStatusLoaded = true;
+      renderAirPlayStatus();
+      return;
+    }
+    try {
+      if (!acceptAirPlayStatus(await airPlayAPI.getStatus())) throw new Error('Invalid AirPlay status response');
+    } catch (error) {
+      console.error('Failed to read AirPlay receiver status:', error);
+      airPlayStatusLoaded = true;
+      airPlayStatusReadFailed = true;
+    }
+    renderAirPlayStatus();
+  }
+
+  async function applyAirPlayEnabled(enabled) {
+    if (airPlayChangeInFlight || !airPlayAPI) return;
+    airPlayChangeInFlight = true;
+    airPlayRequestedEnabled = enabled;
+    airPlayOperationFailed = false;
+    renderAirPlayStatus();
+    try {
+      if (!acceptAirPlayStatus(await airPlayAPI.setEnabled(enabled))) throw new Error('Invalid AirPlay status response');
+    } catch (error) {
+      console.error('Failed to update AirPlay reception:', error);
+      await refreshAirPlayStatus();
+      airPlayOperationFailed = true;
+    } finally {
+      airPlayChangeInFlight = false;
+      renderAirPlayStatus();
+    }
   }
 
   async function refreshOpenHomeStatus() {
@@ -1253,6 +1370,24 @@ export async function showConfigDialog(isElectron, currentConfig) {
       openHomeOperationFailed = true;
     } finally {
       openHomeChangeInFlight = false;
+      renderNetworkStatus();
+    }
+  }
+
+  async function applyUpnpAvEnabled(enabled) {
+    if (upnpAvChangeInFlight || typeof openHomeAPI?.setUpnpAvEnabled !== 'function') return;
+    upnpAvChangeInFlight = true;
+    upnpAvRequestedEnabled = enabled;
+    upnpAvOperationFailed = false;
+    renderNetworkStatus();
+    try {
+      if (!acceptOpenHomeStatus(await openHomeAPI.setUpnpAvEnabled(enabled))) throw new Error('Invalid network player status response');
+    } catch (error) {
+      console.error('Failed to update UPnP AV reception:', error);
+      await refreshOpenHomeStatus();
+      upnpAvOperationFailed = true;
+    } finally {
+      upnpAvChangeInFlight = false;
       renderNetworkStatus();
     }
   }
@@ -1355,6 +1490,13 @@ export async function showConfigDialog(isElectron, currentConfig) {
     const openHomeRisk = document.getElementById('openhome-risk');
     if (openHomeRisk) openHomeRisk.textContent = t('dialog.config.openHome.risk');
     for (const [id, key] of [
+      ['upnp-av-title', 'upnpAv.title'], ['upnp-av-enabled-label', 'upnpAv.enable'], ['upnp-av-risk', 'upnpAv.risk'],
+      ['airplay-title', 'airPlay.title'], ['airplay-enabled-label', 'airPlay.enable'], ['airplay-help', 'airPlay.help']
+    ]) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = t(`dialog.config.${key}`);
+    }
+    for (const [id, key] of [
       ['library-sharing-title', 'networkMusic.sharing'],
       ['library-sharing-enabled-label', 'networkMusic.shareEnabled'],
       ['library-sharing-help', 'networkMusic.shareNotice'],
@@ -1443,6 +1585,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     syncPowerSettingControls();
     renderOfflineOutputControls();
     renderNetworkStatus();
+    renderAirPlayStatus();
     renderRemoteControlSettings();
     renderLibrarySharing();
   }
@@ -1718,6 +1861,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
   openHomeEnabled?.addEventListener('change', async e => {
     await applyOpenHomeEnabled(e.target.checked);
   });
+  document.getElementById('upnp-av-enabled')?.addEventListener('change', e => applyUpnpAvEnabled(e.target.checked));
+  document.getElementById('airplay-enabled')?.addEventListener('change', e => applyAirPlayEnabled(e.target.checked));
   const networkDeviceName = document.getElementById('network-device-name');
   networkDeviceName?.addEventListener('change', async e => {
     await applyNetworkDeviceName(e.target.value);
@@ -1959,6 +2104,8 @@ export async function showConfigDialog(isElectron, currentConfig) {
     closeStandardSelect(document);
     removeOpenHomeStatusListener?.();
     removeOpenHomeStatusListener = null;
+    removeAirPlayStatusListener?.();
+    removeAirPlayStatusListener = null;
     removeRemoteControlSettingsListener?.();
     removeRemoteControlSettingsListener = null;
     document.body.removeChild(overlay);
@@ -1985,9 +2132,17 @@ export async function showConfigDialog(isElectron, currentConfig) {
         return;
       }
       if (!openHomeChangeInFlight) openHomeOperationFailed = false;
+      if (!upnpAvChangeInFlight) upnpAvOperationFailed = false;
       renderNetworkStatus();
     });
   }
+  if (typeof airPlayAPI?.onStatus === 'function') {
+    removeAirPlayStatusListener = airPlayAPI.onStatus(status => {
+      if (!acceptAirPlayStatus(status)) return;
+      if (!airPlayChangeInFlight) airPlayOperationFailed = false;
+      renderAirPlayStatus();
+    });
+  }
   removeRemoteControlSettingsListener = remoteControlSettings?.subscribe(renderRemoteControlSettings);
-  await Promise.all([refreshOpenHomeStatus(), refreshLibrarySharing()]);
+  await Promise.all([refreshOpenHomeStatus(), refreshAirPlayStatus(), refreshLibrarySharing()]);
 }

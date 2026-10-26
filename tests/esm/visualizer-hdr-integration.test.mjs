@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { VisualizerRenderer } from '../../js/visualizer/visualizer-renderer.js';
 import { VisualizerView } from '../../js/visualizer/visualizer-view.js';
 import { VisualizerFeed } from '../../js/visualizer/visualizer-feed.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
@@ -105,4 +106,27 @@ test('Main-window hit tests use its own presented frame while Clean Feed is visi
     assert.equal(view.counterAt(event), 'clock');
     assert.equal(view.lyricsSeekTime(event), 12);
     assert.deepEqual(calls, ['counter', 'lyrics']);
+});
+
+test('Visualizer requests network artwork with CORS before loading and keeps local image semantics', async () => {
+    const loads = [];
+    class ArtworkImage {
+        complete = true;
+        naturalWidth = 64;
+        set src(url) { loads.push({ url, crossOrigin: this.crossOrigin }); }
+    }
+    await withGlobals({ Image: ArtworkImage }, () => {
+        const renderer = new VisualizerRenderer({});
+        const network = 'http://192.168.1.10:8080/pwa/v1/artwork/abcdefghijklmnop';
+        const artwork = renderer.image(network);
+        assert.strictEqual(renderer.image(network), artwork, 'the CORS image is cached for rendering');
+        for (const url of ['blob:artwork', 'data:image/png;base64,AA==', './images/background.png',
+            'http://192.168.1.10:8080/unrelated.png']) renderer.image(url);
+        assert.deepEqual(loads, [
+            { url: network, crossOrigin: 'anonymous' },
+            ...['blob:artwork', 'data:image/png;base64,AA==', './images/background.png',
+                'http://192.168.1.10:8080/unrelated.png'].map(url => ({ url, crossOrigin: undefined }))
+        ]);
+        renderer.dispose();
+    });
 });

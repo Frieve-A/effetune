@@ -70,22 +70,27 @@ jobs:
         if: inputs.source_verified != true
         run: npm run verify
 
-      - name: Install Linux OpenHome build dependencies
+      - name: Install Linux native build dependencies
         shell: bash
         run: |
           set -euo pipefail
-          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
-            sources=/etc/apt/sources.list.d/ubuntu.sources
-            test -f "$sources"
-            sudo sed -i 's/^Types: deb$/Types: deb deb-src/' "$sources"
-            grep -F 'Types: deb deb-src' "$sources"
-          fi
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          test -f "$sources"
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' "$sources"
+          grep -F 'Types: deb deb-src' "$sources"
           sudo apt-get update
-          packages=(libnl-3-dev libnl-genl-3-dev gnupg)
-          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
-            packages+=(dpkg-dev)
-          fi
-          sudo apt-get install --yes "${packages[@]}"
+          sudo apt-get install --yes build-essential cmake ninja-build pkg-config \
+            python3 python3-venv perl make flex bison m4 patchelf dpkg-dev gnupg \
+            libnl-3-dev libnl-genl-3-dev libavahi-compat-libdnssd-dev libdbus-1-dev
+          meson_env="$RUNNER_TEMP/effetune-airplay-tools"
+          python3 -m venv "$meson_env"
+          "$meson_env/bin/python" -m pip install --disable-pip-version-check 'meson>=1.4.0'
+          export PATH="$meson_env/bin:$PATH"
+          echo "$meson_env/bin" >> "$GITHUB_PATH"
+          test "$(command -v meson)" = "$meson_env/bin/meson"
+          meson_version="$(meson --version)"
+          echo "AirPlay Meson: $meson_version"
+          dpkg --compare-versions "$meson_version" ge 1.4.0
 
       - name: Generate web assets
         run: npm run assets:web
@@ -102,6 +107,7 @@ jobs:
           else
             npm run verify:openhome-linux-provenance
           fi
+          npm run build:airplay-receiver -- --arch x64
           node scripts/pack-ecs.mjs --output dist
         env:
           USE_HARD_LINKS: false
@@ -112,6 +118,9 @@ jobs:
 
       - name: Verify packaged OpenHome artifacts
         run: npm run smoke:openhome-package
+
+      - name: Verify packaged AirPlay artifacts
+        run: npm run smoke:airplay-package
 
       - name: Verify Linux OpenHome loader contract
         shell: bash
@@ -271,12 +280,22 @@ jobs:
         env:
           ELECTRON_OVERRIDE_DIST_PATH: ${{ github.workspace }}/out/ecs/runtime/win32-x64
 
+      - name: Verify Windows native build tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Command cmake, ninja -ErrorAction Stop
+          $bash = Join-Path $env:ProgramFiles 'Git/bin/bash.exe'
+          if (-not (Test-Path -LiteralPath $bash)) { throw 'Git for Windows Bash is required.' }
+
       - name: Build ECS application
         run: |
           npm run clean
           if ($LASTEXITCODE -ne 0) { throw 'Clean failed.' }
           npm run build:openhome-sidecar -- --no-publish-development
           if ($LASTEXITCODE -ne 0) { throw 'OpenHome build failed.' }
+          npm run build:airplay-receiver -- --arch x64
+          if ($LASTEXITCODE -ne 0) { throw 'AirPlay build failed.' }
           node scripts/pack-ecs.mjs --output dist
           if ($LASTEXITCODE -ne 0) { throw 'ECS packaging failed.' }
         env:
@@ -340,6 +359,9 @@ jobs:
 
       - name: Verify packaged OpenHome artifacts
         run: npm run smoke:openhome-package
+
+      - name: Verify packaged AirPlay artifacts
+        run: npm run smoke:airplay-package
 
       - name: Run rolling PCM distribution smoke
         run: npm run smoke:rolling-pcm-distribution
@@ -446,12 +468,23 @@ jobs:
       - name: Prepare official ECS runtime
         run: node scripts/prepare-ecs.mjs
 
-      - name: Build OpenHome sidecar
+      - name: Install macOS native build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install cmake ninja meson pkg-config flex bison m4
+          for tool in flex bison m4; do
+            echo "$(brew --prefix "$tool")/bin" >> "$GITHUB_PATH"
+          done
+          xcrun --find clang
+
+      - name: Build native network runtimes
         shell: bash
         run: |
           set -euo pipefail
           npm run clean
           npm run build:openhome-sidecar -- --arch ${{ matrix.arch }} --no-publish-development
+          npm run build:airplay-receiver -- --arch ${{ matrix.arch }}
 
       - name: Set up Python for VMP signing
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -501,6 +534,9 @@ jobs:
 
       - name: Verify packaged OpenHome artifacts
         run: npm run smoke:openhome-package
+
+      - name: Verify packaged AirPlay artifacts
+        run: npm run smoke:airplay-package
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

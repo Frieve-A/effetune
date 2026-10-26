@@ -7,7 +7,7 @@ const MAX_MESSAGE_BYTES = 256 * 1024;
 const MAX_OUTBOUND_QUEUE_BYTES = MAX_MESSAGE_BYTES * 2;
 const MAX_DIAGNOSTIC_LENGTH = 1024;
 const STARTUP_TIMEOUT_MS = 10000;
-const ALLOWED_SERVICES = new Set(['Product', 'Playlist', 'Info', 'Time']);
+const ALLOWED_SERVICES = new Set(['Product', 'Playlist', 'Info', 'Time', 'AVTransport', 'RenderingControl']);
 
 class OpenHomeSidecarManager extends EventEmitter {
   constructor({
@@ -403,7 +403,11 @@ function normalizeAction(message) {
 function normalizeConfiguration(configuration) {
   const friendlyName = String(configuration.friendlyName || 'EffeTune').trim().slice(0, 128);
   const udn = String(configuration.udn || '').trim().slice(0, 128);
-  return Object.freeze({ friendlyName: friendlyName || 'EffeTune', udn });
+  return Object.freeze({ friendlyName: friendlyName || 'EffeTune', udn,
+    openHomeEnabled: configuration.openHomeEnabled !== false,
+    upnpAvEnabled: configuration.upnpAvEnabled === true,
+    upnpAvUdn: String(configuration.upnpAvUdn || '').trim().slice(0, 128)
+  });
 }
 
 function normalizeErrorCode(code) {

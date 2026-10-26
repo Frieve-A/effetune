@@ -509,24 +509,12 @@ class App {
             // Initialize basic UI without pipeline
             this.uiManager.updatePipelineUI(true);
             
-            // Wait for next frame to ensure UI is rendered
-            // Use different strategies based on window visibility and startup settings
-            let useTimeoutInsteadOfRAF = document.hidden; // Default: use timeout if window is hidden
-            
-            // For Electron: also use timeout if started minimized (minimized startup doesn't set document.hidden)
-            if (window.electronIntegration?.isElectron &&
-                (this.startupConfig || window.appConfig)?.startMinimized) {
-                useTimeoutInsteadOfRAF = true;
-            }
-            
-            if (useTimeoutInsteadOfRAF) {
-                // If window is hidden or started minimized, use setTimeout instead of requestAnimationFrame
-                // requestAnimationFrame doesn't execute properly when the page is hidden or minimized
-                await new Promise(resolve => setTimeout(resolve, 50));
-            } else {
-                // Normal path: wait for animation frames when window is visible
+            // The desktop window stays hidden until initialization finishes. Chromium
+            // can report document.hidden=false without scheduling animation frames
+            // there, so desktop startup must not wait for a paint before continuing.
+            // A visible web page can paint its loading UI before worklet setup.
+            if (!window.electronIntegration?.isElectron && !document.hidden) {
                 await new Promise(resolve => requestAnimationFrame(() => {
-                    // Use a second requestAnimationFrame to ensure UI is fully rendered
                     requestAnimationFrame(resolve);
                 }));
             }
@@ -571,7 +559,8 @@ class App {
 
             // Signal to the main process that we're ready to receive music files
             if (window.electronAPI && window.electronAPI.signalReadyForMusicFiles) {
-                window.electronAPI.signalReadyForMusicFiles();
+                const files = await window.electronAPI.signalReadyForMusicFiles();
+                if (files?.length) window.pendingMusicFiles = [...(window.pendingMusicFiles || []), ...files];
             }
             
             // Signal to the main process that we're ready to receive update notifications
@@ -586,8 +575,6 @@ class App {
 
             // Apply the configured initial view after startup content has been handled.
             await this.applyStartupViewPreference();
-            // Browser capture requires the initialized graph and power controller.
-            if (this.browserStartupRequested) await this.uiManager.showBrowserView();
         } catch (error) {
             console.error('Initialization error:', error);
             this.uiManager.setError('error.initializationFailed', true);
@@ -597,7 +584,13 @@ class App {
             await waitForStylesheets();
             document.documentElement?.classList?.remove('app-starting');
             this.initialized = true;
+            window.electronAPI?.signalReadyForPresentation?.();
         }
+
+        // Chromium needs the native window to be presented before Browser capture
+        // can receive its first video frame. The audio graph and power controller
+        // are ready now; awaiting capture before presentation would deadlock startup.
+        if (this.browserStartupRequested) await this.uiManager.showBrowserView();
 
         // Device permission prompts and bulk storage migration start after presentation.
         this.scheduleDeferredStartupTasks();

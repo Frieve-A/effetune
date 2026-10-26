@@ -366,6 +366,7 @@ class SpatialMapperPlugin extends PluginBase {
             const tab = document.createElement('button');
             tab.type = 'button';
             tab.className = 'spatial-mapper-tab';
+            tab.setAttribute('data-parameter-control', 'view');
             tab.textContent = component.label;
             tab.setAttribute('role', 'tab');
             tab.addEventListener('click', () => this._setSelectedComponent(component.key));

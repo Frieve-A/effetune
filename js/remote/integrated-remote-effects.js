@@ -35,6 +35,7 @@ export class IntegratedRemoteEffects {
         const generation = ++this.generation;
         this.clearConnection();
         this.player = player;
+        this.replaceConnection = false;
         this.container.replaceChildren();
         this.container.hidden = !player;
         if (!player) return;
@@ -142,14 +143,17 @@ export class IntegratedRemoteEffects {
         this.showRegistration('pending');
         let result;
         try {
-            result = await this.api.requestConnection(this.player.id, requestId);
+            result = await this.api.requestConnection(this.player.id, requestId, this.replaceConnection);
         } catch (error) {
             console.warn('[remote-client] connection request failed', error);
             result = { ok: false, status: 'error' };
         }
         if (generation !== this.generation || requestId !== this.requestId) return;
         this.requestId = null;
-        if (result.ok) this.mountEditor();
+        if (result.ok) {
+            this.replaceConnection = false;
+            this.mountEditor();
+        }
         else this.showRegistration(result.status === 'cancelled' ? null : result.status || 'error', true);
     }
 
@@ -178,6 +182,7 @@ export class IntegratedRemoteEffects {
         if (this.api.manageConnection) { this.api.manageConnection(this.player.id); return; }
         this.generation += 1;
         this.clearConnection();
+        this.replaceConnection = true;
         this.showRegistration();
     }
 

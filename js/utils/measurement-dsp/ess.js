@@ -22,10 +22,12 @@ function referenceWindow(response, sweep, entry) {
     return data;
 }
 
-function removeFiniteReference(measured, reference, onsetIndex) {
+function removeFiniteReference(measured, reference, onsetIndex, riseSamples) {
     const size = 2 ** Math.ceil(Math.log2(measured.length));
-    const a = transform(measured, size);
-    const b = transform(reference, size);
+    // Match the finite separation edges before division. A hard crop turns
+    // small boundary differences into inverse-filter ringing.
+    const a = transform(measured, size, riseSamples);
+    const b = transform(reference, size, riseSamples);
     let referencePower = 0;
     for (let i = 0; i < size; i++) referencePower = Math.max(referencePower, b.real[i] ** 2 + b.imag[i] ** 2);
     // Regularize only the inverse of the excitation, not the measured harmonic amplitudes.
@@ -41,10 +43,11 @@ function removeFiniteReference(measured, reference, onsetIndex) {
     return Float32Array.from({ length: measured.length }, (_, i) => a.real[(i - onsetIndex + size) % size]);
 }
 
-function transform(samples, size) {
+function transform(samples, size, riseSamples = 0) {
     const real = new Float64Array(size);
     const imag = new Float64Array(size);
     real.set(samples);
+    for (let i = 0; i < riseSamples; i++) real[i] *= 0.5 - 0.5 * Math.cos(Math.PI * i / riseSamples);
     new FFT(size).transform(real, imag, real, imag);
     return { real, imag };
 }
@@ -91,7 +94,7 @@ export function createEssSignal({ length = 131072, sampleRate = 48000, startFreq
     return {
         method: 'ess', signal, inverseFilter, length, sampleRate, sweepConstant,
         startFrequency, endFrequency, durationSeconds, fadeSamples,
-        tailSamples: Math.ceil(2.5 * sampleRate), maxOrder: 3
+        tailSamples: Math.ceil(2.5 * sampleRate), maxOrder: 10
     };
 }
 
@@ -120,15 +123,24 @@ export function analyzeEssRecording(recording, sweep, {
     const referenceGain = 10 ** (levelDb / 20);
     if (!Number.isFinite(referenceGain) || referenceGain <= 0) throw new RangeError('Invalid ESS reference gain');
     const pre = Math.round(Math.min(0.025, sweep.sweepConstant * Math.log(4 / 3) / 3) * sampleRate);
-    const orders = [1, 2, 3].map(order => {
-        const post = order === 1 ? Math.round(1.5 * sampleRate)
-            : Math.floor(sweep.sweepConstant * Math.log(order / (order - 1)) * sampleRate) - pre * 2;
+    const harmonicGap = Math.round(sweep.sweepConstant * Math.log(2) * sampleRate);
+    const validMinFrequency = sweep.startFrequency * Math.exp(sweep.fadeSamples / (sampleRate * sweep.sweepConstant));
+    const validMaxFrequency = sweep.endFrequency * Math.exp(-sweep.fadeSamples / (sampleRate * sweep.sweepConstant));
+    // H1 and H2 share a boundary halfway between their centers. Keep the stable
+    // strongest-peak time reference while retaining earlier linear arrivals.
+    const linearPre = validMaxFrequency / 2 > validMinFrequency ? Math.floor(harmonicGap / 2) : pre;
+    const orders = Array.from({ length: sweep.maxOrder }, (_, index) => index + 1).map(order => {
+        // Higher orders keep their short windows so the existing sweep duration
+        // still supports a 20 ms analysis window through H10.
+        const orderPre = order === 1 ? linearPre : order <= 3 ? pre : Math.round(0.002 * sampleRate);
+        let post = order === 1 ? Math.round(1.5 * sampleRate)
+            : Math.floor(sweep.sweepConstant * Math.log(order / (order - 1)) * sampleRate) - orderPre * 2;
+        if (order === 2) post = Math.min(post, harmonicGap - linearPre);
         // Only the constant-amplitude excitation interval supports harmonic ratios.
-        const validMinFrequency = sweep.startFrequency * Math.exp(sweep.fadeSamples / (sampleRate * sweep.sweepConstant));
-        const validMaxFrequency = sweep.endFrequency * Math.exp(-sweep.fadeSamples / (sampleRate * sweep.sweepConstant)) / order;
-        const supported = order === 1 || validMaxFrequency > validMinFrequency;
-        return { order, data: new Float32Array(supported ? pre + post : 2), onsetIndex: supported ? pre : 0,
-            validMinFrequency, validMaxFrequency };
+        const orderMaxFrequency = validMaxFrequency / order;
+        const supported = order === 1 || orderMaxFrequency > validMinFrequency;
+        return { order, data: new Float32Array(supported ? orderPre + post : 2), onsetIndex: supported ? orderPre : 0,
+            validMinFrequency, validMaxFrequency: orderMaxFrequency };
     });
     if (orders[1].validMaxFrequency <= orders[1].validMinFrequency) reasons.add('insufficient-harmonic-band');
     let firstPeak = null;
@@ -154,7 +166,7 @@ export function analyzeEssRecording(recording, sweep, {
         for (const entry of orders) {
             if (entry.order > 1 && entry.validMaxFrequency <= entry.validMinFrequency) continue;
             const center = peak - Math.round(sweep.sweepConstant * Math.log(entry.order) * sampleRate);
-            const start = center - pre;
+            const start = center - entry.onsetIndex;
             if (start < 0 || start + entry.data.length > response.length) throw new RangeError('Incomplete ESS separation');
             for (let i = 0; i < entry.data.length; i++) {
                 const value = response[start + i] / referenceGain;
@@ -169,7 +181,7 @@ export function analyzeEssRecording(recording, sweep, {
         let difference = 0;
         let energy = 0;
         for (let i = 0; i < linear.data.length; i++) {
-            const value = firstResponse[firstPeak - pre + i] / referenceGain;
+            const value = firstResponse[firstPeak - linear.onsetIndex + i] / referenceGain;
             difference += (value - linear.data[i]) ** 2;
             energy += value * value;
         }
@@ -179,16 +191,19 @@ export function analyzeEssRecording(recording, sweep, {
     let linearEnergy = 0;
     let unresolvedTail = 0;
     const supportedHarmonics = orders.slice(1).filter(entry => entry.validMaxFrequency > entry.validMinFrequency);
-    const separationLimit = supportedHarmonics.length
-        ? Math.min(...supportedHarmonics.map(entry => entry.data.length - pre)) : linear.data.length;
-    for (let i = pre; i < linear.data.length; i++) {
+    const separationBefore = supportedHarmonics.length
+        ? Math.min(...supportedHarmonics.map(entry => entry.onsetIndex)) : linear.onsetIndex;
+    const separationAfter = supportedHarmonics.length
+        ? Math.min(...supportedHarmonics.map(entry => entry.data.length - entry.onsetIndex)) : linear.data.length - linear.onsetIndex;
+    for (let i = 0; i < linear.data.length; i++) {
         linearEnergy += linear.data[i] ** 2;
-        if (i - pre >= separationLimit) unresolvedTail += linear.data[i] ** 2;
+        const time = i - linear.onsetIndex;
+        if (time < -separationBefore || time >= separationAfter) unresolvedTail += linear.data[i] ** 2;
     }
     if (unresolvedTail > linearEnergy * 0.01) reasons.add('overlapping-tail');
     const finiteReference = convolveLinear(sweep.signal, sweep.inverseFilter);
     linear.referenceData = referenceWindow(finiteReference, sweep, linear);
-    const correctedLinear = removeFiniteReference(linear.data, linear.referenceData, linear.onsetIndex);
+    const correctedLinear = removeFiniteReference(linear.data, linear.referenceData, linear.onsetIndex, pre);
     // Predict the finite fundamental response through the recovered linear path before
     // cutting any harmonic windows. This preserves convolution across window edges.
     const predictedFundamental = convolveLinear(finiteReference, correctedLinear);
@@ -202,7 +217,9 @@ export function analyzeEssRecording(recording, sweep, {
         // short analysis window therefore cannot change a known harmonic's gain.
         const harmonicSignal = Float32Array.from(sweep.signal, (_, i) => {
             const phase = sweepPhase(i, sweep);
-            const harmonic = entry.order === 2 ? -Math.cos(2 * phase) : -Math.sin(3 * phase);
+            const harmonic = entry.order === 2 ? -Math.cos(2 * phase)
+                : entry.order === 3 ? -Math.sin(3 * phase)
+                    : Math.sin(entry.order * phase + (1 - entry.order) * Math.PI / 2);
             return harmonic * sweepEnvelope(i, sweep.length, sweep.fadeSamples) ** entry.order;
         });
         entry.harmonicReferenceData = referenceWindow(convolveLinear(harmonicSignal, sweep.inverseFilter), sweep, entry);
@@ -215,16 +232,17 @@ export function analyzeEssRecording(recording, sweep, {
             durationSeconds: sweep.durationSeconds, levelDb, sweepSamples: sweep.length },
         quality: { valid: reasons.size === 0, reasons: [...reasons] }, orders
     };
-    const result = { data: correctedLinear, sampleRate, onsetIndex: pre, prerollSamples: pre,
-        trimStartSamples: outputTimeReference === 'audio-context' ? latency - pre : null,
+    const result = { data: correctedLinear, sampleRate, onsetIndex: linearPre, prerollSamples: linearPre,
+        trimStartSamples: outputTimeReference === 'audio-context' ? latency - linearPre : null,
         outputTimeReference, refScale: 1, peakDb: 20 * Math.log10(peakAmplitude), irValid: true,
         acquisitionMethod: 'ess', harmonicAnalysis };
     if (calibration) Object.assign(result, applyInterfaceCalibration(result, calibration, {
         sampleRate, minFrequency: sweep.startFrequency, maxFrequency: sweep.endFrequency,
-        outputLength: result.data.length, prerollSamples: pre
+        outputLength: result.data.length, prerollSamples: linearPre
     }));
     result.frequencyResponse = analyzeImpulseResponse(result, {
-        minFrequency: linear.validMinFrequency, maxFrequency: linear.validMaxFrequency, window: 'tukey', smoothing: 0.005
+        minFrequency: linear.validMinFrequency, maxFrequency: linear.validMaxFrequency, window: 'tukey',
+        riseSeconds: Math.min(0.025, result.onsetIndex / sampleRate), smoothing: 0.005
     }).frequencyResponse;
     return result;
 }

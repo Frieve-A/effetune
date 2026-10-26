@@ -1151,7 +1151,7 @@ test('registers processors, rebuilds pipelines, and posts audio configuration', 
 
     manager.workletNode = manager.contextManager.workletNode;
     manager.updateAudioConfig({});
-    manager.updateAudioConfig({ outputChannels: 6, lowLatencyOutput: true });
+    manager.updateAudioConfig({ outputChannels: 6 });
     assert.equal(calls.filter(call => call[0] === 'postMessage' && call[2].type === 'updateAudioConfig').length, 2);
 
     manager.workletNode = null;
@@ -1266,7 +1266,7 @@ test('staged audio config publishes only after resource acquisition and a curren
       return true;
     };
 
-    const preferences = { outputChannels: 4, lowLatencyOutput: true };
+    const preferences = { outputChannels: 4 };
     const result = await manager.applyStagedAudioConfig(preferences, {
       expectedConfigRevision: 0,
       publish(value, revision) {
@@ -1770,7 +1770,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
-        lowLatencyOutput: false,
         useWasmDsp: true,
         gaplessPlayback: true,
         outputChannels: 2,
@@ -1791,7 +1790,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
-        lowLatencyOutput: false,
         useWasmDsp: true,
         gaplessPlayback: true,
         outputChannels: 2,
@@ -1858,7 +1856,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
         outputDeviceLabel: '',
         sampleRate: 96000,
         useInputWithPlayer: false,
-        lowLatencyOutput: false,
         useWasmDsp: true,
         gaplessPlayback: true,
         outputChannels: 2,
@@ -1895,7 +1892,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
       outputDeviceId: 'default',
       sampleRate: 96000,
       useInputWithPlayer: false,
-      lowLatencyOutput: false,
       useWasmDsp: true,
       gaplessPlayback: true,
       outputChannels: 2,
@@ -1906,7 +1902,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
       ...storedMicrophone,
       sampleRate: 96000,
       useInputWithPlayer: false,
-      lowLatencyOutput: false,
       useWasmDsp: true,
       gaplessPlayback: true,
       outputChannels: 2,
@@ -1916,7 +1911,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
       ...storedMicrophone,
       sampleRate: 96000,
       useInputWithPlayer: false,
-      lowLatencyOutput: false,
       useWasmDsp: true,
       gaplessPlayback: true,
       outputChannels: 2,
@@ -1926,7 +1920,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
       ...storedMicrophone,
       sampleRate: 96000,
       useInputWithPlayer: false,
-      lowLatencyOutput: false,
       useWasmDsp: true,
       gaplessPlayback: true,
       outputChannels: 2,
@@ -1956,7 +1949,6 @@ test('Web and Electron input None switch locally only while pipeline configurati
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
-        lowLatencyOutput: false,
         useWasmDsp: true,
         gaplessPlayback: true,
         outputChannels: 2,

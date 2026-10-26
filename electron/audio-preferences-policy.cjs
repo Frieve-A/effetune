@@ -7,7 +7,6 @@ const AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   outputDeviceLabel: '',
   sampleRate: 96000,
   useInputWithPlayer: false,
-  lowLatencyOutput: false,
   useWasmDsp: true,
   gaplessPlayback: true,
   outputChannels: 2,
@@ -18,7 +17,6 @@ const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
   outputDeviceId: AUDIO_PREFERENCE_DEFAULTS.outputDeviceId,
   sampleRate: AUDIO_PREFERENCE_DEFAULTS.sampleRate,
   useInputWithPlayer: AUDIO_PREFERENCE_DEFAULTS.useInputWithPlayer,
-  lowLatencyOutput: AUDIO_PREFERENCE_DEFAULTS.lowLatencyOutput,
   useWasmDsp: AUDIO_PREFERENCE_DEFAULTS.useWasmDsp,
   outputChannels: AUDIO_PREFERENCE_DEFAULTS.outputChannels,
   latencyHint: AUDIO_PREFERENCE_DEFAULTS.latencyHint
@@ -26,6 +24,7 @@ const AUDIO_PIPELINE_DEFAULTS = Object.freeze({
 
 function normalizeAudioPreferences(preferences) {
   const normalized = { ...(preferences || {}) };
+  delete normalized.lowLatencyOutput;
   for (const [key, fallback] of Object.entries(AUDIO_PREFERENCE_DEFAULTS)) {
     normalized[key] = normalized[key] ?? fallback;
   }

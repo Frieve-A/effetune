@@ -30,7 +30,7 @@ test('invalid or incomplete TLS configuration fails closed without opening HTTP'
 });
 
 test('TLS serves the client, verifies certificates and enforces secure WebSocket origins', { timeout: 15000 }, async t => {
-  try { execFileSync('openssl', ['version'], { stdio: 'ignore' }); }
+  try { execFileSync('openssl', ['version'], { stdio: 'ignore', windowsHide: true }); }
   catch (error) {
     if (error.code !== 'ENOENT') throw error;
     t.skip('OpenSSL is required to generate a temporary TLS certificate');
@@ -45,7 +45,7 @@ test('TLS serves the client, verifies certificates and enforces secure WebSocket
   try {
     execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
       '-config', config, '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
-      '-keyout', key, '-out', cert], { stdio: 'ignore' });
+      '-keyout', key, '-out', cert], { stdio: 'ignore', windowsHide: true });
     host = hostFor({ EFFETUNE_REMOTE_TLS_CERT: cert, EFFETUNE_REMOTE_TLS_KEY: key });
     host.bindWithFallback = server => new Promise((resolve, reject) => {
       server.once('error', reject);

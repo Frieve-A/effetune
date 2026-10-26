@@ -89,6 +89,37 @@ test('Windows desktop packaging is owned by the reusable Electron build', () => 
   assert.ok(install >= 0 && execute > install, 'OpenHome CI must install before building and verification');
 });
 
+test('every desktop release builds its matching AirPlay runtime before packaging and checks the packaged copy', () => {
+  for (const [platform, architecture] of [['linux', 'x64'], ['windows', 'x64'], ['macos', '${{ matrix.arch }}']]) {
+    const block = jobBlock(workflows.build, `build-${platform}`);
+    const steps = block.split(/\n      - name: /).slice(1);
+    const native = steps.find(step => step.includes(`npm run build:airplay-receiver -- --arch ${architecture}`));
+    const firstPack = steps.findIndex(step => step.includes('node scripts/pack-ecs.mjs'));
+    const smoke = steps.findIndex(step => step.includes('run: npm run smoke:airplay-package'));
+    const upload = steps.findIndex(step => step.startsWith(`Upload ${platform === 'macos' ? 'macOS' : platform === 'windows' ? 'Windows' : 'Linux'} artifacts`));
+    assert.ok(native, `${platform} must produce the resource slice packaged by electron-builder`);
+    assert.ok(steps.indexOf(native) <= firstPack && firstPack < smoke && smoke < upload, platform);
+    assert.doesNotMatch(native, /\n        if:|continue-on-error:/, `${platform} native build cannot depend on optional source verification`);
+    assert.doesNotMatch(steps[smoke], /\n        if:|continue-on-error:/, `${platform} package checks cannot be skipped for release variants`);
+  }
+  const linux = jobBlock(workflows.build, 'build-linux');
+  const setup = linux.split(/\n      - name: /).find(step => step.startsWith('Install Linux native build dependencies'));
+  assert.doesNotMatch(setup, /inputs\.openhome_source_bundle|\n        if:/, 'AirPlay always collects corresponding runtime sources');
+  for (const prerequisite of ['deb-src', 'meson', 'ninja-build', 'patchelf', 'flex', 'bison', 'm4', 'libavahi-compat-libdnssd-dev', 'libdbus-1-dev']) {
+    assert.ok(setup.includes(prerequisite), `Linux AirPlay toolchain requires ${prerequisite}`);
+  }
+  assert.doesNotMatch(setup, /apt-get install[^\n]*\bmeson\b/, 'Ubuntu 24.04 Meson is older than the locked GLib and GStreamer minimum');
+  assert.match(setup, /python3 -m venv "\$meson_env"/);
+  assert.match(setup, /"\$meson_env\/bin\/python" -m pip install[^\n]*'meson>=1\.4\.0'/);
+  assert.match(setup, /export PATH="\$meson_env\/bin:\$PATH"/);
+  assert.match(setup, /echo "\$meson_env\/bin" >> "\$GITHUB_PATH"/);
+  assert.match(setup, /test "\$\(command -v meson\)" = "\$meson_env\/bin\/meson"/);
+  assert.match(setup, /dpkg --compare-versions "\$meson_version" ge 1\.4\.0/);
+  const macos = jobBlock(workflows.build, 'build-macos');
+  assert.match(macos, /brew install .*meson.*flex.*bison.*m4/);
+  assert.match(macos, /brew --prefix "\$tool"\)\/bin" >> "\$GITHUB_PATH"/);
+});
+
 test('OpenHome native CI builds Windows x64, Linux x64, and both macOS architectures', () => {
   const openHomeNative = jobBlock(workflows.ci, 'openhome-native');
   for (const expected of [
@@ -207,12 +238,13 @@ test('Linux release signatures are required and verified before packaging and up
   assert.doesNotMatch(linux, /continue-on-error:|if: always\(\)/);
 });
 
-test('all desktop packages include the native sidecar and its tracked notices', () => {
+test('all desktop packages include native runtimes and their tracked notices', () => {
   for (const platform of ['win', 'mac', 'linux']) {
     const resources = packageJson.build[platform].extraResources;
     assert.ok(Array.isArray(resources), `${platform} package must define extraResources`);
     const destinations = resources.map(resource => resource.to).sort();
     const expectedDestinations = [
+      'airplay',
       'openhome/THIRD_PARTY_NOTICES.txt',
       `openhome/effetune-openhome-sidecar${platform === 'win' ? '.exe' : ''}`,
     ];

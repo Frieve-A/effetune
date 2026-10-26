@@ -175,11 +175,6 @@ async function savePipelineStateToFile(pipelineState, options) {
 
 // Process command line arguments to find preset files and music files
 function processCommandLineArgs(argv) {
-  // Skip processing during splash screen (first launch)
-  if (constants.getIsFirstLaunch()) {
-    return;
-  }
-  
   // Get the arguments (excluding the app path and the script path)
   // In packaged apps, the first argument is the app path
   // In development, the first two arguments are electron and the script path
@@ -189,10 +184,12 @@ function processCommandLineArgs(argv) {
     // Clear previous music files
     constants.clearCommandLineMusicFiles();
     
+    let presetFound = false;
     // Process each argument to find preset files and music files
     for (const arg of args) {
       // Check if the argument is a file path that ends with .effetune_preset
       if (arg && arg.endsWith('.effetune_preset')) {
+        if (presetFound) continue;
         try {
           // Check if file exists
           if (fs.existsSync(arg)) {
@@ -200,27 +197,10 @@ function processCommandLineArgs(argv) {
             // Store the command line preset file path
             constants.setCommandLinePresetFile(arg);
             
-            // Also store in savedCommandLinePresetFile for splash reload
-            constants.setSavedCommandLinePresetFile(arg);
-            
             // If a preset file is specified via command line, don't load previous pipeline state
             constants.setShouldLoadPipelineState(false);
             
-            // If the app is already running, send the file path to the renderer
-            const mainWindow = constants.getMainWindow();
-            if (mainWindow && mainWindow.webContents) {
-              mainWindow.webContents.send('open-preset-file', arg);
-              
-              // Also set pipelineStateLoaded to false in the renderer
-              mainWindow.webContents.executeJavaScript(`
-                window.pipelineStateLoaded = false;
-              `).catch(err => {
-                console.error('Error setting pipelineStateLoaded flag:', err.message || String(err));
-              });
-            }
-            
-            // Only process the first valid preset file
-            break;
+            presetFound = true;
           }
         } catch (error) {
           console.error('Error checking preset file:', error);
@@ -233,10 +213,6 @@ function processCommandLineArgs(argv) {
           if (fs.existsSync(arg)) {
             // Add to music files array
             constants.addCommandLineMusicFile(arg);
-            
-            // Also store in savedCommandLineMusicFiles for splash reload
-            const absolutePath = path.resolve(arg);
-            constants.addSavedCommandLineMusicFile(absolutePath); // Use absolute path
           }
         } catch (error) {
           console.error('Error checking music file:', error);

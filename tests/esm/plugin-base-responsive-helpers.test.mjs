@@ -11,6 +11,7 @@ class FakeElement {
     this.parentNode = null;
     this.eventListeners = new Map();
     this.dataset = {};
+    this.attributes = new Map();
     this.style = {};
     this.className = '';
     this.id = '';
@@ -42,6 +43,10 @@ class FakeElement {
   addEventListener(type, listener) {
     if (!this.eventListeners.has(type)) this.eventListeners.set(type, []);
     this.eventListeners.get(type).push(listener);
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
   }
 
   removeEventListener(type, listener) {
@@ -773,6 +778,11 @@ test('PluginBase bindGraphPointer handles tap, drag, and cleanup', () => {
     onDragEnd: event => calls.push(['end', event.clientX, event.clientY]),
     onTap: event => calls.push(['tap', event.clientX, event.clientY])
   });
+
+  element.dispatch('pointerdown', { pointerId: 6, defaultPrevented: true });
+  element.dispatch('pointermove', { pointerId: 6, clientX: 30 });
+  element.dispatch('pointerup', { pointerId: 6, clientX: 30 });
+  assert.deepEqual(calls, []);
 
   element.dispatch('pointerdown', { pointerId: 7, clientX: 10, clientY: 10 });
   element.dispatch('pointerup', { pointerId: 7, clientX: 12, clientY: 12 });

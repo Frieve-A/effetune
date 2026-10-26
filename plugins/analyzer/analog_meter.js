@@ -627,6 +627,7 @@ class AnalogMeterPlugin extends PluginBase {
         // reset button class does.
         const resetButton = document.createElement('button');
         resetButton.className = 'analog-meter-reset-button local-audio-only';
+        resetButton.setAttribute('data-parameter-control', 'view');
         resetButton.textContent = 'Reset';
         resetButton.title = 'Restart the Integrated, LRA, and maximum True Peak measurement';
         resetButton.addEventListener('click', () => this.resetMeasurement());

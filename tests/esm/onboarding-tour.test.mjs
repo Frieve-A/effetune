@@ -77,6 +77,7 @@ test('welcome records the shown state and buttons advance, return, and finish th
         assert.equal(tour.isActive, true);
         assert.equal(tour.root.getAttribute('data-step'), 'welcome');
         assert.equal(tour.progress.textContent, '1 / 10');
+        assert.equal(tour.steps.some(step => step.id === 'browser'), false);
         assert.equal(tour.backButton.hidden, true);
         assert.equal(tour.nextButton.textContent, 'tour.button.start');
         await flushMicrotasks();
@@ -85,7 +86,7 @@ test('welcome records the shown state and buttons advance, return, and finish th
         assert.equal(tour.progress.textContent, '2 / 10');
         await tour.backButton.dispatchEvent('click');
         assert.equal(tour.progress.textContent, '1 / 10');
-        for (let index = 1; index < TOUR_STEPS.length; index++) await tour.nextButton.dispatchEvent('click');
+        for (let index = 1; index < tour.steps.length; index++) await tour.nextButton.dispatchEvent('click');
         assert.deepEqual(calls, [['expand']]);
         assert.equal(tour.nextButton.textContent, 'tour.button.done');
         await tour.nextButton.dispatchEvent('click');
@@ -93,6 +94,34 @@ test('welcome records the shown state and buttons advance, return, and finish th
         assert.equal(document.listenerCount('keydown'), 0);
         assert.equal(document.listenerCount('scroll'), 0);
         assert.equal(listeners.size, 0);
+    });
+});
+
+test('Browser introduces streaming before Music Library when the built-in browser is available', async () => {
+    await withTour(false, async ({ tour, window, document, targets }) => {
+        window.electronAPI = { browser: {} };
+        const browserButton = document.createElement('button');
+        targets.set('#browserButton', browserButton);
+        tour.start();
+        assert.equal(tour.progress.textContent, '1 / 11');
+        tour.showStep(tour.steps.findIndex(step => step.id === 'save'));
+        await tour.nextButton.dispatchEvent('click');
+        assert.equal(tour.root.getAttribute('data-step'), 'browser');
+        assert.equal(tour.target, browserButton);
+        assert.equal(tour.spotlight.hidden, false);
+        assert.equal(tour.title.textContent, 'tour.step.browser.title');
+        assert.equal(tour.body.textContent, 'tour.step.browser.body');
+        assert.equal(tour.progress.textContent, '8 / 11');
+        await tour.nextButton.dispatchEvent('click');
+        assert.equal(tour.root.getAttribute('data-step'), 'views');
+        assert.equal(tour.progress.textContent, '9 / 11');
+        await tour.backButton.dispatchEvent('click');
+        assert.equal(tour.root.getAttribute('data-step'), 'browser');
+        for (let index = tour.stepIndex + 1; index < tour.steps.length; index++) await tour.nextButton.dispatchEvent('click');
+        assert.equal(tour.progress.textContent, '11 / 11');
+        assert.equal(tour.nextButton.textContent, 'tour.button.done');
+        await tour.nextButton.dispatchEvent('click');
+        assert.equal(tour.isActive, false);
     });
 });
 

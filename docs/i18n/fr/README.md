@@ -126,6 +126,8 @@ Pour utiliser EffeTune avec des lecteurs CD, lecteurs réseau ou autres sources 
 
 ## Utilisation
 
+Au premier lancement, la fenêtre de l’application de bureau s’ouvre agrandie. Aux lancements suivants, l’application rétablit sa taille, sa position et son état d’agrandissement précédents.
+
 Au premier lancement, une courte visite vous montre où écouter de la musique, ajouter des effets et ajuster le son. Vous pouvez la revoir à tout moment avec **Découvrir l’application** dans le menu des paramètres, dans le menu **Aide** de l’application de bureau ou via le bouton de menu sur mobile.
 
 ### Construction de votre chaîne d'effets
@@ -150,6 +152,8 @@ Au premier lancement, une courte visite vous montre où écouter de la musique, 
 9. Cliquez sur le bouton de routage pour définir les canaux à traiter et les bus d'entrée et de sortie
    - [Plus d'informations sur les fonctions de bus](bus-function.md)
 10. Cliquez sur le bouton Préréglages d’effet de chaque effet pour enregistrer ou appliquer des réglages pour cet effet uniquement
+
+Cliquez sur le cadenas à côté de × pour verrouiller ou déverrouiller les réglages d’un effet. Le verrouillage empêche de modifier ses paramètres, de les réinitialiser, d’appliquer des préréglages ou de changer le routage. Le traitement audio, ON/OFF, le déplacement, le repli et la suppression restent disponibles. Les états replié et verrouillé sont enregistrés et restaurés avec la chaîne d’effets, y compris dans ses préréglages et lors de la reprise de la dernière session. Le cadenas devient jaune lorsque les réglages sont verrouillés et clignote si vous essayez de les modifier. La lecture des valeurs sur les graphiques et le changement d’onglet restent disponibles.
 
 ### Parcourir votre Bibliothèque musicale
 
@@ -323,7 +327,7 @@ Si vous rencontrez des problèmes audio (coupures, parasites) :
 
 ### Musique en réseau et télécommande
 
-**Application de bureau:** Parcourez les serveurs musicaux du réseau local, partagez les dossiers de votre choix et écoutez sur cet appareil ou un lecteur OpenHome. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md).
+**Application de bureau:** Parcourez les serveurs musicaux du réseau local, partagez les dossiers de votre choix et écoutez sur cet appareil ou un lecteur OpenHome. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md). Vous pouvez aussi activer la réception UPnP AV / DLNA et AirPlay pour écouter la musique envoyée par d’autres appareils avec les effets de cet ordinateur.
 
 La PWA peut aussi lire la musique partagée d’un ordinateur EffeTune enregistré avec les effets de cet appareil, ou piloter un autre ordinateur enregistré. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour connaître les conditions de navigateur et de connexion.
 

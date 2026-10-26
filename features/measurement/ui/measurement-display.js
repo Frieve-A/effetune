@@ -260,6 +260,8 @@ class MeasurementDisplay {
         smoothing = Math.max(0.01, Math.min(1.00, smoothing));
 
         // Set PEQ control values
+        lowFreq = Math.round(Math.max(20, Math.min(1000, lowFreq)));
+        highFreq = Math.round(Math.max(1000, Math.min(20000, highFreq)));
         document.getElementById('targetLowFreqSlider').value =
             this.uiManager.correctionHandler.valueToLogSlider(lowFreq, 20, 1000);
         document.getElementById('targetLowFreqValue').value = Math.round(lowFreq);

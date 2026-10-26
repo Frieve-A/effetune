@@ -5,13 +5,15 @@ import test from 'node:test';
 
 import {
   OpenHomePlaybackAdapter,
-  encodeIdArray
+  encodeIdArray, parseDidlLite
 } from '../../js/ui/audio-player/openhome-playback-adapter.js';
 import { AudioPlayer } from '../../js/ui/audio-player.js';
+import { AirPlayPlayback } from '../../js/ui/audio-player/airplay-playback.js';
 import { PlaybackManager } from '../../js/ui/audio-player/playback-manager.js';
 import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { NetworkMusicController } from '../../js/network-music/controller.js';
 import { playPwaNetworkItems } from '../../js/network-music/pwa-playback-provider.js';
+import { getTrackInformation, formatTrackInformation } from '../../js/ui/audio-player/track-information.js';
 
 test('OpenHome gateway artwork is allowed by the renderer image policy', async () => {
   const html = await readFile(new URL('../../effetune.html', import.meta.url), 'utf8');
@@ -163,6 +165,11 @@ function createHarness(initialState = {}, adapterOptions = {}) {
     remoteResumeResult: true,
     stateManager,
     contextManager: {
+      async prepareTrackSelection() { return true; },
+      async loadTrack(track) {
+        calls.push(['loadTrack', track?.sourceKey]);
+        return this.loadResult !== false;
+      },
       async seek(seconds) {
         calls.push(['seek', seconds]);
         stateManager.updateState({ currentTrackPosition: seconds });
@@ -573,6 +580,93 @@ test('local network playback starts at the requested repeated occurrence in the 
       assert.deepEqual(captureQueueContract(harness), before);
     }
   } finally { harness.adapter.dispose(); }
+});
+
+test('UPnP queue moves use actual shuffled ordinals while retaining canonical IDs and paused transport', async () => {
+  const h = createHarness();
+  const manager = installRealPlaybackManager(h);
+  h.audioPlayer.contextManager.loadTrack = async (track, index) => {
+    h.stateManager.updateState({ currentTrack: track, currentTrackIndex: index, currentTrackPosition: 0,
+      isPlaying: false, isPaused: false, isStopped: true });
+    return true;
+  };
+  h.audioPlayer.contextManager.play = () => h.audioPlayer.play(false);
+  try {
+    await h.adapter.playNetworkTracks(['A', 'B', 'C'].map(networkTrack));
+    const ids = h.adapter.queue.map(entry => entry.id);
+    const [a, b, c] = manager.playlist;
+    manager.playlist = [b, a, c];
+    manager.syncPlaylistState(0);
+    h.stateManager.updateState({ shuffleMode: true, isPlaying: false, isPaused: true, isStopped: false });
+    await h.adapter.commandChain;
+    assert.deepEqual(h.adapter.queue.map(entry => entry.id), ids);
+    assert.equal(h.adapter.getSnapshot().currentId, ids[1]);
+    assert.equal(h.adapter.getSnapshot().avTransport.actions.includes('Previous'), false);
+    const av = async action => {
+      h.bridge.emitAction({ requestId: `shuffled-${action}-${h.responses.length}`, service: 'AVTransport', action, args: {} });
+      await h.adapter.commandChain;
+      return h.responses.at(-1);
+    };
+    assert.equal((await av('Previous')).error.code, 'invalid-seek');
+    assert.equal((await av('Next')).ok, true);
+    assert.equal(h.stateManager.state.currentTrack.sourceKey, a.sourceKey);
+    assert.equal(h.stateManager.state.isPaused, true);
+    assert.equal(h.adapter.getSnapshot().currentId, ids[0]);
+    assert.equal((await av('Previous')).ok, true);
+    assert.equal(h.stateManager.state.currentTrack.sourceKey, b.sourceKey);
+    assert.equal(h.stateManager.state.isPaused, true);
+    h.stateManager.updateState({ currentTrack: c, currentTrackIndex: 2, isPlaying: true, isPaused: false, isStopped: false, repeatMode: 'ALL' });
+    assert.equal(h.adapter.getSnapshot().avTransport.actions.includes('Next'), false);
+    assert.equal((await av('Next')).error.code, 'invalid-seek');
+    assert.equal((await av('Previous')).ok, true);
+    assert.equal(h.stateManager.state.currentTrack.sourceKey, a.sourceKey);
+    assert.equal(h.stateManager.state.isPlaying, true);
+    assert.deepEqual(h.adapter.queue.map(entry => entry.id), ids);
+  } finally { h.adapter.dispose(); }
+});
+
+for (const ingress of ['desktop', 'catalog']) test(`${ingress} network ingress retains selected DIDL facts through canonical player, capture, snapshots and shared presentation`, async () => {
+  const track = { ...networkTrack('rich'), title: ingress === 'catalog' ? 'Summary title' : '', artist: '', album: '', duration: 0 };
+  const element = (localName, textContent, attributes = {}) => ({ localName, textContent,
+    getAttribute: key => attributes[key] ?? null });
+  const fields = [element('title', 'DIDL title'), element('artist', 'DIDL artist'), element('album', 'DIDL album'),
+    element('artist', 'Album group', { role: 'AlbumArtist' }), element('genre', 'Classical'),
+    element('res', track.resources[0].uri, { protocolInfo: 'http-get:*:audio/flac:*', duration: '0:03:12.250',
+      sampleFrequency: '48000', bitsPerSample: '24', nrAudioChannels: '2', bitrate: '32000' })];
+  class Parser { parseFromString() { return { getElementsByTagName: () => [{ localName: 'item', getElementsByTagName: () => fields }] }; } }
+  const h = createHarness();
+  const manager = installRealPlaybackManager(h);
+  h.adapter.DomParserCtor = Parser;
+  h.adapter.resolveNetworkTrack = async () => track;
+  h.audioPlayer.activateOpenHomePlaybackAdapter = () => h.adapter;
+  const controller = new NetworkMusicController({ api: { networkMusicResolveTrack: async () => track },
+    uiManager: { audioPlayer: h.audioPlayer } });
+  try {
+    const items = [{ serverId: 'server', trackId: 'rich' }];
+    if (ingress === 'desktop') await controller.playItems(items);
+    else {
+      h.bridge.emitAction({ requestId: 'rich-catalog', service: 'Catalog', action: 'PlayItems', args: { items, operationKind: 'play' } });
+      await h.adapter.commandChain;
+      assert.equal(h.responses.at(-1).ok, true);
+    }
+    const current = manager.playlist[h.stateManager.state.currentTrackIndex];
+    assert.equal(current.meta.title, ingress === 'catalog' ? 'Summary title' : 'DIDL title');
+    assert.equal(current.meta.artist, 'DIDL artist');
+    assert.equal(current.meta.album, 'DIDL album');
+    assert.equal(current.meta.albumArtist, 'Album group');
+    assert.equal(current.meta.genre, 'Classical');
+    assert.equal(current.meta.duration, 192.25);
+    assert.deepEqual([current.meta.sampleRate, current.meta.bitsPerSample, current.meta.channels, current.meta.bitrate], [48000, 24, 2, 256000]);
+    assert.equal(h.adapter.getSnapshot().avTransport.protocolInfo, 'http-get:*:audio/flac:*');
+    assert.equal(h.adapter.getSnapshot().codecName, 'FLAC');
+    assert.equal(h.adapter.getSnapshot().sampleRate, 48000);
+    const captured = await h.adapter.captureLocalQueue(0, { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER }, true);
+    assert.equal(captured.entries[0].meta.genre, 'Classical');
+    assert.equal(captured.entries[0].meta.bitsPerSample, 24);
+    const presentation = formatTrackInformation(getTrackInformation(current));
+    assert.match(presentation, /Album artist: Album group/);
+    assert.match(presentation, /Source audio: FLAC \/ 48 kHz \/ 24-bit \/ 2 ch \/ 256 kbps/);
+  } finally { controller.dispose(); h.adapter.dispose(); }
 });
 
 test('network append imports a paused local catalog queue without publishing its private sources or restarting playback', async () => {
@@ -2129,4 +2223,242 @@ test('OpenHome adapter rejects non-HTTP source URIs and non-gateway playback URL
   assert.equal(gatewayFailure.error.code, 'invalid-playback-url');
   assert.equal(harness.adapter.queue.length, 0);
   harness.adapter.dispose();
+});
+
+test('UPnP URI selection atomically replaces the canonical queue and accepts empty metadata', async () => {
+  const h = createHarness();
+  await runAction(h, 'old', 'Insert', { uri: networkTrack('old').resources[0].uri, playbackUrl: networkTrack('old').uri, metadata: '' });
+  h.bridge.emitAction({ requestId: 'av-select', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: networkTrack('new').resources[0].uri, playbackUrl: networkTrack('new').uri, metadata: '' } });
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok, true);
+  assert.equal(h.adapter.queue.length, 1);
+  assert.equal(h.audioPlayer.playbackManager.playlist.length, 1);
+  assert.equal(h.adapter.getSnapshot().avTransport.uri, networkTrack('new').resources[0].uri);
+  assert.equal(h.adapter.getSnapshot().avTransport.state, 'STOPPED');
+  assert.equal(h.calls.filter(([name]) => name === 'play').length, 0);
+  const before = captureQueueContract(h);
+  h.bridge.emitAction({ requestId: 'av-invalid', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: 'file:///private.mp3', metadata: '' } });
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok, false);
+  assert.deepEqual(captureQueueContract(h), before);
+  h.adapter.dispose();
+});
+
+test('DIDL preserves matching-resource audio properties and contributor roles without mixing alternate resources', () => {
+  const element = (localName, textContent, attributes = {}) => ({ localName, textContent,
+    getAttribute: name => attributes[name] ?? null });
+  const item = children => ({ localName: 'item', getElementsByTagName: () => children });
+  const uri = 'https://media.test/chosen.flac';
+  const unrelated = item([element('title', 'Wrong track'), element('res', 'https://media.test/other.mp3', { sampleFrequency: '22050' })]);
+  const selected = item([element('title', 'Selected'), element('artist', 'Performer'),
+    element('artist', 'Album group', { role: 'AlbumArtist' }), element('contributor', 'Composer', { role: 'Composer' }),
+    element('album', 'Album'), element('genre', 'Classical'), element('date', '2026-10-25'), element('originalTrackNumber', '7'),
+    element('res', 'https://media.test/alternate.flac', { sampleFrequency: '192000', bitsPerSample: '24' }),
+    element('res', uri, { duration: '0:03:12.250', protocolInfo: 'http-get:*:audio/flac:*', sampleFrequency: '48000',
+      bitsPerSample: '16', nrAudioChannels: '2', bitrate: '32000' })]);
+  class Parser { parseFromString() { return { getElementsByTagName: () => [unrelated, selected] }; } }
+  const meta = parseDidlLite('<DIDL-Lite/>', uri, Parser);
+  assert.equal(meta.title, 'Selected');
+  assert.equal(meta.artist, 'Performer');
+  assert.equal(meta.albumArtist, 'Album group');
+  assert.equal(meta.composer, 'Composer');
+  assert.equal(meta.genre, 'Classical');
+  assert.equal(meta.date, '2026-10-25');
+  assert.equal(meta.originalTrackNumber, '7');
+  assert.equal(meta.duration, 192.25);
+  assert.equal(meta.sampleRate, 48000);
+  assert.equal(meta.bitsPerSample, 16);
+  assert.equal(meta.channels, 2);
+  assert.equal(meta.bitrate, 256000);
+  assert.equal(meta.codec, 'FLAC');
+  assert.equal(meta.protocolInfo, 'http-get:*:audio/flac:*');
+  assert.equal(meta.contributors.length, 3);
+});
+
+test('UPnP transport snapshots expose actual speed, mode, error, technical metadata and seek capabilities', async () => {
+  const h = createHarness();
+  await h.adapter.playNetworkTracks([networkTrack('one'), networkTrack('two')]);
+  const track = h.audioPlayer.playbackManager.playlist[0];
+  track.meta = { ...track.meta, bitrate: 256000, sampleRate: 48000, bitsPerSample: 24, codec: 'FLAC' };
+  h.stateManager.updateState({ currentTrack: track, currentTrackDuration: 192.25, currentTrackPosition: 1.125,
+    playbackSpeed: 1.5, shuffleMode: true, playbackErrorTrack: track });
+  h.audioPlayer.contextManager.canSeekCurrentTrack = () => false;
+  let snapshot = h.adapter.getSnapshot();
+  assert.equal(snapshot.avTransport.speed, '3/2');
+  assert.equal(snapshot.avTransport.playMode, 'SHUFFLE');
+  assert.equal(snapshot.avTransport.status, 'ERROR_OCCURRED');
+  assert.equal(snapshot.avTransport.position, 1.125);
+  assert.equal(snapshot.avTransport.duration, 192.25);
+  assert.equal(snapshot.avTransport.seekable, false);
+  assert.equal(snapshot.avTransport.actions.includes('Seek'), false);
+  assert.deepEqual([snapshot.bitrate, snapshot.sampleRate, snapshot.bitDepth, snapshot.codecName], [256000, 48000, 24, 'FLAC']);
+  h.audioPlayer.contextManager.canSeekCurrentTrack = () => true;
+  h.stateManager.updateState({ isPlaying: false, isPaused: true, isStopped: false });
+  snapshot = h.adapter.getSnapshot();
+  assert.equal(snapshot.avTransport.actions.includes('Next'), true);
+  h.bridge.emitAction({ requestId: 'paused-next', service: 'AVTransport', action: 'Next', args: {} });
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok, true);
+  assert.equal(h.stateManager.state.isPaused, true);
+  assert.ok(h.calls.some(([name, index, options]) => name === 'selectQueueOrdinal' && index === 1 && options.play === false));
+  h.audioPlayer.playbackManager.setPlaybackSpeed = speed => h.stateManager.updateState({ playbackSpeed: speed });
+  h.bridge.emitAction({ requestId: 'normal-speed', service: 'AVTransport', action: 'Play', args: {} });
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok, true);
+  assert.equal(h.stateManager.state.playbackSpeed, 1);
+  h.bridge.emitAction({ requestId: 'fractional-seek', service: 'AVTransport', action: 'Seek', args: { seconds: 1.375 } });
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok, true);
+  assert.ok(h.calls.some(([name, seconds]) => name === 'seek' && seconds === 1.375));
+  h.adapter.dispose();
+});
+
+test('UPnP volume and mute use the player owner and FactoryDefaults leaves effects alone', async () => {
+  const h = createHarness();
+  let volume = 100, mute = false;
+  Object.assign(h.audioPlayer.contextManager, {
+    setPlayerVolume(value) { volume = value; }, setPlayerMute(value) { mute = value; },
+    getPlayerVolume() { return volume; }, getPlayerMute() { return mute; }
+  });
+  for (const [action,args] of [['SetVolume',{volume: 35}], ['SetMute',{mute: true}]]) {
+    h.bridge.emitAction({ requestId: action, service: 'RenderingControl', action, args });
+    await h.adapter.commandChain;
+    assert.equal(h.responses.at(-1).ok, true);
+  }
+  assert.deepEqual(h.adapter.getSnapshot().renderingControl, { volume: 35, mute: true });
+  h.bridge.emitAction({ requestId: 'factory', service: 'RenderingControl', action: 'SelectPreset', args: { preset: 'FactoryDefaults' } });
+  await h.adapter.commandChain;
+  assert.deepEqual(h.adapter.getSnapshot().renderingControl, { volume: 100, mute: false });
+  h.adapter.dispose();
+});
+
+test('live input clears the shared queue and UPnP exposes no playable URI or seek', async () => {
+  const h = createHarness();
+  await runAction(h, 'staged', 'Insert', { uri: networkTrack('old').resources[0].uri, playbackUrl: networkTrack('old').uri, metadata: '' });
+  await h.adapter.clearForLiveInput();
+  h.stateManager.updateState({ liveInputActive: true, isPlaying: true });
+  assert.equal(h.adapter.queue.length, 0);
+  assert.equal(h.audioPlayer.playbackManager.playlist.length, 0);
+  assert.deepEqual(h.adapter.getSnapshot().avTransport, { state: 'NO_MEDIA_PRESENT', uri: '', metadata: '',
+    duration: 0, position: 0, status: 'OK', speed: '1', playMode: 'NORMAL', protocolInfo: '', seekable: false, actions: '' });
+  h.adapter.dispose();
+});
+
+test('a deferred local URL commit cancels an AirPlay takeover before it can stop or clear the chosen URL', async () => {
+  const h = createHarness();
+  const live = new AirPlayPlayback(h.audioPlayer, { windowRef: null });
+  h.audioPlayer.airPlayPlayback = live;
+  h.audioPlayer.activateOpenHomePlaybackAdapter = () => h.adapter;
+  h.audioPlayer.contextManager.releasePipelineSource = () => {};
+  live.source = { gain: { value: 0 } };
+  const token = live.token;
+  let completeUrl, enteredPlay;
+  const urlReady = new Promise(resolve => { completeUrl = resolve; });
+  const playing = new Promise(resolve => { enteredPlay = resolve; });
+  h.audioPlayer.play = async () => {
+    enteredPlay();
+    await urlReady;
+    live.releaseForUrl();
+    h.stateManager.updateState({ isPlaying: true, isStopped: false });
+    return true;
+  };
+  const urlPlay = h.adapter.playNetworkTracks([networkTrack('chosen-url')]);
+  await playing;
+  const takeover = live.commit(token, 1);
+  const stopsBeforeCommit = h.calls.filter(([name]) => name === 'stop').length;
+  completeUrl();
+  await Promise.all([urlPlay, takeover]);
+  assert.equal(h.calls.filter(([name]) => name === 'stop').length, stopsBeforeCommit);
+  assert.equal(h.adapter.queue.length, 1);
+  assert.equal(h.adapter.getSnapshot().avTransport.uri, networkTrack('chosen-url').resources[0].uri);
+  assert.equal(h.audioPlayer.playbackManager.playlist.length, 1);
+  assert.equal(h.stateManager.state.isPlaying, true);
+  assert.equal(live.active, false);
+  live.dispose();
+  h.adapter.dispose();
+});
+
+test('cancelling a live takeover during stop preserves the selected queue', async () => {
+  const h = createHarness();
+  await h.adapter.playNetworkTracks([networkTrack('selected-url')]);
+  const before = captureQueueContract(h);
+  let current = true, completeStop, enteredStop;
+  const stopping = new Promise(resolve => { enteredStop = resolve; });
+  h.audioPlayer.stop = () => {
+    enteredStop();
+    return new Promise(resolve => { completeStop = resolve; });
+  };
+  const takeover = h.adapter.clearForLiveInput(() => current);
+  await stopping;
+  current = false;
+  completeStop();
+  assert.equal(await takeover, false);
+  assert.deepEqual(captureQueueContract(h), before);
+  h.adapter.dispose();
+});
+
+test('UPnP single-track Next and Previous do not wrap and local volume uses the shared owner', async () => {
+  const h = createHarness();
+  const track = networkTrack('one');
+  h.bridge.emitAction({ requestId: 'select', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: track.resources[0].uri, playbackUrl: track.uri, metadata: '' } });
+  await h.adapter.commandChain;
+  for (const action of ['Next', 'Previous']) {
+    h.bridge.emitAction({ requestId: action, service: 'AVTransport', action, args: {} });
+    await h.adapter.commandChain;
+    assert.equal(h.responses.at(-1).error.code, 'invalid-seek');
+  }
+  assert.equal(h.adapter.getSnapshot().avTransport.actions.includes('Next'), false);
+  let volume;
+  AudioPlayer.prototype.setVolume.call({ contextManager: { setPlayerVolume(value) { volume = value; } } }, 42);
+  assert.equal(volume, 42);
+  h.adapter.dispose();
+});
+
+test('UPnP URI preparation failure preserves the current queue and playing backend', async () => {
+  const h = createHarness();
+  const first = networkTrack('one');
+  h.bridge.emitAction({ requestId: 'first-uri', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri:first.resources[0].uri,playbackUrl:first.uri,metadata:'' } });
+  await h.adapter.commandChain;
+  h.stateManager.updateState({isPlaying:true,isStopped:false});
+  const before = captureQueueContract(h);
+  const stopCalls = h.calls.filter(([name])=>name==='stop').length;
+  h.audioPlayer.contextManager.transitionResult = false;
+  const second = networkTrack('two');
+  h.bridge.emitAction({requestId:'failed-uri',service:'AVTransport',action:'SetAVTransportURI',
+    args:{uri:second.resources[0].uri,playbackUrl:second.uri,metadata:''}});
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok,false);
+  assert.deepEqual(captureQueueContract(h),before);
+  assert.equal(h.stateManager.state.isPlaying,true);
+  assert.equal(h.calls.filter(([name])=>name==='stop').length,stopCalls);
+  h.adapter.dispose();
+});
+
+test('UPnP URI selection during AirPlay stages the URL and only explicit Play ends live reception', async () => {
+  const h=createHarness({liveInputActive:true,isPlaying:true,isStopped:false});
+  let ended=0;
+  h.audioPlayer.airPlayPlayback={async stopSession(){ended+=1;h.stateManager.updateState({liveInputActive:false,isPlaying:false,isStopped:true});}};
+  const track=networkTrack('after-airplay');
+  h.bridge.emitAction({requestId:'stage-uri',service:'AVTransport',action:'SetAVTransportURI',
+    args:{uri:track.resources[0].uri,playbackUrl:track.uri,metadata:''}});
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok,true);
+  assert.equal(ended,0);
+  assert.equal(h.stateManager.state.liveInputActive,true);
+  assert.equal(h.adapter.getSnapshot().avTransport.uri,track.resources[0].uri);
+  assert.equal(h.adapter.getSnapshot().avTransport.state,'STOPPED');
+  assert.equal(h.adapter.getSnapshot().avTransport.actions,'Play');
+  assert.equal(h.adapter.getSnapshot().avTransport.seekable,false);
+  assert.equal(h.adapter.getSnapshot().transportState,'Stopped');
+  h.bridge.emitAction({requestId:'start-url',service:'AVTransport',action:'Play',args:{}});
+  await h.adapter.commandChain;
+  assert.equal(h.responses.at(-1).ok,true);
+  assert.equal(ended,1);
+  assert.equal(h.stateManager.state.liveInputActive,false);
+  assert.equal(h.adapter.getSnapshot().avTransport.uri,track.resources[0].uri);
+  h.adapter.dispose();
 });

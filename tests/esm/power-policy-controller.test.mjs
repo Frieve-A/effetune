@@ -4008,7 +4008,8 @@ test('Browser Close keeps device input muted across a pipeline rebuild without i
       Object.assign(io, {
         contextManager: manager.contextManager,
         outputGainNode: { connect() {} }, directOutputMode: true,
-        connectAudioNodes: AudioIOManager.prototype.connectAudioNodes
+        connectAudioNodes: AudioIOManager.prototype.connectAudioNodes,
+        _connectOutputGainToDefaultDestination: AudioIOManager.prototype._connectOutputGainToDefaultDestination
       });
       manager.contextManager.workletNode = manager.workletNode;
       const pipeline = new PipelineProcessor(manager.contextManager, io, null,

@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.21)
+project(effetune_airplay_package_probe LANGUAGES C)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GST REQUIRED IMPORTED_TARGET
+  gstreamer-1.0>=1.20 gstreamer-app-1.0>=1.20)
+add_executable(airplay-package-probe package-probe.c)
+target_link_libraries(airplay-package-probe PRIVATE PkgConfig::GST)
+if(NOT MSVC)
+  target_compile_options(airplay-package-probe PRIVATE -Wall -Wextra -Werror)
+endif()

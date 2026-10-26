@@ -18,7 +18,6 @@ export const WEB_AUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   outputDeviceLabel: '',
   sampleRate: 96000,
   useInputWithPlayer: false,
-  lowLatencyOutput: false,
   useWasmDsp: true,
   gaplessPlayback: true,
   outputChannels: 2,
@@ -518,6 +517,7 @@ export function loadWebAudioPreferences() {
 export function normalizeWebAudioPreferences(preferences) {
   if (!isPlainObject(preferences)) return null;
   const normalized = { ...preferences };
+  delete normalized.lowLatencyOutput;
   for (const [key, fallback] of Object.entries(WEB_AUDIO_PREFERENCE_DEFAULTS)) {
     normalized[key] = normalized[key] ?? fallback;
   }

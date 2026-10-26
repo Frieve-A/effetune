@@ -38,7 +38,7 @@ test('opening remote settings sends the dialog request to the main renderer', t 
 });
 
 test('remote settings IPC accepts only the main renderer and retains the settings actions', async t => {
-  const { host, window, copied, destroy } = createHost(t);
+  const { host, window, copied, sent, destroy } = createHost(t);
   const handlers = new Map();
   const dispose = registerRemoteControlIpc({
     ipcMain: {
@@ -51,6 +51,11 @@ test('remote settings IPC accepts only the main renderer and retains the setting
   t.after(dispose);
   const event = { sender: window.webContents };
   const invoke = (channel, ...args) => handlers.get(channel)(event, ...args);
+  assert.equal(invoke(CHANNELS.openPanel), true);
+  assert.deepEqual(sent, [[CHANNELS.openPanel]]);
+  assert.deepEqual(invoke(CHANNELS.getStatus), {
+    enabled: false, wanted: false, port: 47300, clients: 0, error: null
+  });
   const status = invoke(PANEL_CHANNELS.getStatus);
   assert.match(status.addresses[0].webQr, /^data:image\/svg\+xml/);
   assert.equal(invoke(PANEL_CHANNELS.copyLink, 0), true);

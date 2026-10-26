@@ -348,6 +348,9 @@ const AudioProcessing = {
                     return;
                 }
                 
+                // Share the actual capture span, including every ESS tail and pre/post-roll.
+                this.startChannelLevelGraph(recordBufferLength / sampleRate);
+
                 // Track timing
                 let startTime = 0;
                 let playbackStarted = false;

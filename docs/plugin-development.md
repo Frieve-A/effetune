@@ -371,6 +371,14 @@ Do not post messages or allocate payloads from `process()`.
   be editing. Purely derived output such as canvases needs no check.
 - Give inputs stable IDs and names containing the plugin instance ID, associate labels
   with `htmlFor`, and set `autocomplete="off"`.
+- The pipeline lock blocks editing through native inputs, selects, text areas, and buttons.
+  Mark controls that only change the displayed tab or view with
+  `element.setAttribute('data-parameter-control', 'view')`; nested parameter inputs remain locked.
+- Use `bindGraphPointer()` or `PeqMarkerWheel.bind()` for editable graph points. For custom
+  graph editors, set `element.setAttribute('data-parameter-control', 'edit')` and return from editing
+  handlers when `event.defaultPrevented` is true. Keep hover and readout handlers active.
+- `_uiCollapsed` and `_uiLocked` are reserved host state fields; do not use them as effect
+  parameter names.
 - Validate with `parseFiniteNumber()` and `isAllowedEnum()` or equivalent explicit checks.
 - Make custom controls usable at a 375 px viewport and with pointer, touch, and pen input.
 - Cancel animation frames and remove listeners in `cleanup()`.

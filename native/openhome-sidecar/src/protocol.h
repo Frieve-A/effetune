@@ -21,6 +21,15 @@ inline constexpr std::size_t kMaxJsonDepth = 32;
 inline constexpr std::size_t kMaxJsonContainerItems = 4096;
 inline constexpr std::size_t kMaxJsonNodes = 16384;
 inline constexpr std::chrono::milliseconds kInvokeTransportTimeout{12000};
+// Audio containers accepted by Electron's network HTMLMediaElement backend.
+inline constexpr std::string_view kAudioProtocolInfo =
+    "http-get:*:audio/mpeg:*,http-get:*:audio/mp3:*,http-get:*:audio/x-mp3:*,"
+    "http-get:*:audio/flac:*,http-get:*:audio/x-flac:*,"
+    "http-get:*:audio/wav:*,http-get:*:audio/x-wav:*,"
+    "http-get:*:audio/ogg:*,http-get:*:application/ogg:*,"
+    "http-get:*:audio/webm:*,http-get:*:audio/mp4:*,"
+    "http-get:*:audio/x-m4a:*,http-get:*:audio/aac:*,"
+    "http-get:*:audio/matroska:*,http-get:*:audio/x-matroska:*";
 
 class JsonError : public std::runtime_error {
 public:
@@ -78,6 +87,9 @@ private:
 struct ProtocolConfiguration {
   std::string friendlyName;
   std::string udn;
+  bool openHomeEnabled = true;
+  bool upnpAvEnabled = false;
+  std::string upnpAvUdn;
 };
 
 struct InvokeResponse {

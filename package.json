@@ -13,6 +13,7 @@
     "gen:dsp": "node scripts/gen-dsp-params.mjs",
     "build:dsp": "node scripts/build-dsp-wasm.mjs",
     "build:openhome-sidecar": "node scripts/build-openhome-sidecar.mjs",
+    "build:airplay-receiver": "node scripts/build-airplay-receiver.mjs",
     "collect:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs",
     "verify:openhome-linux-provenance": "node tools/openhome-linux-provenance.mjs --verify",
     "test:dsp": "node scripts/build-dsp-wasm.mjs --native-tests",
@@ -30,6 +31,7 @@
     "smoke:rolling-pcm-package": "node tools/verify-rolling-pcm-package.mjs",
     "smoke:dsp-package": "node tools/verify-dsp-package.mjs dist",
     "smoke:openhome-package": "node tools/verify-openhome-package.mjs dist",
+    "smoke:airplay-package": "node tools/verify-airplay-package.mjs dist",
     "docs:dsp": "node examples/dsp-library/generate-docs.mjs",
     "docs:dsp:check": "node examples/dsp-library/verify-site-inputs.mjs && node examples/dsp-library/generate-docs.mjs --check",
     "assets:web": "npm run build:vendor && node scripts/generate-sw-precache.js",
@@ -49,19 +51,19 @@
     "test:library-scale:web-sqlite": "node tools/library-scale/run-web-sqlite.mjs --size 1000000",
     "verify": "npm run assets:web:check && npm run check:install-scripts && npm run lint && npm test",
     "clean": "rimraf dist node_modules/.cache",
-    "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --win --publish never",
-    "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --win portable --publish never",
-    "build:installer": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --win nsis --publish never",
-    "build:mac:arm64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch arm64 --no-publish-development && electron-builder --mac --arm64 --publish never",
-    "build:mac:x64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch x64 --no-publish-development && electron-builder --mac --x64 --publish never",
-    "build:linux": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --linux --publish never",
-    "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --dir",
-    "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder --dir --win --publish never && npm run smoke:openhome-package",
-    "pack:ecs:win": "npm run assets:web && npm run build:openhome-sidecar -- --no-publish-development && node scripts/pack-ecs.mjs",
+    "build": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --win --publish never",
+    "build:portable": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --win portable --publish never",
+    "build:installer": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --win nsis --publish never",
+    "build:mac:arm64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch arm64 --no-publish-development && npm run build:airplay-receiver -- --arch arm64 && electron-builder --mac --arm64 --publish never",
+    "build:mac:x64": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --arch x64 --no-publish-development && npm run build:airplay-receiver -- --arch x64 && electron-builder --mac --x64 --publish never",
+    "build:linux": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --linux --publish never",
+    "pack": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --dir",
+    "pack:win": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder --dir --win --publish never && npm run smoke:openhome-package && npm run smoke:airplay-package",
+    "pack:ecs:win": "npm run assets:web && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && node scripts/pack-ecs.mjs",
     "pack:msix:win": "node scripts/pack-msix-win.mjs",
     "test:msix:installed": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-msix-installed.ps1",
     "publish:msstore": "node scripts/publish-msstore.mjs",
-    "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && electron-builder"
+    "dist": "npm run assets:web && npm run clean && npm run build:openhome-sidecar -- --no-publish-development && npm run build:airplay-receiver && electron-builder"
   },
   "author": "Frieve",
   "license": "MIT",
@@ -94,7 +96,6 @@
       "presets/**/*",
       "images/**/*",
       "docs/**/*",
-      "startup-audio.html",
       "effetune.html",
       "css/**/*",
       "remote.html",
@@ -208,6 +209,10 @@
     "win": {
       "extraResources": [
         {
+          "from": "out/native/airplay-receiver/win32-x64",
+          "to": "airplay"
+        },
+        {
           "from": "out/native/openhome-sidecar/win32-x64/effetune-openhome-sidecar.exe",
           "to": "openhome/effetune-openhome-sidecar.exe"
         },
@@ -232,6 +237,7 @@
       ]
     },
     "nsis": {
+      "include": "electron/airplay-installer.nsh",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
@@ -247,6 +253,10 @@
     },
     "mac": {
       "extraResources": [
+        {
+          "from": "out/native/airplay-receiver/darwin-${arch}",
+          "to": "airplay"
+        },
         {
           "from": "out/native/openhome-sidecar/darwin-${arch}/effetune-openhome-sidecar",
           "to": "openhome/effetune-openhome-sidecar"
@@ -264,6 +274,10 @@
     "dmg": {},
     "linux": {
       "extraResources": [
+        {
+          "from": "out/native/airplay-receiver/linux-${arch}",
+          "to": "airplay"
+        },
         {
           "from": "out/native/openhome-sidecar/linux-${arch}/effetune-openhome-sidecar",
           "to": "openhome/effetune-openhome-sidecar"

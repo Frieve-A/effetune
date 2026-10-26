@@ -1,20 +1,48 @@
 ---
-title: "Controle remoto OpenHome (aplicativo desktop) - EffeTune"
-description: "Controle o aplicativo desktop do EffeTune por aplicativos controladores OpenHome na sua rede local: configuração, acesso à rede, compatibilidade e limitações."
+title: "Música em rede e controle remoto (aplicativo desktop) - EffeTune"
+description: "Reproduza música da rede com o EffeTune, receba áudio OpenHome, UPnP AV / DLNA e AirPlay, compartilhe músicas e controle a reprodução na rede local."
 lang: pt
 ---
 
-# Controle remoto OpenHome (aplicativo desktop)
+# Música em rede e controle remoto (aplicativo desktop)
+
+O aplicativo desktop pode receber música de outros dispositivos na rede local e aplicar seus efeitos do EffeTune. A recepção por OpenHome, UPnP AV / DLNA e AirPlay tem configurações independentes, todas desativadas inicialmente. Ative apenas os métodos que usa em **Configurações > Configuração... > Rede**.
+
+## Receber música pelo OpenHome
 
 Nas compilações desktop compatíveis (Windows x64, macOS Intel/Apple silicon e Linux x64), o EffeTune pode aparecer como um player OpenHome para aplicativos controladores na mesma rede local. Abra **Configurações > Configuração... > Rede**, ative **Permitir controladores OpenHome nesta rede** (desativado por padrão) e aguarde até o status indicar que o EffeTune está disponível.
 
-**Nome do dispositivo**, em **Rede**, define o nome usado pelo reprodutor OpenHome e pela biblioteca compartilhada. Por padrão, é usado o nome deste computador. Digite um nome personalizado, como `Living Room`, ou deixe o campo vazio para voltar a usar o nome do computador.
+**Nome do dispositivo**, em **Rede**, define o nome do reprodutor de rede, do receptor AirPlay e da biblioteca compartilhada. Por padrão, é usado o nome deste computador. Digite um nome personalizado, como `Living Room`, ou deixe o campo vazio para voltar a usar o nome do computador. UPnP AV / DLNA aparece como um destino separado com um sufixo curto; ambos os destinos usam o mesmo reprodutor do EffeTune.
 
 O OpenHome não exige login. Enquanto estiver ativado, outros dispositivos na rede local poderão ver os metadados de reprodução, editar a fila do player e controlar a reprodução. Se o Firewall do Windows solicitar permissão, permita o EffeTune apenas em **Redes privadas**, não em **Redes públicas**. Desative a opção quando o controle remoto não for necessário.
 
-Os controladores podem adicionar fluxos de áudio HTTP ou HTTPS, gerenciar a fila de reprodução remota e controlar reprodução, pausa, parada, avanço de faixa, busca, repetição e modo aleatório. O áudio remoto passa pelo pipeline de efeitos ativo do EffeTune normalmente. O controle básico de fila e reprodução foi verificado com o BubbleUPnP no Android; outros aplicativos OpenHome podem exibir os serviços de forma diferente. O EffeTune opera como uma fonte OpenHome Playlist (não como um UPnP AV MediaRenderer) e não expõe edição de efeitos, caminhos de arquivos locais, volume mestre, Radio, Songcast ou sincronização multiroom via OpenHome.
+Os controladores podem adicionar fluxos de áudio HTTP ou HTTPS, gerenciar a fila de reprodução remota e controlar reprodução, pausa, parada, avanço de faixa, busca, repetição e modo aleatório. O áudio remoto passa pelo pipeline de efeitos ativo do EffeTune normalmente. O controle básico de fila e reprodução por OpenHome foi verificado com o BubbleUPnP no Android; outros aplicativos OpenHome podem exibir os serviços de forma diferente. O destino OpenHome oferece uma fonte OpenHome Playlist e não expõe edição de efeitos, caminhos de arquivos locais, volume mestre, Radio, Songcast ou sincronização multiroom via OpenHome.
 
 A reprodução sem intervalos não é garantida, e os metadados técnicos podem permanecer desconhecidos até que a fonte os forneça. Após suspensão, retomada, conexão de VPN ou mudanças de rede, o player pode desaparecer brevemente enquanto se reconecta.
+
+## Receber música por UPnP AV / DLNA
+
+Ative **Permitir reprodução UPnP AV / DLNA nesta rede** em **Configurações > Configuração... > Rede**. No aplicativo controlador, escolha o destino UPnP AV / DLNA do EffeTune e uma música de um servidor acessível pelo computador. A permissão OpenHome é independente e não precisa estar ativada.
+
+Esse destino recebe MP3, FLAC, WAV em PCM e AAC (ADTS ou MP4/M4A) por HTTP ou HTTPS. Também são compatíveis Ogg (Vorbis/Opus/FLAC), WebM (Vorbis/Opus) e áudio Matroska (PCM/FLAC/MP3/Opus/Vorbis/AAC). Mesmo em um tipo de arquivo compatível, o codec interno também precisa ser compatível; ALAC não é compatível.
+
+Os controladores podem reproduzir, pausar, parar, mudar de faixa, avançar na música quando a fonte permitir e ajustar o volume ou silenciar o reprodutor. Esse volume também afeta a música local e OpenHome, sem mudar o volume do computador nem os efeitos. Escolher uma nova faixa substitui a fila atual por essa única faixa. O controlador e o EffeTune mostram o mesmo estado de reprodução. Quando fornecidas pelo servidor de música, as tags e as informações do áudio de origem também ficam disponíveis no item **Informações da faixa** do Visualizer.
+
+Use uma rede local confiável: os controladores habilitados podem alterar a reprodução sem fazer login. Permita o acesso a redes privadas se o firewall solicitar. O áudio não é convertido, e a compatibilidade depende do controlador e da fonte. Trata-se de um receptor de áudio, sem garantia de certificação DLNA, reprodução de vídeo ou suporte a todos os formatos DLNA.
+
+## Receber áudio por AirPlay
+
+Ative **Permitir áudio AirPlay nesta rede** em **Configurações > Configuração... > Rede** e selecione o **Nome do dispositivo** na lista de saídas de áudio AirPlay do emissor. O status indica quando o receptor está disponível ou recebendo áudio. Mantenha o EffeTune aberto e os dois dispositivos na mesma rede local confiável. Qualquer dispositivo que consiga acessar o receptor ativado pode enviar áudio sem fazer login.
+
+O AirPlay recebe áudio estéreo de um emissor por vez. Inicie ou pare a reprodução e ajuste o volume no emissor. Os ajustes locais e UPnP AV de volume e silêncio se aplicam apenas à reprodução de arquivos e URLs. Quando o áudio AirPlay estiver pronto, ele substitui a música em reprodução. Iniciar música local, OpenHome ou UPnP AV encerra a recepção AirPlay. Encerrar o AirPlay não retoma automaticamente a faixa anterior. Fechar o Player do EffeTune com **×**, ou usar **Parar**, encerra a sessão AirPlay atual; o receptor continua ativado e disponível para uma nova conexão.
+
+Quando o dispositivo de origem fornece os dados, o Player mostra título, artista, capa e tempo de reprodução. Passe o ponteiro sobre o título para ver mais informações, como álbum, compositor, gênero, comentários, dispositivo de origem e formato de áudio. Os dados disponíveis dependem do aplicativo de origem e do conteúdo; o tempo é atualizado quando informado pelo dispositivo. Você também pode exibi-los no [Visualizer](visualizer.md).
+
+**Áudio recebido** identifica o codec AirPlay, como ALAC ou AAC-ELD. **PCM do receptor** descreve o áudio recebido pelo EffeTune para processamento: estéreo de 44.1 kHz e 16 bits. Esses valores não descrevem a qualidade do arquivo de música original. Quando disponível, **Volume na origem** mostra a posição do controle de volume do dispositivo de origem como uma porcentagem somente para leitura; ajuste o volume nesse dispositivo.
+
+O armazenamento em buffer da rede e os efeitos do EffeTune acrescentam atraso, portanto o som pode ficar atrás do vídeo. Recursos do AirPlay 2, sincronização multiroom, espelhamento de tela, vídeo e conteúdo protegido não são compatíveis. A compatibilidade pode variar conforme o dispositivo e o aplicativo emissor.
+
+A descoberta AirPlay exige Bonjour no Windows e macOS, ou um serviço Avahi / DNS-SD ativo no Linux. O instalador padrão do Windows fornece o serviço de descoberta quando necessário; as versões portátil e Microsoft Store exigem que ele já esteja instalado. No Linux, instale o serviço Avahi / DNS-SD da distribuição e ative-o com as ferramentas normais de gerenciamento de serviços. Se o receptor estiver indisponível, confira esses requisitos e o acesso a redes privadas no firewall antes de tentar novamente. Wi-Fi de convidados, VPNs ou isolamento de rede podem impedir que os dispositivos se encontrem.
 
 ## Escolher uma biblioteca e um reprodutor
 

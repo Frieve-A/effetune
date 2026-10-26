@@ -171,10 +171,10 @@ function registerIntegratedRemoteClientIpc({ ipcMain, getMainWindow, app, getPai
   const handlers = {
     'get-connection': (_event, id) => ({ registered: Boolean(savedConnection(id)), requestAvailable: validId(id) && Boolean(getPairingEndpoint(id)) }),
     'save-connection': (_event, id, link) => typeof link === 'string' ? saveConnection(id, link) : { ok: false },
-    'request-connection': async (event, id, requestId) => {
-      if (!validId(id) || typeof requestId !== 'string' || !/^[A-Za-z0-9-]{1,80}$/.test(requestId)) return { ok: false, status: 'error' };
+    'request-connection': async (event, id, requestId, replace = false) => {
+      if (!validId(id) || typeof requestId !== 'string' || !/^[A-Za-z0-9-]{1,80}$/.test(requestId) || typeof replace !== 'boolean') return { ok: false, status: 'error' };
       cancelRequest();
-      if (savedConnection(id)) return { ok: true };
+      if (!replace && savedConnection(id)) return { ok: true };
       const origin = getPairingEndpoint(id);
       if (!origin || !parseJoinInput(`${origin}/?t=validation`).ok) return { ok: false, status: 'unavailable' };
       const pending = { id, requestId, origin, controller: new AbortController() };

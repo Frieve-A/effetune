@@ -1323,6 +1323,7 @@ body.layout-mobile #pipelineStats {
 .delete-preset-button,
 .help-button,
 .ai-button,
+.lock-button,
 .delete-button,
 .move-up-button,
 .move-down-button,
@@ -1349,6 +1350,7 @@ body.layout-mobile #pipelineStats {
 .save-button,
 .help-button,
 .ai-button,
+.lock-button,
 .reset-effect-button,
 .undo-button,
 .redo-button,
@@ -1400,6 +1402,7 @@ body.layout-mobile #pipelineStats {
 
 .help-button:hover,
 .ai-button:hover,
+.lock-button:hover,
 .delete-button:hover,
 .move-up-button:hover,
 .move-down-button:hover,
@@ -1418,6 +1421,7 @@ body.layout-mobile #pipelineStats {
 .routing-button svg,
 .preset-button svg,
 .ai-button svg,
+.lock-button svg,
 .reset-effect-button svg,
 .move-up-button svg,
 .move-down-button svg,
@@ -1433,6 +1437,24 @@ body.layout-mobile #pipelineStats {
 }
 
 /* Plugin UI */
+.lock-button {
+    color: var(--et-text-secondary);
+}
+
+.lock-button[aria-pressed="true"] svg {
+    color: var(--et-warning);
+}
+
+.lock-button.lock-feedback svg {
+    animation: effect-lock-feedback 0.4s ease-in-out 2;
+}
+
+@keyframes effect-lock-feedback {
+    50% {
+        opacity: 0.2;
+    }
+}
+
 .plugin-ui {
     padding: 10px;
     margin-top: 2px;
@@ -3032,6 +3054,7 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .delete-preset-button,
 .help-button,
 .ai-button,
+.lock-button,
 .delete-button,
 .move-up-button,
 .move-down-button,
@@ -3059,6 +3082,7 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .pipeline-menu-button:hover:not(:disabled),
 .help-button:hover:not(:disabled),
 .ai-button:hover:not(:disabled),
+.lock-button:hover:not(:disabled),
 .delete-button:hover:not(:disabled),
 .move-up-button:hover:not(:disabled),
 .move-down-button:hover:not(:disabled),
@@ -3089,6 +3113,7 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .delete-preset-button:active,
 .help-button:active,
 .ai-button:active,
+.lock-button:active,
 .delete-button:active,
 .move-up-button:active,
 .move-down-button:active,
@@ -3120,6 +3145,7 @@ body.layout-mini-player .audio-player[data-mini-player="true"] .player-artwork-i
 .delete-preset-button:focus-visible,
 .help-button:focus-visible,
 .ai-button:focus-visible,
+.lock-button:focus-visible,
 .delete-button:focus-visible,
 .move-up-button:focus-visible,
 .move-down-button:focus-visible,
@@ -3898,6 +3924,7 @@ input[type="radio"]:disabled {
 .pipeline-menu-button:disabled:hover,
 .help-button:disabled:hover,
 .ai-button:disabled:hover,
+.lock-button:disabled:hover,
 .delete-button:disabled:hover,
 .move-up-button:disabled:hover,
 .move-down-button:disabled:hover,

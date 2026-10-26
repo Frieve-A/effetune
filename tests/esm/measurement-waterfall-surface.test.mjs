@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildWaterfallMesh, projectWaterfallPoint, rasterizeWaterfallSurface,
     pickWaterfallSurface, WaterfallSurface, WATERFALL_VIEW_DEFAULTS } from '../../features/measurement/ui/waterfall-surface.js';
+import { createLinearTicks, createFrequencyTicks, finerDecimalStep } from '../../features/measurement/ui/analysis-axis-ticks.js';
 
 const plot = { left: 0, top: 0, width: 100, height: 100 };
 const colors = Uint8ClampedArray.from({ length: 1024 }, (_, i) => i % 4 === 3 ? 255 : Math.floor(i / 4));
@@ -57,6 +58,23 @@ test('bounded mesh does not bridge a null sample skipped by frequency decimation
         const maximum = Math.max(...triangle.map(point => point.frequency));
         assert.ok(!(minimum < frequencies[250] && maximum > frequencies[250]));
     }
+});
+
+test('a surface with no faces rejects drawing without retaining stale picking data', () => {
+    const canvas = { style: {}, addEventListener() {}, removeEventListener() {} };
+    const surface = new WaterfallSurface(canvas);
+    const data = { frequencies: [100, 1000], slices: [
+        { time: 0, levels: [0, null] }, { time: 0.1, levels: [null, 0] }
+    ] };
+    const staleRaster = {};
+    surface.raster = staleRaster;
+    assert.equal(surface.draw(null, state(data), plot, { exporting: true }), false);
+    assert.equal(surface.raster, staleRaster);
+    assert.equal(surface.draw(null, state(data), plot, {}), false);
+    assert.equal(surface.mesh.triangles.length, 0);
+    assert.equal(surface.raster, null);
+    assert.equal(surface.read(50, 50), null);
+    surface.destroy();
 });
 
 test('global normalization uses one finite source reference for ordinary and burst decay views', () => {
@@ -165,13 +183,13 @@ test('intersecting slopes choose the nearer face at each pixel, not a triangle a
 test('constant-dB contours follow level intersections and remain hidden behind nearer faces', () => {
     const slope = overlappingTriangle(0, -60, 10);
     slope[1].level = 0; slope[1].v = 1;
-    const contours = { min: -60, max: 0, step: 15 };
+    const contours = { min: -60, max: 0, ...createLinearTicks(-60, 0, 6, 'decibels') };
     const plain = rasterizeWaterfallSurface([slope], plot, 1, colors);
     const lined = rasterizeWaterfallSurface([slope], plot, 1, colors, 'ms', contours);
     const pixel = (raster, x, y) => raster.pixels[(y * 100 + x) * 4];
-    assert.ok(pixel(lined, 49, 20) < pixel(plain, 49, 20) * 0.5);
+    assert.ok(pixel(lined, 41, 20) < pixel(plain, 41, 20) * 0.5);
     assert.equal(pixel(lined, 45, 20), pixel(plain, 45, 20));
-    assert.deepEqual(pickWaterfallSurface(lined, 49, 20), pickWaterfallSurface(plain, 49, 20));
+    assert.deepEqual(pickWaterfallSurface(lined, 41, 20), pickWaterfallSurface(plain, 41, 20));
     const front = overlappingTriangle(1, -30, 100);
     const flat = rasterizeWaterfallSurface([front], plot, 1, colors);
     for (const triangles of [[slope, front], [front, slope]]) {
@@ -181,24 +199,56 @@ test('constant-dB contours follow level intersections and remain hidden behind n
     assert.equal(lined.pixels[(95 * 100 + 95) * 4 + 3], 0);
 });
 
-test('frequency grid follows log-frequency intersections with surface occlusion and gaps', () => {
+test('minor contours are two decimal steps finer without doubling major lines or changing picked levels', () => {
+    const slope = overlappingTriangle(0, -40, 10);
+    slope[1].level = 0; slope[1].v = 1;
+    const pixel = (raster, x) => raster.pixels[(20 * 100 + x) * 4];
+    for (const [step, minorStep] of [[10, 2], [20, 5]]) {
+        assert.equal(finerDecimalStep(step, 2), minorStep);
+        const contours = { min: -60, max: 0, step };
+        const plain = rasterizeWaterfallSurface([slope], plot, 1, colors);
+        const major = rasterizeWaterfallSurface([slope], plot, 1, colors, 'ms', contours);
+        const both = rasterizeWaterfallSurface([slope], plot, 1, colors, 'ms', { ...contours, minorStep });
+        const minorX = 49 - 2 * minorStep;
+        assert.equal(pixel(both, 49), pixel(major, 49));
+        assert.ok(pixel(both, 49) < pixel(plain, 49) * 0.5);
+        assert.equal(pixel(major, minorX), pixel(plain, minorX));
+        assert.ok(pixel(both, minorX) < pixel(plain, minorX));
+        assert.ok(pixel(both, minorX) > pixel(plain, minorX) * 0.5);
+        assert.equal(pixel(both, 48), pixel(plain, 48));
+        assert.deepEqual(pickWaterfallSurface(both, minorX, 20), pickWaterfallSurface(plain, minorX, 20));
+        const front = overlappingTriangle(1, -30, 100);
+        const flat = rasterizeWaterfallSurface([front], plot, 1, colors);
+        for (const triangles of [[slope, front], [front, slope]]) {
+            const hidden = rasterizeWaterfallSurface(triangles, plot, 1, colors, 'ms', { ...contours, minorStep });
+            assert.deepEqual(hidden.pixels, flat.pixels);
+        }
+    }
+});
+
+test('nonuniform frequency grid follows real log-frequency intersections with surface occlusion and gaps', () => {
     const slope = overlappingTriangle(0, -30, 10);
     slope.forEach(point => { point.u = Math.log10(point.frequency / 100); });
     slope[2].u = 0.5;
     slope[2].frequency = Math.sqrt(100 * 1000);
     const plain = rasterizeWaterfallSurface([slope], plot, 1, colors);
-    const lined = rasterizeWaterfallSurface([slope], plot, 1, colors, 'ms', null, 2);
+    const frequencyTicks = createFrequencyTicks(100, 1000, 1000).map(tick => tick.fraction);
+    const lined = rasterizeWaterfallSurface([slope], plot, 1, colors, 'ms', null, frequencyTicks);
     const pixel = (raster, x, y) => raster.pixels[(y * 100 + x) * 4];
-    // The 316 Hz line slants with the surface instead of staying screen-vertical.
-    assert.ok(pixel(lined, 44, 20) > pixel(plain, 44, 20) + 30);
-    assert.ok(pixel(lined, 34, 40) > pixel(plain, 34, 40) + 30);
+    // The 500 Hz line slants with the surface instead of staying screen-vertical.
+    assert.ok(pixel(lined, 60, 20) > pixel(plain, 60, 20) + 30);
+    assert.ok(pixel(lined, 50, 40) > pixel(plain, 50, 40) + 30);
     assert.equal(pixel(lined, 44, 40), pixel(plain, 44, 40));
-    assert.deepEqual(pickWaterfallSurface(lined, 44, 20), pickWaterfallSurface(plain, 44, 20));
+    assert.deepEqual(pickWaterfallSurface(lined, 60, 20), pickWaterfallSurface(plain, 60, 20));
+    const mirrored = slope.map(point => ({ ...point, x: 100 - point.x }));
+    const mirroredPlain = rasterizeWaterfallSurface([mirrored], plot, 1, colors);
+    const mirroredLines = rasterizeWaterfallSurface([mirrored], plot, 1, colors, 'ms', null, frequencyTicks);
+    assert.ok(pixel(mirroredLines, 39, 20) > pixel(mirroredPlain, 39, 20) + 30);
     assert.equal(lined.pixels[(95 * 100 + 95) * 4 + 3], 0);
     const front = overlappingTriangle(1, -20, 100).map(point => ({ ...point, u: 0.25 }));
-    const visible = rasterizeWaterfallSurface([front], plot, 1, colors, 'ms', null, 2);
+    const visible = rasterizeWaterfallSurface([front], plot, 1, colors, 'ms', null, frequencyTicks);
     for (const triangles of [[slope, front], [front, slope]]) {
-        const hidden = rasterizeWaterfallSurface(triangles, plot, 1, colors, 'ms', null, 2);
+        const hidden = rasterizeWaterfallSurface(triangles, plot, 1, colors, 'ms', null, frequencyTicks);
         assert.deepEqual(hidden.pixels, visible.pixels);
     }
 });
@@ -266,6 +316,78 @@ test('draw uses the canvas viewport, outlines labels, and exports full DPR witho
     settings.normalization = 'none';
     surface.draw(context, settings, inner, { width: 430, height: 430, dpr: 2 });
     assert.deepEqual(surface.mesh, unnormalizedMesh);
+});
+
+test('waterfall axes project nice Hz, level and ms or cycle ticks identically in live and exported graphs', () => {
+    const labels = [];
+    const context = {
+        save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, setLineDash() {},
+        measureText: text => ({ width: text.length * 7 }), fillText() {},
+        strokeText(text, x, y) { labels.push({ text, x, y, align: this.textAlign }); },
+        createLinearGradient: () => ({ addColorStop() {} }), fillRect() {},
+        getImageData: () => ({ data: colors }),
+        createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+        putImageData() {}, drawImage() {}
+    };
+    const canvas = { style: {}, addEventListener() {}, removeEventListener() {},
+        ownerDocument: { createElement: () => ({ getContext: () => context }) } };
+    const surface = new WaterfallSurface(canvas);
+    let frame;
+    const drawAxes = surface.drawAxes;
+    surface.drawAxes = function (...args) {
+        frame = { plot: args[2], mesh: args[6], contours: args[7], frequencyTicks: args[8] };
+        drawAxes.apply(this, args);
+    };
+    try {
+        for (const cycles of [false, true]) {
+            const settings = { ...state({ depthUnit: cycles ? 'cycles' : 'seconds', frequencies: [50, 1000, 10000],
+                slices: [{ depth: cycles ? 0.37 : 0.0037, levels: [0.1, 0.4, 0.2] },
+                    { depth: cycles ? 12.34 : 0.1234, levels: [-0.3, -0.1, 0] }] }),
+            ...WATERFALL_VIEW_DEFAULTS, xMin: 23, xMax: 18000, yMin: -0.34, yMax: 0.44 };
+            const inner = { left: 60, top: 28, width: 718, height: 364 };
+            labels.length = 0;
+            surface.draw(context, settings, inner, { width: 800, height: 440 });
+            const liveLabels = [...labels];
+            const project = (u, v, w) => projectWaterfallPoint({ u, v, w }, WATERFALL_VIEW_DEFAULTS, frame.plot);
+            const frequencyLabels = labels.filter(label => label.align === 'center' && label.text !== 'Hz');
+            assert.deepEqual(frequencyLabels.map(label => label.text), frame.frequencyTicks.map(tick => tick.label));
+            frame.frequencyTicks.forEach((tick, index) => {
+                const edge = project(Math.log(tick.value / settings.xMin) / Math.log(settings.xMax / settings.xMin), 0, 1);
+                assert.equal(frequencyLabels[index].x, edge.x);
+                assert.equal(frequencyLabels[index].y, edge.y + 18);
+            });
+            const levelLabels = labels.filter(label => label.align === 'right');
+            assert.deepEqual(levelLabels.map(label => label.text), frame.contours.ticks.map(tick => tick.label));
+            assert.equal(frame.contours.step, 0.2);
+            assert.equal(frame.contours.minorStep, 0.05);
+            const depthLabels = labels.filter(label => label.text.endsWith(` ${frame.mesh.depthUnit}`));
+            assert.deepEqual(depthLabels.map(label => label.text), cycles ? ['10 cycles'] : ['100 ms']);
+            for (const label of depthLabels) {
+                const depth = Number(label.text.split(' ')[0]);
+                const edge = project(1, 0, (depth - frame.mesh.depthMin) / (frame.mesh.depthMax - frame.mesh.depthMin));
+                assert.equal(label.x, edge.x + 7);
+                assert.equal(label.y, edge.y + 4);
+            }
+            assert.ok(Math.abs(frame.mesh.depthMin - (cycles ? 0.37 : 3.7)) < 1e-10);
+            labels.length = 0;
+            surface.draw(context, settings, inner, { width: 800, height: 440, dpr: 2, exporting: true });
+            assert.deepEqual(labels, liveLabels);
+        }
+        const offset = { ...state({ frequencies: [100, 1000], slices: [
+            { time: 0.00375, levels: [0, -10] }, { time: 0.083375, levels: [-30, -40] }
+        ] }), ...WATERFALL_VIEW_DEFAULTS };
+        labels.length = 0;
+        surface.draw(context, offset, plot, { width: 800, height: 440 });
+        assert.deepEqual(labels.filter(label => label.text.endsWith(' ms')).map(label => label.text), ['50 ms']);
+        assert.equal(frame.contours.step, 20);
+        assert.equal(frame.contours.minorStep, 5);
+        const offsetLabels = [...labels];
+        labels.length = 0;
+        surface.draw(context, offset, plot, { width: 800, height: 440, dpr: 2, exporting: true });
+        assert.deepEqual(labels, offsetLabels);
+    } finally {
+        surface.destroy();
+    }
 });
 
 test('drag, pinch and keyboard change only view and reset reproduces the default', () => {

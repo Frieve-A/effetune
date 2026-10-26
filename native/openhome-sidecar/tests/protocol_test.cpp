@@ -30,6 +30,27 @@ void Check(bool condition, const char *message) {
     throw std::runtime_error(message);
 }
 
+void TestAudioCapabilities() {
+  const auto protocols = effetune::openhome::kAudioProtocolInfo;
+  for (const auto mime :
+       {"audio/mpeg", "audio/mp3", "audio/x-mp3", "audio/flac", "audio/x-flac",
+        "audio/wav", "audio/x-wav", "audio/ogg", "application/ogg",
+        "audio/webm", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/matroska",
+        "audio/x-matroska"}) {
+    Check(
+        protocols.find(std::string("http-get:*:") + mime + ":*") !=
+            std::string_view::npos,
+        "known playable audio MIME must be advertised to network controllers");
+  }
+  Check(protocols.find("http-get:*:*:") == std::string_view::npos &&
+            protocols.find("http-get:*:audio/*:") == std::string_view::npos,
+        "network capability list must not advertise unknown formats via a "
+        "wildcard");
+  Check(protocols.find("audio/wave:") == std::string_view::npos &&
+            protocols.find("audio/vnd.wave:") == std::string_view::npos,
+        "unproven network MIME aliases must not be advertised");
+}
+
 template <typename Callback>
 void ExpectJsonError(Callback callback, const char *message) {
   try {
@@ -365,6 +386,7 @@ void TestResponseCorrelationAndFraming() {
 
 int main() {
   try {
+    TestAudioCapabilities();
     TestJsonParserAndSerializer();
     TestJsonBounds();
     TestInvokeTransportDeadlineFollowsHostDeadline();

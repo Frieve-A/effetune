@@ -476,6 +476,7 @@ class FiveBandPEQPlugin extends PluginBase {
       this.boundEventListeners.push(cleanupPointer);
 
       marker.addEventListener('contextmenu', (e) => { 
+        if (e.defaultPrevented) return;
         e.preventDefault(); 
         suppressTapUntil = now() + 700;
         this.toggleBandEnabled(i); 

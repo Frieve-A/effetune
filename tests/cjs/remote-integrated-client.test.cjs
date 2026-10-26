@@ -125,6 +125,50 @@ test('reconnecting reuses approval while an expired token is rejected and requir
   assert.equal(peers.at(-1).authenticated, true);
 });
 
+test('explicit connection changes replace saved approval at the discovered endpoint while reconnects reuse it', async t => {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-remote-change-')));
+  const handlers = new Map();
+  const sender = Object.assign(new EventEmitter(), { mainFrame: {}, send() {} });
+  const requests = [];
+  const sockets = [];
+  let origin = 'http://192.168.1.8:48231';
+  let approval = { status: 'denied' };
+  class Socket extends EventEmitter {
+    constructor(url) { super(); this.url = url; sockets.push(this); }
+    terminate() {}
+  }
+  const options = {
+    ipcMain: { handle: (name, fn) => handlers.set(name, fn), removeHandler: name => handlers.delete(name) },
+    getMainWindow: () => ({ webContents: sender }), app: { getPath: () => directory },
+    getPairingEndpoint: () => origin, WebSocketImpl: Socket,
+    requestPairing: async request => { requests.push(request); return approval; }
+  };
+  let dispose = registerIntegratedRemoteClientIpc(options);
+  t.after(async () => { dispose(); await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
+  const invoke = (name, ...args) => handlers.get(`remote-client:${name}`)({ sender, senderFrame: sender.mainFrame }, ...args);
+  const player = 'uuid:A';
+  const originalLink = `${origin}/?t=original-token`;
+  assert.equal(invoke('save-connection', player, originalLink).ok, true);
+  assert.equal(invoke('save-connection', 'uuid:B', originalLink).ok, true);
+  origin = 'http://192.168.1.19:48232';
+  assert.deepEqual(await invoke('request-connection', player, 'reconnect'), { ok: true });
+  assert.equal(requests.length, 0, 'ordinary reuse does not silently request new approval');
+  assert.deepEqual(await invoke('request-connection', player, 'invalid', 'true'), { ok: false, status: 'error' });
+  assert.deepEqual(await invoke('request-connection', player, 'replace-denied', true), { ok: false, status: 'denied' });
+  assert.equal(requests[0].origin, origin);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'remote-connections.json'), 'utf8'))[player], originalLink);
+  approval = { status: 'approved', token: 'replacement-token' };
+  assert.deepEqual(await invoke('request-connection', player, 'replace-approved', true), { ok: true });
+  assert.equal(requests[1].origin, origin);
+  assert.equal(requests[1].playerId, player);
+  dispose();
+  dispose = registerIntegratedRemoteClientIpc(options);
+  assert.equal(invoke('connect', player).ok, true);
+  assert.equal(sockets.at(-1).url, 'ws://192.168.1.19:48232/?t=replacement-token');
+  assert.equal(invoke('connect', 'uuid:B').ok, true);
+  assert.equal(sockets.at(-1).url, originalLink.replace(/^http/, 'ws'), 'other player registrations are preserved');
+});
+
 test('approval is stored only for the captured current target and cancelled requests cannot replace it', async t => {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-remote-approval-')));
   const handlers = new Map();

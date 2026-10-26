@@ -9,6 +9,7 @@ import {
   getWebAppConfigRuntime,
   loadWebAppConfig,
   loadWebAudioPreferences,
+  normalizeWebAudioPreferences,
   resetWebAppConfigRuntimeForTests,
   saveWebAppConfig,
   saveWebAudioPreferences,
@@ -22,6 +23,19 @@ import {
   createConsoleHarness,
   withGlobals
 } from '../helpers/global-test-utils.mjs';
+
+test('removed direct-output preferences do not survive normalization or subsequent saves', async () => {
+  const legacy = { outputDeviceId: 'speaker', lowLatencyOutput: true };
+  assert.equal(Object.hasOwn(normalizeWebAudioPreferences(legacy), 'lowLatencyOutput'), false);
+  const storage = createLocalStorage({ [WEB_AUDIO_PREFERENCES_KEY]: JSON.stringify(legacy) });
+  await withGlobals({ localStorage: storage, window: { localStorage: storage } }, async () => {
+    assert.equal(Object.hasOwn(loadWebAudioPreferences(), 'lowLatencyOutput'), false);
+    assert.equal(saveWebAudioPreferences({ sampleRate: 48000 }), true);
+    const saved = JSON.parse(storage.getItem(WEB_AUDIO_PREFERENCES_KEY));
+    assert.equal(saved.outputDeviceId, 'speaker');
+    assert.equal(Object.hasOwn(saved, 'lowLatencyOutput'), false);
+  });
+});
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));

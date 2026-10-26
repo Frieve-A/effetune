@@ -8,6 +8,7 @@ lang: en
 
 ### Version 2.16.0 (TBD, 2026)
 - Added desktop music sharing, with network playback and remote effect editing in the desktop app and PWA
+- Supports AirPlay and UPnP AV/DLNA playback in the desktop app
 - Added Playback Control and Seek Bar to the Visualizer
 - Improved the acoustic properties measurement function for measuring distortion and resonance
 - Various minor improvements

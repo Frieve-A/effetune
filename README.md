@@ -128,6 +128,8 @@ To use EffeTune with CD players, network players, or other physical sources:
 
 ## Usage
 
+The desktop app opens maximized on first launch. On subsequent launches, it restores the window's previous size, position, and maximized state.
+
 On your first launch, a short tour shows you where to play music, add effects, and adjust your sound. You can reopen it anytime with **Take the tour** in the settings menu, the desktop app's **Help** menu, or the menu button on mobile.
 
 ### Building Your Effect Chain
@@ -152,6 +154,8 @@ On your first launch, a short tour shows you where to play music, add effects, a
 9. Click the routing button to set the channels to be processed and the input and output busses
    - [More about bus functions](docs/bus-function.md)
 10. Click an effect's Effect Presets button to save or apply settings for that effect only
+
+Click the padlock next to × to lock or unlock an effect's settings. Locking prevents changes through its parameter controls, reset, Effect Presets, and routing. Audio processing, ON/OFF, reordering, collapsing, and removal remain available. Collapsed and locked states are saved and restored with the pipeline, including pipeline presets and the last session. The padlock is yellow while locked and blinks if you try to edit. Graph readouts and display tabs remain available.
 
 ### Browsing Your Music Library
 
@@ -325,7 +329,7 @@ If you experience audio issues (dropouts, glitches):
 
 ### Network Music and Remote Control
 
-**Desktop app:** Browse music on local-network servers, share selected music folders, and choose this device or an OpenHome player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md).
+**Desktop app:** Browse music on local-network servers, share selected music folders, and choose this device or an OpenHome player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md). UPnP AV / DLNA and AirPlay reception can also be enabled to listen to music sent from other devices through this computer’s effects.
 
 The PWA can also play a registered EffeTune computer’s shared music through this device’s effects or control another registered computer. See [PWA setup and playback](docs/openhome.md#pwa) for browser and connection requirements.
 

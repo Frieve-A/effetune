@@ -34,11 +34,14 @@ function registerClipboardIpcHandlers(ipcMain, clipboard, logger = console) {
           png.readUInt32BE(8) !== 13 || png.toString('ascii', 12, 16) !== 'IHDR') return false;
       const width = png.readUInt32BE(16), height = png.readUInt32BE(20);
       if (!width || !height || width > 8192 || height > 8192 || width * height > 16 * 1024 * 1024) return false;
-      const image = require('electron').nativeImage.createFromBuffer(png);
+      const { nativeImage, ClipboardItem } = require('electron');
+      const image = nativeImage.createFromBuffer(png);
       if (image.isEmpty()) return false;
       const size = image.getSize();
       if (size.width !== width || size.height !== height) return false;
-      await clipboard.writeImage(image);
+      await clipboard.write([new ClipboardItem({
+        'image/png': new Blob([png], { type: 'image/png' })
+      })]);
       return true;
     } catch (error) {
       logger.error('Error writing clipboard image:', error);

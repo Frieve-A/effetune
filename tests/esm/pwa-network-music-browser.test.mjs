@@ -223,7 +223,7 @@ test('production CSP uses profile-trusted HTTPS/WSS and processed media while a 
     const key = path.join(directory, 'server.key'); const csr = path.join(directory, 'server.csr');
     const config = path.join(directory, 'openssl.cnf');
     await writeFile(config, '[req]\ndistinguished_name=dn\n[dn]\n');
-    const openssl = args => execFileSync('openssl', args, { stdio: 'ignore' });
+    const openssl = args => execFileSync('openssl', args, { stdio: 'ignore', windowsHide: true });
     openssl(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-config', config,
       '-subj', '/CN=EffeTune PWA Browser Test CA', '-addext', 'basicConstraints=critical,CA:TRUE',
       '-addext', 'keyUsage=critical,keyCertSign,cRLSign', '-keyout', caKey, '-out', ca]);

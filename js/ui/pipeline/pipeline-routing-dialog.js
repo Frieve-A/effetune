@@ -23,6 +23,7 @@ export class PipelineRoutingDialog {
      * @param {HTMLElement} button - The button that was clicked
      */
     showRoutingDialog(plugin, button) {
+        if (plugin._uiLocked) return;
         // Remove any existing dialog
         const existingDialog = document.querySelector('.routing-dialog');
         if (existingDialog) {
@@ -143,6 +144,7 @@ export class PipelineRoutingDialog {
         });
 
         channelSelect.onchange = () => {
+            if (plugin._uiLocked) return;
             const value = channelSelect.value;
             // Store null for empty string (Stereo), otherwise store the value
             plugin.channel = value === '' ? null : value;
@@ -186,6 +188,7 @@ export class PipelineRoutingDialog {
         }
         
         inputBusSelect.onchange = () => {
+            if (plugin._uiLocked) return;
             const value = parseInt(inputBusSelect.value, 10);
             plugin.inputBus = value === 0 ? null : value;
             plugin.updateParameters();
@@ -228,6 +231,7 @@ export class PipelineRoutingDialog {
         }
         
         outputBusSelect.onchange = () => {
+            if (plugin._uiLocked) return;
             const value = parseInt(outputBusSelect.value, 10);
             plugin.outputBus = value === 0 ? null : value;
             plugin.updateParameters();
@@ -363,6 +367,7 @@ export class PipelineRoutingDialog {
 
             // Combine bus and channel info
             busInfo.textContent = [busText, channelText].filter(Boolean).join(' '); // Filter out empty strings and join with space
+            busInfo.inert = plugin._uiLocked === true;
 
             busInfo.title = window.uiManager
                 ? window.uiManager.t('ui.title.configureBusRouting')

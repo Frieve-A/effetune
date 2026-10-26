@@ -1103,6 +1103,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         container.appendChild(graph.container);
         const resetButton = document.createElement('button');
         resetButton.className = 'analog-meter-reset-button local-audio-only';
+        resetButton.setAttribute('data-parameter-control', 'view');
         resetButton.textContent = 'Reset';
         resetButton.title = 'Restart the rhythm analysis';
         resetButton.addEventListener('click', () => this.resetAnalysis());

@@ -876,7 +876,19 @@ private:
         Utf8CodePointCount(*udn) > 128) {
       return std::nullopt;
     }
-    return ProtocolConfiguration{std::string(*friendlyName), std::string(*udn)};
+    ProtocolConfiguration result;
+    result.friendlyName = std::string(*friendlyName);
+    result.udn = std::string(*udn);
+    result.openHomeEnabled = device->GetBool("openHomeEnabled").value_or(true);
+    result.upnpAvEnabled = device->GetBool("upnpAvEnabled").value_or(false);
+    result.upnpAvUdn = std::string(device->GetString("upnpAvUdn").value_or(""));
+    if ((!result.openHomeEnabled && !result.upnpAvEnabled) ||
+        (result.upnpAvEnabled &&
+         (result.upnpAvUdn.empty() || result.upnpAvUdn == result.udn ||
+          !IsValidUtf8(result.upnpAvUdn) ||
+          Utf8CodePointCount(result.upnpAvUdn) > 128)))
+      return std::nullopt;
+    return result;
   }
 
   void HandleState(const JsonValue &message,

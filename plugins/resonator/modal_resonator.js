@@ -603,6 +603,7 @@ class ModalResonatorPlugin extends PluginBase {
         for (let i = 0; i < 5; i++) {
             const tab = document.createElement('button');
             tab.className = `modal-resonator-tab ${i === this.sr ? 'active' : ''}`;
+            tab.setAttribute('data-parameter-control', 'view');
             tab.textContent = `Resonator ${i + 1}`;
 
             tab.onclick = () => {

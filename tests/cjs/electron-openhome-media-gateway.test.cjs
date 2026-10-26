@@ -692,7 +692,7 @@ test('player transition candidate applies gateway CORS before src', async () => 
     };
     manager.getMediaElementSourceUrl = value => value;
     manager.waitForMediaCandidateReadiness = async () => true;
-    manager.preparePlaybackSourceChannels = () => {};
+    manager.preparePlaybackSource = () => {};
     manager.connectPrivatePipelineSource = () => true;
 
     const candidate = await manager.prepareMediaTransitionCandidate({

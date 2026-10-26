@@ -27,6 +27,10 @@ export class StateManager {
       isPlaying: false,
       isPaused: false,
       isStopped: true,
+      volume: 100,
+      volumeMax: 100,
+      playerVolume: 100,
+      playerMute: false,
       
       // Playback mode
       playbackMode: 'audioElement', // 'audioElement' or 'bufferSource'
@@ -48,6 +52,9 @@ export class StateManager {
       isTrackPresentationPending: false,
       currentTrackDuration: 0,
       currentTrackPosition: 0,
+      playbackErrorTrack: null,
+      liveInputActive: false,
+      liveInputInformation: null,
       
       // Buffer state
       hasNextTrackBuffer: false,

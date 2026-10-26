@@ -23,12 +23,16 @@ set(GENERATED_PROVIDER_SOURCES
     "${GENERATED_PROVIDER_DIR}/DvAvOpenhomeOrgProduct1Std.cpp"
     "${GENERATED_PROVIDER_DIR}/DvAvOpenhomeOrgPlaylist1Std.cpp"
     "${GENERATED_PROVIDER_DIR}/DvAvOpenhomeOrgInfo1Std.cpp"
-    "${GENERATED_PROVIDER_DIR}/DvAvOpenhomeOrgTime1Std.cpp")
+    "${GENERATED_PROVIDER_DIR}/DvAvOpenhomeOrgTime1Std.cpp"
+    "${GENERATED_PROVIDER_DIR}/DvUpnpOrgAVTransport1Std.cpp"
+    "${GENERATED_PROVIDER_DIR}/DvUpnpOrgRenderingControl1Std.cpp"
+    "${GENERATED_PROVIDER_DIR}/DvUpnpOrgConnectionManager1Std.cpp")
 
 add_executable(effetune-openhome-sidecar
     src/main.cpp
     src/protocol.cpp
     src/providers.cpp
+    src/av-providers.cpp
     ${GENERATED_PROVIDER_SOURCES})
 target_include_directories(effetune-openhome-sidecar PRIVATE src)
 target_include_directories(effetune-openhome-sidecar SYSTEM PRIVATE

@@ -35,7 +35,8 @@ function collectTestFiles(directory, extension) {
 function collectCoverageIncludeArgs(directory, { exclude = [] } = {}) {
   // Keep the same file selection without exceeding Windows' command-line limit.
   return [
-    `--test-coverage-include=${toRepoPath(directory)}/**/*.js`,
+    ...['js', 'cjs', 'mjs'].map(extension =>
+      `--test-coverage-include=${toRepoPath(directory)}/**/*.${extension}`),
     ...exclude.map(file => `--test-coverage-exclude=${normalizeRepoPath(file)}`)
   ];
 }
@@ -44,6 +45,7 @@ function runNodeTestPhase(name, args, env = {}) {
   const result = spawnSync(process.execPath, args, {
     cwd: repoRoot,
     stdio: 'inherit',
+    windowsHide: true,
     env: { ...process.env, ...env }
   });
 
@@ -210,6 +212,9 @@ const esmCoverageIncludes = collectCoverageIncludeArgs(path.join(repoRoot, 'js')
   // protocol test, but its Worker runtime contract is covered by the browser and
   // Electron tests and the Node portion cannot reach the 90% thresholds.
   exclude: [
+    // Upstream bundles are verified by their integration contracts, not Node
+    // coverage of their initialization paths (for example the SQLite WASM loader).
+    'js/vendor/**',
     'js/library/repository/sqlite-oo1-adapter.js',
     'js/library/repository/web-catalog-repository.js',
     'js/library/repository/web-catalog-worker.js',

@@ -305,6 +305,7 @@ export class PipelineSectionHandler {
         
         for (let i = startIndex; i < endIndex; i++) {
             const plugin = pipeline[i];
+            plugin._uiCollapsed = !expand;
             const itemEl = document.querySelector(`.pipeline-item[data-plugin-id="${plugin.id}"]`);
             if (!itemEl) continue;
             
@@ -328,6 +329,8 @@ export class PipelineSectionHandler {
         
         // Update tooltips
         this.updateAllTooltips();
+        this.pipelineManager?.historyManager?.saveState();
+        this.pipelineCore.updateURL();
     }
 
     /**

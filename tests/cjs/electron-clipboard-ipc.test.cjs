@@ -74,14 +74,24 @@ test('image clipboard accepts bounded PNG from the main frame and rejects invali
   const image = { isEmpty: () => false, getSize: () => ({ width: 1, height: 1 }) };
   let decoded;
   const nativeImage = { createFromBuffer: bytes => { decoded = bytes; return image; } };
+  class ClipboardItem {
+    constructor(items) { this.items = items; }
+  }
   const ipcMain = createIpcMain();
-  const clipboard = { writeImage: value => writes.push(value) };
-  registerClipboardIpcHandlers(ipcMain, clipboard, { error() {} });
-  const invoke = (caller, bytes) => withModuleLoadStub({ electron: { nativeImage } },
+  const errors = [];
+  const clipboard = { write: async value => { writes.push(value); } };
+  registerClipboardIpcHandlers(ipcMain, clipboard, { error: (...args) => errors.push(args) });
+  const invoke = (caller, bytes) => withModuleLoadStub({ electron: { nativeImage, ClipboardItem } },
     () => ipcMain.handlers.get('write-clipboard-image')(caller, bytes));
   assert.equal(await invoke(event, png), true);
   assert.deepEqual(decoded, png);
-  assert.deepEqual(writes, [image]);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].length, 1);
+  assert.ok(writes[0][0] instanceof ClipboardItem);
+  assert.deepEqual(Object.keys(writes[0][0].items), ['image/png']);
+  const blob = writes[0][0].items['image/png'];
+  assert.equal(blob.type, 'image/png');
+  assert.deepEqual(Buffer.from(await blob.arrayBuffer()), png);
   assert.equal(await invoke({ sender: {}, senderFrame: sender.mainFrame }, png), false);
   assert.equal(await invoke({ sender, senderFrame: {} }, png), false);
   assert.equal(await invoke(event, new Uint8Array(33)), false);
@@ -92,7 +102,10 @@ test('image clipboard accepts bounded PNG from the main frame and rejects invali
   image.isEmpty = () => true;
   assert.equal(await invoke(event, png), false);
   image.isEmpty = () => false;
-  clipboard.writeImage = () => { throw new Error('Unavailable'); };
+  const failure = new Error('Unavailable');
+  clipboard.write = async () => { throw failure; };
   assert.equal(await invoke(event, png), false);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][1], failure);
   assert.equal(writes.length, 1);
 });

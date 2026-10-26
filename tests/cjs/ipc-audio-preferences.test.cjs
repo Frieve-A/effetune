@@ -228,7 +228,6 @@ test('registered Electron IPC keeps a drifted renderer mirror out of the stored 
     outputDeviceLabel: 'Desk speakers',
     sampleRate: 96000,
     useInputWithPlayer: true,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,

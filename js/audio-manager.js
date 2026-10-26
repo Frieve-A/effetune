@@ -97,7 +97,6 @@ function audioPipelineConfigurationEqual(left, right) {
         outputDeviceId: 'default',
         sampleRate: 96000,
         useInputWithPlayer: false,
-        lowLatencyOutput: false,
         useWasmDsp: true,
         outputChannels: 2,
         latencyHint: 'interactive'
@@ -520,7 +519,7 @@ export class AudioManager {
 
     // Captured streams are acquired by their host, independently of DSP lifetime.
     async initializeCapturedStream(stream, { sampleRate = 48000 } = {}) {
-        const preferences = { sampleRate, outputChannels: 2, lowLatencyOutput: true,
+        const preferences = { sampleRate, outputChannels: 2,
             latencyHint: 'interactive', useWasmDsp: true, outputDeviceId: 'default' };
         const contextError = await this.contextManager.initAudioContext(preferences);
         if (contextError) throw new Error(contextError);
@@ -2922,7 +2921,6 @@ export class AudioManager {
         this.commitPowerTopologyMutation({
             type: 'updateAudioConfig',
             outputChannels,
-            lowLatencyMode: !!audioPreferences.lowLatencyOutput,
             ...(this.audioContext?.sampleRate !== undefined && {
                 sampleRate: this.audioContext.sampleRate
             })
@@ -3895,14 +3893,12 @@ export class AudioManager {
                 pluginDataB
             );
             const ch = ctx.destination.channelCount || 2;
-            const lowLatency = !!this.contextManager.lowLatencyMode;
             const WorkletNode = globalThis.AudioWorkletNode;
             if (typeof WorkletNode !== 'function') {
                 throw new Error('AudioWorkletNode is unavailable');
             }
             const wB = this.contextManager.createPluginProcessorNode(ctx, {
-                channelCount: ch,
-                lowLatencyMode: lowLatency
+                channelCount: ch
             });
             // The parallel branch's analyzers are hidden during the test, so we
             // simply drop any messages it posts back to the main thread.
@@ -3920,7 +3916,6 @@ export class AudioManager {
                     this.handleWorkletMessage(event, wB);
                 }
             };
-            wB.port.postMessage({ type: 'setLowLatencyMode', enabled: lowLatency });
             if (this.visualSyncEnabled) wB.port.postMessage({ type: 'setVisualSync', enabled: true });
 
             const selA = ctx.createGain();

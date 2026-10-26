@@ -834,6 +834,7 @@ class PhaseSelectEqPlugin extends PluginBase {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'phase-select-eq-region-tab';
+            button.setAttribute('data-parameter-control', 'view');
             button.setAttribute('role', 'tab');
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -906,6 +907,9 @@ class PhaseSelectEqPlugin extends PluginBase {
             { value: 'balance', label: 'Balance' }
         ], this.xAxisMode, value => this._setXAxisMode(value));
         axisControls.className += ' phase-select-eq-axis-controls';
+        for (const input of axisControls.querySelectorAll('input')) {
+            input.setAttribute('data-parameter-control', 'view');
+        }
         this._axisControls = axisControls;
         this._hiddenAxisBadge = document.createElement('span');
         this._hiddenAxisBadge.className = 'phase-select-eq-hidden-axis-badge';
@@ -925,6 +929,7 @@ class PhaseSelectEqPlugin extends PluginBase {
             }
         });
         this.canvas = graph.canvas;
+        this.canvas.setAttribute('data-parameter-control', 'edit');
         this._graphDisposer = graph.dispose;
         this.canvas.tabIndex = 0;
         this.canvas.style.touchAction = 'none';
@@ -1038,7 +1043,7 @@ class PhaseSelectEqPlugin extends PluginBase {
     }
 
     _handlePointerDown(event) {
-        if (this._pointerState || event.isPrimary === false) return;
+        if (event.defaultPrevented || this._pointerState || event.isPrimary === false) return;
         const point = this._eventPoint(event);
         const hit = this._hitTest(point.x, point.y);
         if (!hit) return;

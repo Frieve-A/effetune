@@ -9,6 +9,7 @@ export const TOUR_STEPS = [
     { id: 'item', target: '#pipelineList .pipeline-item:first-child', fallbackTarget: '#pipeline' },
     { id: 'bypass', target: '.master-toggle' },
     { id: 'save', target: '#pipelinePresetButton' },
+    { id: 'browser', target: '#browserButton' },
     { id: 'views', target: '#openLibraryButton', mobileTarget: '.mobile-bottom-button[data-view="library"]', mobileBody: true },
     { id: 'settings', target: '#settingsMenuButton', mobileTarget: '.mobile-menu-button', mobileBody: true },
     { id: 'help', target: '#whatsThisLink', mobileTarget: null, mobileBody: true }
@@ -49,6 +50,7 @@ export class OnboardingTour {
     start() {
         this.end(true);
         this.mobile = this.uiManager.layoutMode.isMobile;
+        this.steps = TOUR_STEPS.filter(step => step.id !== 'browser' || window.electronAPI?.browser);
         this.previousFocus = document.activeElement;
         this.root = element('div', 'onboarding-tour');
         this.root.setAttribute('data-mobile', String(this.mobile));
@@ -71,7 +73,7 @@ export class OnboardingTour {
         this.skipButton = this.createButton('skip', () => this.end());
         this.backButton = this.createButton('back', () => this.showStep(this.stepIndex - 1));
         this.nextButton = this.createButton('next', () => {
-            if (this.stepIndex === TOUR_STEPS.length - 1) this.end();
+            if (this.stepIndex === this.steps.length - 1) this.end();
             else this.showStep(this.stepIndex + 1);
         });
         for (const button of [this.skipButton, this.backButton, this.nextButton]) actions.appendChild(button);
@@ -105,9 +107,9 @@ export class OnboardingTour {
     }
 
     showStep(index) {
-        if (!this.isActive || index < 0 || index >= TOUR_STEPS.length) return;
+        if (!this.isActive || index < 0 || index >= this.steps.length) return;
         this.stepIndex = index;
-        const step = TOUR_STEPS[index];
+        const step = this.steps[index];
         this.root.setAttribute('data-step', step.id);
         if (this.mobile) {
             if (step.id !== 'welcome') this.uiManager.mobileNav.setView(step.view || 'effects');
@@ -127,14 +129,14 @@ export class OnboardingTour {
 
     updateLabels() {
         if (!this.isActive) return;
-        const step = TOUR_STEPS[this.stepIndex];
+        const step = this.steps[this.stepIndex];
         this.title.textContent = this.uiManager.t(`tour.step.${step.id}.title`);
         this.body.textContent = this.uiManager.t(`tour.step.${step.id}.${this.mobile && step.mobileBody ? 'bodyMobile' : 'body'}`);
-        this.progress.textContent = this.uiManager.t('tour.progress', { current: this.stepIndex + 1, total: TOUR_STEPS.length });
+        this.progress.textContent = this.uiManager.t('tour.progress', { current: this.stepIndex + 1, total: this.steps.length });
         this.skipButton.textContent = this.uiManager.t('tour.button.skip');
         this.backButton.textContent = this.uiManager.t('tour.button.back');
         this.backButton.hidden = this.stepIndex === 0;
-        const next = this.stepIndex === 0 ? 'start' : this.stepIndex === TOUR_STEPS.length - 1 ? 'done' : 'next';
+        const next = this.stepIndex === 0 ? 'start' : this.stepIndex === this.steps.length - 1 ? 'done' : 'next';
         this.nextButton.textContent = this.uiManager.t(`tour.button.${next}`);
         this.position();
     }

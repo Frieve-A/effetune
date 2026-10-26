@@ -57,12 +57,7 @@ const GraphUtils = {
         const graphWidth = width - padding.left - padding.right;
         const graphHeight = height - padding.top - padding.bottom;
         
-        // Calculate max time based on sweep length and averaging
-        const sweepLengthSamples = parseInt(this.measurementConfig.sweepLength);
-        const averagingCount = parseInt(this.measurementConfig.averaging);
-        const sampleRate = audioUtils.audioContext.sampleRate;
-        const sweepTimeSeconds = sweepLengthSamples / sampleRate;
-        const maxTime = 1 + (sweepTimeSeconds * averagingCount) + 1; // 1s delay + sweep time + 1s reserve
+        const maxTime = this.levelGraphDurationSeconds;
         
         // Draw axes
         ctx.strokeStyle = window.ThemePalette?.get('graph-grid-strong') ?? '';
@@ -146,12 +141,7 @@ const GraphUtils = {
         const graphWidth = width - padding.left - padding.right;
         const graphHeight = height - padding.top - padding.bottom;
         
-        // Calculate max time based on sweep length and averaging
-        const sweepLengthSamples = parseInt(this.measurementConfig.sweepLength);
-        const averagingCount = parseInt(this.measurementConfig.averaging);
-        const sampleRate = audioUtils.audioContext.sampleRate;
-        const sweepTimeSeconds = sweepLengthSamples / sampleRate;
-        const maxTime = 1 + (sweepTimeSeconds * averagingCount) + 1; // 1s delay + sweep time + 1s reserve
+        const maxTime = this.levelGraphDurationSeconds;
         
         // Draw level data
         ctx.strokeStyle = '#4e79a7'; // theme-allow: Channel and response identity colors.

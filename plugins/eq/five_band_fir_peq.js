@@ -657,6 +657,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         marker.classList.add('active');
       };
       marker.addEventListener('mousedown', event => {
+        if (event.defaultPrevented) return;
         event.preventDefault();
         startDrag(event.clientX, event.clientY);
         this.boundMouseMoveHandler = moveEvent => this.handleDragMove(moveEvent);
@@ -665,6 +666,7 @@ class FiveBandFIRPEQPlugin extends PluginBase {
         document.addEventListener('mouseup', this.boundMouseUpHandler);
       });
       marker.addEventListener('touchstart', event => {
+        if (event.defaultPrevented) return;
         const touch = event.touches[0];
         if (!touch) return;
         event.preventDefault();

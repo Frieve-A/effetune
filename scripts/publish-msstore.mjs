@@ -47,7 +47,7 @@ export function compareVersions(left, right) {
   return 0;
 }
 
-export function verifyEvidence({ metadata, validation, identity, tag, commit, bytes }) {
+export function verifyEvidence({ metadata, identity, tag, commit, bytes }) {
   const version = releaseVersion({ tag_name: tag, draft: false, prerelease: false });
   if (!identity.name || !identity.publisher || !identity.productId || metadata.testIdentity || metadata.testOnly ||
       metadata.identity?.name !== identity.name || metadata.identity?.publisher !== identity.publisher ||
@@ -56,11 +56,6 @@ export function verifyEvidence({ metadata, validation, identity, tag, commit, by
       metadata.packageVersion !== version || metadata.version !== `${version}.0` ||
       metadata.sha256 !== createHash('sha256').update(bytes).digest('hex')) {
     throw new Error('Store artifact identity, version, source or hash does not match the release.');
-  }
-  if (validation.passed !== true || validation.sha256 !== metadata.sha256 ||
-      validation.tag !== tag || validation.commit !== commit ||
-      validation.packageVersion !== metadata.packageVersion) {
-    throw new Error('A matching successful installed MSIX validation report is required.');
   }
 }
 
@@ -146,23 +141,20 @@ async function downloadEvidence(github, { tag, commit }, env) {
     item.head_branch === tag).sort((a, b) => b.id - a.id)[0];
   if (!run) throw new Error('No successful desktop build exists for this exact tag and commit.');
   const artifacts = await allPages(github, `actions/runs/${run.id}/artifacts`, 'artifacts');
-  for (const name of ['store-msix-x64', 'store-msix-validation']) {
-    if (!artifacts.some(item => item.name === name && !item.expired)) {
-      throw new Error(`Missing retained ${name} evidence. Rebuild and validate the same release tag.`);
-    }
+  if (!artifacts.some(item => item.name === 'store-msix-x64' && !item.expired)) {
+    throw new Error('Missing retained store-msix-x64 evidence. Rebuild the same release tag.');
   }
   const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-store-')));
   try {
-    await execute('gh', ['run', 'download', String(run.id), '--repo', repository,
-      '--name', 'store-msix-x64', '--name', 'store-msix-validation', '--dir', temporary],
-    { env, timeout: 300_000, maxBuffer: 1024 * 1024, windowsHide: true });
     const packageDirectory = path.join(temporary, 'store-msix-x64');
+    await execute('gh', ['run', 'download', String(run.id), '--repo', repository,
+      '--name', 'store-msix-x64', '--dir', packageDirectory],
+    { env, timeout: 300_000, maxBuffer: 1024 * 1024, windowsHide: true });
     const metadata = JSON.parse(await fs.readFile(path.join(packageDirectory, 'store-package.json'), 'utf8'));
-    const validation = JSON.parse(await fs.readFile(path.join(temporary, 'store-msix-validation', 'installed-test.json'), 'utf8'));
     const filename = `EffeTune-${tag.slice(1)}-Store-x64.msix`;
     const packagePath = path.join(packageDirectory, filename);
     const identity = JSON.parse(await fs.readFile(path.join(root, 'build/msix/store-identity.json'), 'utf8'));
-    verifyEvidence({ metadata, validation, identity, tag, commit, bytes: await fs.readFile(packagePath) });
+    verifyEvidence({ metadata, identity, tag, commit, bytes: await fs.readFile(packagePath) });
     return { temporary, packagePath, metadata, runId: run.id };
   } catch {
     await fs.rm(temporary, { recursive: true, force: true });

@@ -181,10 +181,12 @@ export async function translateUI() {
         element.textContent = element.hasAttribute('data-i18n-label') ? translation.replace(/[:：]\s*$/, '') : translation;
         if (element.hasAttribute('data-i18n-label')) {
           element.parentElement.querySelector('.parameter-colon').textContent = translation.match(/([:：])\s*$/)?.[1] || ':';
-          element.parentElement.title = element.parentElement.textContent;
         }
       }
     }
+  }
+  for (const text of document.querySelectorAll('.parameter-label-text')) {
+    text.parentElement.title = text.textContent;
   }
   for (const element of document.querySelectorAll('[data-i18n-title]')) {
     const translation = t(element.getAttribute('data-i18n-title'));

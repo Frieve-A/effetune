@@ -12,8 +12,9 @@ const {
 } = require('../../electron/remote-static-server.cjs');
 const { RemoteControlHost } = require('../../electron/remote-control-host.cjs');
 
-function makeRoot() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-static-'));
+function makeRoot(t) {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-static-')));
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const files = {
     'remote.html': '<!doctype html><title>remote</title>',
     'effetune.html': '<!doctype html><title>app</title>',
@@ -58,8 +59,8 @@ function request(port, { method = 'GET', url = '/', headers = {} } = {}) {
   });
 }
 
-test('static server answers the entry page with a connect-src for its own host', async () => {
-  const root = makeRoot();
+test('static server answers the entry page with a connect-src for its own host', async t => {
+  const root = makeRoot(t);
   const { server, port } = await listen(createStaticHandler({ root }));
   try {
     const res = await request(port);
@@ -76,8 +77,8 @@ test('static server answers the entry page with a connect-src for its own host',
   }
 });
 
-test('static server serves modules, locales and wasm with the right types', async () => {
-  const root = makeRoot();
+test('static server serves modules, locales and wasm with the right types', async t => {
+  const root = makeRoot(t);
   const { server, port } = await listen(createStaticHandler({ root }));
   try {
     const mjs = await request(port, { url: '/js/remote/a.mjs' });
@@ -95,8 +96,8 @@ test('static server serves modules, locales and wasm with the right types', asyn
   }
 });
 
-test('static server refuses other methods and foreign Host headers', async () => {
-  const root = makeRoot();
+test('static server refuses other methods and foreign Host headers', async t => {
+  const root = makeRoot(t);
   const { server, port } = await listen(createStaticHandler({ root }));
   try {
     const post = await request(port, { method: 'POST' });
@@ -111,8 +112,8 @@ test('static server refuses other methods and foreign Host headers', async () =>
   }
 });
 
-test('static server hides everything outside the precache list and rejects traversal', async () => {
-  const root = makeRoot();
+test('static server hides everything outside the precache list and rejects traversal', async t => {
+  const root = makeRoot(t);
   const { server, port } = await listen(createStaticHandler({ root }));
   try {
     for (const url of [
@@ -130,8 +131,9 @@ test('static server hides everything outside the precache list and rejects trave
   }
 });
 
-test('static server serves nothing when the precache list is unreadable', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-static-empty-'));
+test('static server serves nothing when the precache list is unreadable', async t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'effetune-static-empty-')));
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   fs.writeFileSync(path.join(root, 'remote.html'), 'x');
   const logs = [];
   const { server, port } = await listen(createStaticHandler({ root, log: message => logs.push(message) }));
@@ -167,7 +169,7 @@ test('host check accepts literal addresses and local names only', () => {
   }
 });
 
-function makeHost(port, token) {
+function makeHost(token) {
   const logs = [];
   const app = {
     getAppPath: () => path.resolve(__dirname, '..', '..'),
@@ -177,31 +179,38 @@ function makeHost(port, token) {
   const host = new RemoteControlHost({
     app,
     getMainWindow: () => null,
-    env: { EFFETUNE_REMOTE: '1', EFFETUNE_REMOTE_PORT: String(port), EFFETUNE_REMOTE_TOKEN: token },
+    env: { EFFETUNE_REMOTE: '1', EFFETUNE_REMOTE_TOKEN: token },
     argv: [],
     log: message => logs.push(message)
+  });
+  host.bindWithFallback = server => new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      server.removeListener('error', reject);
+      resolve(server.address().port);
+    });
   });
   return { host, logs };
 }
 
 function connect(port, { origin, hostHeader, token = 'tok-static' } = {}) {
-  return new Promise(resolve => {
-    const options = {};
+  return new Promise((resolve, reject) => {
+    const options = { handshakeTimeout: 5000 };
     if (origin !== undefined) options.origin = origin;
     if (hostHeader !== undefined) options.headers = { Host: hostHeader };
     const ws = new WebSocket(`ws://127.0.0.1:${port}/?t=${token}`, options);
     const closed = new Promise(done => ws.on('close', code => done(code)));
     ws.on('open', () => resolve({ ws, opened: true, closed }));
-    ws.on('unexpected-response', (_req, res) => { resolve({ status: res.statusCode }); res.resume(); });
-    ws.on('error', () => {});
+    ws.on('unexpected-response', (req, res) => { resolve({ status: res.statusCode }); res.resume(); req.destroy(); });
+    ws.on('error', reject);
   });
 }
 
 test('upgrade refuses foreign origins, accepts clients without Origin, closes bad tokens with 4401', async () => {
-  const port = 47390;
-  const { host } = makeHost(port, 'tok-static');
+  const { host } = makeHost('tok-static');
   try {
     assert.equal(await host.start(), true);
+    const port = host.port;
     const evil = await connect(port, { origin: 'http://evil.example' });
     assert.equal(evil.status, 403);
     const nullOrigin = await connect(port, { origin: 'null' });
@@ -220,7 +229,7 @@ test('upgrade refuses foreign origins, accepts clients without Origin, closes ba
 });
 
 test('a client that cannot keep up misses pushes and receives the latest state once drained', () => {
-  const { host } = makeHost(47391, 'tok-static');
+  const { host } = makeHost('tok-static');
   const sent = [];
   const slow = { authenticated: true, readyState: 1, bufferedAmount: 5 * 1024 * 1024, send: m => sent.push(['slow', m]) };
   const fast = { authenticated: true, readyState: 1, bufferedAmount: 0, send: m => sent.push(['fast', m]) };
@@ -249,10 +258,10 @@ test('a client that cannot keep up misses pushes and receives the latest state o
 });
 
 test('upgrade applies the Host rule only to browser requests (those with an Origin)', async () => {
-  const port = 47391;
-  const { host } = makeHost(port, 'tok-static');
+  const { host } = makeHost('tok-static');
   try {
     assert.equal(await host.start(), true);
+    const port = host.port;
     const hostHeader = `mypc:${port}`;
     // Native-client style: any host name the user typed, no Origin.
     const native = await connect(port, { hostHeader });

@@ -126,6 +126,8 @@ Para usar o EffeTune com players de CD, players de rede ou outras fontes física
 
 ## Uso
 
+O aplicativo desktop abre com a janela maximizada na primeira execução. Nas próximas vezes, restaura o tamanho, a posição e o estado de maximização anteriores da janela.
+
 Ao abrir o aplicativo pela primeira vez, um breve tour mostra onde reproduzir música, adicionar efeitos e ajustar o som. Você pode revê-lo a qualquer momento com **Conhecer o aplicativo** no menu de configurações, no menu **Ajuda** do aplicativo desktop ou pelo botão de menu no celular.
 
 ### Construindo Sua Cadeia de Efeitos
@@ -150,6 +152,8 @@ Ao abrir o aplicativo pela primeira vez, um breve tour mostra onde reproduzir m�
 9. Clique no botão de roteamento para definir os canais a serem processados e os barramentos de entrada e saída  
    - [Mais sobre funções de bus](bus-function.md)
 10. Clique no botão Predefinições de efeito de cada efeito para salvar ou aplicar configurações apenas desse efeito
+
+Clique no cadeado ao lado de × para bloquear ou desbloquear as configurações do efeito. Enquanto estiver bloqueado, não será possível alterar seus parâmetros, restaurar os valores padrão, aplicar predefinições ou modificar o roteamento. O processamento de áudio, ON/OFF, a reordenação, o recolhimento e a remoção continuam disponíveis. Os estados recolhido e bloqueado são salvos e restaurados com a cadeia de efeitos, incluindo suas predefinições e a última sessão. O cadeado fica amarelo quando as configurações estão bloqueadas e pisca ao tentar alterá-las. Você pode continuar consultando os valores dos gráficos e alternando entre as abas.
 
 ### Procurando música na Biblioteca de música
 
@@ -323,7 +327,7 @@ Se você estiver enfrentando problemas de áudio (interrupções, falhas):
 
 ### Música em rede e controle remoto
 
-**Aplicativo de desktop:** Explore servidores de música da rede local, compartilhe pastas selecionadas e reproduza neste dispositivo ou em um reprodutor OpenHome. Após o pareamento, os efeitos de um reprodutor EffeTune podem ser editados na mesma janela. O compartilhamento e o acesso por controle remoto começam desativados. Consulte [música em rede e controle remoto](openhome.md).
+**Aplicativo de desktop:** Explore servidores de música da rede local, compartilhe pastas selecionadas e reproduza neste dispositivo ou em um reprodutor OpenHome. Após o pareamento, os efeitos de um reprodutor EffeTune podem ser editados na mesma janela. O compartilhamento e o acesso por controle remoto começam desativados. Consulte [música em rede e controle remoto](openhome.md). Você também pode ativar a recepção UPnP AV / DLNA e AirPlay para ouvir músicas enviadas por outros dispositivos com os efeitos deste computador.
 
 A PWA também pode reproduzir músicas compartilhadas de um computador EffeTune cadastrado com os efeitos deste dispositivo ou controlar outro computador cadastrado. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para conhecer os requisitos de navegador e conexão.
 

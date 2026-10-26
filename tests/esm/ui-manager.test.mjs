@@ -1768,7 +1768,8 @@ test('closing the player UI keeps the OpenHome renderer alive until the feature 
     const visualizer = Object.assign(Object.create(VisualizerView.prototype), { uiManager: manager });
     player.ui.container = { id: 'player-ui' };
     assert.deepEqual(visualizer.metadata(), {
-      title: 'Song', album: 'Album', artist: 'Artist', artwork: [{ src: 'blob:cover' }]
+      title: 'Song', album: 'Album', artist: 'Artist', artwork: [{ src: 'blob:cover' }],
+      'track-info': 'Title: Song\nArtist: Artist\nAlbum: Album'
     });
     player.ui.removeUI = () => {
       calls.push(['AudioPlayerUI.removeUI']);
@@ -2372,5 +2373,26 @@ test('Double Blind Test entry waits for successful Effects restoration from Mini
         assert.equal(document.body.classList.contains('view-browser'), !restored);
       });
     }
+  }
+});
+
+test('UPnP AV and AirPlay each bootstrap and retain the shared renderer independently', async () => {
+  for (const protocol of ['upnp', 'airplay']) {
+    const openHome = createOpenHomeBridge([], { localControlEnabled: false, upnpAvEnabled: protocol === 'upnp' });
+    const airPlay = createOpenHomeBridge([], { enabled: protocol === 'airplay' });
+    await withUIHarness({ appConfig: { openHomeRemoteControl: false,
+      upnpAvRemoteControl: protocol === 'upnp', airPlayReceiver: protocol === 'airplay' },
+      electronAPI: { openHomeV1: openHome, airPlayV1: airPlay } }, async ({ manager }) => {
+      assert.equal(manager.audioPlayer, null);
+      const player = await manager.setOpenHomeRemoteRuntimeReady();
+      assert.ok(player);
+      assert.equal(manager.shouldRetainAudioPlayerForOpenHome(player), true);
+      assert.equal(player.close(), false);
+      assert.equal(manager.audioPlayer, player);
+      if (protocol === 'upnp') await openHome.emitStatus({ upnpAvEnabled: false });
+      else await airPlay.emitStatus({ enabled: false });
+      assert.equal(manager.audioPlayer, null);
+      assert.equal(manager.isNetworkPlayerRequired(), false);
+    });
   }
 });

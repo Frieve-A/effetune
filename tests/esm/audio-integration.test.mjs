@@ -403,7 +403,6 @@ test('showAudioConfigDialog applies Electron input None through the live AudioMa
     outputDeviceId: 'out1',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     outputChannels: 2,
     latencyHint: 'interactive'
@@ -547,7 +546,6 @@ test('showAudioConfigDialog keeps Web output preferences aligned with available 
       await showAudioConfigDialog(false, {
         outputDeviceId: 'out1',
         outputChannels: 4,
-        lowLatencyOutput: true
       });
     });
     assert.equal(elementSinkDocument.getElementById('output-device').disabled, false);
@@ -560,7 +558,7 @@ test('showAudioConfigDialog keeps Web output preferences aligned with available 
   assert.equal(resetCalls.length, 1);
   assert.equal(resetCalls[0].outputDeviceId, 'default');
   assert.equal(resetCalls[0].outputChannels, 4);
-  assert.equal(resetCalls[0].lowLatencyOutput, true);
+  assert.equal(Object.hasOwn(resetCalls[0], 'lowLatencyOutput'), false);
   assert.equal(directUnsupportedSelectCalls, 0);
 });
 
@@ -607,7 +605,6 @@ test('showAudioConfigDialog applies with Enter without stealing control key hand
     outputDeviceLabel: 'Out One',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,
@@ -701,7 +698,6 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
         outputChannels: 8,
         latencyHint: 'playback',
         useInputWithPlayer: true,
-        lowLatencyOutput: true,
         useWasmDsp: false
       }, preferences => callbackCalls.push(preferences));
     });
@@ -712,14 +708,13 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     assert.equal(document.getElementById('output-channels').value, '8');
     assert.equal(document.getElementById('latency').value, 'playback');
     assert.equal(document.getElementById('use-input-with-player').checked, true);
-    assert.equal(document.getElementById('low-latency-output').checked, true);
+    assert.equal(document.getElementById('low-latency-output'), null);
     assert.equal(document.getElementById('use-wasm-dsp').checked, false);
 
     document.getElementById('sample-rate').value = '88200';
     document.getElementById('output-channels').value = '6';
     document.getElementById('latency').value = 'balanced';
     document.getElementById('use-input-with-player').checked = false;
-    document.getElementById('low-latency-output').checked = false;
     document.getElementById('use-wasm-dsp').checked = true;
     await withMutedConsole('log', async () => {
       await document.getElementById('apply-button').dispatchEvent('click');
@@ -735,7 +730,6 @@ test('showAudioConfigDialog applies preferences through audioManager and callbac
     outputDeviceLabel: 'Out One',
     sampleRate: 88200,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 6,
@@ -762,7 +756,6 @@ test('showAudioConfigDialog applies only Gapless Playback without resetting audi
     outputDeviceLabel: 'Out One',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,
@@ -817,7 +810,6 @@ test('showAudioConfigDialog treats refreshed device labels as a Gapless-only cha
     outputDeviceLabel: 'Out One',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,
@@ -869,7 +861,6 @@ test('showAudioConfigDialog persists only the Gapless field when no AudioManager
     outputDeviceLabel: 'Out One',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,
@@ -905,7 +896,6 @@ test('showAudioConfigDialog reports localized guidance when the Gapless field ca
     outputDeviceLabel: 'Out One',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,
@@ -942,7 +932,6 @@ test('showAudioConfigDialog keeps Gapless failure details in the console', async
     outputDeviceLabel: 'Out One',
     sampleRate: 96000,
     useInputWithPlayer: false,
-    lowLatencyOutput: false,
     useWasmDsp: true,
     gaplessPlayback: true,
     outputChannels: 2,
