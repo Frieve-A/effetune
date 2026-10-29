@@ -8,8 +8,10 @@ function getTestDisplay() {
   displayPromise ??= import('electron').then(({ default: electronPath }) => new Promise((resolve, reject) => {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
+    // This trusted probe reads native display geometry without creating a renderer.
     const child = fork(fileURLToPath(new URL('./test-display-probe.cjs', import.meta.url)), [], {
-      execPath: electronPath, execArgv: [], env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc']
+      execPath: electronPath, execArgv: process.platform === 'linux' ? ['--no-sandbox'] : [],
+      env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc']
     });
     let display;
     let diagnostics = '';

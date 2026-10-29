@@ -322,9 +322,9 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.63.0",
+    "@mediabunny/flac-encoder": "1.64.0",
     "electron-updater": "6.8.11",
-    "mediabunny": "1.63.0",
+    "mediabunny": "1.64.0",
     "music-metadata": "^12.3.2",
     "qrcode-generator": "^2.0.4",
     "ws": "^8.22.0"

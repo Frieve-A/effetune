@@ -7,7 +7,7 @@ import esbuild from 'esbuild';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = path.join(repoRoot, 'node_modules', 'mediabunny', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-const expectedVersion = '1.63.0';
+const expectedVersion = '1.64.0';
 if (packageJson.version !== expectedVersion) {
   throw new Error(`Expected mediabunny ${expectedVersion}, found ${packageJson.version}`);
 }
