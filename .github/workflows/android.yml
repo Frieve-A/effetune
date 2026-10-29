@@ -59,7 +59,12 @@ jobs:
         run: |
           android/gradlew -p android :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease -Pcandidate=true --no-daemon
           for variant in Debug RelWithDebInfo; do
-            "$ANDROID_HOME/cmake/3.31.6/bin/cmake" --build "$(find "android/app/.cxx/$variant" -type d -name x86_64 -print -quit)" --target android_runtime_test android_dsp_parity --parallel 4
+            caches=(android/app/.cxx/"$variant"/*/x86_64/CMakeCache.txt)
+            if [[ ${#caches[@]} -ne 1 || ! -f "${caches[0]}" ]]; then
+              echo "Expected one configured x86_64 CMake build for $variant" >&2
+              exit 1
+            fi
+            "$ANDROID_HOME/cmake/3.31.6/bin/cmake" --build "${caches[0]%/CMakeCache.txt}" --target android_runtime_test android_dsp_parity --parallel 4
           done
       - name: Inspect candidate package
         run: |
@@ -89,7 +94,6 @@ jobs:
             java -jar out/android/bundletool.jar build-apks --bundle=android/app/build/outputs/bundle/release/app-release.aab --output=out/android/candidate.apks --ks="$HOME/.android/debug.keystore" --ks-key-alias=androiddebugkey --ks-pass=pass:android --key-pass=pass:android --overwrite
             java -jar out/android/bundletool.jar install-apks --apks=out/android/candidate.apks --device-id=emulator-5554
       - name: Minimum Android with supported WebView and Debug native acceptance
-        if: ${{ !cancelled() }}
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: '29'
