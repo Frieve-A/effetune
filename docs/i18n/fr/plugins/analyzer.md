@@ -145,7 +145,7 @@ Un affichage visuel qui montre le niveau du signal en temps réel. Il vous aide 
 
 ## Note Spectrogram
 
-Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano roll défilant, sans modifier le son. Utilisez-le pour suivre les notes d'un accord, les lignes vocales et mélodiques, les lignes de basse et les notes superposées sur plusieurs octaves, avec en option un codage couleur et une mise en évidence par instrument.
+Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano roll défilant, sans modifier le son. Utilisez-le pour suivre les notes d'un accord, les lignes vocales et mélodiques, les lignes de basse et les notes superposées sur plusieurs octaves, avec en option un codage couleur et une mise en évidence par instrument. Il estime aussi les noms des accords et les tonalités pour vous aider à suivre les changements harmoniques.
 
 ### Guide d'utilisation
 
@@ -176,13 +176,14 @@ Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano r
   - **Instrument (3)** : Couleurs pour Vocal, Bass et Other.
   - **Instrument (9)** : Couleurs pour les neuf groupes d'instruments ci-dessus.
 - **Highlight** - Met en évidence un groupe précis (**Vocal**, **Bass**, **Other (3)**, **Guitar**, **Piano**, **Strings**, **Wind**, **Synth**, **Organ** ou **Other (9)**) en rapprochant d'un gris neutre les notes d'autant plus qu'elles ont peu de chances d'appartenir à ce groupe, tout en conservant l'épaisseur liée au volume. **None** (par défaut) désactive la mise en évidence.
-  - L'analyse des attaques et des instruments utilise davantage de processeur. Pour réduire au minimum l'utilisation du processeur, désactivez **Onsets**, choisissez **Normal** ou **Note Colors**, et réglez **Highlight** sur **None**.
+  - L'analyse des attaques et des instruments utilise davantage de processeur. Pour réduire au minimum l'utilisation du processeur, désactivez **Onsets** et **Chords & Key**, choisissez **Normal** ou **Note Colors**, et réglez **Highlight** sur **None**.
 - **Pitch Resolution** - Choisit le niveau de détail vertical des hauteurs sans effacer l'historique :
   - **1/12 Octave** (par défaut) : Une rangée par demi-ton.
   - **High** : Place les hauteurs à leur position estimée en cents pour montrer le vibrato et les pitch bends.
 - **Layout** - **Horizontal** (par défaut, clavier en bas, l'historique défile vers le haut) ou **Vertical** (clavier à droite, l'historique défile vers la gauche).
 - **Volume** - Traduit le volume relatif par l'épaisseur des barres et par des indicateurs en demi-cercle au bord du clavier (activé par défaut). Lorsqu'il est désactivé, l'épaisseur des barres est fixe.
 - **Onsets** - Marque les attaques de notes estimées par des triangles (▼ en Horizontal, ▶ en Vertical ; désactivé par défaut). Le milieu de la base de chaque triangle indique l'instant et la hauteur de l'attaque : les attaques répétées d'une même hauteur tenue reçoivent donc des marques distinctes. Le désactiver n'arrête pas l'analyse des instruments tant qu'un réglage Instrument de **Color** ou **Highlight** en a besoin.
+- **Chords & Key** (désactivé par défaut) - Affiche la bande d’accords et les estimations de tonalité lorsqu’il est activé. Laissez-le désactivé pour réduire l’utilisation du processeur.
 - **Time Span** (1 à 10 s ; 2 s par défaut) - Durée de l'historique visible dans le piano roll.
 - **Lowest Note** / **Highest Note** - Définit la plage de hauteurs analysée et affichée (par défaut : E1 à G6).
 
@@ -193,9 +194,17 @@ Affiche les fréquences fondamentales (F0) estimées de A0 à C8 dans un piano r
 - **Intensité de la couleur** : L'intensité de la couleur indique toujours la confiance dans la hauteur. Lorsque l'entrée est trop faible pour l'analyse, le piano roll reste sombre.
 - **Couleurs d'instrument et mise en évidence** : Les couleurs d'instrument mélangent les couleurs des groupes selon leurs probabilités estimées. Les couleurs apparaissent aux positions correspondantes de l’historique une fois l’instrument estimé ; les notes en attente de classement apparaissent en gris neutre. La légende énumère les groupes affichés, suivis de **Highlight:** et du groupe sélectionné lorsque la mise en évidence est active. Survolez un groupe dans la légende pour le mettre temporairement en évidence.
 - **Barres de volume** : Lorsque **Volume** est activé, l'épaisseur des barres couvre une plage relative de 24 dB, et un demi-cercle aux bords adoucis au bord du clavier monte immédiatement avec le volume actuel et redescend de 20 dB/s.
+- **Bande d’accords** : La bande étroite à droite en mode **Horizontal**, ou en haut en mode **Vertical**, suit la même échelle de temps que les notes. Les noms des accords apparaissent environ 0,22 s après le son, une fois l’estimation confirmée. Les noms tels que **C**, **Cm7** et **C/E** indiquent l’accord ; la note après la barre oblique est la basse d’un renversement. Les intervalles sans accord restent vides ; les intervalles courts peuvent être trop étroits pour afficher un nom. Les noms des accords sont affichés en gros caractères ; avec **Note Colors**, les noms et les barres de durée prennent la couleur de la fondamentale de l’accord, y compris pour les renversements.
+- **Key** : Affiche la tonalité estimée du passage en cours, en gros caractères en bas à gauche, sur fond transparent. La lecture disparaît lorsqu’aucune tonalité n’est identifiée. Avec **Note Colors**, elle prend la couleur de la tonique de la tonalité affichée.
 
 ### Affichage visuel
 - Survolez l'historique, ou touchez-le et faites glisser le doigt, pour lire la note, le temps, **Salience** (confiance dans la hauteur), **Level** (dB) et, lorsque l'analyse des instruments est active, les probabilités estimées des groupes : **Vocal**, **Bass** et **Other** en **Instrument (3)**, les neuf groupes sinon, plus le groupe de **Highlight** s'il n'en fait pas partie (**Not classified** pour les notes sans estimation).
+- Lorsque **Chords & Key** est activé, la lecture indique aussi l’accord à cet endroit, ou **No chord** lorsque l’estimation confirmée indique une absence d’accord ; aucune lecture d’accord n’apparaît tant qu’une estimation n’est pas disponible.
+
+### Limites
+
+- La détection couvre 11 types d’accords et leurs renversements : majeur, mineur, diminué, augmenté, septième majeure, septième mineure, septième de dominante, septième diminuée, septième semi-diminuée, sus2 et sus4. Les noms de notes et d’accords utilisent # ou ♭ selon la tonalité estimée à partir des observations accumulées ; les dièses sont utilisés tant que cette estimation n’est pas disponible.
+- La validation sur des interprétations réelles de pop et de rock reste limitée ; utilisez ces estimations comme aide à l’écoute.
 
 ## Oscilloscope
 
@@ -256,18 +265,23 @@ Suit une fréquence fondamentale (F0) à la fois dans un piano roll défilant su
 
 Calcule le tempo de votre musique et affiche, temps par temps, où tombent les coups de batterie et d'instruments, ainsi que l'avance ou le retard de chaque partie, sans modifier le son sauf si **Metronome Click** est activé. Utilisez-le pour trouver le BPM d'un morceau, mesurer le swing, voir si la caisse claire tombe derrière le temps, ou repérer les fills de batterie et les changements de section.
 
+Choisissez **Drums** dans **Display** pour suivre le motif de grosse caisse et de caisse claire ou repérer les entrées du charleston et des cymbales. **Timing lanes**, **Echo rows** et **Beat lens** utilisent les mêmes quatre catégories. **Frequency bands** regroupe les attaques de tous les instruments dans High/Mid/Low. Les toms ne sont pas affichés, car ils sont trop souvent confondus avec d’autres sons.
+
+Les coups de batterie apparaissent avant même qu’une pulsation stable soit détectée. Un point plus gros indique des indices plus forts pour cette catégorie ; les points ne s’estompent pas lorsque la confiance dans la pulsation baisse. L’analyse peut préciser leur position sur la grille sans modifier la catégorie reconnue ni l’instant dans l’audio. Les indications d’avance ou de retard et Beat lens nécessitent une estimation de la pulsation. Des coups faibles ou superposés peuvent manquer et d’autres instruments être pris pour de la batterie : utilisez l’affichage comme aide à l’écoute, pas comme transcription exacte.
+
 ### Guide d'utilisation
 
 - **Vérifier le tempo** : Lancez un morceau au rythme régulier. Le BPM confirmé et la ligne **adopted** apparaissent environ 1 à 2 secondes après le son, tandis que **LOCKED** indique que les pulsations actives sont montrées par le voyant et le clic. Si l'analyseur se cale au double ou à la moitié du tempo que vous ressentez, comparez **×½**, **×2** et **strongest**.
 - **Entendre où tombe le temps** : Activez **Metronome Click** pour entendre un clic sur chaque temps détecté. Placez Rhythm Analyzer à la fin de la chaîne d'effets lorsque vous écoutez avec le clic, et désactivez **Metronome Click** avant d'exporter des fichiers audio traités.
 - **Corriger un calage au double ou à la moitié du tempo** : Si une ballade lente se cale au double du tempo, baissez **Max BPM** en dessous de cette valeur ; si un morceau rapide se cale à la moitié du tempo, augmentez **Min BPM** au-dessus.
-- **Lire le groove et le micro-timing** : Les rythmes programmés se placent près du centre de la voie, avec un **jitter** proche de 0 ms. Une caisse claire systématiquement en retard de 15 ms sur la grosse caisse apparaît comme des points **Mid** au-dessus du centre de la voie aux temps 2 et 4, et comme un repère **+15** dans la **Beat lens**.
+- **Frequency bands**: **Lire le groove et le micro-timing** : Les rythmes programmés se placent près du centre de la voie, avec un **jitter** proche de 0 ms. Une caisse claire systématiquement en retard de 15 ms sur la grosse caisse apparaît comme des points **Mid** au-dessus du centre de la voie aux temps 2 et 4, et comme un repère **+15** dans la **Beat lens**.
 - **Lire le swing** : **swing** indique le rapport de retard du contre-temps (1.00:1 est droit, 2.00:1 est un shuffle en triolet). Dans un groove swingué, les coups du contre-temps se regroupent dans la colonne **⅔** de la **Beat lens** plutôt que dans **&**.
 - **Repérer les fills et les changements** : Les anneaux (**◎**) signalent les coups qui n'étaient pas joués à la même position un ou deux cycles plus tôt, ce qui fait ressortir les fills de batterie et les transitions de section dans les **Echo rows**.
 - **Quand searching s'affiche** : Les nouvelles pulsations et les clics s'arrêtent, mais l'analyse continue ; le tempo, les **Timing lanes** et la **Beat lens** restent visibles et s'estompent à mesure que la confiance diminue. Le silence efface les valeurs du temps en cours et la colonne du **Tempogram** ; l'analyse reprend dès que le son revient.
 
 ### Paramètres
 
+- **Display** — Choisissez **Frequency bands** (par défaut) pour répartir les attaques entre High/Mid/Low, ou **Drums** pour Kick, Snare, Hi-hat et Cymbals. Le changement de mode ne redémarre pas l’analyse du tempo.
 - **Min BPM** (40 à 192 ; 40 par défaut) / **Max BPM** (50 à 240 ; 240 par défaut) - Plage de recherche du tempo (Max BPM reste au moins égal à 1,25 × Min BPM ; modifier l'une ou l'autre relance l'analyse).
 - **Metronome Click** (désactivé par défaut) - Mélange un clic bref à −10 dBFS aux canaux 1 et 2 (canal 1 en mono) à chaque pulsation détectée ; les autres canaux restent inchangés.
 - **Span (beats)** (4, 6, 8, 12 ou 16 ; 8 par défaut) - Nombre de temps affichés dans les **Timing lanes** et dans chaque ligne des **Echo rows** (par exemple 8 pour deux mesures à 4/4, 6 pour deux mesures à 3/4).
@@ -275,17 +289,17 @@ Calcule le tempo de votre musique et affiche, temps par temps, où tombent les c
 
 ### Lire la visualisation
 
-Sur un affichage large, la **Beat lens** se place à droite des **Timing lanes** ; sur un affichage haut, tous les panneaux sont empilés. Les coups sont répartis en rangées **High** (charleston, cymbales), **Mid** (caisse claire, voix, instruments) et **Low** (grosse caisse, basse) :
+Sur un affichage large, la **Beat lens** se place à droite des **Timing lanes** ; sur un affichage haut, tous les panneaux sont empilés. **Frequency bands** répartit les coups en rangées **High** (charleston, cymbales), **Mid** (caisse claire, voix, instruments) et **Low** (grosse caisse, basse) ; **Drums** utilise les rangées **Kick**, **Snare**, **Hi-hat** et **Cymbals**.
 - **En-tête** : Affiche le voyant qui clignote à chaque pulsation (plus faible quand la confiance baisse, vide pendant **searching**), le BPM confirmé (**LOCKED** ou **searching**), **×½**, **×2**, le candidat **strongest** du **Tempogram**, le rapport **swing** (calculé sur les 32 derniers temps), le **jitter** (dispersion typique des coups autour de leur position moyenne, en ms) et la légende des symboles. Les valeurs pas encore disponibles s'affichent sous la forme —.
 - **Tempogram** : Historique de 20 secondes de l'appui de chaque tempo, avec **Time** de gauche à droite et **Tempo (BPM)** de 30 à 480 sur une échelle logarithmique, et en surimpression la ligne pleine du tempo **adopted** et les lignes en tirets **×2** / **×½**. La luminosité montre l'appui relatif de chaque tempo, pas la probabilité qu'il soit correct.
 - **Timing lanes** : Montrent les coups des *N* derniers temps (**Span (beats)** ; légende **Last N beats**) ; un point plus gros indique un coup plus certain, et les positions les plus récentes sont des estimations qui se fixent environ 1 à 2 secondes plus tard. La hauteur du trait vertical indique le micro-timing par rapport à la grille de doubles croches ou de triolets la plus proche, comparé au timing typique des 16 temps précédents (repères pointillés **+20** / **−20** ms ; au-dessus du centre = en retard, en dessous = en avance ; les coups au-delà de ±30 ms restent au bord de la voie). Les cercles vides (**○**) sont des coups dont le timing n'est pas disponible (tracés au centre de la voie), les zones ombrées marquent les périodes sans analyse du timing, les anneaux (**◎**) marquent les coups nouveaux par rapport à 1–2 cycles plus tôt, et les lignes verticales en tirets marquent les réalignements de la grille des temps.
-- **Echo rows** : Empilent verticalement les cycles précédents de *N* temps, le plus récent en haut, pour que les motifs de mesure répétés s'alignent en colonnes et que les fills ou variations ressortent. **Cycles ago** numérote les lignes à partir de 1 ; lorsque les **Timing lanes** sont masquées, la ligne du haut est le cycle en cours (0). Chaque coup montre sa bande, mais pas son timing.
-- **Beat lens** : Résume, pour chaque bande, l'avance (repère à gauche) ou le retard (repère à droite) moyen de jeu (échelle ±30 ms) et la dispersion (barre estompée, ± un écart type) selon les subdivisions du temps (**1**, **e**, **&**, **a**, **⅓**, **⅔**) sur les 32 dernières pulsations confirmées. Les décalages sont relatifs à l'ensemble ; un repère plus opaque signifie que la position est jouée plus souvent ; une position a besoin d'au moins quatre coups pour apparaître, et les décalages de 3 ms ou plus sont étiquetés. Tant que l'analyse des temps n'est pas disponible, la **Beat lens** affiche **waiting for a steady beat**.
+- **Echo rows** : Empilent verticalement les cycles précédents de *N* temps, le plus récent en haut, pour que les motifs de mesure répétés s'alignent en colonnes et que les fills ou variations ressortent. **Cycles ago** numérote les lignes à partir de 1 ; lorsque les **Timing lanes** sont masquées, la ligne du haut est le cycle en cours (0). Chaque coup indique sa bande de fréquences ou son élément de batterie, mais pas son avance ou son retard.
+- **Beat lens** : Résume, pour chaque bande de fréquences ou élément de batterie, l'avance (repère à gauche) ou le retard (repère à droite) moyen de jeu (échelle ±30 ms) et la dispersion (barre estompée, ± un écart type) selon les subdivisions du temps (**1**, **e**, **&**, **a**, **⅓**, **⅔**) sur les 32 dernières pulsations confirmées. Les décalages sont relatifs à l'ensemble ; un repère plus opaque signifie que la position est jouée plus souvent ; une position a besoin d'au moins quatre coups pour apparaître, et les décalages de 3 ms ou plus sont étiquetés. Tant que l'analyse des temps n'est pas disponible, la **Beat lens** affiche **waiting for a steady beat**.
 - **Confiance** : Des valeurs plus pâles indiquent une confiance moindre dans l'analyse, pas un jeu moins précis.
 - **Reset** : Le bouton **Reset** sous l'affichage l'efface et relance l'analyse, par exemple lorsqu'une autre application change de morceau. Lorsque le lecteur d'EffeTune démarre un nouveau morceau, l'analyse repart automatiquement.
 
 ### Affichage visuel
-- Survolez l'affichage, ou touchez-le et faites glisser le doigt, pour lire les valeurs : dans les **Timing lanes** et les **Echo rows**, le nombre de temps écoulés, la bande et le timing du coup le plus proche (— si indisponible) ; dans le **Tempogram**, le tempo, **Tempo support** et le tempo **Adopted** ; dans la **Beat lens**, le décalage et la dispersion de chaque bande.
+- Survolez l'affichage, ou touchez-le et faites glisser le doigt, pour lire les valeurs : dans les **Timing lanes** et les **Echo rows**, le nombre de temps écoulés, la bande de fréquences ou l'élément de batterie et le timing du coup le plus proche (— si indisponible) ; dans le **Tempogram**, le tempo, **Tempo support** et le tempo **Adopted** ; dans la **Beat lens**, le décalage et la dispersion de chaque bande de fréquences ou élément de batterie.
 
 ### Limites
 
@@ -294,7 +308,6 @@ Sur un affichage large, la **Beat lens** se place à droite des **Timing lanes**
 - Dans les mixages denses et les enregistrements bruités, les voies **Mid** et **High** peuvent montrer des points en trop, et la voie **Low** manque certaines notes graves de piano.
 - L'analyseur suit les temps, pas les barres de mesure ni la métrique (il n'identifie pas le premier temps).
 - Fréquences d'échantillonnage prises en charge : 8 ; 11,025 ; 16 ; 22,05 ; 24 ; 32 ; 44,1 ; 48 ; 88,2 ; 96 ; 176,4 ; 192 ; 352,8 et 384 kHz. À d'autres fréquences, le son passe sans modification, mais l'analyse et les clics sont indisponibles.
-
 ## Spectrogram
 
 Montre comment votre musique évolue au fil du temps. L'intensité de la couleur indique la force de chaque fréquence, tandis que la position verticale indique sa fréquence.

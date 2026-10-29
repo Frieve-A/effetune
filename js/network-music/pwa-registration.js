@@ -25,7 +25,7 @@ export class PwaDeviceRegistration {
     this.window.addEventListener('pagehide', this.onPageHide);
   }
 
-  hint(key, fallback) {
+  text(key, fallback) {
     const value = this.uiManager.t(`networkMusic.pwa.${key}`);
     return value === `networkMusic.pwa.${key}` ? fallback : value;
   }
@@ -38,9 +38,9 @@ export class PwaDeviceRegistration {
   }
 
   button(text, key, action) {
-    const button = this.element('button', text, 'header-button');
+    const button = this.element('button', this.text(key, text), 'header-button');
     button.type = 'button';
-    button.title = this.hint(key, text);
+    button.title = button.textContent;
     button.addEventListener('click', action);
     return button;
   }
@@ -52,27 +52,29 @@ export class PwaDeviceRegistration {
     const generation = ++this.generation;
     const dialog = this.element('dialog', '', 'pwa-device-dialog');
     this.dialog = dialog;
-    const heading = this.element('h2', selected ? `Update connection · ${selected.name}` : 'Add device');
+    const heading = this.element('h2', selected
+      ? `${this.text('update', 'Update connection')} · ${selected.name}`
+      : this.text('addDeviceTitle', 'Add device'));
     heading.id = 'pwa-device-title';
     dialog.setAttribute('aria-labelledby', heading.id);
-    const help = this.element('p', 'On the desktop, open Settings > Remote Control, enable Allow remote control, and copy its link or scan its QR code here.');
-    help.title = this.hint('setup', help.textContent);
+    const help = this.element('p', this.text('setup', 'On the desktop, open Settings > Remote Control, enable Allow remote control, and copy its link or scan its QR code here.'));
+    help.title = help.textContent;
     const form = this.element('form');
-    const label = this.element('label', 'Pairing link');
+    const label = this.element('label', this.text('pairingLinkLabel', 'Pairing link'));
     const input = this.element('input');
     input.type = 'password';
     input.autocomplete = 'off';
     input.maxLength = 1024;
     input.required = true;
-    input.setAttribute('aria-label', 'Pairing link');
-    input.title = this.hint('pairingLink', 'Paste the link shown in Remote Control on the desktop.');
+    input.setAttribute('aria-label', label.textContent);
+    input.title = this.text('pairingLink', 'Paste the link shown in Remote Control on the desktop.');
     label.append(input);
     const actions = this.element('div', '', 'pwa-device-actions');
-    const connect = this.button(selected ? 'Update connection' : 'Connect', 'connect', () => {});
+    const connect = this.button(selected ? 'Update connection' : 'Connect', selected ? 'update' : 'connect', () => {});
     connect.type = 'submit';
     const scan = this.button('Scan QR code', 'scan', () => { void this.startCamera(); });
     scan.hidden = true;
-    actions.append(connect, scan, this.button('Close', 'close', () => this.close()));
+    actions.append(connect, scan);
     this.video = this.element('video');
     this.video.muted = true;
     this.video.playsInline = true;
@@ -95,7 +97,9 @@ export class PwaDeviceRegistration {
       this.stopCamera();
       connect.disabled = true;
       legacy.hidden = true;
-      this.status.textContent = 'Connecting…';
+      const connecting = this.uiManager.t('networkMusic.connecting');
+      this.status.textContent = connecting === 'networkMusic.connecting' ? 'Connecting…' : connecting;
+      this.status.title = this.status.textContent;
       try {
         const result = await this.api.register(input.value, this.hostId);
         if (generation !== this.generation) return;
@@ -110,7 +114,9 @@ export class PwaDeviceRegistration {
     });
     this.input = input;
     this.savedDevices = this.element('div', '', 'pwa-device-list');
-    dialog.append(heading, help, form, this.savedDevices);
+    const footer = this.element('div', '', 'pwa-device-footer');
+    footer.append(this.button('Close', 'close', () => this.close()));
+    dialog.append(heading, help, form, this.savedDevices, footer);
     this.renderSavedDevices();
     dialog.addEventListener('cancel', event => { event.preventDefault(); this.close(); });
     dialog.addEventListener('close', () => { if (this.dialog === dialog) this.close(); });
@@ -129,7 +135,7 @@ export class PwaDeviceRegistration {
   renderSavedDevices() {
     this.savedDevices.replaceChildren();
     if (!this.api.registrations.length) return;
-    this.savedDevices.append(this.element('h3', 'Saved devices'));
+    this.savedDevices.append(this.element('h3', this.text('savedDevices', 'Saved devices')));
     for (const record of this.api.registrations) {
       const row = this.element('div', '', 'pwa-device-row');
       const name = this.element('span', record.name);
@@ -144,8 +150,8 @@ export class PwaDeviceRegistration {
   }
 
   showStatus(key) {
-    this.status.textContent = MESSAGES[key];
-    this.status.title = this.hint(key, MESSAGES[key]);
+    this.status.textContent = this.text(key, MESSAGES[key]);
+    this.status.title = this.status.textContent;
   }
 
   async startCamera() {

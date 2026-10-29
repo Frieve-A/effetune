@@ -1258,7 +1258,7 @@ void realAnalysisAndLinks(bool event_detection = false, bool timbre = false) {
   producer.setEventEnabled(event_detection);
   producer.setTimbreEnabled(timbre);
   producer.prepare({48000, 2, 1024});
-  producer.configure(28, 91);
+  producer.configure(28, 91, false);
   bool heard = false;
   unsigned first = 0;
   for (unsigned at = 0; at < 48000; at += 128) {
@@ -1424,7 +1424,7 @@ void realHighRegisterRetrigger() {
   }
   auto producer = std::make_unique<plugins::analyzer::SpectralAnalysis>();
   producer->prepare({48000, 2, 128});
-  producer->configure(84, 84);
+  producer->configure(84, 84, false);
   unsigned attacks = 0, held_attacks = 0, dip_frames = 0;
   bool sounded = false, held_sounded = false;
   float dip_probability = 1;
@@ -1480,7 +1480,7 @@ void revisedAnalysisTiming() {
           plugins::analyzer::SpectralAnalysis producer;
           producer.setEventEnabled(event_detection);
           producer.prepare({rate, 2, 128});
-          producer.configure(28, 91);
+          producer.configure(28, 91, false);
           const auto onset = static_cast<unsigned>(std::round(rate * onset_ms / 1000.0));
           unsigned wet_onset = 0, dry_onset = 0, detection = 0;
           for (unsigned at = 0; at < static_cast<unsigned>(rate * .45F); at += 128) {
@@ -1756,7 +1756,7 @@ struct AssetEngineHarness {
     source = engine->createInstance("NoteSpectrogramPlugin");
     player = engine->createInstance("SFZNotePlayerPlugin");
     volume = engine->createInstance("VolumePlugin");
-    const generated::NoteSpectrogramPluginParams analysis{83, 83, 0};
+    const generated::NoteSpectrogramPluginParams analysis{83, 83, 0, 0};
     const generated::SFZNotePlayerPluginParams params{.01F, -30, 3, 83, 83, 32, 0, 100, 0,   0,
                                                       1,    1,   1, 0,  18, 0,  0, -1,  100, 0};
     const generated::VolumePluginParams gain{-6.020599913F};

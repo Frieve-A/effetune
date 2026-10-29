@@ -104,7 +104,7 @@ test('every desktop release builds its matching AirPlay runtime before packaging
   }
   const linux = jobBlock(workflows.build, 'build-linux');
   const setup = linux.split(/\n      - name: /).find(step => step.startsWith('Install Linux native build dependencies'));
-  assert.doesNotMatch(setup, /inputs\.openhome_source_bundle|\n        if:/, 'AirPlay always collects corresponding runtime sources');
+  assert.doesNotMatch(setup, /inputs\.third_party_source_bundle|\n        if:/, 'AirPlay always collects corresponding runtime sources');
   for (const prerequisite of ['deb-src', 'meson', 'ninja-build', 'patchelf', 'flex', 'bison', 'm4', 'libavahi-compat-libdnssd-dev', 'libdbus-1-dev']) {
     assert.ok(setup.includes(prerequisite), `Linux AirPlay toolchain requires ${prerequisite}`);
   }
@@ -452,7 +452,7 @@ test('desktop tag jobs build every platform package after exact-version prefligh
 
   const linux = jobBlock(workflows.desktopRelease, 'linux');
   assert.match(linux, /^\s+needs: preflight$/m);
-  assert.match(linux, /^\s+openhome_source_bundle: true$/m);
+  assert.match(linux, /^\s+third_party_source_bundle: true$/m);
   assert.match(linux, /^\s+source_verified: true$/m);
   assert.match(linux, /^\s+release_artifacts: true$/m);
 
@@ -570,7 +570,7 @@ Checksums-Sha256:
   }
   assert.match(workflows.build, /collect:openhome-linux-provenance -- --with-source/);
   assert.match(workflows.build, /verify:openhome-linux-provenance -- --require-source/);
-  assert.match(workflows.build, /OpenHome-Linux-Source\.zip/);
+  assert.match(workflows.desktopRelease, /ThirdParty-Source\.zip/);
   assert.match(sidecarBuildScript, /openhome-linux-provenance\.mjs/);
   assert.match(workflows.ci, /Verify Linux OpenHome provenance manifest[\s\S]*verify:openhome-linux-provenance/);
   assert.doesNotMatch(workflows.build, /tmp\/dev|tmp\\dev/);

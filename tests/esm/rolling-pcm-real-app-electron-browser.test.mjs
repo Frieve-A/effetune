@@ -373,6 +373,33 @@ async function runRealAppScenario(options) {
             position: snapshot.currentTrackPosition
           };
         };
+        if (options.shuffleExplicitQueue) {
+          player.playbackManager.loadFiles(options.localTracks, false, null, { deferInitialLoad: true });
+          await player.play();
+          await waitFor(() => player.contextManager.rollingTransport?.playing === true);
+          const previousTransport = player.contextManager.rollingTransport;
+          await player.playbackManager.setRepeatMode('ALL');
+          await player.playbackManager.toggleShuffleMode();
+          await waitFor(() => player.stateManager.getStateSnapshot().isPlaying &&
+            player.contextManager.rollingTransport?.playing === true &&
+            player.contextManager.rollingTransport !== previousTransport);
+
+          const visitedIndices = [];
+          let transport = player.contextManager.rollingTransport;
+          for (const index of [1, 0, 1]) {
+            await waitFor(() => player.stateManager.getStateSnapshot().currentTrackIndex === index &&
+              player.contextManager.rollingTransport !== transport &&
+              player.contextManager.rollingTransport?.playing === true &&
+              player.contextManager.rollingTransport.currentTime >= 0.1);
+            transport = player.contextManager.rollingTransport;
+            visitedIndices.push(player.stateManager.getStateSnapshot().currentTrackIndex);
+          }
+          const state = player.stateManager.getStateSnapshot();
+          const previousDisposed = previousTransport.disposed;
+          await teardown();
+          return { state, visitedIndices, previousDisposed,
+            liveManagerTransports: player.contextManager.rollingTransports.size };
+        }
         if (options.seekDuringStaging) {
           // Play is staged while paused, then a seek lands inside the staging window:
           // both intents survive, so playback ends up running from the adopted position.
@@ -461,7 +488,10 @@ async function runRealAppScenario(options) {
           liveManagerTransports: player.contextManager.rollingTransports.size,
           scheduledRollingTransition: player.contextManager.scheduledRollingTransition
         };
-      }, options);
+      }, { ...options, localTracks: tracks.map(filePath => ({
+        path: filePath,
+        byteLength: 44 + SOURCE_FRAMES * 4
+      })) });
       const versions = await application.evaluate(() => ({
         electron: process.versions.electron,
         chromium: process.versions.chrome,
@@ -548,6 +578,18 @@ test('real Electron catalog playback follows the owner pipeline through staged a
     assert.ok(scenario.result.staged.stages >= 1);
     assert.equal(scenario.result.staged.commits, scenario.result.staged.stages);
     assert.equal(scenario.result.staged.rejected, 0);
+  });
+
+test('enabling shuffle during rolling file playback continues across a Repeat ALL wrap',
+  { timeout: 90_000 }, async () => {
+    const { result } = await runRealAppScenario({ shuffleExplicitQueue: true, stagedActivation: true });
+    assert.deepEqual(result.visitedIndices, [1, 0, 1]);
+    assert.equal(result.state.repeatMode, 'ALL');
+    assert.equal(result.state.shuffleMode, true);
+    assert.equal(result.state.isPlaying, true);
+    assert.equal(result.state.isStopped, false);
+    assert.equal(result.previousDisposed, true);
+    assert.equal(result.liveManagerTransports, 0);
   });
 
 test('a seek inside the staged Play window commits playback at the adopted position',

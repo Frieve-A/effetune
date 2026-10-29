@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { chromium } from 'playwright';
+import { analyzerDisplayDependencies } from '../helpers/visualizer-analyzer-script.mjs';
 
 const source = readFileSync(new URL('../../plugins/analyzer/oscilloscope.js', import.meta.url), 'utf8');
-const moduleSource = file => readFileSync(new URL(`../../js/visualizer/${file}.js`, import.meta.url), 'utf8')
+const moduleSource = file => (file === 'visualizer-analyzer-display' ? analyzerDisplayDependencies : '')
+  + readFileSync(new URL(`../../js/visualizer/${file}.js`, import.meta.url), 'utf8')
   .replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
 
 test('Long Oscilloscope envelopes remain solid at fractional column widths and scroll positions', async () => {

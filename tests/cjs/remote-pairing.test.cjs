@@ -4,6 +4,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const os = require('node:os');
 const http = require('node:http');
+const https = require('node:https');
+const dns = require('node:dns');
+const { EventEmitter } = require('node:events');
+const { Readable } = require('node:stream');
 const { RemoteControlHost } = require('../../electron/remote-control-host.cjs');
 const { DESCRIPTION_PATH, REQUEST_PATH, requestRemotePairing } = require('../../electron/remote-pairing.cjs');
 const { Discovery, REMOTE_CONTROL, PLAYLIST, parseXml } = require('../../electron/network-music-upnp.cjs');
@@ -138,6 +142,56 @@ test('discovery associates the endpoint with the exact player UUID and address w
   endpoint = 'https://192.168.1.9:48882/.well-known/effetune/pair';
   await discovery.receive(packet, { address: '192.168.1.5' });
   assert.equal(discovery.remoteControlEndpoint(player.id), null, 'the endpoint must remain on the advertised host');
+});
+
+test('HTTPS hostname discovery pins the descriptor connection to the SSDP sender and exposes its pairing endpoint', async t => {
+  const origin = 'https://music.example:48882'; const address = '192.168.1.5';
+  let resolvedAddress = address;
+  let connectedAddress = address;
+  let lookups = 0; let requests = 0;
+  const descriptor = `<root><device><UDN>uuid:remote</UDN><playerId>uuid:player</playerId><serviceList><service><serviceType>${REMOTE_CONTROL}</serviceType><controlURL>${REQUEST_PATH}</controlURL></service></serviceList></device></root>`;
+  t.mock.method(dns, 'lookup', (hostname, options, callback) => {
+    assert.equal(hostname, 'music.example'); assert.deepEqual(options, { family: 4, all: true });
+    lookups++; callback(null, [{ address: resolvedAddress, family: 4 }]);
+  });
+  t.mock.method(https, 'request', (url, options, callback) => {
+    assert.equal(url.origin, origin);
+    const request = new EventEmitter(); request.destroy = error => { if (error) request.emit('error', error); };
+    request.end = () => queueMicrotask(() => {
+      const respond = error => {
+        if (error) { request.emit('error', error); return; }
+        requests++;
+        const response = Readable.from([Buffer.from(url.pathname === DESCRIPTION_PATH ? descriptor : JSON.stringify({ status: 'approved', playerId: 'uuid:player', token: 'paired-token' }))]);
+        response.statusCode = 200; response.socket = { remoteAddress: connectedAddress }; callback(response);
+      };
+      if (options.lookup) {
+        assert.equal(options.agent, false);
+        options.lookup(url.hostname, { all: true }, (error, records) => {
+          if (!error) assert.deepEqual(records, [{ address, family: 4 }]);
+          respond(error);
+        });
+      } else respond();
+    });
+    return request;
+  });
+  const discovery = new Discovery(); t.after(() => discovery.close());
+  discovery.devices.set('uuid:player', { id: 'uuid:player', address, available: true,
+    services: new Map([['urn:av-openhome-org:service:Playlist', { type: PLAYLIST }]]) });
+  const packet = Buffer.from(`HTTP/1.1 200 OK\r\nUSN: uuid:remote::${REMOTE_CONTROL}\r\nLOCATION: ${origin}${DESCRIPTION_PATH}\r\nCACHE-CONTROL: max-age=100\r\n\r\n`);
+  await discovery.receive(packet, { address });
+  assert.equal(lookups, 1);
+  assert.equal(discovery.remoteControlEndpoint('uuid:player'), origin);
+  assert.deepEqual(await requestRemotePairing({ origin: discovery.remoteControlEndpoint('uuid:player'), playerId: 'uuid:player' }), { status: 'approved', token: 'paired-token' });
+  const endpoint = discovery.remoteControls.get('uuid:player'); endpoint.expires = 1;
+  await discovery.receive(packet, { address: '192.168.1.6' });
+  assert.equal(endpoint.expires, 1, 'A different sender cannot refresh a verified hostname endpoint');
+  discovery.remoteControls.clear();
+  resolvedAddress = '192.168.1.6';
+  await assert.rejects(discovery.receive(packet, { address }), /address could not be verified/);
+  assert.equal(requests, 2, 'Mismatched DNS is rejected before sending an HTTP request');
+  resolvedAddress = address; connectedAddress = '192.168.1.6';
+  await assert.rejects(discovery.receive(packet, { address }), /address could not be verified/);
+  assert.equal(discovery.remoteControlEndpoint('uuid:player'), null);
 });
 
 test('pairing response validation settles malformed JSON values without exceptions and preserves valid replies', { timeout: 5000 }, async t => {

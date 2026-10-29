@@ -275,7 +275,7 @@ export class PresetManager {
      * Load a preset into the pipeline
      * @param {string|Object} nameOrPreset - The name of the preset to load from file/localStorage, or a preset object
      */
-    async loadPreset(nameOrPreset) {
+    async loadPreset(nameOrPreset, options = {}) {
         if (this.externalHost) {
             try {
                 await this.externalHost.loadPreset(nameOrPreset);
@@ -323,8 +323,9 @@ export class PresetManager {
         }
         
         try {
+            await options.beforeCommit?.();
             historyManager = this.pipelineManager.historyManager;
-            historyManager.withHistorySuppressed(() => {
+            const commit = () => historyManager.withHistorySuppressed(() => {
             // Store expanded state for non-current pipeline before clearing
             const currentPipeline = this.audioManager.currentPipeline;
             const nonCurrentPipeline = currentPipeline === 'A' ? this.audioManager.pipelineB : this.audioManager.pipelineA;
@@ -417,6 +418,8 @@ export class PresetManager {
             }
             this.pipelineManager.core.updateAllPluginDisplayState();
             });
+            if (this.audioManager.withMutationOptions) await this.audioManager.withMutationOptions(options, commit);
+            else commit();
 
             historyManager.saveState();
             
@@ -476,7 +479,7 @@ export class PresetManager {
         }
     }
 
-    async deletePresets(names) {
+    async deletePresets(names, options = {}) {
         const uniqueNames = [...new Set(Array.isArray(names) ? names.filter(name => typeof name === 'string') : [])];
         if (this.externalHost) {
             try {
@@ -501,6 +504,7 @@ export class PresetManager {
                     }
                 }
                 if (!changed) return false;
+                await options.beforeCommit?.();
                 await this.persistPresets(presets);
                 return true;
             });
@@ -533,8 +537,8 @@ export class PresetManager {
         }
     }
 
-    deletePreset(name) {
-        return this.deletePresets([name]);
+    deletePreset(name, options) {
+        return this.deletePresets([name], options);
     }
     
     /**

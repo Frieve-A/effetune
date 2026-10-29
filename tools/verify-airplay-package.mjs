@@ -50,7 +50,18 @@ function safeFile(directory, relative) {
   return absolute;
 }
 
-export function verifyAirplayRuntime(directory, { execute = true, rtpOutput = null } = {}) {
+export function verifyAirplaySources(directory, manifest = JSON.parse(fs.readFileSync(path.join(directory, 'runtime-manifest.json'), 'utf8'))) {
+  assert.ok(Array.isArray(manifest.sources) && manifest.sources.length > 0);
+  for (const entry of manifest.sources) {
+    const name = entry.file || (entry.commit ? `${entry.name}-${entry.commit}.zip` : entry.name);
+    const source = fs.readFileSync(safeFile(path.join(directory, 'source'), name));
+    assert.equal(createHash('sha256').update(source).digest('hex'), entry.sha256, `Source archive changed: ${name}`);
+  }
+  assert.ok(fs.statSync(path.join(directory, 'source', 'effetune-airplay-build', 'scripts', 'build-airplay-receiver.mjs')).isFile());
+  return manifest;
+}
+
+export function verifyAirplayRuntime(directory, { execute = true, rtpOutput = null, requireSource = true } = {}) {
   const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'runtime-manifest.json'), 'utf8'));
   assert.equal(manifest.schemaVersion, 1);
   assert.ok(['win32', 'darwin', 'linux'].includes(manifest.platform));
@@ -62,11 +73,12 @@ export function verifyAirplayRuntime(directory, { execute = true, rtpOutput = nu
   assert.ok(fs.statSync(path.join(directory, 'THIRD_PARTY_NOTICES.txt')).size > 100);
   assert.equal(fs.readFileSync(path.join(directory, 'uxplay.conf'), 'utf8'), '');
   for (const file of manifest.files) assert.ok(fs.statSync(safeFile(directory, file)).isFile());
-  assert.ok(Array.isArray(manifest.sources) && manifest.sources.length > 0);
-  for (const entry of manifest.sources) {
-    const name = entry.file || (entry.commit ? `${entry.name}-${entry.commit}.zip` : entry.name);
-    const source = fs.readFileSync(safeFile(path.join(directory, 'source'), name));
-    assert.equal(createHash('sha256').update(source).digest('hex'), entry.sha256, `Source archive changed: ${name}`);
+  if (requireSource) {
+    verifyAirplaySources(directory, manifest);
+  } else {
+    assert.equal(fs.existsSync(path.join(directory, 'source')), false, 'Sources must be distributed separately');
+    assert.match(fs.readFileSync(path.join(directory, 'THIRD_PARTY_NOTICES.txt'), 'utf8'), /https:\/\/github\.com\/Frieve-A\/effetune\/releases/);
+    assert.match(fs.readFileSync(path.join(directory, 'THIRD_PARTY_NOTICES.txt'), 'utf8'), /ThirdParty-Source\.zip/);
   }
   if (manifest.platform === 'win32') {
     assert.ok(fs.statSync(path.join(directory, 'discovery', 'mDNSResponder.exe')).size > 1024);
@@ -114,7 +126,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const directories = runtimeDirectories(target);
   assert.ok(directories.length > 0, 'No unpacked AirPlay runtime was found');
   for (const directory of directories) {
-    const result = verifyAirplayRuntime(directory);
+    const result = verifyAirplayRuntime(directory, { requireSource: false });
     console.log(`AirPlay package passed (${result.platform}-${result.architecture}, native ${result.nativeExecution ? 'executed' : 'unavailable on this host'})`);
   }
 }

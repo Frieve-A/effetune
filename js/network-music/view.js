@@ -1,9 +1,10 @@
 import { IntegratedRemoteEffects } from '../remote/integrated-remote-effects.js';
 import { NetworkPlaybackAdapter } from './playback-adapter.js';
 import { PwaDeviceRegistration } from './pwa-registration.js';
+import { NetworkMusicSettings } from './settings-view.js';
 import { isPwaNetworkArtworkUrl } from './pwa-connection.js';
 import { escapeHtml } from '../utils/escape-html.js';
-import { ICONS, LIBRARY_SEARCH_DEBOUNCE_MS, getLibraryEnterOperation, isMobileLayout } from '../ui/library/library-view-shared.js';
+import { ICONS, LIBRARY_SEARCH_DEBOUNCE_MS, PAGED_DEFAULT_SELECT_ALL_LIMIT, getLibraryEnterOperation, isMobileLayout } from '../ui/library/library-view-shared.js';
 import { LIBRARY_NAV_VIEWS, VIEW_LABELS, FILE_SORT_COLUMNS, libraryNavItem, libraryEntityCard, libraryFolderMain, libraryDetailHeading, createLibraryBreadcrumbs, createLibraryEntityGridGeometry, createLibrarySortControl, librarySortHeader, TRACK_COLUMNS, libraryButton, libraryMain, librarySectionHeading, libraryTrackHeader, libraryTrackCells, libraryFolderCells, createLibraryMessage, bindLibraryTrackPointer, bindLibrarySearchInput } from '../ui/library/library-view-components.js';
 
 const LABELS = {
@@ -21,7 +22,10 @@ const LABELS = {
   'library.column.genre': 'Genre', 'library.column.duration': 'Time',
   'library.paged.loading': 'Loading library…', 'library.paged.loadFailed': 'Unable to load the library page.',
   'library.paged.retry': 'Retry', 'library.state.emptyFolder': 'This folder is empty.',
-  'library.queue.previousPage': 'Previous page', 'library.queue.nextPage': 'Next page'
+  'library.queue.previousPage': 'Previous page', 'library.queue.nextPage': 'Next page',
+  'library.search.results': 'Search Results', 'library.status.tracks': 'tracks',
+  'library.paged.selectTrack': 'Select {title}', 'library.state.noResults': 'No results for "{query}"',
+  'networkMusic.search': 'Search {name}', 'networkMusic.pwa.addDevice': 'Add device…'
 };
 Object.assign(LABELS, Object.fromEntries(LIBRARY_NAV_VIEWS.map((id, index) => [VIEW_LABELS[id],
   ['Tracks', 'Albums', 'Artists', 'Genres', 'Subfolders', 'Files', 'Folders', 'Recently Added', 'Playlists'][index]])), {
@@ -58,7 +62,9 @@ export class NetworkMusicView {
   }
 
   label(key, params = {}) {
-    return Object.entries(params).reduce((text, [name, value]) => text.replace(`{${name}}`, value), LABELS[key] ?? key);
+    const translated = this.t(key, params);
+    return Object.entries(params).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, value),
+      translated && translated !== key ? translated : LABELS[key] ?? key);
   }
 
   button(key, action) {
@@ -84,19 +90,21 @@ export class NetworkMusicView {
     if (!openMusic) return;
     this.root = this.element('div', 'network-playback-target');
     this.playerSelect = this.element('select', 'network-select');
-    this.playerSelect.setAttribute('aria-label', 'Playback device');
-    this.playerSelect.title = this.t('networkMusic.player');
+    this.playerSelect.setAttribute('aria-label', this.label('networkMusic.player'));
     this.playerSelect.addEventListener('change', () => {
       if (this.playerSelect.value === 'pwa-add-device' && this.registration) {
         this.playerSelect.value = this.controller.selectedPlayerId;
         this.registration.open();
       } else this.controller.selectPlayer(this.playerSelect.value);
     });
-    this.refreshButton = this.button('networkMusic.refresh', () => this.controller.discover());
+    this.refreshButton = this.button('networkMusic.refresh', async () => {
+      await this.controller.discover();
+      this.uiManager.showTransientMessage('networkMusic.refreshStarted');
+    });
     this.refreshButton.className = 'header-button network-refresh-button';
-    this.refreshButton.setAttribute('aria-label', 'Refresh devices');
-    this.refreshButton.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M19 12a7 7 0 1 0-2 5"/></svg>';
-    this.root.append(this.refreshButton, this.playerSelect);
+    this.refreshButton.setAttribute('aria-label', this.label('networkMusic.refresh'));
+    this.refreshButton.innerHTML = ICONS.refresh;
+    this.root.append(this.playerSelect, this.refreshButton);
     if (this.controller.api.isPwa) {
       this.registration = new PwaDeviceRegistration({ api: this.controller.api, uiManager: this.uiManager });
     }
@@ -128,11 +136,15 @@ export class NetworkMusicView {
     const nav = root.querySelector('.library-nav');
     this.libraryLabel = this.element('label', 'library-source');
     this.libraryLabel.title = this.t('networkMusic.library');
-    this.libraryLabelText = this.element('span', '', this.label('networkMusic.library'));
     this.librarySelect = this.element('select', 'library-entity-sort-select');
-    this.librarySelect.setAttribute('aria-label', 'Library');
-    this.librarySelect.addEventListener('change', () => this.controller.selectLibrary(this.librarySelect.value));
-    this.libraryLabel.append(this.libraryLabelText, this.librarySelect);
+    this.librarySelect.setAttribute('aria-label', this.label('networkMusic.library'));
+    this.librarySelect.addEventListener('change', () => {
+      if (this.librarySelect.value === 'pwa-add-source') {
+        this.librarySelect.value = this.controller.selectedLibraryId;
+        this.openSources();
+      } else this.controller.selectLibrary(this.librarySelect.value);
+    });
+    this.libraryLabel.append(this.librarySelect);
     nav.prepend(this.libraryLabel);
     this.libraryNav = this.element('div', 'network-library-nav');
     nav.append(this.libraryNav);
@@ -142,11 +154,19 @@ export class NetworkMusicView {
     }));
     this.libraryPanel = shell.firstElementChild;
     this.libraryPanel.classList.add('network-library-main');
+    this.sourcePlaybackNotice = this.element('p', 'library-message');
+    this.sourcePlaybackNotice.hidden = true;
+    this.sourcePlaybackNotice.setAttribute('role', 'status');
+    this.libraryPanel.prepend(this.sourcePlaybackNotice);
     this.libraryContent = this.libraryPanel.querySelector('.library-content');
     this.libraryStatus = this.libraryPanel.querySelector('.library-status');
     this.librarySearch = this.libraryPanel.querySelector('.library-search');
     bindLibrarySearchInput(this.librarySearch, () => this.scheduleLibrarySearch(), () => clearTimeout(this.librarySearchTimer));
-    this.libraryPanel.querySelector('.library-rescan').addEventListener('click', () => this.run(() => this.renderLibrary()));
+    this.libraryPanel.querySelector('.library-rescan').addEventListener('click', () => this.run(() => {
+      const location = this.controller.libraryLocations.get(this.controller.selectedLibraryId);
+      if (location) location.navCounts = null;
+      return this.renderLibrary();
+    }));
     this.libraryKeyDown = event => this.handleLibraryKeyDown(event);
     document.addEventListener('keydown', this.libraryKeyDown);
     root.append(this.libraryPanel);
@@ -160,18 +180,20 @@ export class NetworkMusicView {
     if (!options.some(entry => entry.id === selectedId)) {
       options.push({ id: selectedId, name: select.selectedOptions?.[0]?.textContent || this.controller.selectedPlayer?.name || this.label('networkMusic.unavailable') });
     }
-    if (select === this.playerSelect && this.registration) options.push({ id: 'pwa-add-device', name: 'Add device…' });
+    if (select === this.playerSelect && this.registration) options.push({ id: 'pwa-add-device', name: this.label('networkMusic.pwa.addDevice') });
+    if (select === this.librarySelect && this.controller.api.isPwa) options.push({ id: 'pwa-add-source', name: this.t('networkMusic.settings.addSource') });
     const signature = JSON.stringify(options.map(entry => [entry.id, entry.name, entry.available]));
     if (select.dataset.signature !== signature) {
       select.replaceChildren(...options.map(entry => {
         const option = this.element('option', '', entry.name + (entry.available === false ? ` · ${this.label('networkMusic.unavailable')}` : ''));
         option.value = entry.id;
-        if (entry.id === 'pwa-add-device') option.title = this.t('networkMusic.pwa.addDevice');
+        option.title = option.textContent;
         return option;
       }));
       select.dataset.signature = signature;
     }
     select.value = selectedId;
+    select.title = select.selectedOptions?.[0]?.textContent || '';
   }
 
   render() {
@@ -188,16 +210,18 @@ export class NetworkMusicView {
       if (remote && this.remoteControlButton.parentNode !== this.root) this.root.prepend(this.remoteControlButton);
       else if (!remote && this.remoteControlButton.parentNode !== this.remoteControlHome) this.remoteControlHome.insertBefore(this.remoteControlButton, this.remoteControlNext);
     }
-    this.effectsContainer.hidden = !remote;
+    const effectsPlayer = remote && controller.selectedPlayer?.isEffeTune === true &&
+      controller.selectedPlayer?.capabilities?.effects !== false ? controller.selectedPlayer : null;
+    this.effectsContainer.hidden = !effectsPlayer;
     const connectionVersion = JSON.stringify([controller.selectedPlayer?.connectionVersion, controller.selectedPlayer?.authorizationRequired,
-      this.controller.api.isPwa ? controller.selectedPlayer?.available : undefined]);
+      this.controller.api.isPwa ? controller.selectedPlayer?.available : undefined, Boolean(effectsPlayer)]);
     if (this.lastPlayerId !== controller.selectedPlayerId || this.lastConnectionVersion !== connectionVersion) {
       this.lastPlayerId = controller.selectedPlayerId;
       this.lastConnectionVersion = connectionVersion;
       void this.run(() => this.bindPlaybackTarget());
-      void this.effects.selectPlayer(remote ? controller.selectedPlayer : null);
+      void this.effects.selectPlayer(effectsPlayer);
     }
-    if (remote && controller.selectedPlayer) this.effects.updatePlayerName(controller.selectedPlayer.name);
+    if (effectsPlayer) this.effects.updatePlayerName(effectsPlayer.name);
     this.playbackAdapter?.sync();
     if (this.libraryView) {
       const external = controller.selectedLibraryId !== 'local';
@@ -214,6 +238,10 @@ export class NetworkMusicView {
       this.libraryPanel.hidden = !external;
       this.libraryNav.hidden = !external;
       const source = controller.state.libraries.find(server => server.id === controller.selectedLibraryId);
+      if (this.sourcePlaybackNotice) {
+        this.sourcePlaybackNotice.hidden = !remote || source?.externalPlayback !== false;
+        this.sourcePlaybackNotice.textContent = this.t('networkMusic.settings.gatewayRequired');
+      }
       const capabilities = JSON.stringify([source?.browseViews, source?.searchSupported, source?.sortCaps, source?.available]);
       if (this.lastLibraryId !== controller.selectedLibraryId || this.libraryCapabilities !== capabilities) {
         const previous = controller.libraryLocations.get(this.lastLibraryId);
@@ -241,6 +269,29 @@ export class NetworkMusicView {
 
   async showPlayer() {
     if (!this.uiManager.audioPlayer?.ui?.container) await this.bindPlaybackTarget();
+  }
+
+  openSources() {
+    this.closeSources();
+    const dialog = this.element('dialog', 'pwa-device-dialog');
+    this.sourceDialog = dialog;
+    dialog.append(this.element('h2', '', this.t('networkMusic.settings.subsonic')));
+    this.sourceSettings = new NetworkMusicSettings({ root: dialog, api: this.controller.api, translate: this.t });
+    void this.sourceSettings.mount();
+    const close = this.button('networkMusic.pwa.close', () => this.closeSources());
+    close.textContent = this.t('networkMusic.pwa.close');
+    dialog.append(close);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); this.closeSources(); });
+    document.body.append(dialog);
+    dialog.showModal();
+  }
+
+  closeSources() {
+    this.sourceSettings?.dispose();
+    this.sourceSettings = null;
+    this.sourceDialog?.close();
+    this.sourceDialog?.remove();
+    this.sourceDialog = null;
   }
 
   scheduleLibrarySearch() {
@@ -282,7 +333,7 @@ export class NetworkMusicView {
 
   renderLibraryNav(server, location) {
     const views = server?.browseViews ?? [];
-    const signature = JSON.stringify(views);
+    const signature = JSON.stringify(views.map(view => [view, this.label(VIEW_LABELS[view.id])]));
     if (this.libraryNav.dataset.signature !== signature) {
       this.libraryNav.innerHTML = views.map(view => libraryNavItem(view.id, this.label(VIEW_LABELS[view.id]), location.viewId === view.id)).join('');
       this.libraryNav.dataset.signature = signature;
@@ -299,6 +350,34 @@ export class NetworkMusicView {
     }
     if (isMobileLayout() && this.libraryNav.dataset.activeView !== location.viewId) this.libraryNav.querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     this.libraryNav.dataset.activeView = location.viewId || '';
+  }
+
+  async updateLibraryNavCounts(server, location, generation) {
+    const counts = location.navCounts ??= new Map();
+    for (const element of this.libraryNav.querySelectorAll('.library-count')) {
+      element.hidden = true;
+      element.textContent = '';
+    }
+    await Promise.all((server?.browseViews ?? []).filter(view => view.id !== 'recent').map(async view => {
+      if (!counts.has(view.objectId)) {
+        counts.set(view.objectId, this.controller.api.networkMusicBrowse({
+          serverId: server.id, objectId: view.objectId, start: 0, count: 1
+        }).then(page => Number.isSafeInteger(page.total) &&
+          (page.total > 0 || page.total === 0 && page.items.length === 0) ? page.total : null)
+          .catch(error => {
+            console.warn('Network library count is unavailable:', error);
+            return null;
+          }));
+      }
+      const count = await counts.get(view.objectId);
+      if (generation !== this.libraryRenderToken || server.id !== this.controller.selectedLibraryId) return;
+      for (const button of this.libraryNav.querySelectorAll('[data-view]')) {
+        if (button.dataset.view !== view.id) continue;
+        const element = button.querySelector('.library-count');
+        element.hidden = count === null;
+        element.textContent = count === null ? '' : String(count);
+      }
+    }));
   }
 
   librarySortFields(server, location) {
@@ -337,7 +416,7 @@ export class NetworkMusicView {
       const row = this.element('div', `library-paged-row library-paged-entity-card${mediaCards ? ' library-paged-media-card' : ' library-paged-folder-row'}`);
       row.setAttribute('role', 'listitem');
       const title = item.title || this.label('networkMusic.untitled');
-      const count = Number.isSafeInteger(item.trackCount) ? `${item.trackCount} tracks` : '';
+      const count = Number.isSafeInteger(item.trackCount) ? `${item.trackCount} ${this.label('library.status.tracks')}` : '';
       const caption = [containerType(item) === 'album' ? item.artist : item.displayPath, count].filter(Boolean).join(' · ');
       const knownCollection = this.controller.state.libraries.find(server => server.id === this.controller.selectedLibraryId)?.browseViews?.length > 0;
       row.innerHTML = mediaCards ? libraryEntityCard(title, caption, { playLabel: knownCollection ? this.label('library.action.play') : '' }) : libraryFolderMain(title, caption);
@@ -378,31 +457,95 @@ export class NetworkMusicView {
     return this.playLibraryContext({ objectId: item.id });
   }
 
-  async playLibraryContext(location, sourceOrdinal = null) {
-    if (this.controller.selectedPlayerId === 'local') this.uiManager.beginPlaybackSelectionGestureResume?.();
-    const serverId = this.controller.selectedLibraryId;
-    const sourceGeneration = this.controller.libraryGeneration;
-    const targetGeneration = this.controller.playerGeneration;
-    const renderGeneration = this.libraryRenderToken;
-    const request = this.libraryBrowseRequest(serverId, location, 0);
-    const maximum = this.controller.queueTracksMax;
-    const items = [];
-    let start = 0;
-    let startIndex = sourceOrdinal === null ? 0 : -1;
-    // Preserve the chosen context and occurrence order without crawling child containers.
-    while (true) {
-      const page = await this.controller.api.networkMusicBrowse({ ...request, start, count: Math.min(100, maximum - items.length + 1) });
-      if (sourceGeneration !== this.controller.libraryGeneration || targetGeneration !== this.controller.playerGeneration || renderGeneration !== this.libraryRenderToken) return;
-      for (const [ordinal, track] of page.items.entries()) {
-        if (track.isContainer || !this.controller.canPlayItem(track)) continue;
-        if (start + ordinal === sourceOrdinal) startIndex = items.length;
-        items.push({ ...(this.controller.api.isPwa ? track : {}), serverId, trackId: track.id });
-      }
-      if (items.length > maximum) throw Object.assign(new Error('The collection exceeds the playback queue limit.'), { code: 'queueTooLarge' });
-      start += page.items.length;
-      if (!page.items.length || Number.isSafeInteger(page.total) && page.total > 0 && start >= page.total) break;
+  renderPlaybackPreparation() {
+    if (!this.libraryView?.updatePagedActionToast) return;
+    if (!this.playbackToast) {
+      this.playbackToast = this.element('section', 'library-paged-action-toast');
+      this.playbackToast.setAttribute('role', 'status');
+      this.playbackToast.setAttribute('aria-live', 'polite');
+      this.playbackToast.setAttribute('aria-atomic', 'true');
+      this.libraryView.root.append(this.playbackToast);
     }
-    if (items.length && startIndex >= 0) await this.controller.playItems(items, 'play', startIndex);
+    this.libraryView.updatePagedActionToast(this.playbackToast, this.playbackPreparation.state, () => {
+      const job = this.playbackPreparation;
+      if (!job.state.canCancel) return;
+      job.cancelled = true;
+      job.state = { ...job.state, status: 'terminal', terminalKind: 'cancelled', canCancel: false };
+      this.renderPlaybackPreparation();
+    });
+  }
+
+  async runLibraryPlayback(operationKind, prepare) {
+    if (this.playbackPreparation && this.playbackPreparation.state.status !== 'terminal') return { accepted: false };
+    clearTimeout(this.playbackToastTimer);
+    const source = this.controller.libraryGeneration;
+    const target = this.controller.playerGeneration;
+    const job = { cancelled: false, state: { operationKind, status: 'active', phase: 'SNAPSHOTTING', processed: 0, canCancel: true } };
+    this.playbackPreparation = job;
+    const isCurrent = () => !job.cancelled && this.playbackPreparation === job &&
+      source === this.controller.libraryGeneration && target === this.controller.playerGeneration && !this.controller.disposed;
+    const update = state => {
+      if (this.playbackPreparation !== job || job.cancelled) return;
+      job.state = { ...job.state, ...state };
+      this.renderPlaybackPreparation();
+    };
+    this.renderPlaybackPreparation();
+    try {
+      const result = await prepare({ isCurrent, onProgress: update,
+        onCommit: () => update({ phase: this.controller.selectedPlayerId === 'local' ? 'COMMITTING' : 'PREPARING_PLAYER',
+          processed: null, total: null, canCancel: false }) });
+      update({ status: 'terminal', terminalKind: !isCurrent() || result?.accepted === false ? 'cancelled' : 'succeeded', canCancel: false });
+      return result;
+    } catch (error) {
+      update({ status: 'terminal', terminalKind: 'failed', result: { error }, canCancel: false });
+      if (!job.cancelled) throw error;
+    } finally {
+      if (this.playbackPreparation === job) {
+        this.playbackToastTimer = setTimeout(() => { this.playbackToast?.remove(); this.playbackToast = null; }, 5000);
+        this.playbackToastTimer.unref?.();
+      }
+    }
+  }
+
+  async playLibraryContext(location, sourceOrdinal = null, { operationKind = 'play', includes = () => true, currentSourceOrdinal = sourceOrdinal } = {}) {
+    if (this.controller.selectedPlayerId === 'local') this.uiManager.beginPlaybackSelectionGestureResume?.();
+    return this.runLibraryPlayback(operationKind, async preparation => {
+      const serverId = this.controller.selectedLibraryId;
+      const sourceGeneration = this.controller.libraryGeneration;
+      const targetGeneration = this.controller.playerGeneration;
+      // Cancel on navigation, not on redraws of the same library selection.
+      const selectionKey = this.librarySelectionKey;
+      const request = this.libraryBrowseRequest(serverId, location, 0);
+      const maximum = this.controller.queueTracksMax;
+      const items = [];
+      let unavailableTrack;
+      let start = sourceOrdinal === null ? 0 : Math.max(0, sourceOrdinal - Math.floor(maximum / 2));
+      let startIndex = currentSourceOrdinal === null ? 0 : -1;
+      // Keep row playback within capacity while retaining the clicked occurrence and nearby tracks.
+      // Explicit collection playback still requires the entire collection to fit.
+      while (true) {
+        if (!preparation.isCurrent()) return { accepted: false };
+        const page = await this.controller.api.networkMusicBrowse({ ...request, start, count: Math.min(100, maximum - items.length + (sourceOrdinal === null ? 1 : 0)) });
+        if (!preparation.isCurrent() || sourceGeneration !== this.controller.libraryGeneration || targetGeneration !== this.controller.playerGeneration || selectionKey !== this.librarySelectionKey) return { accepted: false };
+        for (const [ordinal, track] of page.items.entries()) {
+          if (track.isContainer || !includes(start + ordinal)) continue;
+          if (!this.controller.canPlayItem(track)) {
+            if (start + ordinal === currentSourceOrdinal) return this.reportUnavailableTrack(track);
+            unavailableTrack ??= track;
+            continue;
+          }
+          if (start + ordinal === currentSourceOrdinal) startIndex = items.length;
+          items.push({ ...(this.controller.api.isPwa ? track : {}), serverId, trackId: track.id });
+        }
+        if (items.length > maximum) throw Object.assign(new Error('The collection exceeds the playback queue limit.'), { code: 'queueTooLarge' });
+        preparation.onProgress({ phase: 'SNAPSHOTTING', processed: items.length });
+        if (sourceOrdinal !== null && items.length === maximum) break;
+        start += page.items.length;
+        if (!page.items.length || Number.isSafeInteger(page.total) && page.total > 0 && start >= page.total) break;
+      }
+      if (items.length && startIndex >= 0) return this.controller.playItems(items, operationKind, startIndex, preparation);
+      if (!items.length && unavailableTrack) return this.reportUnavailableTrack(unavailableTrack);
+    });
   }
 
   async renderLibrary() {
@@ -419,13 +562,20 @@ export class NetworkMusicView {
     }
     this.controller.libraryLocations.set(serverId, location);
     this.renderLibraryNav(server, location);
+    void this.updateLibraryNavCounts(server, location, generation);
     this.libraryView.closeContextMenu();
     this.libraryRows = [];
-    this.librarySelection = new Set();
+    const selectionKey = JSON.stringify([serverId, location.objectId, location.query, location.sort, location.direction]);
+    const newSelection = selectionKey !== this.librarySelectionKey;
+    if (newSelection) {
+      this.librarySelectionKey = selectionKey;
+      this.librarySelection = new Set();
+      this.librarySelectionAll = false;
+      this.libraryView.root.classList.remove('mobile-selection-mode');
+    }
     this.selectionAnchor = null;
-    this.libraryView.root.classList.remove('mobile-selection-mode');
     this.librarySearch.value = location.query;
-    this.librarySearch.placeholder = `Search ${server?.name || this.label('networkMusic.library')}`;
+    this.librarySearch.placeholder = this.label('networkMusic.search', { name: server?.name || this.label('networkMusic.library') });
     this.librarySearch.title = this.t('networkMusic.search', { name: server?.name || '' });
     this.librarySearch.setAttribute('aria-label', this.librarySearch.placeholder);
     this.librarySearch.parentElement.hidden = !server?.searchSupported;
@@ -439,7 +589,7 @@ export class NetworkMusicView {
       if (generation !== this.libraryRenderToken || serverId !== this.controller.selectedLibraryId) return;
       this.libraryContent.setAttribute('aria-busy', 'false');
       this.libraryContent.replaceChildren(createLibraryMessage(error?.code === 'sharingRequired' && this.controller.api.isPwa
-        ? 'This device is no longer sharing its music library.' : this.label('library.paged.loadFailed'), {
+        ? this.label('networkMusic.pwa.notShared') : this.label('library.paged.loadFailed'), {
         error: true, retryLabel: this.label('library.paged.retry'), retry: () => this.run(() => this.renderLibrary())
       }));
       throw error;
@@ -447,12 +597,15 @@ export class NetworkMusicView {
     if (generation !== this.libraryRenderToken || serverId !== this.controller.selectedLibraryId) return;
     this.libraryContent.setAttribute('aria-busy', 'false');
     const total = Number.isSafeInteger(page.total) && (page.total > 0 || page.items.length === 0) ? page.total : null;
+    if (newSelection && total !== null && total <= PAGED_DEFAULT_SELECT_ALL_LIMIT && (location.container || location.query)) {
+      this.librarySelectionAll = true;
+    }
     const range = `${location.start + (page.items.length ? 1 : 0)}–${location.start + page.items.length}`;
     const detailType = location.container && location.viewId === 'subfolders' ? 'subfolder' : containerType(location.container);
     const hasDetailArtwork = !location.query && ['album', 'artist', 'genre', 'subfolder'].includes(detailType);
     const header = this.element('div', hasDetailArtwork ? 'library-detail-head library-paged-detail-head' : 'library-section-head');
-    const heading = location.query ? 'Search Results' : location.title || server?.name || 'Library';
-    header.innerHTML = hasDetailArtwork ? libraryDetailHeading(heading, total, 'tracks', this.label('networkMusic.back'))
+    const heading = location.query ? this.label('library.search.results') : location.container?.title || (location.viewId ? this.label(VIEW_LABELS[location.viewId]) : location.title) || server?.name || this.label('networkMusic.library');
+    header.innerHTML = hasDetailArtwork ? libraryDetailHeading(heading, total, this.label('library.status.tracks'), this.label('networkMusic.back'))
       : librarySectionHeading(heading, total === null ? range : `${range} / ${total}`, location.trail.length ? this.label('networkMusic.back') : '');
     this.setLibraryArtwork(header.querySelector('.library-paged-detail-artwork'), location.container?.artwork || page.items.find(item => item.artwork)?.artwork);
     header.querySelector('.library-back')?.addEventListener('click', () => this.run(() => {
@@ -479,7 +632,7 @@ export class NetworkMusicView {
     if (location.trail.length && !location.query) {
       header.classList.add('library-folder-detail-head');
       const controls = this.element('div', 'library-folder-browse-controls');
-      const crumbs = [...location.trail, this.locationSnapshot(location)].map((entry, index) => ({ label: entry.title || server?.name || 'Library', path: index }));
+      const crumbs = [...location.trail, this.locationSnapshot(location)].map((entry, index) => ({ label: entry.container?.title || (entry.viewId ? this.label(VIEW_LABELS[entry.viewId]) : entry.title) || server?.name || this.label('networkMusic.library'), path: index }));
       controls.append(createLibraryBreadcrumbs(crumbs, heading, location.trail.length, index => this.run(() => {
         Object.assign(location, location.trail[index]);
         location.trail.splice(index);
@@ -513,23 +666,25 @@ export class NetworkMusicView {
         list.append(row);
       }
       const section = this.element('section', 'library-folder-directory-section');
-      section.append(this.element('h3', '', 'Folders'), list);
+      section.append(this.element('h3', '', this.label('library.nav.folders')), list);
       shell.append(section);
     }
     const trackEntries = page.items.map((item, ordinal) => ({ item, sourceOrdinal: location.start + ordinal })).filter(({ item }) => !item.isContainer);
     const tracks = trackEntries.map(({ item }) => item);
     if (tracks.length) {
-      if (folders.length) shell.append(this.element('h3', 'library-folder-tracks-heading', 'Tracks'));
+      if (folders.length) shell.append(this.element('h3', 'library-folder-tracks-heading', this.label('library.nav.tracks')));
       this.libraryActionBar = this.element('div', 'library-action-bar library-paged-actions');
       this.libraryActionBar.innerHTML = [
         ['library.paged.selectAll', 'select-all'], ['library.paged.deselectAll', 'deselect-all'],
         ['library.action.play', 'play', ICONS.play], ['library.action.playNext', 'playNext', ICONS.next], ['library.action.addToQueue', 'queue', ICONS.queue]
       ].map(([key, action, icon]) => libraryButton(this.label(key), { className: `library-paged-${action}`, icon, title: this.t(key) })).join('');
       this.libraryActionBar.querySelector('.library-paged-select-all').addEventListener('click', () => {
-        this.librarySelection = new Set(this.libraryRows.flatMap(({ item }, ordinal) => this.controller.canPlayItem(item) ? [ordinal] : []));
+        this.librarySelectionAll = true;
+        this.librarySelection.clear();
         this.updateLibraryTrackActions();
       });
       this.libraryActionBar.querySelector('.library-paged-deselect-all').addEventListener('click', () => {
+        this.librarySelectionAll = false;
         this.librarySelection.clear();
         this.updateLibraryTrackActions();
       });
@@ -563,7 +718,7 @@ export class NetworkMusicView {
         const title = (fileRow ? item.displayPath : item.title) || item.title || this.label('networkMusic.untitled');
         const duration = String(item.resources?.[0]?.duration || '').split(':').map(Number);
         row.innerHTML = libraryTrackCells({ ...item, durationSec: item.durationSec ?? (duration.length === 3 ? duration[0] * 3600 + duration[1] * 60 + duration[2] : 0) }, {
-          title, fileRow, selectLabel: `Select ${title}`, moreLabel: this.label('library.action.more'),
+          title, fileRow, selectLabel: this.label('library.paged.selectTrack', { title }), moreLabel: this.label('library.action.more'),
           artist: item.artistObjectId ? `<button type="button" class="library-link library-artist-link">${escapeHtml(item.artist || '')}</button>` : escapeHtml(item.artist || ''),
           album: item.albumObjectId ? `<button type="button" class="library-link library-album-link">${escapeHtml(item.album || '')}</button>` : escapeHtml(item.album || '')
         });
@@ -571,18 +726,20 @@ export class NetworkMusicView {
           if (generation === this.libraryRenderToken) void this.run(() => this.openLibraryContainer({ id: item[`${type}ObjectId`], title: item[type], upnpClass: ENTITY_CLASSES[type], isContainer: true, artwork: item.artwork }));
         });
         bindLibraryTrackPointer(row, {
-          isSelected: () => this.librarySelection.has(ordinal),
+          isSelected: () => this.isLibraryTrackSelected(ordinal),
           select: (selected, options) => generation === this.libraryRenderToken
             ? this.selectLibraryTrack(ordinal, selected, options) : { accepted: false },
-          play: () => generation === this.libraryRenderToken && this.controller.canPlayItem(item)
-            ? this.run(() => this.playLibraryContext(location, sourceOrdinal)) : undefined,
+          play: () => generation === this.libraryRenderToken
+            ? this.controller.canPlayItem(item)
+              ? this.run(() => this.playLibraryContext(location, sourceOrdinal)) : this.reportUnavailableTrack(item)
+            : undefined,
           contextMenu: (event, returnFocus = row) => this.openLibraryTrackMenu(event, ordinal, serverId, returnFocus),
           selectionMode: () => this.libraryView.root.classList.contains('mobile-selection-mode'),
           enterSelectionMode: () => {
             if (generation === this.libraryRenderToken) this.libraryView.root.classList.add('mobile-selection-mode');
           }
         });
-        this.libraryRows.push({ item, row });
+        this.libraryRows.push({ item, row, sourceOrdinal });
         rows.append(row);
       }
       if (detailType !== 'playlist' || location.query) grid.append(trackHeader);
@@ -590,7 +747,7 @@ export class NetworkMusicView {
       shell.append(grid);
     } else this.libraryActionBar = null;
     if (!page.items.length) {
-      shell.append(this.libraryView.emptyState(location.query ? `No results for "${location.query}"` : this.label('library.state.emptyFolder'), false));
+      shell.append(this.libraryView.emptyState(location.query ? this.label('library.state.noResults', { query: location.query }) : this.label('library.state.emptyFolder'), false));
     }
     const paging = this.element('div', 'library-action-bar library-pagination');
     const previous = this.button('library.queue.previousPage', () => { location.start = location.pageStarts.pop() ?? 0; location.scrollTop = 0; return this.renderLibrary(); });
@@ -604,32 +761,70 @@ export class NetworkMusicView {
     this.updateLibraryTrackActions();
   }
 
+  isLibraryTrackSelected(ordinal) {
+    const sourceOrdinal = this.libraryRows[ordinal].sourceOrdinal ?? ordinal;
+    return this.librarySelectionAll ? !this.librarySelection.has(sourceOrdinal) : this.librarySelection.has(sourceOrdinal);
+  }
+
+  usesLibraryContextAction() {
+    const location = this.controller.libraryLocations.get(this.controller.selectedLibraryId);
+    return (isMobileLayout() && !this.libraryView?.root.classList.contains('mobile-selection-mode') || containerType(location?.container) === 'playlist') &&
+      this.libraryRows?.length > 0;
+  }
+
   selectLibraryTrack(ordinal, selected, { exclusive = false, extend = false } = {}) {
     const { item } = this.libraryRows[ordinal];
     if (!this.controller.canPlayItem(item)) return { accepted: false };
-    if (exclusive) this.librarySelection.clear();
+    if (exclusive) {
+      this.librarySelection.clear();
+      this.librarySelectionAll = false;
+    }
     const first = extend && this.selectionAnchor !== null ? Math.min(this.selectionAnchor, ordinal) : ordinal;
     const last = extend && this.selectionAnchor !== null ? Math.max(this.selectionAnchor, ordinal) : ordinal;
     for (let index = first; index <= last; index += 1) {
       const track = this.libraryRows[index].item;
       if (!this.controller.canPlayItem(track)) continue;
-      if (selected) this.librarySelection.add(index);
-      else this.librarySelection.delete(index);
+      const sourceOrdinal = this.libraryRows[index].sourceOrdinal ?? index;
+      if (selected !== Boolean(this.librarySelectionAll)) this.librarySelection.add(sourceOrdinal);
+      else this.librarySelection.delete(sourceOrdinal);
     }
     if (!extend) this.selectionAnchor = ordinal;
     this.updateLibraryTrackActions();
   }
 
   playLibrarySelection(serverId, action, ordinal = null, focusedOnly = false) {
-    const ordinals = ordinal !== null && (focusedOnly || !this.librarySelection.has(ordinal)) ? [ordinal]
-      : this.libraryRows.flatMap((_, index) => this.librarySelection.has(index) ? [index] : []);
+    if (ordinal !== null && !this.controller.canPlayItem(this.libraryRows[ordinal].item)) {
+      return this.reportUnavailableTrack(this.libraryRows[ordinal].item);
+    }
+    const focused = ordinal !== null && (focusedOnly || !this.isLibraryTrackSelected(ordinal));
+    if (!focused && (this.librarySelectionAll || this.librarySelection.size === 0 && this.usesLibraryContextAction())) {
+      const excluded = new Set(this.librarySelection);
+      return this.playLibraryContext(this.controller.libraryLocations.get(serverId), null, {
+        operationKind: action, includes: sourceOrdinal => !excluded.has(sourceOrdinal),
+        currentSourceOrdinal: ordinal === null ? null : this.libraryRows[ordinal].sourceOrdinal ?? ordinal
+      });
+    }
+    const ordinals = focused ? [ordinal]
+      : this.libraryRows.flatMap((_, index) => this.isLibraryTrackSelected(index) ? [index] : []);
+    if (!focused && this.librarySelection.size > ordinals.length) {
+      const selected = new Set(this.librarySelection);
+      return this.playLibraryContext(this.controller.libraryLocations.get(serverId), null, {
+        operationKind: action, includes: sourceOrdinal => selected.has(sourceOrdinal),
+        currentSourceOrdinal: ordinal === null ? null : this.libraryRows[ordinal].sourceOrdinal ?? ordinal
+      });
+    }
     const playable = ordinals.filter(index => this.controller.canPlayItem(this.libraryRows[index].item));
     const references = playable.map(index => ({ ...(this.controller.api.isPwa ? this.libraryRows[index].item : {}), serverId, trackId: this.libraryRows[index].item.id }));
-    if (references.length) return this.controller.playItems(references, action, Math.max(0, playable.indexOf(ordinal)));
+    if (references.length) return this.runLibraryPlayback(action,
+      preparation => this.controller.playItems(references, action, Math.max(0, playable.indexOf(ordinal)), preparation));
+  }
+
+  reportUnavailableTrack(item) {
+    this.uiManager.setError(this.controller.unavailableItemKey(item), true);
+    return { accepted: false };
   }
 
   openLibraryTrackMenu(event, ordinal, serverId, returnFocus) {
-    const { item } = this.libraryRows[ordinal];
     event.preventDefault();
     this.libraryView.closeContextMenu();
     const menu = this.element('div', 'library-context-menu');
@@ -639,40 +834,68 @@ export class NetworkMusicView {
     for (const [key, action, icon] of [['library.action.play', 'play', ICONS.play], ['library.action.playNext', 'playNext', ICONS.next], ['library.action.addToQueue', 'queue', ICONS.queue]]) {
       const button = this.button(key, () => {
         this.libraryView.closeContextMenu();
-        return this.playLibrarySelection(serverId, action, ordinal);
+        return this.playLibrarySelection(serverId, action, ordinal,
+          isMobileLayout() && !this.libraryView.root.classList.contains('mobile-selection-mode'));
       });
       button.innerHTML = `${icon}<span>${escapeHtml(this.label(key))}</span>`;
       button.setAttribute('role', 'menuitem');
-      button.disabled = !this.controller.canPlayItem(item);
       menu.append(button);
     }
     this.libraryView.presentContextMenu(menu, event, { returnFocus });
   }
 
+  refreshLibraryNowPlaying() {
+    const local = this.controller.selectedPlayerId === 'local';
+    const state = local ? this.uiManager.audioPlayer?.stateManager?.getStateSnapshot?.()
+      : this.controller.playerStates.get(this.controller.selectedPlayerId);
+    const current = local ? state?.currentTrack || state?.playlist?.[state?.currentTrackIndex]
+      : state?.queue?.find(track => track.id === state.currentId);
+    const reference = current?.meta?.networkLibrary;
+    const entry = current?.meta?.openHomeQueueEntry;
+    const uris = new Set([current?.uri, entry?.uri].filter(Boolean));
+    const mediaKeys = new Set(current?.mediaKeys ?? []);
+    const metadata = current?.metadata || entry?.metadata;
+    if (metadata) {
+      const parsed = new DOMParser().parseFromString(metadata, 'application/xml');
+      for (const resource of parsed.getElementsByTagNameNS('*', 'res')) uris.add(resource.textContent.trim());
+    }
+    for (const { item, row } of this.libraryRows ?? []) {
+      const playing = reference ? reference.serverId === this.controller.selectedLibraryId && reference.trackId === (item.trackId || item.id)
+        : (item.mediaKeys ?? []).some(key => mediaKeys.has(key)) || (item.resources ?? []).some(resource => uris.has(resource.uri));
+      row.classList.toggle('now-playing', playing);
+      if (playing) row.setAttribute('aria-current', 'true');
+      else row.removeAttribute('aria-current');
+      const indicator = row.querySelector('.library-now-playing-indicator');
+      if (indicator) indicator.hidden = !playing;
+    }
+  }
+
   updateLibraryTrackActions() {
     for (const [ordinal, { item, row }] of (this.libraryRows ?? []).entries()) {
       const playable = this.controller.canPlayItem(item);
-      if (!playable) this.librarySelection.delete(ordinal);
-      const selected = this.librarySelection.has(ordinal);
+      if (!playable && !this.librarySelectionAll) this.librarySelection.delete(this.libraryRows[ordinal].sourceOrdinal ?? ordinal);
+      const selected = playable && this.isLibraryTrackSelected(ordinal);
       row.classList.toggle('selected', selected);
       row.classList.toggle('library-paged-unresolved', !playable);
       row.setAttribute('aria-selected', String(selected));
-      row.setAttribute('aria-disabled', String(!playable));
-      row.title = playable ? '' : this.t('networkMusic.unsupported');
+      const unavailableKey = this.controller.unavailableItemKey(item);
+      row.title = playable ? '' : this.t(unavailableKey);
       const checkbox = row.querySelector('.library-paged-select');
       checkbox.checked = selected;
       checkbox.disabled = !playable;
       const more = row.querySelector('.library-paged-row-more');
-      more.disabled = !playable;
-      more.title = this.t(playable ? 'library.action.more' : 'networkMusic.unsupported');
+      more.title = this.t(playable ? 'library.action.more' : unavailableKey);
     }
-    const hasSelection = this.librarySelection?.size > 0;
+    const hasSelection = this.librarySelectionAll
+      ? this.libraryRows?.some(({ item }, ordinal) => this.controller.canPlayItem(item) && this.isLibraryTrackSelected(ordinal))
+      : this.librarySelection?.size > 0;
     for (const action of ['deselect-all', 'play', 'playNext', 'queue']) {
       const button = this.libraryActionBar?.querySelector(`.library-paged-${action}`);
-      if (button) button.disabled = !hasSelection;
+      if (button) button.disabled = !hasSelection && (action === 'deselect-all' || !this.usesLibraryContextAction());
     }
     const selectAll = this.libraryActionBar?.querySelector('.library-paged-select-all');
     if (selectAll) selectAll.disabled = !this.libraryRows.some(({ item }) => this.controller.canPlayItem(item));
+    this.refreshLibraryNowPlaying();
   }
 
   handleLibraryKeyDown(event) {
@@ -707,6 +930,7 @@ export class NetworkMusicView {
     if (event.target?.closest?.('button, a, [role="menuitem"]')) return;
     const index = this.libraryRows.findIndex(({ row }) => row === event.target.closest('.library-paged-row'));
     if (event.key === 'Escape') {
+      this.librarySelectionAll = false;
       this.librarySelection.clear();
       this.libraryView.root.classList.remove('mobile-selection-mode');
       this.updateLibraryTrackActions();
@@ -723,7 +947,7 @@ export class NetworkMusicView {
       this.openLibraryTrackMenu({ preventDefault() {}, clientX: rect.left + 24, clientY: rect.top + 24 }, index, this.controller.selectedLibraryId, row);
     } else if (index >= 0 && (event.key === 'Enter' || event.key === ' ')) {
       if (event.key === 'Enter') void this.run(() => this.playLibrarySelection(this.controller.selectedLibraryId, getLibraryEnterOperation(event), index, true));
-      else this.selectLibraryTrack(index, !this.librarySelection.has(index));
+      else this.selectLibraryTrack(index, !this.isLibraryTrackSelected(index));
     } else return;
     event.preventDefault();
   }
@@ -731,9 +955,9 @@ export class NetworkMusicView {
   updateUITexts() {
     if (!this.root) return;
     if (this.localPlaybackNotice) this.localPlaybackNotice.textContent = this.t('networkMusic.libraryRequired');
-    const addDevice = this.playerSelect?.querySelector('[value="pwa-add-device"]');
-    if (addDevice) addDevice.title = this.t('networkMusic.pwa.addDevice');
-    this.playerSelect.title = this.t('networkMusic.player');
+    this.playerSelect.setAttribute('aria-label', this.label('networkMusic.player'));
+    this.refreshButton?.setAttribute('aria-label', this.label('networkMusic.refresh'));
+    this.librarySelect?.setAttribute('aria-label', this.label('networkMusic.library'));
     if (this.libraryLabel) this.libraryLabel.title = this.t('networkMusic.library');
     for (const root of [this.root, this.libraryView?.root]) {
       for (const button of root?.querySelectorAll('[data-translation-key]') ?? []) button.title = this.t(button.dataset.translationKey);
@@ -743,6 +967,10 @@ export class NetworkMusicView {
   }
 
   dispose() {
+    if (this.playbackPreparation) this.playbackPreparation.cancelled = true;
+    clearTimeout(this.playbackToastTimer);
+    this.playbackToast?.remove();
+    this.closeSources();
     this.libraryRenderToken += 1;
     this.libraryGridObserver?.disconnect();
     clearTimeout(this.librarySearchTimer);

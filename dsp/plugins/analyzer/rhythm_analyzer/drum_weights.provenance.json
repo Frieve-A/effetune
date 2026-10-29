@@ -1,0 +1,411 @@
+{
+  "artifact": "drum_weights.h",
+  "checkpoint_sha256": "a20e918e34fa70e2d2bbe02c46b7b593d7459404bafcffa7ee29720addab2989",
+  "weights": "EMA",
+  "export_sha256": "18a1d4efaaa600e3364aaef854d3fab9287d76eb92cd0953063c78a92d7e0240",
+  "network_bytes": 1133338,
+  "header_sha256": "1f181785a558496d41e14937c9b48e6043e23cd2494e49a69d59a1ed9a9b8dda",
+  "model": "Causal CRNN c6-agc-a1",
+  "parameters": 566669,
+  "tensors": [
+    {
+      "name": "frequency.0.1.weight",
+      "shape": [
+        16,
+        1,
+        3,
+        3
+      ],
+      "stored_shape": [
+        1,
+        3,
+        3,
+        16
+      ],
+      "offset": 0,
+      "elements": 144
+    },
+    {
+      "name": "frequency.0.1.bias",
+      "shape": [
+        16
+      ],
+      "stored_shape": [
+        16
+      ],
+      "offset": 144,
+      "elements": 16
+    },
+    {
+      "name": "frequency.3.1.weight",
+      "shape": [
+        32,
+        16,
+        3,
+        3
+      ],
+      "stored_shape": [
+        16,
+        3,
+        3,
+        32
+      ],
+      "offset": 160,
+      "elements": 4608
+    },
+    {
+      "name": "frequency.3.1.bias",
+      "shape": [
+        32
+      ],
+      "stored_shape": [
+        32
+      ],
+      "offset": 4768,
+      "elements": 32
+    },
+    {
+      "name": "frequency.6.1.weight",
+      "shape": [
+        48,
+        32,
+        3,
+        3
+      ],
+      "stored_shape": [
+        32,
+        3,
+        3,
+        48
+      ],
+      "offset": 4800,
+      "elements": 13824
+    },
+    {
+      "name": "frequency.6.1.bias",
+      "shape": [
+        48
+      ],
+      "stored_shape": [
+        48
+      ],
+      "offset": 18624,
+      "elements": 48
+    },
+    {
+      "name": "recurrent.weight_ih_l0",
+      "shape": [
+        648,
+        192
+      ],
+      "stored_shape": [
+        192,
+        648
+      ],
+      "offset": 18672,
+      "elements": 124416
+    },
+    {
+      "name": "recurrent.weight_hh_l0",
+      "shape": [
+        648,
+        216
+      ],
+      "stored_shape": [
+        216,
+        648
+      ],
+      "offset": 143088,
+      "elements": 139968
+    },
+    {
+      "name": "recurrent.bias_ih_l0",
+      "shape": [
+        648
+      ],
+      "stored_shape": [
+        648
+      ],
+      "offset": 283056,
+      "elements": 648
+    },
+    {
+      "name": "recurrent.bias_hh_l0",
+      "shape": [
+        648
+      ],
+      "stored_shape": [
+        648
+      ],
+      "offset": 283704,
+      "elements": 648
+    },
+    {
+      "name": "recurrent.weight_ih_l1",
+      "shape": [
+        648,
+        216
+      ],
+      "stored_shape": [
+        216,
+        648
+      ],
+      "offset": 284352,
+      "elements": 139968
+    },
+    {
+      "name": "recurrent.weight_hh_l1",
+      "shape": [
+        648,
+        216
+      ],
+      "stored_shape": [
+        216,
+        648
+      ],
+      "offset": 424320,
+      "elements": 139968
+    },
+    {
+      "name": "recurrent.bias_ih_l1",
+      "shape": [
+        648
+      ],
+      "stored_shape": [
+        648
+      ],
+      "offset": 564288,
+      "elements": 648
+    },
+    {
+      "name": "recurrent.bias_hh_l1",
+      "shape": [
+        648
+      ],
+      "stored_shape": [
+        648
+      ],
+      "offset": 564936,
+      "elements": 648
+    },
+    {
+      "name": "heads.0.weight",
+      "shape": [
+        1,
+        216
+      ],
+      "stored_shape": [
+        216,
+        1
+      ],
+      "offset": 565584,
+      "elements": 216
+    },
+    {
+      "name": "heads.0.bias",
+      "shape": [
+        1
+      ],
+      "stored_shape": [
+        1
+      ],
+      "offset": 565800,
+      "elements": 1
+    },
+    {
+      "name": "heads.1.weight",
+      "shape": [
+        1,
+        216
+      ],
+      "stored_shape": [
+        216,
+        1
+      ],
+      "offset": 565801,
+      "elements": 216
+    },
+    {
+      "name": "heads.1.bias",
+      "shape": [
+        1
+      ],
+      "stored_shape": [
+        1
+      ],
+      "offset": 566017,
+      "elements": 1
+    },
+    {
+      "name": "heads.2.weight",
+      "shape": [
+        1,
+        216
+      ],
+      "stored_shape": [
+        216,
+        1
+      ],
+      "offset": 566018,
+      "elements": 216
+    },
+    {
+      "name": "heads.2.bias",
+      "shape": [
+        1
+      ],
+      "stored_shape": [
+        1
+      ],
+      "offset": 566234,
+      "elements": 1
+    },
+    {
+      "name": "heads.3.weight",
+      "shape": [
+        1,
+        216
+      ],
+      "stored_shape": [
+        216,
+        1
+      ],
+      "offset": 566235,
+      "elements": 216
+    },
+    {
+      "name": "heads.3.bias",
+      "shape": [
+        1
+      ],
+      "stored_shape": [
+        1
+      ],
+      "offset": 566451,
+      "elements": 1
+    },
+    {
+      "name": "heads.4.weight",
+      "shape": [
+        1,
+        216
+      ],
+      "stored_shape": [
+        216,
+        1
+      ],
+      "offset": 566452,
+      "elements": 216
+    },
+    {
+      "name": "heads.4.bias",
+      "shape": [
+        1
+      ],
+      "stored_shape": [
+        1
+      ],
+      "offset": 566668,
+      "elements": 1
+    }
+  ],
+  "classes": [
+    "KD",
+    "SD",
+    "HH",
+    "TT",
+    "CY"
+  ],
+  "thresholds": {
+    "KD": 0.0,
+    "SD": -0.3,
+    "HH": 0.6,
+    "TT": 2.1,
+    "CY": 0.9
+  },
+  "threshold_selection": {
+    "method": "KD and SD lowered from the best-F1 thresholds to the 0.1 logit grid point where the equal-weight mean precision and recall over IDMT-SMT-Drums, ENST-Drums and MDB-Drums balance, favoring recall; HH, TT and CY keep the class-wise best-F1 thresholds",
+    "datasets": [
+      "IDMT-SMT-Drums",
+      "ENST-Drums",
+      "MDB-Drums"
+    ],
+    "grid_step": 0.1,
+    "balanced_classes": [
+      "KD",
+      "SD"
+    ],
+    "mean_precision_recall": {
+      "KD": [
+        0.8396,
+        0.8445
+      ],
+      "SD": [
+        0.7614,
+        0.7619
+      ]
+    },
+    "equal_mean_micro_F5": 0.802547,
+    "previous_best_f1": 0.805030006474249
+  },
+  "architecture": {
+    "conv_channels": [
+      1,
+      16,
+      32,
+      48
+    ],
+    "frequency_pool": [
+      4,
+      4,
+      2
+    ],
+    "gru_hidden": 216,
+    "gru_layers": 2,
+    "lookahead_frames": 6
+  },
+  "frontend": {
+    "sample_rate": 44100,
+    "fft": 2048,
+    "hop": 441,
+    "mel_bands": 128,
+    "agc": {
+      "reference": 7764.884088152459,
+      "smooth": 0.0033333333333333335,
+      "floor_relative": 1e-06,
+      "bias_corrected": true,
+      "origin": "stream start",
+      "domain": "linear mel power"
+    },
+    "resampler": "RationalResampler, 383 taps, cutoff 0.47 * min(input_rate, 44100)"
+  },
+  "timing": {
+    "lookahead_frames": 6,
+    "peak_wait_frames": 1,
+    "anchor_seconds": "(frame + 1) / 100",
+    "availability_seconds": "(frame + 8) / 100",
+    "resampler_delay_seconds": "0 at 44100 Hz; 191 / input_rate otherwise",
+    "instance_scheduling_seconds": "floor(input_rate * (instance_salt % 32) / 4000) / input_rate; pending inference is drained immediately at EOF"
+  },
+  "evaluation": {
+    "IDMT": {
+      "micro_F5_50ms": 0.8699758012158414,
+      "micro_F3class_50ms": 0.9219991242884844,
+      "micro_F3class_30ms": 0.9203728029023581,
+      "micro_F5_30ms": 0.8684412441716343
+    },
+    "ENST": {
+      "micro_F5_50ms": 0.7455255813953489,
+      "micro_F3class_50ms": 0.8015277526667872,
+      "micro_F3class_30ms": 0.7902730066895679,
+      "micro_F5_30ms": 0.7353674418604651
+    },
+    "MDBDrums": {
+      "micro_F5_50ms": 0.6698825265308439,
+      "micro_F3class_50ms": 0.7599970213716584,
+      "micro_F3class_30ms": 0.7553801474421029,
+      "micro_F5_30ms": 0.6657964928210658
+    }
+  },
+  "generator": "tools/rhythm-analyzer/export.py --drums"
+}

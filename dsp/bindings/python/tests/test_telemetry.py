@@ -17,6 +17,64 @@ HQ_MIN_FREQUENCY = 20.0
 HQ_MAX_FREQUENCY = 40_000.0
 
 
+class NoteChordKeyTest(unittest.TestCase):
+    @staticmethod
+    def packet() -> bytearray:
+        packet = bytearray(48)
+        struct.pack_into("<HHIIH", packet, 0, 32, 1, 7, 0, 32)
+        struct.pack_into("<fffII8B", packet, 16, 48000, 1, .02, 7, 54,
+                         0, 4, 4, 255, 255, 255, 21, 255)
+        struct.pack_into("<f", packet, 44, .75)
+        return packet
+
+    def test_chord_fields_and_absent_values(self) -> None:
+        packet = self.packet()
+        frames, _ = _decode_telemetry_packet(packet, {7: ("NoteSpectrogram", "notes", 0)}, 0)
+        frame = frames[0]
+        self.assertIsInstance(frame, effetune.NoteChordKeyTelemetryFrame)
+        self.assertEqual(frame.kind, "noteChordKey")
+        self.assertEqual(frame.confirmed_probability, .75)
+        self.assertEqual((frame.generation, frame.frame_index), (7, 54))
+        self.assertEqual((frame.immediate_root, frame.immediate_quality, frame.immediate_bass), (0, 4, 4))
+        self.assertEqual((frame.confirmed_root, frame.confirmed_quality, frame.confirmed_bass), (None, None, None))
+        self.assertEqual((frame.local_key, frame.overall_key), (21, None))
+        packet[42:44] = bytes((24, 3))
+        packet[39:42] = bytes((0, 4, 4))
+        struct.pack_into("<f", packet, 44, 1)
+        frames, _ = _decode_telemetry_packet(packet, {7: ("NoteSpectrogram", "notes", 0)}, 0)
+        self.assertEqual((frames[0].local_key, frames[0].overall_key), (24, 3))
+        self.assertIsNone(frame.overall_key)
+        self.assertEqual(frames[0].confirmed_probability, 1)
+        self.assertEqual(frame.confirmed_probability, .75)
+
+        packet[42:44] = bytes((255, 255))
+        frames, _ = _decode_telemetry_packet(packet, {7: ("NoteSpectrogram", "notes", 0)}, 0)
+        self.assertEqual((frames[0].local_key, frames[0].overall_key), (None, None))
+        self.assertEqual(frames[0].confirmed_root, 0)
+
+    def test_invalid_chord_and_key_contracts(self) -> None:
+        for offset, value in ((36, 12), (37, 11), (38, 255), (40, 0), (42, 25), (43, 24), (2, 2)):
+            with self.subTest(offset=offset):
+                packet = self.packet()
+                packet[offset] = value
+                frames, dropped = _decode_telemetry_packet(packet, {7: ("NoteSpectrogram", "notes", 0)}, 3)
+                self.assertEqual(frames, [])
+                self.assertEqual(dropped, 3)
+
+
+    def test_probability_range_and_exact_payload_size(self) -> None:
+        for value in (0, 1, -.01, 1.01, math.nan, math.inf):
+            with self.subTest(value=value):
+                packet = self.packet()
+                struct.pack_into("<f", packet, 44, value)
+                frames, _ = _decode_telemetry_packet(packet, {7: ("NoteSpectrogram", "notes", 0)}, 0)
+                self.assertEqual(len(frames), int(value in (0, 1)))
+        packet = self.packet()[:44]
+        struct.pack_into("<H", packet, 12, 28)
+        frames, _ = _decode_telemetry_packet(packet, {7: ("NoteSpectrogram", "notes", 0)}, 0)
+        self.assertEqual(frames, [])
+
+
 class OscilloscopeEnvelopeTest(unittest.TestCase):
     def test_ten_second_rolling_envelope_with_64_bit_clock(self) -> None:
         payload_bytes = 28 + 4096 * 8
@@ -437,6 +495,35 @@ class TelemetryDecoderTests(unittest.TestCase):
         unlocked_with_period = _rhythm_packet(locked=False)
         struct.pack_into("<f", unlocked_with_period, 16 + 44, 0.5)
         self.assertEqual(decode(bytes(unlocked_with_period)), [])
+
+    def test_rhythm_v5_preserves_drum_time_class_and_raw_logit_without_beats(self) -> None:
+        packet = _rhythm_packet(locked=False, events=0)
+        packet.extend(bytes(680))
+        struct.pack_into("<H", packet, 2, 5)
+        struct.pack_into("<H", packet, 12, 2024)
+        struct.pack_into("<f", packet, 16, 44100)
+        struct.pack_into("<I", packet, 16 + 8, 470)
+        struct.pack_into("<IIfI", packet, 16 + 1496, 1, 5, .07, 0)
+        for lane in range(5):
+            struct.pack_into("<IfIifffBBH", packet, 16 + 1512 + lane * 32,
+                             93, .75, 0, 0, 0, 0, .3 if lane == 0 else -.1, lane, 1, 0)
+        nodes = {13: ("RhythmAnalyzer", "rhythm", 0)}
+        (frame,), _ = _decode_telemetry_packet(bytes(packet), nodes, 0)
+        self.assertEqual(frame.display_mode, "drums")
+        self.assertFalse(frame.locked)
+        self.assertEqual(len(frame.drum_events), 5)
+        for lane, event in enumerate(frame.drum_events):
+            self.assertIsInstance(event, effetune.RhythmAnalyzerDrumTelemetryEvent)
+            self.assertEqual(event.lane, lane)
+            self.assertEqual(event.audio_time_seconds, 1)
+            self.assertTrue(event.unlocked)
+        self.assertLess(frame.drum_events[1].logit, 0)
+        for offset, fmt, value in ((1496, "<I", 2), (1500, "<I", 17),
+                                   (1504, "<f", math.nan), (1536, "<f", math.nan),
+                                   (1540, "<B", 5), (1541, "<B", 2), (1508, "<I", 1)):
+            invalid = bytearray(packet)
+            struct.pack_into(fmt, invalid, 16 + offset, value)
+            self.assertEqual(_decode_telemetry_packet(bytes(invalid), nodes, 0)[0], [])
 
     def test_rhythm_v4_decodes_revisable_path_with_closed_tick_gate(self) -> None:
         packet = _rhythm_packet()

@@ -325,3 +325,22 @@ test('Chroma and HQ Spectrum deliver the same capture at its due time and draw o
         }
     }
 });
+
+
+test('Rhythm delivery follows actual scheduling age on the worklet timeline across generations', () => {
+    const h = harness();
+    h.manager._visualSyncSource = () => ({ ruleKey: 'RhythmAnalyzerPlugin', params: { dm: 'drums' },
+        execution: 'wasm', tap: { input: 64, output: 256 } });
+    const payload = new DataView(new ArrayBuffer(2024));
+    payload.setFloat32(0, 96000, true);
+    payload.setUint32(1496, 1, true);
+    const frame = { frameType: 28, formatVersion: 5, payload };
+    for (const [generation, time, age] of [[1, 2, .074], [2, 2.5, .077]]) {
+        payload.setUint32(4, generation, true);
+        payload.setFloat32(16, time, true);
+        payload.setFloat32(1504, age, true);
+        const due = h.manager._resolveVisualSyncDue(7, 999999, null, frame, 48000);
+        const expected = (time * 48000 + 48000 - payload.getFloat32(1504, true) * 48000 + 256 + 10000) / 48000 * 1000;
+        assert.equal(due, expected);
+    }
+});

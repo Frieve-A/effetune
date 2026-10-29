@@ -41,6 +41,14 @@ EffeTune 专为想要获得更理想听音体验的音频爱好者而设计。�
 
 ## 设置指南
 
+### Android 应用
+
+请使用 Android 10 或更高版本，并保持 Android System WebView 为最新版本。打开音乐文件，或在音乐库中选择文件夹，然后通过 Android 的选择界面授权 EffeTune 访问相应内容。如果文件夹无法访问，请在音乐库中重新选择。关闭屏幕后仍可继续播放，也可通过通知和锁屏控制同一个播放器。
+
+导出的文件可通过 Android 的文件选择或分享界面保存、分享。批量导出音频时，请选择输出文件夹，并保持应用打开。Android 应用与网页版的数据分别保存。使用“备份 / 恢复”可交换预设、脉冲响应、测量数据和可视化工具数据（最大 256 MB）；不包含音乐文件、音乐目录、连接凭据及设置。效果仅处理 EffeTune 播放或接收的音频，不会替换其他 Android 应用的声音。
+
+通过 MIDI 调节参数以及按时钟、定时器更改参数的操作，在关闭屏幕后仍会继续。使用键盘和游戏手柄时，请保持应用打开。Android 支持 MIDI 输入，但不向电动推子或 LED 发送反馈。点按工具栏中的 **Remote Control** 图标即可允许远程控制并复制配对链接。请勿公开此链接。
+
 请根据你要收听的音频来源，选择下方对应的设置方式。
 
 ### 音乐文件播放器设置
@@ -327,9 +335,9 @@ Microsoft Store 版通过 Microsoft Store 获取更新。在 **设置 > 配置..
 
 ### 网络音乐与远程控制
 
-**桌面版:** 浏览局域网上的音乐服务器，共享选定的音乐文件夹，并选择本设备或 OpenHome 播放器进行播放。与 EffeTune 播放设备配对后，还可在同一窗口编辑其音效。共享和接收远程控制默认关闭。请参阅[网络音乐与远程控制](openhome.md)。 还可启用 UPnP AV / DLNA 和 AirPlay 接收功能，通过此电脑的效果链聆听其他设备发送的音乐。
+**桌面版：** 浏览包括 Subsonic / OpenSubsonic 在内的网络音乐服务器，共享选定文件夹，并在本设备、OpenHome 或 UPnP AV / DLNA 播放器上播放。与 EffeTune 播放设备配对后，还可在同一窗口编辑其音效。共享和接收远程控制默认关闭。请参阅[网络音乐与远程控制](openhome.md)。还可启用 UPnP AV / DLNA 和 AirPlay 接收功能，通过此电脑的效果链聆听其他设备发送的音乐。
 
-PWA 也可以播放已登记的 EffeTune 电脑共享的音乐并应用本设备的音效，或控制另一台已登记的电脑。浏览器和连接要求，请参阅 [PWA 设置与播放](openhome.md#pwa)。
+PWA 可以通过本设备的音效播放已登记 EffeTune 电脑的共享音乐及获准使用的网络音乐库，也可以控制获准操作的网络播放器。还支持直接连接 Subsonic。浏览器和连接要求，请参阅 [PWA 设置与播放](openhome.md#pwa)。
 
 ### 使用 AI 助手控制 EffeTune（MCP）
 
@@ -394,7 +402,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Analyzer  | Note Spectrogram | 以钢琴卷帘图显示随时间变化的估算音高 | [详情](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | 实时波形可视化 | [详情](plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Pitch Meter | 随时间跟踪一个基频及其调音偏差 | [详情](plugins/analyzer.md#pitch-meter) |
-| Analyzer  | Rhythm Analyzer | 显示速度、逐拍的发音，以及各声部相对节拍的超前或滞后 | [详情](plugins/analyzer.md#rhythm-analyzer) |
+| Analyzer  | Rhythm Analyzer | 按频段或鼓声类别显示节奏速度与起音时间 | [详情](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram | 显示频谱随时间的变化 | [详情](plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | 实时显示低频、中频和高频的强弱 | [详情](plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer  | Stereo Meter | 可视化立体声平衡与声道相关性 | [详情](plugins/analyzer.md#stereo-meter) |

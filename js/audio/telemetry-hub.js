@@ -317,7 +317,7 @@ export class TelemetryHub {
             this.stats.malformedPackets += 1;
             this.warning(`[dsp-wasm] ignored malformed telemetry packet: ${error?.message || String(error)}`);
         } finally {
-            this._returnPacket(packet);
+            if (message.recycle !== false) this._returnPacket(packet);
         }
         return true;
     }

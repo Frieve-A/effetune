@@ -2,6 +2,8 @@
  * Core audio utilities for frequency response measurements
  */
 
+import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+
 function resolveAudioWorkletModuleUrl(importerUrl = import.meta.url) {
     const workletUrl = new URL('../audioWorkletProcessors.js', importerUrl);
     const developmentToken = new URL(importerUrl).searchParams.get('dev');
@@ -96,6 +98,18 @@ class AudioUtils {
     }
 
     async initializeResources(preferredSampleRate = null) {
+        if (isAndroidHost()) {
+            const snapshot = await getAndroidBridge().request('snapshot.get');
+            this.audioContext = new OfflineAudioContext(2, 1, snapshot.sampleRate);
+            this.detachNativeLevel?.();
+            this.detachNativeLevel = getAndroidBridge().on('measurement.level', level => {
+                this.currentInputLevel = level.inputLevelDb;
+                this.nativeInputUnprocessed = level.unprocessed === true;
+            });
+            await this.enumerateDevices();
+            this.initialized = true;
+            return;
+        }
 
         try {
             // Close any existing audio context
@@ -206,6 +220,7 @@ class AudioUtils {
      * @returns {Promise<boolean>} Whether the audio context was successfully resumed
      */
     async ensureAudioContextRunning() {
+        if (isAndroidHost()) return this.initialized;
         if (!this.audioContext) {
             return false;
         }
@@ -233,6 +248,7 @@ class AudioUtils {
      * @returns {number} Input level in dB, range -Infinity to 0
      */
     getInputLevel() {
+        if (isAndroidHost()) return this.currentInputLevel ?? -Infinity;
         // If we have a current level from the AudioWorklet, use that
         if (this.audioWorkletSupported && this.currentInputLevel !== undefined) {
             return this.currentInputLevel;

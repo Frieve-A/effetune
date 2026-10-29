@@ -10,7 +10,8 @@
   "params": {
     "mn": 21,
     "mx": 108,
-    "te": true
+    "te": true,
+    "ck": false
   },
   "probabilityTolerance": 0.0001,
   "inputSha256": "04257518c10bdf074d68337cdea19a675058b59d6f9ee9bd8ce041a18d11ff32",

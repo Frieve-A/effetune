@@ -15,6 +15,9 @@ function fixture(api) {
         uiManager: {},
         location: { origin: 'https://effetune.test' },
         addEventListener() {}, removeEventListener() {},
+        innerHeight: 900,
+        getComputedStyle: () => ({ zoom: '1', paddingLeft: '20px', paddingRight: '20px', getPropertyValue: () => '' }),
+        ResizeObserver: class { observe() {} disconnect() {} },
         MessageChannel: class {
             constructor() {
                 this.port1 = { messages: [], postMessage(data) { this.messages.push(data); }, close() {} };
@@ -24,6 +27,7 @@ function fixture(api) {
     };
     const document = {
         defaultView: window,
+        documentElement: { clientWidth: 1280 },
         createElement(tagName) {
             const listeners = new Map();
             return {

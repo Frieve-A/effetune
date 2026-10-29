@@ -7,6 +7,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { NetworkMusicHost } from '../../electron/network-music-host.cjs';
 import { didl, didlItem, xml } from '../../electron/network-music-upnp.cjs';
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const html = read('../../effetune.html');
@@ -52,12 +53,14 @@ test('real header and sole Player retain their geometry and destination ownershi
         import { NetworkMusicView } from './js/network-music/view.js';
         const commands = [];
         const notifications = [];
+        const messages = [];
         const local = { playbackManager: {}, contextManager: {} };
         local.stateManager = new StateManager(local);
         local.stateManager.updateState({ currentTrackName: 'Local song' });
         const uiManager = window.uiManager = {
           audioPlayer: local, layoutMode: { isMobile: document.body.classList.contains('layout-mobile') },
-          t: key => 'JA:' + key, setError: (...args) => notifications.push(args)
+          t: key => 'JA:' + key, setError: (...args) => notifications.push(args),
+          showTransientMessage: (...args) => messages.push(args)
         };
         window.electronAPI = { remoteClient: { getConnection: async () => ({ registered: false }) } };
         local.ui = new AudioPlayerUI(local);
@@ -73,7 +76,7 @@ test('real header and sole Player retain their geometry and destination ownershi
         const view = uiManager.networkMusicView = new NetworkMusicView({ controller, uiManager });
         view.mount();
         document.getElementById('openMusicButton').addEventListener('click', () => controller.playFiles(['song.flac']));
-        window.fixture = { local, controller, view, commands, notifications, api, container };
+        window.fixture = { local, controller, view, commands, notifications, messages, api, container };
       `
     },
     bundle: true, write: false, format: 'iife', platform: 'browser'
@@ -92,6 +95,20 @@ test('real header and sole Player retain their geometry and destination ownershi
       await page.locator('.title-icon').evaluate((element, data) => { element.src = data; },
         `data:image/png;base64,${readFileSync(new URL('../../images/icon_64x64.png', import.meta.url)).toString('base64')}`);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      await page.evaluate(() => {
+        fixture.api.networkMusicDiscover = () => new Promise(resolve => { fixture.completeDiscovery = resolve; });
+      });
+      await page.locator('.network-refresh-button').click();
+      assert.deepEqual(await page.evaluate(() => fixture.messages), [], 'refresh feedback waits for discovery to succeed');
+      await page.evaluate(() => fixture.completeDiscovery(fixture.controller.state));
+      await page.waitForFunction(() => fixture.messages.length === 1);
+      assert.deepEqual(await page.evaluate(() => fixture.messages), [['networkMusic.refreshStarted']]);
+      await page.evaluate(() => { fixture.api.networkMusicDiscover = async () => { throw new Error('offline'); }; });
+      await page.locator('.network-refresh-button').click();
+      await page.waitForFunction(() => fixture.notifications.length === 1);
+      assert.deepEqual(await page.evaluate(() => fixture.notifications), [['networkMusic.error', true]]);
+      assert.equal(await page.evaluate(() => fixture.messages.length), 1, 'failed discovery must not show success feedback');
+      await page.evaluate(() => { fixture.notifications.length = 0; });
       await page.selectOption('.network-playback-target select', 'room');
       await page.waitForFunction(() => document.querySelector('.track-name')?.textContent === 'Artist - Remote song');
       const renamedPlayer = await page.evaluate(() => {
@@ -112,8 +129,8 @@ test('real header and sole Player retain their geometry and destination ownershi
       assert.deepEqual(renamedPlayer, { selectedId: 'room', samePlayback: true, sameState: true,
         sameGeneration: true, commandCountUnchanged: true });
       assert.equal(await page.locator('.network-playback-target option:checked').textContent(), 'Bedroom PC');
-      assert.equal(await page.locator('.network-effects .pipeline-title').textContent(), 'Effect Pipeline · Bedroom PC');
-      assert.equal(await page.locator('.network-playback-target option[value="local"]').textContent(), 'This device');
+      assert.equal(await page.locator('.network-effects').isVisible(), false);
+      assert.equal(await page.locator('.network-playback-target option[value="local"]').textContent(), 'JA:networkMusic.local');
       if (!mobile) await page.evaluate(() => fixture.local.ui.setDesktopQueueExpanded(true));
       await page.waitForFunction(() => document.querySelector('.player-artwork-image')?.naturalWidth > 0);
       assert.equal(await page.locator('.player-artwork-image').getAttribute('src'), artwork);
@@ -139,16 +156,22 @@ test('real header and sole Player retain their geometry and destination ownershi
         await page.screenshot({ path: `${process.env.NETWORK_MUSIC_SCREENSHOT_DIR}/network-player-${width}.png`, fullPage: true });
       }
       assert.ok(geometry.select.left >= 0 && geometry.open.right <= width);
-      assert.equal(geometry.select.height, geometry.open.height);
-      assert.equal(geometry.refresh.height, geometry.open.height);
-      assert.equal(geometry.select.top, geometry.open.top);
-      assert.equal(geometry.refresh.top, geometry.open.top);
-      assert.ok(geometry.select.right < geometry.open.left);
-      assert.ok(geometry.heading.bottom <= geometry.select.top || geometry.heading.right <= geometry.refresh.left,
+      if (mobile) {
+        assert.equal(geometry.select.height, geometry.open.height);
+        assert.equal(geometry.refresh.height, geometry.open.height);
+      }
+      assert.equal(geometry.select.top + geometry.select.height / 2, geometry.open.top + geometry.open.height / 2);
+      assert.equal(geometry.refresh.top + geometry.refresh.height / 2, geometry.open.top + geometry.open.height / 2);
+      assert.ok(geometry.select.right < geometry.refresh.left);
+      assert.ok(geometry.refresh.right < geometry.open.left);
+      assert.ok(geometry.heading.bottom <= geometry.select.top || geometry.heading.right <= geometry.select.left,
         'the title and destination controls must not overlap');
-      assert.equal(await page.locator('.network-playback-target select').getAttribute('title'), 'JA:networkMusic.player');
-      assert.equal(await page.locator('.network-effects form button').innerText(), 'Connect effects');
-      assert.equal(await page.locator('.network-effects > p').count(), 0);
+      await page.locator('.network-playback-target select').focus();
+      await page.keyboard.press('Tab');
+      assert.equal(await page.locator('.network-refresh-button').evaluate(element => element === document.activeElement), true);
+      assert.equal(await page.locator('.network-playback-target select').getAttribute('title'), 'Bedroom PC');
+      assert.equal(await page.locator('.network-playback-target select').getAttribute('aria-label'), 'JA:networkMusic.player');
+      assert.equal(await page.locator('.network-effects .pipeline-title, .network-effects form').count(), 0);
       await page.locator('.play-pause-button').click();
       await page.locator('#openMusicButton').click();
       assert.deepEqual(await page.evaluate(() => fixture.commands.map(command => [command.playerId, command.action || command.operationKind])), [['room', 'pause'], ['room', 'play']]);
@@ -199,6 +222,7 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
   const bundle = await build({
     stdin: { resolveDir: fileURLToPath(new URL('../../', import.meta.url)), contents: `
       import { LibraryView } from './js/ui/library/library-view.js';
+      import { AudioPlayerUI } from './js/ui/audio-player/audio-player-ui.js';
       import { NetworkMusicView } from './js/network-music/view.js';
       import { NetworkMusicController } from './js/network-music/controller.js';
       const tracks = ${JSON.stringify(tracks)};
@@ -223,10 +247,10 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       const controller = uiManager.networkMusic = new NetworkMusicController({ api, uiManager });
       controller.state.libraries = [{ id: 'studio', name: 'Studio', searchSupported: true }, { id: 'no-search', name: 'Archive', searchSupported: false }];
       controller.playItems = async (...args) => commands.push(args);
-      const view = new NetworkMusicView({ controller, uiManager });
+      const view = uiManager.networkMusicView = new NetworkMusicView({ controller, uiManager });
       view.mount();
       view.attachLibrary(library);
-      window.fixture = { library, view, controller, api, manager, tracks, commands, requests, notifications };
+      window.fixture = { library, view, controller, api, manager, tracks, commands, requests, notifications, AudioPlayerUI };
     ` }, bundle: true, write: false, format: 'iife', platform: 'browser'
   });
   const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
@@ -252,6 +276,38 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished)));
       const original = {};
       for (const selector of ['.library-header', '.library-search', '.library-paged-row', '.library-folder-directory-row']) original[selector] = await metrics(`.library-main:not(.network-library-main) ${selector}`);
+      const localMain = page.locator('.library-main:not(.network-library-main)');
+      const originalContent = await localMain.locator('.library-content').boundingBox();
+      const originalStatus = await localMain.locator('.library-status').boundingBox();
+      await page.evaluate(() => { fixture.view.localPlaybackNotice.hidden = false; });
+      const notice = await localMain.locator('.library-message').boundingBox();
+      const contentWithNotice = await localMain.locator('.library-content').boundingBox();
+      assert.equal((await metrics('.library-main:not(.network-library-main) .library-header')).height, original['.library-header'].height);
+      assert.ok(Math.abs(contentWithNotice.y - originalContent.y - notice.height) < 1);
+      assert.ok(Math.abs(originalContent.height - contentWithNotice.height - notice.height) < 1);
+      assert.deepEqual(await localMain.locator('.library-status').boundingBox(), originalStatus);
+      await page.evaluate(() => { fixture.view.localPlaybackNotice.hidden = true; });
+      assert.deepEqual(await localMain.locator('.library-content').boundingBox(), originalContent);
+      if (!mobile) {
+        const librarySelect = await page.locator('.library-source select').boundingBox();
+        const librarySearch = await page.locator('.library-main:not(.network-library-main) .library-search').boundingBox();
+        assert.equal(librarySelect.y, librarySearch.y);
+        assert.equal(librarySelect.height, librarySearch.height);
+        const refresh = await page.locator('.network-refresh-button').boundingBox();
+        const libraryRefresh = await page.locator('.library-main:not(.network-library-main) .library-rescan').boundingBox();
+        assert.equal(refresh.width, libraryRefresh.width);
+        assert.equal(refresh.height, libraryRefresh.height);
+        assert.equal(await page.locator('.network-refresh-button svg').evaluate(element => element.outerHTML),
+          await page.locator('.library-main:not(.network-library-main) .library-rescan svg').evaluate(element => element.outerHTML));
+        assert.equal((await metrics('.network-refresh-button')).background,
+          (await metrics('.library-main:not(.network-library-main) .library-rescan')).background);
+        await page.locator('.network-refresh-button').hover();
+        await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished)));
+        const refreshHover = (await metrics('.network-refresh-button')).background;
+        await page.locator('.library-main:not(.network-library-main) .library-rescan').hover();
+        assert.equal(refreshHover, (await metrics('.library-main:not(.network-library-main) .library-rescan')).background);
+        await page.mouse.move(0, 0);
+      }
       const screenshot = async name => {
         if (process.env.NETWORK_MUSIC_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.NETWORK_MUSIC_SCREENSHOT_DIR}/${name}-${width}.png`, fullPage: true });
       };
@@ -327,9 +383,39 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
         fixture.controller.playerStates.set('room', { protocolInfo: 'http-get:*:audio/mpeg:*' });
         fixture.view.updateLibraryTrackActions();
       });
-      assert.equal(await row.getAttribute('aria-disabled'), 'true');
+      assert.equal(await row.getAttribute('aria-disabled'), null);
       assert.equal(await row.locator('.library-paged-select').isDisabled(), true);
       assert.equal(await page.locator('.network-library-main .library-paged-play').isDisabled(), true);
+      await page.evaluate(() => {
+        fixture.library.root.classList.remove('mobile-selection-mode');
+        fixture.notifications.length = 0;
+      });
+      const commandCount = await page.evaluate(() => fixture.commands.length);
+      if (mobile) {
+        await row.dispatchEvent('touchstart');
+        await row.dispatchEvent('touchend');
+        await row.click();
+      }
+      else await row.dblclick();
+      assert.equal(await page.evaluate(() => fixture.notifications.length), 1);
+      await row.press('Enter');
+      assert.equal(await page.evaluate(() => fixture.notifications.length), 2);
+      await row.locator('.library-paged-row-more').click();
+      await page.locator('.library-context-menu button').first().click();
+      assert.deepEqual(await page.evaluate(() => fixture.notifications), Array(3).fill(['networkMusic.unsupported', true]));
+      assert.equal(await page.evaluate(() => fixture.commands.length), commandCount);
+      if (mobile) {
+        await page.evaluate(() => {
+          fixture.tracks.forEach(track => { track.playable = false; });
+          fixture.view.updateLibraryTrackActions();
+        });
+        const playAlbum = page.locator('.network-library-main .library-paged-play');
+        assert.equal(await playAlbum.isEnabled(), true);
+        await playAlbum.click();
+        await page.waitForFunction(() => fixture.notifications.length === 4);
+        assert.equal(await page.evaluate(() => fixture.commands.length), commandCount);
+        await page.evaluate(() => fixture.tracks.forEach(track => { delete track.playable; }));
+      }
       await page.evaluate(() => { fixture.controller.selectedPlayerId = 'local'; fixture.view.updateLibraryTrackActions(); });
       await page.locator('.network-library-main .library-folder-directory-row').click();
       await page.waitForFunction(() => document.querySelector('.network-library-main h2')?.textContent === 'Albums');
@@ -459,7 +545,8 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       await page.waitForFunction(() => fixture.requests.at(-1).objectId === 'playlists-one');
       assert.deepEqual(await page.locator('.network-library-main .library-track-title-text').allTextContents(), ['Morning Light', 'Across the Water', 'Morning Light']);
       assert.equal(await page.locator('.network-library-main .library-sort-button, .network-library-main .library-playlist-controls').count(), 0);
-      await page.evaluate(() => fixture.view.selectLibraryTrack(0, true));
+      assert.deepEqual(await page.locator('.network-library-main .library-paged-row').evaluateAll(rows => rows.map(row => row.getAttribute('aria-selected'))), ['true', 'true', 'true']);
+      await page.evaluate(() => fixture.view.selectLibraryTrack(0, true, { exclusive: true }));
       assert.deepEqual(await page.locator('.network-library-main .library-paged-row').evaluateAll(rows => rows.map(row => row.getAttribute('aria-selected'))), ['true', 'false', 'false']);
       // Pointer activation keeps the full context and starts at the clicked occurrence.
       await page.evaluate(() => fixture.view.libraryRows.forEach((_, index) => fixture.view.selectLibraryTrack(index, true)));
@@ -468,11 +555,11 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       if (mobile) await playlistRows.nth(2).click();
       else await playlistRows.nth(2).dispatchEvent('dblclick');
       await page.waitForFunction(count => fixture.commands.length === count + 1, activationCount);
-      assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), [[
+      assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1).slice(0, 3)), [[
         { serverId: 'rich', trackId: 'one:entry-0' }, { serverId: 'rich', trackId: 'two:entry-1' }, { serverId: 'rich', trackId: 'one:entry-2' }
       ], 'play', 2]);
       await playlistRows.nth(1).press('Enter');
-      assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), [[{ serverId: 'rich', trackId: 'two:entry-1' }], 'play', 0]);
+      assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1).slice(0, 3)), [[{ serverId: 'rich', trackId: 'two:entry-1' }], 'play', 0]);
       if (mobile) {
         await playlistRows.first().dispatchEvent('touchstart');
         await page.waitForFunction(() => fixture.library.root.classList.contains('mobile-selection-mode'));
@@ -480,6 +567,45 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       }
       await page.locator('.network-library-main .library-paged-play').click();
       assert.equal(await page.evaluate(() => fixture.commands.at(-1)[0].length), 3);
+      await page.evaluate(() => {
+        const { view, controller } = fixture;
+        fixture.savedAudioPlayer = window.uiManager.audioPlayer;
+        fixture.playbackState = { currentTrack: { meta: { networkLibrary: { serverId: 'rich', trackId: view.libraryRows[1].item.id } } } };
+        window.uiManager.audioPlayer = { stateManager: { getStateSnapshot: () => fixture.playbackState } };
+        fixture.playerUi = Object.create(fixture.AudioPlayerUI.prototype);
+        fixture.playerUi.audioPlayer = window.uiManager.audioPlayer;
+        controller.selectedPlayerId = 'local';
+        fixture.playerUi.notifyLibraryNowPlaying();
+      });
+      assert.equal(await page.locator('.network-library-main .now-playing').getAttribute('data-track-id'), 'two:entry-1');
+      assert.equal(await page.locator('.network-library-main .now-playing .library-now-playing-indicator').isVisible(), true);
+      await page.evaluate(() => {
+        fixture.playbackState.currentTrack.meta.networkLibrary.serverId = 'another-library';
+        fixture.playerUi.notifyLibraryNowPlaying();
+      });
+      assert.equal(await page.locator('.network-library-main .now-playing').count(), 0);
+      await page.evaluate(() => {
+        fixture.view.libraryRows[0].item.resources = [{ uri: 'https://music.test/first.flac' }];
+        fixture.playbackState.currentTrack = { meta: { openHomeQueueEntry: { uri: 'https://music.test/first.flac' } } };
+        fixture.playerUi.notifyLibraryNowPlaying();
+      });
+      assert.equal(await page.locator('.network-library-main [aria-current="true"]').getAttribute('data-track-id'), 'one:entry-0');
+      await page.evaluate(() => {
+        fixture.controller.selectedPlayerId = 'room';
+        fixture.view.libraryRows[0].item.mediaKeys = ['opaque-media-identity'];
+        fixture.controller.playerStates.set('room', { currentId: 8, queue: [{ id: 8, mediaKeys: ['opaque-media-identity'] }] });
+        fixture.view.refreshLibraryNowPlaying();
+      });
+      assert.equal(await page.locator('.network-library-main .now-playing').getAttribute('data-track-id'), 'one:entry-0');
+      await page.evaluate(() => {
+        fixture.controller.playerStates.get('room').currentId = 9;
+        fixture.view.refreshLibraryNowPlaying();
+      });
+      assert.equal(await page.locator('.network-library-main .now-playing').count(), 0);
+      await page.evaluate(() => {
+        fixture.controller.selectedPlayerId = 'local';
+        window.uiManager.audioPlayer = fixture.savedAudioPlayer;
+      });
       assert.equal(await page.evaluate(() => fixture.commands.at(-1)[2]), 0);
       await playlistRows.nth(2).locator('.library-paged-row-more').click();
       await page.locator('.library-context-menu button').first().click();
@@ -512,6 +638,32 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       await page.locator('.network-library-main .library-paged-entity-open').click();
       await page.waitForFunction(() => fixture.requests.at(-1).objectId === 'albums-one');
       assert.equal(await page.locator('.network-library-main .library-paged-detail-head').count(), 1);
+      assert.equal(await page.locator('.network-library-main .library-paged-select:checked').count(), 3);
+      const albumPlayCount = await page.evaluate(() => fixture.commands.length);
+      await page.locator('.network-library-main .library-paged-play').click();
+      await page.waitForFunction(count => fixture.commands.length === count + 1, albumPlayCount);
+      assert.equal(await page.evaluate(() => fixture.commands.at(-1)[0].length), 3);
+      await page.evaluate(() => {
+        fixture.originalBrowse = fixture.controller.api.networkMusicBrowse;
+        fixture.controller.api.networkMusicBrowse = async request => {
+          const result = await fixture.originalBrowse(request);
+          await new Promise(resolve => { fixture.releaseBrowse = resolve; });
+          return result;
+        };
+      });
+      await page.locator('.network-library-main .library-paged-play').click();
+      await page.waitForFunction(() => typeof fixture.releaseBrowse === 'function');
+      const preparation = page.locator('.library-paged-action-toast').last();
+      assert.equal(await preparation.getAttribute('role'), 'status');
+      assert.equal(await preparation.isVisible(), true);
+      await preparation.locator('.library-paged-action-toast-cancel').click();
+      assert.match(await preparation.textContent(), /Cancelled/);
+      await page.evaluate(() => {
+        fixture.controller.api.networkMusicBrowse = fixture.originalBrowse;
+        fixture.releaseBrowse();
+      });
+      await page.waitForFunction(() => fixture.view.playbackPreparation.state.terminalKind === 'cancelled');
+      assert.equal(await page.evaluate(() => fixture.commands.length), albumPlayCount + 1);
       await page.locator('.network-library-main .library-search').fill('Morning');
       await page.waitForFunction(() => fixture.requests.at(-1).query === 'Morning');
       assert.equal(await page.evaluate(() => fixture.requests.at(-1).objectId), '0', 'search covers the selected library, independent of the open category');
@@ -523,6 +675,20 @@ test('network browsing uses the Music Library shell, rows and gestures while kee
       await page.waitForFunction(() => fixture.commands.at(-1)?.[0]?.length === 3);
       assert.equal(await page.evaluate(() => fixture.controller.selectedPlayerId), target);
       assert.equal(await page.locator('.network-library-main .library-paged-add-playlist, .network-library-main .library-paged-folder-rescan').count(), 0);
+      const japanese = parseCommentedJSON(read('../../js/locales/ja.json5'));
+      await page.evaluate(translations => {
+        window.uiManager.t = (key, params = {}) => Object.entries(params).reduce((text, [name, value]) => text.replaceAll('{' + name + '}', value), translations[key] || key);
+        fixture.view.updateUITexts();
+      }, japanese);
+      await page.waitForFunction(label => document.querySelector('.network-library-nav [data-view="albums"] .library-nav-label').textContent === label, japanese['library.nav.albums']);
+      assert.equal(await page.locator('.library-source option[value="local"]').textContent(), japanese['networkMusic.local']);
+      assert.equal(await page.locator('.network-library-main .library-search').getAttribute('placeholder'), japanese['networkMusic.search'].replace('{name}', 'Studio catalog'));
+      await page.locator('.network-library-main .library-paged-entity-open').click();
+      await page.waitForFunction(() => fixture.view.libraryRows?.length === 3);
+      assert.equal(await page.locator('.network-library-main .library-paged-play').innerText(), japanese['library.action.play']);
+      assert.match(await page.locator('.network-library-main .library-paged-detail-head').innerText(), new RegExp(japanese['library.status.tracks']));
+      await page.locator('.network-library-main .library-back').click();
+      await page.evaluate(() => { window.uiManager.t = key => key; fixture.view.updateUITexts(); });
       // The real local renderer remains the presentation reference after extraction.
       await page.selectOption('.library-source select', 'local');
       await page.evaluate(() => {

@@ -666,7 +666,7 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   JavaScript and Python decoders expose this as `AnalogMeterTelemetryFrame`
   with `kind` `analogMeter`.
 
-- **Type 28 — `TAP_RHYTHM_ANALYZER`.** Format version 4 is exactly 1496 bytes.
+- **Type 28 — `TAP_RHYTHM_ANALYZER`.** Format version 5 is exactly 2024 bytes.
   A 32-byte header holds float32 sample rate, `u32` non-zero analysis
   generation, envelope hop in samples, and envelope frame count `E`, float32
   observation time and latency in seconds, `u32` count of events dropped since
@@ -692,6 +692,20 @@ is 1; `TAP_SCOPE_SNAPSHOT` (type 3), `TAP_STEREO_FIELD` (type 6), and
   precede twelve 12-byte preview slots: `i32` envelope frame, float32 fraction
   in [0, 1), and `i32` beat index. The preview replaces the previous path and
   remains revisable independently of the gate; its period is zero when unavailable.
+  At offset 1496, `u32` display mode (0 frequency bands, 1 drums), `u32`
+  drum-event count (maximum 16), float32 drum analysis latency in seconds
+  (70 ms model/peak lookahead plus the resampler and per-instance scheduling delays),
+  and a zero `u32` precede sixteen 32-byte drum slots at offset 1512.
+  Each slot contains `u32` audio-time tick, float32 tick fraction, `u32`
+  beat-grid epoch, `i32` beat index, float32 beat fraction and period in seconds,
+  float32 raw class logit, `u8` lane (0 Kick, 1 Snare, 2 Hi-hat, 3 Cymbals, 4 Tom),
+  `u8` annotation flag (0 committed, 1 unavailable, 3 provisional), and a zero
+  `u16`. Audio time is `(tick + fraction) * 256 / 24000` seconds; beat-grid
+  revisions never change that time or the recognized class. Drum display strength
+  is sigmoid(logit), independently of beat confidence. The Rhythm Analyzer display
+  uses lanes 0–3; Visualizer Drums uses all five lanes. A stream boundary
+  finishes the partial input hop and delivers accepted events before resetting;
+  if the telemetry ring is full, the boundary remains pending for a retry.
   Public JavaScript and Python decoders expose this as
   `RhythmAnalyzerTelemetryFrame` with `kind` `rhythmAnalyzer`.
 

@@ -5,12 +5,12 @@ import { drawStyledText } from './visualizer-text.js';
 import { lyricsFrame, lyricsOpacity, drawLyrics } from './visualizer-lyrics.js';
 import { counterFrame, animateCounterFrame, drawCounter } from './visualizer-counter.js';
 import { createAnalyzerDisplay } from './visualizer-analyzer-display.js';
-import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS, META_TEXT_TYPES } from './visualizer-model.js';
+import { REFERENCE_WIDTH, COUNTER_DIGIT_FONTS, META_TEXT_TYPES, VISUAL_TYPES } from './visualizer-model.js';
 import { VisualizerHDROutput } from './visualizer-hdr.js';
 import { drawPlaybackControl, playbackControlContains } from './visualizer-playback-control.js';
 import { drawSeekBar } from './visualizer-seek-bar.js';
 
-const ANALYZER_TYPES = new Set(['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'notes', 'guitar', 'chroma', 'level-meter', 'phase', 'analog-meter', 'rhythm-analyzer']);
+const ANALYZER_TYPES = new Set(VISUAL_TYPES);
 
 // Returns the [x, y, width, height] that places an image or video frame in a w x h box.
 function fitRect(image, w, h, fit) {

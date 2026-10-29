@@ -23,6 +23,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_create',
     'et_instance_destroy',
     'et_instance_reset',
+    'et_instance_stream_boundary',
     'et_instance_latency',
     'et_instance_set_tap',
     'et_instance_set_analysis_source',
@@ -478,6 +479,7 @@ class DspEngineBinding {
                 this.prepared = true;
                 this._maxChannels = maxChannels;
                 this._maxFrames = maxFrames;
+                this._sampleRate = sampleRate;
                 this._telemetryStagingPtr = this.exports.et_telemetry_staging_ptr(this.engine) >>> 0;
                 this._telemetryDroppedPtr = this.exports.et_scratch_ptr(this.engine) >>> 0;
                 this._telemetryCapacity = this.exports.et_telemetry_capacity(this.engine) >>> 0;
@@ -529,6 +531,11 @@ class DspEngineBinding {
     resetInstance(instanceId) {
         if (!this.engine) return ET_ERR_STATE;
         return this.exports.et_instance_reset(this.engine, instanceId);
+    }
+
+    streamBoundaryInstance(instanceId) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_stream_boundary(this.engine, instanceId);
     }
 
     instanceLatency(instanceId) {
@@ -707,6 +714,41 @@ class DspEngineBinding {
             frameCount,
             timeSeconds
         );
+    }
+
+    instanceProcessSpan(instanceId, audioPtr, channelCount, blockFrames, firstFrame, frameCount, timeSeconds) {
+        if (!this.engine || !this.prepared) return ET_ERR_STATE;
+        if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > this._maxChannels ||
+            !Number.isInteger(blockFrames) || blockFrames < 1 || blockFrames > this._maxFrames ||
+            !Number.isInteger(firstFrame) || firstFrame < 0 || !Number.isInteger(frameCount) ||
+            frameCount < 0 || firstFrame + frameCount > blockFrames) {
+            throw new RangeError('DSP instance span is outside the planar block');
+        }
+        this._refreshViews();
+        this._assertRange(audioPtr, channelCount * blockFrames * 4, 'DSP instance span');
+        const scratchPtr = this.scratchPtr();
+        const scratch = scratchPtr / 4;
+        const source = audioPtr / 4;
+        const capacity = Math.floor(SCRATCH_BYTES / (channelCount * 4));
+        for (let offset = 0; offset < frameCount; offset += capacity) {
+            const count = Math.min(capacity, frameCount - offset);
+            for (let channel = 0; channel < channelCount; channel++) {
+                for (let i = 0; i < count; i++) {
+                    this.f32[scratch + channel * count + i] =
+                        this.f32[source + channel * blockFrames + firstFrame + offset + i];
+                }
+            }
+            const status = this.instanceProcess(instanceId, scratchPtr, channelCount, count,
+                timeSeconds + (firstFrame + offset) / this._sampleRate);
+            if (status !== 0) return status;
+            for (let channel = 0; channel < channelCount; channel++) {
+                for (let i = 0; i < count; i++) {
+                    this.f32[source + channel * blockFrames + firstFrame + offset + i] =
+                        this.f32[scratch + channel * count + i];
+                }
+            }
+        }
+        return 0;
     }
 
     arenaCombinedPtr() {
@@ -1257,7 +1299,10 @@ const FIR_CONVOLVER_PLUGIN_TYPES = new Set([
 const ET_DSP_MAX_CHANNELS = 16;
 const ET_DSP_DEFAULT_MAX_FRAMES = 128;
 // Plugin type whose analysis restarts at each track start of the player's playback.
-const ET_STREAM_BOUNDARY_PLUGIN_TYPE = 'RhythmAnalyzerPlugin';
+const ET_STREAM_BOUNDARY_ACTIONS = Object.freeze({
+    RhythmAnalyzerPlugin: 'streamBoundaryInstance',
+    NoteSpectrogramPlugin: 'streamBoundaryInstance'
+});
 const ET_DSP_ERR_ARGS = -1;
 const ET_DSP_TELEMETRY_BYTES = 256 * 1024;
 // SFZ sample banks have a separate allowance; other assets retain their existing budget.
@@ -1448,6 +1493,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.dspFailedTypes = new Set();
         this.dspReportedFailures = new Set();
         this.dspPacketPool = [];
+        this.dspBoundaryPacket = new Uint8Array(ET_DSP_TELEMETRY_BYTES);
         this.hqPacketPool = null;
         this.dspTelemetryRateHz = null;
         this.dspSampleRate = globalThis.sampleRate;
@@ -1819,12 +1865,8 @@ class PluginProcessor extends AudioWorkletProcessor {
                     this._resetTemporalPlugin(data.pluginId);
                     break;
                 case 'streamBoundary':
-                    // The next track start of the player's playback, in AudioContext frames (null cancels it).
-                    // It replaces any boundary still ahead; one already reached stays until its delayed resets run.
-                    this.streamBoundaries = this.streamBoundaries.filter(
-                        boundary => boundary.frame <= globalThis.currentFrame
-                    );
-                    if (Number.isFinite(data.frame)) this.streamBoundaries.push({ frame: data.frame, done: new Set() });
+                    if (Object.hasOwn(data, 'frame')) this.reserveStreamBoundary('start', data.frame);
+                    if (Object.hasOwn(data, 'endFrame')) this.reserveStreamBoundary('end', data.endFrame);
                     break;
                 case 'reset':
                     this.frequencyPreview.targetGain = 0;
@@ -2075,42 +2117,150 @@ class PluginProcessor extends AudioWorkletProcessor {
         return this.dspBinding.resetInstance(wasmInstance.id) === 0;
     }
 
-    // Restarts each stream-boundary plugin's analysis at the render quantum start nearest to the moment the
-    // boundary reaches its input: the boundary frame plus its input latency, or the whole pipeline latency for a
-    // Visualizer instance, which taps the pipeline output.
-    applyStreamBoundaries(blockSize) {
+    reserveStreamBoundary(kind, frame) {
+        for (const boundary of this.streamBoundaries) {
+            if (boundary.frame > globalThis.currentFrame) boundary[kind] = false;
+        }
+        this.streamBoundaries = this.streamBoundaries.filter(boundary => boundary.start || boundary.end);
+        if (!Number.isFinite(frame)) return;
+        const target = Math.round(frame);
+        let boundary = this.streamBoundaries.find(item => item.frame === target);
+        if (!boundary) {
+            boundary = { frame: target, start: false, end: false, done: new Set() };
+            this.streamBoundaries.push(boundary);
+            this.streamBoundaries.sort((a, b) => a.frame - b.frame);
+        }
+        boundary[kind] = true;
+    }
+
+    // Note Spectrogram retains its existing quantum-aligned boundary. Rhythm handles finite
+    // input at the exact sample in processRhythmStreamBlock, after upstream delay compensation.
+    applyStreamBoundaries(blockSize, processingCompleted = false) {
         const boundaries = this.streamBoundaries;
         const due = globalThis.currentFrame + (blockSize >> 1);
         let kept = 0;
         for (const boundary of boundaries) {
-            if (this.applyStreamBoundary(boundary, due)) boundaries[kept++] = boundary;
+            if (this.applyStreamBoundary(boundary, due, processingCompleted ? blockSize : null)) {
+                boundaries[kept++] = boundary;
+            }
         }
         boundaries.length = kept;
     }
 
     // Returns whether any reset of this boundary is still pending.
-    applyStreamBoundary(boundary, due) {
-        let pending = boundary.frame > due;
+    applyStreamBoundary(boundary, due, completedBlockSize = null) {
+        let pending = boundary.frame > (completedBlockSize === null
+            ? due : globalThis.currentFrame + completedBlockSize);
         for (const plugin of this.plugins) {
-            if (plugin.type !== ET_STREAM_BOUNDARY_PLUGIN_TYPE || boundary.done.has(plugin.id)) continue;
+            const action = ET_STREAM_BOUNDARY_ACTIONS[plugin.type];
+            if (!action || boundary.done.has(plugin.id)) continue;
+            if (plugin.type === 'RhythmAnalyzerPlugin') {
+                const entry = this.wasmInstances.get(plugin.id);
+                if (!this.completeRhythmStreamBoundary(boundary, plugin.id, entry,
+                    this.dspLatencyPlan?.tapPositions?.[plugin.id]?.input ?? 0, completedBlockSize)) pending = true;
+                continue;
+            }
+            if (completedBlockSize !== null) {
+                pending = true;
+                continue;
+            }
             if (boundary.frame + (this.dspLatencyPlan?.tapPositions?.[plugin.id]?.input ?? 0) > due) {
                 pending = true;
             } else {
-                this._resetTemporalPlugin(plugin.id);
+                const instance = this.wasmInstances.get(plugin.id);
+                if (instance && !this.finishStreamBoundaryInstance(instance.id, plugin.type)) {
+                    pending = true;
+                    continue;
+                }
+                this.pluginContexts.delete(plugin.id);
                 boundary.done.add(plugin.id);
             }
         }
         const visualizerFrame = boundary.frame + (this.dspLatencyPlan?.totalSamples ?? 0);
         for (const [tapId, entry] of this.visualizerInstances) {
-            if (entry.type !== ET_STREAM_BOUNDARY_PLUGIN_TYPE || boundary.done.has(tapId)) continue;
+            const action = ET_STREAM_BOUNDARY_ACTIONS[entry.type];
+            if (!action || boundary.done.has(tapId)) continue;
+            if (entry.type === 'RhythmAnalyzerPlugin') {
+                if (!this.completeRhythmStreamBoundary(boundary, tapId, entry,
+                    this.dspLatencyPlan?.totalSamples ?? 0, completedBlockSize)) pending = true;
+                continue;
+            }
+            if (completedBlockSize !== null) {
+                pending = true;
+                continue;
+            }
             if (visualizerFrame > due) {
                 pending = true;
             } else {
-                this.dspBinding.resetInstance(entry.id);
+                if (!this.finishStreamBoundaryInstance(entry.id, entry.type)) {
+                    pending = true;
+                    continue;
+                }
                 boundary.done.add(tapId);
             }
         }
         return pending;
+    }
+
+    completeRhythmStreamBoundary(boundary, key, entry, inputDelay, completedBlockSize) {
+        if (entry && entry.lastStreamBoundaryFrame !== boundary.frame) {
+            // Exact audio processing owns the boundary first. After the quantum, a remaining
+            // reached boundary belongs to an instance skipped by the actual execution path.
+            if (completedBlockSize === null ||
+                boundary.frame + inputDelay > globalThis.currentFrame + completedBlockSize ||
+                !this.finishStreamBoundaryInstance(entry.id, 'RhythmAnalyzerPlugin', completedBlockSize)) {
+                return false;
+            }
+            entry.lastStreamBoundaryFrame = boundary.frame;
+            this.pluginContexts.delete(key);
+        }
+        boundary.done.add(key);
+        return true;
+    }
+
+    finishStreamBoundaryInstance(instanceId, type, blockSize = 0) {
+        let status = this.dspBinding.streamBoundaryInstance(instanceId);
+        if (type !== 'RhythmAnalyzerPlugin') return true;
+        // EOF events must leave the kernel before its next generation starts.
+        // Reading the existing ring also makes room for a backpressured final batch.
+        this.pumpDspTelemetry(blockSize, true);
+        if (status !== 0) status = this.dspBinding.streamBoundaryInstance(instanceId);
+        if (status === 0) this.pumpDspTelemetry(blockSize, true);
+        return status === 0;
+    }
+
+    rhythmBoundaryDue(key, entry, inputDelay, blockSize) {
+        const end = globalThis.currentFrame + blockSize;
+        return this.streamBoundaries.some(boundary => !boundary.done.has(key) &&
+            entry.lastStreamBoundaryFrame !== boundary.frame && boundary.frame + inputDelay <= end);
+    }
+
+    processRhythmStreamBlock(key, entry, audioPtr, channels, frames, time, inputDelay) {
+        if (!this.rhythmBoundaryDue(key, entry, inputDelay, frames)) {
+            return this.dspBinding.instanceProcess(entry.id, audioPtr, channels, frames, time);
+        }
+        let first = 0;
+        for (const boundary of this.streamBoundaries) {
+            if (boundary.done.has(key)) continue;
+            if (entry.lastStreamBoundaryFrame === boundary.frame) {
+                boundary.done.add(key);
+                continue;
+            }
+            const offset = Math.max(0, boundary.frame + inputDelay - globalThis.currentFrame);
+            if (offset > frames) break;
+            if (offset > first) {
+                const status = this.dspBinding.instanceProcessSpan(
+                    entry.id, audioPtr, channels, frames, first, offset - first, time);
+                if (status !== 0) return status;
+            }
+            if (!this.finishStreamBoundaryInstance(entry.id, 'RhythmAnalyzerPlugin', frames)) return -2;
+            entry.lastStreamBoundaryFrame = boundary.frame;
+            boundary.done.add(key);
+            this.pluginContexts.delete(key);
+            first = offset;
+        }
+        return this.dspBinding.instanceProcessSpan(entry.id, audioPtr, channels, frames,
+            first, frames - first, time);
     }
 
     nextSpectrumTapGeneration() {
@@ -2979,8 +3129,16 @@ class PluginProcessor extends AudioWorkletProcessor {
             if (source && entry.type === source.type && entry.channel === source.channel &&
                 entry.gain === source.gain &&
                 entry.paramsHash === source.paramsHash &&
-                entry.params.length === source.params.length &&
-                entry.params.every((value, index) => value === source.params[index])) continue;
+                entry.params.length === source.params.length) {
+                if (entry.params.every((value, index) => value === source.params[index])) continue;
+                // Display mode does not change Rhythm Analyzer's beat tracker.
+                if (entry.type === 'RhythmAnalyzerPlugin' && entry.params.length === 4 &&
+                    entry.params.every((value, index) => index === 3 || value === source.params[index]) &&
+                    this.dspBinding.instanceSetParams(entry.id, source.params, source.paramsHash) === 0) {
+                    entry.params = source.params;
+                    continue;
+                }
+            }
             this.dspBinding.destroyInstance(entry.id);
             this.visualizerInstances.delete(tapId);
         }
@@ -4378,6 +4536,14 @@ class PluginProcessor extends AudioWorkletProcessor {
             frameCount > this.maxFrameCount) {
             return ET_DSP_PIPELINE_FALLBACK;
         }
+        for (const plugin of this.plugins) {
+            if (plugin.type !== 'RhythmAnalyzerPlugin') continue;
+            const entry = this.wasmInstances.get(plugin.id);
+            const delay = this.dspLatencyPlan?.tapPositions?.[plugin.id]?.input ?? 0;
+            if (entry && this.rhythmBoundaryDue(plugin.id, entry, delay, frameCount)) {
+                return ET_DSP_PIPELINE_FALLBACK;
+            }
+        }
 
         const expectedMemory = this.dspBinding.memory?.buffer;
         if (!this.isDspArenaViewCurrent(combinedBuffer, expectedMemory, totalSize)) {
@@ -4498,12 +4664,13 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: 'dspCleanupNeeded' });
     }
 
-    pumpDspTelemetry(blockSize = 128) {
+    pumpDspTelemetry(blockSize = 128, finalBoundary = false) {
         this.visualizerTapNeedsPump = false;
-        if (!this.dspLive || this.dspPacketPool.length === 0 ||
+        if (!this.dspLive || (!finalBoundary && (this.dspPacketPool.length === 0 ||
             (this.powerPolicy.enabled && !this.powerPolicy.uiTelemetryEnabled &&
-                this.visualizerInstances.size === 0)) return;
-        const packetView = this.dspPacketPool.pop();
+                this.visualizerInstances.size === 0)))) return;
+        const pooled = this.dspPacketPool.length !== 0;
+        const packetView = pooled ? this.dspPacketPool.pop() : this.dspBoundaryPacket;
         try {
             const bytes = this.dspBinding.telemetryRead(packetView);
             if (this.powerPolicy.enabled) this.powerPolicy.counters.telemetryReads++;
@@ -4515,14 +4682,15 @@ class PluginProcessor extends AudioWorkletProcessor {
                     contextFrameOffset: globalThis.currentFrame + blockSize - this.currentFrame,
                     packet,
                     bytes,
+                    ...(pooled ? {} : { recycle: false }),
                     droppedFrames: this.dspBinding.lastTelemetryDroppedFrames >>> 0
-                }, [packet]);
+                }, pooled ? [packet] : []);
                 if (this.powerPolicy.enabled) this.powerPolicy.counters.telemetryPosts++;
             } else {
-                this.dspPacketPool.push(packetView);
+                if (pooled) this.dspPacketPool.push(packetView);
             }
         } catch (error) {
-            this.dspPacketPool.push(packetView);
+            if (pooled) this.dspPacketPool.push(packetView);
             this.failDspEngine('runtime', error?.message || String(error));
         }
     }
@@ -4614,8 +4782,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                 scratch[frameCount + frame] = (rightData?.[frame] || 0) * gain;
             }
             try {
-                const status = this.dspBinding.instanceProcess(entry.id, ptr, 2, frameCount,
-                    blockStartFrame / (this.dspSampleRate || globalThis.sampleRate));
+                const time = blockStartFrame / (this.dspSampleRate || globalThis.sampleRate);
+                const status = entry.type === 'RhythmAnalyzerPlugin'
+                    ? this.processRhythmStreamBlock(tapId, entry, ptr, 2, frameCount, time,
+                        this.dspLatencyPlan?.totalSamples ?? 0)
+                    : this.dspBinding.instanceProcess(entry.id, ptr, 2, frameCount, time);
                 if (status !== 0) {
                     this.dspBinding.destroyInstance(entry.id);
                     this.visualizerInstances.delete(tapId);
@@ -5371,6 +5542,7 @@ class PluginProcessor extends AudioWorkletProcessor {
         this.lastBlockPowerSkipped = false;
         if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize);
         const keepAlive = this.processPipeline(inputs, outputs, parameters);
+        if (this.streamBoundaries.length) this.applyStreamBoundaries(blockSize, true);
         if (!this.lastBlockPowerSkipped && this.hasExecutionLatencyDrift()) {
             this.refreshDspPipelineForLatencyChange();
         }
@@ -6182,7 +6354,11 @@ class PluginProcessor extends AudioWorkletProcessor {
                     let status = 0;
                     let processError = null;
                     try {
-                        status = this.dspBinding.instanceProcess(
+                        status = plugin.type === 'RhythmAnalyzerPlugin'
+                            ? this.processRhythmStreamBlock(plugin.id, wasmEntry, audioPtr,
+                                numProcessingChannels, blockSize, time,
+                                this.dspLatencyPlan?.tapPositions?.[plugin.id]?.input ?? 0)
+                            : this.dspBinding.instanceProcess(
                             wasmEntry.id,
                             audioPtr,
                             numProcessingChannels,

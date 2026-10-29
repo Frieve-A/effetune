@@ -4,6 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { AndroidAudioManager } from '../../js/android/audio-manager.js';
+import { AndroidAssets } from '../../js/android/assets.js';
+import { prepareAndroidPipeline } from '../../js/android/pipeline.js';
 import { fileURLToPath } from 'node:url';
 
 import * as contract from '../../js/ir-library/ir-plugin-contract.js';
@@ -558,6 +561,91 @@ test('IR Reverb gives live and offline descriptors the requested deterministic a
   } finally {
     plugin.cleanup();
   }
+});
+
+test('native IR hydration resolves host PCM and a genuine control edit owns the pending preparation', async () => {
+  const irId = 'a'.repeat(24), decoded = deferred(), entered = deferred();
+  const entry = { irId, fileLabel: 'resident.wav', channels: 1 };
+  const libraryService = { store: { async updateAnalysis() {} }, get: () => entry,
+    async resolveDecodedPcm() { entered.resolve(); return decoded.promise; } };
+  const { Plugin, window } = loadPlugin({ libraryService });
+  const plugin = new Plugin();
+  const commits = [];
+  window.audioManager = { getMutationOptions: () => undefined,
+    withMutationOptions(options, commit) { commits.push(options.nativeHydration === true); return commit(); } };
+  const parameters = { ir: irId, ...plugin._captureAssetControls() };
+  const definition = { externalAssetParameters: parameters,
+    externalAssetSignature: plugin._externalAssetSignature({ ir: irId }) };
+  try {
+    const hydrate = plugin.hydrateExternalAsset(definition, { nativeHydration: true, isCurrent: () => true });
+    await entered.promise;
+    let offlineComplete = false;
+    const offline = plugin.createOfflineDspState({ sampleRate: 48000, outputChannelCount: 2 })
+      .then(state => { offlineComplete = true; return state; });
+    await Promise.resolve(); assert.equal(offlineComplete, false);
+    plugin.setParameters({ dt: 75, dw: -6 });
+    // A native wet/routing edit still describes the old resident preparation.
+    // Applying it must not overwrite the user's pending Decay value.
+    const references = { 'IRReverbPlugin:7:0': { id: 'resident.bin' } };
+    plugin.androidAssetSignature = JSON.stringify(Object.entries(references));
+    const manager = { pipelineA: [plugin], pipelineB: [], catalogPublished: true,
+      snapshot: { revision: 3, slot: 'A', pipeline: [{ id: 7, type: 'IRReverbPlugin', name: 'IR Reverb',
+        enabled: true, parameters: { ...parameters, dt: 100, dw: -3, inputBus: 2, outputBus: 3 } }],
+      assetRefs: references, assetDefinitions: { 'IRReverbPlugin:7:0': { id: 'resident.bin', ...definition } } },
+      nativeAssets: { synchronize() {}, adopt() {}, resident: new Map() }, pipelineProcessor: { setPipeline() {} } };
+    const previousWindow = globalThis.window;
+    globalThis.window = window;
+    const setEnabled = plugin.setEnabled;
+    plugin.setEnabled = value => { plugin.enabled = value; };
+    try {
+      await AndroidAudioManager.prototype.hydratePipeline.call(manager, { createPlugin() { throw new Error('Pending plugin replaced'); } });
+      assert.equal(plugin._currentRequestedAssetDefinition().controls.dt, 75);
+      assert.equal(plugin.dw, -3); assert.equal(plugin.inputBus, 2); assert.equal(plugin.outputBus, 3);
+    } finally { globalThis.window = previousWindow; plugin.setEnabled = setEnabled; }
+    decoded.resolve({ channels: [new Float32Array([1, 0.5, 0.25, 0])], sampleRate: 48000 });
+    await hydrate;
+    const state = await offline;
+    assert.equal(plugin.dt, 75); assert.equal(plugin.dw, -3);
+    assert.ok(plugin._pcm && plugin._prepared); assert.equal(state.assets.size, 1);
+    assert.equal(plugin.retainedAssets.get(0).externalAssetParameters.dt, 75);
+    assert.deepEqual(commits, [], 'the genuine edit must leave the hydration-only scope');
+  } finally { decoded.resolve(null); plugin.cleanup(); }
+});
+
+test('first parameter commit after native hydration retains IR residency until routing changes', async () => {
+  const irId = 'b'.repeat(24), entry = { irId, fileLabel: 'resident.wav', channels: 1 };
+  const { Plugin, window } = loadPlugin({ libraryService: {
+    store: { async updateAnalysis() {} }, get: () => entry,
+    async resolveDecodedPcm() { return { channels: [new Float32Array([1, 0.5, 0])], sampleRate: 48000 }; }
+  } });
+  const plugin = new Plugin(), commands = [];
+  plugin.getWasmAssets = () => plugin.retainedAssets;
+  plugin.setEnabled = value => { plugin.enabled = value; };
+  const manager = Object.create(AndroidAudioManager.prototype);
+  const previousWindow = globalThis.window;
+  globalThis.window = window;
+  try {
+    await plugin.loadLibraryEntry(entry);
+    const asset = plugin.getWasmAssets().get(0), key = 'IRReverbPlugin:7:0';
+    const snapshot = { revision: 4, sampleRate: 48000, channelCount: 2, slot: 'A',
+      pipeline: prepareAndroidPipeline([plugin], { sampleRate: 48000 }).plugins,
+      assetRefs: { [key]: { id: 'original-ir.bin' } },
+      assetDefinitions: { [key]: { id: 'original-ir.bin', externalAssetSignature: asset.externalAssetSignature } } };
+    const bridge = { async request(command) { commands.push(command); return snapshot; } };
+    Object.assign(manager, { snapshot, bridge, pipelineA: [plugin], pipelineB: [], catalogPublished: true,
+      pendingMutation: Promise.resolve(), nativeAssets: new AndroidAssets(bridge),
+      pipelineProcessor: { setPipeline() {} }, acceptSnapshot() {} });
+    await manager.hydratePipeline({ nextPluginId: 8, createPlugin() { throw new Error('Resident plugin replaced'); } });
+    plugin.setParameters({ dw: -6 });
+    await manager.rebuildPipeline();
+    assert.deepEqual(commands, ['pipeline.set']);
+    assert.equal(manager.nativeAssets.authoritative.get('7:0'), 'original-ir.bin');
+    assert.equal(manager.nativeAssets.resident.get('7:0'), asset);
+
+    plugin.outputBus = 2;
+    await manager.rebuildPipeline();
+    assert.ok(commands.includes('pipeline.asset.commit'), 'a changed graph still invalidates residency');
+  } finally { globalThis.window = previousWindow; plugin.cleanup(); }
 });
 
 test('IR library service creation retries after rejection without stale promise clobbering', async () => {
@@ -1487,6 +1575,66 @@ test('IR replacements retain the resident asset until admission while explicit c
   } finally {
     plugin.cleanup();
   }
+});
+
+test('revoked remote IR preparation cannot commit and does not capture later local edits', async () => {
+  const pending = deferred();
+  const entered = deferred();
+  const local = { irId: 'aaaaaaaaaaaaaaaaaaaaaaaa', fileLabel: 'Local.wav', composition: 'single', channels: 1 };
+  const remote = { ...local, irId: 'bbbbbbbbbbbbbbbbbbbbbbbb', fileLabel: 'Remote.wav' };
+  const pcm = { channels: [new Float32Array([1, 0])], sampleRate: 48000 };
+  const libraryService = {
+    store: { async updateAnalysis() {} },
+    get: id => id === local.irId ? local : remote,
+    resolveDecodedPcm: async id => { if (id === remote.irId) { entered.resolve(); return pending.promise; } return pcm; }
+  };
+  const { Plugin } = loadPlugin({ libraryService });
+  const plugin = new Plugin();
+  let current = true;
+  try {
+    await plugin.loadLibraryEntry(local);
+    plugin.onWasmAssetState(0, 3, plugin.getWasmAssetOperationRevision(0));
+    const resident = plugin.assets.at(-1).descriptor;
+    const loading = plugin.loadLibraryEntry(remote, undefined, { mutationOptions: {
+      isCurrent: () => current,
+      beforeCommit: async () => { if (!current) throw new Error('unauthorized'); }
+    } });
+    await entered.promise;
+    current = false;
+    plugin.setParameters({ dw: -4 });
+    pending.resolve(pcm);
+    await assert.rejects(loading, /unauthorized/);
+    assert.equal(plugin.assets.at(-1).descriptor, resident);
+    assert.equal(plugin.dw, -4);
+    assert.equal(await plugin.loadLibraryEntry(local), true);
+    assert.equal(plugin.dw, -4);
+  } finally { plugin.cleanup(); }
+});
+
+test('timer-driven remote IR controls retain their guard without tagging later local preparation', async () => {
+  const { Plugin, window } = loadPlugin();
+  const plugin = new Plugin();
+  let mutationOptions = null;
+  let current = true;
+  window.audioManager = { getMutationOptions: () => mutationOptions };
+  plugin._pcm = { channels: [new Float32Array([1, 0, 0, 0])], sampleRate: 48000 };
+  try {
+    await plugin._prepareAndStage(++plugin._generation);
+    const count = plugin.assets.length;
+    mutationOptions = { beforeCommit: async () => { if (!current) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' }); } };
+    plugin.setParameters({ co: 1 });
+    const pending = plugin._assetResolutionPromise;
+    mutationOptions = null;
+    current = false;
+    plugin.setParameters({ dw: -4 });
+    await assert.rejects(withTimeout(pending, 'delayed remote preparation did not settle'), /unauthorized/);
+    assert.equal(plugin.assets.length, count);
+    assert.equal(plugin.dw, -4);
+    plugin.setParameters({ co: 2 });
+    await withTimeout(plugin._assetResolutionPromise, 'local preparation did not settle');
+    assert.ok(plugin.assets.length > count);
+    assert.equal(plugin.dw, -4);
+  } finally { plugin.cleanup(); }
 });
 
 test('retained replacement rejection restores old IR metadata without clear and allows later success', async () => {

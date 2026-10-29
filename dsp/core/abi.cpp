@@ -138,6 +138,11 @@ std::uint32_t et_instance_latency(et_engine engine, et_instance instance) {
   return target == nullptr ? 0u : target->instanceLatency(instance);
 }
 
+et_status et_instance_stream_boundary(et_engine engine, et_instance instance) {
+  auto *target = findEngine(engine);
+  return target == nullptr ? ET_ERR_ARGS : target->streamBoundaryInstance(instance);
+}
+
 et_status et_instance_set_analysis_source(et_engine engine, et_instance consumer,
                                           et_instance producer) {
   auto *instance = findEngine(engine);

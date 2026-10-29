@@ -2,23 +2,26 @@ import {
     PIPELINE_ANALYZER_MLS_LENGTHS,
     PIPELINE_ANALYZER_TSP_LENGTHS
 } from './mls.js';
+import { AnalysisPlot } from '../../features/measurement/ui/analysis-plot.js';
 
 const MAX_OUTPUT_SLOTS = 4;
 const NARROW_LAYOUT_QUERY = '(max-width: 1180px)';
 const DEFAULT_GRAPH_SIZE = Object.freeze({ width: 1024, height: 480 });
-const SIGNAL_TYPES = Object.freeze(['mls', 'tsp', 'impulse']);
+const SIGNAL_TYPES = Object.freeze(['ess', 'mls', 'tsp', 'impulse']);
 const GRAPH_VIEWS = Object.freeze([
     'frequency',
     'phase',
     'minimumGroupDelay',
     'excessGroupDelay',
-    'impulse'
+    'impulse',
+    'distortion',
+    'waterfall'
 ]);
 
 const DEFAULT_MEASUREMENT_SETTINGS = Object.freeze({
-    signalType: 'mls',
+    signalType: 'ess',
     levelDb: -12,
-    sequenceLength: 65535,
+    sequenceLength: 131072,
     stabilizationPeriods: 12,
     averagingPeriods: 2
 });
@@ -47,11 +50,15 @@ const FALLBACK_TEXT = Object.freeze({
     auto: 'Auto',
     measurementSettings: 'Measurement settings',
     signal: 'Signal',
+    signalEss: 'Log Sweep',
     signalMls: 'MLS',
     signalTsp: 'TSP',
     signalImpulse: 'Unit Impulse',
     level: 'Level',
     sequenceLength: 'Sequence Length',
+    requestedSweepLength: 'Requested sweep length',
+    requestedSweep: 'Requested sweep length: {samples} samples ({seconds} s)',
+    sweepLength: 'Sweep length: {samples} samples ({seconds} s)',
     stabilizationPeriods: 'Stabilization Periods',
     averagingPeriods: 'Averages',
     currentSupport: 'Current support: {samples} samples ({seconds} s)',
@@ -66,6 +73,19 @@ const FALLBACK_TEXT = Object.freeze({
     minimumGroupDelay: 'Min Group Delay',
     excessGroupDelay: 'Excess Group Delay',
     impulse: 'Impulse',
+    distortion: 'Distortion',
+    waterfall: 'Waterfall',
+    harmonics: 'Harmonics',
+    response: 'Response',
+    before: 'Before',
+    after: 'After',
+    distortionEssRequired: 'Select Log Sweep to measure distortion.',
+    distortionNoResponse: 'No measurable response was found. Check the selected input, output, and effect settings, then measure again.',
+    distortionQuality: 'These distortion results may be inaccurate. Try a longer sweep or check effects that change over time.',
+    analysisUnavailable: 'No response is available for this graph. Measure again after checking the selected input and output.',
+    waterfallNoResponse: 'No measurable response was found for this response. Check the selected input, output, and effect settings, then measure again.',
+    waterfallOtherResponse: 'No measurable response was found for this response. Select {response} to view the available response.',
+    waterfallControls: 'Drag to rotate; scroll or pinch to zoom. Use Shift + arrow keys to rotate, + or − to zoom, and Shift + Home to reset the view.',
     smoothingOct: 'Smoothing (oct):',
     impulseRange: 'Impulse Range (ms):',
     graph: 'Pipeline response graph',
@@ -152,7 +172,7 @@ function normalizeDisplaySettings(settings = {}) {
     };
 }
 
-// MLS needs its 2^n-1 periods; TSP and Unit Impulse both work on power-of-two lengths.
+// MLS needs its 2^n-1 periods; the other signals use power-of-two requested lengths.
 function sequenceLengthsForSignal(signalType) {
     return signalType === 'mls'
         ? PIPELINE_ANALYZER_MLS_LENGTHS
@@ -169,7 +189,7 @@ function normalizeMeasurementSettings(settings = {}) {
         levelDb: clampInteger(settings.levelDb, -60, 0, DEFAULT_MEASUREMENT_SETTINGS.levelDb),
         sequenceLength: allowedLengths.includes(settings.sequenceLength)
             ? settings.sequenceLength
-            : signalType === 'mls' ? DEFAULT_MEASUREMENT_SETTINGS.sequenceLength : 65536,
+            : signalType === 'ess' ? 131072 : signalType === 'mls' ? 65535 : 65536,
         stabilizationPeriods: clampInteger(
             settings.stabilizationPeriods,
             1,
@@ -189,11 +209,11 @@ function sequenceLengthForSignal(sequenceLength, signalType) {
     if (signalType === 'mls') {
         if (PIPELINE_ANALYZER_MLS_LENGTHS.includes(sequenceLength)) return sequenceLength;
         if (PIPELINE_ANALYZER_TSP_LENGTHS.includes(sequenceLength)) return sequenceLength - 1;
-        return DEFAULT_MEASUREMENT_SETTINGS.sequenceLength;
+        return 65535;
     }
     if (PIPELINE_ANALYZER_TSP_LENGTHS.includes(sequenceLength)) return sequenceLength;
     if (PIPELINE_ANALYZER_MLS_LENGTHS.includes(sequenceLength)) return sequenceLength + 1;
-    return 65536;
+    return signalType === 'ess' ? 131072 : 65536;
 }
 
 function normalizeOutput(output = {}, fallbackChannel = 0) {
@@ -216,12 +236,14 @@ export class PipelineAnalyzerUI {
         documentRef = globalThis.document,
         windowRef = globalThis.window,
         onOpenChange = null,
+        onLayoutChange = null,
         onConfigurationChange = null,
         onRefreshMeasurements = null
     } = {}) {
         this.document = documentRef;
         this.window = windowRef;
         this.onOpenChange = onOpenChange;
+        this.onLayoutChange = onLayoutChange;
         this.onConfigurationChange = onConfigurationChange;
         this.onRefreshMeasurements = onRefreshMeasurements;
         this.button = documentRef?.getElementById?.('pipelineAnalyzerButton') || null;
@@ -239,6 +261,9 @@ export class PipelineAnalyzerUI {
         this.legendValues = new Map();
         this.highlightedCurveId = null;
         this.cursorPosition = null;
+        this.selectedHarmonics = new Set([0, 2, 3]);
+        this.waterfallResponse = 'after';
+        this.waterfallView = {};
         this.open = false;
         this.collapsed = false;
         this.updatingControls = false;
@@ -324,9 +349,11 @@ export class PipelineAnalyzerUI {
             );
             this.configuration.measurementSettings.signalType = value;
             this.renderMeasurementSettings();
+            this.renderGraph();
             this.emitConfigurationChange();
         });
         this.signalSelect.append(
+            this.createOption('ess', this.t('signalEss')),
             this.createOption('mls', this.t('signalMls')),
             this.createOption('tsp', this.t('signalTsp')),
             this.createOption('impulse', this.t('signalImpulse'))
@@ -461,6 +488,48 @@ export class PipelineAnalyzerUI {
             this.legend,
             this.graphSpinner
         );
+        this.analysisMount = createElement(this.document, 'div', 'pipeline-analyzer-canvas-mount');
+        this.analysisMount.hidden = true;
+        this.analysisCanvas = createElement(this.document, 'canvas', 'pipeline-analyzer-canvas');
+        this.analysisCanvas.tabIndex = 0;
+        this.analysisCanvas.setAttribute('role', 'img');
+        this.analysisOutput = createElement(this.document, 'output', 'pipeline-analyzer-analysis-readout');
+        this.analysisOutput.setAttribute('aria-live', 'polite');
+        this.analysisMount.append(this.analysisCanvas, this.analysisOutput);
+        this.graphShell.appendChild(this.analysisMount);
+        this.analysisControls = createElement(this.document, 'div', 'pipeline-analyzer-analysis-controls');
+        this.harmonicControls = createElement(this.document, 'div', 'pipeline-analyzer-harmonics');
+        this.harmonicControls.setAttribute('role', 'group');
+        this.harmonicInputs = new Map();
+        for (const order of [0, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+            const label = createElement(this.document, 'label');
+            const input = createElement(this.document, 'input');
+            input.type = 'checkbox';
+            input.checked = this.selectedHarmonics.has(order);
+            input.addEventListener('change', () => {
+                if (input.checked) this.selectedHarmonics.add(order);
+                else this.selectedHarmonics.delete(order);
+                this.renderGraph();
+            });
+            const text = createElement(this.document, 'span');
+            text.textContent = order === 0 ? 'THD (2–3)' : `H${order}`;
+            label.append(input, text);
+            this.harmonicControls.appendChild(label);
+            this.harmonicInputs.set(order, input);
+        }
+        this.waterfallControls = createElement(this.document, 'div', 'pipeline-analyzer-waterfall-controls');
+        this.waterfallResponseSelect = this.buildSelectField('response', this.waterfallControls, value => {
+            this.waterfallResponse = value;
+            this.renderGraph();
+        });
+        this.waterfallResponseSelect.append(
+            this.createOption('after', this.t('after')),
+            this.createOption('before', this.t('before'))
+        );
+        this.waterfallResponseSelect.value = this.waterfallResponse;
+        this.analysisControls.append(this.harmonicControls, this.waterfallControls);
+        this.analysisMessage = createElement(this.document, 'p', 'pipeline-analyzer-analysis-message');
+        this.analysisMessage.hidden = true;
         this.displayControls = {
             smoothingOct: this.buildDisplaySettingControl({
                 key: 'smoothingOct',
@@ -484,7 +553,7 @@ export class PipelineAnalyzerUI {
             this.displayControls.smoothingOct.row,
             this.displayControls.impulseRangeMs.row
         );
-        this.graphSection.append(this.viewGroup, this.displayControl, this.graphShell);
+        this.graphSection.append(this.viewGroup, this.displayControl, this.analysisControls, this.graphShell, this.analysisMessage);
         this.body.appendChild(this.graphSection);
         this.panel.append(header, this.body);
         this.refreshTexts();
@@ -587,10 +656,9 @@ export class PipelineAnalyzerUI {
         for (const caption of this.settingsBody.querySelectorAll?.('[data-text-key]') || []) {
             caption.textContent = this.t(caption.dataset.textKey);
         }
-        const signalOptions = this.signalSelect.children;
-        if (signalOptions[0]) signalOptions[0].textContent = this.t('signalMls');
-        if (signalOptions[1]) signalOptions[1].textContent = this.t('signalTsp');
-        if (signalOptions[2]) signalOptions[2].textContent = this.t('signalImpulse');
+        for (const option of this.signalSelect.children) {
+            option.textContent = this.t(`signal${option.value[0].toUpperCase()}${option.value.slice(1)}`);
+        }
         this.routesTitle.textContent = this.t('outputs');
         this.addOutputLabel.textContent = this.t('addOutput');
         this.addOutputButton.setAttribute('aria-label', this.t('addOutput'));
@@ -603,11 +671,15 @@ export class PipelineAnalyzerUI {
             phase: 'phase',
             minimumGroupDelay: 'minimumGroupDelay',
             excessGroupDelay: 'excessGroupDelay',
-            impulse: 'impulse'
+            impulse: 'impulse',
+            distortion: 'distortion',
+            waterfall: 'waterfall'
         };
         for (const [value, view] of this.viewInputs) view.text.textContent = this.t(viewKeys[value]);
         this.renderDisplaySettings();
         this.graphSvg.setAttribute('aria-label', this.t('graph'));
+        this.harmonicControls.setAttribute('aria-label', this.t('harmonics'));
+        this.waterfallResponseSelect.parentNode.children[0].textContent = this.t('response');
         this.legend.setAttribute('aria-label', this.t('curves', 'Response curves'));
         this.updateCollapseText();
         this.updateMeasurementAvailability();
@@ -625,8 +697,8 @@ export class PipelineAnalyzerUI {
         this.button.setAttribute('aria-expanded', String(this.open));
         this.button.setAttribute('aria-pressed', String(this.open));
         this.updateToggleText();
+        this.syncPlacement({ visibilityChanged: this.open !== wasOpen });
         if (this.open) {
-            this.syncPlacement();
             if (!wasOpen && !this.isNarrowLayout()) this.scrollToRightEdge();
         }
         else if (returnFocus) this.button.focus({ preventScroll: true });
@@ -678,24 +750,32 @@ export class PipelineAnalyzerUI {
         return Boolean(this.window?.matchMedia?.(NARROW_LAYOUT_QUERY)?.matches);
     }
 
-    syncPlacement() {
+    syncPlacement({ visibilityChanged = false } = {}) {
         if (!this.panel || !this.pipeline || !this.mainContainer || !this.pipelineList) return;
         const focused = this.panel.contains(this.document.activeElement) ? this.document.activeElement : null;
         const narrow = this.isNarrowLayout();
+        let layoutChanged = visibilityChanged || this.panel.classList.contains('is-inline') !== narrow;
         if (narrow) {
             if (this.panel.parentNode !== this.pipeline || this.panel.nextSibling !== this.pipelineList) {
                 this.pipeline.insertBefore(this.panel, this.pipelineList);
+                layoutChanged = true;
             }
         } else if (this.panel.parentNode !== this.mainContainer || this.panel.previousSibling !== this.pipeline) {
             this.mainContainer.insertBefore(this.panel, this.pipeline.nextSibling);
+            layoutChanged = true;
         }
         this.panel.classList.toggle('is-inline', narrow);
         focused?.focus?.({ preventScroll: true });
+        if (layoutChanged) this.onLayoutChange?.();
         this.syncGraphSize();
     }
 
     syncGraphSize() {
         if (!this.graphSvg) return;
+        if (['distortion', 'waterfall'].includes(this.configuration.graphView)) {
+            this.renderGraph();
+            return;
+        }
         const rectangle = this.graphSvg.getBoundingClientRect?.();
         const width = Number(this.graphSvg.clientWidth) || Number(rectangle?.width) || DEFAULT_GRAPH_SIZE.width;
         const height = Number(this.graphSvg.clientHeight) || Number(rectangle?.height) || DEFAULT_GRAPH_SIZE.height;
@@ -938,15 +1018,31 @@ export class PipelineAnalyzerUI {
         this.stabilizationInput.value = String(settings.stabilizationPeriods);
         this.averagingInput.value = String(settings.averagingPeriods);
         const impulse = settings.signalType === 'impulse';
+        const sweep = settings.signalType === 'ess';
+        this.sequenceSelect.parentNode.children[0].textContent = this.t(sweep ? 'requestedSweepLength' : 'sequenceLength');
         this.sequenceSelect.disabled = false;
         this.sequenceSelect.setAttribute('aria-disabled', 'false');
         for (const control of [this.stabilizationInput, this.averagingInput]) {
-            control.disabled = impulse;
-            control.setAttribute('aria-disabled', String(impulse));
+            control.disabled = impulse || (sweep && control === this.stabilizationInput);
+            control.setAttribute('aria-disabled', String(control.disabled));
         }
 
         this.measurementTiming.replaceChildren();
-        if (impulse) {
+        if (sweep && this.audioFormat) {
+            const metadata = this.currentMeasurementMetadata();
+            const actual = Number.isInteger(metadata?.sweepSamples) && Number.isFinite(metadata?.durationSeconds);
+            const row = createElement(this.document, 'div');
+            row.textContent = this.t(actual ? 'sweepLength' : 'requestedSweep', undefined, {
+                samples: actual ? metadata.sweepSamples : settings.sequenceLength,
+                seconds: formatSeconds(actual ? metadata.durationSeconds : settings.sequenceLength / this.audioFormat.sampleRate)
+            });
+            this.measurementTiming.appendChild(row);
+            if (Number.isFinite(metadata?.totalStimulusSeconds)) {
+                const total = createElement(this.document, 'div');
+                total.textContent = this.t('totalStimulusTime', undefined, { seconds: formatSeconds(metadata.totalStimulusSeconds) });
+                this.measurementTiming.appendChild(total);
+            }
+        } else if (impulse) {
             if (this.audioFormat) {
                 const row = createElement(this.document, 'div');
                 row.textContent = this.t('impulseCapture', undefined, {
@@ -1139,6 +1235,7 @@ export class PipelineAnalyzerUI {
         this.measuring = measuring === true;
         if (this.graphSpinner) this.graphSpinner.hidden = !this.measuring;
         this.graphSvg?.setAttribute?.('aria-busy', String(this.measuring));
+        this.analysisCanvas?.setAttribute?.('aria-busy', String(this.measuring));
     }
 
     currentView() {
@@ -1153,6 +1250,7 @@ export class PipelineAnalyzerUI {
     }
 
     updateCursorReadout(event) {
+        if (['distortion', 'waterfall'].includes(this.configuration.graphView)) return;
         const rectangle = this.graphSvg?.getBoundingClientRect?.();
         if (!rectangle?.width || !rectangle?.height) return;
         const normalizedX = (Number(event?.clientX) - rectangle.left) / rectangle.width;
@@ -1264,6 +1362,21 @@ export class PipelineAnalyzerUI {
 
     renderGraph() {
         if (!this.graphSvg) return;
+        const analysis = ['distortion', 'waterfall'].includes(this.configuration.graphView);
+        this.analysisMount.hidden = !analysis;
+        this.analysisControls.hidden = !analysis;
+        this.graphSvg.toggleAttribute('hidden', analysis);
+        this.hoverSvg.toggleAttribute('hidden', analysis);
+        this.legend.hidden = analysis;
+        this.harmonicControls.hidden = this.configuration.graphView !== 'distortion';
+        this.waterfallControls.hidden = this.configuration.graphView !== 'waterfall';
+        this.analysisMessage.hidden = true;
+        this.analysisMessage.textContent = '';
+        if (analysis) {
+            this.renderAnalysisGraph();
+            return;
+        }
+        if (this.analysisPlot?.state) this.analysisPlot.clear();
         const bounds = { left: 0, top: 0, ...this.graphSize };
         const view = this.currentView();
         const curves = Array.isArray(view?.curves) ? view.curves : [];
@@ -1367,7 +1480,57 @@ export class PipelineAnalyzerUI {
         else this.clearCursorReadout();
     }
 
+    renderAnalysisGraph() {
+        const viewName = this.configuration.graphView;
+        const view = this.currentView();
+        const essRequired = viewName === 'distortion' && this.configuration.measurementSettings.signalType !== 'ess';
+        const beforeAvailable = view?.beforeAvailable !== false && Boolean(view?.beforePlotState);
+        const afterAvailable = view?.afterAvailable !== false && Boolean(view?.plotState);
+        const state = viewName === 'waterfall' && this.waterfallResponse === 'before'
+            ? view?.beforePlotState : view?.plotState;
+        const selectedAvailable = viewName !== 'waterfall'
+            || (this.waterfallResponse === 'before' ? beforeAvailable : afterAvailable);
+        const available = !essRequired && view?.available !== false && selectedAvailable && state;
+        for (const [order, input] of this.harmonicInputs) {
+            input.disabled = !available || !state.series?.some(series => series.order === order);
+        }
+        this.waterfallResponseSelect.disabled = viewName !== 'waterfall'
+            || view?.available === false || (!beforeAvailable && !afterAvailable);
+        this.analysisCanvas.setAttribute('aria-label', this.t(viewName));
+        this.analysisCanvas.title = viewName === 'waterfall' ? this.t('waterfallControls') : '';
+        if (!available) {
+            this.analysisPlot?.clear();
+            if (viewName === 'waterfall' && view) {
+                const otherAvailable = this.waterfallResponse === 'before' ? afterAvailable : beforeAvailable;
+                this.analysisMessage.textContent = this.t(otherAvailable ? 'waterfallOtherResponse' : 'waterfallNoResponse',
+                    undefined, { response: this.t(this.waterfallResponse === 'before' ? 'after' : 'before') });
+            } else {
+                this.analysisMessage.textContent = this.t(essRequired || view?.reason === 'ess-required'
+                    ? 'distortionEssRequired' : viewName === 'distortion' && view?.reason === 'no-response'
+                        ? 'distortionNoResponse' : 'analysisUnavailable');
+            }
+            this.analysisMessage.hidden = false;
+            return;
+        }
+        if (!this.analysisPlot) {
+            this.analysisPlot = new AnalysisPlot(this.analysisCanvas, this.analysisOutput, patch => {
+                Object.assign(this.waterfallView, patch);
+                this.renderGraph();
+            });
+        }
+        const plotState = viewName === 'distortion'
+            ? { ...state, series: state.series.filter(series => this.selectedHarmonics.has(series.order)) }
+            : { ...state, ...this.waterfallView };
+        this.analysisPlot.draw(plotState);
+        if (viewName === 'distortion' && view.qualityWarning) {
+            this.analysisMessage.textContent = this.t('distortionQuality');
+            this.analysisMessage.hidden = false;
+        }
+    }
+
     dispose() {
+        this.analysisPlot?.surface.destroy();
+        this.analysisPlot?.readout?.clear();
         this.button?.removeEventListener?.('click', this.handleToggle);
         this.window?.removeEventListener?.('resize', this.handleResize);
         this.layoutObserver?.disconnect?.();

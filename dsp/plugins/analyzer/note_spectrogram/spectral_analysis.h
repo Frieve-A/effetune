@@ -2,6 +2,7 @@
 #define EFFETUNE_SPECTRAL_ANALYSIS_H
 
 #include "binary_io.h"
+#include "chord_key_head.h"
 #include "effetune/dsp/math.h"
 #include "effetune/kernel.h"
 #include "harmnet_frontend.h"
@@ -81,10 +82,21 @@ public:
     return HarmNetFrontend::referenceDelaySamples(rate_, true) + slots_ * 16u +
            kSynthesisRevisionAge * hop_;
   }
-  bool configure(std::uint32_t minimum_midi, std::uint32_t maximum_midi) noexcept {
+  void restartChordKey() noexcept { chord_restart_ = true; }
+  const ChordKeyHead &chordKeyHead() const noexcept { return chord_; }
+  double scheduleWeight() const noexcept {
+    auto total = 0.0;
+    for (auto weight : slot_weights_)
+      total += weight;
+    return total;
+  }
+  bool configure(std::uint32_t minimum_midi, std::uint32_t maximum_midi,
+                 bool chord_key_enabled) noexcept {
     const auto minimum = minimum_midi - 21u, maximum = maximum_midi - 21u;
-    if (minimum == minimum_pitch_ && maximum == maximum_pitch_)
+    if (minimum == minimum_pitch_ && maximum == maximum_pitch_ &&
+        chord_key_enabled == chord_enabled_)
       return false;
+    chord_enabled_ = chord_key_enabled;
     minimum_pitch_ = minimum;
     maximum_pitch_ = maximum;
     schedule_dirty_ = true;
@@ -117,6 +129,12 @@ public:
   }
   void reset(std::uint32_t generation) noexcept {
     generation_ = generation;
+    chord_.reset();
+    chord_restart_ = false;
+    pending_note_written_ = false;
+    chord_level_.fill(-240.0F);
+    for (auto &frame : chord_pending_)
+      frame.fill(0u);
     view_ = {};
     until_frame_ = hop_;
     frame_index_ = 0u;
@@ -182,8 +200,14 @@ public:
   }
   void writeTelemetry(TelemetryWriter &writer) noexcept {
     while (ready_ && pending_count_ != 0u) {
-      if (!writer.write(24u, 6u, published_[pending_read_].data(), kPayloadBytes))
+      if (!pending_note_written_) {
+        if (!writer.write(24u, 6u, published_[pending_read_].data(), kPayloadBytes))
+          return;
+        pending_note_written_ = true;
+      }
+      if (chord_enabled_ && !writer.write(32u, 1u, chord_pending_[pending_read_].data(), 32u))
         return;
+      pending_note_written_ = false;
       pending_read_ = (pending_read_ + 1u) % kPendingFrames;
       --pending_count_;
     }
@@ -292,8 +316,10 @@ private:
       for (auto begin = 0u; begin < 300u; begin += 10u)
         schedule_->addStage(static_cast<std::uint8_t>(Stage::Convolution), layer, begin,
                             begin + 10u, weight(10u * convolution[layer]));
-    const auto gather_min = minimum_pitch_ >= 24u ? minimum_pitch_ - 24u : 0u;
-    const auto gather_max = std::min(kPitches, maximum_pitch_ + 25u);
+    const auto compute_min = chord_enabled_ ? 0u : minimum_pitch_;
+    const auto compute_max = chord_enabled_ ? kPitches - 1u : maximum_pitch_;
+    const auto gather_min = compute_min >= 24u ? compute_min - 24u : 0u;
+    const auto gather_max = std::min(kPitches, compute_max + 25u);
     for (auto p = 0u; p < kPitches; ++p) {
       auto taps = 0u;
       if (p >= gather_min && p < gather_max)
@@ -305,7 +331,7 @@ private:
     }
     for (auto p = 0u; p < kPitches; ++p) {
       auto offsets = 0u;
-      if (p >= minimum_pitch_ && p <= maximum_pitch_)
+      if (p >= compute_min && p <= compute_max)
         for (const auto offset : harmnet_weights::kIntervalOffsets) {
           const auto pitch = static_cast<int>(p) + offset;
           offsets += pitch >= 0 && pitch < static_cast<int>(kPitches) ? 1u : 0u;
@@ -313,9 +339,17 @@ private:
       addPitch(Stage::PitchConvolution, p, 35.4587 * offsets + 206.37);
     }
     for (auto p = 0u; p < kPitches; ++p)
-      addPitch(Stage::Recurrent, p, p >= minimum_pitch_ && p <= maximum_pitch_ ? 2233.01 : 0.0);
+      addPitch(Stage::Recurrent, p, p >= compute_min && p <= compute_max ? 2233.01 : 0.0);
     for (auto p = 0u; p < kPitches; ++p)
-      addPitch(Stage::Fine, p, p >= minimum_pitch_ && p <= maximum_pitch_ ? 888.961 : 0.0);
+      addPitch(Stage::Fine, p, p >= compute_min && p <= compute_max ? 888.961 : 0.0);
+    if (chord_enabled_) {
+      schedule_->addStage(static_cast<std::uint8_t>(Stage::ChordFold), 0u, 0u, 0u, 1u);
+      for (auto pc = 0u; pc < 12u; ++pc)
+        schedule_->addStage(static_cast<std::uint8_t>(Stage::ChordRecurrent), 0u, pc, pc + 1u,
+                            weight(5307.351));
+      schedule_->addStage(static_cast<std::uint8_t>(Stage::ChordDecode), 0u, 0u, 0u,
+                          weight(94.813));
+    }
     schedule_->addStage(static_cast<std::uint8_t>(Stage::Publish), 0u, 0u, 0u, weight(1480.59));
     schedule_->addStage(static_cast<std::uint8_t>(Stage::Commit), 0u, 0u, 0u, weight(566.454));
     if (!schedule_->partition(slots_))
@@ -406,6 +440,7 @@ private:
     }
     fine_history_[history_head_].fill(0.0F);
     level_history_[history_head_].fill(-240.0F);
+    chord_level_.fill(-240.0F);
     below_floor_[history_head_] = frontends_[0]->belowFloor();
     for (auto cell = 0u; cell < kFinePitches; ++cell)
       writeF32(staging_.data() + kLevelOffset + cell * 4u, -240.0F);
@@ -422,7 +457,7 @@ private:
       return;
     }
     auto begin = stage.begin, end = stage.end;
-    if (kind >= Stage::Gather && kind <= Stage::Fine) {
+    if (!chord_enabled_ && kind >= Stage::Gather && kind <= Stage::Fine) {
       const auto low = kind == Stage::Gather && minimum_pitch_ >= 24u ? minimum_pitch_ - 24u
                        : kind == Stage::Gather                        ? 0u
                                                                       : minimum_pitch_;
@@ -466,6 +501,8 @@ private:
       network_->recurrent(begin, end);
       if (timbre_enabled_ && timbre_requested_)
         for (auto pitch = begin; pitch < end; ++pitch) {
+          if (pitch < minimum_pitch_ || pitch > maximum_pitch_)
+            continue;
           auto &frame = timbre_->frame(frame_index_ - 1u);
           network_->copyTimbreFeatures(pitch, frame.a.data() + pitch * 216u,
                                        frame.c.data() + pitch * 64u);
@@ -473,23 +510,51 @@ private:
       break;
     case Stage::Fine:
       for (auto pitch = begin; pitch < end; ++pitch) {
-        auto *shape = fine_history_[history_head_].data() + pitch * kFineDivisions;
+        const auto visible = pitch >= minimum_pitch_ && pitch <= maximum_pitch_;
+        std::array<float, kFineDivisions> private_shape{};
+        auto *shape = visible ? fine_history_[history_head_].data() + pitch * kFineDivisions
+                              : private_shape.data();
         const auto cents = frontends_[1]->fineShape(pitch, shape);
         if (below_floor_[history_head_])
           continue;
-        writeF32(staging_.data() + kPitchCentsOffset + pitch * 4u, cents);
+        if (visible)
+          writeF32(staging_.data() + kPitchCentsOffset + pitch * 4u, cents);
         auto strongest = 0u;
         for (auto division = 0u; division < kFineDivisions; ++division) {
           const auto value = level(pitch, division);
-          writeF32(staging_.data() + kLevelOffset + (pitch * kFineDivisions + division) * 4u,
-                   value);
+          if (visible)
+            writeF32(staging_.data() + kLevelOffset + (pitch * kFineDivisions + division) * 4u,
+                     value);
           if (division == 0u || shape[division] > shape[strongest]) {
             strongest = division;
-            level_history_[history_head_][pitch] = value;
+            chord_level_[pitch] = value;
+            if (visible)
+              level_history_[history_head_][pitch] = value;
           }
         }
       }
       break;
+    case Stage::ChordFold:
+      if (chord_restart_) {
+        chord_.reset();
+        chord_restart_ = false;
+      }
+      chord_.fold(*network_, chord_level_);
+      break;
+    case Stage::ChordRecurrent:
+      chord_.recurrent(begin, end);
+      break;
+    case Stage::ChordDecode: {
+      chord_.decode();
+      writeF32(chord_staging_.data(), rate_);
+      std::copy_n(staging_.data() + 4u, 4u, chord_staging_.data() + 4u);
+      writeF32(chord_staging_.data() + 8u, static_cast<float>(hop_) / rate_);
+      writeU32(chord_staging_.data() + 12u, generation_);
+      writeU32(chord_staging_.data() + 16u, frame_index_ - 1u);
+      std::copy(chord_.result().begin(), chord_.result().end(), chord_staging_.begin() + 20u);
+      writeF32(chord_staging_.data() + 28u, chord_.confirmedProbability());
+      break;
+    }
     case Stage::Publish: {
       const auto oldest = (history_head_ + kHistoryFrames - kRevisionFrames) % kHistoryFrames;
       const auto revised = history_frames_ >= kRevisionFrames;
@@ -540,10 +605,13 @@ private:
         }
       }
       if (pending_count_ == kPendingFrames) {
+        pending_note_written_ = false;
         pending_read_ = (pending_read_ + 1u) % kPendingFrames;
         --pending_count_;
       }
       published_[pending_write_].swap(staging_);
+      if (chord_enabled_)
+        chord_pending_[pending_write_] = chord_staging_;
       pending_write_ = (pending_write_ + 1u) % kPendingFrames;
       ++pending_count_;
       break;
@@ -595,6 +663,11 @@ private:
   using Schedule = ::effetune::dsp::StageSchedule<32768u, 512u>;
   std::array<std::unique_ptr<HarmNetFrontend>, 2> frontends_;
   std::unique_ptr<HarmNetInference> network_;
+  ChordKeyHead chord_;
+  bool chord_enabled_ = false, chord_restart_ = false, pending_note_written_ = false;
+  std::array<float, 88> chord_level_{};
+  std::array<std::uint8_t, 32> chord_staging_{};
+  std::array<std::array<std::uint8_t, 32>, kPendingFrames> chord_pending_{};
   std::unique_ptr<TimbreAnalysis> timbre_;
   std::array<TimbreTracking, kPitches> timbre_rules_{};
   static constexpr std::uint32_t kTimbrePending = 2048u;

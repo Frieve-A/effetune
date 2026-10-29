@@ -438,7 +438,7 @@ function createOpenHomeBridge(calls, status = { localControlEnabled: false }) {
     },
     async emitStatus(next) {
       Object.assign(status, next);
-      await Promise.all([...statusListeners].map(listener => listener({ ...status })));
+      return Promise.all([...statusListeners].map(listener => listener({ ...status })));
     },
     rendererReady() {
       calls.push(['openHome.rendererReady']);
@@ -1218,6 +1218,13 @@ test('updates audio, sleep, sample-rate, language, translations, and UI text', a
     manager.sampleRate.textContent = 'Sleep';
     manager.updateSleepModeDisplay(false, 44100);
     assert.equal(manager.sampleRate.textContent, '44100 Hz');
+    manager.audioManager.getOutputChannelCount = () => 4;
+    manager.sampleRate.textContent = 'Sleep';
+    manager.updateSleepModeDisplay(false, 44100);
+    assert.equal(manager.sampleRate.textContent, '44100 Hz 4ch');
+    manager.updateSampleRateDisplay();
+    assert.equal(manager.sampleRate.textContent, '48000 Hz 4ch');
+    delete manager.audioManager.getOutputChannelCount;
     manager.audioManager.audioContext.destination.channelCount = 0;
     manager.sampleRate.textContent = 'Sleep';
     manager.updateSleepModeDisplay(false, 32000);
@@ -2376,7 +2383,7 @@ test('Double Blind Test entry waits for successful Effects restoration from Mini
   }
 });
 
-test('UPnP AV and AirPlay each bootstrap and retain the shared renderer independently', async () => {
+test('UPnP AV and AirPlay status listeners retain the shared renderer without returning it across IPC', async () => {
   for (const protocol of ['upnp', 'airplay']) {
     const openHome = createOpenHomeBridge([], { localControlEnabled: false, upnpAvEnabled: protocol === 'upnp' });
     const airPlay = createOpenHomeBridge([], { enabled: protocol === 'airplay' });
@@ -2387,6 +2394,12 @@ test('UPnP AV and AirPlay each bootstrap and retain the shared renderer independ
       const player = await manager.setOpenHomeRemoteRuntimeReady();
       assert.ok(player);
       assert.equal(manager.shouldRetainAudioPlayerForOpenHome(player), true);
+      const statusResults = protocol === 'upnp'
+        ? await openHome.emitStatus({ upnpAvEnabled: true })
+        : await airPlay.emitStatus({ enabled: true });
+      assert.equal(statusResults.length, 1);
+      assert.ok(statusResults[0] === undefined, 'IPC status callbacks must not return the renderer-owned player');
+      assert.equal(manager.audioPlayer, player);
       assert.equal(player.close(), false);
       assert.equal(manager.audioPlayer, player);
       if (protocol === 'upnp') await openHome.emitStatus({ upnpAvEnabled: false });

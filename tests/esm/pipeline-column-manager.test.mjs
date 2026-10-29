@@ -336,6 +336,57 @@ test('distribution keeps order and minimizes the tallest column by measured heig
   assert.deepEqual(await placements([0, 0, 0, 0], 3), [[0, 1], [2], [3]]);
 });
 
+test('automatic columns reserve an open side Analyzer and its gap in CSS pixels', async () => {
+  const runtime = createRuntime();
+  const container = {};
+  const pipeline = { style: {}, parentElement: container };
+  const sidebar = {};
+  const analyzer = { hidden: false, parentElement: container };
+  await withColumnGlobals(runtime, {
+    storage: { pipelineColumns: '4' },
+    pipelineElement: pipeline,
+    elements: { pluginList: sidebar, pipelineAnalyzerPanel: analyzer }
+  }, async ({ storage }) => {
+    window.appConfig.pipelineColumnMode = 'automatic';
+    document.body = {};
+    document.documentElement.clientWidth = 2560;
+    const bodyStyle = { paddingLeft: '20px', paddingRight: '20px', zoom: '1' };
+    const analyzerStyle = { width: '460px', flexBasis: '460px' };
+    const styles = new Map([
+      [document.body, bodyStyle], [pipeline, { paddingLeft: '20px', paddingRight: '20px' }],
+      [container, { columnGap: '20px' }], [sidebar, { width: '300px' }],
+      [analyzer, analyzerStyle], [runtime.pipelineList, { columnGap: '10px' }]
+    ]);
+    await withGlobals({ getComputedStyle: element => styles.get(element) }, async () => {
+      const manager = new PipelineColumnManager(runtime.pipelineCore);
+      assert.equal(manager.getAvailablePipelineWidth(), 1680);
+      assert.equal(manager.getEffectiveColumnCount(), 1);
+      analyzerStyle.width = '1500px';
+      assert.equal(manager.getAvailablePipelineWidth(), 1680, 'expanded width must not reduce available space');
+      document.documentElement.clientWidth = 3840;
+      assert.equal(manager.getEffectiveColumnCount(), 2, 'new columns reclaim the expanded Analyzer space');
+      assert.equal(manager.canFitWithPluginList(), true);
+      document.documentElement.clientWidth = 2560;
+      analyzerStyle.width = 'auto';
+      assert.equal(manager.getAvailablePipelineWidth(), 1680, 'hidden views keep the Analyzer reservation');
+      analyzer.hidden = true;
+      assert.equal(manager.getEffectiveColumnCount(), 2);
+      analyzer.hidden = false;
+      analyzer.parentElement = pipeline;
+      assert.equal(manager.getEffectiveColumnCount(), 2, 'an inline Analyzer does not consume another column');
+      analyzer.parentElement = container;
+      bodyStyle.zoom = '0.5';
+      assert.equal(manager.getEffectiveColumnCount(), 3);
+      bodyStyle.zoom = '1';
+      document.documentElement.clientWidth = 1920;
+      assert.equal(manager.canFitWithPluginList(), false);
+      window.appConfig.pipelineColumnMode = 'manual';
+      assert.equal(manager.getEffectiveColumnCount(), 4);
+      assert.equal(storage.get('pipelineColumns'), '4');
+    });
+  });
+});
+
 test('responsive resizing leaves manual column settings unchanged', async () => {
   const runtime = createRuntime();
 

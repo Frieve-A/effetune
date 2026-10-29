@@ -356,7 +356,7 @@ test('one saved device name updates both advertised services without revoking li
     assert.equal(peer.devices.get(music.id).name, expected);
     assert.equal(harness.sidecar.startCalls.at(-1).friendlyName, expected);
     assert.equal(music.server.name, expected);
-    assert.equal(remote.pwa.info().name, expected);
+    assert.equal((await remote.pwa.info()).name, expected);
     assert.equal(remote.pairing.getInfo().name, expected);
     assert.equal(music.server.server, server);
     assert.equal(music.server.port, port);

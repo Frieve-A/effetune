@@ -41,6 +41,14 @@ Sem mitos audiófilos, apenas pura ciência.
 
 ## Guia de Configuração
 
+### Aplicativo Android
+
+Use Android 10 ou posterior e mantenha o Android System WebView atualizado. Abra arquivos de música ou escolha uma pasta na biblioteca musical; o Android permite selecionar os arquivos e pastas aos quais o EffeTune pode acessar. Se uma pasta ficar indisponível, selecione-a novamente na biblioteca. A reprodução continua com a tela apagada, e os controles das notificações e da tela de bloqueio comandam o mesmo reprodutor.
+
+Salve ou compartilhe os arquivos exportados pelas telas de arquivos e compartilhamento do Android. Para exportar áudio em lote, escolha uma pasta de destino e mantenha o aplicativo aberto. O aplicativo Android e o aplicativo web armazenam seus dados separadamente. Backup / Restauração permite transferir presets, respostas ao impulso, medições e dados do visualizador (até 256 MB); arquivos de música, catálogo musical, credenciais de conexão e configurações não são incluídos. Os efeitos processam o áudio reproduzido ou recebido pelo EffeTune, sem substituir o som de outros aplicativos Android.
+
+Os controles MIDI de parâmetros e as alterações programadas continuam funcionando com a tela apagada. Para usar o teclado ou um controle de jogo, mantenha o aplicativo aberto. O Android aceita entrada MIDI, mas não envia retorno aos faders motorizados nem aos LEDs. Toque no ícone **Remote Control** da barra de ferramentas para permitir o controle remoto e copiar um link de pareamento. Mantenha esse link privado.
+
 Escolha abaixo o método de configuração adequado à fonte de áudio que você quer ouvir.
 
 ### Configuração do Reprodutor de Arquivos de Música
@@ -327,9 +335,9 @@ Se você estiver enfrentando problemas de áudio (interrupções, falhas):
 
 ### Música em rede e controle remoto
 
-**Aplicativo de desktop:** Explore servidores de música da rede local, compartilhe pastas selecionadas e reproduza neste dispositivo ou em um reprodutor OpenHome. Após o pareamento, os efeitos de um reprodutor EffeTune podem ser editados na mesma janela. O compartilhamento e o acesso por controle remoto começam desativados. Consulte [música em rede e controle remoto](openhome.md). Você também pode ativar a recepção UPnP AV / DLNA e AirPlay para ouvir músicas enviadas por outros dispositivos com os efeitos deste computador.
+**Aplicativo de desktop:** Explore servidores de música, incluindo Subsonic / OpenSubsonic, compartilhe pastas escolhidas e reproduza neste dispositivo, em um reprodutor OpenHome ou UPnP AV / DLNA. Após o pareamento, os efeitos de um reprodutor EffeTune podem ser editados na mesma janela. O compartilhamento e o acesso por controle remoto começam desativados. Consulte [música em rede e controle remoto](openhome.md). Você também pode ativar a recepção UPnP AV / DLNA e AirPlay para ouvir músicas enviadas por outros dispositivos com os efeitos deste computador.
 
-A PWA também pode reproduzir músicas compartilhadas de um computador EffeTune cadastrado com os efeitos deste dispositivo ou controlar outro computador cadastrado. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para conhecer os requisitos de navegador e conexão.
+A PWA reproduz músicas compartilhadas de um computador EffeTune cadastrado e bibliotecas de rede autorizadas com os efeitos deste dispositivo, ou controla um reprodutor de rede autorizado. Também é possível conectar diretamente ao Subsonic. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para conhecer os requisitos de navegador e conexão.
 
 ### Controlar o EffeTune com um assistente de IA (MCP)
 
@@ -393,7 +401,7 @@ Se o problema continuar, reporte em [GitHub Issues](https://github.com/Frieve-A/
 | Analyzer  | Note Spectrogram | Mostra as alturas estimadas ao longo do tempo em um piano roll         | [Detalhes](plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope       | Visualização de forma de onda em tempo real                             | [Detalhes](plugins/analyzer.md#oscilloscope)         |
 | Analyzer  | Pitch Meter | Acompanha uma frequência fundamental e sua afinação ao longo do tempo | [Detalhes](plugins/analyzer.md#pitch-meter) |
-| Analyzer  | Rhythm Analyzer | Mostra o andamento, os toques tempo a tempo, e o quanto cada parte se adianta ou se atrasa | [Detalhes](plugins/analyzer.md#rhythm-analyzer) |
+| Analyzer  | Rhythm Analyzer | Mostra o andamento e os ataques por banda de frequência ou classe de bateria | [Detalhes](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram        | Exibe variações do espectro de frequências ao longo do tempo            | [Detalhes](plugins/analyzer.md#spectrogram)          |
 | Analyzer  | Spectrum Analyzer  | Mostra a força dos graves, médios e agudos em tempo real                | [Detalhes](plugins/analyzer.md#spectrum-analyzer)    |
 | Analyzer  | Stereo Meter       | Visualiza o equilíbrio estéreo e a correlação entre canais              | [Detalhes](plugins/analyzer.md#stereo-meter)         |

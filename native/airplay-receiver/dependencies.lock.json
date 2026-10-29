@@ -35,9 +35,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-crt",
       "base": "mingw-w64-crt",
-      "version": "14.0.0.r536.g7ce22f663-1",
-      "file": "mingw-w64-ucrt-x86_64-crt-14.0.0.r536.g7ce22f663-1-any.pkg.tar.zst",
-      "sha256": "7d05736b4759d80b980d13c90a097337b9219c45305518fcfebdedd9fd6d9c2a",
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "file": "mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
       "license": "spdx:ZPL-2.1"
     },
     {
@@ -135,9 +135,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-headers",
       "base": "mingw-w64-headers",
-      "version": "14.0.0.r536.g7ce22f663-1",
-      "file": "mingw-w64-ucrt-x86_64-headers-14.0.0.r536.g7ce22f663-1-any.pkg.tar.zst",
-      "sha256": "0c3c45602dd4b6083287ce827cbb14f0bb5e8d2fd14655c618d9ac2b1e1d7539",
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "file": "mingw-w64-ucrt-x86_64-headers-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "1dfbdb987964e5ec9eecd2653ef365767ca7970abf9c7de1b05c066f18e3eb21",
       "license": "spdx:ZPL-2.1 AND LGPL-2.1-or-later"
     },
     {
@@ -194,9 +194,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-libwinpthread",
       "base": "mingw-w64-winpthreads",
-      "version": "14.0.0.r536.g7ce22f663-1",
-      "file": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r536.g7ce22f663-1-any.pkg.tar.zst",
-      "sha256": "072bed4ad707f86d13ecc72ee4f336b6e606f3830fd7274f6f97a38e826f9932",
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "file": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "b4ebe2826e848c5e790e06ea7b37d3e0594e005f42382b0506886f17df8127da",
       "license": "spdx:MIT AND BSD-3-Clause"
     },
     {
@@ -258,9 +258,9 @@
     {
       "name": "mingw-w64-ucrt-x86_64-winpthreads",
       "base": "mingw-w64-winpthreads",
-      "version": "14.0.0.r536.g7ce22f663-1",
-      "file": "mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r536.g7ce22f663-1-any.pkg.tar.zst",
-      "sha256": "89ce11a1cc31fc65cac2000170e0b7ded47486230671017c05189bb2293a9e77",
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "file": "mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "7c610b0ed967d277530c2f50bb7c9ce5760056324901fbc8e0df9912e75a0aa8",
       "license": "spdx:MIT AND BSD-3-Clause"
     },
     {
@@ -365,9 +365,9 @@
       "sha256": "b02f0d5070b7d7f6db5c8ba9b009f28c1a07b9b52aaf7964dc0c8b098e4088d1"
     },
     {
-      "name": "mingw-w64-winpthreads-14.0.0.r536.g7ce22f663-1.src.tar.zst",
-      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r536.g7ce22f663-1.src.tar.zst",
-      "sha256": "c975d6ec8bcdaeb476f0e8d4874a4269dacb4bbf68c97effcb61efe2ea2503f2"
+      "name": "mingw-w64-winpthreads-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "url": "https://repo.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "sha256": "8f43ac029183d5afea64dfbb4692729bd7fd8c087de550d32deab1d061fe2a36"
     },
     {
       "name": "mingw-w64-zlib-1.3.2-3.src.tar.zst",

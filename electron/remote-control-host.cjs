@@ -17,7 +17,6 @@
 const crypto = require('node:crypto');
 const http = require('node:http');
 const https = require('node:https');
-const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
@@ -27,6 +26,7 @@ const { RemotePairingHost } = require('./remote-pairing.cjs');
 const { PwaNetworkHost, PWA_ORIGIN } = require('./pwa-network-host.cjs');
 const { resolveFriendlyName } = require('./openhome-control-host.cjs');
 const { MUSIC_OPS, dispatchMusic } = require('./remote-music-dispatcher.cjs');
+const { normalizeEndpoint, resolveConnection, validateConnection, connectionStatus } = require('./remote-connection.cjs');
 
 const CHANNELS = Object.freeze({
   rendererReady: 'remote-v1:renderer-ready',
@@ -47,6 +47,9 @@ const PANEL_CHANNELS = Object.freeze({
   regenerateToken: 'remote-panel-v1:regenerate-token',
   join: 'remote-panel-v1:join',
   copyLink: 'remote-panel-v1:copy-link',
+  selectConnectionFile: 'remote-panel-v1:select-connection-file',
+  setConnection: 'remote-panel-v1:set-connection',
+  testConnection: 'remote-panel-v1:test-connection',
   status: 'remote-panel-v1:status'
 });
 
@@ -204,6 +207,7 @@ class RemoteControlHost {
     localPlayer = null,
     pwaOrigin = PWA_ORIGIN,
     approvePairing = async () => false,
+    dialog = null,
     env = process.env,
     argv = process.argv,
     log = console.log
@@ -213,13 +217,17 @@ class RemoteControlHost {
     this.config = config;
     this.clipboard = clipboard;
     this.log = log;
+    this.dialog = dialog;
+    this.env = env;
+    this.connectionSelections = new Map();
     this.forced = isRemoteForced(env, argv);
     const cfg = this.loadConfig();
     this.enabled = this.forced || cfg.remoteControlEnabled === true;
-    this.basePort = Number(env.EFFETUNE_REMOTE_PORT) || PORT;
-    this.tlsCertificate = env.EFFETUNE_REMOTE_TLS_CERT || '';
-    this.tlsKey = env.EFFETUNE_REMOTE_TLS_KEY || '';
-    this.secure = Boolean(this.tlsCertificate || this.tlsKey);
+    try { this.applyConnection(resolveConnection(cfg, env, PORT)); }
+    catch (error) {
+      this.connectionError = error;
+      this.applyConnection({ certificatePath: '', keyPath: '', endpoint: '', port: PORT, secure: true, environment: true });
+    }
     this.port = this.basePort; // the port actually bound once running
     this.tokenFromEnvironment = typeof env.EFFETUNE_REMOTE_TOKEN === 'string' &&
       env.EFFETUNE_REMOTE_TOKEN.length > 0;
@@ -255,7 +263,7 @@ class RemoteControlHost {
     const playerId = getPlayerId?.() || (cfg.openHomeDeviceId ? `uuid:${cfg.openHomeDeviceId}` : null);
     this.pairing = new RemotePairingHost({
       discovery,
-      getInfo: () => ({ running: this.listening, port: this.port, secure: this.secure, token: this.token, playerId, name: localPlayer?.name || resolveFriendlyName(this.loadConfig()) }),
+      getInfo: () => ({ running: this.listening, port: this.port, secure: this.secure, token: this.token, playerId, endpoint: this.endpointOrigin(), allowedHost: header => this.isAllowedHost(header), name: localPlayer?.name || resolveFriendlyName(this.loadConfig()) }),
       approve: approvePairing,
       onDiagnostic: error => this.log('[remote] pairing failed:', error?.message || error)
     });
@@ -289,6 +297,94 @@ class RemoteControlHost {
     const token = generateToken();
     this.saveConfigPatch({ remoteControlToken: token });
     return token;
+  }
+
+  applyConnection(connection) {
+    this.connection = connection;
+    this.basePort = connection.port;
+    this.tlsCertificate = connection.certificatePath;
+    this.tlsKey = connection.keyPath;
+    this.secure = connection.secure;
+  }
+
+  endpointOrigin() { return this.connection.endpoint || null; }
+
+  trustedHosts() {
+    if (!this.secure || !this.connection.endpoint) return [];
+    const url = new URL(this.connection.endpoint);
+    return url.port ? [url.host] : [url.hostname, `${url.hostname}:443`];
+  }
+
+  isAllowedHost(header) { return isAllowedHost(header, this.trustedHosts()); }
+
+  async selectConnectionFile(kind) {
+    if (kind !== 'certificate' && kind !== 'key') throw new Error('invalid-setting');
+    if (this.connection.environment) throw new Error('Connection settings are managed by environment variables.');
+    const dialog = this.dialog || require('electron').dialog;
+    const result = await dialog.showOpenDialog(this.getMainWindow(), {
+      title: kind === 'certificate' ? 'Choose TLS certificate' : 'Choose TLS private key',
+      properties: ['openFile'], filters: [{ name: 'PEM files', extensions: ['pem', 'crt', 'cer', 'key'] }, { name: 'All files', extensions: ['*'] }]
+    });
+    if (result.canceled || !result.filePaths?.[0]) return null;
+    const selectionId = crypto.randomUUID();
+    this.connectionSelections.set(kind, { selectionId, path: result.filePaths[0] });
+    return { selectionId, fileName: path.basename(result.filePaths[0]) };
+  }
+
+  setConnection(request) {
+    const run = this.toggleQueue.then(async () => {
+      if (this.connection.environment) throw new Error('Connection settings are managed by environment variables.');
+      if (!request || typeof request !== 'object' || Array.isArray(request)) throw new Error('invalid-setting');
+      const endpoint = normalizeEndpoint(request.endpoint);
+      const saved = this.loadConfig().remoteControlConnection || {};
+      const values = request.clearTls === true ? { endpoint, certificatePath: '', keyPath: '' } : { ...saved, endpoint };
+      for (const [kind, field] of [['certificate', 'certificatePath'], ['key', 'keyPath']]) {
+        const selectionId = request[`${kind}Selection`];
+        if (selectionId === undefined) continue;
+        const selected = this.connectionSelections.get(kind);
+        if (!selected || selected.selectionId !== selectionId) throw new Error('Choose the certificate and private key files again.');
+        values[field] = selected.path;
+      }
+      const connection = resolveConnection({ remoteControlConnection: values }, {}, PORT);
+      validateConnection(connection);
+      if (!this.saveConfigPatch({ remoteControlConnection: values })) throw new Error('Connection settings could not be saved.');
+      await this.stop();
+      this.connectionError = null;
+      this.applyConnection(connection);
+      this.port = connection.port;
+      this.connectionSelections.clear();
+      if (this.enabled) await this.start();
+      this.emitStatus();
+      return this.getStatus();
+    });
+    this.toggleQueue = run.catch(() => {});
+    return run;
+  }
+
+  async testConnection() {
+    try {
+      if (this.connectionError) throw this.connectionError;
+      validateConnection(this.connection);
+      if (this.connection.endpoint && this.listening) {
+        await new Promise((resolve, reject) => {
+          const request = https.request(this.connection.endpoint, { method: 'HEAD', timeout: 5000 }, response => {
+            response.resume();
+            if (response.statusCode >= 300 && response.statusCode < 400) reject(new Error('redirect'));
+            else response.once('end', resolve);
+          });
+          request.once('timeout', () => request.destroy(new Error('timeout')));
+          request.once('error', reject);
+          request.end();
+        });
+      }
+      return { ok: true, code: this.listening ? 'connected' : 'configured', endpoint: this.endpointOrigin(), running: this.listening,
+        message: this.listening ? 'The connection is available. Your browser must also trust this certificate.' : 'The settings are valid. Enable Remote Control to accept connections.' };
+    } catch (error) {
+      this.log('[remote] connection test failed:', error);
+      const certificateError = ['missing-certificate', 'invalid-certificate', 'certificate-expired', 'certificate-hostname', 'invalid-endpoint', 'invalid-port'].includes(error.code);
+      return { ok: false, code: certificateError ? error.code : 'connection-unavailable', endpoint: this.endpointOrigin(), running: this.listening,
+        message: certificateError ? error.message : 'The HTTPS address could not be reached securely. Check the address, certificate trust, and network connection.' };
+    }
   }
 
   // Toggles run one after another: an "on" that arrived while an "off" was
@@ -327,9 +423,14 @@ class RemoteControlHost {
   getStatus({ withQr = false } = {}) {
     const running = this.listening;
     const lan = this.lan || pickLanAddress();
-    const addresses = lan.offered.map(c => {
-      const url = pairingUrl(c.address, this.port, this.token, this.secure);
-      const webUrl = webPairingUrl(c.address, this.port, this.token, this.secure);
+    const offered = this.connection.endpoint
+      ? [{ address: new URL(this.connection.endpoint).hostname, name: 'HTTPS', endpoint: this.connection.endpoint }]
+      : lan.offered;
+    const addresses = offered.map(c => {
+      const url = c.endpoint ? `${c.endpoint.replace('https:', 'wss:')}/?t=${encodeURIComponent(this.token)}`
+        : pairingUrl(c.address, this.port, this.token, this.secure);
+      const webUrl = c.endpoint ? `${c.endpoint}/?t=${encodeURIComponent(this.token)}`
+        : webPairingUrl(c.address, this.port, this.token, this.secure);
       return {
         address: c.address,
         name: c.name,
@@ -347,6 +448,7 @@ class RemoteControlHost {
       requestedPort: this.basePort,
       token: this.token,
       tokenFromEnvironment: this.tokenFromEnvironment,
+      connection: connectionStatus(this.connection),
       addresses,
       url: addresses[0]?.url || null,
       webUrl: addresses[0]?.webUrl || null,
@@ -410,10 +512,12 @@ class RemoteControlHost {
     const staticHandler = createStaticHandler({
       root: path.resolve(__dirname, '..'),
       secure: this.secure,
+      trustedHosts: this.trustedHosts(),
       log: (...args) => this.log(...args)
     });
     const handler = (req, res) => {
       try {
+        if (!this.isAllowedHost(req.headers.host)) { res.writeHead(403); res.end('Forbidden\n'); return; }
         if (this.pwa?.handle(req, res)) return;
         if (this.pairing.handle(req, res)) return;
         staticHandler(req, res);
@@ -425,14 +529,12 @@ class RemoteControlHost {
     let server;
     try {
       if (this.secure) {
-        if (!this.tlsCertificate || !this.tlsKey) throw new Error('Both TLS certificate and key are required');
-        server = https.createServer({
-          cert: fs.readFileSync(this.tlsCertificate), key: fs.readFileSync(this.tlsKey), minVersion: 'TLSv1.2'
-        }, handler);
+        if (this.connectionError) throw this.connectionError;
+        server = https.createServer(validateConnection(this.connection), handler);
       } else server = http.createServer(handler);
     } catch (error) {
       this.log('[remote] TLS configuration failed:', error);
-      this.listenError = 'Remote Control could not start. Check the certificate and private key files.';
+      this.listenError = error.code ? error.message : 'Remote Control could not start. Check the certificate and private key files.';
       this.startPromise = null;
       this.emitStatus();
       return false;
@@ -447,7 +549,7 @@ class RemoteControlHost {
         const { host, origin } = info.req.headers;
         const ok = info.req.url?.startsWith('/pwa/')
           ? this.pwa?.acceptsUpgrade(info.req) === true
-          : origin === undefined || (isAllowedHost(host) && isAllowedOrigin(origin, host, this.secure));
+          : this.isAllowedHost(host) && isAllowedOrigin(origin, host, this.secure, this.trustedHosts());
         if (ok) {
           done(true);
         } else {
@@ -513,7 +615,7 @@ class RemoteControlHost {
       server.once('listening', onListening);
       server.listen(port, '0.0.0.0');
     });
-    const last = Math.min(this.basePort + PORT_FALLBACK_COUNT, 65535);
+    const last = this.connection.endpoint ? this.basePort : Math.min(this.basePort + PORT_FALLBACK_COUNT, 65535);
     this.portsBusy = false;
     for (let port = this.basePort; port <= last; port += 1) {
       for (let attempt = 1; attempt <= PORT_RETRY_ATTEMPTS; attempt += 1) {
@@ -905,6 +1007,7 @@ class RemoteControlHost {
     ws.authenticated = true;
     const token = this.token;
     const session = this.wss;
+    ws.isMusicAuthorized = () => !this.disposed && this.listening && this.token === token && this.wss === session;
     ws.isCurrentMusicSession = () => ws.authenticated && !this.disposed && this.listening &&
       this.token === token && this.wss === session && ws.readyState === 1;
     ws.isCurrentPwaSession = req.url?.startsWith('/pwa/v1/')
@@ -975,8 +1078,12 @@ class RemoteControlHost {
       this.emitStatus();
     }
     if (MUSIC_OPS.has(op)) {
+      if (ws.isCurrentPwaSession) {
+        this.ack(ws, seq, false, 'unauthorized');
+        return;
+      }
       this.ack(ws, seq, true);
-      const reply = await dispatchMusic(this.networkMusic, this.localPlayer, msg, ws.isCurrentMusicSession);
+      const reply = await dispatchMusic(this.networkMusic, this.localPlayer, msg, ws.isCurrentMusicSession, ws.isMusicAuthorized);
       const response = { op: 'musicResult', seq, ...reply };
       this.send(ws, Buffer.byteLength(JSON.stringify(response)) < MAX_WS_BYTES ? response : {
         op: 'musicResult', seq, ok: false,
@@ -987,7 +1094,7 @@ class RemoteControlHost {
     if (op === 'hello' && this.networkMusic && !this.rendererReady) {
       this.ack(ws, seq, true);
       this.send(ws, this.stateMessage({
-        origin: 'remote', features: [...FEATURES, 'music1'], appName: APP_NAME,
+        origin: 'remote', features: ws.isCurrentPwaSession ? FEATURES : [...FEATURES, 'music1'], appName: APP_NAME,
         ...(seq === undefined ? {} : { seq })
       }));
       return;
@@ -1015,7 +1122,7 @@ class RemoteControlHost {
       case 'hello':
         this.send(ws, this.stateMessage({
           origin: 'remote',
-          features: this.networkMusic ? [...FEATURES, 'music1'] : FEATURES,
+          features: this.networkMusic && !ws.isCurrentPwaSession ? [...FEATURES, 'music1'] : FEATURES,
           appName: APP_NAME,
           ...(cleanEffectNames(result.effects) ? { effects: cleanEffectNames(result.effects) } : {}),
           ...seqField
@@ -1215,6 +1322,9 @@ function registerRemoteControlIpc({ ipcMain, getHost, getMainWindow }) {
       return host.getStatus({ withQr: true });
     }],
     [PANEL_CHANNELS.copyLink, (host, index) => host.copyLink(index)],
+    [PANEL_CHANNELS.selectConnectionFile, (host, kind) => host.selectConnectionFile(kind)],
+    [PANEL_CHANNELS.setConnection, (host, request) => host.setConnection(request)],
+    [PANEL_CHANNELS.testConnection, host => host.testConnection()],
     [PANEL_CHANNELS.join, (host, input) => host.joinRemote(typeof input === 'string' ? input.slice(0, 600) : '')]
   ]);
   for (const [channel, handler] of handlers) {

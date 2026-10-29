@@ -1,6 +1,6 @@
 ---
 title: "Pipeline Analyzer - Resposta em frequência e fase da cadeia de efeitos - EffeTune"
-description: "O Pipeline Analyzer mede a resposta em frequência, a fase, o atraso de grupo e a resposta ao impulso do Effect Pipeline ativo sem alterar o áudio que você ouve."
+description: "O Pipeline Analyzer mede a resposta em frequência, a fase, o atraso de grupo, a resposta ao impulso, a distorção e o decaimento do Effect Pipeline ativo sem alterar o áudio que você ouve."
 lang: pt
 ---
 
@@ -27,11 +27,11 @@ Como medições separadas de alto-falantes são alinhadas pelos inícios detecta
 
 Abra **Measurement settings** para ajustar como o pipeline é medido:
 
-- **Signal:** **MLS** (padrão), **TSP** ou **Unit Impulse**. MLS e TSP usam sinais de teste periódicos (`2^n - 1` e `2^n` amostras), enquanto **Unit Impulse** captura diretamente a resposta ao impulso no domínio do tempo (`2^n` amostras).
+- **Signal:** **Log Sweep** (padrão), **MLS**, **TSP** ou **Unit Impulse**. Use **Log Sweep** para examinar também a distorção harmônica. A varredura vai de 20 Hz a 20 kHz, dentro dos limites da taxa de amostragem. **MLS** e **TSP** usam sinais periódicos; **Unit Impulse** captura diretamente a resposta ao impulso.
 - **Level:** Nível de pico do sinal de teste (padrão `-12 dBFS`). Filtros lineares apresentam a mesma resposta em qualquer nível, enquanto compressores, saturadores e outros efeitos dependentes de nível mudam conforme **Level**.
-- **Sequence Length:** Comprimento da janela de medição. Aumente-o ao medir reverb, delay ou filtros íngremes de baixa frequência com ressonância longa, especialmente quando o analisador recomendar um comprimento maior.
-- **Stabilization Periods:** Número de períodos reproduzidos antes da captura (padrão `12`, usado por MLS e TSP) para que efeitos de variação lenta se estabilizem.
-- **Averages:** Número de períodos capturados calculados na média (padrão `2`, usado por MLS e TSP) para reduzir variações.
+- **Requested sweep length** (**Log Sweep**) / **Sequence Length** (outros sinais): **Log Sweep** usa `131072` amostras por padrão e pode prolongar a varredura para separar harmônicos; os valores reais de **Sweep length** e **Total stimulus time** aparecem após a medição. A resposta cobre apenas até 1,5 segundo após o pico principal do impulso, mesmo que a varredura seja mais longa. Para examinar caudas de reverb, delays ou ressonâncias mais longos, escolha **MLS**, **TSP** ou **Unit Impulse** e aumente **Sequence Length** conforme necessário.
+- **Stabilization Periods:** Número de períodos reproduzidos antes da captura (padrão `12`, usado por MLS e TSP) para que efeitos de variação lenta se estabilizem. Essa opção não está disponível com **Log Sweep** nem **Unit Impulse**.
+- **Averages:** Número de capturas usadas na média (padrão `2`, usado por **Log Sweep**, MLS e TSP) para reduzir variações.
 
 ## Leitura dos gráficos
 
@@ -42,11 +42,13 @@ Use o seletor **Graph** acima do gráfico para alternar entre as vistas sem medi
 - **Min Group Delay:** Atraso de grupo implícito na resposta de magnitude de fase mínima.
 - **Excess Group Delay:** Atraso de grupo restante após remover a parte de fase mínima (o gráfico é limitado a ±100 ms, enquanto as leituras do cursor mostram o valor real), facilitando identificar atraso puro e tempos de fase linear ou all-pass.
 - **Impulse:** Resposta ao impulso no domínio do tempo de `-2 ms` até **Impulse Range (ms)**, normalizada pelo pico.
+- **Distortion:** Com **Log Sweep**, mostra a distorção harmônica como porcentagem da fundamental ao longo das frequências. H2, H3 e THD (ordens 2–3) aparecem inicialmente; H4–H10 podem ser adicionadas sem repetir a medição. Quanto maior o valor, maior a distorção. Se esse gráfico não estiver disponível com outro sinal, selecione **Log Sweep**. Uma saída silenciosa ou sem dados válidos não permite calcular a distorção. As respostas de alto-falante salvas contribuem com sua resposta linear, não com a distorção do próprio alto-falante.
+- **Waterfall:** Mostra frequência, nível relativo (dB) e tempo de decaimento (ms). Em **Response**, escolha **After** (padrão) ou **Before** para examinar a saída do pipeline ou as respostas de alto-falante selecionadas antes do processamento. Cada vista é normalizada pelo próprio pico; compare a forma do decaimento, não os níveis absolutos. Arraste para girar o gráfico 3D e use a roda do mouse ou o gesto de pinça para ampliar ou reduzir.
 
-Passe o cursor sobre o gráfico para ler os valores de **Before** e **After** na posição do cursor; passe o cursor sobre o rótulo **Before** na legenda para ocultar **After** temporariamente. Use **Smoothing (oct)** nos gráficos de frequência, fase e atraso de grupo, e **Impulse Range (ms)** no gráfico de impulso.
+Nos gráficos de frequência, fase, atraso de grupo e impulso, passe o cursor para ler os valores de **Before** e **After** nessa posição; passe o cursor sobre o rótulo **Before** na legenda para ocultar **After** temporariamente. Use **Smoothing (oct)** nos gráficos de frequência, fase e atraso de grupo, e **Impulse Range (ms)** no gráfico de impulso.
 
 ## Como funciona a medição
 
-O Pipeline Analyzer captura o pipeline ativo, seu roteamento e quaisquer respostas de alto-falante selecionadas, compensando automaticamente em **After** a latência informada pelo pipeline. Se uma cauda de reverb ou ressonância de filtro ultrapassar **Sequence Length**, aumente **Sequence Length** para evitar sobreposição (MLS/TSP) ou truncamento (**Unit Impulse**). Para efeitos não lineares, modulados ou aleatórios, interprete o gráfico como um instantâneo das configurações e do **Level** atuais.
+O Pipeline Analyzer captura o pipeline ativo, seu roteamento e quaisquer respostas de alto-falante selecionadas, compensando automaticamente em **After** a latência informada pelo pipeline. Para efeitos não lineares, modulados ou aleatórios, interprete o gráfico como um instantâneo das configurações e do **Level** atuais.
 
 [← Voltar para o README](README.md)

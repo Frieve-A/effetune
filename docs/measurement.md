@@ -43,6 +43,6 @@ Use the camera icon (**Copy image**) above any of the four graphs to copy a high
 
 New measurements use an exponential sine sweep (ESS). Start with a low output level and adjust it without clipping. Distortion needs valid harmonic data from this measurement; imported WAV responses and measurements containing only frequency or linear IR data cannot supply it. If data is unavailable, import a measurement containing the needed responses or make a new measurement. The available range also depends on the sweep band and recorded duration. The requested sweep length may be increased to separate harmonics. Each repeat also includes 2.5 seconds for decay. With bandwidth limiting off, ESS covers 20 Hz–20 kHz within the limits of the actual sample rate.
 
-To inspect the active pipeline's Frequency, Phase, Min Group Delay, Excess Group Delay, and Impulse responses—including up to four selected outputs and optional saved speaker responses—see the [Pipeline Analyzer guide](pipeline-analyzer.md).
+To inspect the active pipeline's frequency, phase, group delay, impulse response, distortion, and decay—including up to four selected outputs and optional saved speaker responses—see the [Pipeline Analyzer guide](pipeline-analyzer.md).
 
 [← Back to README](../README.md)

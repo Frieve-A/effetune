@@ -2,6 +2,8 @@ import {
   collectExternalAssetInfo,
   collectUniquePipelinePlugins
 } from './pipeline/external-asset-info.js';
+import { isAndroidHost } from '../android/bridge.js';
+import { selectAndroidFolderFiles } from '../android/folder-import.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -131,6 +133,7 @@ export function openAssetLibraryBrowser({
   const selectedIds = new Set();
 
   const isAssetInUse = id => {
+    if (audioManager?.isExternalAssetInUse?.(kind, id)) return true;
     const plugins = collectUniquePipelinePlugins(
       audioManager?.pipelineA,
       audioManager?.pipelineB,
@@ -469,6 +472,10 @@ export function openAssetLibraryBrowser({
     if (deleteInProgress) return;
     if (chooseFolder) {
       await runImport(chooseFolder, true);
+      return;
+    }
+    if (isAndroidHost()) {
+      await runImport(async options => service.importFiles(await selectAndroidFolderFiles(options), options), true);
       return;
     }
     if (window.electronAPI || folderFallback && typeof window.showDirectoryPicker !== 'function') {

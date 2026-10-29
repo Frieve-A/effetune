@@ -484,6 +484,7 @@ class PresetAndAssetTests(unittest.TestCase):
                 self.assertEqual(document["chain"][0]["type"], "NoteSpectrogram")
                 self.assertEqual(document["chain"][0]["parameters"], {
                     "minimumMidi": 36, "maximumMidi": 84, "timbreEnabled": False,
+                    "chordKeyEnabled": False,
                 })
         self.assertEqual(parameters["cl"], "Rainbow")
         with self.assertRaises(effetune.ValidationError):
@@ -545,7 +546,7 @@ class PresetAndAssetTests(unittest.TestCase):
         self.assertEqual(document["chain"][0]["type"], "RhythmAnalyzer")
         self.assertEqual(
             document["chain"][0]["parameters"],
-            {"minimumBpm": 60, "maximumBpm": 180, "metronomeClick": False},
+            {"minimumBpm": 60, "maximumBpm": 180, "metronomeClick": False, "displayMode": "band"},
         )
         for parameters in (
             {"sp": 5}, {"sp": "8"}, {"sp": 3}, {"sp": 8.5}, {"sp": True},
@@ -569,7 +570,7 @@ class PresetAndAssetTests(unittest.TestCase):
         self.assertEqual(document["chain"][0]["type"], "RhythmAnalyzer")
         self.assertEqual(
             document["chain"][0]["parameters"],
-            {"minimumBpm": 60, "maximumBpm": 180, "metronomeClick": False},
+            {"minimumBpm": 60, "maximumBpm": 180, "metronomeClick": False, "displayMode": "band"},
         )
         for key in ("vt", "vm", "ve", "vl"):
             for value in (0, 1, "0", "true", None):

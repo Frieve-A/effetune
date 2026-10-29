@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const constants = require('../../electron/constants');
 const ipcHandlers = require('../../electron/ipc-handlers');
 const windowState = require('../../electron/window-state');
 const { createStartupPresentation } = require('../../electron/startup-presentation.cjs');
+const { installTestWindowPolicy, selectTestDisplay, placeTestWindow } = require('./electron-test-display.cjs');
+
+installTestWindowPolicy();
 
 app.setPath('userData', process.env.EFFETUNE_STARTUP_WINDOW_TEST_PROFILE);
 
@@ -16,6 +19,7 @@ globalThis.startupWindowResults = app.whenReady().then(async () => {
       webPreferences: { backgroundThrottling: false, preload: path.resolve(__dirname, '../../electron/preload.js') }
     });
     try {
+      placeTestWindow(window);
       const normalBounds = window.getNormalBounds();
       constants.setWindowState({ bounds: normalBounds, isMaximized });
       windowState.prepareForNewWindow();
@@ -65,6 +69,8 @@ globalThis.startupWindowResults = app.whenReady().then(async () => {
       const presented = {
         visible: window.isVisible(),
         focused: window.isFocused(),
+        opacity: window.getOpacity(),
+        displayId: screen.getDisplayMatching(window.getBounds()).id,
         maximized: window.isMaximized(),
         bounds: window.getBounds(),
         contentSize: window.getContentSize()
@@ -72,6 +78,7 @@ globalThis.startupWindowResults = app.whenReady().then(async () => {
       const shownClientSize = await window.webContents.executeJavaScript('[innerWidth, innerHeight]');
       if (isMaximized) window.unmaximize();
       results.push({
+        testDisplayId: selectTestDisplay(screen).id,
         isMaximized, normalBounds, preparationShows, prepared, firstClientSize, hiddenWhilePreparing, handoff,
         presentationShows, presented, shownClientSize, restoredBounds: window.getBounds()
       });

@@ -5,6 +5,7 @@
 import audioUtils from '../audio-utils/index.js';
 import uiManager from '../ui/ui-manager.js';
 import i18n from '../i18n.js';
+import { isAndroidHost } from '../../../js/android/bridge.js';
 import { MeasurementOutputError } from '../audio-utils/output-routing.js';
 import {
     isMultiChannelSelection,
@@ -39,11 +40,21 @@ const LevelAdjustment = {
             
             // Ensure audio context is running
             if (audioUtils.audioContext.state !== 'running') {
-                await audioUtils.audioContext.resume();
+                await audioUtils.ensureAudioContextRunning();
             }
             
             // Start input monitoring
             await audioUtils.startMicrophoneInput(this.measurementConfig.audioInputId, this.measurementConfig.inputChannel);
+            if (isAndroidHost()) {
+                let notice = document.getElementById('androidInputProcessing');
+                if (!notice) {
+                    notice = document.createElement('p');
+                    notice.id = 'androidInputProcessing';
+                    document.getElementById('levelWarning').after(notice);
+                }
+                notice.textContent = i18n.t('warning:androidInputProcessing');
+                notice.hidden = audioUtils.nativeInputUnprocessed === true;
+            }
             
             // Start level meter updates
             this.startLevelMeter();

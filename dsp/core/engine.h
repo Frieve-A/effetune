@@ -55,6 +55,7 @@ public:
   et_instance createInstance(const char *type_name) noexcept;
   void destroyInstance(et_instance instance) noexcept;
   et_status resetInstance(et_instance instance) noexcept;
+  et_status streamBoundaryInstance(et_instance instance) noexcept;
   [[nodiscard]] std::uint32_t instanceLatency(et_instance instance) const noexcept;
   et_status setInstanceAnalysisSource(et_instance consumer, et_instance producer) noexcept;
   et_status setInstanceTap(et_instance instance, std::uint32_t tap_id) noexcept;

@@ -35,6 +35,7 @@ function sliderPositionToSpeed(position) {
 // Inline transport-control icons (colored white via the .player-button CSS rule).
 // Kept as a shared map so play/pause and repeat icon swaps reuse the same markup.
 const PLAYER_ICONS = {
+  mute: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" draggable="false" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM16 9l6 6M22 9l-6 6"/></svg>',
   play: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" draggable="false"><path d="M8 5.14a1 1 0 0 1 1.52-.85l10.5 6.86a1 1 0 0 1 0 1.7L9.52 19.71A1 1 0 0 1 8 18.86z"/></svg>',
   pause: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" draggable="false"><rect x="7" y="5" width="3.6" height="14" rx="1.4"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.4"/></svg>',
   stop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" draggable="false"><rect x="6" y="6" width="12" height="12" rx="2.2"/></svg>',
@@ -80,6 +81,7 @@ export class AudioPlayerUI {
     this.container = null;
     this.trackNameDisplay = null;
     this.seekBar = null;
+    this.isSeeking = false;
     this.timeDisplay = null;
     this.playPauseButton = null;
     this.stopButton = null;
@@ -89,6 +91,8 @@ export class AudioPlayerUI {
     this.shuffleButton = null;
     this.speedButton = null;
     this.volumeSlider = null;
+    this.volumeValue = null;
+    this.muteButton = null;
     this.closeButton = null;
     this.expandButton = null;
     this.miniPlayerButton = null;
@@ -222,6 +226,7 @@ export class AudioPlayerUI {
     });
     
     addStateListener('isPlaying', (isPlaying) => {
+      if (isPlaying) this.flashSilentPlaybackControls();
       this.updatePlayPauseButton();
       this.updateTimeDisplay();
       this.refreshPowerUiScheduling();
@@ -242,6 +247,7 @@ export class AudioPlayerUI {
 
   setPlaybackTarget(player = this.localAudioPlayer) {
     if (this.audioPlayer === player) return;
+    this.isSeeking = false;
     this.closePlayerPopup();
     this.resetVideoGestures();
     this.setVideoExpanded(false);
@@ -253,7 +259,7 @@ export class AudioPlayerUI {
     if (this.closeButton) this.closeButton.disabled = false;
     this.initStateMonitoring();
     if (this.container) {
-      this.syncRemoteVolumeControl();
+      this.syncVolumeControls();
       this.updateVideoPresentation();
       this.updateTrackDisplay();
       this.updateArtwork();
@@ -287,17 +293,49 @@ export class AudioPlayerUI {
       }
     }
     if (this.volumeSlider) {
-      this.volumeSlider.hidden = capabilities?.volume !== true;
-      this.volumeSlider.disabled = !enabled;
+      this.volumeSlider.hidden = this.audioPlayer.isRemote ? capabilities?.volume !== true : false;
+      this.volumeSlider.disabled = !enabled || state?.liveInputActive === true || (capabilities != null && capabilities.volume !== true);
       this.volumeSlider.max = String(state?.volumeMax ?? 100);
-      if (document.activeElement !== this.volumeSlider) this.volumeSlider.value = String(state?.volume ?? 0);
+      this.volumeSlider.step = String(state?.volumeStep ?? 1);
+      this.volumeSlider.value = String(state?.volume ?? 100);
+      if (this.volumeValue) {
+        this.volumeValue.hidden = this.volumeSlider.hidden;
+        this.volumeValue.textContent = this.volumeSlider.value;
+      }
+    }
+    if (this.muteButton) {
+      this.muteButton.hidden = this.audioPlayer.isRemote ? capabilities?.mute !== true : false;
+      this.muteButton.disabled = !enabled || state?.liveInputActive === true || (capabilities != null && capabilities.mute !== true);
+      const muted = (this.audioPlayer.isRemote ? state?.mute : state?.playerMute) === true;
+      this.muteButton.setAttribute('aria-pressed', String(muted));
+      this.muteButton.setAttribute('data-active', String(muted));
     }
   }
 
-  syncRemoteVolumeControl() {
+  flashSilentPlaybackControls() {
+    const state = this.audioPlayer.stateManager?.getStateSnapshot();
+    if (this.audioPlayer.isRemote || state?.liveInputActive) return;
+    for (const [control, silent] of [
+      [this.muteButton, state?.playerMute === true],
+      [this.volumeSlider, state?.volume === 0],
+      [this.volumeValue, state?.volume === 0]
+    ]) {
+      if (!control) continue;
+      control.classList.remove('player-silence-feedback');
+      if (!silent) continue;
+      void control.offsetWidth;
+      control.classList.add('player-silence-feedback');
+    }
+  }
+
+  syncVolumeControls() {
     this.volumeSlider?.parentNode?.removeChild(this.volumeSlider);
+    this.volumeValue?.parentNode?.removeChild(this.volumeValue);
+    this.muteButton?.parentNode?.removeChild(this.muteButton);
     this.volumeSlider = null;
-    if (!this.container || !this.audioPlayer.isRemote) return;
+    this.volumeValue = null;
+    this.muteButton = null;
+    if (!this.container) return;
     const target = this.audioPlayer;
     const slider = document.createElement('input');
     slider.className = 'player-volume';
@@ -308,19 +346,42 @@ export class AudioPlayerUI {
     slider.hidden = true;
     slider.title = window.uiManager ? window.uiManager.t('networkMusic.volume') : 'Volume';
     slider.setAttribute('aria-label', slider.title);
-    slider.addEventListener('change', () => {
-      if (this.audioPlayer === target) return target.setVolume?.(Number(slider.value));
+    slider.addEventListener('input', () => {
+      if (this.audioPlayer !== target) return;
+      this.volumeValue.textContent = slider.value;
+      return target.setVolume?.(Number(slider.value));
     });
     this.container.querySelector('.player-controls').insertBefore(slider,
       this.miniPlayerButton || this.expandButton || this.closeButton);
     this.volumeSlider = slider;
+    const value = document.createElement('span');
+    value.className = 'player-volume-value';
+    value.hidden = true;
+    value.setAttribute('aria-hidden', 'true');
+    slider.parentNode.insertBefore(value, slider.nextSibling ?? null);
+    this.volumeValue = value;
+    const mute = document.createElement('button');
+    mute.type = 'button';
+    mute.className = 'player-button player-mute';
+    mute.innerHTML = PLAYER_ICONS.mute;
+    mute.title = window.uiManager ? window.uiManager.t('networkMusic.mute') : 'Mute';
+    mute.setAttribute('aria-label', mute.title);
+    mute.hidden = true;
+    mute.setAttribute('aria-pressed', 'false');
+    mute.addEventListener('click', () => {
+      if (this.audioPlayer !== target) return;
+      const state = target.stateManager.getStateSnapshot();
+      return target.setMute?.((target.isRemote ? state.mute : state.playerMute) !== true);
+    });
+    slider.parentNode.insertBefore(mute, slider.nextSibling ?? null);
+    this.muteButton = mute;
   }
 
   canRunPlayerUi() {
     const state = this.audioPlayer.stateManager?.getStateSnapshot?.();
     const context = this.audioPlayer.audioContext;
     return !this.isDisposed && this._powerUiEnabled && !this.documentRef?.hidden &&
-      state?.isPlaying === true && context?.state === 'running';
+      state?.isPlaying === true && (this.audioPlayer.isRemote || context?.state === 'running');
   }
 
   schedulePositionUpdate() {
@@ -365,7 +426,7 @@ export class AudioPlayerUI {
    * Handle state changes and update UI accordingly
    */
   handleStateChange(key, newValue, source) {
-    if (['controlsEnabled', 'seekBarEnabled', 'transportCapabilities', 'repeatMode', 'shuffleMode', 'volume', 'volumeMax'].includes(key)) {
+    if (['controlsEnabled', 'seekBarEnabled', 'transportCapabilities', 'repeatMode', 'shuffleMode', 'volume', 'volumeMax', 'volumeStep', 'mute', 'playerMute', 'liveInputActive'].includes(key)) {
       this.updatePlayerUIState();
     }
   }
@@ -437,8 +498,9 @@ export class AudioPlayerUI {
     this.miniPlayerButton = container.querySelector('.mini-player-button');
     this.restoreButton = container.querySelector('.restore-button');
     this.pinButton = container.querySelector('.pin-button');
-    this.syncRemoteVolumeControl();
+    this.syncVolumeControls();
     this.artworkImage = container.querySelector('.player-artwork-image');
+    this.artworkImage.addEventListener('error', () => this.applyArtwork(''));
     this.videoExpandButton = document.createElement('button');
     this.videoExpandButton.className = 'player-button player-video-expand';
     this.videoExpandButton.type = 'button';
@@ -593,12 +655,27 @@ export class AudioPlayerUI {
         }
       }
     };
+    this.seekBar.addEventListener('pointerdown', event => {
+      if (!this.audioPlayer.isRemote) return;
+      this.isSeeking = true;
+      this.seekBar.setPointerCapture?.(event.pointerId);
+    });
     this.seekBar.addEventListener('input', () => {
-      if (!this.audioPlayer.isRemote) seek();
+      if (this.audioPlayer.isRemote) {
+        this.isSeeking = true;
+        this.updateTimeDisplay();
+      } else seek();
     });
     this.seekBar.addEventListener('change', () => {
-      if (this.audioPlayer.isRemote) seek();
+      if (this.audioPlayer.isRemote) {
+        this.isSeeking = true;
+        seek();
+        this.isSeeking = false;
+      }
     });
+    for (const event of ['pointerup', 'pointercancel', 'blur']) {
+      this.seekBar.addEventListener(event, () => { this.isSeeking = false; });
+    }
 
     this.mountContainerForLayout();
 
@@ -1037,6 +1114,7 @@ export class AudioPlayerUI {
     window.uiManager?.libraryView?.setNowPlayingTrack?.(
       current?.libraryTrackId || current?.trackUid || null
     );
+    window.uiManager?.networkMusicView?.refreshLibraryNowPlaying?.();
   }
 
   updateArtwork(artworkUrl = null) {
@@ -1898,6 +1976,8 @@ export class AudioPlayerUI {
     // Ensure values are valid numbers
     currentTime = isFinite(currentTime) ? Math.max(0, currentTime) : 0;
     duration = isFinite(duration) ? Math.max(0, duration) : 0;
+    const previewSeek = this.audioPlayer.isRemote && this.isSeeking;
+    if (previewSeek) currentTime = Number(this.seekBar.value) / 100 * duration;
     
     // Format time display
     const timeText = `${this.formatTime(currentTime)} / ${this.formatTime(duration)}`;
@@ -1906,6 +1986,7 @@ export class AudioPlayerUI {
     }
     
     // Update seek bar position
+    if (previewSeek) return;
     if (duration > 0) {
       const seekValue = (currentTime / duration) * 100;
       if (isFinite(seekValue) && seekValue >= 0 && seekValue <= 100) {
@@ -1934,6 +2015,7 @@ export class AudioPlayerUI {
    * Remove player UI from DOM
    */
   removeUI() {
+    this.isSeeking = false;
     this.resetVideoGestures();
     this.setVideoExpanded(false);
     this.hideVideoControls();
@@ -1974,6 +2056,8 @@ export class AudioPlayerUI {
     this.shuffleButton = null;
     this.speedButton = null;
     this.volumeSlider = null;
+    this.volumeValue = null;
+    this.muteButton = null;
     this.closeButton = null;
     this.expandButton = null;
     this.miniPlayerButton = null;

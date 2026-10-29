@@ -1,0 +1,242 @@
+{
+  "pipeline": [
+    {
+      "name": "Volume",
+      "enabled": true,
+      "parameters": {
+        "vl": 0
+      }
+    },
+    {
+      "name": "Tonal Balance EQ",
+      "enabled": true,
+      "parameters": {
+        "tg": "Rock",
+        "am": 50,
+        "rg": 3,
+        "sm": 1,
+        "at": 10,
+        "lo": 40,
+        "hi": 16000,
+        "sp": 83,
+        "ts": -6,
+        "tc": 250,
+        "ea0": true,
+        "ta0": "pk",
+        "fa0": 100,
+        "ga0": 0,
+        "qa0": 0.7,
+        "ea1": true,
+        "ta1": "pk",
+        "fa1": 316,
+        "ga1": 0,
+        "qa1": 0.7,
+        "ea2": true,
+        "ta2": "pk",
+        "fa2": 1000,
+        "ga2": 0,
+        "qa2": 0.7,
+        "ea3": true,
+        "ta3": "pk",
+        "fa3": 3160,
+        "ga3": 0,
+        "qa3": 0.7,
+        "ea4": true,
+        "ta4": "pk",
+        "fa4": 10000,
+        "ga4": 0,
+        "qa4": 0.7
+      }
+    },
+    {
+      "name": "5Band Dynamic EQ",
+      "enabled": true,
+      "parameters": {
+        "bs": [
+          {
+            "en": false,
+            "ft": "pk",
+            "f": 120,
+            "q": 0.8,
+            "mg": 2,
+            "th": -24,
+            "r": 2,
+            "kn": 6,
+            "a": 8,
+            "rl": 100,
+            "scf": 120,
+            "scq": 1
+          },
+          {
+            "en": false,
+            "ft": "pk",
+            "f": 300,
+            "q": 0.8,
+            "mg": 2,
+            "th": -24,
+            "r": 2,
+            "kn": 6,
+            "a": 8,
+            "rl": 100,
+            "scf": 300,
+            "scq": 1
+          },
+          {
+            "en": false,
+            "ft": "pk",
+            "f": 1000,
+            "q": 0.8,
+            "mg": 2,
+            "th": -24,
+            "r": 2,
+            "kn": 6,
+            "a": 8,
+            "rl": 100,
+            "scf": 1000,
+            "scq": 1
+          },
+          {
+            "en": true,
+            "ft": "pk",
+            "f": 3200,
+            "q": 0.8,
+            "mg": 2,
+            "th": -24,
+            "r": 2,
+            "kn": 6,
+            "a": 8,
+            "rl": 100,
+            "scf": 3200,
+            "scq": 1
+          },
+          {
+            "en": true,
+            "ft": "pk",
+            "f": 7500,
+            "q": 1,
+            "mg": 2,
+            "th": -30,
+            "r": 2,
+            "kn": 6,
+            "a": 2,
+            "rl": 100,
+            "scf": 7500,
+            "scq": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "Multiband Compressor",
+      "enabled": true,
+      "parameters": {
+        "f1": 100,
+        "f2": 400,
+        "f3": 2000,
+        "f4": 8000,
+        "bands": [
+          {
+            "t": -27,
+            "r": 2.5,
+            "a": 39,
+            "rl": 156,
+            "k": 6,
+            "g": 3
+          },
+          {
+            "t": -30,
+            "r": 2.5,
+            "a": 30,
+            "rl": 132,
+            "k": 6,
+            "g": 3
+          },
+          {
+            "t": -32,
+            "r": 2.5,
+            "a": 24,
+            "rl": 120,
+            "k": 6,
+            "g": 3
+          },
+          {
+            "t": -34,
+            "r": 2.5,
+            "a": 15,
+            "rl": 96,
+            "k": 6,
+            "g": 3
+          },
+          {
+            "t": -37,
+            "r": 2.5,
+            "a": 9,
+            "rl": 84,
+            "k": 6,
+            "g": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "Multiband Transient",
+      "enabled": true,
+      "parameters": {
+        "f1": 200,
+        "f2": 4000,
+        "bands": [
+          {
+            "fa": 5,
+            "fr": 50,
+            "sa": 25,
+            "sr": 250,
+            "gt": 0.5,
+            "gs": 0,
+            "sm": 5
+          },
+          {
+            "fa": 2,
+            "fr": 30,
+            "sa": 10,
+            "sr": 150,
+            "gt": 0.5,
+            "gs": 0,
+            "sm": 5
+          },
+          {
+            "fa": 0.5,
+            "fr": 20,
+            "sa": 5,
+            "sr": 100,
+            "gt": -0.5,
+            "gs": 0,
+            "sm": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "Saturation",
+      "enabled": true,
+      "parameters": {
+        "os": 4,
+        "dr": 1.5,
+        "bs": 0,
+        "mx": 10,
+        "gn": -0.5
+      }
+    },
+    {
+      "name": "Brickwall Limiter",
+      "enabled": true,
+      "parameters": {
+        "th": 0,
+        "rl": 120,
+        "la": 5,
+        "os": 4,
+        "ig": 5,
+        "sm": -1
+      }
+    }
+  ]
+}

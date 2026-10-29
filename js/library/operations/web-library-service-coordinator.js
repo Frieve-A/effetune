@@ -426,7 +426,7 @@ export class WebLibraryServiceCoordinator {
       endFrame: track.endFrame,
       durationSec: track.durationSec,
       physicalSourceKey: track.physicalSourceKey,
-      file
+      ...(file?.androidUri ? { uri: file.androidUri } : { file })
     };
   }
 

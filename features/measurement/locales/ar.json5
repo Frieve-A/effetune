@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "لا يوفر هذا الجهاز إدخال ميكروفون دون معالجة. قد تؤثر المعالجة التلقائية للصوت في القياس.",
   "analysis:normalization": "التطبيع",
   "analysis:normalizationNone": "بدون",
   "analysis:normalizationGlobal": "القمة العامة = 0 ديسيبل",

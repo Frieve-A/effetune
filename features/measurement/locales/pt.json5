@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "Este dispositivo não oferece entrada de microfone sem processamento. O processamento automático do áudio pode afetar a medição.",
   "analysis:normalization": "Normalização",
   "analysis:normalizationNone": "Nenhuma",
   "analysis:normalizationGlobal": "Pico global = 0 dB",

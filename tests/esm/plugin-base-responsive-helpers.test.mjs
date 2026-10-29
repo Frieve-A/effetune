@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { bindNumberInput } from '../../js/ui/range-fill.js';
+import { AndroidAudioManager } from '../../js/android/audio-manager.js';
 
 class FakeElement {
   constructor(tagName) {
@@ -150,6 +151,42 @@ function createPlugin() {
   return plugin;
 }
 
+test('rendered Volume control commits to the native host without replaying hydration', async () => {
+  const writes = [];
+  const manager = Object.create(AndroidAudioManager.prototype);
+  Object.assign(manager, {
+    isAndroid: true, pendingMutation: Promise.resolve(), currentPipeline: 'A',
+    snapshot: { revision: 4, sampleRate: 48000, channelCount: 2 },
+    nativeAssets: { pendingClears: new Set(), resident: new Map(), synchronize() {}, async transfer() {} },
+    bridge: { async request(command, payload) { writes.push({ command, payload }); return { revision: 5 }; } },
+    acceptSnapshot() {}
+  });
+  const { context } = loadPluginBase({ window: { audioManager: manager } });
+  vm.runInContext(fs.readFileSync(new URL('../../plugins/basics/volume.js', import.meta.url), 'utf8'), context);
+  const plugin = new context.window.VolumePlugin();
+  plugin.id = 71;
+  manager.pipeline = [plugin];
+  const slider = plugin.createUI().children[0].children[1];
+  slider.value = '-9';
+  slider.dispatch('input');
+  await manager.pendingMutation;
+  assert.equal(plugin.vl, -9);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].command, 'pipeline.set');
+  assert.equal(writes[0].payload.plugins[0].parameters.vl, -9);
+
+  manager.hydrating = true;
+  plugin.setParameters({ vl: -3 });
+  manager.hydrating = false;
+  await manager.withMutationOptions({ nativeHydration: {}, isCurrent: () => false },
+    () => plugin.setParameters({ vl: -6 }));
+  plugin.audioHostActive = false;
+  slider.value = '-12';
+  slider.dispatch('input');
+  await manager.pendingMutation;
+  assert.equal(writes.length, 1, 'native hydration and inactive slots must not publish edits');
+});
+
 function layoutMarkerLabels(points, { width = 1024, height = 480, axis = 'horizontal' } = {}) {
   const items = points.map(({ cx, cy, w = 40, h = 26 }) => ({
     cx,
@@ -258,6 +295,21 @@ test('channel debug exposes sixteen UI choices on a stereo device without emulat
   assert.equal(window.audioContext.destination.channelCount, 2);
   window.uiManager.debugChannelCount = null;
   assert.deepEqual(values(), ['', 'A', 'L', 'R']);
+});
+
+test('channel selector follows the active multichannel output instead of the context destination', () => {
+  const window = {
+    audioContext: { destination: { channelCount: 2 } },
+    audioManager: { getOutputChannelCount: () => 4 },
+    uiManager: { debugChannelCount: null }
+  };
+  const { PluginBase } = loadPluginBase({ window });
+  const plugin = new PluginBase('Channels', 'Channel selection');
+  const values = plugin.createChannelSelectControl().children[1].children.map(option => option.value);
+  assert.deepEqual(values, ['', 'A', 'L', 'R', '34', '3', '4']);
+  assert.equal(plugin.getChannelCountForUI(6), 6);
+  window.uiManager.debugChannelCount = 8;
+  assert.equal(plugin.getChannelCountForUI(), 8);
 });
 
 function loadModulationPlugin(sourcePath, exportName) {

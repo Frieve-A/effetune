@@ -1,4 +1,5 @@
 import { createRepositoryError } from './contract-errors.js';
+import { AndroidDocumentFile, forwardAndroidDocumentRequest } from '../../android/library-io.js';
 import {
   measureWebCatalogMessageBytes,
   WEB_CATALOG_MAX_MESSAGE_BYTES,
@@ -119,7 +120,11 @@ export class WebCatalogRepositoryClient {
   async getProvisionalEntry(operationId) { return this.request('getProvisionalEntry', operationId); }
   async readSequencePage(options) { return this.request('readSequencePage', options); }
   async resolveSequenceEntrySource(options) { return this.request('resolveSequenceEntrySource', options); }
-  async resolveTrackSiblingFile(options) { return this.request('resolveTrackSiblingFile', options); }
+  async resolveTrackSiblingFile(options) {
+    const result = await this.request('resolveTrackSiblingFile', options);
+    return result?.file?.kind === 'android-document'
+      ? { ...result, file: new AndroidDocumentFile(result.file) } : result;
+  }
   async createContext(options) { return this.request('createContext', options); }
   async releaseContext(contextToken) { return this.request('releaseContext', contextToken); }
   async queryTracks(options) { return this.request('queryTracks', options); }
@@ -205,6 +210,7 @@ export class WebCatalogRepositoryClient {
       }
       return;
     }
+    if (forwardAndroidDocumentRequest(this.worker, message)) return;
     if (message.type === 'invalidation') {
       for (const listener of this.listeners) listener(message.invalidation);
       return;

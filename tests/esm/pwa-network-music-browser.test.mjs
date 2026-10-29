@@ -10,6 +10,8 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { createPwaNetworkFixture } from '../helpers/pwa-network-fixture.cjs';
 import { createTrustedChromeProfile } from '../helpers/chrome-profile-trust.mjs';
+import { SELECTABLE_LANGUAGE_CODES } from '../../js/language-options.js';
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
 
 const publicOrigin = 'https://effetune.frieve.com';
 const read = file => readFile(new URL(file, import.meta.url), 'utf8');
@@ -102,6 +104,42 @@ async function publicPage(browser, { permission = true, width = 390, pageOrigin 
   return { context, page };
 }
 
+test('PWA localizes playback destinations and its device dialog on mobile', { timeout: 30000 }, async () => {
+  const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
+  try {
+    const { context, page } = await publicPage(browser);
+    for (const locale of SELECTABLE_LANGUAGE_CODES) {
+      const translations = parseCommentedJSON(await read(`../../js/locales/${locale}.json5`));
+      await page.evaluate(translations => {
+        fixture.view.uiManager.t = key => translations[key] ?? key;
+        fixture.controller.state.players = [{ id: 'saved-player', name: 'Living room', available: false }];
+        fixture.view.updateUITexts();
+      }, translations);
+      assert.equal(await page.locator('.network-select').getAttribute('aria-label'), translations['networkMusic.player']);
+      assert.equal(await page.locator('.network-refresh-button').getAttribute('aria-label'), translations['networkMusic.refresh']);
+      assert.equal(await page.locator('.network-select').getAttribute('title'), translations['networkMusic.local']);
+      assert.equal(await page.locator('.network-select option[value="pwa-add-device"]').getAttribute('title'), translations['networkMusic.pwa.addDevice']);
+      assert.deepEqual(await page.locator('.network-select option').allTextContents(), [
+        translations['networkMusic.local'], `Living room · ${translations['networkMusic.unavailable']}`, translations['networkMusic.pwa.addDevice']
+      ]);
+      assert.equal(await page.locator('.network-select').inputValue(), 'local');
+      await page.selectOption('.network-select', 'pwa-add-device');
+      assert.equal(await page.locator('dialog h2').textContent(), translations['networkMusic.pwa.addDeviceTitle']);
+      assert.equal(await page.locator('dialog > p').textContent(), translations['networkMusic.pwa.setup']);
+      assert.equal(await page.getByLabel(translations['networkMusic.pwa.pairingLinkLabel']).count(), 1);
+      assert.equal(await page.getByRole('button', { name: translations['networkMusic.pwa.connect'], exact: true }).isVisible(), true);
+      const geometry = await page.locator('dialog').evaluate(dialog => ({
+        left: dialog.getBoundingClientRect().left, right: dialog.getBoundingClientRect().right,
+        clientWidth: dialog.clientWidth, scrollWidth: dialog.scrollWidth
+      }));
+      assert.ok(geometry.left >= 0 && geometry.right <= 390, `${locale} dialog stays within the mobile viewport`);
+      assert.ok(geometry.scrollWidth <= geometry.clientWidth, `${locale} dialog has no horizontal overflow`);
+      await page.getByRole('button', { name: translations['networkMusic.pwa.close'], exact: true }).click();
+    }
+    await context.close();
+  } finally { await browser.close(); }
+});
+
 test('production CSP permits registered HTTP/WS with LNA, streaming enters Volume, denial and foreign script remain blocked', { timeout: 45000 }, async () => {
   const fixture = await createPwaNetworkFixture({ origin: publicOrigin });
   const { runtime } = await fixture.serverHost.getCatalog();
@@ -144,7 +182,8 @@ test('production CSP permits registered HTTP/WS with LNA, streaming enters Volum
     assert.equal(destinations.stateA.transportState, 'Playing');
     assert.equal(destinations.stateB.transportState, 'Playing');
     assert.equal(destinations.stateB.queue[0].title, track.title);
-    assert.ok(!destinations.stateB.queue[0].uri.includes('/pwa/v1/'));
+    assert.equal(Object.hasOwn(destinations.stateB.queue[0], 'uri'), false);
+    assert.ok(!destination.queue[0].uri.includes('/pwa/v1/'));
     const ws = await page.evaluate(async () => {
       const events = []; const off = fixture.api.remoteClient.onEvent(event => events.push(event));
       const state = await fixture.api.networkMusicGetState(); const result = await fixture.api.remoteClient.connect(state.players[0].id);

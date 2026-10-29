@@ -1,8 +1,10 @@
 import { isLayerEffect, paletteColor, paletteGradient, scrollingPaletteStops } from './visualizer-effects.js';
-import { THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, REFERENCE_WIDTH, RHYTHM_BEAT_STYLE_DEFAULTS } from './visualizer-model.js';
+import { THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, REFERENCE_WIDTH, RHYTHM_BEAT_STYLE_DEFAULTS, NOTE_TEXT_TYPES } from './visualizer-model.js';
 import { createBallistics, stepBallistics } from './visualizer-ballistics.js';
 import { drawStyledText } from './visualizer-text.js';
 import { GuitarFretboardDisplay } from './visualizer-guitar.js';
+import { DrumsDisplay } from './visualizer-drums.js';
+import { NoteTextDisplay } from './visualizer-note-text.js';
 
 const ANALYZERS = {
     spectrum: ['SpectrumAnalyzerPlugin', 'handleDspSpectrumTelemetry', 'drawGraph'],
@@ -10,7 +12,9 @@ const ANALYZERS = {
     oscilloscope: ['OscilloscopePlugin', 'handleDspScopeTelemetry', 'drawWaveform'],
     stereo: ['StereoMeterPlugin', 'handleDspStereoFieldTelemetry', 'drawMeter'],
     notes: ['NoteSpectrogramPlugin', 'handleTelemetry', 'drawGraph'],
+    ...Object.fromEntries(NOTE_TEXT_TYPES.map(type => [type, [NoteTextDisplay, 'handleTelemetry', 'drawGraph']])),
     guitar: [GuitarFretboardDisplay, 'handleTelemetry', 'drawGraph'],
+    drums: [DrumsDisplay, 'handleTelemetry', 'drawGraph'],
     chroma: ['ChromaSpiralPlugin', 'handleTelemetry', 'drawGraph'],
     'level-meter': ['LevelMeterPlugin', 'handleDspLevelTelemetry', 'updateMeter'],
     phase: ['PhaseSelectEqPlugin', 'handleDspTelemetry', 'drawVisualizerPhaseMap'],
@@ -43,7 +47,7 @@ const SPECTRUM_FLOOR_POWER = 10 ** -14.5;
 
 // Native traces can use a CanvasGradient directly. Pixel histories and individually
 // colored markers need their signal opacity masked with a spatial palette instead.
-const usesSpatialGradient = item => item.palette.mode === 'gradient' && (item.palette.direction === 'radial' ||
+const usesSpatialGradient = item => !NOTE_TEXT_TYPES.includes(item.type) && item.palette.mode === 'gradient' && (item.palette.direction === 'radial' ||
     (['stereo', 'analog-meter', 'rhythm-analyzer'].includes(item.type) &&
         (item.palette.direction === 'linear' || item.palette.angle)) ||
     (item.palette.angle && (['spectrogram', 'notes', 'guitar', 'phase'].includes(item.type) ||
@@ -152,6 +156,18 @@ class AnalyzerDisplay {
             visualizerAxisLabels: true,
             themePalette: { get: role => this.themeColors?.[role] ?? DEFAULT_THEME_PALETTE[role] },
             drawSignal: (context, draw, clip) => this.drawSignal(context, draw, clip),
+            drawChordKey: (context, draw) => {
+                if (!this.spatialPalette) { draw(context); return; }
+                // Keep outlines on the signal canvas while the group's fills accumulate
+                // in the palette mask, then composite the recolored fills over them once.
+                this.flushPalette();
+                const outline = this.signalCanvas.getContext('2d');
+                outline.save();
+                outline.setTransform(context.getTransform());
+                try { this.drawSignal(context, target => draw(target, outline)); }
+                finally { outline.restore(); }
+                this.flushPalette();
+            },
             drawUnderlay: (context, draw) => this.drawSignal(context, draw, null, this.underlayCanvas),
             drawKeyboard: (context, draw, geometry) => this.drawKeyboard(context, draw, geometry),
             drawLevelValue: (context, text, x, y) => this.drawLevelValue(context, text, x, y),
@@ -176,16 +192,19 @@ class AnalyzerDisplay {
         this.update(item, 0, canvas.width);
         this.unsubscribe = sources.subscribeItem(item.id, (frame, producer) => {
             this.plugin._dspTelemetryHub = { port: producer };
-            this.plugin[definition[1]](frame, producer);
+            const handler = this.type === 'notes' && frame.frameType === 32
+                ? 'handleChordKeyTelemetry' : definition[1];
+            this.plugin[handler](frame, producer);
         });
     }
 
     update(item, time, cssWidth) {
         const plugin = this.plugin;
-        if ((this.type === 'level-meter' || this.type === 'analog-meter') && this.channel !== item.channel) {
+        if ((this.type === 'level-meter' || this.type === 'analog-meter' || this.type === 'drums' || NOTE_TEXT_TYPES.includes(this.type)) && this.channel !== item.channel) {
             // The source changes on channel selection; hide the old held peak
             // until a frame from the newly selected source arrives.
-            plugin.initializeDisplayState();
+            if (this.type === 'drums') plugin.clearDetections();
+            else plugin.initializeDisplayState();
             this.channel = item.channel;
         }
         plugin.graphCssWidth = cssWidth;
@@ -250,6 +269,13 @@ class AnalyzerDisplay {
                     this.spatialPalette ? paletteGradient(target, this.spatialPalette, plugin.canvas.width, this.paletteTime, false, plugin.canvas.height)
                         : color, fitRadius), { palette: false });
         }
+        if (NOTE_TEXT_TYPES.includes(this.type)) {
+            options.textType = item.type;
+            options.drawText = (context, value) => this.drawSignal(context, target =>
+                drawStyledText(target, value, item.style, plugin.canvas.width, plugin.canvas.height, this.textScale,
+                    item.palette.mode === 'solid' ? item.palette.color : paletteGradient(target, item.palette,
+                        plugin.canvas.width, time, false, plugin.canvas.height)), { palette: false });
+        }
         // The effect's on-screen visibility gate does not apply to this host.
         if (this.type === 'phase') plugin.isVisible = true;
         if (Object.keys(changed).length) {
@@ -264,7 +290,8 @@ class AnalyzerDisplay {
         const paletteKey = JSON.stringify(item.palette);
         const notePlugin = window.NoteSpectrogramPlugin;
         // Spatial gradients reuse the signal's opacity while coloring its layer below.
-        const mode = usesSpatialGradient(item) ? 'solid' : item.palette.mode;
+        const spatial = usesSpatialGradient(item);
+        const mode = spatial ? 'solid' : item.palette.mode;
         const intensityGradient = mode === 'gradient' && item.palette.direction === 'intensity';
         const fixedNotes = mode === 'note-colors' && Boolean(notePlugin?.noteColor);
         const phase = mode !== 'gradient' || item.palette.motion.mode === 'none' || !item.palette.motion.speed ? 0 : time;
@@ -352,6 +379,13 @@ class AnalyzerDisplay {
                     ? (midi - pitchRotation - (plugin.lo + 1) * 12) / Math.max(12, (plugin.hi - plugin.lo + 1) * 12)
                     : (midi - plugin.mn) / Math.max(1, plugin.mx - plugin.mn));
         options.signalColor = mode === 'heatmap' ? (_midi, intensity) => heatmapColor(intensity) : null;
+        if (this.type === 'notes') options.chordKeyColor = root => {
+            // A chord/key is a full-strength annotation. For a frequency palette,
+            // represent its root in the octave nearest the displayed range's center.
+            const midi = root + 12 * Math.round(((plugin.mn + plugin.mx) / 2 - root) / 12);
+            return spatial ? [255, 255, 255]
+                : options.signalColor?.(midi, 1)?.rgb ?? options.noteColor(midi, 1);
+        };
         if (intensityGradient && this.type === 'chroma') {
             const colors = this.colors.map((rgb, index) => ({ rgb, alpha: index / 255,
                 css: `rgba(${rgb.join(',')},${index / 255})` }));
@@ -397,6 +431,7 @@ class AnalyzerDisplay {
             options.markerColor = positionColor;
             options.tempogramColor = mode === 'gradient' ? positionColor : null;
         }
+        if (this.type === 'drums') options.glowColor = hexRgb(item.palette.color);
         if (this.type === 'stereo') {
             // Keep the original age buckets, fading into the scene beneath the graph.
             // Gradients depend on palette and graph geometry, never sample count.
@@ -701,5 +736,5 @@ class AnalyzerDisplay {
         context.restore();
     }
 
-    dispose() { this.unsubscribe(); }
+    dispose() { this.unsubscribe(); this.plugin.disposeDisplay?.(); }
 }

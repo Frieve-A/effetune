@@ -239,6 +239,9 @@ const remoteV1 = Object.freeze({
     regenerateToken: () => ipcRenderer.invoke('remote-panel-v1:regenerate-token'),
     copyLink: index => ipcRenderer.invoke('remote-panel-v1:copy-link', Number(index) || 0),
     join: input => ipcRenderer.invoke('remote-panel-v1:join', String(input || '')),
+    selectConnectionFile: kind => ipcRenderer.invoke('remote-panel-v1:select-connection-file', kind),
+    setConnection: request => ipcRenderer.invoke('remote-panel-v1:set-connection', request),
+    testConnection: () => ipcRenderer.invoke('remote-panel-v1:test-connection'),
     onStatus: callback => addSingleArgIpcListener('remote-panel-v1:status', callback)
   })
 });
@@ -254,9 +257,13 @@ function withoutOpenHomeOwnedConfig(config) {
     airPlayReceiver: _airPlayReceiver,
     networkMusicDeviceId: _networkMusicDeviceId,
     networkMusicSharing: _networkMusicSharing,
+    networkMusicSources: _networkMusicSources,
+    networkMusicGateway: _networkMusicGateway,
+    networkMusicManualDevices: _networkMusicManualDevices,
     // Owned by the remote-control host in main (Settings > Remote Control).
     remoteControlEnabled: _remoteControlEnabled,
     remoteControlToken: _remoteControlToken,
+    remoteControlConnection: _remoteControlConnection,
     ...rendererOwnedConfig
   } = config;
   return rendererOwnedConfig;
@@ -408,6 +415,7 @@ contextBridge.exposeInMainWorld(
     networkMusicPlayerCommand: request => invokeNetworkMusic('PlayerCommand', request),
     networkMusicResolveTrack: request => invokeNetworkMusic('ResolveTrack', request),
     networkMusicSetSharing: request => invokeNetworkMusic('SetSharing', request),
+    networkMusicConfigure: request => invokeNetworkMusic('Configure', request),
     networkMusicPlaySelection: request => invokeNetworkMusic('PlaySelection', request),
     networkMusicPlayFiles: request => invokeNetworkMusic('PlayFiles', request),
     onNetworkMusicState: callback => addSingleArgIpcListener('network-music:state', callback),

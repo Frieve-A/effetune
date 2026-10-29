@@ -4,7 +4,9 @@
  */
 
 import audioUtils from './audio-utils/index.js';
+import { installAndroidFileDownloads } from '../../js/android/file-downloads.js';
 import dataStorage from './dataStorage.js';
+installAndroidFileDownloads();
 import uiManager from './ui/ui-manager.js';
 import measurementController, {
     MeasurementSetupError

@@ -15,6 +15,49 @@ const routingUrl = moduleUrl(read('../../js/ui/pipeline/pipeline-routing-dialog.
 const css = read('../../css/effetune-theme.css') + read('../../css/effetune.css')
   .replace('@import url("effetune-theme.css");', '');
 
+test('mobile dropdowns open on touch release and allow scrolling from the control', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 700 }, hasTouch: true });
+    await page.setContent('<body class="layout-mobile"><select style="margin-top:200px;width:200px;height:50px"><option>One</option><option>Two</option></select><div style="height:2000px"></div></body>');
+    await page.addStyleTag({ content: css });
+    await page.evaluate(async url => (await import(url)).enableStandardSelects(document), selectUrl);
+    const select = page.locator('select');
+    const list = page.locator('.standard-select-list');
+    const cdp = await page.context().newCDPSession(page);
+    const bounds = await select.boundingBox();
+    const x = bounds.x + 30;
+    const y = bounds.y + 25;
+    const touch = (type, offset = 0) => cdp.send('Input.dispatchTouchEvent', {
+      type, touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x, y: y + offset }]
+    });
+    await touch('touchStart');
+    assert.equal(await list.isVisible(), false);
+    await touch('touchEnd');
+    assert.equal(await list.isVisible(), true);
+    await page.keyboard.press('Escape');
+    await touch('touchStart');
+    await touch('touchCancel');
+    assert.equal(await list.isVisible(), false);
+    await touch('touchStart');
+    for (const offset of [-20, -50, -90]) await touch('touchMove', offset);
+    await touch('touchEnd');
+    await page.waitForFunction(() => window.scrollY > 0);
+    assert.equal(await list.isVisible(), false);
+    // A move away and back must not become a tap even if no native pan starts.
+    await select.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 10, button: 0, clientX: 30, clientY: 30 });
+    await select.dispatchEvent('pointermove', { pointerType: 'touch', pointerId: 10, clientX: 50, clientY: 30 });
+    await select.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 10, clientX: 30, clientY: 30 });
+    await select.dispatchEvent('click', { detail: 1 });
+    assert.equal(await list.isVisible(), false);
+    await select.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await list.isVisible(), true);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('new dropdowns automatically share themed scrollbars and native value events', async () => {
   const browser = await chromium.launch({ headless: true });
   try {

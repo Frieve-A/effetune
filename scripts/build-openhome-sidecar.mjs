@@ -408,6 +408,7 @@ export function runHandshakeSmoke(executable, args = ['--stdio', '--loopback']) 
             transportToken: 0,
             trackToken: 0,
             detailsToken: 0,
+            volume: { volume: 100, mute: false },
           },
         })}\n`);
         child.stdin.end(`${JSON.stringify({ type: 'shutdown' })}\n`);

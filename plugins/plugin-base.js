@@ -697,6 +697,9 @@ class PluginBase {
             ...(typeof descriptor.externalAssetSignature === 'string' && {
                 externalAssetSignature: descriptor.externalAssetSignature
             }),
+            ...(descriptor.externalAssetParameters && {
+                externalAssetParameters: { ...descriptor.externalAssetParameters }
+            }),
             payload: descriptor.payload.slice(0)
         };
         if (!Number.isSafeInteger(normalized.footprintBytes) ||
@@ -1039,7 +1042,7 @@ class PluginBase {
         }
     }
 
-    // Update plugin parameters via the worklet.
+    // Update plugin parameters through the active audio host.
     updateParameters() {
         const previousChannel = this._lastUpdatedChannel;
         this._lastUpdatedChannel = this.channel;
@@ -1047,7 +1050,7 @@ class PluginBase {
             this.onChannelSelectionChanged(previousChannel, this.channel);
         }
         this._notifyWasmAssetSnapshotChange();
-        if (this.audioHostActive !== false && window.workletNode) {
+        if (this.audioHostActive !== false && (window.workletNode || window.audioManager?.isAndroid)) {
             const parameters = this.getParameters();
             const message = {
                 type: 'updatePlugin',
@@ -2127,7 +2130,8 @@ class PluginBase {
 
     // UI layout preview only. Never use this count to configure audio processing.
     // See UIManager.setDebugChannelCount for the intentionally unsupported operations.
-    getChannelCountForUI(actualChannelCount = window.audioContext?.destination?.channelCount || 2) {
+    getChannelCountForUI(actualChannelCount = window.audioManager?.getOutputChannelCount?.() ??
+        window.audioContext?.destination?.channelCount ?? 2) {
         return window.uiManager?.debugChannelCount ?? actualChannelCount;
     }
 

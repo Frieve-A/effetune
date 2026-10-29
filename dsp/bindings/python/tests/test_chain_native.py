@@ -230,7 +230,7 @@ class NativeChainTests(unittest.TestCase):
                 "spectrumHq",
             ),
             (
-                effetune.NoteSpectrogram(id="notes"),
+                effetune.NoteSpectrogram(id="notes", chord_key_enabled=True),
                 effetune.NoteSpectrogramTelemetryFrame,
                 "noteSpectrogram",
             ),
@@ -266,7 +266,14 @@ class NativeChainTests(unittest.TestCase):
                     output = stream.process(source)
                     self.assertEqual(stream.dropped_telemetry_frames, 0)
                     self.assertTrue(received)
-                    frame = received[-1]
+                    frame = next(frame for frame in reversed(received) if frame.kind == kind)
+                    if kind == "noteSpectrogram":
+                        chord_frames = [frame for frame in received if frame.kind == "noteChordKey"]
+                        self.assertTrue(chord_frames)
+                        self.assertTrue(all(
+                            math.isfinite(frame.confirmed_probability) and 0 <= frame.confirmed_probability <= 1
+                            for frame in chord_frames
+                        ))
                     self.assertIsInstance(frame, frame_class)
                     self.assertEqual(frame.kind, kind)
                     self.assertEqual(frame.effect_id, effect.id)

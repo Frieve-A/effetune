@@ -25,6 +25,119 @@ function classes(...initial) {
     };
 }
 
+test('playback accessibility controls follow edited actions and cancel removed or hidden seek gestures', async () => {
+    const document = createFakeDocument();
+    const createElement = document.createElement.bind(document);
+    document.createElement = tag => {
+        const element = createElement(tag);
+        element.removeAttribute = name => { delete element.attributes[name]; };
+        element.remove = () => element.parentNode?.removeChild(element);
+        element.insertBefore = (child, next) => {
+            child.parentNode?.removeChild(child);
+            const index = next ? element.children.indexOf(next) : element.children.length;
+            element.children.splice(index, 0, child);
+            child.parentNode = element;
+        };
+        return element;
+    };
+    const actions = [], seeks = [], released = [];
+    let shown = 0, stopped = 0;
+    const buttonItem = { id: 'transport', type: 'playback-control', params: { action: 'shuffle' } };
+    const rangeItem = { id: 'position', type: 'seek-bar', params: {} };
+    const playback = { available: true, seekEnabled: true, duration: 120, position: 30,
+        shuffle: true, labels: { shuffle: 'Shuffle', next: 'Next' }, enabled: { shuffle: true, next: true } };
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        editor: { open: false }, layout: { items: [buttonItem, rangeItem] },
+        canvas: { style: {}, hasPointerCapture: () => true, releasePointerCapture: id => released.push(id) },
+        showControls: () => shown++, runPlaybackAction: action => actions.push(action),
+        seekPlayback: value => seeks.push(value), t: (_key, fallback) => fallback
+    });
+    view.createPlaybackControls(document.body);
+    view.syncPlaybackControls(view, playback);
+    const button = view.playbackButtons.get('transport'), range = view.playbackButtons.get('position');
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
+    assert.equal(range.getAttribute('aria-valuetext'), '0:30 / 2:00');
+    await button.dispatchEvent('focus');
+    assert.equal(view.playbackFocusedId, 'transport');
+    assert.equal(shown, 1);
+    // Replacing a layout item must not leave its original action captured by the listener.
+    view.layout.items = [rangeItem, { ...buttonItem, params: { action: 'next' } }];
+    view.syncPlaybackControls(view, playback);
+    assert.equal(view.playbackButtons.get('transport'), button);
+    assert.deepEqual(view.playbackControls.children, [range, button]);
+    assert.equal(button.hasAttribute('aria-pressed'), false);
+    assert.equal(view.playbackFocusedId, 'transport');
+    const event = { stopPropagation() { stopped++; } };
+    await button.dispatchEvent('click', event);
+    assert.deepEqual(actions, ['next']);
+    await range.dispatchEvent('focus');
+    await button.dispatchEvent('blur');
+    assert.equal(view.playbackFocusedId, 'position');
+    await range.dispatchEvent('keydown', event);
+    range.value = '90';
+    await range.dispatchEvent('change');
+    assert.deepEqual(seeks, [0.75]);
+    assert.equal(stopped, 2);
+    view.seekGesture = { id: 'position', pointerId: 7 };
+    view.layout.items = [view.layout.items[1]];
+    view.syncPlaybackControls(view, playback);
+    assert.deepEqual(released, [7]);
+    assert.equal(view.seekGesture, null);
+    assert.equal(view.playbackFocusedId, null);
+    assert.equal(view.canvas.style.touchAction, '');
+    assert.equal(range.parentNode, null);
+    view.layout.items.push(rangeItem);
+    view.syncPlaybackControls(view, playback);
+    view.seekGesture = { id: 'position', pointerId: 8 };
+    view.playbackPointer = { id: 'transport' };
+    view.playbackHoveredId = 'transport';
+    view.syncPlaybackControls(view, playback, false);
+    assert.deepEqual(released, [7, 8]);
+    assert.equal(view.playbackPointer, null);
+    assert.equal(view.playbackHoveredId, null);
+    assert.equal(view.playbackButtons.size, 0);
+    assert.equal(view.playbackControls.children.length, 0);
+});
+
+test('seek gestures release capture without seeking a replacement track or player', async () => {
+    const seeks = [], released = [], captures = [];
+    let track = {}, resumed = 0;
+    const player = {
+        stateManager: { getStateSnapshot: () => ({ currentTrack: track }) },
+        playbackManager: { runPlaybackCommand: async command => command() },
+        resumeAudioContextInGesture: () => resumed++, contextManager: { seek: value => seeks.push(value) }
+    };
+    let target = player;
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        editor: { open: false }, layout: {}, playbackTarget: () => target,
+        playback: () => ({ seekEnabled: true, duration: 200 }),
+        canvas: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 20 }),
+            setPointerCapture: id => captures.push(id), hasPointerCapture: () => true,
+            releasePointerCapture: id => released.push(id) },
+        renderer: { seekBarValue: (_layout, _id, x) => x }
+    });
+    const event = { button: 0, pointerId: 4, clientX: 75, clientY: 10, preventDefault() {} };
+    const begin = () => view.beginSeekPointer(event, view, { id: 'seek', value: 0.2 });
+    begin();
+    view.finishSeekPointer({ ...event, pointerId: 99 });
+    assert.ok(view.seekGesture);
+    track = {};
+    view.finishSeekPointer(event);
+    assert.deepEqual(seeks, []);
+    assert.equal(view.seekGesture, null);
+    begin();
+    target = { ...player };
+    view.finishSeekPointer(event);
+    assert.deepEqual(seeks, []);
+    begin();
+    view.finishSeekPointer(event);
+    await Promise.resolve();
+    assert.deepEqual(seeks, [150]);
+    assert.equal(resumed, 1);
+    assert.deepEqual(captures, [4, 4, 4]);
+    assert.deepEqual(released, [4, 4, 4]);
+});
+
 test('startup restores local layouts independently of system presets and never overwrites storage', async () => {
     for (const state of ['saved', 'empty', 'read-failure', 'preset-failure']) {
         const saved = createDefaultLayout();
@@ -559,6 +672,23 @@ test('Phase Map edits its axis, level range, reference floor, and persistence wi
     assert.equal(item.params.ax, 'balance');
 });
 
+test('Drums edits camera angles and material colors without axis controls', () => {
+    const fields = [];
+    const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+        t: (_key, fallback) => fallback,
+        field(parent, label, type, value, change, options) { fields.push({ label, type, value, change, options }); },
+        changed() {}
+    });
+    const item = createItem('drums', 'kit');
+    editor.parameters({}, item);
+    assert.deepEqual(fields.map(field => field.label), ['Viewing angle', 'Elevation', 'Shell color',
+        'Cymbal color', 'Hardware color', 'Drumhead color']);
+    fields[0].change(90);
+    fields[2].change('#123456');
+    assert.equal(item.params.yaw, 90);
+    assert.equal(item.params.shellColor, '#123456');
+});
+
 test('Rhythm Analyzer edits its tempo range and span', () => {
     const fields = [], changes = [];
     const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
@@ -568,10 +698,11 @@ test('Rhythm Analyzer edits its tempo range and span', () => {
     });
     const item = createItem('rhythm-analyzer', 'rhythm');
     editor.parameters({}, item);
-    assert.deepEqual(fields.map(field => field.label), ['Min BPM', 'Max BPM', 'Span (beats)',
+    assert.deepEqual(fields.map(field => field.label), ['Display', 'Min BPM', 'Max BPM', 'Span (beats)',
         'Beat', 'BPM', 'Tempogram', 'Timing lanes', 'Echo rows', 'Beat lens',
         'Axes and grid', 'Axis labels and numbers']);
-    const [minimum, maximum, span, beat, bpm, tempogram, timingLanes, echoRows, beatLens] = fields;
+    const [displayMode, minimum, maximum, span, beat, bpm, tempogram, timingLanes, echoRows, beatLens] = fields;
+    assert.deepEqual(displayMode.options.values, [['band', 'Frequency bands'], ['drums', 'Drums']]);
     assert.deepEqual([minimum.options.min, minimum.options.max, maximum.options.min, maximum.options.max], [40, 192, 50, 240]);
     assert.equal(maximum.options.unit, 'BPM');
     assert.deepEqual(span.options.values.map(([value]) => value), ['4', '6', '8', '12', '16']);
@@ -592,6 +723,39 @@ test('Rhythm Analyzer edits its tempo range and span', () => {
     beatLens.change(false);
     assert.deepEqual([item.params.vt, item.params.vm, item.params.ve, item.params.vl], [true, false, true, false]);
     assert.deepEqual(changes, [false, false, false, false, false, false, false], 'Panel toggles do not rebuild the panel');
+});
+
+test('Key and Chord appear in the item picker with channel and text controls', async () => {
+    const element = () => ({ classList: classes(), dataset: {}, append() {}, appendChild() {}, replaceChildren() {},
+        addEventListener() {}, setAttribute() {} });
+    await withGlobals({ document: { createElement: element } }, () => {
+        for (const type of ['key', 'chord']) {
+            const item = createItem(type, type), fields = new Map();
+            const editor = Object.assign(Object.create(VisualizerEditor.prototype), {
+                view: { layout: { ...createDefaultLayout(), items: [item] } },
+                root: element(), navigationContent: element(), selection: new Set([type]),
+                t: (_key, fallback) => fallback, group: element, button: element,
+                field(_parent, label, kind, value, change, options) {
+                    const field = { kind, value, change, options };
+                    fields.set(label, field);
+                    return field;
+                },
+                changed() {}, palette() {}, effects() {}
+            });
+            editor.render();
+            assert.ok(fields.get('Item').options.values.some(([value]) => value === type));
+            assert.equal(fields.get('Channel').kind, 'select');
+            assert.equal(fields.get('Font').kind, 'select');
+            assert.equal(fields.get('Text size').kind, 'range');
+            assert.ok(fields.has('Vertical alignment'));
+            assert.ok(!fields.has('Axes and grid'));
+            assert.ok(!fields.has('Axis labels and numbers'));
+            fields.get('Channel').change('R');
+            fields.get('Text size').change(72);
+            assert.equal(item.channel, 'R');
+            assert.equal(item.style.fontSize, 72);
+        }
+    });
 });
 
 test('Rhythm Analyzer circle settings edit size, border, opacity, colors and BPM fitting', () => {
@@ -1648,6 +1812,42 @@ test('Changing view while the current Visualizer layout loads cancels that open'
     });
 });
 
+test('Visualizer system presets prioritize the current viewport proportions each time the dialog opens', async () => {
+    const aspects = ['16:9', '21:9', '4:3', '1:1', '9:16'];
+    const systems = Object.fromEntries(aspects.map(aspect => [aspect, {
+        Default: { ...createDefaultLayout(), aspect },
+        Alternative: { ...createDefaultLayout(), aspect, items: [] }
+    }]));
+    let provider, loads = 0;
+    const view = Object.assign(Object.create(VisualizerView.prototype), {
+        layout: systems['16:9'].Default,
+        store: { async loadSystemPresets() { loads++; return systems; } },
+        uiManager: { pipelineManager: { core: { pluginPresetDialog: {
+            show(value) { provider = value; }
+        } } } }
+    });
+    for (const [width, height, expected] of [
+        [1920, 1080, ['16:9', '21:9', '4:3', '1:1', '9:16']],
+        [390, 844, ['9:16', '1:1', '4:3', '16:9', '21:9']],
+        [1200, 1000, ['4:3', '1:1', '16:9', '21:9', '9:16']],
+        [2560, 1080, ['21:9', '16:9', '4:3', '1:1', '9:16']]
+    ]) {
+        await withGlobals({ window: { innerWidth: width, innerHeight: height } }, () => view.openPresets());
+        const groups = provider.getSystemPresetGroups();
+        assert.deepEqual(groups.map(group => group.label), expected, `${width} × ${height}`);
+        for (const group of groups) {
+            assert.deepEqual(group.presets.map(preset => preset.label), ['Default', 'Alternative']);
+            for (const preset of group.presets) {
+                assert.equal(preset.id, `${group.label}/${preset.label}`);
+                assert.equal(preset.layout, systems[group.label][preset.label]);
+            }
+        }
+        assert.equal(provider.getActiveSystemPresetId(), '16:9/Default');
+        assert.deepEqual(Object.keys(systems), aspects);
+    }
+    assert.equal(loads, 1);
+});
+
 test('Visualizer preset rename collisions preserve the existing layout on the next save', async () => {
     let provider;
     const stores = { current: new Map(), presets: new Map() };
@@ -1698,7 +1898,7 @@ test('Visualizer preset rename collisions preserve the existing layout on the ne
         } } } }
     });
     try {
-        await view.openPresets();
+        await withGlobals({ window: { innerWidth: 1280, innerHeight: 720 } }, () => view.openPresets());
         assert.equal(provider.getPresetContext(), view);
         assert.equal(provider.getActiveSystemPresetId(), '16:9/Default');
         assert.equal(provider.getSystemPresetGroups()[0].presets[0].id, provider.getActiveSystemPresetId());

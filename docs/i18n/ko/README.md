@@ -41,6 +41,14 @@ EffeTune은 음악을 더 좋은 소리로 즐기고 싶은 오디오 애호가�
 
 ## 설정 가이드
 
+### Android 앱
+
+Android 10 이상과 최신 Android System WebView를 사용하세요. 음악 파일을 열거나 음악 라이브러리에서 폴더를 선택하면 Android 화면에서 EffeTune에 허용할 파일과 폴더를 지정할 수 있습니다. 폴더에 접근할 수 없게 되면 라이브러리에서 다시 선택하세요. 화면을 꺼도 재생이 계속되며 알림과 잠금 화면에서 같은 플레이어를 조작할 수 있습니다.
+
+내보낸 파일은 Android의 파일 선택 및 공유 화면에서 저장하거나 공유할 수 있습니다. 여러 오디오 파일을 한꺼번에 내보낼 때는 저장할 폴더를 선택하고 앱을 열어 두세요. Android 앱과 웹 앱은 데이터를 따로 저장합니다. 백업 / 복원으로 프리셋, 임펄스 응답, 측정 데이터, 시각화 데이터를 옮길 수 있습니다(최대 256 MB). 음악 파일, 음악 카탈로그, 연결 인증 정보, 설정은 포함되지 않습니다. 효과는 EffeTune에서 재생하거나 입력받은 오디오에 적용되며 다른 Android 앱의 소리를 대체하지 않습니다.
+
+MIDI로 파라미터를 조작하거나 시계·타이머로 값을 변경하는 기능은 화면을 꺼도 계속 작동합니다. 키보드와 게임패드로 조작할 때는 앱을 열어 두세요. Android는 MIDI 입력을 지원하지만 모터 페이더나 LED에 피드백을 보내지는 않습니다. 도구 모음의 **Remote Control** 아이콘을 누르면 외부 제어를 허용하고 페어링 링크를 복사할 수 있습니다. 이 링크를 공개하지 마세요.
+
 듣고 싶은 오디오 소스에 맞춰 아래 설정 방법을 선택하세요.
 
 ### 음악 파일 플레이어 설정
@@ -326,9 +334,9 @@ Microsoft Store 버전은 Microsoft Store를 통해 업데이트됩니다. **설
 
 ### 네트워크 음악과 원격 제어
 
-**데스크톱 앱:** 로컬 네트워크의 음악 서버를 탐색하고 선택한 음악 폴더를 공유하며 이 기기 또는 OpenHome 플레이어에서 재생할 수 있습니다. EffeTune 재생 기기와 페어링하면 같은 창에서 효과도 편집할 수 있습니다. 공유와 외부 원격 제어 허용은 기본적으로 꺼져 있습니다. [네트워크 음악과 원격 제어](openhome.md)를 참조하세요. UPnP AV / DLNA와 AirPlay 수신을 켜면 다른 기기에서 보낸 음악을 이 컴퓨터의 이펙트를 거쳐 들을 수도 있습니다.
+**데스크톱 앱:** Subsonic / OpenSubsonic을 포함한 네트워크 음악 서버를 탐색하고 선택한 폴더를 공유하며 이 기기, OpenHome 또는 UPnP AV / DLNA 플레이어에서 재생할 수 있습니다. EffeTune 재생 기기와 페어링하면 같은 창에서 효과도 편집할 수 있습니다. 공유와 외부 원격 제어 허용은 기본적으로 꺼져 있습니다. [네트워크 음악과 원격 제어](openhome.md)를 참조하세요. UPnP AV / DLNA와 AirPlay 수신을 켜면 다른 기기에서 보낸 음악을 이 컴퓨터의 이펙트를 거쳐 들을 수도 있습니다.
 
-PWA에서도 등록한 EffeTune 컴퓨터의 공유 음악을 이 기기의 효과로 듣거나 다른 등록된 컴퓨터를 제어할 수 있습니다. 브라우저와 연결 조건은 [PWA 설정 및 재생](openhome.md#pwa)을 참고하세요.
+PWA에서는 등록한 EffeTune 컴퓨터의 공유 음악과 허용된 네트워크 라이브러리를 이 기기의 효과로 듣거나 허용된 네트워크 플레이어를 제어할 수 있습니다. Subsonic 직접 연결도 지원합니다. 브라우저와 연결 조건은 [PWA 설정 및 재생](openhome.md#pwa)을 참고하세요.
 
 ### AI 어시스턴트로 EffeTune 제어하기 (MCP)
 
@@ -396,7 +404,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Analyzer | Note Spectrogram | 시간에 따른 추정 음높이를 피아노 롤로 표시 | [세부 정보](plugins/analyzer.md#note-spectrogram) |
 | Analyzer | Oscilloscope | 실시간 파형 시각화 | [세부 정보](plugins/analyzer.md#oscilloscope) |
 | Analyzer | Pitch Meter | 하나의 기본 주파수와 튜닝 변화를 시간에 따라 추적 | [세부 정보](plugins/analyzer.md#pitch-meter) |
-| Analyzer | Rhythm Analyzer | 템포, 박자마다의 발음, 각 파트가 박자보다 앞서거나 뒤처지는 정도를 표시 | [세부 정보](plugins/analyzer.md#rhythm-analyzer) |
+| Analyzer | Rhythm Analyzer | 템포와 타격 시점을 주파수 대역 또는 드럼 종류별로 표시 | [세부 정보](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer | Spectrogram | 시간에 따른 주파수 스펙트럼 변화를 표시 | [세부 정보](plugins/analyzer.md#spectrogram) |
 | Analyzer | Spectrum Analyzer | 저역, 중역, 고역의 강도를 실시간으로 표시 | [세부 정보](plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer | Stereo Meter | 스테레오 밸런스와 채널 상관을 시각화 | [세부 정보](plugins/analyzer.md#stereo-meter) |

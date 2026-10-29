@@ -6,11 +6,14 @@ lang: en
 
 # Version History
 
-### Version 2.16.0 (TBD, 2026)
-- Added desktop music sharing, with network playback and remote effect editing in the desktop app and PWA
-- Supports AirPlay and UPnP AV/DLNA playback in the desktop app
+### Version 2.16.0 (Oct 30, 2026)
+- Added desktop music sharing, with network playback and remote effect editing in the desktop app, web app and PWA
+- Added AirPlay and UPnP AV/DLNA audio reception to the desktop app
 - Added Playback Control and Seek Bar to the Visualizer
 - Improved the acoustic properties measurement function for measuring distortion and resonance
+- Added chord and key detection to Note Spectrogram (beta)
+- Added drum detection to Rhythm Analyzer (beta)
+- Added Chord, Key, Drums to the Visualizer (beta)
 - Various minor improvements
 
 ### Version 2.15.0 (Oct 23, 2026)

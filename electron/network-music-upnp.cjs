@@ -4,6 +4,8 @@ const http = require('node:http');
 const https = require('node:https');
 const dgram = require('node:dgram');
 const os = require('node:os');
+const net = require('node:net');
+const dns = require('node:dns');
 const { EventEmitter } = require('node:events');
 
 const CONTENT = 'urn:schemas-upnp-org:service:ContentDirectory:1';
@@ -108,10 +110,18 @@ function networkUrl(input, base) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash) throw new Error('Unsupported music address');
   return url;
 }
-function requestXml(input, { method = 'GET', headers = {}, body = '' } = {}) {
+function requestXml(input, { method = 'GET', headers = {}, body = '', address } = {}) {
   const url = networkUrl(input);
   return new Promise((resolve, reject) => {
-    const req = (url.protocol === 'https:' ? https : http).request(url, { method, headers, timeout: 8000 }, res => {
+    // Preserve the hostname for Host/TLS while binding an SSDP fetch to its sender.
+    const lookup = address ? (hostname, options, callback) => dns.lookup(hostname, { family: 4, all: true }, (error, records) => {
+      if (error || !records.some(record => record.address === address)) {
+        callback(error || new Error('The music device address could not be verified')); return;
+      }
+      callback(null, options.all ? [{ address, family: 4 }] : address, 4);
+    }) : undefined;
+    const req = (url.protocol === 'https:' ? https : http).request(url, { method, headers, timeout: 8000, ...(lookup ? { lookup, agent: false } : {}) }, res => {
+      const connectionAddress = res.socket?.remoteAddress?.replace(/^::ffff:/, '');
       const chunks = []; let bytes = 0;
       res.on('data', data => { bytes += data.length; if (bytes > 4 * 1024 * 1024) req.destroy(new Error('Device response too large')); else chunks.push(data); });
       res.on('end', () => {
@@ -124,7 +134,11 @@ function requestXml(input, { method = 'GET', headers = {}, body = '' } = {}) {
           } catch { /* Keep the HTTP diagnostic when the peer did not return a SOAP fault. */ }
           reject(error);
         }
-        else { try { resolve(parseXml(text)); } catch (error) { reject(error); } }
+        else { try {
+          const document = parseXml(text);
+          document.connectionAddress = connectionAddress;
+          resolve(document);
+        } catch (error) { reject(error); } }
       });
       res.on('error', reject);
     });
@@ -205,7 +219,7 @@ class SsdpAdvertisement {
 }
 
 class Discovery extends EventEmitter {
-  constructor({ fetchXml = requestXml } = {}) { super(); this.fetchXml = fetchXml; this.devices = new Map(); this.remoteControls = new Map(); this.loading = new Set(); this.socket = null; this.timer = null; this.startPromise = null; this.multicastSending = Promise.resolve(); }
+  constructor({ fetchXml = requestXml } = {}) { super(); this.fetchXml = fetchXml; this.devices = new Map(); this.remoteControls = new Map(); this.loading = new Set(); this.manualLocations = new Set(); this.manualRequests = new Map(); this.socket = null; this.timer = null; this.startPromise = null; this.multicastSending = Promise.resolve(); }
   start() {
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.open().catch(error => { this.close(); throw error; });
@@ -220,14 +234,27 @@ class Discovery extends EventEmitter {
     socket.setMulticastTTL(2); socket.unref();
     this.timer = setInterval(() => this.search(), 30000); this.timer.unref(); this.search();
   }
-  search() {
-    if (!this.socket) return;
+  search({ refresh = false } = {}) {
     const message = Buffer.from(`M-SEARCH * HTTP/1.1\r\nHOST: ${MULTICAST}:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n`);
     for (const address of interfaces()) this.sendMulticast(message, address);
     let changed = false;
-    for (const device of this.devices.values()) if (device.available && device.expires < Date.now()) { device.available = false; changed = true; }
-    for (const endpoint of this.remoteControls.values()) if (endpoint.available && endpoint.expires < Date.now()) { endpoint.available = false; changed = true; }
+    for (const device of this.devices.values()) if (device.available && device.expires < Date.now() && !this.manualLocations.has(device.location)) { device.available = false; changed = true; }
+    for (const endpoint of this.remoteControls.values()) if (endpoint.available && endpoint.expires < Date.now() && !this.manualLocations.has(endpoint.location)) { endpoint.available = false; changed = true; }
     if (changed) this.emit('change');
+    const requests = [...this.manualLocations].map(location => this.register(location).catch(error => this.emit('diagnostic', error)));
+    if (refresh) {
+      // Refresh each known description even when SSDP keeps advertising the same URL.
+      const locations = new Map([...this.devices.values(), ...this.remoteControls.values()].map(device => [device.location, device]));
+      for (const [location, device] of locations) {
+        if (this.manualLocations.has(location)) continue;
+        const packet = Buffer.from(`HTTP/1.1 200 OK\r\nUSN: ${device.id}\r\nLOCATION: ${location}\r\n\r\n`);
+        requests.push(this.receive(packet, { address: device.address }, false, true).catch(error => {
+          this.invalidateLocation(location);
+          this.emit('diagnostic', error);
+        }));
+      }
+    }
+    return Promise.all(requests);
   }
   sendMulticast(message, address) {
     const socket = this.socket;
@@ -244,8 +271,44 @@ class Discovery extends EventEmitter {
     });
     return this.multicastSending;
   }
-  async receive(buffer, remote) {
-    if (buffer.length > 16384 || !isLanAddress(remote.address)) return;
+  setManualLocations(inputs) {
+    this.manualLocations = new Set(inputs.map(input => networkUrl(input).href));
+  }
+  unregister(input) {
+    const location = networkUrl(input).href;
+    this.manualLocations.delete(location);
+    this.invalidateLocation(location);
+  }
+  invalidateLocation(location) {
+    let changed = false;
+    for (const device of [...this.devices.values(), ...this.remoteControls.values()]) {
+      if (device.location === location && device.available) { device.available = false; changed = true; }
+    }
+    if (changed) this.emit('change');
+  }
+  register(input) {
+    const location = networkUrl(input);
+    if (this.manualRequests.has(location.href)) return this.manualRequests.get(location.href);
+    const alreadySaved = this.manualLocations.has(location.href);
+    this.manualLocations.add(location.href);
+    const id = `manual:${location.href}`;
+    const request = (async () => {
+      try {
+        await this.receive(Buffer.from(`HTTP/1.1 200 OK\r\nUSN: ${id}\r\nLOCATION: ${location.href}\r\nCACHE-CONTROL: max-age=1800\r\n\r\n`), { address: location.hostname }, true);
+        const devices = [...this.devices.values()].filter(device => device.location === location.href && device.available);
+        if (!devices.length) throw new Error('The music device is unavailable');
+        return devices;
+      } catch (error) {
+        this.invalidateLocation(location.href);
+        if (!alreadySaved) this.manualLocations.delete(location.href);
+        throw error;
+      } finally { this.manualRequests.delete(location.href); }
+    })();
+    this.manualRequests.set(location.href, request);
+    return request;
+  }
+  async receive(buffer, remote, manual = false, refresh = false) {
+    if (buffer.length > 16384 || !manual && !isLanAddress(remote.address)) return;
     const lines = buffer.toString().split('\r\n');
     const headers = Object.create(null);
     for (const line of lines.slice(1)) { const index = line.indexOf(':'); if (index > 0) headers[line.slice(0, index).toLowerCase()] = line.slice(index + 1).trim(); }
@@ -260,17 +323,24 @@ class Discovery extends EventEmitter {
     }
     if (!id || !headers.location || this.loading.has(id)) return;
     const location = networkUrl(headers.location);
-    if (location.hostname !== remote.address) return;
+    if (!manual && net.isIP(location.hostname) && location.hostname !== remote.address) return;
     const expires = Date.now() + Math.min(1800, Number(/max-age=(\d+)/i.exec(headers['cache-control'])?.[1]) || 180) * 1000;
-    const existing = this.devices.get(id) || [...this.remoteControls.values()].find(endpoint => endpoint.id === id);
-    if (existing?.location === location.href && existing.available) { existing.expires = expires; return; }
+    const existing = this.devices.get(id) || (manual && [...this.devices.values()].find(device => device.location === location.href)) || [...this.remoteControls.values()].find(endpoint => endpoint.id === id);
+    if (!manual && !refresh && existing?.location === location.href && existing.available) {
+      if (existing.address === remote.address) existing.expires = expires;
+      return;
+    }
     if (!existing && this.devices.size + this.remoteControls.size >= 256) return;
     this.loading.add(id);
     try {
-      const document = await this.fetchXml(location.href);
+      const document = await this.fetchXml(location.href, manual ? {} : { address: remote.address });
+      if (manual && !this.manualLocations.has(location.href)) return;
+      const address = document.connectionAddress || (net.isIP(location.hostname) ? remote.address : null);
+      if (!net.isIP(address ?? '') || !manual && address !== remote.address) throw new Error('The music device address could not be verified');
       const declaredBase = descendants(document, 'URLBase')[0]?.text;
       const base = declaredBase ? networkUrl(declaredBase) : location;
-      if (base.hostname !== location.hostname) return;
+      if (base.hostname !== location.hostname) throw new Error('The music device returned a different address');
+      const found = new Set();
       for (const device of descendants(document, 'device')) {
         const udn = value(device, 'UDN'); if (!udn) continue;
         const services = new Map();
@@ -284,12 +354,20 @@ class Discovery extends EventEmitter {
         if (endpoint && playerId && playerId.length <= 512 && udn === id) {
           const url = new URL(endpoint.control);
           if (url.origin === location.origin && url.pathname === '/.well-known/effetune/pair' && !url.search) {
-            this.remoteControls.set(playerId, { id: udn, playerId, origin: url.origin, address: remote.address, location: location.href, expires, available: true });
+            this.remoteControls.set(playerId, { id: udn, playerId, origin: url.origin, address, location: location.href, expires, available: true });
           }
         }
-        if (![...services.keys()].some(type => type.endsWith(':Playlist') || type.endsWith(':ContentDirectory'))) continue;
-        this.devices.set(udn, { id: udn, name: value(device, 'friendlyName') || 'Music device', manufacturer: value(device, 'manufacturer'), services, location: location.href, address: remote.address, expires, available: true });
+        if (![...services.keys()].some(type => type.endsWith(':Playlist') || type.endsWith(':ContentDirectory') || type.endsWith(':AVTransport'))) continue;
+        found.add(udn);
+        const previous = this.devices.get(udn);
+        const next = { id: udn, name: value(device, 'friendlyName') || 'Music device', manufacturer: value(device, 'manufacturer'), services, location: location.href, descriptorHostname: location.hostname, address, expires, available: true };
+        if (manual && previous?.location === location.href && previous.address === address) Object.assign(previous, next);
+        else {
+          if (manual && previous?.available) { previous.available = false; this.emit('change'); }
+          this.devices.set(udn, next);
+        }
       }
+      if (manual || refresh) for (const device of this.devices.values()) if (device.location === location.href && !found.has(device.id)) device.available = false;
       this.emit('change');
     } finally { this.loading.delete(id); }
   }
@@ -301,6 +379,6 @@ class Discovery extends EventEmitter {
   }
   close() { clearInterval(this.timer); try { this.socket?.close(); } catch { /* A failed bind has no open socket. */ } this.socket = null; this.startPromise = null; }
 }
-const service = (device, name) => device?.services.get(`urn:${name === 'ContentDirectory' || name === 'ConnectionManager' ? 'schemas-upnp-org' : 'av-openhome-org'}:service:${name}`);
+const service = (device, name) => device?.services.get(`urn:${['ContentDirectory', 'ConnectionManager', 'AVTransport', 'RenderingControl'].includes(name) ? 'schemas-upnp-org' : 'av-openhome-org'}:service:${name}`);
 
 module.exports = { CONTENT, CONNECTION, PLAYLIST, REMOTE_CONTROL, MULTICAST, xml, parseXml, child, children, value, descendants, interfaces, isLanAddress, networkUrl, requestXml, soap, parseDidl, didlItem, didl, SsdpAdvertisement, Discovery, service };

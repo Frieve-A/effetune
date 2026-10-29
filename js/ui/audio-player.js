@@ -6,6 +6,7 @@
 import { PlaybackManager } from './audio-player/playback-manager.js';
 import { AudioPlayerUI } from './audio-player/audio-player-ui.js';
 import { AudioContextManager } from './audio-player/audio-context-manager.js';
+import { AndroidPlayerContext } from '../android/player-context.js';
 import { StateManager } from './audio-player/state-manager.js';
 import { TrackLyrics } from './audio-player/track-lyrics.js';
 import { MediaSessionManager } from './audio-player/media-session-manager.js';
@@ -49,9 +50,12 @@ export class AudioPlayer {
     // Initialize sub-modules with state manager reference
     this.playbackManager = new PlaybackManager(this);
     this.ui = new AudioPlayerUI(this);
-    this.contextManager = new AudioContextManager(this, audioManager);
+    this.contextManager = audioManager.isAndroid
+      ? new AndroidPlayerContext(this, audioManager)
+      : new AudioContextManager(this, audioManager);
     this.trackLyrics = new TrackLyrics(this);
-    this.mediaSessionManager = new MediaSessionManager(this);
+    this.mediaSessionManager = new MediaSessionManager(this,
+      audioManager.isAndroid ? { navigatorRef: null } : undefined);
     this.openHomePlaybackAdapter = null;
     this.airPlayPlayback = new AirPlayPlayback(this);
     // Mobile browsers only surface mediaSession metadata, headset keys, and
@@ -61,7 +65,7 @@ export class AudioPlayer {
     this.mediaSessionAnchor = createMediaSessionAnchor({
       stateManager: this.stateManager,
       windowRef,
-      isElectron: !!(windowRef?.electronAPI ||
+      isElectron: !!(audioManager.isAndroid || windowRef?.electronAPI ||
         windowRef?.electronIntegration?.isElectron ||
         windowRef?.electronIntegration?.isElectronEnvironment?.())
     });
@@ -110,6 +114,10 @@ export class AudioPlayer {
     this.contextManager.setPlayerVolume(volume);
   }
 
+  setMute(mute) {
+    this.contextManager.setPlayerMute(mute);
+  }
+
   applyPreservePitch(enabled) {
     this.stateManager.updateState({ preservePitch: enabled }, 'preserve_pitch_change');
     // The speed is unchanged, so the next-track buffer and backend stay as they are.
@@ -130,6 +138,18 @@ export class AudioPlayer {
    * @param {number|null} insertAt - Optional insertion index for append operations
    */
   async loadFiles(files, append = false, insertAt = null) {
+    if (this.contextManager.nativeQueueOwned) {
+      if (append) await this.playbackManager.loadFiles(files, true, insertAt);
+      else {
+        const tracks = files.map(file => this.playbackManager.createTrackEntry(file)).filter(Boolean);
+        if (!tracks.length) return false;
+        this.contextManager.nativeTracks = tracks;
+        await this.contextManager.replaceNativeQueue({ tracks });
+        if (!this.ui.container) this.ui.createPlayerUI();
+        await this.contextManager.play();
+      }
+      return true;
+    }
     // Start the resume while transient user activation is still available.
     // File loading and decoding below can outlive WebKit's activation window.
     const gestureResume = this.resumeAudioContextInGesture();
@@ -185,6 +205,7 @@ export class AudioPlayer {
    * transient activation is alive, so this must run before any awaits.
    */
   resumeAudioContextInGesture() {
+    if (this.audioManager.isAndroid) return Promise.resolve(true);
     try {
       const controller = this.audioManager?.powerPolicyController;
       const result = controller?.enabled
@@ -203,6 +224,7 @@ export class AudioPlayer {
    * Electron permits this path without a DOM user-activation event.
    */
   resumeAudioContextForRemotePlayback() {
+    if (this.audioManager.isAndroid) return Promise.resolve(true);
     try {
       const controller = this.audioManager?.powerPolicyController;
       const result = controller?.enabled

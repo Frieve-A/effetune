@@ -62,41 +62,56 @@ export class NetworkMusicController {
     this.selectedPlayerId = id;
     this.lastSelectedPlayer = id === 'local' ? null : this.state.players.find(player => player.id === id);
     this.playerGeneration += 1;
+    if (this.api.isPwa && id !== 'local' && this.selectedLibraryId === 'local') {
+      const library = this.state.libraries.find(source => source.available !== false &&
+        (this.api.canPlayItem?.({ serverId: source.id }, id) ?? true));
+      if (library) {
+        this.selectedLibraryId = library.id;
+        this.libraryGeneration += 1;
+      }
+    }
     this.emit();
     this.uiManager.refreshApplicationMenu?.();
     void this.refreshPlayer();
   }
 
-  async refreshPlayer() {
+  async refreshPlayer(force = false) {
     const id = this.selectedPlayerId;
     const generation = this.playerGeneration;
     if (id === 'local' || this.disposed) return;
-    if (this.refreshingPlayer === generation) return;
-    this.refreshingPlayer = generation;
+    if (this.refreshingPlayer?.generation === generation && !force) return;
+    const request = { generation };
+    this.refreshingPlayer = request;
     try {
       const state = await this.api.networkMusicGetPlayerState({ playerId: id });
-      if (!this.disposed && generation === this.playerGeneration) {
-        this.playerStates.set(id, { ...state, available: true });
+      if (!this.disposed && generation === this.playerGeneration && this.refreshingPlayer === request) {
+        this.playerStates.set(id, { ...state, available: true, positionReceivedAt: performance.now() });
         this.emit();
       }
     } catch (error) {
-      console.warn('Network player state is unavailable:', error);
-      if (!this.disposed && generation === this.playerGeneration) {
+      console.warn('Network player state is unavailable:', error.code, error);
+      if (!this.disposed && generation === this.playerGeneration && this.refreshingPlayer === request) {
         this.playerStates.set(id, { ...this.playerStates.get(id), available: false });
         this.emit();
       }
     } finally {
-      if (this.refreshingPlayer === generation) this.refreshingPlayer = null;
+      if (this.refreshingPlayer === request) this.refreshingPlayer = null;
     }
   }
 
-  async command(action, args = {}, playerId = this.selectedPlayerId) {
+  async command(action, args = {}, playerId = this.selectedPlayerId, preparation = {}) {
     if (playerId === 'local') throw new Error('Network commands require an external player');
     const generation = this.playerGeneration;
-    const result = await this.api.networkMusicPlayerCommand({ ...args, playerId, action,
-      ...(this.api.isPwa ? { isCurrent: () => playerId === this.selectedPlayerId && generation === this.playerGeneration && !this.disposed } : {}) });
-    if (playerId === this.selectedPlayerId) {
-      await this.refreshPlayer();
+    let result;
+    try {
+      result = await this.api.networkMusicPlayerCommand({ ...args, playerId, action,
+        ...(this.api.isPwa ? { ...preparation, isCurrent: () => playerId === this.selectedPlayerId && generation === this.playerGeneration && !this.disposed && (preparation.isCurrent?.() ?? true) } : {}) });
+    } catch (error) {
+      if (error.outcome === 'unknown' && generation === this.playerGeneration && !this.disposed) await this.refreshPlayer(action === 'volume');
+      throw error;
+    }
+    if (result?.accepted !== false && playerId === this.selectedPlayerId) {
+      await this.refreshPlayer(action === 'volume' || action === 'seek');
       if (['play', 'replace', 'insert', 'seekId'].includes(action)) await this.uiManager.networkMusicView?.showPlayer();
     }
     return result;
@@ -145,7 +160,10 @@ export class NetworkMusicController {
       cueUnsupported: 'networkMusic.cueUnsupported', unsupportedFormat: 'networkMusic.unsupported',
       sharingRequired: 'networkMusic.sharingRequired', folderNotShared: 'networkMusic.folderNotShared',
       libraryRequired: 'networkMusic.libraryRequired', registrationExpired: 'networkMusic.pwa.registrationExpired',
-      connectionFailed: 'networkMusic.pwa.connectionFailed'
+      connectionFailed: 'networkMusic.pwa.connectionFailed',
+      gatewayRequired: 'networkMusic.settings.gatewayRequired', subsonicConnection: 'networkMusic.settings.subsonicConnection',
+      subsonicAuthentication: 'networkMusic.settings.subsonicAuthentication',
+      forbidden: 'networkMusic.permissionDenied'
     }[error?.code] ?? 'networkMusic.error';
   }
 
@@ -153,25 +171,29 @@ export class NetworkMusicController {
     this.uiManager.setError(this.errorKey(error), true);
   }
 
-  async playItems(items, operationKind = 'play', startIndex = 0) {
+  async playItems(items, operationKind = 'play', startIndex = 0, preparation = {}) {
     const playerId = this.selectedPlayerId;
     const generation = this.playerGeneration;
+    const isCurrent = () => generation === this.playerGeneration && !this.disposed && (preparation.isCurrent?.() ?? true);
+    if (!isCurrent()) return { accepted: false };
     if (playerId !== 'local') {
+      if (!this.api.isPwa) preparation.onCommit?.();
       return this.command(operationKind === 'play' ? 'replace' : 'insert', {
         items, position: operationKind === 'playNext' ? 'afterCurrent' : 'end', play: operationKind === 'play',
         ...(operationKind === 'play' ? { startIndex } : {})
-      });
+      }, playerId, preparation);
     }
     this.uiManager.beginPlaybackSelectionGestureResume?.();
     if (this.api.playLocalItems) return this.api.playLocalItems({ items, uiManager: this.uiManager, operationKind, startIndex,
-      isCurrent: () => generation === this.playerGeneration && !this.disposed });
+      isCurrent, onCommit: preparation.onCommit });
     const tracks = await Promise.all(items.map(item => this.api.networkMusicResolveTrack({ ...item, localPlayback: true })));
     // A delayed source resolution must never start playback after its target has changed.
-    if (generation !== this.playerGeneration || this.disposed) return;
+    if (!isCurrent()) return { accepted: false };
     const player = this.uiManager.audioPlayer ?? await this.uiManager.createAudioPlayer([], false);
-    if (generation !== this.playerGeneration || this.disposed) return;
+    if (!isCurrent()) return { accepted: false };
+    preparation.onCommit?.();
     return player.activateOpenHomePlaybackAdapter().playNetworkTracks(tracks, operationKind,
-      () => generation === this.playerGeneration && !this.disposed, startIndex);
+      isCurrent, startIndex);
   }
 
   canPlayItem(item) {
@@ -180,11 +202,19 @@ export class NetworkMusicController {
     const supported = this.playerStates.get(this.selectedPlayerId)?.protocolInfo;
     if (this.selectedPlayerId === 'local' || !supported) return true;
     const mimeTypes = (item.resources ?? []).map(resource => resource.protocolInfo?.split(':')[2]?.toLowerCase()).filter(Boolean);
+    if (item.transcodedContentType) mimeTypes.push(item.transcodedContentType.toLowerCase());
     if (!mimeTypes.length) return true;
     return supported.split(',').some(protocol => {
       const mime = protocol.trim().split(':')[2]?.toLowerCase();
       return mime === '*' || mimeTypes.includes(mime);
     });
+  }
+
+  unavailableItemKey(item) {
+    if (item.sourceKind === 'cue-track' || item.startFrame != null || item.endFrame != null) return 'networkMusic.cueUnsupported';
+    if (item.requiresGateway && this.selectedPlayerId !== 'local') return 'networkMusic.settings.gatewayRequired';
+    if (item.playable === false && item.resources?.length === 0) return 'networkMusic.noPlayableResource';
+    return 'networkMusic.unsupported';
   }
 
   dispose() {

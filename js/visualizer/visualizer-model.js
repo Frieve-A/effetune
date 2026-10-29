@@ -6,7 +6,8 @@ export const ASPECT_FILES = Object.freeze({
     '1:1': '1x1.json', '9:16': '9x16.json'
 });
 
-export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', 'guitar', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
+export const NOTE_TEXT_TYPES = ['key', 'chord'];
+export const VISUAL_TYPES = ['spectrum', 'spectrogram', 'oscilloscope', 'stereo', 'level-meter', 'notes', ...NOTE_TEXT_TYPES, 'guitar', 'drums', 'chroma', 'phase', 'analog-meter', 'rhythm-analyzer'];
 // Analyzer graphics (ticks, lines, labels, peak marks) are drawn in these 1280-wide units,
 // so the same geometry looks identical regardless of the output canvas size or window scale.
 export const REFERENCE_WIDTH = 1280;
@@ -16,7 +17,7 @@ export const META_TYPES = ['artwork', 'video', ...META_TEXT_TYPES];
 // Picture items show the playing track's artwork or video frames and have no palette.
 export const PICTURE_TYPES = ['artwork', 'video'];
 export const VIDEO_FITS = ['contain', 'cover', 'stretch'];
-export const TEXT_STYLE_TYPES = [...META_TEXT_TYPES, 'text', 'lyrics', 'counter', 'rhythm-analyzer', 'playback-control'];
+export const TEXT_STYLE_TYPES = [...META_TEXT_TYPES, ...NOTE_TEXT_TYPES, 'text', 'lyrics', 'counter', 'rhythm-analyzer', 'playback-control'];
 export const ITEM_TYPES = [...VISUAL_TYPES, ...META_TYPES, 'text', 'lyrics', 'counter', 'shape', 'playback-control', 'seek-bar'];
 export const SEEK_APPEARANCES = Object.freeze({
     slim: { thickness: 3, showThumb: false },
@@ -475,10 +476,19 @@ export function normalizeParams(type, input) {
             kb: params.kb === true,
             kl: Math.round(number(params.kl, 100, 50, 200)),
             vl: params.vl !== false,
+            ck: params.ck === true,
             ts: Math.round(number(params.ts, 2, 1, 10)),
             mn, mx: Math.max(mn, Math.round(number(params.mx, 91, 21, 108))), ...axes
         };
     }
+    if (type === 'drums') return {
+        yaw: Math.round(number(params.yaw, 0, -180, 180)),
+        elevation: Math.round(number(params.elevation, 25, 5, 80)),
+        shellColor: color(params.shellColor, '#a33128'), // theme-allow: Editable drum material color.
+        cymbalColor: color(params.cymbalColor, '#d8af58'), // theme-allow: Editable cymbal material color.
+        hardwareColor: color(params.hardwareColor, '#bcc6d0'), // theme-allow: Editable metal material color.
+        headColor: color(params.headColor, '#e8e5dc') // theme-allow: Editable drumhead material color.
+    };
     if (type === 'guitar') {
         const fm = Math.round(number(params.fm, 0, 0, 24));
         const tuning = Array.isArray(params.tn) && params.tn.length >= 1 && params.tn.length <= 10 ? params.tn : GUITAR_TUNINGS.standard;
@@ -486,9 +496,9 @@ export function normalizeParams(type, input) {
             tn: tuning.map(open => Math.round(number(open, 40, 21, 108))),
             fm, fx: Math.max(fm, Math.round(number(params.fx, 12, 0, 24))),
             cp: Math.round(number(params.cp, 0, 0, 12)),
-            // Positions: every matching fret, one playable shape, or the shape with the alternatives dimmed.
-            pm: choice(params.pm, ['all', 'shape', 'shape-dim'], 'all'),
-            lb: choice(params.lb, ['none', 'sharp', 'flat', 'interval'], 'sharp'),
+            // Positions can follow individual pitches or voice the detected chord.
+            pm: choice(params.pm, ['all', 'shape', 'shape-dim', 'chord'], 'all'),
+            lb: choice(params.lb, ['none', 'sharp', 'flat', 'detected', 'interval'], 'sharp'),
             // Root pitch class; -1 follows the lowest sounding note.
             ro: choice(params.ro, [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], -1),
             sk: choice(params.sk, ['none', ...Object.keys(GUITAR_SCALES)], 'none'),
@@ -549,6 +559,7 @@ export function normalizeParams(type, input) {
         return {
             // Max BPM >= 1.25 x Min BPM keeps the tempo search range non-degenerate (same rule as the effect).
             mn, mx: Math.max(Math.ceil(mn * 1.25), Math.round(number(params.mx, 240, 50, 240))),
+            dm: choice(params.dm, ['band', 'drums'], 'band'),
             sp: choice(params.sp, RHYTHM_SPANS, 8),
             showBeat: params.showBeat !== false,
             showBpm: params.showBpm !== false,
@@ -566,6 +577,7 @@ export function normalizeParams(type, input) {
 
 export function paletteModesForType(type) {
     if (PICTURE_TYPES.includes(type)) return [];
+    if (type === 'drums') return ['solid'];
     const modes = ['solid', 'gradient'];
     if (['spectrum', 'notes', 'guitar', 'chroma'].includes(type)) modes.push('note-colors');
     if (['spectrum', 'spectrogram', 'chroma', 'level-meter', 'phase'].includes(type)) modes.push('heatmap');
@@ -595,6 +607,7 @@ export function createItem(type, id = globalThis.crypto?.randomUUID?.() || `item
     if (!ITEM_TYPES.includes(type)) throw new TypeError('Unknown visualizer item type');
     return {
         id, type, rect: type === 'playback-control' ? { x: .45, y: .75, w: .1, h: .14 }
+            : NOTE_TEXT_TYPES.includes(type) ? { x: .1, y: .1, w: .4, h: .12 }
             : type === 'seek-bar' ? { x: .2, y: .9, w: .6, h: .06 } : { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, channel: null,
         flipX: false, flipY: false, palette: itemPalette(type), params: normalizeParams(type), style: normalizeStyle(type), effects: []
     };
@@ -662,10 +675,10 @@ export function validateLayout(value) {
     // Added fields may be absent and valid retired fields may be migrated in older
     // layouts. Other supplied values must still match strict normalization.
     const addedParams = {
-        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl'],
+        spectrum: ['kl', 'cf', 'pk', 'ph', 'pf', 'sm', 'bc', 'ds', 'mf'], spectrogram: ['kl', 'mf'], notes: ['kl', 'ck'],
         stereo: ['pk', 'ph', 'pf'], 'level-meter': ['cf', 'pk', 'ph', 'pf', 'ds'], chroma: ['cf'],
         'analog-meter': ['de', 'nr', 'os', 'dc', ...Object.keys(METER_APPEARANCE_DEFAULTS)],
-        'rhythm-analyzer': ['showBeat', 'showBpm']
+        'rhythm-analyzer': ['showBeat', 'showBpm', 'dm']
     };
     const comparable = {
         ...value,

@@ -16,7 +16,7 @@ On supported desktop builds (Windows x64, macOS Intel/Apple silicon, and Linux x
 
 OpenHome does not require a sign-in. While enabled, other devices on your local network can view playback metadata, edit the player queue, and control playback. If Windows Firewall asks for permission, allow EffeTune only on **Private networks**, not **Public networks**. Turn the setting off when remote control is not needed.
 
-Controllers can add HTTP or HTTPS audio streams, manage the remote playback queue, and control play, pause, stop, skip, seek, repeat, and shuffle. Remote audio passes through the active EffeTune effect pipeline as usual. Basic OpenHome queue and playback control has been verified with BubbleUPnP on Android; other OpenHome apps may differ in how they display services. The OpenHome destination provides an OpenHome Playlist source and does not expose effect editing, local file paths, master volume, Radio, Songcast, or multi-room sync over OpenHome.
+Controllers can add HTTP or HTTPS audio streams, manage the remote playback queue, and control play, pause, stop, skip, seek, repeat, shuffle, player volume, and mute. Player volume is shared with local and UPnP AV playback; it does not change the computer's volume or effect settings. Remote audio passes through the active EffeTune effect pipeline as usual. Basic OpenHome queue and playback control has been verified with BubbleUPnP on Android; other OpenHome apps may differ in how they display services. The OpenHome destination provides an OpenHome Playlist source and does not expose effect editing, local file paths, master volume, Radio, Songcast, or multi-room sync over OpenHome.
 
 Gapless playback is not guaranteed, and technical metadata can remain unknown until the source provides it. After sleep, wake, VPN, or network changes, the player can disappear briefly while it reconnects.
 
@@ -48,7 +48,11 @@ AirPlay discovery requires Bonjour on Windows and macOS, or an active Avahi / DN
 
 In the desktop app, Music Library's **Library** selector chooses **This device** or a music server on your local network. Shared EffeTune libraries offer the familiar browsing categories, search and sorting described in the [Music Library guide](music-library.md#music-on-your-network-desktop-app). Other music servers show the categories and folder hierarchy they publish; search and sorting are available only when the server supports them.
 
-Use the device selector at the top of the window to choose **This device** or an OpenHome player. The library and player selections are independent: you can browse music on one computer and play it on another. Changing the player only changes what you control; it does not stop the previous player or move its queue. The selected player's track, queue, position, repeat and shuffle are shown, with controls limited to what it supports. Changes from other controllers are reflected too.
+Use the device selector at the top of the window to choose **This device**, an OpenHome player, or a UPnP AV / DLNA player. The library and player selections are independent: you can browse music on one computer and play it on another. Changing the player only changes what you control; it does not stop the previous player or move its queue. The selected player's track, queue, position and supported controls are shown. **Volume** and **Mute** control that player when supported. Changes from other controllers are reflected too.
+
+OpenHome players keep their own queue. For a UPnP AV / DLNA player without an OpenHome queue, the EffeTune computer manages the selected track sequence and sends the next track after normal playback finishes. Keep that computer and the music source running. Changing the selected player does not move this sequence. If another controller replaces the music, automatic advancement ends; after a disconnection, select music again to restart. Gapless playback is not guaranteed.
+
+You can also add a [Subsonic / OpenSubsonic music server](music-library.md#subsonic).
 
 ## Share music folders
 
@@ -56,7 +60,7 @@ Open **Settings > Config... > Network**. Under **Library sharing**, select the f
 
 To play individual local files without enabling library sharing, choose another player and use **Open music files**. EffeTune makes only the selected files available to that player; keep the source app running.
 
-Sharing sends the original audio, without the source computer's effects. If the destination is EffeTune, its own effects process the sound. The computer used to select the music does not process or continuously relay that audio. The music server and player must be able to reach each other; their queue can continue playing when the controlling app disconnects.
+Sharing sends the original audio, without the source computer's effects. If the destination is EffeTune, its own effects process the sound. The music server and player must be able to reach each other. An OpenHome player's own queue can continue after the controller disconnects; a sequence managed by EffeTune or a connection through an EffeTune gateway needs that computer to stay running.
 
 ## Edit the selected player's effects (desktop app)
 
@@ -72,21 +76,31 @@ If a connection drops, the selected player stays selected and editing is disable
 
 ## Listen and control from the PWA
 
-On the same network, the [EffeTune PWA](https://effetune.frieve.com/effetune.html) can play a computer’s shared music through your phone’s own EffeTune effects, or control playback and effects on registered EffeTune computers. **Library** and the playback device both start at **This device**. The PWA uses devices you add; it does not discover other music servers.
+The [EffeTune PWA](https://effetune.frieve.com/effetune.html) can play a computer’s shared music through your phone’s own EffeTune effects, or control playback and effects on registered EffeTune computers. A registered computer can also provide access to other music servers and players it can reach. **Library** and the playback device both start at **This device**. The PWA uses connections you add; it does not discover devices itself.
 
 1. On the computer, open **Settings > Remote Control...**, enable **Allow remote control**, and choose **Copy link**. To browse its music, also share folders using **Library sharing** as described above. OpenHome controller access need not be enabled.
 2. In the PWA’s playback device selector, choose **Add device…**. Paste the copied link into **Pairing link** and choose **Connect**. Allow local-network access when asked. You can use **Scan QR code** when available; otherwise paste the link. Opening the QR code with your phone’s normal camera opens the separate remote editor instead.
 
 Choose the computer under **Library** to use the same nine browsing views. Keep the playback device at **This device** to listen through the PWA’s effects, or choose a registered computer and open **Effect Pipeline** to edit its effects. To play computer A’s music on computer B, add both computers and choose A as the library and B as the player. Changing selections does not stop the previous player or move its queue.
 
+To use other servers or players through a registered computer, open its **Settings > Config... > Network > Network devices in the PWA**, enable **Allow browsing other music servers** or **Allow controlling other players**, and click **Save**. Then use **Refresh** in the PWA and select the library and player independently. Add only the gateway computers needed for those connections. These permissions do not require sharing a local folder and do not allow editing another player's effects. Turn a permission off and save to revoke that access.
+
 Open **Add device…** again to manage **Saved devices**. Use **Update connection** with a fresh link if the address or connection code changes, or **Remove** to forget a device. **Refresh** reloads availability and sharing settings. Clearing browser data removes saved devices; if storage is unavailable, registration lasts only for the current session. Older hosts may offer **Open remote editor** instead of PWA music playback.
 
-Use a recent Chromium browser and allow local-network access. Browser support varies; see [Chrome’s local-network permission guidance](https://developer.chrome.com/blog/local-network-access) and [WebSocket support](https://developer.chrome.com/release-notes/147). HTTP links are unencrypted: use them only on a trusted network. Safari/iOS and browsers without local HTTP support need a [trusted HTTPS setup](remote-v1.md#encrypted-connections), with a certificate matching the computer’s IP address and trusted by the browser. Browser or OS policies can still block access; scanning a QR code does not establish certificate trust.
+Use a recent Chromium browser and allow local-network access. Browser support varies; see [Chrome’s local-network permission guidance](https://developer.chrome.com/blog/local-network-access) and [WebSocket support](https://developer.chrome.com/release-notes/147). HTTP links are unencrypted: use them only on a trusted network. Safari/iOS and browsers without local HTTP support need HTTPS, with a certificate matching the connection address and trusted by the browser. Browser or OS policies can still block access; scanning a QR code does not establish certificate trust.
 
-The PWA cannot send its own local files to another player; select a shared computer library instead. Keep the source and player awake and connected. Closing the PWA does not stop playback on another computer when source and player can still reach each other. Playback on the phone depends on its supported formats and may pause when the app is in the background.
+The PWA cannot send its own local files to another player; select a network library instead. Keep the source, player, and any gateway computer awake and connected. Closing the PWA does not stop playback on another computer while those connections remain available. Playback on the phone depends on its supported formats and may pause when the app is in the background. For a direct Subsonic connection, use **Library > Add music server…**; see the [Music Library guide](music-library.md#subsonic).
+
+## HTTPS and devices not found automatically
+
+For HTTPS, open **Settings > Config... > Network > HTTPS connection** on the desktop. Use **Choose certificate…** and **Choose private key…**, enter the **HTTPS endpoint**, such as `https://music.example.com:47300`, and **Save**. A hostname without a port uses 443. The address must reach this computer directly and match its certificate; an existing VPN can provide that connection. Use the new pairing link to add or update the PWA connection. **Test connection** checks the saved connection without starting playback. When environment variables control the connection, the settings are shown as read-only; [advanced TLS configuration](remote-v1.md#encrypted-connections) explains them.
+
+Each browser or OS must trust the certificate. EffeTune does not install certificate authorities, configure VPN routes or router forwarding, or bypass browser restrictions. If the browser cannot connect, check the address, certificate trust, and local-network permission. The browser may not reveal which one blocked access.
+
+If a reachable UPnP device is not discovered, use **Add a network device manually** in the same Network settings. Enter its **Device-description URL** and choose **Add**. This does not make an isolated or unreachable device accessible. Use **Remove** to remove a manually registered device.
 
 ## Network playback limits
 
-Automatic server discovery and music-folder sharing require the desktop app. The PWA connects to registered EffeTune computers as described above. Playback support and seeking depend on the destination and source format; audio is not converted. CUE sub-tracks cannot be sent as separate network tracks. Gapless and synchronized multi-room playback are not guaranteed. If a server or player disappears, check that it is awake, on the same network, and allowed through the private-network firewall, then refresh the device list. Sharing stops when the source app exits or its computer sleeps.
+Automatic server discovery and music-folder sharing require the desktop app. Playback support and seeking depend on the destination and source format. EffeTune does not convert network audio; a Subsonic server may provide a converted stream. CUE sub-tracks cannot be sent as separate network tracks. Gapless and synchronized multi-room playback are not guaranteed. If a server or player disappears, check that it is awake, reachable, and allowed through the private-network firewall, then refresh the device list. Sharing stops when the source app exits or its computer sleeps.
 
 [← Back to README](../README.md)

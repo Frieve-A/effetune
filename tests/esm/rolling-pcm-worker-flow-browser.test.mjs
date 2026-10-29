@@ -1805,8 +1805,7 @@ test('Electron rolling deactivation freezes paused position and ignores a late W
       runtime = await startElectronPage(fixtureServer.baseURL);
       await runtime.application.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.show();
-        window.focus();
+        window.showInactive();
       });
       await runtime.page.waitForFunction(() => document.visibilityState === 'visible');
       const setup = await runtime.page.evaluate(async () => {

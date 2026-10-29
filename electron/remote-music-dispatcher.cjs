@@ -96,7 +96,7 @@ function validate(message) {
       if (simple.includes(action) && extra.length === 0) return { ...player, action };
       if (action === 'seek' && extra.length === 1 && own(message, 'seconds') && integer(message.seconds)) return { ...player, action, seconds: message.seconds };
       if (action === 'seekId' && extra.length === 1 && own(message, 'id') && integer(message.id)) return { ...player, action, id: message.id };
-      if (['repeat', 'shuffle'].includes(action) && extra.length === 1 && own(message, 'value') && typeof message.value === 'boolean') return { ...player, action, value: message.value };
+      if (['repeat', 'shuffle', 'mute'].includes(action) && extra.length === 1 && own(message, 'value') && typeof message.value === 'boolean') return { ...player, action, value: message.value };
       if (action === 'volume' && extra.length === 1 && own(message, 'value') && integer(message.value, 1000)) return { ...player, action, value: message.value };
       throw fail('invalidRequest', 'Choose a valid playback control.');
     }
@@ -127,7 +127,8 @@ function projectPlayback(state, start = 0, count = 100) {
     repeat: state.repeat === true, shuffle: state.shuffle === true,
     volume: Number.isFinite(state.volume) ? state.volume : null,
     volumeMax: Number.isFinite(state.volumeMax) ? state.volumeMax : null,
-    capabilities: Object.fromEntries(['play', 'pause', 'stop', 'next', 'previous', 'seek', 'seekId', 'delete', 'clear', 'repeat', 'shuffle', 'volume']
+    mute: typeof state.mute === 'boolean' ? state.mute : null,
+    capabilities: Object.fromEntries(['play', 'pause', 'stop', 'next', 'previous', 'seek', 'seekId', 'delete', 'clear', 'repeat', 'shuffle', 'volume', 'mute']
       .map(key => [key, capabilities[key] === true])),
     queue: queue.slice(start, start + count).map(track), start, total: queue.length,
     numberReturned: Math.min(count, Math.max(0, queue.length - start))
@@ -176,7 +177,7 @@ function publicError(error) {
   return { code: error.code, message: text(error.message, 512) };
 }
 
-async function dispatchMusic(music, localPlayer, message, isCurrent) {
+async function dispatchMusic(music, localPlayer, message, isCurrent, isAuthorized = () => true) {
   let request;
   const requireCurrent = () => {
     if (!isCurrent()) throw fail('unauthorized', 'Reconnect to EffeTune and try again.');
@@ -236,6 +237,7 @@ async function dispatchMusic(music, localPlayer, message, isCurrent) {
       : message.op === 'queueMusic' ? { ...request, action: 'insert', play: false }
         : request;
     command.isCurrent = isCurrent;
+    command.isAuthorized = isAuthorized;
     try {
       const state = await music.playerCommand(command);
       requireCurrent();

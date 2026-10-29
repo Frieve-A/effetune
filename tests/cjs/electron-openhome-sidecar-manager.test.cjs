@@ -76,6 +76,10 @@ test('OpenHome sidecar waits for the protocol handshake and bounds actions', asy
   assert.deepEqual(actions, [{
     requestId: 'a1', service: 'Playlist', action: 'Play', args: {}
   }]);
+  child.stdout.emit('data', `${JSON.stringify({
+    type: 'action', requestId: 'v1', service: 'Volume', action: 'SetMute', args: { mute: true }
+  })}\n`);
+  assert.deepEqual(actions.at(-1), { requestId: 'v1', service: 'Volume', action: 'SetMute', args: { mute: true } });
   assert.equal(manager.respond('a1', { accepted: true }), true);
   assert.deepEqual(parseWrites(child).at(-1), {
     type: 'response', requestId: 'a1', ok: true, result: { accepted: true }
@@ -158,7 +162,7 @@ test('OpenHome sidecar rejects unknown services without forwarding them', () => 
   manager.start();
   child.stdout.emit('data', `${JSON.stringify({ type: 'ready', protocolVersion: 1 })}\n`);
   child.stdout.emit('data', `${JSON.stringify({
-    type: 'action', requestId: 'bad', service: 'Volume', action: 'SetVolume', args: { value: 100 }
+    type: 'action', requestId: 'bad', service: 'Unknown', action: 'SetVolume', args: { value: 100 }
   })}\n`);
 
   assert.equal(actions.length, 0);

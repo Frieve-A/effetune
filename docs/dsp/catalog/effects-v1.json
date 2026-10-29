@@ -175,12 +175,19 @@
           "type": "boolean",
           "count": 1,
           "default": false
+        },
+        {
+          "name": "chordKeyEnabled",
+          "type": "boolean",
+          "count": 1,
+          "default": false
         }
       ],
       "seeded": false,
       "telemetry": [
         "noteSpectrogram",
-        "noteTimbre"
+        "noteTimbre",
+        "noteChordKey"
       ],
       "latency": {
         "kind": "zero"
@@ -337,6 +344,16 @@
           "type": "boolean",
           "count": 1,
           "default": false
+        },
+        {
+          "name": "displayMode",
+          "type": "string",
+          "count": 1,
+          "default": "band",
+          "values": [
+            "band",
+            "drums"
+          ]
         }
       ],
       "seeded": false,
@@ -9828,7 +9845,7 @@
     }
   ],
   "contractDigests": {
-    "publicCatalogSha256": "1365edcc6f7957b55155a9426b034cb190579ca12bcaca3f0cc90899b158f677",
-    "privateLayoutSha256": "c304b1221b7ce4f1d2957412dcd30dfe46db2b7486e0d441bd04ba6a079441fa"
+    "publicCatalogSha256": "8d144305f71d69d15d61b61840c9d2a0f9b7dfe809bc70239e64aef6dbf4d307",
+    "privateLayoutSha256": "a71ea2079d079c7eb144627e7ccc7586e33f51235f84420ee46c85fbc80a353f"
   }
 }

@@ -135,7 +135,21 @@ Use **Library** to browse this device or a discovered music server, and the devi
 
 When browsing another EffeTune library, use **Tracks**, **Albums**, **Artists**, **Genres**, **Subfolders**, **Files**, **Folders**, **Recently Added**, and **Playlists** as you do locally. Search the selected library, sort its lists, and open albums, artists or genres to find their tracks. In **Folders**, use **Tree** to browse the folder hierarchy or **Flat** to list all tracks in the selected folder. Only shared music appears. Remote playlists can be browsed and played; edit them on the source computer.
 
+Tap a remote track on mobile, or double-click it on PC, to start playback. Large lists queue a range around the chosen track, up to the player's limit (at most 4,096 tracks). The current track uses the same highlight and ♪ mark as local music when it can be identified from the player's information. Selecting all tracks includes the other pages of the current list.
+
+While preparing a remote selection, a status message shows progress and lets you cancel. Once the queue is being applied to the player, cancellation is no longer available; the status remains visible until the operation finishes.
+
 Other music servers show the categories and folder hierarchy they publish; search and sorting are available only when the server supports them.
+
+<a id="subsonic"></a>
+
+### Subsonic / OpenSubsonic servers
+
+In the desktop app, open **Settings > Config... > Network > Subsonic / OpenSubsonic**. Enter **Name**, **Server URL**, **Username**, and **Password**, then choose **Add**. Select the server under **Library** to browse albums, tracks, and server playlists, search, and play or queue music on the selected playback device. Playlist order and repeated tracks are preserved; edit server playlists on the server itself. **Test connection** checks a saved connection, and **Remove** disconnects it.
+
+In the PWA, choose **Library > Add music server…** for a direct HTTPS connection. The server must allow browser access (CORS); the connection and sign-in last for the current session. For playback on another device, or when direct browser access fails, add the server on a registered EffeTune computer and allow browsing other music servers there. Select the library offered through that computer; see [PWA setup](openhome.md#pwa).
+
+The original audio is preferred. A server-provided converted stream may be used when the destination needs it; its format and quality can differ from the stored file. EffeTune does not add codecs or convert the audio itself. Available formats and seeking depend on the server and player.
 
 To play Music Library tracks on another player, open **Settings > Config... > Network > Library sharing** and explicitly share its folder first. Network playback uses the destination's supported formats and effects; CUE sub-tracks are not available as separate network tracks. See [network music and remote control](openhome.md#choose-a-library-and-a-player) for setup, effect pairing and connection troubleshooting.
 
@@ -143,6 +157,6 @@ To play individual local files without enabling library sharing, choose another 
 
 ## Shared music in the PWA
 
-The PWA can browse a registered EffeTune computer’s shared library and play it through this device’s effects or another registered computer. Local PWA files cannot be sent to another player. See [PWA setup and playback](openhome.md#pwa) for adding a device, browser permissions, and connection requirements.
+The PWA can browse a registered EffeTune computer’s shared library and other music servers it permits, and play through this device’s effects or a permitted network player. Local PWA files cannot be sent to another player. See [PWA setup and playback](openhome.md#pwa) for adding a device, browser permissions, and connection requirements.
 
 [← Back to README](../README.md)

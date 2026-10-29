@@ -9,8 +9,13 @@ Distributed under GNU GPL version 3 or later, with the upstream component
 licenses preserved in the accompanying source archive. The GPL text is in
 licenses/UxPlay-GPL-3.0.txt. This program is provided without warranty.
 
-The source/ directory contains the exact upstream source archives, dependency
-source archives (including their original notices and build recipes), and
+Corresponding source is provided separately, at no additional charge, in
+EffeTune-<version>-ThirdParty-Source.zip alongside the application downloads at
+https://github.com/Frieve-A/effetune/releases . Select the release matching
+your installed EffeTune version and the airplay/<platform>-<architecture>/
+directory inside the archive. Its source/ directory contains the exact
+upstream and dependency source archives (including their original notices
+and build recipes), and
 EffeTune's build instructions and build-only adaptations. The source filenames,
 revisions, versions, license metadata, and SHA-256 checksums are recorded in
 runtime-manifest.json and source/effetune-airplay-build/native/airplay-receiver/
@@ -52,7 +57,8 @@ GStreamer, FFmpeg, GLib, OpenSSL, libplist and runtime dependencies
 ---------------------------------------------------------------
 Exact redistributed packages and licenses are listed in runtime-manifest.json.
 Their original license files are included under licenses/ and their complete
-corresponding source archives under source/. GStreamer components are generally
+corresponding source archives under source/ in the separate archive described
+above. GStreamer components are generally
 LGPL-2.1-or-later; UxPlay's complete combined binary retains its GNU GPL terms.
 FFmpeg is built from the fixed upstream source with AAC/ALAC codecs and no
 external codec libraries. Unneeded GStreamer video sinks are not included.

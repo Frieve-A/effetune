@@ -160,7 +160,7 @@ test('pitch telemetry preserves fractional estimates within the endpoint half-ro
 });
 
 function rhythmPacket({ locked = true, events = 1, patch = null, version = 1 } = {}) {
-  const payloadBytes = version === 4 ? 1496 : 1344;
+  const payloadBytes = version === 5 ? 2024 : version === 4 ? 1496 : 1344;
   const packet = new Uint8Array(16 + payloadBytes);
   const view = new DataView(packet.buffer);
   view.setUint16(0, 28, true);
@@ -203,6 +203,43 @@ function rhythmPacket({ locked = true, events = 1, patch = null, version = 1 } =
   patch?.(payload);
   return packet;
 }
+
+test('rhythm analyzer v5 preserves drum audio time, class and logit independently of beat annotations', () => {
+  const nodes = new Map([[13, { effectType: 'RhythmAnalyzer' }]]);
+  const packet = rhythmPacket({ version: 5, locked: false, events: 0, patch: payload => {
+    payload.setFloat32(0, 44100, true);
+    payload.setUint32(8, 470, true);
+    payload.setUint32(1496, 1, true);
+    payload.setUint32(1500, 5, true);
+    payload.setFloat32(1504, .07, true);
+    for (let lane = 0; lane < 5; lane++) {
+      const offset = 1512 + lane * 32;
+      payload.setUint32(offset, 93, true);
+      payload.setFloat32(offset + 4, .75, true);
+      payload.setFloat32(offset + 24, lane === 0 ? .3 : -.1, true);
+      payload.setUint8(offset + 28, lane);
+      payload.setUint8(offset + 29, 1);
+    }
+  } });
+  const decode = bytes => decodeTelemetryPacket(bytes, bytes.byteLength, nodes).frames;
+  const [frame] = decode(packet);
+  assert.equal(frame.displayMode, 'drums');
+  assert.equal(frame.locked, false);
+  assert.equal(frame.drumEvents.length, 5);
+  for (let lane = 0; lane < 5; lane++) {
+    assert.equal(frame.drumEvents[lane].lane, lane);
+    assert.equal(frame.drumEvents[lane].audioTimeSeconds, 1);
+    assert.equal(frame.drumEvents[lane].unlocked, true);
+  }
+  assert.ok(frame.drumEvents[1].logit < 0);
+  for (const patch of [p => p.setUint32(1496, 2, true), p => p.setUint32(1500, 17, true),
+    p => p.setFloat32(1504, NaN, true), p => p.setFloat32(1536, NaN, true),
+    p => p.setUint8(1540, 5), p => p.setUint8(1541, 2), p => p.setUint32(1508, 1, true)]) {
+    const invalid = packet.slice();
+    patch(new DataView(invalid.buffer, 16));
+    assert.deepEqual(decode(invalid), []);
+  }
+});
 
 test('rhythm analyzer v4 transports provisional onsets and a replaceable best path with a closed tick gate', () => {
   const nodes = new Map([[13, { effectType: 'RhythmAnalyzer' }]]);

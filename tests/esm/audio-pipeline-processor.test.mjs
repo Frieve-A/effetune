@@ -319,3 +319,14 @@ test('prepareSectionAwarePluginData tolerates a missing audio context sample rat
     commitSampleRate: true
   }]);
 });
+
+test('section-aware plugin data uses DSP output width beyond the context destination', () => {
+  const calls = [];
+  const processor = new PipelineProcessor({
+    outputChannelCount: 4,
+    audioContext: { sampleRate: 96000, destination: { channelCount: 2 } }
+  }, null);
+  processor.setPipeline([createPlugin(calls)]);
+  processor.prepareSectionAwarePluginData();
+  assert.equal(calls[0][1].outputChannelCount, 4);
+});

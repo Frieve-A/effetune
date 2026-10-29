@@ -1,6 +1,6 @@
 import { ASPECTS, MOD_SOURCES, ITEM_TYPES, VISUAL_TYPES, TEXT_STYLE_TYPES, GRADIENT_DIRECTION_TYPES, MAX_ITEMS, MAX_EFFECTS, MAX_TEXT_LENGTH, MIN_ITEM_SIZE, MAX_ITEM_SIZE, REFERENCE_WIDTH, SHAPES, RHYTHM_SPANS, EFFECT_CATALOG, TRANSFORM_PARAMETERS, COLOR_ADJUST_PARAMETERS, FONT_FAMILIES, COUNTER_FONT_FAMILIES, COUNTER_APPEARANCES, applyCounterAppearance, TEXT_DECORATION_DEFAULTS, RHYTHM_BEAT_STYLE_DEFAULTS, THEME_COLOR_ROLES, DEFAULT_THEME_COLORS, DEFAULT_TRACE_COLOR, GUITAR_TUNINGS, GUITAR_SCALES, PICTURE_TYPES, VIDEO_FITS, createItem, isRecord, normalizeEffect, normalizeLayout, paletteModesForType } from './visualizer-model.js';
 import { GRADIENT_PRESETS } from './visualizer-palette-presets.js';
-import { PLAYBACK_ACTIONS, PLAYBACK_APPEARANCES, SEEK_APPEARANCES } from './visualizer-model.js';
+import { PLAYBACK_ACTIONS, PLAYBACK_APPEARANCES, SEEK_APPEARANCES, NOTE_TEXT_TYPES } from './visualizer-model.js';
 import { copyTextToClipboard } from '../utils/clipboard-utils.js';
 import { clampMenuToViewport } from '../ui/library/library-view-shared.js';
 import { bindNumberInput, updateRangeFill } from '../ui/range-fill.js';
@@ -573,6 +573,7 @@ export class VisualizerEditor {
         });
         const addRow = document.createElement('div');
         addRow.className = 'visualizer-select-action-row visualizer-navigation-add-row'; scene.appendChild(addRow);
+        // All visualizer.type.* labels are fixed English item names, even in localized UI.
         const add = this.field(addRow, this.t('visualizer.item', 'Item'), 'select', 'spectrum', () => {}, { values: byLabel(ITEM_TYPES.map(type => [type, this.t(`visualizer.type.${type}`, type)])) });
         const addItem = this.button(addRow, this.t('visualizer.add', 'Add'), () => {
             if (layout.items.length >= MAX_ITEMS) return;
@@ -648,7 +649,7 @@ export class VisualizerEditor {
         if (item.type === 'text') this.field(properties, this.t('visualizer.textContent', 'Text'), 'textarea', item.params.text,
             value => { item.params.text = value; this.changed(); }, { maxLength: MAX_TEXT_LENGTH, rows: 4 });
         this.styleToggles(properties, item);
-        if (VISUAL_TYPES.includes(item.type) || item.type === 'lyrics' || item.type === 'counter') this.parameters(properties, item);
+        if ((VISUAL_TYPES.includes(item.type) && !NOTE_TEXT_TYPES.includes(item.type)) || item.type === 'lyrics' || item.type === 'counter') this.parameters(properties, item);
         if (item.type === 'playback-control') this.playbackParameters(properties, item);
         if (item.type === 'seek-bar') this.seekParameters(properties, item);
         if (item.type === 'video') this.videoStyle(properties, item.style);
@@ -849,6 +850,7 @@ export class VisualizerEditor {
         const analogMeter = item.type === 'analog-meter';
         const rhythm = item.type === 'rhythm-analyzer';
         const guitar = item.type === 'guitar';
+        const drums = item.type === 'drums';
         const lyrics = item.type === 'lyrics';
         const update = (key, value) => {
             params[key] = key === 'pt' || (item.type === 'chroma' && key === 'dm') ||
@@ -978,6 +980,7 @@ export class VisualizerEditor {
             select('pr', 'Pitch Resolution', [['Semitone', this.t('visualizer.paramChoice.Semitone', '1/12 Octave')], ['High', this.t('visualizer.paramChoice.High', 'High')]]);
             select('ly', 'Layout', [['Horizontal', this.t('visualizer.paramChoice.Horizontal', 'Horizontal')], ['Vertical', this.t('visualizer.paramChoice.Vertical', 'Vertical')]]);
             check('vl', 'Volume');
+            check('ck', 'Chords & Key');
             range('ts', 'Time Span', 1, 10, 1, 's');
             const noteSliders = {};
             for (const [key, label] of [['mn', 'Lowest note'], ['mx', 'Highest note']]) {
@@ -1013,10 +1016,12 @@ export class VisualizerEditor {
             range('cp', 'Capo', 0, 12, 1, '', 1, value => value ? String(value) : this.t('visualizer.value.none', 'None'));
             select('pm', 'Positions', [['all', this.t('visualizer.guitar.all', 'All Positions')],
                 ['shape', this.t('visualizer.guitar.shape', 'One Shape')],
-                ['shape-dim', this.t('visualizer.guitar.shape-dim', 'One Shape + Alternatives')]]);
+                ['shape-dim', this.t('visualizer.guitar.shape-dim', 'One Shape + Alternatives')],
+                ['chord', this.t('visualizer.guitar.chord', 'Chord')]]);
             select('lb', 'Note Labels', [['none', this.t('visualizer.value.none', 'None')],
                 ['sharp', this.t('visualizer.guitar.sharp', 'Note Names (♯)')],
                 ['flat', this.t('visualizer.guitar.flat', 'Note Names (♭)')],
+                ['detected', this.t('visualizer.guitar.detected', 'Note Names (Detected Scale)')],
                 ['interval', this.t('visualizer.guitar.interval', 'Intervals')]]);
             select('ro', 'Root', [['-1', this.t('visualizer.guitar.auto', 'Auto (Lowest Note)')],
                 ...NOTE_NAMES.map((name, index) => [String(index), name])]);
@@ -1069,7 +1074,16 @@ export class VisualizerEditor {
             if (visible('tg')) range('tg', 'Target', -36, -10, 1, 'LUFS');
             if (visible('ls')) select('ls', 'Scale', choices(['EBU +9', 'EBU +18']));
             this.meterAppearance(parent, item);
+        } else if (drums) {
+            range('yaw', 'Viewing angle', -180, 180, 1, '°');
+            range('elevation', 'Elevation', 5, 80, 1, '°');
+            for (const [key, label] of [['shellColor', 'Shell color'], ['cymbalColor', 'Cymbal color'],
+                ['hardwareColor', 'Hardware color'], ['headColor', 'Drumhead color']]) {
+                this.field(parent, this.t(`visualizer.param.${key}`, label), 'color', params[key], value => update(key, value));
+            }
         } else if (rhythm) {
+            select('dm', 'Display', [['band', this.t('visualizer.paramChoice.Frequency-bands', 'Frequency bands')],
+                ['drums', this.t('visualizer.paramChoice.Drums', 'Drums')]]);
             rangePair([['mn', 'Min BPM', 40, 192, 'bpmMin'], ['mx', 'Max BPM', 50, 240, 'bpmMax']],
                 'BPM');
             select('sp', 'Span (beats)', RHYTHM_SPANS.map(value => [String(value), String(value)]));
@@ -1082,7 +1096,7 @@ export class VisualizerEditor {
             this.field(parent, this.t('visualizer.param.beatLens', 'Beat lens'), 'checkbox', params.vl, value => update('vl', value));
         }
         if (['spectrum', 'spectrogram', 'stereo'].includes(item.type)) range('gainDb', 'Input gain', -24, 24, 1, 'dB');
-        if (guitar || lyrics) return;
+        if (guitar || drums || lyrics) return;
         check('showAxes', 'Axes and grid');
         check('showAxisNumbers', 'Axis labels and numbers');
     }

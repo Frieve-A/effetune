@@ -9,6 +9,24 @@ import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.
 import { validatePowerSnapshot } from '../../js/audio/power-snapshot.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('zero-output proof reports four DSP outputs when Web Audio destination is stereo', () => {
+  const controller = Object.assign(Object.create(PowerPolicyController.prototype), {
+    audioManager: {
+      getOutputChannelCount: () => 4,
+      ioManager: { outputGainNode: {}, powerOutputStructurallyZero: true },
+      masterBypass: false
+    }
+  });
+  controller._deriveCurrentZeroOutputProof(
+    { tokens: { topologyRevision: 1, workletGraphGeneration: 1 } },
+    [],
+    { destination: { channelCount: 2 } },
+    [{}]
+  );
+  assert.deepEqual(controller.currentPowerTopologySnapshot.physicalOutputIds,
+    ['physical-output-0', 'physical-output-1', 'physical-output-2', 'physical-output-3']);
+});
+
 function createHarness({
   settings = { mode: 'balanced', silenceThresholdDb: -80, fullSuspendDelaySeconds: 300 },
   player = null,

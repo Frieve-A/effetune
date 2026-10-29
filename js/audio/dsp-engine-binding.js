@@ -17,6 +17,7 @@ const REQUIRED_FUNCTION_EXPORTS = [
     'et_instance_create',
     'et_instance_destroy',
     'et_instance_reset',
+    'et_instance_stream_boundary',
     'et_instance_latency',
     'et_instance_set_tap',
     'et_instance_set_analysis_source',
@@ -472,6 +473,7 @@ export class DspEngineBinding {
                 this.prepared = true;
                 this._maxChannels = maxChannels;
                 this._maxFrames = maxFrames;
+                this._sampleRate = sampleRate;
                 this._telemetryStagingPtr = this.exports.et_telemetry_staging_ptr(this.engine) >>> 0;
                 this._telemetryDroppedPtr = this.exports.et_scratch_ptr(this.engine) >>> 0;
                 this._telemetryCapacity = this.exports.et_telemetry_capacity(this.engine) >>> 0;
@@ -523,6 +525,11 @@ export class DspEngineBinding {
     resetInstance(instanceId) {
         if (!this.engine) return ET_ERR_STATE;
         return this.exports.et_instance_reset(this.engine, instanceId);
+    }
+
+    streamBoundaryInstance(instanceId) {
+        if (!this.engine) return ET_ERR_STATE;
+        return this.exports.et_instance_stream_boundary(this.engine, instanceId);
     }
 
     instanceLatency(instanceId) {
@@ -701,6 +708,41 @@ export class DspEngineBinding {
             frameCount,
             timeSeconds
         );
+    }
+
+    instanceProcessSpan(instanceId, audioPtr, channelCount, blockFrames, firstFrame, frameCount, timeSeconds) {
+        if (!this.engine || !this.prepared) return ET_ERR_STATE;
+        if (!Number.isInteger(channelCount) || channelCount < 1 || channelCount > this._maxChannels ||
+            !Number.isInteger(blockFrames) || blockFrames < 1 || blockFrames > this._maxFrames ||
+            !Number.isInteger(firstFrame) || firstFrame < 0 || !Number.isInteger(frameCount) ||
+            frameCount < 0 || firstFrame + frameCount > blockFrames) {
+            throw new RangeError('DSP instance span is outside the planar block');
+        }
+        this._refreshViews();
+        this._assertRange(audioPtr, channelCount * blockFrames * 4, 'DSP instance span');
+        const scratchPtr = this.scratchPtr();
+        const scratch = scratchPtr / 4;
+        const source = audioPtr / 4;
+        const capacity = Math.floor(SCRATCH_BYTES / (channelCount * 4));
+        for (let offset = 0; offset < frameCount; offset += capacity) {
+            const count = Math.min(capacity, frameCount - offset);
+            for (let channel = 0; channel < channelCount; channel++) {
+                for (let i = 0; i < count; i++) {
+                    this.f32[scratch + channel * count + i] =
+                        this.f32[source + channel * blockFrames + firstFrame + offset + i];
+                }
+            }
+            const status = this.instanceProcess(instanceId, scratchPtr, channelCount, count,
+                timeSeconds + (firstFrame + offset) / this._sampleRate);
+            if (status !== 0) return status;
+            for (let channel = 0; channel < channelCount; channel++) {
+                for (let i = 0; i < count; i++) {
+                    this.f32[source + channel * blockFrames + firstFrame + offset + i] =
+                        this.f32[scratch + channel * count + i];
+                }
+            }
+        }
+        return 0;
     }
 
     arenaCombinedPtr() {

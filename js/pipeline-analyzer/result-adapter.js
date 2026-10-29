@@ -3,6 +3,7 @@ import {
     interpolateLogResponse,
     smoothFrequencyResponse
 } from '../utils/measurement-dsp/smoothing.js';
+import { CHANNEL_COLORS } from '../../features/measurement/channel-colors.js';
 
 const BEFORE_COLOR = 'var(--et-graph-trace-secondary)';
 const BEFORE_IMPULSE_COLOR = 'var(--et-graph-tone-50)';
@@ -338,6 +339,43 @@ function viewCurves(curves, makePoints) {
     }));
 }
 
+function measurementAnalysisViews(result) {
+    const xMax = result.measurement?.endFrequency ?? Math.min(20000, result.sampleRate * 0.49);
+    const data = result.after.distortion;
+    const points = values => data.frequencies.map((frequency, index) =>
+        [frequency, Number.isFinite(values[index]) ? values[index] * 100 : null]);
+    const series = data ? [{ label: `THD (2–${data.maxOrder})`, order: 0,
+        color: CHANNEL_COLORS[0], points: points(data.thd) }, ...data.series.map(entry => ({
+        label: `H${entry.order}`, order: entry.order,
+        color: CHANNEL_COLORS[(entry.order - 1) % CHANNEL_COLORS.length], points: points(entry.ratios)
+    }))] : [];
+    let peak = 0;
+    for (const entry of series) for (const [, value] of entry.points) {
+        if (Number.isFinite(value) && value > peak) peak = value;
+    }
+    const waterfallState = (source, label, color) => source.waterfall ? {
+        type: 'waterfall', xMin: 20, xMax, yMin: -60, yMax: 0, unit: 'dB', series: [{ label, color }],
+        waterfall: source.waterfall, normalization: 'global', angle: 25, elevation: 28, zoom: 1
+    } : null;
+    return {
+        distortion: {
+            available: Boolean(data),
+            reason: data ? null : result.after.distortionUnavailableReason || 'ess-required',
+            qualityWarning: result.after.distortionQuality?.valid === false,
+            reasons: result.after.distortionQuality?.reasons || [],
+            plotState: data ? { type: 'distortion', xMin: 20, xMax, yMin: 0,
+                yMax: niceCeiling(Math.max(1, peak * 1.1)), unit: '%', series } : null
+        },
+        waterfall: {
+            available: Boolean(result.before.waterfall || result.after.waterfall),
+            beforeAvailable: Boolean(result.before.waterfall),
+            afterAvailable: Boolean(result.after.waterfall),
+            plotState: waterfallState(result.after, 'After', AFTER_COLOR),
+            beforePlotState: waterfallState(result.before, 'Before', BEFORE_COLOR)
+        }
+    };
+}
+
 export function adaptPipelineAnalysisResult(result, provenance = {}) {
     const sampleRate = Number(result?.sampleRate);
     if (!(Number.isFinite(sampleRate) && sampleRate > 0) || !result?.before || !result?.after) {
@@ -530,7 +568,8 @@ export function adaptPipelineAnalysisResult(result, provenance = {}) {
                 timeRange,
                 curve.impulseDivisor
             ))
-        }
+        },
+        ...measurementAnalysisViews(result)
     };
 
     return {

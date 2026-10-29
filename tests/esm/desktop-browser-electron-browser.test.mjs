@@ -58,10 +58,11 @@ async function startFixture({ secure = true } = {}) {
   };
 }
 
-async function launch(profile, origin) {
+async function launch(profile, origin, { nativeInput = false } = {}) {
   const application = await electron.launch({
     args: [path.join(repoRoot, 'tests/helpers/desktop-browser-electron-main.cjs'), `--user-data-dir=${profile}`],
-    env: { ...process.env, EFFETUNE_BROWSER_FIXTURE_ORIGIN: origin },
+    env: { ...process.env, EFFETUNE_BROWSER_FIXTURE_ORIGIN: origin,
+      EFFETUNE_BROWSER_TEST_NATIVE_INPUT: nativeInput ? '1' : '0' },
     timeout: 20_000
   });
   try {
@@ -80,6 +81,18 @@ async function launch(profile, origin) {
       }
     });
     await page.waitForFunction(() => window.app?.initialized && window.audioManager?.workletNode, null, { timeout: 25_000 });
+    const placement = await application.evaluate(({ BrowserWindow, screen }) => {
+      const main = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('effetune.html'));
+      const primary = screen.getPrimaryDisplay();
+      const target = screen.getAllDisplays().find(display => display.id !== primary.id) || primary;
+      return { actual: screen.getDisplayMatching(main.getBounds()).id, expected: target.id,
+        focusable: main.isFocusable(), focused: main.isFocused() };
+    });
+    assert.equal(placement.actual, placement.expected, 'visible tests must use the secondary monitor when available');
+    if (!nativeInput && (process.platform === 'win32' || process.platform === 'darwin')) {
+      assert.equal(placement.focusable, false);
+      assert.equal(placement.focused, false);
+    }
     return { application, page };
   } catch (error) {
     await closeApplication(application);
@@ -536,7 +549,7 @@ test('Browser toolbar, bookmarks and menu preserve automatic audio selection', {
   await writeFile(path.join(profile, 'audio-preferences.json'), JSON.stringify({
     inputDeviceId: '__effetune_no_audio_input__', sampleRate: 48000, outputDeviceId: 'default'
   }));
-  ({ application, page } = await launch(profile, fixture.origin));
+  ({ application, page } = await launch(profile, fixture.origin, { nativeInput: true }));
   const browserButton = page.locator('#browserButton');
   const toolbar = page.locator('.browser-toolbar');
   const button = key => page.locator(`.browser-toolbar [data-browser-label="${key}"]`);
@@ -755,7 +768,7 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
   await writeFile(path.join(profile, 'audio-preferences.json'), JSON.stringify({
     inputDeviceId: '__effetune_no_audio_input__', sampleRate: 48000, outputDeviceId: 'default'
   }));
-  const launched = await launch(profile, fixture.origin);
+  const launched = await launch(profile, fixture.origin, { nativeInput: true });
   application = launched.application;
   const page = launched.page;
   await page.locator('#browserButton').click();
@@ -790,18 +803,26 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
       useInputWithPlayer: window.audioPreferences.useInputWithPlayer
     });
   });
-  const normalBounds = await page.locator('.browser-content').boundingBox();
+  // Compare DOM rectangles with the same API: CDP boundingBox rounds fractional
+  // edges differently from getBoundingClientRect on monitors with fractional DPI.
+  const readContentBounds = () => page.locator('.browser-content').evaluate(element => {
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return { x, y, width, height };
+  });
+  const normalBounds = await readContentBounds();
   const assertLayout = async (fullscreen, nativeFullscreen = fullscreen) => {
     await application.evaluate(async ({ BrowserWindow }, expected) => {
       const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('effetune.html'));
       const contents = globalThis.browserFixture.contents();
       const view = window.contentView.children.find(view => view.webContents === contents);
       const deadline = Date.now() + 8000;
+      let htmlFullscreen;
+      let domBounds;
       while (Date.now() < deadline) {
-        const htmlFullscreen = await contents.executeJavaScript('Boolean(document.fullscreenElement)');
+        htmlFullscreen = await contents.executeJavaScript('Boolean(document.fullscreenElement)');
         const bounds = view.getBounds();
         const size = window.getContentBounds();
-        const domBounds = await window.webContents.executeJavaScript(`(() => {
+        domBounds = await window.webContents.executeJavaScript(`(() => {
           const { x, y, width, height } = document.querySelector('.browser-content').getBoundingClientRect();
           return { x, y, width, height };
         })()`);
@@ -815,7 +836,7 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
             boundsMatch && normalRestored) return;
         await new Promise(resolve => setTimeout(resolve, 50));
       }
-      throw new Error(`Fullscreen layout did not settle: ${JSON.stringify({ expected,
+      throw new Error(`Fullscreen layout did not settle: ${JSON.stringify({ expected, htmlFullscreen, domBounds,
         fullscreen: window.isFullScreen(), bounds: view.getBounds(), content: window.getContentBounds(),
         error: await contents.executeJavaScript('window.fullscreenError') })}`);
     }, { fullscreen, nativeFullscreen, normalBounds });
@@ -877,7 +898,7 @@ test('Browser HTML fullscreen fills its window and restores layout without repla
   await page.waitForFunction(url => window.uiManager.browserView.state.url === url &&
     !window.uiManager.browserView.state.loading, navigatedUrl);
   await assertLayout(false);
-  const restoredBounds = await page.locator('.browser-content').boundingBox();
+  const restoredBounds = await readContentBounds();
   assert.deepEqual(restoredBounds, normalBounds, 'the original Browser content rectangle returns');
   const nativeBounds = await application.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('effetune.html'));
@@ -959,7 +980,7 @@ test('Browser Config persists User-Agent and applies it to requests without relo
   await writeFile(path.join(profile, 'audio-preferences.json'), JSON.stringify({
     inputDeviceId: '__effetune_no_audio_input__', sampleRate: 48000, outputDeviceId: 'default'
   }));
-  const launched = await launch(profile, fixture.origin);
+  const launched = await launch(profile, fixture.origin, { nativeInput: true });
   application = launched.application;
   const page = launched.page;
   const url = `${fixture.origin}/user-agent`;

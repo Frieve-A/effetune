@@ -95,6 +95,7 @@ export class OpenHomePlaybackAdapter {
       playRequest: null,
       queueTransaction: null
     };
+    context.isCurrent = () => context.active && !this.disposed;
     if (requestId) this.actionContexts.set(requestId, context);
     this.commandChain = this.commandChain.then(async () => {
       let suppressingState = false;
@@ -104,11 +105,11 @@ export class OpenHomePlaybackAdapter {
         suppressingState = true;
         const result = await this.executeAction(action, context);
         this.assertActionActive(context);
-        const accepted = await this.bridge.respond({
+        const accepted = await this.awaitAction(context, this.bridge.respond({
           requestId: action.requestId,
           ok: true,
           result
-        });
+        }));
         if (accepted === true && context.active) {
           this.finalizeQueueMutation(context);
         } else {
@@ -251,11 +252,11 @@ export class OpenHomePlaybackAdapter {
     }).catch(() => {});
   }
 
-  async synchronizePlayerQueue() {
+  async synchronizePlayerQueue(context = { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER }) {
     const manager = this.audioPlayer.playbackManager;
     if (this.queueSequence === manager.sequence) return;
-    const context = { active: true, deadlineEpochMs: Number.MAX_SAFE_INTEGER };
     const imported = await this.captureLocalQueue(0, context, true);
+    this.assertActionActive(context);
     const entries = imported.entries.map(entry => {
       const id = entry.id ?? this.allocateTrackId();
       return Object.freeze({ ...entry, id, metadata: entry.metadata ?? localTrackMetadata(entry.meta.title, id) });
@@ -268,6 +269,26 @@ export class OpenHomePlaybackAdapter {
     this.queueSequence = manager.sequence;
     this.queueEntryIds = new Map(entries.filter(entry => entry.entryInstanceId).map(entry => [entry.entryInstanceId, entry.id]));
     this.queueProjectionError = null;
+  }
+
+  async awaitAction(context, pending) {
+    const signal = context.abortController?.signal;
+    if (!signal) return pending;
+    let onAbort;
+    try {
+      // Cancellation must settle the wait even if the underlying browser or
+      // provider promise never settles. Its late result cannot resume this action.
+      return await Promise.race([
+        pending,
+        new Promise((_, reject) => {
+          onAbort = () => reject(createActionError('action-cancelled'));
+          signal.addEventListener('abort', onAbort, { once: true });
+          if (signal.aborted) onAbort();
+        })
+      ]);
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
   }
 
   assertActionActive(context) {
@@ -379,14 +400,14 @@ export class OpenHomePlaybackAdapter {
     this.assertActionActive(context);
     validateActionRequest(request);
     if (request.service === 'AVTransport') return this.executeAvTransport(request, context);
-    if (request.service === 'RenderingControl') return this.executeRenderingControl(request);
+    if (request.service === 'RenderingControl' || request.service === 'Volume') return this.executeRenderingControl(request);
     if (request.service === 'Catalog') {
       if (request.action !== 'PlayItems') throw createActionError('unsupported-action');
       return this.playCatalogItems(request.args, context);
     }
     // Local controls can adopt the Player's first queue without replacing a staged OpenHome queue.
     if (this.followsPlayerQueue || (request.localControl === true && this.queue.length === 0)) {
-      await this.synchronizePlayerQueue();
+      await this.synchronizePlayerQueue(context);
       this.assertActionActive(context);
       this.followsPlayerQueue = true;
     }
@@ -407,7 +428,7 @@ export class OpenHomePlaybackAdapter {
       case 'Play': {
         await this.ensureQueueActive(context);
         this.assertActionActive(context);
-        const resumed = await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
+        const resumed = await this.awaitAction(context, this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
         this.assertActionActive(context);
         if (resumed !== true) throw createActionError('play-failed');
         const playbackManager = this.audioPlayer.playbackManager;
@@ -416,7 +437,7 @@ export class OpenHomePlaybackAdapter {
         const playRequest = playbackManager?.activePlayRequest || null;
         if (playRequest && playRequest !== previousPlayRequest) context.playRequest = playRequest;
         this.markQueueMutationOwner(context, true);
-        const started = await playPromise;
+        const started = await this.awaitAction(context, playPromise);
         // Target selection only owns the pending initial activation. Once audio
         // starts, this queue and its providers belong to the local player.
         if (started === true && context.queueTransaction) context.isCurrent = undefined;
@@ -507,7 +528,7 @@ export class OpenHomePlaybackAdapter {
       // The existing candidate loader keeps the current backend until preparation succeeds.
       // Selecting a URI is one queue transaction, never DeleteAll followed by Insert.
       const manager = this.audioPlayer.contextManager;
-      const resumed = !wasPlaying || await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
+      const resumed = !wasPlaying || await this.awaitAction(context, this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
       this.assertActionActive(context);
       const preparation = resumed && (wasLive
         ? manager.prepareTrackSelection(track, () => context.active && !this.disposed)
@@ -515,7 +536,7 @@ export class OpenHomePlaybackAdapter {
         ? manager.transitionToNextTrack(track, 0, false, null, null, { signal: context.abortController?.signal })
         : manager.loadTrack(track, 0));
       if (!wasPlaying && !wasLive) context.loadRequest = manager.activeLoadRequest;
-      const prepared = await preparation;
+      const prepared = await this.awaitAction(context, preparation);
       context.loadRequest = null;
       this.markQueueMutationOwner(context);
       this.assertActionActive(context);
@@ -559,7 +580,8 @@ export class OpenHomePlaybackAdapter {
 
   executeRenderingControl(request) {
     const manager = this.audioPlayer.contextManager;
-    if (request.action === 'Snapshot') return this.getSnapshot().renderingControl;
+    if (request.action === 'Snapshot') return request.service === 'Volume'
+      ? this.getSnapshot().volume : this.getSnapshot().renderingControl;
     if (request.action === 'SetVolume') {
       const volume = request.args.volume;
       if (!Number.isInteger(volume) || volume < 0 || volume > 100) throw createActionError('invalid-action');
@@ -567,6 +589,9 @@ export class OpenHomePlaybackAdapter {
     } else if (request.action === 'SetMute') {
       if (typeof request.args.mute !== 'boolean') throw createActionError('invalid-action');
       manager.setPlayerMute(request.args.mute);
+    } else if (request.service === 'Volume' && (request.action === 'VolumeInc' || request.action === 'VolumeDec')) {
+      const current = manager.getPlayerVolume();
+      manager.setPlayerVolume(Math.max(0, Math.min(100, current + (request.action === 'VolumeInc' ? 1 : -1))));
     } else if (request.action === 'SelectPreset') {
       if (request.args.preset !== 'FactoryDefaults') throw createActionError('invalid-preset');
       manager.setPlayerVolume(100);
@@ -677,12 +702,12 @@ export class OpenHomePlaybackAdapter {
     let manager = null;
     for (const item of items) {
       if (item.serverId === 'local') {
-        manager ??= await this.getLibraryManager();
+        manager ??= await this.awaitAction(context, this.getLibraryManager());
         this.assertActionActive(context);
         if (!manager || typeof item.trackId !== 'string' || !item.trackId || item.trackId.length > 1024) throw createActionError('invalid-action');
-        const row = await manager.getTrack(item.trackId);
+        const row = await this.awaitAction(context, manager.getTrack(item.trackId));
         if (!row) throw createActionError('trackUnavailable');
-        try { await manager.resolvePlaybackSource(item.trackId); }
+        try { await this.awaitAction(context, manager.resolvePlaybackSource(item.trackId)); }
         catch (_) { throw createActionError('trackUnavailable'); }
         this.assertActionActive(context);
         const meta = { title: row.title || 'Track', artist: row.artist || '', album: row.album || '', duration: row.durationSec || 0 };
@@ -693,7 +718,7 @@ export class OpenHomePlaybackAdapter {
         } });
       } else {
         if (typeof item.serverId !== 'string' || !item.serverId || typeof item.trackId !== 'string' || !item.trackId) throw createActionError('invalid-action');
-        const track = await this.resolveNetworkTrack({ serverId: item.serverId, trackId: item.trackId, localPlayback: true });
+        const track = await this.awaitAction(context, this.resolveNetworkTrack({ serverId: item.serverId, trackId: item.trackId, localPlayback: true }));
         this.assertActionActive(context);
         if (track?.playable === false) throw createActionError('unsupportedFormat');
         entries.push(this.createNetworkEntry({ uri: track.resources?.[0]?.uri, playbackUrl: track.uri, metadata: track.metadata }, track));
@@ -714,7 +739,7 @@ export class OpenHomePlaybackAdapter {
     const existing = new Map(this.queue.map(entry => [entry.id, entry]));
     for (let index = 0; index < count; index += 1) {
       const ordinal = canonical && sequence ? sequence.toTransportOrdinal(index) : index;
-      const track = sequence ? await sequence.getEntry(ordinal) : sourceTracks[index];
+      const track = sequence ? await this.awaitAction(context, sequence.getEntry(ordinal)) : sourceTracks[index];
       this.assertActionActive(context);
       const retained = existing.get(this.getTrackId(track)) ?? track.meta?.openHomeQueueEntry;
       if (retained) {
@@ -903,7 +928,7 @@ export class OpenHomePlaybackAdapter {
     const manager = this.audioPlayer.playbackManager;
     const playlistIndex = this.getPlaybackOrdinal(queueIndex);
     if (playlistIndex < 0) throw createActionError('track-not-found');
-    const resumed = await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
+    const resumed = await this.awaitAction(context, this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
     this.assertActionActive(context);
     if (resumed !== true) throw createActionError('seek-failed');
     const pending = manager.selectQueueOrdinal(playlistIndex, {
@@ -913,7 +938,7 @@ export class OpenHomePlaybackAdapter {
       ...(context.isCurrent ? { isCurrent: context.isCurrent } : {})
     });
     this.markQueueMutationOwner(context, true);
-    const result = await pending;
+    const result = await this.awaitAction(context, pending);
     if (result?.accepted === true && context.queueTransaction) context.isCurrent = undefined;
     this.assertActionActive(context);
     if (result?.accepted === false) throw createActionError('seek-failed');
@@ -922,7 +947,7 @@ export class OpenHomePlaybackAdapter {
   async moveQueue(direction, context) {
     await this.ensureQueueActive(context);
     this.assertActionActive(context);
-    const resumed = await (this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
+    const resumed = await this.awaitAction(context, this.audioPlayer.resumeAudioContextForRemotePlayback?.() ?? true);
     this.assertActionActive(context);
     if (resumed !== true) throw createActionError(`${direction}-failed`);
     const playbackManager = this.audioPlayer.playbackManager;
@@ -1114,6 +1139,13 @@ export class OpenHomePlaybackAdapter {
       renderingControl: {
         volume: this.audioPlayer.contextManager?.getPlayerVolume?.() ?? 100,
         mute: this.audioPlayer.contextManager?.getPlayerMute?.() ?? false
+      },
+      volume: {
+        volume: this.audioPlayer.contextManager?.getPlayerVolume?.() ?? 100,
+        mute: this.audioPlayer.contextManager?.getPlayerMute?.() ?? false,
+        volumeMax: 100, volumeUnity: 100, volumeLimit: 100, volumeSteps: 100, volumeStep: 1,
+        // The Player uses linear amplitude, so it has no fixed decibel step.
+        volumeMilliDbPerStep: 0, balanceMax: 0, fadeMax: 0
       },
       source: 'Playlist',
       transportState: state.liveInputActive ? 'Stopped' : getTransportState(state),
@@ -1348,7 +1380,8 @@ function titleFromUri(uri) {
 }
 
 function serializeTrack(entry) {
-  return Object.freeze({ id: entry.id, uri: entry.uri, metadata: entry.metadata });
+  return Object.freeze({ id: entry.id, uri: entry.uri, metadata: entry.metadata,
+    ...(entry.playerTrack?.libraryTrackId ? { libraryTrackId: entry.playerTrack.libraryTrackId } : {}) });
 }
 
 function localTrackMetadata(meta, id) {

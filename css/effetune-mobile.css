@@ -125,7 +125,8 @@ body.layout-mobile .subtitle-container {
     margin-top: 4px;
 }
 
-/* Status/copy/paste messages are shown as a toast overlay so the header
+/* Keep messages at the top, separate from queue progress above the player.
+   Status/copy/paste messages are shown as a toast overlay so the header
    height never changes and the layout below does not shift. Messages are
    cleared by the existing clearError() timers, which dismisses the toast. */
 body.layout-mobile .message-display {
@@ -136,9 +137,11 @@ body.layout-mobile .message-display:not(:empty) {
     display: block;
     position: fixed;
     left: 50%;
-    bottom: calc(var(--et-bottom-nav-height) + var(--et-mini-player-height) + env(safe-area-inset-bottom) + 12px);
+    top: calc(env(safe-area-inset-top) + 12px);
     transform: translateX(-50%);
     max-width: calc(100vw - 32px);
+    width: max-content;
+    box-sizing: border-box;
     margin-left: 0;
     padding: 10px 16px;
     background-color: color-mix(in srgb, var(--et-base) 95%, transparent);
@@ -146,9 +149,8 @@ body.layout-mobile .message-display:not(:empty) {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     line-height: 18px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
     z-index: 1400;
     pointer-events: none;
 }
@@ -739,7 +741,7 @@ body.layout-mobile .pipeline-empty-message {
 body.layout-mobile .pipeline {
     width: 100% !important;
     margin-left: 0 !important;
-    padding: 10px;
+    padding: 10px 0;
     box-sizing: border-box;
     overflow-x: hidden;
     overflow-x: clip;
@@ -748,6 +750,7 @@ body.layout-mobile .pipeline {
 body.layout-mobile .pipeline-header {
     flex-wrap: wrap;
     gap: 8px;
+    margin-inline: var(--et-mobile-page-padding);
 }
 
 /* Share the row with the master toggle / A-B controls when everything fits;
@@ -801,22 +804,31 @@ body.layout-mobile .pipeline-column {
     gap: 10px;
 }
 
-body.layout-mobile .pipeline-item {
+body.layout-mobile .pipeline-item,
+body.layout-mobile .pipeline-item.selected {
     width: 100%;
     box-sizing: border-box;
     padding: 0;
 }
 
-body.layout-mobile .pipeline-item-header {
+body.layout-mobile .pipeline-analyzer-body {
+    margin-top: 2px;
+    padding: 10px;
+}
+
+body.layout-mobile .pipeline-item-header,
+body.layout-mobile .pipeline-analyzer-header {
     width: 100%;
     box-sizing: border-box;
-    padding: 10px 10px 0;
+    padding: 10px var(--et-mobile-page-padding) 0;
     flex-wrap: wrap;
     align-items: center;
     gap: 12px 6px;
 }
 
 body.layout-mobile .header-button,
+body.layout-mobile .pipeline-analyzer-icon-button,
+body.layout-mobile .pipeline-analyzer-secondary-button,
 body.layout-mobile .save-button,
 body.layout-mobile .delete-preset-button,
 body.layout-mobile .help-button,
@@ -1255,6 +1267,58 @@ body.layout-mobile .player-controls > * {
     box-sizing: border-box;
 }
 
+/* Keep volume compact and adjacent to mute, distinct from the seek bar. */
+body.layout-mobile .player-controls:has(.player-volume:not([hidden]), .player-mute:not([hidden])) {
+    grid-template-rows:
+        var(--et-mobile-control-height)
+        auto
+        48px
+        var(--et-mobile-player-primary-button-size)
+        48px
+        auto;
+    grid-template-areas:
+        "seek seek seek seek seek seek seek"
+        "time time time time time time time"
+        "shuffle speed previous stop next repeat close"
+        "play play play play play play play"
+        "volume volume volume volume volume volume volume"
+        "playlist playlist playlist playlist playlist playlist playlist";
+}
+
+body.layout-mobile .audio-player .player-volume {
+    grid-area: volume;
+    align-self: center;
+    justify-self: center;
+    width: 120px;
+    max-width: 100%;
+    margin: 0;
+}
+
+body.layout-mobile .audio-player .player-mute {
+    grid-area: volume;
+    justify-self: center;
+    width: 48px;
+    height: 48px;
+}
+
+/* Center the slider itself and place mute 8px to its left. */
+body.layout-mobile .player-controls:has(.player-volume:not([hidden])) .player-mute {
+    transform: translateX(calc(-120px / 2 - 8px - 48px / 2));
+}
+
+body.layout-mobile .audio-player .player-volume-value:not([hidden]) {
+    grid-area: volume;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    justify-self: center;
+    width: 48px;
+    height: 48px;
+    transform: translateX(calc(120px / 2 + 8px + 48px / 2));
+    font-variant-numeric: tabular-nums;
+}
+
 body.layout-mobile .seek-bar {
     grid-area: seek;
     display: block;
@@ -1524,6 +1588,11 @@ body.layout-mobile .config-dialog {
     box-sizing: border-box;
 }
 
+body.layout-mobile .config-dialog {
+    width: min(760px, calc(100% - 32px));
+    height: min(900px, calc(100% - 32px));
+}
+
 body.layout-mobile .checkbox-container,
 body.layout-mobile .radio-container {
     min-height: var(--et-mobile-control-height);
@@ -1731,19 +1800,18 @@ body.layout-mobile input[type="range"].vertical-slider::-moz-range-thumb {
         --et-motion-exit: 0ms;
     }
 }
-body.layout-mobile #visualizerView { padding: 0 var(--et-mobile-page-padding); }
 body.layout-mobile .visualizer-workspace { flex-direction: column; height: calc(100dvh - 180px); gap: 8px; }
 body.layout-mobile #visualizerView.is-editing .visualizer-workspace { height: auto; min-height: calc(100dvh - 180px); }
 body.layout-mobile .visualizer-stage-host { min-height: 160px; }
 body.layout-mobile #visualizerView.is-editing .visualizer-stage-host.scroll-gutters { margin-inline: 24px; }
 body.layout-mobile .visualizer-editor { width: 100%; max-height: 25dvh; }
 body.layout-mobile .visualizer-editor-navigation { order: -1; }
-body.layout-mobile .visualizer-toolbar { gap: 6px; font-size: 12px; }
+body.layout-mobile .visualizer-toolbar { gap: 6px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+body.layout-mobile .visualizer-title { display: none; }
 body.layout-mobile .visualizer-toolbar > button { padding: 8px; }
 body.layout-mobile .visualizer-toolbar > button > span { display: none; }
 body.layout-mobile .visualizer-quality-label { gap: 3px; }
 body.layout-mobile.view-visualizer .mobile-mini-player,
 body.layout-mobile.view-visualizer .mobile-plugin-fab { display: none !important; }
 body.layout-mobile.visualizer-expanded .mobile-bottom-nav { display: none; }
-body.layout-mobile.visualizer-expanded #visualizerView { padding: 0; }
 body.layout-mobile.visualizer-expanded .visualizer-workspace { height: 100%; }

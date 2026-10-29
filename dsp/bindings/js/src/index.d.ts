@@ -463,7 +463,7 @@ export interface CreateChainOptions extends ArtifactOptions {
 }
 
 export interface TelemetryFrameBase {
-  readonly kind: 'analogMeter' | 'level' | 'noteSpectrogram' | 'noteTimbre' | 'oscilloscope' | 'pitch' |
+  readonly kind: 'analogMeter' | 'level' | 'noteSpectrogram' | 'noteTimbre' | 'noteChordKey' | 'oscilloscope' | 'pitch' |
     'rhythmAnalyzer' | 'spectrum' | 'spectrumHq' | 'spectrogram' | 'spectrogramHq' | 'stereo' | 'tonalBalance';
   readonly effectType: EffectType;
   readonly effectId: string | null;
@@ -565,6 +565,26 @@ export interface NoteTimbreTelemetryFrame extends TelemetryFrameBase {
   readonly probabilities: Float32Array | null;
 }
 
+/** Chord roots and basses are C..B (0..11); all three fields are null for no chord. */
+export interface NoteChordKeyTelemetryFrame extends TelemetryFrameBase {
+  readonly kind: 'noteChordKey';
+  readonly sampleRate: number;
+  readonly timeSeconds: number;
+  readonly hopSeconds: number;
+  readonly generation: number;
+  readonly frameIndex: number;
+  readonly immediateRoot: number | null;
+  readonly immediateQuality: number | null;
+  readonly immediateBass: number | null;
+  readonly confirmedRoot: number | null;
+  readonly confirmedQuality: number | null;
+  readonly confirmedBass: number | null;
+  /** Model probability of the delayed selected chord/bass pair, including no chord; not calibrated correctness. */
+  readonly confirmedProbability: number;
+  readonly localKey: number | null;
+  readonly overallKey: number | null;
+}
+
 export interface PitchMeterTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'pitch';
   readonly sampleRate: number;
@@ -631,6 +651,24 @@ export interface RhythmAnalyzerTelemetryEvent {
   readonly unlocked: boolean;
 }
 
+export interface RhythmAnalyzerDrumTelemetryEvent {
+  /** Accepted audio time, expressed in envelope frames and seconds; beat annotations do not change it. */
+  readonly frame: number;
+  readonly fraction: number;
+  readonly audioTimeSeconds: number;
+  readonly lockEpoch: number;
+  readonly beatIndex: number;
+  readonly beatFraction: number;
+  readonly periodSeconds: number;
+  /** Raw class logit used for decoding; display strength is sigmoid(logit). */
+  readonly logit: number;
+  /** 0 Kick, 1 Snare, 2 Hi-hat, 3 Cymbals, 4 Tom. */
+  readonly lane: number;
+  /** Beat annotation: 0 committed, 1 unavailable, 3 provisional. */
+  readonly flags: 0 | 1 | 3;
+  readonly unlocked: boolean;
+}
+
 export interface RhythmAnalyzerTelemetryFrame extends TelemetryFrameBase {
   readonly kind: 'rhythmAnalyzer';
   readonly sampleRate: number;
@@ -657,6 +695,9 @@ export interface RhythmAnalyzerTelemetryFrame extends TelemetryFrameBase {
   readonly previewPeriodSeconds: number;
   /** Current path replaces the previous preview; these beats remain revisable. */
   readonly previewBeats: readonly { readonly frame: number; readonly fraction: number; readonly beatIndex: number }[];
+  readonly displayMode: 'band' | 'drums';
+  readonly drumLatencySeconds: number;
+  readonly drumEvents: readonly RhythmAnalyzerDrumTelemetryEvent[];
 }
 
 export interface SpectrogramTelemetryFrame extends TelemetryFrameBase {
@@ -735,6 +776,7 @@ export type TelemetryFrame =
   | SpectrogramHqTelemetryFrame
   | NoteSpectrogramTelemetryFrame
   | NoteTimbreTelemetryFrame
+  | NoteChordKeyTelemetryFrame
   | PitchMeterTelemetryFrame
   | RhythmAnalyzerTelemetryFrame
   | StereoTelemetryFrame

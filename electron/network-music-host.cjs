@@ -12,9 +12,11 @@ const { VIEWS, CLASSES } = require('./network-music-content.cjs');
 const { OpenHomeMediaGateway } = require('./openhome-media-gateway.cjs');
 const { resolveFriendlyName } = require('./openhome-control-host.cjs');
 const fileAccess = require('./file-access.cjs');
+const { AvTransportPlayers } = require('./network-music-av-player.cjs');
+const { SubsonicSource } = require('./subsonic-source.cjs');
 
 const MAX_QUEUE = 4096;
-const METHODS = Object.freeze({ GetState: 'getState', Discover: 'discover', Browse: 'browse', GetPlayerState: 'getPlayerState', PlayerCommand: 'playerCommand', ResolveTrack: 'resolveTrack', SetSharing: 'setSharing', PlaySelection: 'playSelection', PlayFiles: 'playFiles' });
+const METHODS = Object.freeze({ GetState: 'getState', Discover: 'discover', Browse: 'browse', GetPlayerState: 'getPlayerState', PlayerCommand: 'playerCommand', ResolveTrack: 'resolveTrack', SetSharing: 'setSharing', Configure: 'configure', PlaySelection: 'playSelection', PlayFiles: 'playFiles' });
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const number = (input, max = 0xffffffff) => { const value = Number(input); if (!Number.isSafeInteger(value) || value < 0 || value > max) throw fail('invalidRequest', 'Choose a valid playback value.'); return value; };
 const bool = value => value === '1' || value === 'true';
@@ -24,6 +26,8 @@ class NetworkMusicHost extends EventEmitter {
   constructor({ getCatalog, loadConfig, saveConfig, getFriendlyName = () => resolveFriendlyName(loadConfig()), discovery = new Discovery(), gateway = new OpenHomeMediaGateway(), invoke = soap, localPlayer = null, getRouteAddress = routeAddress, onDiagnostic = () => {} }) {
     super(); Object.assign(this, { loadConfig, saveConfig, discovery, gateway, invoke, getRouteAddress, onDiagnostic });
     this.localPlayer = localPlayer;
+    this.supportsProtocol = supportsProtocol;
+    this.avPlayers = new AvTransportPlayers(this);
     this.invoke = (endpoint, action, args, isCurrent) => endpoint?.invoke ? endpoint.invoke(action, args, isCurrent) : invoke(endpoint, action, args);
     this.catalogChanged = () => { this.server.updateId = (this.server.updateId + 1) >>> 0; for (const entry of this.server.subscribers.values()) this.server.notify(entry); this.emitState(); };
     this.getCatalog = async (initialize = true) => {
@@ -38,6 +42,13 @@ class NetworkMusicHost extends EventEmitter {
     };
     this.queues = new Map(); this.playerGenerations = new Map(); this.localMedia = new Map(); this.containers = new Map(); this.containerKeys = new Map(); this.trackReferences = new Map(); this.configuring = Promise.resolve(); this.probing = new Set(); this.fileSources = new Map();
     const config = loadConfig();
+    this.gatewayPermissions = { libraries: config.networkMusicGateway?.libraries === true, players: config.networkMusicGateway?.players === true };
+    this.manualDevices = Array.isArray(config.networkMusicManualDevices) ? config.networkMusicManualDevices : [];
+    discovery.setManualLocations?.(this.manualDevices.map(entry => entry.url));
+    this.sources = new Map();
+    this.sourceGeneration = 0;
+    this.sourceMedia = new Map();
+    for (const entry of config.networkMusicSources || []) { try { const source = new SubsonicSource(entry); this.sources.set(source.config.id, source); } catch (error) { this.onDiagnostic(error); } }
     this.id = config.networkMusicDeviceId || `uuid:${crypto.randomUUID()}`;
     if (!config.networkMusicDeviceId) saveConfig({ ...config, networkMusicDeviceId: this.id });
     this.sharing = { enabled: config.networkMusicSharing?.enabled === true, folderIds: Array.isArray(config.networkMusicSharing?.folderIds) ? config.networkMusicSharing.folderIds : [] };
@@ -45,11 +56,12 @@ class NetworkMusicHost extends EventEmitter {
     this.fileServer = new MusicServer({ id: this.id, discovery, advertise: false, resolveSource: async uid => {
       const source = this.fileSources.get(uid);
       if (!source) throw fail('trackUnavailable', 'Open this file again to play it.');
+      if (source.remote) return source;
       fileAccess.assertPath(source.path, 'read');
       return source;
     }, onDiagnostic });
     discovery.on('diagnostic', onDiagnostic);
-    discovery.on('change', () => { this.emitState(); void this.probeLibraries(); });
+    discovery.on('change', () => { for (const id of this.avPlayers.owners.keys()) if (!this.discovery.devices.get(id)?.available) this.avPlayers.owners.delete(id); this.emitState(); void this.probeLibraries(); });
   }
   async start() {
     if (this.sharing.enabled) { await this.discovery.start(); await this.server.start(); }
@@ -72,13 +84,54 @@ class NetworkMusicHost extends EventEmitter {
     }
     return {
       queueTracksMax: MAX_QUEUE,
-      libraries: [...this.discovery.devices.values()].filter(device => device.id !== this.id && service(device, 'ContentDirectory')).map(device => ({ id: device.id, name: device.name, available: device.available, searchSupported: device.searchSupported === true, catalogSearch: device.catalogSearch === true, searchCaps: device.searchCaps || [], sortCaps: device.sortCaps || [], browseViews: device.browseViews || [] })),
-      players: [...this.discovery.devices.values()].filter(device => device.id !== this.localPlayer?.id && service(device, 'Playlist')).map(device => ({ id: device.id, name: device.name, available: device.available, isEffeTune: device.manufacturer === 'EffeTune' })),
+      libraries: [...[...this.sources.values()].map(source => source.library()), ...[...this.discovery.devices.values()].filter(device => device.id !== this.id && service(device, 'ContentDirectory')).map(device => ({ id: device.id, name: device.name, available: device.available, searchSupported: device.searchSupported === true, catalogSearch: device.catalogSearch === true, searchCaps: device.searchCaps || [], sortCaps: device.sortCaps || [], browseViews: device.browseViews || [] }))],
+      players: [...this.discovery.devices.values()].filter(device => device.id !== this.localPlayer?.id && (service(device, 'Playlist') || service(device, 'AVTransport'))).map(device => ({ id: device.id, name: device.name, available: device.available, isEffeTune: device.manufacturer === 'EffeTune' })),
+      gatewayPermissions: { ...this.gatewayPermissions }, sources: [...this.sources.values()].map(source => source.publicInfo()), manualDevices: this.manualDevices.map(entry => ({ ...entry, available: [...this.discovery.devices.values()].some(device => device.location === entry.url && device.available) })),
       sharing: { ...this.sharing, folderIds: [...this.sharing.folderIds], folders }
     };
   }
   emitState() { void this.getState().then(state => this.emit('state', state)).catch(this.onDiagnostic); }
-  async discover() { await this.discovery.start(); this.discovery.search(); return this.getState(); }
+  async discover() { await this.discovery.start(); await this.discovery.search({ refresh: true }); return this.getState(); }
+  async configure(request = {}) {
+    if (request.subsonic) {
+      const entry = request.subsonic;
+      if (entry.action === 'remove') {
+        this.sources.get(entry.id)?.close(); this.sources.delete(entry.id);
+        for (const [uid, resource] of this.fileSources) if (resource.serverId === entry.id) { this.fileSources.delete(uid); this.fileServer.revokeSource(uid); }
+        for (const [key, uid] of this.sourceMedia) if (!this.fileSources.has(uid)) this.sourceMedia.delete(key);
+      } else if (entry.action === 'add' || entry.action === 'test') {
+        const source = entry.action === 'test' && entry.id ? this.sources.get(entry.id) : new SubsonicSource(entry);
+        if (!source) throw fail('unavailable', 'This music server connection is unavailable.');
+        try { await source.test(); }
+        catch (error) { if (!entry.id) source.close(); throw error; }
+        if (entry.action === 'add') this.sources.set(source.config.id, source);
+        else { if (!entry.id) source.close(); return this.getState(); }
+      } else throw fail('invalidRequest', 'Choose a music server connection.');
+      this.saveConfig({ ...this.loadConfig(), networkMusicSources: [...this.sources.values()].map(source => source.config) });
+      this.sourceGeneration++;
+    }
+    if (request.gatewayPermissions !== undefined) {
+      const setting = request.gatewayPermissions;
+      if (!setting || typeof setting.libraries !== 'boolean' || typeof setting.players !== 'boolean') throw fail('invalidRequest', 'Choose the network access to allow.');
+      this.gatewayPermissions = { libraries: setting.libraries, players: setting.players };
+      this.saveConfig({ ...this.loadConfig(), networkMusicGateway: this.gatewayPermissions });
+    }
+    if (request.manualDevice) {
+      const entry = request.manualDevice;
+      if (entry.action === 'add') {
+        const url = networkUrl(entry.url).href;
+        const devices = await this.discovery.register(url);
+        if (!this.manualDevices.some(item => item.url === url)) this.manualDevices.push({ id: crypto.randomUUID(), url, name: devices[0].name });
+      } else if (entry.action === 'remove') {
+        const removed = this.manualDevices.find(item => item.id === entry.id);
+        this.manualDevices = this.manualDevices.filter(item => item.id !== entry.id);
+        if (removed) this.discovery.unregister?.(removed.url);
+        if (removed) for (const device of this.discovery.devices.values()) if (device.location === removed.url) device.available = false;
+      } else throw fail('invalidRequest', 'Choose a music device address.');
+      this.saveConfig({ ...this.loadConfig(), networkMusicManualDevices: this.manualDevices });
+    }
+    const state = await this.getState(); this.emit('state', state); return state;
+  }
   async probeLibraries() {
     for (const device of this.discovery.devices.values()) {
       if (!device.available || device.libraryProbed || this.probing.has(device.id) || !service(device, 'ContentDirectory')) continue;
@@ -139,6 +192,13 @@ class NetworkMusicHost extends EventEmitter {
     } finally { await repository.releaseContext(contextToken); }
   }
   async browse({ serverId, objectId = '0', start = 0, count = 100, query = '', sortCriteria = '' } = {}) {
+    if (this.sources.has(serverId)) {
+      const source = this.sources.get(serverId);
+      const page = await source.browse({ objectId, start, count, query });
+      const items = [];
+      for (const item of page.items) items.push(item.isContainer && !item.coverArtId ? item : await this.subsonicTrack(source, item, '127.0.0.1'));
+      return { ...page, items };
+    }
     if (serverId === 'local') return this.browseLocal({ objectId, start, count, query, sortCriteria });
     const device = this.device(serverId, 'ContentDirectory');
     if (typeof sortCriteria !== 'string' || sortCriteria.length > 512 || (sortCriteria && sortCriteria.split(',').some(term => !/^[+-]/.test(term) || !(device.sortCaps?.includes('*') || device.sortCaps?.includes(term.slice(1)))))) throw fail('unsupported', 'This music library does not support the selected sorting.');
@@ -174,7 +234,17 @@ class NetworkMusicHost extends EventEmitter {
     const resources = (item.resources ?? []).filter(resource => { try { networkUrl(resource.uri); return resource.protocolInfo.startsWith('http-get:'); } catch { return false; } });
     return { ...item, resources, serverId, trackId: item.id, uri: resources[0]?.uri || '', duration: duration(resources[0]?.duration), metadata: didl([didlItem({ ...item, resources }, item.parentId)]), playable: !item.isContainer && resources.length > 0 };
   }
-  async resolveTrack({ serverId, trackId, localPlayback = false, address } = {}) {
+  async resolveTrack({ serverId, trackId, localPlayback = false, address, protocolInfo } = {}) {
+    if (this.sources.has(serverId)) {
+      const source = this.sources.get(serverId);
+      let track = await source.resolve(trackId);
+      if (protocolInfo && !track.resources.some(resource => supportsProtocol(protocolInfo, resource.protocolInfo))) {
+        track = await source.resolve(trackId, { transcode: true });
+        if (!track.resources.some(resource => supportsProtocol(protocolInfo, resource.protocolInfo))) throw fail('unsupportedFormat', 'The player does not support this track or the conversion offered by the server.');
+      }
+      if (this.sources.get(serverId) !== source || source.closed) throw fail('unavailable', 'This music server connection has been removed.');
+      return this.subsonicTrack(source, track, localPlayback ? '127.0.0.1' : address, localPlayback);
+    }
     let track;
     if (serverId === 'local') {
       const source = await this.sharedSource(trackId);
@@ -197,6 +267,9 @@ class NetworkMusicHost extends EventEmitter {
     return track;
   }
   async getPlayerState({ playerId } = {}) {
+    const candidate = this.localPlayer?.controlId === playerId ? this.localPlayer : this.discovery?.devices.get(playerId);
+    if (candidate && !candidate.available) this.avPlayers.owners.delete(playerId);
+    if (candidate?.available && !service(candidate, 'Playlist') && service(candidate, 'AVTransport')) return this.avPlayers.state(candidate);
     const generation = this.playerGenerations.get(playerId);
     const commandPending = this.queues.has(playerId);
     const device = this.device(playerId, 'Playlist'); const playlist = service(device, 'Playlist');
@@ -211,7 +284,8 @@ class NetworkMusicHost extends EventEmitter {
       for (const entry of entries) {
         const metadata = entry.metadata;
         let item = {}; try { item = parseDidl(metadata)[0] ?? {}; } catch { /* Some players return empty metadata. */ }
-        queue.push({ id: number(entry.id), title: item.title || 'Track', artist: item.artist || '', album: item.album || '', uri: entry.uri, metadata, duration: duration(item.resources?.[0]?.duration), artwork: item.artwork || '' });
+        queue.push({ id: number(entry.id), title: item.title || 'Track', artist: item.artist || '', album: item.album || '', uri: entry.uri, metadata, duration: duration(item.resources?.[0]?.duration), artwork: item.artwork || '',
+          ...(device === this.localPlayer && entry.libraryTrackId ? { libraryTrackId: entry.libraryTrackId } : {}) });
       }
     }
     // Recheck the sequence token after paged reads; never combine two queue revisions.
@@ -219,9 +293,13 @@ class NetworkMusicHost extends EventEmitter {
     if (bool(unchanged.Value)) throw fail('queueChanged', 'The player queue changed. Refresh it to see the latest tracks.');
     let position = 0; let total = queue.find(item => item.id === Number(id.Value))?.duration || 0;
     if (service(device, 'Time')) { const time = await this.invoke(service(device, 'Time'), 'Time'); position = Number(time.Seconds) || 0; total = Number(time.Duration) || total; }
-    let volume = null; let volumeMax = null;
-    if (service(device, 'Volume')) { const [current, limit] = await Promise.all([this.invoke(service(device, 'Volume'), 'Volume'), this.invoke(service(device, 'Volume'), 'VolumeLimit')]); volume = Number(current.Value); volumeMax = Number(limit.Value); }
-    const state = { playerId, transportState: transport.Value, position, duration: total, currentId: Number(id.Value), queue, repeat: bool(repeat.Value), shuffle: bool(shuffle.Value), protocolInfo: String(protocol.Value || ''), volume, volumeMax, capabilities: { play: true, pause: true, stop: true, next: true, previous: true, seek: true, seekId: true, delete: true, clear: true, repeat: true, shuffle: true, volume: Boolean(service(device, 'Volume')) } };
+    let volume = null; let volumeMax = null; let mute = null;
+    if (service(device, 'Volume')) {
+      const endpoint = service(device, 'Volume');
+      const [current, limit, muted] = await Promise.all([this.invoke(endpoint, 'Volume'), this.invoke(endpoint, 'VolumeLimit'), this.invoke(endpoint, 'Mute').catch(() => null)]);
+      volume = Number(current.Value); volumeMax = Number(limit.Value); mute = muted ? bool(muted.Value) : null;
+    }
+    const state = { playerId, transportState: transport.Value, position, duration: total, currentId: Number(id.Value), queue, repeat: bool(repeat.Value), shuffle: bool(shuffle.Value), protocolInfo: String(protocol.Value || ''), volume, volumeMax, mute, capabilities: { play: true, pause: true, stop: true, next: true, previous: true, seek: true, seekId: true, delete: true, clear: true, repeat: true, shuffle: true, volume: Boolean(service(device, 'Volume')), mute: mute !== null } };
     // A read begun before or during a command cannot revoke that command's new resources.
     if (!commandPending && !this.queues.has(playerId) && this.playerGenerations.get(playerId) === generation) this.pruneFiles(playerId, state);
     return state;
@@ -246,6 +324,8 @@ class NetworkMusicHost extends EventEmitter {
   async executeCommand(request) {
     const { playerId, action, seconds, value: setting, id, tracks, filePaths, afterId, position = 'end', play = false, startIndex = 0, isCurrent = () => true } = request;
     let { items } = request;
+    const candidate = this.discovery?.devices.get(playerId);
+    if (candidate?.available && !service(candidate, 'Playlist') && service(candidate, 'AVTransport')) return this.avPlayers.command(candidate, request);
     const device = this.device(playerId, 'Playlist'); const playlist = service(device, 'Playlist');
     const invoke = (endpoint, name, args) => {
       if (!isCurrent()) throw fail('unauthorized', 'Reconnect to the playback device.');
@@ -258,14 +338,15 @@ class NetworkMusicHost extends EventEmitter {
     else if (action === 'seekId') { await invoke(playlist, 'SeekId', { Value: number(id) }); await invoke(playlist, 'Play'); }
     else if (action === 'delete') await invoke(playlist, 'DeleteId', { Value: number(id) });
     else if (action === 'repeat' || action === 'shuffle') { if (typeof setting !== 'boolean') throw fail('invalidRequest', 'Choose a valid playback setting.'); await invoke(playlist, action === 'repeat' ? 'SetRepeat' : 'SetShuffle', { Value: setting ? 1 : 0 }); }
-    else if (action === 'volume') {
+    else if (action === 'volume' || action === 'mute') {
       const volume = service(device, 'Volume');
       if (!volume) throw fail('unsupported', 'This player does not support remote volume adjustment.');
-      await invoke(volume, 'SetVolume', { Value: number(setting, 1000) });
+      if (action === 'mute' && typeof setting !== 'boolean') throw fail('invalidRequest', 'Choose a valid mute setting.');
+      await invoke(volume, action === 'mute' ? 'SetMute' : 'SetVolume', { Value: action === 'mute' ? setting ? 1 : 0 : number(setting, number((await this.invoke(volume, 'VolumeLimit')).Value, 1000)) });
     }
     else if (action === 'replace' || action === 'insert') {
       if (tracks !== undefined) {
-        if (device !== this.localPlayer) throw fail('invalidRequest', 'Choose a valid playback device.');
+        if (device !== this.localPlayer && request.gatewayResolved !== true) throw fail('invalidRequest', 'Choose a valid playback device.');
         items = tracks;
       }
       if (filePaths !== undefined) items = filePaths;
@@ -308,7 +389,7 @@ class NetworkMusicHost extends EventEmitter {
       const resolved = [];
       for (const item of items) {
         const track = tracks !== undefined ? item : filePaths === undefined
-          ? await this.resolveTrack({ serverId: item.serverId, trackId: item.trackId, address })
+          ? await this.resolveTrack({ serverId: item.serverId, trackId: item.trackId, address, protocolInfo: state.protocolInfo })
           : await this.openedFile(item);
         const resource = (track.resources ?? []).find(resource => supportsProtocol(state.protocolInfo, resource.protocolInfo));
         if (!resource) throw fail('unsupportedFormat', 'The player does not support the audio format of one or more selected tracks.');
@@ -350,6 +431,20 @@ class NetworkMusicHost extends EventEmitter {
     const mime = TYPES[path.extname(canonical).toLowerCase()];
     if (!mime) throw fail('unsupportedFormat', 'This file type cannot be played on another device. Choose a supported audio file.');
     return { path: canonical, title: path.basename(canonical, path.extname(canonical)), resources: [{ uri: '', protocolInfo: `http-get:*:${mime}:*`, size: stat.size }] };
+  }
+  async gatewaySource(serverId, trackId, kind, options) { return this.sources.get(serverId)?.resource(trackId, kind, options); }
+  async subsonicTrack(source, track, address = '127.0.0.1', localPlayback = false) {
+    const serverId = source.config.id; const trackId = track.trackId || track.id;
+    if (this.sources.get(serverId) !== source || source.closed) throw fail('unavailable', 'This music server connection has been removed.');
+    await this.fileServer.start();
+    if (this.sources.get(serverId) !== source || source.closed) throw fail('unavailable', 'This music server connection has been removed.');
+    const key = JSON.stringify([serverId, trackId, address, track.quality, localPlayback]);
+    let uid = this.sourceMedia.get(key);
+    if (!uid) { uid = crypto.randomBytes(24).toString('base64url'); this.sourceMedia.set(key, uid); }
+    const resource = localPlayback ? this.fileServer.rendererResource(uid) : this.fileServer.resource(uid, address);
+    this.fileSources.set(uid, { remote: true, serverId, uri: resource.uri, resource: kind => kind === 'artwork' && track.coverArtId ? { uri: source.endpoint('getCoverArt', { id: track.coverArtId, size: 512 }) } : source.resource(trackId, kind, { transcode: track.quality === 'transcoded' }), isCurrent: () => this.sources.get(serverId) === source && !source.closed });
+    const item = { ...track, uri: track.isContainer ? '' : resource.uri, artwork: track.coverArtId ? resource.artwork : '', resources: (track.resources || []).map(entry => ({ ...entry, uri: resource.uri })) };
+    item.metadata = didl([didlItem(item)]); return item;
   }
   playFiles({ playerId, filePaths, operationKind = 'play' } = {}) {
     if (!['play', 'playNext', 'queue'].includes(operationKind)) throw fail('unsupported', 'Choose a playback operation.');
@@ -549,7 +644,7 @@ class NetworkMusicHost extends EventEmitter {
     await this.playerCommand({ playerId, action: operationKind === 'play' ? 'replace' : 'insert', items, position: operationKind === 'playNext' ? 'afterCurrent' : 'end', play: operationKind === 'play', startIndex: operationKind === 'play' ? options.currentOrdinal ?? 0 : 0 });
     return { kind: 'terminal', result: { state: 'succeeded', operationKind } };
   }
-  async dispose() { this.repository?.removeListener?.('invalidation', this.catalogChanged); await this.server.close(); await this.fileServer.close(); this.fileSources.clear(); this.playerGenerations.clear(); this.discovery.close(); await this.gateway.close(); }
+  async dispose() { this.avPlayers.dispose(); for (const source of this.sources.values()) source.close(); this.repository?.removeListener?.('invalidation', this.catalogChanged); await this.server.close(); await this.fileServer.close(); this.fileSources.clear(); this.playerGenerations.clear(); this.discovery.close(); await this.gateway.close(); }
 }
 function supportsProtocol(supported, protocol) {
   const parts = String(protocol).split(':');

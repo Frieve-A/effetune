@@ -1,6 +1,6 @@
 const RHYTHM_ANALYZER_FRAME_TYPE = 28;
-const RHYTHM_ANALYZER_TELEMETRY_VERSION = 4;
-const RHYTHM_ANALYZER_PAYLOAD_BYTES = 1496;
+const RHYTHM_ANALYZER_TELEMETRY_VERSION = 5;
+const RHYTHM_ANALYZER_PAYLOAD_BYTES = 2024;
 const RHYTHM_ANALYZER_TEMPOGRAM_BINS = 192;
 const RHYTHM_ANALYZER_MAX_EVENTS = 16;
 const RHYTHM_ANALYZER_TEMPOGRAM_OFFSET = 64;
@@ -9,7 +9,7 @@ const RHYTHM_ANALYZER_EVENT_BYTES = 32;
 // Beats per row of the Groove view (JS-only display key sp).
 const RHYTHM_ANALYZER_SPANS = [4, 6, 8, 12, 16];
 // ck is the kernel's Metronome Click; vt/vm/ve/vl show the tempogram, timing lanes, echo rows and beat lens.
-const RHYTHM_ANALYZER_DEFAULTS = Object.freeze({ mn: 40, mx: 240, ck: false, sp: 8, vt: false, vm: true, ve: false, vl: true });
+const RHYTHM_ANALYZER_DEFAULTS = Object.freeze({ mn: 40, mx: 240, ck: false, dm: 'band', sp: 8, vt: false, vm: true, ve: false, vl: true });
 const RHYTHM_ANALYZER_PANEL_KEYS = ['vt', 'vm', 've', 'vl'];
 // Allowed ranges of Min BPM (mn) and Max BPM (mx).
 const RHYTHM_ANALYZER_MN_RANGE = [40, 192];
@@ -43,10 +43,11 @@ const RHYTHM_ANALYZER_LABEL_MIN_MS = 3;
 const RHYTHM_ANALYZER_STRAIGHT_GRID = { points: [0, 1 / 4, 1 / 2, 3 / 4, 1], slots: [0, 1, 3, 5, 0] };
 const RHYTHM_ANALYZER_TRIPLET_GRID = { points: [0, 1 / 3, 2 / 3, 1], slots: [0, 2, 4, 0] };
 const RHYTHM_ANALYZER_SLOT_LABELS = ['1', 'e', '⅓', '&', '⅔', 'a'];
-const RHYTHM_ANALYZER_BAND_NAMES = ['Low', 'Mid', 'High'];
-// Bands from top to bottom (High on top) in lanes, echo rows, lens and readout, and each band's row.
-const RHYTHM_ANALYZER_BAND_ORDER = [2, 1, 0];
-const RHYTHM_ANALYZER_BAND_ROWS = RHYTHM_ANALYZER_BAND_NAMES.map((name, band) => RHYTHM_ANALYZER_BAND_ORDER.indexOf(band));
+// Toms remain part of inference; the display uses these four drum classes.
+const RHYTHM_ANALYZER_LANES = {
+    band: { names: ['Low', 'Mid', 'High'], order: [2, 1, 0], rows: [2, 1, 0] },
+    drums: { names: ['Kick', 'Snare', 'Hi-hat', 'Cymbals'], order: [3, 2, 1, 0], rows: [3, 2, 1, 0] }
+};
 // Lens row height, in font sizes, from which a band label fits above its row's marks (0.35 row >= 1.25 font sizes).
 const RHYTHM_ANALYZER_LENS_LABEL_ROW = 1.25 / 0.35;
 // Beat LED fade after each shown event, in seconds.
@@ -161,6 +162,21 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.updateParameters();
     }
 
+    get lanes() { return RHYTHM_ANALYZER_LANES[this.dm]; }
+
+    get laneCount() { return this.lanes.names.length; }
+
+    get onsetOpacity() { return this.dm === 'drums' ? 1 : (this.snapshot?.confidence ?? 0); }
+
+    clearOnsets() {
+        this.onsetIndices = new Map();
+        this.pendingOnsets = new Set();
+        this.eventReference.fill(null);
+        this.eventTimed.fill(0);
+        this.eventSerial = 0;
+        this.lensDisplay = null;
+    }
+
     getParameters() {
         this.ensureDspTelemetrySubscription();
         return {
@@ -169,6 +185,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             mn: this.mn,
             mx: this.mx,
             ck: this.ck,
+            dm: this.dm,
             sp: this.sp,
             vt: this.vt,
             vm: this.vm,
@@ -179,7 +196,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
 
     setParameters(params = {}) {
         if (params.enabled !== undefined) this.enabled = params.enabled !== false;
-        const previous = { mn: this.mn, mx: this.mx, sp: this.sp, ck: this.ck };
+        const previous = { mn: this.mn, mx: this.mx, sp: this.sp, ck: this.ck, dm: this.dm };
         // The tempo search needs Max BPM >= 1.25 x Min BPM (same rule as the kernel and the
         // library bindings). Editing only Max BPM to a value inside its range lowers Min BPM;
         // otherwise Max BPM rises. The number box sends each typed prefix ('1' of '180'), which
@@ -199,6 +216,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     Math.abs(span - requested) < Math.abs(best - requested) ? span : best);
             }
         }
+        if (params.dm === 'band' || params.dm === 'drums') this.dm = params.dm;
+        if (this.dm !== previous.dm) this.clearOnsets();
         // The click and the panel toggles keep the analysis history.
         if (params.ck !== undefined) this.ck = Boolean(params.ck);
         if (previous.ck && !this.ck) this.clearBeatLed();
@@ -211,7 +230,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         }
         if (this.mn !== previous.mn || this.mx !== previous.mx) this.beginTelemetryEpoch();
         else if (this.sp !== previous.sp) this.refreshNovelty();
-        if (this.mn !== previous.mn || this.mx !== previous.mx || this.sp !== previous.sp || panelsChanged) this.drawGraph();
+        if (this.mn !== previous.mn || this.mx !== previous.mx || this.sp !== previous.sp || this.dm !== previous.dm || panelsChanged) this.drawGraph();
         if (panelsChanged && this.isVisible) this._refreshAnimationState();
         this.updateParameters();
     }
@@ -277,12 +296,12 @@ class RhythmAnalyzerPlugin extends PluginBase {
 
     parseTelemetryFrame(frame) {
         if (frame?.frameType !== RHYTHM_ANALYZER_FRAME_TYPE ||
-            ![3, RHYTHM_ANALYZER_TELEMETRY_VERSION].includes(frame.formatVersion)) return null;
+            frame.formatVersion !== RHYTHM_ANALYZER_TELEMETRY_VERSION) return null;
         const payload = frame.payload;
         const snapshot = payload && typeof payload.getFloat32 === 'function' &&
             typeof payload.getUint32 === 'function' && typeof payload.getInt32 === 'function' &&
             typeof payload.getUint16 === 'function' && typeof payload.getUint8 === 'function' &&
-            payload.byteLength === (frame.formatVersion === 3 ? 1344 : RHYTHM_ANALYZER_PAYLOAD_BYTES)
+            payload.byteLength === RHYTHM_ANALYZER_PAYLOAD_BYTES
             ? this.readSnapshot(payload) : null;
         if (!snapshot && !this.invalidFrameReported) {
             this.invalidFrameReported = true;
@@ -295,6 +314,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const f32 = offset => payload.getFloat32(offset, true);
         const u32 = offset => payload.getUint32(offset, true);
         const snapshot = {
+            displayMode: u32(1496) === 1 ? 'drums' : 'band',
+            drumLatencySeconds: f32(1504),
             sampleRate: f32(0),
             generation: u32(4),
             hop: u32(8),
@@ -319,6 +340,8 @@ class RhythmAnalyzerPlugin extends PluginBase {
             previewBeats: null,
             previewPeriodSeconds: 0
         };
+        if (u32(1496) > 1 || u32(1500) > RHYTHM_ANALYZER_MAX_EVENTS || u32(1508) !== 0 ||
+            !Number.isFinite(snapshot.drumLatencySeconds) || snapshot.drumLatencySeconds < 0) return null;
         snapshot.tickGateOpen = snapshot.trackerFlags === 1;
         snapshot.analysisValid = snapshot.periodSeconds > 0;
         snapshot.analysisAvailable = [48000, 96000, 192000].includes(snapshot.sampleRate);
@@ -336,11 +359,15 @@ class RhythmAnalyzerPlugin extends PluginBase {
             if (!(value >= 0 && value <= 1)) return null;
             snapshot.tempogram[bin] = value;
         }
-        for (let slot = 0; slot < snapshot.eventCount; slot++) {
-            const base = RHYTHM_ANALYZER_EVENTS_OFFSET + RHYTHM_ANALYZER_EVENT_BYTES * slot;
+        for (let slot = 0; slot < snapshot.eventCount + u32(1500); slot++) {
+            const drum = slot >= snapshot.eventCount;
+            const base = drum ? 1512 + RHYTHM_ANALYZER_EVENT_BYTES * (slot - snapshot.eventCount)
+                : RHYTHM_ANALYZER_EVENTS_OFFSET + RHYTHM_ANALYZER_EVENT_BYTES * slot;
             const beatFraction = f32(base + 16);
             const period = f32(base + 20);
-            const strength = f32(base + 24);
+            const logit = drum ? f32(base + 24) : undefined;
+            const strength = drum ? Math.max(Number.MIN_VALUE, 1 / (1 + Math.exp(-logit))) : f32(base + 24);
+            if (drum && !Number.isFinite(logit)) return null;
             const band = payload.getUint8(base + 28);
             const flags = payload.getUint8(base + 29);
             const fraction = f32(base + 4);
@@ -349,7 +376,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             const forwardBeat = shownBeat || flags === 4;
             const analysisBeat = flags === 5;
             const beatSlot = forwardBeat || analysisBeat;
-            if ((beatSlot ? band !== 0 : band > 2) || flags > 5 || payload.getUint16(base + 30, true) !== 0 ||
+            if ((beatSlot ? band !== 0 : band > (drum ? 4 : 2)) || flags > 5 || (drum && ![0, 1, 3].includes(flags)) || payload.getUint16(base + 30, true) !== 0 ||
                 !(fraction >= 0 && fraction < 1) || !(beatFraction >= 0 && beatFraction < 1) ||
                 !Number.isFinite(period) || period < 0 || ((annotated || flags === 3 || forwardBeat) && period === 0) ||
                 (beatSlot && beatFraction !== 0) || !Number.isFinite(strength) || strength > 1 ||
@@ -357,21 +384,22 @@ class RhythmAnalyzerPlugin extends PluginBase {
             const event = {
                 annotated, provisional: flags === 3,
                 // Analysed time of the onset (contract section 5), in seconds since the generation start.
-                time: ((analysisBeat ? payload.getInt32(base, true) : u32(base)) + fraction) * snapshot.hopSeconds,
-                identity: `${snapshot.generation}:${u32(base)}:${u32(base + 4)}:${band}`,
+                time: ((analysisBeat ? payload.getInt32(base, true) : u32(base)) + fraction) * (drum ? 256 / 24000 : snapshot.hopSeconds),
+                identity: `${snapshot.generation}:${drum ? "drums" : "band"}:${u32(base)}:${u32(base + 4)}:${band}`,
                 epoch: u32(base + 8),
                 index: payload.getInt32(base + 12, true),
                 position: payload.getInt32(base + 12, true) + beatFraction,
                 beatFraction,
                 periodSeconds: period,
                 strength,
+                logit,
                 band
             };
             if (analysisBeat) snapshot.analysisBeats.push(event);
             else if (forwardBeat) {
                 snapshot.forwardBeats.push(event);
                 if (shownBeat) snapshot.shownBeats.push(event);
-            } else snapshot.events.push(event);
+            } else if (drum === (snapshot.displayMode === 'drums')) snapshot.events.push(event);
         }
         if (payload.byteLength === RHYTHM_ANALYZER_PAYLOAD_BYTES) {
             const count = u32(1344);
@@ -436,15 +464,11 @@ class RhythmAnalyzerPlugin extends PluginBase {
         this.displayTimelineOffset = 0;
         this.idleScroll = false;
         this.renderWallTime = performance.now();
-        this.onsetIndices = new Map();
-        this.pendingOnsets = new Set();
+        this.clearOnsets();
         this.referenceRevision = 0;
-        this.eventReference.fill(null);
         // Lock segments by epoch, in arrival order: clock offset, clock range, grid vote.
         this.segments = new Map();
         this.openSegment = null;
-        this.lensDisplay = null;
-        this.eventSerial = 0;
         this.snapshot = null;
         this.frameBase = 0;
         this.epochBase = 0;
@@ -491,6 +515,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
         if (!frame || !this.enabled || !this._sectionEnabled) return;
         const snapshot = this.parseTelemetryFrame(frame);
         if (!snapshot) return;
+        if (snapshot.displayMode !== this.dm) snapshot.events = [];
+        // The shared telemetry also supplies toms to Drums; this analyzer keeps its four displayed lanes.
+        else if (this.dm === 'drums') snapshot.events = snapshot.events.filter(event => event.band < 4);
         // A new telemetry source (Visualizer resume, worklet restart) restarts its generations.
         if (frame.source && frame.source !== this.telemetrySource) {
             this.telemetrySource = frame.source;
@@ -979,9 +1006,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
     lensSummary() {
         const segment = this.snapshot?.analysisValid ? this.openSegment : null;
         if (!segment) return null;
-        const count = new Float64Array(18);
-        const sum = new Float64Array(18);
-        const squareSum = new Float64Array(18);
+        const count = new Float64Array(this.laneCount * 6);
+        const sum = new Float64Array(this.laneCount * 6);
+        const squareSum = new Float64Array(this.laneCount * 6);
         const fractions = [];
         this.forEachEvent(this.beatClock - RHYTHM_ANALYZER_LENS_BEATS, Infinity, index => {
             if (!this.eventTimed[index] || this.eventEpoch[index] !== segment.epoch ||
@@ -997,7 +1024,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const rows = [];
         let total = 0;
         let spread = 0;
-        for (let cell = 0; cell < 18; cell++) {
+        for (let cell = 0; cell < this.laneCount * 6; cell++) {
             if (count[cell] < RHYTHM_ANALYZER_MIN_EVENTS) continue;
             const mean = sum[cell] / count[cell];
             const variance = squareSum[cell] / count[cell] - mean * mean;
@@ -1030,7 +1057,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const epoch = this.openSegment?.epoch;
         const previous = this.lensDisplay?.epoch === epoch ? this.lensDisplay : null;
         const weight = previous ? 1 - Math.exp(-(now - previous.time) / RHYTHM_ANALYZER_LENS_SMOOTHING_MS) : 1;
-        const cells = new Array(18);
+        const cells = new Array(this.laneCount * 6);
         const rows = lens.rows.map(row => {
             const cell = row.band * 6 + row.slot;
             const from = previous?.cells[cell];
@@ -1072,6 +1099,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
         ));
         parameters.appendChild(this.createCheckboxControl(
             'Metronome Click', this.ck, value => this.setParameters({ ck: value }), 'ck'
+        ));
+        parameters.appendChild(this.createSelectControl(
+            'Display', [{ value: 'band', label: 'Frequency bands' }, { value: 'drums', label: 'Drums' }],
+            this.dm, value => this.setParameters({ dm: value }), 'dm'
         ));
         parameters.appendChild(this.createSelectControl(
             'Span (beats)', RHYTHM_ANALYZER_SPANS.map(String), String(this.sp),
@@ -1446,10 +1477,10 @@ class RhythmAnalyzerPlugin extends PluginBase {
             }
             context.stroke();
         };
-        // High/Mid/Low row labels at the left edge of a panel, from the y of each row (0 = top).
+        // Lane labels at the left edge of a panel, from the y of each row (0 = top).
         const bandLabels = (left, yOf) => {
-            RHYTHM_ANALYZER_BAND_ORDER.forEach((band, row) => {
-                write(RHYTHM_ANALYZER_BAND_NAMES[band], left + pad, yOf(row), palette.label);
+            this.lanes.order.forEach((band, row) => {
+                write(this.lanes.names[band], left + pad, yOf(row), palette.label);
             });
         };
         let top = pad;
@@ -1484,7 +1515,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         const captionRow = showText ? 1.3 * fontSize : 0;
         // The lens height from which its band labels fit above their rows' marks; the narrow layout keeps it as the
         // lens minimum.
-        const lensLabelHeight = 3 * RHYTHM_ANALYZER_LENS_LABEL_ROW * fontSize;
+        const lensLabelHeight = this.laneCount * RHYTHM_ANALYZER_LENS_LABEL_ROW * fontSize;
         const stacked = width < height;
         // Enabled panels top to bottom with their height shares. On landscape canvases the lens sits beside
         // the lanes and echo rows; without them, and on portrait canvases, it takes a row of its own.
@@ -1568,9 +1599,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
         };
         if (strip) this._drawTempogram(context, strip, scroll, style);
         for (const view of views) this._drawLane(context, view, style);
-        if (showAxes && main) separate(main, 3);
+        if (showAxes && main) separate(main, this.laneCount);
         if (showAxes && echo) separate(echo, rows);
-        if (showAxes && lensRect) separate(lensRect, 3);
+        if (showAxes && lensRect) separate(lensRect, this.laneCount);
         // Beside the lanes alone the lens rows continue the lanes' rows, whose band labels then name both.
         if (lensRect) this._drawLens(context, lensRect, lens, { ...style, bandLabels: besideLens && !echo ? null : bandLabels });
         if (showText && main) {
@@ -1580,17 +1611,18 @@ class RhythmAnalyzerPlugin extends PluginBase {
             // The band names, and right of them a column of the guide values (up = late). A lane's +20/−20 pair is
             // shown or skipped as a unit: skipped when the lane is too short for the two to clear each other or when
             // either would touch another text, so where neighbouring lanes' values touch the middle lane's pair goes.
-            const lane = main.height / 3;
+            const lane = main.height / this.laneCount;
             const guide = RHYTHM_ANALYZER_GUIDE_MS / RHYTHM_ANALYZER_DEVIATION_MS * 0.45 * lane;
             const late = rhythmAnalyzerSigned(RHYTHM_ANALYZER_GUIDE_MS, 0);
             const early = rhythmAnalyzerSigned(-RHYTHM_ANALYZER_GUIDE_MS, 0);
             // tickRight leaves the label font set for measuring the values.
-            const nameRight = tickRight(main.left, RHYTHM_ANALYZER_BAND_NAMES);
+            const nameRight = tickRight(main.left, this.lanes.names);
             const valueRight = nameRight + pad + Math.max(context.measureText(late).width, context.measureText(early).width);
-            RHYTHM_ANALYZER_BAND_ORDER.forEach((band, row) => {
-                write(RHYTHM_ANALYZER_BAND_NAMES[band], nameRight, main.top + (row + 0.5) * lane, palette.label, 'right');
+            this.lanes.order.forEach((band, row) => {
+                write(this.lanes.names[band], nameRight, main.top + (row + 0.5) * lane, palette.label, 'right');
             });
-            for (const row of 2 * guide < labelGap ? [] : [0, 2, 1]) {
+            const guideRows = [0, this.laneCount - 1, ...Array.from({ length: this.laneCount - 2 }, (_, i) => i + 1)];
+            for (const row of 2 * guide < labelGap ? [] : guideRows) {
                 const center = main.top + (row + 0.5) * lane;
                 writeAll([
                     item(late, valueRight, center - guide, palette.label, 'right'),
@@ -1609,7 +1641,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             echoViews.forEach((view, row) => write(String(row + firstWindow), x, view.top + view.height / 2, palette.label, 'right'));
             // Without the lanes, the newest row carries the band labels, right of its cycle value.
             const newest = echoViews[0];
-            if (!main) bandLabels(x, row => newest.top + (0.5 + (row - 1) * 0.28) * newest.height);
+            if (!main) bandLabels(x, row => newest.top + (0.5 + (row - (this.laneCount - 1) / 2) * 0.84 / this.laneCount) * newest.height);
         }
         if (showText && lensRect) {
             caption(`Beat lens: offset ± spread, last ${RHYTHM_ANALYZER_LENS_BEATS} beats`,
@@ -1647,14 +1679,14 @@ class RhythmAnalyzerPlugin extends PluginBase {
         let y;
         let radius;
         if (view.echo) {
-            y = view.top + (0.5 + (RHYTHM_ANALYZER_BAND_ROWS[band] - 1) * 0.28) * view.height;
+            y = view.top + (0.5 + (this.lanes.rows[band] - (this.laneCount - 1) / 2) * 0.84 / this.laneCount) * view.height;
             radius = (0.025 + 0.035 * strength) * view.height;
         } else {
-            const lane = view.height / 3;
+            const lane = view.height / this.laneCount;
             const deviation = displayed.deviation;
             const limit = RHYTHM_ANALYZER_DEVIATION_MS;
             const clipped = deviation < -limit ? -limit : deviation > limit ? limit : deviation;
-            y = view.top + (RHYTHM_ANALYZER_BAND_ROWS[band] + 0.5) * lane -
+            y = view.top + (this.lanes.rows[band] + 0.5) * lane -
                 (this.eventLocated[index] ? clipped / limit * 0.45 * lane : 0);
             radius = (0.025 + 0.04 * strength) * lane;
         }
@@ -1665,7 +1697,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
 
     // One beat-clock window: searching shade, beat grid over locked stretches, re-align marks and onsets.
     _drawLane(context, view, { palette, showText, showAxes, write, drawSignal, signalColor, positionColor, dpr }) {
-        const confidence = this.snapshot?.confidence ?? 0;
+        const confidence = this.onsetOpacity;
         const from = view.uRight - view.span;
         const to = view.uRight;
         const xOf = u => view.left + (u - from) / view.span * view.width;
@@ -1728,7 +1760,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             }
         }
         // Dotted guides at +-20 ms around each lane's centre line (0 ms).
-        const lane = view.height / 3;
+        const lane = view.height / this.laneCount;
         if (!view.echo && showAxes) {
             const guide = RHYTHM_ANALYZER_GUIDE_MS / RHYTHM_ANALYZER_DEVIATION_MS * 0.45 * lane;
             context.strokeStyle = signalColor;
@@ -1736,7 +1768,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
             context.lineWidth = dpr;
             context.setLineDash([dpr, 3 * dpr]);
             context.beginPath();
-            for (let row = 0; row < 3; row++) {
+            for (let row = 0; row < this.laneCount; row++) {
                 const center = view.top + (row + 0.5) * lane;
                 for (const y of [center - guide, center + guide]) {
                     context.moveTo(view.left, y);
@@ -1770,7 +1802,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
                     target.strokeStyle = color;
                     target.lineWidth = dpr;
                     target.beginPath();
-                    target.moveTo(point.x, view.top + (RHYTHM_ANALYZER_BAND_ROWS[this.eventBand[index]] + 0.5) * lane);
+                    target.moveTo(point.x, view.top + (this.lanes.rows[this.eventBand[index]] + 0.5) * lane);
                     target.lineTo(point.x, point.y);
                     target.stroke();
                 }
@@ -1923,7 +1955,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         return this.tempogramCanvas;
     }
 
-    // Beat lens: one column per slot in the beat; per band, the offset tick and a ± spread bar. Its three band
+    // Beat lens: one column per slot in the beat; per band, the offset tick and a ± spread bar. Its lane
     // rows match the timing lanes' rows, so beside the lanes each band reads across one line. The scale line runs
     // along the top, and the slot labels and axis name along the bottom, drawn over the plot as in the lanes.
     _drawLens(context, rect, lens, {
@@ -1931,7 +1963,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
     }) {
         const columns = RHYTHM_ANALYZER_SLOT_LABELS.length;
         const columnWidth = rect.width / columns;
-        const rowHeight = rect.height / 3;
+        const rowHeight = rect.height / this.laneCount;
         if (rowHeight <= 0) return;
         const centerX = slot => rect.left + (slot + 0.5) * columnWidth;
         const msScale = 0.42 * columnWidth / RHYTHM_ANALYZER_DEVIATION_MS;
@@ -1996,11 +2028,11 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 target.rect(rect.left, rect.top, rect.width, rect.height);
                 target.clip();
                 for (const row of lens.rows) {
-                    const y = rowY(RHYTHM_ANALYZER_BAND_ROWS[row.band]);
+                    const y = rowY(this.lanes.rows[row.band]);
                     const offset = row.offset < -limit ? -limit : row.offset > limit ? limit : row.offset;
                     const x = centerX(row.slot) + offset * msScale;
                     const color = positionColor ? positionColor((x - rect.left) / rect.width) : signalColor;
-                    const alpha = (0.35 + 0.65 * row.count / maxCount) * (this.snapshot?.confidence ?? 0);
+                    const alpha = (0.35 + 0.65 * row.count / maxCount) * this.onsetOpacity;
                     target.globalAlpha = 0.3 * alpha;
                     target.fillStyle = color;
                     target.fillRect(x - row.sd * msScale, y - markHeight / 2, 2 * row.sd * msScale, markHeight);
@@ -2016,7 +2048,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 target.restore();
             });
             for (const row of lens.rows) {
-                const y = rowY(RHYTHM_ANALYZER_BAND_ROWS[row.band]);
+                const y = rowY(this.lanes.rows[row.band]);
                 const offset = row.offset < -limit ? -limit : row.offset > limit ? limit : row.offset;
                 const x = centerX(row.slot) + offset * msScale;
                 const value = rhythmAnalyzerSigned(row.offset, 0);
@@ -2070,9 +2102,9 @@ class RhythmAnalyzerPlugin extends PluginBase {
                 cursor: `Beat position ${RHYTHM_ANALYZER_SLOT_LABELS[slot]}`,
                 plainCursor: true,
                 rows: frame.lensSummary.rows.filter(row => row.slot === slot)
-                    .sort((a, b) => RHYTHM_ANALYZER_BAND_ROWS[a.band] - RHYTHM_ANALYZER_BAND_ROWS[b.band])
+                    .sort((a, b) => this.lanes.rows[a.band] - this.lanes.rows[b.band])
                     .map(row => ({
-                        label: RHYTHM_ANALYZER_BAND_NAMES[row.band],
+                        label: this.lanes.names[row.band],
                         color: frame.signalColor,
                         value: `${rhythmAnalyzerSigned(row.offset, 1)} ms ± ${format.number(row.sd, 1)} ms`
                     }))
@@ -2098,7 +2130,7 @@ class RhythmAnalyzerPlugin extends PluginBase {
         return {
             cursor,
             rows: [{
-                label: RHYTHM_ANALYZER_BAND_NAMES[band],
+                label: this.lanes.names[band],
                 color: frame.signalColor,
                 value: this.eventTimed[nearest] ? `${rhythmAnalyzerSigned(this.eventDeviation[nearest], 1)} ms` : RHYTHM_ANALYZER_DASH
             }]

@@ -8,6 +8,7 @@ import { HistoryManager } from '../../js/ui/pipeline/history-manager.js';
 import { PipelineItemBuilder } from '../../js/ui/pipeline/pipeline-item-builder.js';
 import { getSerializablePluginStateShort } from '../../js/utils/serialization-utils.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
+import { AndroidAudioManager } from '../../js/android/audio-manager.js';
 
 class FakePlugin {
     constructor(name, id) {
@@ -152,6 +153,48 @@ async function setup({ presets = { Demo: { plugins: [{ nm: 'Volume', en: true, v
     };
     return { controller, win, api, ask, published, calls, pipeline, audioManager, presetManager, dispose };
 }
+
+test('Android forwarded empty IR chain waits for the nested bypass acknowledgement', async () => {
+    const { controller, win, api, audioManager, presetManager, dispose } = await setup();
+    let resolveWrite, rejectWrite, responded = false;
+    const write = new Promise(resolve => { resolveWrite = resolve; });
+    audioManager.withMutationOptions = AndroidAudioManager.prototype.withMutationOptions;
+    audioManager.masterBypass = true;
+    win.pluginManager.isPluginAvailable = name => name === 'IR Reverb';
+    presetManager.loadPreset = async state => {
+        assert.equal(state.plugins[0].ir, '');
+        audioManager.masterBypass = false;
+        audioManager.pipeline = [{ name: 'IR Reverb', ir: '' }];
+        return true;
+    };
+    win.pipelineManager.core.workletSync.updateMasterBypass = on => {
+        audioManager.masterBypass = on;
+        assert.equal(audioManager.mutationOptions.remoteRequestId, 'native-operation');
+        audioManager.mutationWrites.push(write);
+    };
+    let response;
+    api.respond = async value => { responded = true; response = value; };
+    try {
+        const request = controller.handleRequest({ requestId: 'native-operation',
+            message: { op: 'chain', pipeline: [{ nm: 'IR Reverb', ir: '' }] },
+            mutationOptions: { remoteRequestId: 'native-operation', beforeCommit: async () => {} } });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(responded, false);
+        assert.equal(audioManager.mutationOptions, undefined, 'pending write must not hold ambient authority');
+        assert.equal(await audioManager.withMutationOptions(undefined, () => 'local'), 'local');
+        resolveWrite(); await request;
+        assert.equal(response.ok, true);
+        audioManager.masterBypass = true;
+        const rejected = new Promise((_resolve, reject) => { rejectWrite = reject; });
+        win.pipelineManager.core.workletSync.updateMasterBypass = () => audioManager.mutationWrites.push(rejected);
+        const failure = controller.handleRequest({ requestId: 'revoked',
+            message: { op: 'chain', pipeline: [{ nm: 'IR Reverb', ir: '' }] },
+            mutationOptions: { remoteRequestId: 'revoked' } });
+        await new Promise(resolve => setImmediate(resolve));
+        rejectWrite(new Error('renderer-unavailable')); await failure;
+        assert.equal(response.ok, false); assert.match(response.error, /renderer-unavailable/);
+    } finally { resolveWrite(); dispose(); }
+});
 
 function impulseWave(channels = 1, sample = 1000) {
     const frames = 2, dataBytes = frames * channels * 2;
@@ -423,6 +466,9 @@ test('snapshots carry the host audio format and the host routing limit', async (
     });
     audioManager.outputChannelCount = 8;
     assert.equal(controller.takeSnapshot().audio.routingChannelCount, 8);
+    audioManager.audioContext.destination.channelCount = 2;
+    audioManager.getOutputChannelCount = () => 4;
+    assert.equal(controller.takeSnapshot().audio.channelCount, 4);
 });
 
 test('IR selection loads on the host and rejects stale or unrelated target stages', async () => {

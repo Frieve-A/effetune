@@ -3,6 +3,56 @@ import test from 'node:test';
 import { createEssSignal, createEssCapturePlan, analyzeEssRecording } from '../../js/utils/measurement-dsp/ess.js';
 import { analyzeDistortion, validateHarmonicAnalysis } from '../../js/utils/measurement-dsp/analysis.js';
 import { DataStorage } from '../../features/measurement/dataStorage.js';
+import AudioProcessing from '../../features/measurement/measurement-controller/audio-processing.js';
+import { ANDROID_ORIGIN, bytesToBase64 } from '../../js/android/bridge.js';
+
+test('Android sweep preserves overload status when analysis transfers the recording', async () => {
+    const previous = { window: globalThis.window, document: globalThis.document, Worker: globalThis.Worker };
+    let peak;
+    let transfers = 0;
+    const transport = { postMessage(raw) {
+        const request = JSON.parse(raw);
+        let result = {};
+        if (request.command === 'measurement.status') result = { status: 'complete' };
+        if (request.command === 'measurement.read') {
+            const samples = new Float32Array(20);
+            samples[8] = samples[9] = peak;
+            result = { data: bytesToBase64(new Uint8Array(samples.buffer)), frames: 10, channels: 2, sampleRate: 8 };
+        }
+        queueMicrotask(() => transport.onmessage({ data: JSON.stringify({ version: 1, id: request.id, ok: true, result }) }));
+    } };
+    globalThis.window = { location: { origin: ANDROID_ORIGIN }, effetuneAndroid: transport };
+    globalThis.document = { getElementById: () => ({ value: '0' }) };
+    globalThis.Worker = class {
+        postMessage(message, transfer) {
+            const received = structuredClone(message, { transfer });
+            assert.equal(message.record.recording.byteLength, 0);
+            assert.equal(received.record.recording.length, 10);
+            transfers++;
+            queueMicrotask(() => this.onmessage({ data: { result: {
+                data: new Float32Array([1]), frequencyResponse: { frequencies: [1], magnitudes: [0] }
+            } } }));
+        }
+        terminate() {}
+    };
+    try {
+        const controller = { ...AudioProcessing, measurementConfig: { averaging: 1 }, activeSweepElements: {} };
+        const sweep = { sampleRate: 8, length: 2, tailSamples: 0,
+            channels: [new Float32Array([0.5, -0.5]), new Float32Array([0.5, -0.5])] };
+        for (peak of [0.25, 1]) {
+            const result = await controller.playAndRecordSweep(sweep);
+            assert.equal(result.hasOverload, peak === 1);
+            assert.deepEqual(result.impulseResponse, new Float32Array([1]));
+            assert.equal(result.sampleRate, 8);
+            assert.equal(controller.nativeMeasurementAbort, null);
+        }
+        assert.equal(transfers, 2);
+    } finally {
+        globalThis.window = previous.window;
+        globalThis.document = previous.document;
+        globalThis.Worker = previous.Worker;
+    }
+});
 
 function harmonicCapture(sweep, repetitions) {
     const plan = createEssCapturePlan(sweep, repetitions);

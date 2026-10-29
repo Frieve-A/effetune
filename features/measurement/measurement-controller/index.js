@@ -17,6 +17,7 @@ import {
 } from '../audio-utils/channel-selection.js';
 import { resolveCalibrationIrCandidate, resolveSweepBand } from '../measurement-model.js';
 import { prepareMeasurementOutputRoute, releaseMeasurementOutputRoute } from '../audio-utils/output-routing.js';
+import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
 
 export class MeasurementSetupError extends Error {
     constructor(code) {
@@ -196,8 +197,16 @@ export class MeasurementController {
         
         const outputChannels = selectionFromConfig(configSnapshot);
         const multiChannel = isMultiChannelSelection(outputChannels);
-        if (configSnapshot.outputChannelCount !== undefined ||
-            (outputChannels[0] === 'all' && configSnapshot.sweepBand?.mode === 'perChannel')) {
+        if (isAndroidHost()) {
+            const route = await getAndroidBridge().request('audio.configure', {
+                outputDeviceId: !configSnapshot.audioOutputId || configSnapshot.audioOutputId === 'default'
+                    ? 0 : Number(configSnapshot.audioOutputId),
+                channelCount: configSnapshot.outputChannelCount || 2
+            });
+            configSnapshot.outputChannelCount = route.channelCount;
+        }
+        if (!isAndroidHost() && (configSnapshot.outputChannelCount !== undefined ||
+            (outputChannels[0] === 'all' && configSnapshot.sweepBand?.mode === 'perChannel'))) {
             await audioUtils.waitForWhiteNoiseRouteIdle?.();
             const route = await prepareMeasurementOutputRoute(
                 audioUtils.audioContext, configSnapshot.audioOutputId, outputChannels.at(-1), {},

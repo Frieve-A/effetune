@@ -43,6 +43,6 @@ Use o ícone de câmera (**Copiar imagem**) acima de qualquer um dos quatro grá
 
 As novas medições usam uma varredura senoidal exponencial (ESS). Comece com um nível de saída baixo e ajuste sem causar clipping. A distorção exige dados harmônicos válidos dessa medição; um WAV importado ou dados apenas de resposta em frequência ou IR linear não bastam. Se faltarem dados, importe uma medição com as respostas necessárias ou faça uma nova. A faixa disponível também depende da banda da varredura e da duração gravada. O comprimento solicitado da varredura pode aumentar para separar os harmônicos. Cada repetição inclui ainda 2,5 segundos de decaimento. Com o limite de banda desativado, ESS cobre de 20 Hz a 20 kHz dentro dos limites da taxa de amostragem real.
 
-Para inspecionar as respostas Frequency, Phase, Min Group Delay, Excess Group Delay e Impulse do pipeline ativo, incluindo até quatro saídas selecionadas e, opcionalmente, respostas de alto-falantes salvas, consulte o [guia do Pipeline Analyzer](pipeline-analyzer.md).
+Para inspecionar a resposta em frequência, a fase, o atraso de grupo, a resposta ao impulso, a distorção e o decaimento do pipeline ativo, incluindo até quatro saídas selecionadas e, opcionalmente, respostas de alto-falantes salvas, consulte o [guia do Pipeline Analyzer](pipeline-analyzer.md).
 
 [← Voltar para o README](README.md)

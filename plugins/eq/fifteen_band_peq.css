@@ -149,14 +149,14 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
-    margin-bottom: 10px;
+    margin: var(--et-parameter-row-margin) 0;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-q-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 10px;
+    margin: var(--et-parameter-row-margin) 0;
 }
 
 .fifteen-band-peq-plugin-ui .fifteen-band-peq-q-label,
@@ -207,7 +207,7 @@ body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-control-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     column-gap: 10px;
-    row-gap: 10px;
+    row-gap: calc(2 * var(--et-parameter-row-margin));
 }
 
 body.layout-mobile .fifteen-band-peq-plugin-ui .fifteen-band-peq-type-label,

@@ -1,6 +1,8 @@
 import { LIBRARY_STYLESHEET } from './utils/app-stylesheets.js';
 import { PluginManager } from './plugin-manager.js';
 import { AudioManager } from './audio-manager.js';
+import { AndroidAudioManager } from './android/audio-manager.js';
+import { isAndroidHost } from './android/bridge.js';
 import { UIManager } from './ui-manager.js';
 import { electronIntegration } from './electron-integration.js';
 import { applySerializedState } from './utils/serialization-utils.js';
@@ -320,7 +322,8 @@ function applyInitialStartupViewClass(config, windowRef = window) {
 class App {
     constructor(dependencies = {}) {
         const PluginManagerClass = dependencies.PluginManagerClass || PluginManager;
-        const AudioManagerClass = dependencies.AudioManagerClass || AudioManager;
+        const AudioManagerClass = dependencies.AudioManagerClass ||
+            (isAndroidHost() ? AndroidAudioManager : AudioManager);
         const UIManagerClass = dependencies.UIManagerClass || UIManager;
         // Freeze the launch-time query string before the pipeline starts reflecting itself into it
         captureInitialStartupSearch(window);
@@ -583,6 +586,14 @@ class App {
             await Promise.allSettled([presentationReady, this.startupViewPreferencePromise]);
             await waitForStylesheets();
             document.documentElement?.classList?.remove('app-starting');
+            if (isAndroidHost()) {
+                if (this.audioManager.snapshot?.playback?.queueLength) {
+                    const player = await this.uiManager.createAudioPlayer([], false);
+                    player.ui.createPlayerUI();
+                }
+                const { installAndroidSharedFiles } = await import('./android/shared-files.js');
+                installAndroidSharedFiles(this.uiManager);
+            }
             this.initialized = true;
             window.electronAPI?.signalReadyForPresentation?.();
         }
@@ -796,6 +807,12 @@ class App {
      * @returns {Promise<boolean>} Whether the initial audio graph was built successfully
      */
     async initializeAndBuildPipeline() {
+        if (await this.audioManager.hydratePipeline?.(this.pluginManager)) {
+            this.uiManager.updatePipelineUI(true);
+            this.uiManager.updateURL();
+            this.uiManager.updatePipelineToggleButton();
+            return true;
+        }
         // Check if running in Electron environment
         const isElectron = window.electronIntegration && window.electronIntegration.isElectron;
         const restoreTransientPipeline = consumeTransientPipelineRestoreRequest();

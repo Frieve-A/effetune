@@ -29,6 +29,8 @@ test('Windows first presents saved window geometry without a visible maximize tr
       assert.deepEqual(result.prepared.normalBounds, result.normalBounds);
       assert.equal(result.presented.visible, true);
       assert.equal(result.presented.focused, false);
+      assert.equal(result.presented.opacity, 0);
+      assert.equal(result.presented.displayId, result.testDisplayId);
       assert.equal(result.presented.maximized, result.isMaximized);
       assert.deepEqual(result.presentationShows, [{
         maximized: result.isMaximized, bounds: result.prepared.bounds

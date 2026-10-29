@@ -4,13 +4,24 @@ body.remote-client {
     margin: 0;
 }
 
+/* Keep the uninitialized desktop markup out of the first paint while loading. */
+body.remote-starting .main-container {
+    display: none;
+}
+
 body.integrated-remote-client {
     padding: 0;
     width: 100%;
+    transition: none;
 }
 
 body.integrated-remote-client.layout-desktop .main-container {
     width: max-content;
+    min-height: 0;
+}
+
+body.integrated-remote-client.layout-desktop .plugin-list {
+    max-height: calc(var(--remote-viewport-height, 100vh) - 40px);
 }
 
 body.integrated-remote-client .remote-bar {
@@ -32,6 +43,30 @@ body.integrated-remote-client .remote-bar {
 body.remote-client.layout-mobile {
     --et-bottom-nav-height: 0px;
     --et-mini-player-height: 0px;
+}
+
+/* The outer page owns scrolling and space for its mobile navigation. */
+body.integrated-remote-client.layout-mobile {
+    padding-bottom: 0;
+}
+
+body.integrated-remote-client.layout-mobile .remote-bar {
+    padding-inline: var(--et-mobile-page-padding);
+}
+
+body.integrated-remote-client.layout-mobile .mobile-plugin-fab {
+    bottom: calc(var(--remote-visible-bottom, 0px) + var(--remote-bottom-controls, 0px) + env(safe-area-inset-bottom) + 16px);
+}
+
+body.integrated-remote-client.layout-mobile .mobile-plugin-list-close {
+    top: calc(var(--remote-visible-top, 0px) + 12px + env(safe-area-inset-top));
+}
+
+body.integrated-remote-client.layout-mobile .plugin-list,
+body.integrated-remote-client.layout-mobile .mobile-number-keypad-overlay,
+body.integrated-remote-client.layout-mobile .remote-overlay {
+    top: var(--remote-visible-top, 0px);
+    bottom: var(--remote-visible-bottom, 0px);
 }
 
 /* These views need local measurements or asset state, which are not synchronized. */

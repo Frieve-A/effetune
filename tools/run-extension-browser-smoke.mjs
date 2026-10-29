@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { browserTestLaunchOptions } from '../tests/helpers/browser-test-display.mjs';
 
 import { startIsolatedStaticServer, stopIsolatedStaticServer } from './run-power-browser-smoke.mjs';
 
@@ -493,7 +494,8 @@ export function matchesExactEvaluationError(error, expectedMessage) {
 }
 
 async function runBrowserScenario({ chromium, baseURL, profilePath, onContext }) {
-  const launchOptions = {
+  const launchOptions = await browserTestLaunchOptions({
+    channel: 'chromium',
     headless: process.env.EXTENSION_BROWSER_HEADLESS === '1',
     args: [
       '--autoplay-policy=no-user-gesture-required',
@@ -505,7 +507,7 @@ async function runBrowserScenario({ chromium, baseURL, profilePath, onContext })
       `--load-extension=${extensionPath}`,
       '--remote-debugging-port=0'
     ]
-  };
+  });
   const context = await runNamedPhase('official extension launch', 60_000, () =>
     chromium.launchPersistentContext(profilePath, launchOptions)
   );

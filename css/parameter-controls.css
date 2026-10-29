@@ -1,12 +1,16 @@
 /* Shared Effect parameter controls. Keep the application and measurement controls identical. */
 
+.plugin-parameter-ui {
+    --et-parameter-row-margin: 2px;
+}
+
 .plugin-parameter-ui .parameter-row {
     display: flex;
     align-items: center;
     min-height: 26px;
     flex-wrap: wrap;
     gap: 10px;
-    margin: 2px 0;
+    margin: var(--et-parameter-row-margin) 0;
 }
 
 body.layout-mobile .plugin-parameter-ui .parameter-row {
@@ -50,6 +54,7 @@ body:not(.layout-mobile) :is(
     .plugin-parameter-ui select,
     .plugin-parameter-ui .parameter-row input[type="number"],
     .pipeline-analyzer-panel input[type="number"],
+    .pipeline-analyzer-panel select,
     .five-band-peq-band input[type="number"],
     .five-band-peq-filter-type,
     .five-band-fir-peq-band input[type="number"],
@@ -66,7 +71,10 @@ body:not(.layout-mobile) :is(
     min-height: 26px;
 }
 
+body:not(.layout-mobile) .plugin-parameter-ui input[type="number"],
+body:not(.layout-mobile) .plugin-parameter-ui input[type="text"],
 body:not(.layout-mobile) .plugin-parameter-ui .parameter-row input[type="number"],
+body:not(.layout-mobile) .multichannel-panel-ui input[type="number"],
 body:not(.layout-mobile) .pipeline-analyzer-panel input[type="number"] {
     padding: 4px;
     border: 1px solid var(--et-surface-23);

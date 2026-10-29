@@ -1,0 +1,12 @@
+Sonic Java audio time stretching
+Copyright 2010, 2011 Bill Cox
+Apache License 2.0; see sonic-LICENSE.txt.
+
+Sonic.java from waywardgeek/sonic release-0.2.0,
+commit 60eeb064f62a106069d2ce148fabd724f9df9780.
+https://github.com/waywardgeek/sonic
+
+EffeTune modification: corrected the float output loop to advance once per
+interleaved sample, preserving both stereo channels.
+Float input conversion saturates values outside the PCM range instead of
+wrapping their sign after downmixing or resampling.

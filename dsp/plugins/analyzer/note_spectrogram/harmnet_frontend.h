@@ -26,7 +26,10 @@ enum class NoteSpectrogramStage : std::uint8_t {
   Publish,
   Commit,
   Event,
-  Rule
+  Rule,
+  ChordFold,
+  ChordRecurrent,
+  ChordDecode
 };
 
 class HarmNetFrontend final {

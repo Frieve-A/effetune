@@ -29,7 +29,8 @@
 }
 .pwa-device-dialog input:focus { outline: none; border-color: var(--et-accent); box-shadow: var(--et-focus-ring); }
 .pwa-device-actions, .pwa-device-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.pwa-device-actions .header-button, .pwa-device-row .header-button { width: auto; height: auto; min-height: 32px; white-space: normal; }
+.pwa-device-actions .header-button, .pwa-device-row .header-button, .pwa-device-footer .header-button { width: auto; height: auto; min-height: 32px; white-space: normal; }
+.pwa-device-footer { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--et-border-strong); }
 .pwa-device-row > span { flex: 1 1 100%; overflow-wrap: anywhere; }
 .pwa-device-list { margin-top: 20px; border-top: 1px solid var(--et-border-strong); }
 .pwa-device-list:empty { display: none; }

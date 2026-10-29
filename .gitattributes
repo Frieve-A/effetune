@@ -20,6 +20,10 @@ js/vendor/sqlite/sqlite3.mjs whitespace=-trailing-space
 # Preserve the generated offline encoder bundle's embedded FLAC data byte-for-byte.
 js/vendor/offline-audio-encoders.mjs whitespace=-trailing-space,-space-before-tab
 
+# Preserve redistributed Android upstream source and license texts byte-for-byte.
+android/app/src/main/assets/licenses/netty/*.txt whitespace=-trailing-space
+android/app/src/main/java/sonic/Sonic.java whitespace=-trailing-space,-space-before-tab
+
 # Binary files should not be modified
 *.bin binary
 *.png binary

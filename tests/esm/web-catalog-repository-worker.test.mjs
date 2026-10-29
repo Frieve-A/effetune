@@ -28,6 +28,19 @@ function createWorkerScope() {
   };
 }
 
+test('Android lyric document DTO survives worker cloning and becomes readable at the client boundary', async () => {
+  const document = { kind: 'android-document', uri: 'content://library/song.lrc',
+    name: 'song.lrc', mimeType: 'text/plain', size: 24, lastModified: 10 };
+  const client = { request: async () => structuredClone({ file: document, index: 1 }) };
+  const result = await WebCatalogRepositoryClient.prototype.resolveTrackSiblingFile.call(client,
+    { trackUid: 'track-1', names: ['Song', 'Album'] });
+  assert.equal(result.index, 1); assert.equal(result.file.androidUri, document.uri);
+  assert.equal(typeof result.file.arrayBuffer, 'function'); assert.equal(result.file.size, 24);
+  const browserFile = new File(['[00:00]Song'], 'song.lrc');
+  client.request = async () => ({ file: browserFile, index: 0 });
+  assert.equal((await WebCatalogRepositoryClient.prototype.resolveTrackSiblingFile.call(client, {})).file, browserFile);
+});
+
 test('Worker protocol accepts only versioned bounded method requests and forwards invalidations', async () => {
   const scope = createWorkerScope();
   let invalidationListener;

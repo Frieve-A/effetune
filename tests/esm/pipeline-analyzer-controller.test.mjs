@@ -163,7 +163,7 @@ function builtSnapshot() {
     };
 }
 
-test('state migration keeps participating legacy outputs and applies MLS defaults', () => {
+test('state migration keeps participating legacy outputs and applies ESS defaults', () => {
     const state = normalizePipelineAnalyzerState({
         open: true,
         view: 'phase',
@@ -190,9 +190,9 @@ test('state migration keeps participating legacy outputs and applies MLS default
         pointId: 'point'
     }]);
     assert.deepEqual(state.measurementSettings, {
-        signalType: 'mls',
+        signalType: 'ess',
         levelDb: -12,
-        sequenceLength: 65535,
+        sequenceLength: 131072,
         stabilizationPeriods: 12,
         averagingPeriods: 2
     });
@@ -201,6 +201,16 @@ test('state migration keeps participating legacy outputs and applies MLS default
 
 test('state preserves an explicit Auto-off selection', () => {
     assert.equal(normalizePipelineAnalyzerState({ autoRefresh: false }).autoRefresh, false);
+});
+
+test('state preserves the distortion and waterfall views with ESS settings', () => {
+    for (const graphView of ['distortion', 'waterfall']) {
+        const state = normalizePipelineAnalyzerState({ graphView,
+            measurementSettings: { signalType: 'ess', sequenceLength: 262144 } });
+        assert.equal(state.graphView, graphView);
+        assert.equal(state.measurementSettings.signalType, 'ess');
+        assert.equal(state.measurementSettings.sequenceLength, 262144);
+    }
 });
 
 test('state migrates the legacy Group Delay view to Min Group Delay', () => {
@@ -215,7 +225,7 @@ test('display settings are bounded independently from measurement settings', () 
         displaySettings: { smoothingOct: 4, impulseRangeMs: 0.25 }
     });
     assert.deepEqual(state.displaySettings, { smoothingOct: 1, impulseRangeMs: 1 });
-    assert.equal(state.measurementSettings.sequenceLength, 65535);
+    assert.equal(state.measurementSettings.sequenceLength, 131072);
 });
 
 test('display-only edits debounce presentation work and commits flush without creating a Worker', () => {

@@ -5,6 +5,7 @@
   "fields": [
     { "name": "minimumBpm", "key": "mn", "kind": "float", "min": 40, "max": 192, "default": 40 },
     { "name": "maximumBpm", "key": "mx", "kind": "float", "min": 50, "max": 240, "default": 240 },
-    { "name": "metronomeClick", "key": "ck", "kind": "bool", "default": false }
+    { "name": "metronomeClick", "key": "ck", "kind": "bool", "default": false },
+    { "name": "displayMode", "key": "dm", "kind": "enum", "values": ["band", "drums"], "default": "band" }
   ]
 }

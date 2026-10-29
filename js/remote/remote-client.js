@@ -181,7 +181,14 @@ export async function startRemoteClient(win = window) {
     if (integrated) {
         const updateMetadata = metadata => {
             $('remoteHost').textContent = metadata.playerName;
+            document.body.style.setProperty('--remote-viewport-height', `${metadata.viewportHeight}px`);
+            document.body.style.setProperty('--remote-visible-top', `${metadata.visibleTop}px`);
+            document.body.style.setProperty('--remote-visible-bottom', `${metadata.visibleBottom}px`);
+            document.body.style.setProperty('--remote-bottom-controls', `${metadata.bottomControls}px`);
+            uiManager.layoutViewportWidth = metadata.layoutMode === 'desktop' ? metadata.viewportWidth : undefined;
             uiManager.layoutMode.setModeOverride(metadata.layoutMode);
+            uiManager.pipelineManager?.core.columnManager.adjustColumnsToWindow();
+            uiManager.pluginListManager?.collapseManager.checkWindowWidthAndAdjust();
         };
         updateMetadata(FrameWebSocket.metadata);
         FrameWebSocket.onMetadata = updateMetadata;
@@ -222,6 +229,9 @@ export async function startRemoteClient(win = window) {
 
     const presetHost = createRemotePresetHost(session, () => adapter.snapshot().pipeline);
 
+    // Layout is now known and all startup awaits have finished. Reveal before
+    // synchronous editor construction so its width measurements remain valid.
+    document.body.classList.remove('remote-starting');
     const pluginListManager = new PluginListManager(pluginManager);
     const allEffectCategories = pluginManager.effectCategories;
     uiManager.pluginListManager = pluginListManager;
@@ -298,6 +308,18 @@ export async function startRemoteClient(win = window) {
         if (!uiManager.layoutMode.isMobile) keypad.cancel();
     });
     mobileShell.applyMode(uiManager.layoutMode.mode);
+    if (integrated) {
+        // Match the local editor's content bounds; column fitting uses the outer viewport.
+        const main = document.querySelector('.main-container');
+        const observer = new win.ResizeObserver(() => {
+            const mobile = uiManager.layoutMode.isMobile;
+            FrameWebSocket.setContentSize(mobile ? null : main.getBoundingClientRect().width,
+                document.body.getBoundingClientRect().height);
+        });
+        observer.observe(document.body);
+        observer.observe(main);
+        win.addEventListener('pagehide', () => observer.disconnect(), { once: true });
+    }
     uiManager.rangeFill = installRangeFillStyling(document);
     installRangePrecisionControl(document);
     pluginListManager.initPluginList();
@@ -391,6 +413,7 @@ export async function startRemoteClient(win = window) {
 if (typeof document !== 'undefined' && document.body?.classList.contains('remote-client')) {
     startRemoteClient().catch(error => {
         console.error('[remote] client failed to start', error);
+        document.body.classList.add('remote-starting');
         showNotice('EffeTune could not start the remote editor. Reload the page and try again.');
     });
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { setImmediate as delay } from 'node:timers/promises';
 import test from 'node:test';
@@ -14,6 +15,8 @@ import { CatalogSequence } from '../../js/ui/audio-player/playback-sequence.js';
 import { NetworkMusicController } from '../../js/network-music/controller.js';
 import { playPwaNetworkItems } from '../../js/network-music/pwa-playback-provider.js';
 import { getTrackInformation, formatTrackInformation } from '../../js/ui/audio-player/track-information.js';
+import { NetworkMusicHost } from '../../electron/network-music-host.cjs';
+import { SubsonicSource } from '../../electron/subsonic-source.cjs';
 
 test('OpenHome gateway artwork is allowed by the renderer image policy', async () => {
   const html = await readFile(new URL('../../effetune.html', import.meta.url), 'utf8');
@@ -344,6 +347,28 @@ function networkTrack(name) {
   };
 }
 
+test('desktop Subsonic resolution enters the local playback queue through the renderer media contract', async t => {
+  const discovery = new EventEmitter(); discovery.devices = new Map(); discovery.close = () => {};
+  const host = new NetworkMusicHost({ getCatalog: async () => null,
+    loadConfig: () => ({ networkMusicDeviceId: 'uuid:local' }), saveConfig() {}, discovery,
+    gateway: { close: async () => {} } });
+  host.fileServer.start = async () => { host.fileServer.enabled = true; host.fileServer.port = 12345; };
+  host.fileServer.close = async () => host.fileServer.revoke();
+  t.after(() => host.dispose());
+  const source = new SubsonicSource({ id: 'subsonic:local', url: 'http://127.0.0.1:4533/',
+    user: 'listener', password: 'private-password' }, { fetchImpl: async () => ({ ok: true,
+    text: async () => JSON.stringify({ 'subsonic-response': { status: 'ok',
+      song: { id: 'song', title: 'Subsonic song', contentType: 'audio/flac' } } }) }) });
+  host.sources.set(source.config.id, source);
+  const track = await host.resolveTrack({ serverId: source.config.id, trackId: 'song', localPlayback: true });
+  const h = createHarness(); t.after(() => h.adapter.dispose());
+  await h.adapter.playNetworkTracks([track]);
+  assert.equal(h.adapter.queue[0].playbackUrl, track.uri);
+  assert.equal(h.adapter.queue[0].meta.title, 'Subsonic song');
+  assert.equal(h.stateManager.state.isPlaying, true);
+  assert.doesNotMatch(JSON.stringify(track), /private-password|[?&](?:u|t|s)=/);
+});
+
 test('trusted Catalog action uses one queue owner for local CUE and remote refs in order', async () => {
   const resolved = [];
   const manager = {
@@ -369,6 +394,8 @@ test('trusted Catalog action uses one queue owner for local CUE and remote refs 
   assert.deepEqual(harness.audioPlayer.playbackManager.playlist.map(track => track.libraryTrackId),
     ['song', undefined, 'song']);
   assert.equal(harness.stateManager.state.currentTrack.libraryTrackId, 'song');
+  assert.deepEqual(harness.adapter.readList(harness.adapter.queue.map(entry => entry.id)).tracks.map(track => track.libraryTrackId),
+    ['song', undefined, 'song']);
   assert.deepEqual(await harness.adapter.queue[0].playerTrack.provider(),
     { kind: 'electron-file', path: 'C:/music/song.flac', sourceKind: 'cue-track', startFrame: 100, endFrame: 200 });
   assert.ok(resolved.length >= 3);
@@ -1140,11 +1167,13 @@ test('OpenHome SeekId starts the selected track from a stopped transport', async
     requestId: 'seek-id', ok: true, result: {}
   });
   assert.ok(harness.calls.some(([name]) => name === 'resumeAudioContextForRemotePlayback'));
-  assert.deepEqual(
-    harness.calls.findLast(([name]) => name === 'selectQueueOrdinal'),
-    ['selectQueueOrdinal', 1, { play: true, userInitiated: false, playbackReady: true }]
-  );
+  const selection = harness.calls.findLast(([name]) => name === 'selectQueueOrdinal');
+  const { isCurrent, ...options } = selection[2];
+  assert.deepEqual([selection[0], selection[1], options],
+    ['selectQueueOrdinal', 1, { play: true, userInitiated: false, playbackReady: true }]);
+  assert.equal(isCurrent(), true);
   harness.adapter.dispose();
+  assert.equal(isCurrent(), false);
 });
 
 test('OpenHome adapter maps transport actions to non-user player commands and normalizes Repeat ONE', async () => {
@@ -1555,7 +1584,34 @@ test('OpenHome Play reports play-failed when remote playback activation is denie
   harness.adapter.dispose();
 });
 
-test('cancelling a deferred OpenHome Play stops its playback request', async () => {
+test('cancelled remote audio resume releases queued state reads and cannot start playback later', { timeout: 5000 }, async t => {
+  const harness = createHarness();
+  t.after(() => harness.adapter.dispose());
+  await runAction(harness, 'insert', 'Insert', {
+    afterId: 0, uri: 'http://media.test/one.flac',
+    playbackUrl: 'http://127.0.0.1:43123/openhome-media/33333333333333333333333333333333', metadata: ''
+  });
+  let finishResume;
+  harness.audioPlayer.resumeAudioContextForRemotePlayback = () => new Promise(resolve => { finishResume = resolve; });
+  harness.bridge.emitAction({ requestId: 'blocked-resume', service: 'Playlist', action: 'Play', args: {} });
+  await delay();
+  assert.equal(typeof finishResume, 'function');
+  harness.bridge.emitCancel({ requestId: 'blocked-resume' });
+  await runAction(harness, 'read-after-cancel', 'IdArray', {});
+  assert.equal(harness.adapter.suppressState, 0);
+  assert.equal(harness.adapter.actionContexts.size, 0);
+  assert.equal(harness.responses.at(-1).requestId, 'read-after-cancel');
+  assert.equal(harness.responses.some(response => response.requestId === 'blocked-resume'), false);
+  finishResume(true);
+  await delay();
+  assert.equal(harness.calls.filter(([name]) => name === 'play').length, 0);
+  harness.audioPlayer.resumeAudioContextForRemotePlayback = async () => true;
+  await runAction(harness, 'retry-play', 'Play', {});
+  assert.equal(harness.responses.at(-1).ok, true);
+  assert.equal(harness.calls.filter(([name]) => name === 'play').length, 1);
+});
+
+test('cancelling a deferred OpenHome Play stops its playback request', { timeout: 5000 }, async () => {
   const harness = createHarness();
   await runAction(harness, 'insert', 'Insert', {
     afterId: 0,
@@ -1592,8 +1648,11 @@ test('cancelling a deferred OpenHome Play stops its playback request', async () 
   await delay();
   assert.equal(typeof releasePlay, 'function');
   harness.bridge.emitCancel({ requestId: 'play-cancelled' });
+  await runAction(harness, 'read-after-play-cancel', 'IdArray', {});
+  assert.equal(harness.adapter.suppressState, 0);
+  assert.equal(harness.adapter.actionContexts.size, 0);
   releasePlay();
-  await harness.adapter.commandChain;
+  await delay();
 
   assert.equal(harness.calls.filter(([name]) => name === 'stop').length, 1);
   assert.equal(harness.stateManager.state.isPlaying, false);
@@ -2225,6 +2284,44 @@ test('OpenHome adapter rejects non-HTTP source URIs and non-gateway playback URL
   harness.adapter.dispose();
 });
 
+test('cancelled UPnP preparation releases state reads and preserves a later selection', { timeout: 5000 }, async t => {
+  const h = createHarness();
+  t.after(() => h.adapter.dispose());
+  await runAction(h, 'old', 'Insert', { uri: networkTrack('old').resources[0].uri,
+    playbackUrl: networkTrack('old').uri, metadata: '' });
+  const previousQueue = captureQueueContract(h);
+  const manager = h.audioPlayer.contextManager;
+  const loadTrack = manager.loadTrack;
+  let finishLoad;
+  const loadRequest = {};
+  manager.loadTrack = () => {
+    manager.activeLoadRequest = loadRequest;
+    return new Promise(resolve => { finishLoad = resolve; });
+  };
+  manager.invalidatePendingPlaybackOperations = () => { manager.activeLoadRequest = null; };
+  h.bridge.emitAction({ requestId: 'blocked-load', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: networkTrack('blocked').resources[0].uri, playbackUrl: networkTrack('blocked').uri, metadata: '' } });
+  await delay();
+  assert.equal(manager.activeLoadRequest, loadRequest);
+  h.bridge.emitCancel({ requestId: 'blocked-load' });
+  await runAction(h, 'read-after-load-cancel', 'Snapshot', {});
+  assert.equal(manager.activeLoadRequest, null);
+  assert.equal(h.adapter.actionContexts.size, 0);
+  assert.equal(h.adapter.suppressState, 0);
+  assert.deepEqual(captureQueueContract(h), previousQueue);
+  manager.loadTrack = loadTrack;
+  h.bridge.emitAction({ requestId: 'later-selection', service: 'AVTransport', action: 'SetAVTransportURI',
+    args: { uri: networkTrack('later').resources[0].uri, playbackUrl: networkTrack('later').uri, metadata: '' } });
+  await h.adapter.commandChain;
+  const selectedQueue = captureQueueContract(h);
+  finishLoad(true);
+  await delay();
+  assert.deepEqual(captureQueueContract(h), selectedQueue);
+  assert.equal(h.responses.some(response => response.requestId === 'blocked-load'), false);
+  assert.equal(h.responses.at(-1).requestId, 'later-selection');
+  assert.equal(h.responses.at(-1).ok, true);
+});
+
 test('UPnP URI selection atomically replaces the canonical queue and accepts empty metadata', async () => {
   const h = createHarness();
   await runAction(h, 'old', 'Insert', { uri: networkTrack('old').resources[0].uri, playbackUrl: networkTrack('old').uri, metadata: '' });
@@ -2331,6 +2428,43 @@ test('UPnP volume and mute use the player owner and FactoryDefaults leaves effec
   h.bridge.emitAction({ requestId: 'factory', service: 'RenderingControl', action: 'SelectPreset', args: { preset: 'FactoryDefaults' } });
   await h.adapter.commandChain;
   assert.deepEqual(h.adapter.getSnapshot().renderingControl, { volume: 100, mute: false });
+  h.adapter.dispose();
+});
+
+test('OpenHome Volume and DLNA share player gain and preserve volume while muted', async () => {
+  const h = createHarness();
+  let volume = 71, mute = false;
+  const effects = { gain: -6 }, airplay = { volume: 0.5 };
+  Object.assign(h.audioPlayer.contextManager, {
+    setPlayerVolume(value) { volume = value; h.stateManager.updateState({ playerVolume: value }); },
+    setPlayerMute(value) { mute = value; h.stateManager.updateState({ playerMute: value }); },
+    getPlayerVolume: () => volume, getPlayerMute: () => mute,
+    effects, airplay
+  });
+  const action = async (id, name, args = {}, service = 'Volume') => {
+    h.bridge.emitAction({ requestId: id, service, action: name, args });
+    await h.adapter.commandChain;
+    return h.responses.at(-1);
+  };
+  assert.equal((await action('mute', 'SetMute', { mute: true })).ok, true);
+  assert.equal(volume, 71);
+  await action('dlna', 'SetVolume', { volume: 42 }, 'RenderingControl');
+  const observed = await action('read', 'Snapshot');
+  assert.equal(observed.result.volume, 42);
+  assert.equal(observed.result.mute, true);
+  assert.equal(observed.result.volumeMax, 100);
+  assert.equal(observed.result.volumeStep, 1);
+  assert.equal(observed.result.balanceMax, 0);
+  await action('unmute', 'SetMute', { mute: false });
+  await action('increase', 'VolumeInc');
+  assert.equal(volume, 43);
+  assert.equal(mute, false);
+  for (const [name, args] of [['SetVolume', { volume: 101 }], ['SetVolume', { volume: 1.5 }], ['SetMute', { mute: 1 }]]) {
+    assert.equal((await action('invalid', name, args)).ok, false);
+  }
+  assert.equal(volume, 43);
+  assert.deepEqual(effects, { gain: -6 });
+  assert.deepEqual(airplay, { volume: 0.5 });
   h.adapter.dispose();
 });
 

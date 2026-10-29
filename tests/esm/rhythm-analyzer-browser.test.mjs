@@ -18,7 +18,7 @@ Object.defineProperty(performance, 'now', { configurable: true, value: () => win
 window.buildRhythmFrame = ({ generation = 1, frameCount, gateOpen = true, analysisEpoch = 1,
     anchorFrame = frameCount, anchorIndex = 0, confidence = 0.3, period = 0.5, strongestBpm = 120, events = [], automaticAnchor = true,
     preview = null }) => {
-    const payload = new DataView(new ArrayBuffer(preview === null ? 1344 : 1496));
+    const payload = new DataView(new ArrayBuffer(2024));
     payload.setFloat32(0, 48000, true);
     payload.setUint32(4, generation, true);
     payload.setUint32(8, 480, true);
@@ -62,7 +62,7 @@ window.buildRhythmFrame = ({ generation = 1, frameCount, gateOpen = true, analys
             payload.setInt32(base + 8, beat.index, true);
         });
     }
-    return { frameType: 28, formatVersion: preview === null ? 3 : 4, payload };
+    return { frameType: 28, formatVersion: 5, payload };
 };
 window.feedRhythm = (handle, generation = 1) => {
     // One frame per beat at 120 BPM (50 frames of 10 ms), carrying the onsets of the beat that just ended.
@@ -283,8 +283,8 @@ test('Rhythm Analyzer effect graph lays out its header at desktop and mobile wid
                         lensRows: lensRead?.rows?.length ?? 0,
                         eventRead: eventRead?.rows?.[0]?.value ?? null,
                         span: plugin.sp,
-                        spanOptions: ui.querySelectorAll('select option').length,
-                        spanSelected: (plugin.syncUIControls(), ui.querySelector('select').value),
+                        spanOptions: ui.querySelectorAll('select[id*=spanbeats] option').length,
+                        spanSelected: (plugin.syncUIControls(), ui.querySelector('select[id*=spanbeats]').value),
                         checkboxes: [...ui.querySelectorAll('.checkbox-row label')].map(label => label.textContent),
                         toggles: []
                     };
@@ -582,6 +582,66 @@ test('shown beat events keep their timing and identity across a closed gate in t
         assert.equal(result.lanes, 0);
         assert.equal(result.identity, 10);
         assert.equal(result.period, 0.5);
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test('Drum mode renders four visible lanes while beat analysis is searching in both themes', { timeout: 60000 }, async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        for (const width of [1024, 375]) {
+            for (const theme of ['light', 'dark']) {
+                const page = await openPage(browser, width, theme);
+                const result = await page.evaluate(async () => {
+                    const plugin = new window.RhythmAnalyzerPlugin();
+                    plugin.id = 1;
+                    const ui = plugin.createUI();
+                    document.body.appendChild(ui);
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    const select = ui.querySelector('select[id*=display]');
+                    select.value = 'drums';
+                    select.dispatchEvent(new Event('change'));
+                    plugin.setParameters({ vt: true, ve: true });
+                    const frame = window.buildRhythmFrame({ frameCount: 100, confidence: 0,
+                        period: 0, strongestBpm: 0, automaticAnchor: false });
+                    frame.payload.setUint32(1496, 1, true);
+                    frame.payload.setUint32(1500, 4, true);
+                    for (let lane = 0; lane < 4; lane++) {
+                        const base = 1512 + lane * 32;
+                        frame.payload.setUint32(base, 90, true);
+                        frame.payload.setFloat32(base + 24, 1, true);
+                        frame.payload.setUint8(base + 28, lane);
+                        frame.payload.setUint8(base + 29, 1);
+                    }
+                    plugin.handleTelemetry(frame);
+                    const alphas = [];
+                    const arc = plugin.canvasCtx.arc.bind(plugin.canvasCtx);
+                    plugin.canvasCtx.arc = (...args) => { alphas.push(plugin.canvasCtx.globalAlpha); arc(...args); };
+                    plugin.drawGraph();
+                    const view = plugin._readoutFrame.views[0];
+                    const points = [0, 1, 2, 3].map(index => plugin._eventPoint(index, view));
+                    const out = { names: plugin.lanes.names, mode: plugin.getParameters().dm,
+                        events: plugin.eventSerial, alpha: plugin.onsetOpacity, alphas,
+                        positions: points.map(point => (point.y - view.top) / view.height),
+                        inside: plugin._readoutFrame.panels.every(panel => panel.left >= 0 && panel.top >= 0 &&
+                            panel.left + panel.width <= plugin.canvas.width && panel.top + panel.height <= plugin.canvas.height),
+                        labels: [...select.options].map(option => option.textContent) };
+                    plugin.cleanup();
+                    return out;
+                });
+                assert.deepEqual(result.names, ['Kick', 'Snare', 'Hi-hat', 'Cymbals']);
+                assert.deepEqual(result.labels, ['Frequency bands', 'Drums']);
+                result.positions.forEach((position, row) => assert.ok(Math.abs(position - (3 - row + .5) / 4) < 1e-10));
+                assert.equal(result.mode, 'drums');
+                assert.equal(result.events, 4);
+                assert.equal(result.alpha, 1);
+                assert.ok(result.alphas.filter(alpha => alpha > 0).length >= 4);
+                assert.ok(result.inside);
+                await page.close();
+            }
+        }
     } finally {
         await browser.close();
     }

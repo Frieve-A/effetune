@@ -24,10 +24,13 @@ The sidecar uses an `$ORIGIN` runtime search path so packaged copies remain
 replaceable shared libraries next to the executable.
 libnl is distributed under GNU Lesser General Public License version 2.1.
 The license text is included next to this notice. Tagged desktop release
-artifacts also include EffeTune-<version>-OpenHome-Linux-Source.zip. Its Debian
-source descriptor, upstream source archive, distribution patch/build archive,
-and manifest are downloaded for the exact source package version recorded for
-the bundled binaries and verified by their recorded SHA-256 hashes. Project
+downloads also provide EffeTune-<version>-ThirdParty-Source.zip at no additional
+charge at https://github.com/Frieve-A/effetune/releases . Select the release
+matching your installed EffeTune version. The openhome/linux-x64/ directory
+in that archive contains the Debian source descriptor, upstream source archive,
+distribution patch/build archive, and provenance manifest. Source artifacts
+are downloaded for the exact source package version recorded for the bundled
+binaries and verified by their recorded SHA-256 hashes. Project
 source and release information are available from https://github.com/thom311/libnl.
 
 

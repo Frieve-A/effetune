@@ -1,6 +1,6 @@
 ---
 title: "Pipeline Analyzer - 效果链的频率响应与相位响应 - EffeTune"
-description: "Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当前 Effect Pipeline 的频率响应、相位、群延迟和脉冲响应。"
+description: "Pipeline Analyzer 可在不改变实际听到的音频的情况下，测量当前 Effect Pipeline 的频率响应、相位、群延迟、脉冲响应、失真和衰减。"
 lang: zh
 ---
 
@@ -27,11 +27,11 @@ Pipeline Analyzer 可在不改变实际听到的声音的情况下，测量当�
 
 打开 **Measurement settings** 可调整效果链的测量方式：
 
-- **Signal：** **MLS**（默认）、**TSP** 或 **Unit Impulse**。MLS 和 TSP 使用周期性测试信号（`2^n - 1` 和 `2^n` 个采样），而 **Unit Impulse** 直接捕获时域脉冲响应（`2^n` 个采样）。
+- **Signal：** 可选择 **Log Sweep**（默认）、**MLS**、**TSP** 或 **Unit Impulse**。如需查看谐波失真，请使用 **Log Sweep**。扫频范围为 20 Hz 至 20 kHz，实际范围受采样率限制。**MLS** 和 **TSP** 使用周期信号；**Unit Impulse** 直接捕获脉冲响应。
 - **Level：** 测试信号的峰值电平（默认 `-12 dBFS`）。线性滤波器在任何电平下的测量结果都相同，而压缩器、饱和器等与电平相关的效果器会随 **Level** 而变化。
-- **Sequence Length：** 测量窗口的长度。测量混响、延迟或振铃较长的陡峭低频滤波器时，尤其是分析器建议使用更长的长度时，请增大此值。
-- **Stabilization Periods：** 捕获前预先播放的周期数（默认 `12`，用于 MLS 和 TSP），让变化缓慢的效果器先稳定下来。
-- **Averages：** 取平均的捕获周期数（默认 `2`，用于 MLS 和 TSP），用于减小波动。
+- **Requested sweep length**（**Log Sweep**）/ **Sequence Length**（其他信号）：**Log Sweep** 默认使用 `131072` 个采样；为分离谐波，扫频可能更长。实际的 **Sweep length** 和 **Total stimulus time** 会在测量后显示。即使延长扫频，响应也只覆盖主脉冲峰值之后最多 1.5 秒。要查看更长的混响尾音、延迟或滤波器振铃，请选择 **MLS**、**TSP** 或 **Unit Impulse**，并按需增大 **Sequence Length**。
+- **Stabilization Periods：** 捕获前预先播放的周期数（默认 `12`，用于 MLS 和 TSP），让变化缓慢的效果器先稳定下来。使用 **Log Sweep** 或 **Unit Impulse** 时无法设置。
+- **Averages：** 参与平均的捕获次数（默认 `2`，用于 **Log Sweep**、MLS 和 TSP），用于减小波动。
 
 ## 读取图表
 
@@ -42,11 +42,13 @@ Pipeline Analyzer 可在不改变实际听到的声音的情况下，测量当�
 - **Min Group Delay：** 由最小相位幅度响应推导出的群延迟。
 - **Excess Group Delay：** 去除最小相位部分后剩余的群延迟（图表限制在 ±100 ms 以内，而光标读数显示实际值），便于识别纯延迟以及线性相位或全通的时间特性。
 - **Impulse：** 从 `-2 ms` 到 **Impulse Range (ms)** 的时域脉冲响应，按其峰值归一化。
+- **Distortion：** 使用 **Log Sweep** 时，按频率显示相对于基频的谐波失真百分比。初始显示 H2、H3 和 THD（2 至 3 次谐波）；无需重新测量即可添加 H4 至 H10。数值越大，失真越多。如果使用其他信号时无法查看此图，请选择 **Log Sweep**。输出静音或数据无效时无法计算失真。已保存的扬声器响应只提供线性响应，不包含扬声器自身的失真。
+- **Waterfall：** 显示频率、相对电平（dB）和衰减时间（ms）。在 **Response** 中选择 **After**（默认）或 **Before**，查看效果链输出或处理前所选的扬声器响应。每种视图均按自身峰值归一化，因此应比较衰减形状，而非绝对电平。拖动可旋转 3D 图，使用鼠标滚轮或双指捏合可缩放。
 
-将指针悬停在图表上可读取光标处的 **Before** 和 **After** 数值；将指针悬停在图例的 **Before** 标签上可暂时隐藏 **After**。频率、相位和群延迟图表使用 **Smoothing (oct)**，脉冲图表使用 **Impulse Range (ms)**。
+在频率、相位、群延迟和脉冲响应图上悬停指针，可读取光标处的 **Before** 和 **After** 数值；将指针悬停在图例的 **Before** 标签上可暂时隐藏 **After**。频率、相位和群延迟图表使用 **Smoothing (oct)**，脉冲图表使用 **Impulse Range (ms)**。
 
 ## 测量的工作原理
 
-Pipeline Analyzer 会捕获当前效果链、其路由以及所选的扬声器响应，并根据效果链报告的延迟自动补偿 **After**。如果混响尾音或滤波器振铃超出 **Sequence Length**，请增大 **Sequence Length**，以避免回绕（MLS/TSP）或截断（**Unit Impulse**）。对于非线性、调制或随机的效果器，请将图表视为当前设置和 **Level** 下的快照。
+Pipeline Analyzer 会捕获当前效果链、其路由以及所选的扬声器响应，并根据效果链报告的延迟自动补偿 **After**。对于非线性、调制或随机的效果器，请将图表视为当前设置和 **Level** 下的快照。
 
 [← 返回 README](README.md)

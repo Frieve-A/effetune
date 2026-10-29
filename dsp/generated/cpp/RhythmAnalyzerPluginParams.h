@@ -10,10 +10,11 @@ struct RhythmAnalyzerPluginParams {
   float minimumBpm;
   float maximumBpm;
   float metronomeClick;
-  static constexpr std::uint32_t kHash = 0xbae05865u;
-  static constexpr std::uint32_t kFloatCount = 3u;
+  float displayMode;
+  static constexpr std::uint32_t kHash = 0xf854c585u;
+  static constexpr std::uint32_t kFloatCount = 4u;
 };
-static_assert(3u == 0u || sizeof(RhythmAnalyzerPluginParams) == sizeof(float) * 3u);
+static_assert(4u == 0u || sizeof(RhythmAnalyzerPluginParams) == sizeof(float) * 4u);
 
 } // namespace effetune::generated
 

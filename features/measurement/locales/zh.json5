@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "此设备无法提供未经处理的麦克风输入。自动音频处理可能会影响测量结果。",
   "analysis:normalization": "归一化",
   "analysis:normalizationNone": "无",
   "analysis:normalizationGlobal": "整体峰值 = 0 dB",

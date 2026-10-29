@@ -218,7 +218,7 @@ export class StateManager {
         window.location.href = path;
     }
 
-    openBackupRestore() {
+    openBackupRestore(initialFile = null) {
         const uiManager = window.uiManager;
         const adapter = createUserDataBackupAdapter({
             presetManager: uiManager?.pipelineManager?.presetManager,
@@ -230,6 +230,7 @@ export class StateManager {
         });
         return openUserDataBackupDialog({
             service,
+            initialFile,
             translate: (key, fallback, params) => {
                 const translated = uiManager?.t?.(key, params);
                 return translated && translated !== key ? translated : fallback.replace(

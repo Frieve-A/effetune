@@ -38,7 +38,7 @@ export class VisualizerFeed {
         });
         this.canvas.addEventListener('pointercancel', () => { view.clearPlaybackPointer(this); view.cancelSeekPointer(this); });
         this.canvas.addEventListener('lostpointercapture', () => view.cancelSeekPointer(this));
-        this.canvas.addEventListener('pointerleave', () => { this.playbackHoveredId = null; view.clearPlaybackPointer(this); });
+        this.canvas.addEventListener('pointerleave', event => view.leavePlaybackPointer(event, this));
     }
 
     get closed() { return !this.window || this.window.closed; }

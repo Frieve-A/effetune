@@ -24,6 +24,10 @@ For player-only use, set **Input Device:** to **None (music file player only)** 
 
 The desktop Player also displays [network music and AirPlay](openhome.md). During AirPlay, track details, artwork, and time appear when supplied by the sender; hover over the title for more information. Control playback and volume on the sending device. Closing the Player with **×**, or using **Stop**, ends that AirPlay session while leaving the enabled receiver available for another connection.
 
+Use the volume slider and mute button to adjust the Player’s sound before it enters the effect chain. Changes made by a remote controller also appear here, so you can check the current level and turn mute off locally.
+
+When the built-in Player starts or resumes playback, including track changes and remote commands, the mute button briefly blinks if muted, and the volume slider and value blink if the volume is zero.
+
 ## Gapless Playback
 
 **Gapless Playback** in **Audio Configuration** is on by default and plays compatible local tracks without a gap; support is limited by the file format and the browser or app environment. Unsupported formats and some mobile environments use a memory-safe fallback, so a short gap may remain. Turning it off prioritizes lower memory use and stability, at the cost of a possible short gap; the change does not interrupt the current track. Gapless playback works only at 1x speed; changing speed during gapless playback restarts the track from the same position with a brief interruption.
@@ -40,5 +44,11 @@ Use these gestures on the video or its surrounding black borders, outside Mini P
 - **Touch:** Tap to show the controls. While expanded, double-tap the left half to go back 10 seconds or the right half to go forward 10 seconds. Double-tapping the small preview does not seek.
 
 Buttons and sliders keep their usual behavior.
+
+## Playback on another device
+
+Choose an EffeTune, OpenHome, or UPnP AV / DLNA player in the device selector. Playback controls follow the selected player's capabilities, including **Volume** and **Mute** when supported. These controls change that player, not the computer's system volume or effect gain. Selecting another player does not stop the previous one or move its queue.
+
+Music sent to another player does not include this device's effects. An EffeTune destination applies its own effects. For connections, sources, and the computer that must stay running for a UPnP AV / DLNA sequence, see [network music and remote control](openhome.md#choose-a-library-and-a-player).
 
 [← Back to README](../README.md)

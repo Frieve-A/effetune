@@ -211,6 +211,13 @@ export function verifyLinuxRuntimeManifest(runtimeRoot, { requireSource = false 
     new Set(readdirSync(runtimeRoot).filter(name => LIBNL_RUNTIME_FILE.test(name))),
     'Every packaged libnl runtime must have exactly one provenance record'
   );
+  return verifyLinuxSources(runtimeRoot, { manifest, requireSource });
+}
+
+export function verifyLinuxSources(runtimeRoot, {
+  manifest = JSON.parse(readFileSync(join(runtimeRoot, MANIFEST_FILE), 'utf8')),
+  requireSource = true,
+} = {}) {
   if (requireSource) assert.equal(manifest.sourceComplete, true, 'Linux release source is incomplete');
   const sourceKeys = new Set(manifest.sourceArtifacts.map(source => (
     `${source.sourcePackage}\u0000${source.sourceVersion}`
@@ -230,6 +237,7 @@ export function verifyLinuxRuntimeManifest(runtimeRoot, { requireSource = false 
     assert.ok(files.has(source.dscFile));
     for (const file of source.files) {
       const filePath = join(packageRoot, file.fileName);
+      requireInside(packageRoot, filePath);
       assert.equal(statSync(filePath).size, file.size);
       assert.equal(sha256(filePath), file.sha256);
     }

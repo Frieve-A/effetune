@@ -92,8 +92,11 @@ were unavailable.
 
 The `source/` bundle contains the locked source archives, native probe,
 lockfile, build instructions, producer modules, and shared Debian provenance
-parser needed to rebuild the runtime. Keep that bundle with distributed
-resources. No build or runtime command depends on files under `tmp/`.
+parser needed to rebuild the runtime. Release builds collect it into
+`EffeTune-<version>-ThirdParty-Source.zip`, alongside the corresponding
+application downloads. Application packages exclude `source/` while keeping
+runtime files, manifests, notices, and licenses. No build or runtime command
+depends on files under `tmp/`.
 
 The producer finally invokes the packaged `uxplay -h` and exact stereo ALAC
 round-trip probe with developer loader paths and system plugin discovery

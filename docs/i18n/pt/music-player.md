@@ -24,6 +24,8 @@ Para usar apenas o player, defina **Dispositivo de Entrada:** como **Nenhum (som
 
 O Player de desktop também exibe [música em rede e AirPlay](openhome.md). Durante o AirPlay, as informações da faixa, a capa e o tempo aparecem quando enviados pelo dispositivo de origem; passe o ponteiro sobre o título para ver mais detalhes. Controle a reprodução e o volume no dispositivo de origem. Fechar o Player com **×**, ou usar **Parar**, encerra essa sessão, mas o receptor continua ativado e disponível para uma nova conexão.
 
+Use o controle de volume e o botão de silenciar para ajustar o som do reprodutor antes de passar pelos efeitos. As alterações feitas remotamente também aparecem aqui, permitindo conferir o volume e desativar o silêncio no próprio dispositivo de reprodução.
+
 ## Reprodução sem intervalos
 
 **Reprodução sem intervalos**, em **Configuração de Áudio**, vem ativada por padrão e reproduz faixas locais compatíveis sem intervalo; o suporte é limitado pelo formato do arquivo e pelo ambiente do navegador ou do aplicativo. Formatos não suportados e alguns ambientes móveis usam um modo alternativo seguro que economiza memória, por isso ainda pode haver um breve intervalo. Ao desativá-la, a prioridade passa a ser o menor uso de memória e a estabilidade, ao custo de um possível breve intervalo; a mudança não interrompe a faixa atual. A reprodução sem intervalos só funciona na velocidade 1x; mudar a velocidade durante a reprodução sem intervalos reinicia a faixa na mesma posição, com uma breve interrupção.
@@ -40,5 +42,13 @@ Fora do Mini Player, use estes gestos no vídeo ou nas bordas pretas ao redor de
 - **Toque:** Toque para mostrar os controles. Com o vídeo expandido, toque duas vezes na metade esquerda para voltar 10 segundos ou na metade direita para avançar 10 segundos. Tocar duas vezes na prévia pequena não muda a posição de reprodução.
 
 Os botões e controles deslizantes continuam funcionando normalmente.
+
+## Reprodução em outro dispositivo
+
+Use o seletor no topo da janela para escolher **This device**, um reprodutor OpenHome ou um UPnP AV / DLNA. A biblioteca e o destino são independentes. Trocar de reprodutor não para o anterior nem move sua fila. São exibidos faixa, fila, posição e controles compatíveis, incluindo **Volume** e **Silenciar** quando disponíveis. Alterações de outros controladores também aparecem.
+
+O áudio enviado é o original, sem os efeitos do computador de origem. Um destino EffeTune aplica seus próprios efeitos. O servidor e o reprodutor precisam se comunicar. A fila própria do OpenHome pode continuar após desconectar o controlador; uma sequência gerenciada pelo EffeTune ou uma conexão intermediada por um computador EffeTune exige que esse computador permaneça ligado.
+
+[música em rede e controle remoto](openhome.md)
 
 [← Voltar para o README](README.md)

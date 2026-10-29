@@ -3,6 +3,82 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 import { VisualizerSources } from '../../js/visualizer/visualizer-sources.js';
+import { createItem } from '../../js/visualizer/visualizer-model.js';
+import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
+
+test('Note sources request chord/key analysis only when their current display needs it', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    let published = [];
+    globalThis.window = {};
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const sources = new VisualizerSources({
+        telemetryHub: { subscribe: () => () => {} },
+        setVisualizerSources(value) { published = value; }
+    });
+    try {
+        const packer = DSP_PARAM_PACKERS.get('NoteSpectrogramPlugin');
+        const check = (item, enabled) => {
+            sources.setLayout({ items: [item] });
+            assert.equal(published.length, 1);
+            assert.equal(published[0].params.ck, enabled);
+            assert.equal(packer.pack(published[0].params)[3], enabled ? 1 : 0,
+                `${item.type} sends its analysis request through the actual DSP packer`);
+            return published[0].tapId;
+        };
+        sources.setVisible(true);
+        for (const type of ['key', 'chord']) check(createItem(type, type), true);
+        const notes = createItem('notes', 'notes');
+        const initial = check(notes, false);
+        notes.params.ck = true;
+        const enabled = check(notes, true);
+        assert.notEqual(enabled, initial, 'Enabling analysis changes the source configuration');
+        notes.params.ck = false;
+        assert.notEqual(check(notes, false), enabled, 'Disabling analysis stops requesting the detector');
+        const guitar = createItem('guitar', 'guitar');
+        check(guitar, false);
+        guitar.params.pm = 'chord';
+        check(guitar, true);
+        guitar.params.pm = 'shape';
+        guitar.params.lb = 'detected';
+        check(guitar, true);
+        guitar.params.lb = 'flat';
+        check(guitar, false);
+    } finally {
+        sources.dispose();
+        globalThis.window = oldWindow;
+        globalThis.document = oldDocument;
+    }
+});
+
+test('Drums shares the drum-mode Rhythm Analyzer and appearance edits retain its source', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const published = [];
+    globalThis.window = {};
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const sources = new VisualizerSources({
+        telemetryHub: { subscribe: () => () => {} },
+        setVisualizerSources: value => published.push(value)
+    });
+    try {
+        const drums = { id: 'kit', type: 'drums', channel: null, params: { yaw: -24 } };
+        const rhythm = { id: 'rhythm', type: 'rhythm-analyzer', channel: null, params: { dm: 'drums' } };
+        sources.setLayout({ items: [drums, rhythm] });
+        sources.setVisible(true);
+        assert.equal(published.at(-1).length, 1);
+        assert.deepEqual(published.at(-1)[0].params, { mn: 40, mx: 240, dm: 'drums' });
+        const tap = published.at(-1)[0].tapId;
+        drums.params = { yaw: 80, elevation: 70, shellColor: '#123456' };
+        sources.setLayout({ items: [drums, rhythm] });
+        assert.equal(published.at(-1)[0].tapId, tap);
+        drums.channel = 'L';
+        sources.setLayout({ items: [drums, rhythm] });
+        assert.equal(published.at(-1).length, 2);
+    } finally {
+        sources.dispose();
+        globalThis.window = oldWindow;
+        globalThis.document = oldDocument;
+    }
+});
 
 test('Oscilloscope shares captures by trigger settings while display edits stay local', () => {
     const oldWindow = globalThis.window, oldDocument = globalThis.document;
@@ -190,12 +266,12 @@ test('Guitar sources detect only the playable notes and keep the stream across d
         sources.subscribeItem('g', () => {});
         sources.setVisible(true);
         const source = published.at(-1)[0];
-        assert.deepEqual([source.type, source.params], ['NoteSpectrogramPlugin', { mn: 40, mx: 76 }]);
+        assert.deepEqual([source.type, source.params], ['NoteSpectrogramPlugin', { mn: 40, mx: 76, ck: false }]);
         assert.equal(subscriptions.get(source.tapId).frameType, 24);
         sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params: { ...params, pm: 'shape', lb: 'interval' } }] });
         assert.equal(published.at(-1)[0].tapId, source.tapId);
         sources.setLayout({ items: [{ id: 'g', type: 'guitar', channel: null, params: { ...params, cp: 2 } }] });
-        assert.deepEqual(published.at(-1)[0].params, { mn: 42, mx: 76 });
+        assert.deepEqual(published.at(-1)[0].params, { mn: 42, mx: 76, ck: false });
         sources.dispose();
     } finally {
         globalThis.window = oldWindow; globalThis.document = oldDocument;
@@ -228,7 +304,7 @@ test('Guitar and Notes share their DSP source only when analysis settings and ch
         assert.equal(subscriptions.size, 1);
         const shared = published.at(-1)[0];
         assert.deepEqual([shared.type, shared.params, shared.channel, shared.gainDb],
-            ['NoteSpectrogramPlugin', { mn: 40, mx: 76 }, null, 0]);
+            ['NoteSpectrogramPlugin', { mn: 40, mx: 76, ck: false }, null, 0]);
         assert.equal(subscriptions.get(shared.tapId).frameType, 24);
         sources.subscribeItem(guitar.id, frame => received.push(frame));
         sources.subscribeItem(notes.id, frame => received.push(frame));
@@ -241,6 +317,7 @@ test('Guitar and Notes share their DSP source only when analysis settings and ch
         for (const different of [
             { ...notes, params: { ...notes.params, mn: 41 } },
             { ...notes, params: { ...notes.params, mx: 77 } },
+            { ...notes, params: { ...notes.params, ck: true } },
             { ...notes, channel: 'R' }
         ]) {
             sources.setLayout({ items: [guitar, different] });
@@ -511,7 +588,7 @@ test('Beat and Width share analyzer sources and Beat interpolates real DSP telem
         setVisualizerSources(sources) { published.push(sources); }
     };
     const frame = (period = 0.5, preview = null) => {
-        const payload = new DataView(new ArrayBuffer(1496));
+        const payload = new DataView(new ArrayBuffer(2024));
         payload.setFloat32(0, 48000, true);
         payload.setUint32(4, 1, true);
         payload.setUint32(8, 480, true);
@@ -527,7 +604,7 @@ test('Beat and Width share analyzer sources and Beat interpolates real DSP telem
             payload.setFloat32(1348, preview.period, true);
             payload.setInt32(1352, preview.frame, true);
         }
-        return { frameType: 28, formatVersion: 4, payload };
+        return { frameType: 28, formatVersion: 5, payload };
     };
     const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
     const sources = new VisualizerSources(manager);
@@ -734,6 +811,49 @@ test('Visualizer status follows primary DSP readiness across failure and reiniti
         beforeReady.dispose();
         afterFailure.dispose();
     } finally {
+        globalThis.window = oldWindow;
+        globalThis.document = oldDocument;
+    }
+});
+
+
+test('Rhythm display mode edits retain the tap while simultaneous modes stay separate', () => {
+    const oldWindow = globalThis.window, oldDocument = globalThis.document;
+    const subscriptions = new Map(), published = [], received = [];
+    globalThis.window = {};
+    globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+    const manager = {
+        telemetryHub: { subscribe(tapId, frameType, callback) {
+            subscriptions.set(tapId, callback);
+            return () => subscriptions.delete(tapId);
+        } },
+        setVisualizerSources(sources) { published.push(sources); }
+    };
+    const sources = new VisualizerSources(manager);
+    try {
+        const item = { id: 'rhythm', type: 'rhythm-analyzer', params: { dm: 'band' } };
+        sources.setLayout({ items: [item] });
+        sources.setVisible(true);
+        sources.subscribeItem(item.id, frame => received.push(frame));
+        const initial = published.at(-1)[0];
+        subscriptions.get(initial.tapId)({});
+        const identity = received.at(-1).source;
+        item.params.dm = 'drums';
+        sources.setLayout({ items: [item] });
+        assert.equal(published.at(-1)[0].tapId, initial.tapId);
+        assert.equal(published.at(-1)[0].params.dm, 'drums');
+        subscriptions.get(initial.tapId)({});
+        assert.equal(received.at(-1).source, identity);
+        sources.setLayout({ items: [item, { ...item, id: 'bands', params: { dm: 'band' } }] });
+        assert.equal(published.at(-1).length, 2);
+        assert.equal(published.at(-1).find(source => source.params.dm === 'drums').tapId, initial.tapId);
+        assert.equal(subscriptions.size, 2);
+        item.params.dm = 'band';
+        sources.setLayout({ items: [item] });
+        assert.equal(published.at(-1).length, 1);
+        assert.equal(published.at(-1)[0].params.dm, 'band');
+    } finally {
+        sources.dispose();
         globalThis.window = oldWindow;
         globalThis.document = oldDocument;
     }

@@ -1,3 +1,6 @@
+import { isAndroidHost } from './android/bridge.js';
+import { installAndroidFileDownloads } from './android/file-downloads.js';
+
 function getDefaultWindow() {
     return typeof window !== 'undefined' ? window : {};
 }
@@ -84,6 +87,7 @@ export function startApplication({
     logger = console
 } = {}) {
     startHeartbeat('main-page');
+    installAndroidFileDownloads(windowRef);
     registerTrayPresetListenerFn({
         electronAPI: windowRef.electronAPI,
         electronBridge: windowRef.electronIntegration,
@@ -114,7 +118,7 @@ export function startApplication({
 export function registerServiceWorker(windowRef = getDefaultWindow(), logger = console) {
     const isElectron = windowRef.electronIntegration?.isElectronEnvironment?.() ||
         windowRef.electronIntegration?.isElectron;
-    if (isElectron || !windowRef.navigator?.serviceWorker) return;
+    if (isElectron || isAndroidHost(windowRef) || !windowRef.navigator?.serviceWorker) return;
     if (isDevelopmentServer(windowRef)) {
         unregisterDevelopmentServiceWorkers(windowRef, logger);
         return;

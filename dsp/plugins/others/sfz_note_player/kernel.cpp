@@ -341,7 +341,7 @@ public:
         static_cast<std::uint32_t>(std::round(bounded(params_.minimumMidi, 21, 108, 28)));
     const auto maximum = std::max(
         minimum, static_cast<std::uint32_t>(std::round(bounded(params_.maximumMidi, 21, 108, 91))));
-    if (analysis_->configure(minimum, maximum)) {
+    if (analysis_->configure(minimum, maximum, false)) {
       analysis_->reset(1u);
       clearNotes();
     }

@@ -29,6 +29,7 @@ import { validateRules } from '../browser/url-rules.js';
 import { SFZ_SIZE_LIMIT_MIB_OPTIONS, normalizeSfzSizeLimitMiB } from '../sfz/limits.js';
 import { closeStandardSelect, enableStandardSelects } from '../ui/standard-select.js';
 import { getRemoteControlSettings } from '../remote/remote-control-settings.js';
+import { NetworkMusicSettings } from '../network-music/settings-view.js';
 
 import { THEME_PRESETS, getThemePreset, normalizeThemeId } from '../theme-registry.mjs';
 
@@ -455,6 +456,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = dialogHTML;
   document.body.appendChild(overlay);
+  const networkSettings = isElectron ? new NetworkMusicSettings({
+    root: document.getElementById('config-panel-network'), api: networkMusicAPI, remoteSettings: remoteControlSettings, translate: t
+  }) : null;
+  await networkSettings?.mount();
   enableStandardSelects(overlay);
 
   const style = document.createElement('style');
@@ -711,6 +716,73 @@ export async function showConfigDialog(isElectron, currentConfig) {
     #library-sharing-status:empty {
       display: none;
     }
+    .network-settings-section {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .network-settings-section .section-label {
+      margin: 0;
+      font-size: inherit;
+    }
+    .network-settings-section p,
+    .network-settings-status {
+      margin: 0;
+      color: var(--et-surface-74);
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+    .network-setting-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+      align-items: center;
+      gap: 10px;
+      color: var(--et-surface-89);
+      font-size: 13px;
+    }
+    .network-setting-row input {
+      width: 100%;
+    }
+    .network-settings-section .checkbox-container {
+      cursor: pointer;
+    }
+    .network-settings-section > .library-button {
+      justify-self: start;
+    }
+    .network-settings-actions,
+    .network-settings-file-row,
+    .network-settings-entry {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .network-settings-file-row > span,
+    .network-settings-entry > span {
+      flex: 1 1 140px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      color: var(--et-surface-74);
+      font-size: 12px;
+    }
+    .network-settings-list {
+      display: grid;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--et-surface-17);
+    }
+    .network-settings-section .library-button {
+      max-width: 100%;
+      white-space: normal;
+    }
+    .network-settings-list:empty,
+    .network-settings-section p:empty,
+    .network-settings-section [hidden],
+    .network-settings-status:empty {
+      display: none;
+    }
     .power-advanced-settings {
       margin: 12px 0 0 26px;
       padding-top: 10px;
@@ -848,6 +920,10 @@ export async function showConfigDialog(isElectron, currentConfig) {
       .network-name-row {
         align-items: stretch;
         flex-direction: column;
+        gap: 4px;
+      }
+      .network-setting-row {
+        grid-template-columns: minmax(0, 1fr);
         gap: 4px;
       }
       .power-setting-row {
@@ -1082,6 +1158,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
   function markLibrarySharingUnsaved() {
     librarySharingStatusKey = 'unsaved';
     renderLibrarySharing();
+    networkSettings?.updateLanguage();
   }
 
   function renderLibrarySharing() {
@@ -2107,6 +2184,7 @@ export async function showConfigDialog(isElectron, currentConfig) {
     removeAirPlayStatusListener?.();
     removeAirPlayStatusListener = null;
     removeRemoteControlSettingsListener?.();
+    networkSettings?.dispose();
     removeRemoteControlSettingsListener = null;
     document.body.removeChild(overlay);
     document.head.removeChild(style);

@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { chromium } from 'playwright';
+import { analyzerDisplayDependencies } from '../helpers/visualizer-analyzer-script.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
-const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
+const moduleScript = path => (path.endsWith('/visualizer-analyzer-display.js') ? analyzerDisplayDependencies : '')
+    + read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
 
 test('Chroma stays drawable when a small visualizer tile receives a signal', async () => {
     const browser = await chromium.launch({ headless: true });

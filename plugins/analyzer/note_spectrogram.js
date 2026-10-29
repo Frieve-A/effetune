@@ -35,6 +35,11 @@ const MULTI_F0_COLORS = [
     { value: 'Instrument9', label: 'Instrument (9)' }
 ];
 const MULTI_F0_TIMBRE_FRAME = 31;
+const MULTI_F0_CHORD_KEY_FRAME = 32;
+const MULTI_F0_CHORD_CONFIRMED_LAG = 11;
+const MULTI_F0_CHORD_LANE_HEIGHT = 36;
+const MULTI_F0_CHORD_FONT_SIZE = 28;
+const MULTI_F0_CHORD_SUFFIXES = ['', 'm', 'dim', 'aug', 'maj7', 'm7', '7', 'dim7', 'm7b5', 'sus2', 'sus4'];
 const MULTI_F0_TIMBRE_CLASSES = ['Bass', 'Guitar', 'Piano', 'Strings', 'Wind', 'Synth', 'Organ', 'Other', 'Vocal'];
 const MULTI_F0_TIMBRE_COLORS = [
     [76, 120, 184], [201, 154, 59], [143, 114, 199], [76, 155, 115], [70, 158, 168],
@@ -96,6 +101,20 @@ const MULTI_F0_WHITE_KEY_MIDIS = Array.from(
 const MULTI_F0_NOTE_NAMES = [
     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
 ];
+// Choose the fewest key-signature accidentals; six-accidental ties use sharps.
+const MULTI_F0_MAJOR_SIGNATURES = [0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5];
+const MULTI_F0_KEY_NOTE_NAMES = Array.from({ length: 24 }, (_, key) => {
+    const signature = MULTI_F0_MAJOR_SIGNATURES[(key % 12 + (key < 12 ? 0 : 3)) % 12];
+    const flat = signature < 0;
+    const names = flat ? ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B']
+        : [...MULTI_F0_NOTE_NAMES];
+    const order = flat ? [11, 4, 9, 2, 7, 0, 5] : [5, 0, 7, 2, 9, 4, 11];
+    for (let index = 0; index < Math.abs(signature); index++) {
+        const natural = order[index];
+        names[(natural + (flat ? -1 : 1) + 12) % 12] = MULTI_F0_NOTE_NAMES[natural] + (flat ? '♭' : '#');
+    }
+    return names;
+});
 const MULTI_F0_BLACK_KEY_BACKGROUND = 8;
 // Smaller alpha values round to zero on the 8-bit history canvas.
 const MULTI_F0_MIN_VISIBLE_ALPHA = 0.5 / 255;
@@ -131,8 +150,24 @@ function isNewerMultiF0Counter(candidate, current) {
     return delta !== 0 && delta < 0x80000000;
 }
 
-function multiF0NoteName(midi) {
-    return `${MULTI_F0_NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+function multiF0NoteName(midi, names = MULTI_F0_NOTE_NAMES) {
+    return `${names[midi % 12]}${Math.floor(midi / 12) - 1}`;
+}
+
+function multiF0ChordName(root, quality, bass) {
+    if (root === 255 && quality === 255 && bass === 255) return '';
+    if (root > 11 || quality > 10 || bass > 11) return null;
+    return MULTI_F0_NOTE_NAMES[root] + MULTI_F0_CHORD_SUFFIXES[quality] +
+        (bass === root ? '' : `/${MULTI_F0_NOTE_NAMES[bass]}`);
+}
+
+function multiF0KeyName(key) {
+    return key < 24 ? `${MULTI_F0_KEY_NOTE_NAMES[key][key % 12]} ${key < 12 ? 'major' : 'minor'}` : '—';
+}
+
+function multiF0DisplayChordName(chord, names) {
+    // History stays canonical; only root and slash-bass names change, never quality suffixes.
+    return chord.replace(/(^|\/)([A-G]#?)/g, (_, prefix, note) => prefix + names[MULTI_F0_NOTE_NAMES.indexOf(note)]);
 }
 
 class NoteSpectrogramPlugin extends PluginBase {
@@ -140,6 +175,9 @@ class NoteSpectrogramPlugin extends PluginBase {
     static timbreColorMode = 'Probability';
     static noteColors = MULTI_F0_NOTE_COLORS;
     static noteColor = multiF0NoteColor;
+    static noteNamesForKey = key => MULTI_F0_KEY_NOTE_NAMES[key] ?? MULTI_F0_NOTE_NAMES;
+    static keyName = multiF0KeyName;
+    static chordName = (chord, key) => multiF0DisplayChordName(chord, NoteSpectrogramPlugin.noteNamesForKey(key));
     static levelFloor = MULTI_F0_LEVEL_FLOOR;
 
     static normalizedLevel(level, reference, range = MULTI_F0_LEVEL_RANGE_DB,
@@ -182,6 +220,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.ly = 'Horizontal';
         this.vl = true;
         this.os = false;
+        this.ck = false;
         this.ts = 2;
         this.mn = MULTI_F0_DEFAULT_MIN_MIDI;
         this.mx = MULTI_F0_DEFAULT_MAX_MIDI;
@@ -197,6 +236,11 @@ class NoteSpectrogramPlugin extends PluginBase {
         // later revision can rewrite exactly those columns (see handleTelemetry).
         this.frameRecords = [];
         this.columnFrames = new Uint32Array(MULTI_F0_HISTORY_WIDTH).fill(0xffffffff);
+        this.confirmedChords = new Array(MULTI_F0_HISTORY_WIDTH).fill(null);
+        this.localKey = 24;
+        this.notationNames = MULTI_F0_NOTE_NAMES;
+        this.overallKey = null;
+        this.lastChordKeyFrameIndex = null;
         this.timbreNotes = new Map();
         this.timbreByPitch = Array.from({ length: MULTI_F0_NOTE_COUNT }, () => []);
         this.timbreDirtyRanges = [];
@@ -227,6 +271,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this._dspTelemetryUnsubscribe = null;
         this._boundTelemetry = frame => this.handleTelemetry(frame);
         this._boundTimbreTelemetry = frame => this.handleTimbreTelemetry(frame);
+        this._boundChordKeyTelemetry = frame => this.handleChordKeyTelemetry(frame);
 
         this.imageData = null;
         this.tempCanvas = null;
@@ -260,6 +305,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.ly = 'Horizontal';
         this.vl = true;
         this.os = false;
+        this.ck = false;
         this.ts = 2;
         this.mn = MULTI_F0_DEFAULT_MIN_MIDI;
         this.mx = MULTI_F0_DEFAULT_MAX_MIDI;
@@ -280,6 +326,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             ly: this.ly,
             vl: this.vl,
             os: this.os,
+            ck: this.ck,
             ts: this.ts,
             mn: this.mn,
             mx: this.mx
@@ -288,6 +335,12 @@ class NoteSpectrogramPlugin extends PluginBase {
 
     setParameters(params = {}) {
         const wereNoteEventsEnabled = this.noteEventsEnabled();
+        if (params.ck !== undefined && (params.ck === true) !== this.ck) {
+            this.ck = params.ck === true;
+            this.clearChordKeyHistory();
+            this._graphReadout?.clear();
+            this.drawGraph();
+        }
         if (params.enabled !== undefined) this.enabled = params.enabled !== false;
         const color = params.cl ?? (params.rb === undefined ? this.cl : (params.rb ? 'Rainbow' : 'Normal'));
         if (MULTI_F0_COLORS.some(option => option.value === color) && color !== this.cl) {
@@ -374,6 +427,74 @@ class NoteSpectrogramPlugin extends PluginBase {
         return this.os || this.timbreEnabled();
     }
 
+    clearChordKeyHistory() {
+        this.confirmedChords?.fill(null);
+        this.localKey = 24;
+        this.overallKey = null;
+        this.lastChordKeyFrameIndex = null;
+        this._setNotationKey(24);
+    }
+
+    _setNotationKey(key) {
+        const names = NoteSpectrogramPlugin.noteNamesForKey(key);
+        if (this.notationNames === names) return;
+        this.notationNames = names;
+        this.syncUIControls?.();
+    }
+
+    _noteReadout(midi) {
+        const text = window.GraphReadout.format.note(440 * 2 ** ((midi - 69) / 12), 440);
+        return text.replace(/^[A-G]#?-?\d+/, multiF0NoteName(Math.round(midi), this.notationNames));
+    }
+
+    parseChordKeyTelemetryFrame(frame) {
+        if (frame?.frameType !== MULTI_F0_CHORD_KEY_FRAME || frame.formatVersion !== 1) return null;
+        const payload = frame.payload;
+        if (!payload || payload.byteLength !== 32 || typeof payload.getUint8 !== 'function') return null;
+        const sampleRate = payload.getFloat32(0, true);
+        const timeSeconds = payload.getFloat32(4, true);
+        const hopSeconds = payload.getFloat32(8, true);
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Number.isFinite(timeSeconds) ||
+            timeSeconds < 0 || !Number.isFinite(hopSeconds) || hopSeconds <= 0) return null;
+        const generation = payload.getUint32(12, true);
+        const frameIndex = payload.getUint32(16, true);
+        const readChord = offset => {
+            const root = payload.getUint8(offset), quality = payload.getUint8(offset + 1), bass = payload.getUint8(offset + 2);
+            const name = multiF0ChordName(root, quality, bass);
+            return name === null ? null : { root, quality, bass, name };
+        };
+        const immediate = readChord(20), confirmed = readChord(23);
+        const localKey = payload.getUint8(26);
+        const overallKey = payload.getUint8(27);
+        const confirmedProbability = payload.getFloat32(28, true);
+        if (immediate === null || confirmed === null || (localKey > 24 && localKey !== 255) ||
+            (overallKey > 23 && overallKey !== 255) || !Number.isFinite(confirmedProbability) ||
+            confirmedProbability < 0 || confirmedProbability > 1) return null;
+        return { sampleRate, timeSeconds, hopSeconds, generation, frameIndex, immediate, confirmed,
+            localKey: localKey === 255 ? null : localKey,
+            overallKey: overallKey === 255 ? null : overallKey, confirmedProbability };
+    }
+
+    handleChordKeyTelemetry(frame) {
+        if (!this.ck || !this.enabled || !this._sectionEnabled || !this.columnFrames) return;
+        const snapshot = this.parseChordKeyTelemetryFrame(frame);
+        if (!snapshot || snapshot.generation !== this.activeGeneration ||
+            (frame.source && frame.source !== this.telemetrySource)) return;
+        const { frameIndex, confirmed, localKey, overallKey } = snapshot;
+        if (this.lastChordKeyFrameIndex !== null &&
+            !isNewerMultiF0Counter(frameIndex, this.lastChordKeyFrameIndex)) return;
+        const confirmedFrame = (frameIndex - MULTI_F0_CHORD_CONFIRMED_LAG) >>> 0;
+        for (let column = 0; column < MULTI_F0_HISTORY_WIDTH; column++) {
+            const owner = this.columnFrames[column];
+            if (owner === 0xffffffff) continue;
+            if (owner === confirmedFrame) this.confirmedChords[column] = confirmed.name;
+        }
+        this.localKey = localKey;
+        this.overallKey = overallKey;
+        this._setNotationKey(overallKey);
+        this.lastChordKeyFrameIndex = frameIndex;
+    }
+
     _effectiveHighlight() {
         return this._legendHighlight ?? this.hl;
     }
@@ -409,17 +530,39 @@ class NoteSpectrogramPlugin extends PluginBase {
         canvas?.addEventListener('pointerleave', this._boundLegendLeave, { passive: true });
     }
 
-    _drawTimbreLegend(context, width, height) {
-        this._legendRects = [];
+    _layoutTimbreLegend(context, width, height) {
+        const items = [];
         const labels = this.cl === 'Instrument3' ? ['Vocal', 'Bass', 'Other']
             : this.cl === 'Instrument9' ? [...MULTI_F0_TIMBRE_CLASSES] : [];
         const highlight = this._effectiveHighlight();
         if (highlight !== 'None') {
             labels.push(`Highlight: ${MULTI_F0_HIGHLIGHTS.find(option => option.value === highlight).label}`);
         }
-        if (!labels.length || width <= 0 || height <= 0) return;
+        if (!labels.length || width <= 0 || height <= 0) return items;
         const dpr = this.graphDpr || 1, padding = 6 * dpr, lineHeight = 20 * dpr;
+        context.save();
+        context.font = `${12 * dpr}px Arial`;
+        let x = padding, y = padding + (this.ck && this.ly === 'Vertical' ? MULTI_F0_CHORD_LANE_HEIGHT * dpr : 0);
+        for (const label of labels) {
+            const color = MULTI_F0_TIMBRE_COLORS[MULTI_F0_TIMBRE_CLASSES.indexOf(label)];
+            const swatch = color ? 14 * dpr : 0;
+            const itemWidth = context.measureText(label).width + swatch + 2 * padding;
+            if (x > padding && x + itemWidth > width - padding) { x = padding; y += lineHeight; }
+            if (y + lineHeight > height) break;
+            items.push({ label, color, swatch, x, y, width: itemWidth, height: lineHeight });
+            x += itemWidth;
+        }
+        context.restore();
+        return items;
+    }
+
+    _drawTimbreLegend(context, width, height) {
+        this._legendRects = [];
+        const items = this._layoutTimbreLegend(context, width, height);
+        if (!items.length) return;
+        const dpr = this.graphDpr || 1, padding = 6 * dpr;
         const theme = this.displayOptions?.themePalette ?? window.ThemePalette;
+        const highlight = this._effectiveHighlight();
         context.save();
         context.beginPath();
         context.rect(0, 0, width, height);
@@ -427,13 +570,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         context.font = `${12 * dpr}px Arial`;
         context.textAlign = 'left';
         context.textBaseline = 'middle';
-        let x = padding, y = padding;
-        for (const label of labels) {
-            const color = MULTI_F0_TIMBRE_COLORS[MULTI_F0_TIMBRE_CLASSES.indexOf(label)];
-            const swatch = color ? 14 * dpr : 0;
-            const itemWidth = context.measureText(label).width + swatch + 2 * padding;
-            if (x > padding && x + itemWidth > width - padding) { x = padding; y += lineHeight; }
-            if (y + lineHeight > height) break;
+        for (const { label, color, swatch, x, y, width: itemWidth, height: lineHeight } of items) {
             context.fillStyle = theme?.get('graph-bg-deep') ?? '';
             context.fillRect(x, y, itemWidth, lineHeight);
             if (color) {
@@ -452,7 +589,6 @@ class NoteSpectrogramPlugin extends PluginBase {
             }
             context.fillStyle = theme?.get('graph-label') ?? '';
             context.fillText(label, x + padding + swatch, y + lineHeight / 2);
-            x += itemWidth;
         }
         context.restore();
     }
@@ -643,39 +779,36 @@ class NoteSpectrogramPlugin extends PluginBase {
         }
 
         this.disposeDspTelemetrySubscription();
+        const subscriptions = [];
         try {
-            const unsubscribe = hub.subscribe(
-                tapId,
-                MULTI_F0_TAP_FRAME,
-                this._boundTelemetry
-            );
-            if (typeof unsubscribe !== 'function') {
-                hub.unsubscribe?.(tapId, MULTI_F0_TAP_FRAME, this._boundTelemetry);
-                return false;
+            for (const [type, handler] of [
+                [MULTI_F0_TAP_FRAME, this._boundTelemetry],
+                [MULTI_F0_TIMBRE_FRAME, this._boundTimbreTelemetry],
+                [MULTI_F0_CHORD_KEY_FRAME, this._boundChordKeyTelemetry]
+            ]) {
+                const unsubscribe = hub.subscribe(tapId, type, handler);
+                if (typeof unsubscribe !== 'function') {
+                    hub.unsubscribe?.(tapId, type, handler);
+                    throw new Error('Telemetry subscription unavailable');
+                }
+                subscriptions.push(unsubscribe);
             }
             this._dspTelemetryHub = hub;
             this._dspTelemetryTapId = tapId;
-            let unsubscribeTimbre;
-            try {
-                unsubscribeTimbre = hub.subscribe(tapId, MULTI_F0_TIMBRE_FRAME, this._boundTimbreTelemetry);
-            } catch (error) {
-                unsubscribe();
-                this._dspTelemetryHub = null;
-                this._dspTelemetryTapId = null;
-                return false;
-            }
-            if (typeof unsubscribeTimbre !== 'function') {
-                hub.unsubscribe?.(tapId, MULTI_F0_TIMBRE_FRAME, this._boundTimbreTelemetry);
-                unsubscribe();
-                this._dspTelemetryHub = null;
-                this._dspTelemetryTapId = null;
-                return false;
-            }
             this._dspTelemetryUnsubscribe = () => {
-                try { unsubscribe(); } finally { unsubscribeTimbre(); }
+                for (const unsubscribe of subscriptions) {
+                    try { unsubscribe(); } catch {
+                        // A stale subscription must not prevent releasing the remaining streams.
+                    }
+                }
             };
             return true;
-        } catch (error) {
+        } catch {
+            for (const unsubscribe of subscriptions) {
+                try { unsubscribe(); } catch {
+                    // Release the subscriptions established before registration failed.
+                }
+            }
             return false;
         }
     }
@@ -793,6 +926,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.volumeFrameEnds?.fill(1);
         this.frameRecords = [];
         this.columnFrames?.fill(0xffffffff);
+        this.clearChordKeyHistory();
         if (preserveActiveTimbre) {
             // Rebuilding the display does not restart the DSP or resend completed results.
             for (const notes of this.timbreByPitch ?? []) {
@@ -1041,6 +1175,7 @@ class NoteSpectrogramPlugin extends PluginBase {
                 MULTI_F0_HISTORY_WIDTH;
             const historyOffset = column * MULTI_F0_PITCH_COUNT;
             this.columnFrames[column] = snapshot.frameIndex;
+            this.confirmedChords[column] = null;
             this._mergeFramePitches(column, snapshot.levels, snapshot.pitchCents);
             for (let pitch = 0; pitch < MULTI_F0_PITCH_COUNT; pitch++) {
                 if (this.levelIntensity[pitch] > this.levelHistory[historyOffset + pitch]) {
@@ -1063,6 +1198,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             }
             for (let offset = 0; offset < advance - 1; offset++) {
                 const destination = (startColumn + offset) % MULTI_F0_HISTORY_WIDTH;
+                this.confirmedChords[destination] = null;
                 this.volumeFrameEnds[destination] = delta === 1 ? 0 : 1;
                 if (delta === 1) {
                     const source = (destination + MULTI_F0_HISTORY_WIDTH - 1) %
@@ -1111,6 +1247,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             }
             const latestColumn = (startColumn + advance - 1) % MULTI_F0_HISTORY_WIDTH;
             this.columnFrames[latestColumn] = snapshot.frameIndex;
+            this.confirmedChords[latestColumn] = null;
             this.history.set(this.intensity, latestColumn * MULTI_F0_PITCH_COUNT);
             this.pitchCentsHistory.set(snapshot.pitchCents, latestColumn * MULTI_F0_NOTE_COUNT);
             this.levelHistory.set(this.levelIntensity, latestColumn * MULTI_F0_PITCH_COUNT);
@@ -1223,7 +1360,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         valueInput.id = valueId;
         valueInput.name = valueId;
         valueInput.readOnly = true;
-        valueInput.value = multiF0NoteName(value);
+        valueInput.value = multiF0NoteName(value, this.notationNames);
         valueInput.autocomplete = 'off';
         valueInput.style.flexGrow = '0';
         valueInput.style.width = '80px';
@@ -1233,7 +1370,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             const nextValue = Number(event.target.value);
             if (!Number.isFinite(nextValue)) return;
             setter(nextValue);
-            valueInput.value = multiF0NoteName(this[modelKey]);
+            valueInput.value = multiF0NoteName(this[modelKey], this.notationNames);
         });
 
         this._registerUIControl(modelKey, [slider], modelValue => {
@@ -1241,7 +1378,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             if (!Number.isFinite(midi)) return;
             slider.value = midi;
             window.uiManager?.refreshRangeFillStyling?.(slider);
-            valueInput.value = multiF0NoteName(midi);
+            valueInput.value = multiF0NoteName(midi, this.notationNames);
         });
 
         row.appendChild(labelEl);
@@ -1281,6 +1418,9 @@ class NoteSpectrogramPlugin extends PluginBase {
         const onsetsRow = this.createCheckboxControl(
             'Onsets', this.os, value => this.setParameters({ os: value }), 'os'
         );
+        const chordsRow = this.createCheckboxControl(
+            'Chords & Key', this.ck, value => this.setParameters({ ck: value }), 'ck'
+        );
         const timeSpanRow = this.createParameterControl(
             'Time Span', 1, 10, 1, this.ts,
             value => this.setParameters({ ts: value }), 's', 'ts'
@@ -1308,6 +1448,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         parameters.appendChild(layoutRow);
         parameters.appendChild(volumeRow);
         parameters.appendChild(onsetsRow);
+        parameters.appendChild(chordsRow);
         parameters.appendChild(timeSpanRow);
         parameters.appendChild(minNoteRow);
         parameters.appendChild(maxNoteRow);
@@ -1709,6 +1850,148 @@ class NoteSpectrogramPlugin extends PluginBase {
         context.restore();
     }
 
+    _chordKeyColor(root) {
+        const color = this.displayOptions?.chordKeyColor?.(root) ?? (this.cl === 'Rainbow' ? multiF0NoteColor(root) : null);
+        return color ? `rgb(${color.join(', ')})` // theme-allow: Display palette or existing root-note colormap.
+            : (this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-label') ?? '';
+    }
+
+    _drawChordKeyText(context, label, x, y, maxWidth, outline = context) {
+        outline.save();
+        if (outline !== context) {
+            outline.setTransform(context.getTransform());
+            for (const property of ['font', 'textAlign', 'textBaseline', 'globalAlpha']) outline[property] = context[property];
+        }
+        outline.strokeStyle = (this.displayOptions?.themePalette ?? window.ThemePalette)?.get('graph-bg-deep') ?? '';
+        outline.lineWidth = 2 * (this.graphDpr || 1);
+        outline.lineJoin = 'round';
+        outline.strokeText(label, x, y, maxWidth);
+        outline.restore();
+        context.fillText(label, x, y, maxWidth);
+    }
+
+    _drawChordLane(context, rollWidth, columnWidth, scrollPhase, horizontal, outline) {
+        if (!this.ck) return;
+        const legendItems = horizontal ? this._layoutTimbreLegend(context, this.canvas.width, rollWidth) : [];
+        const keyLayout = horizontal ? this._layoutKey(context, this.canvas.width, rollWidth) : null;
+        const obstacles = horizontal
+            ? [...legendItems, ...(keyLayout ? [keyLayout.bounds] : [])].sort((a, b) => a.y - b.y)
+            : [];
+        const dpr = this.graphDpr || 1;
+        const laneHeight = MULTI_F0_CHORD_LANE_HEIGHT * dpr;
+        const padding = 6 * dpr;
+        const targets = outline ? [context, outline] : [context];
+        for (const target of targets) {
+            target.save();
+            target.beginPath();
+            target.rect(0, 0, rollWidth, horizontal ? this.canvas.width : laneHeight);
+            target.clip();
+        }
+        context.font = `bold ${MULTI_F0_CHORD_FONT_SIZE * dpr}px Arial`;
+        context.textAlign = horizontal ? 'right' : 'left';
+        context.textBaseline = 'middle';
+        context.globalAlpha = 1;
+        const labels = [];
+        let previous = null, color;
+        for (let position = 0; position < MULTI_F0_HISTORY_WIDTH; position++) {
+            const column = (this.writeColumn + position) % MULTI_F0_HISTORY_WIDTH;
+            const chord = this.confirmedChords[column];
+            const x = (position - scrollPhase) * columnWidth;
+            const width = (position === MULTI_F0_HISTORY_WIDTH - 1 ? 1 + scrollPhase : 1) * columnWidth;
+            if (chord) {
+                if (chord !== previous) {
+                    const root = MULTI_F0_NOTE_NAMES.indexOf(chord.slice(0, chord[1] === '#' ? 2 : 1));
+                    color = this._chordKeyColor(root);
+                    labels.push({ chord: multiF0DisplayChordName(chord, this.notationNames),
+                        x, end: x + width, color });
+                } else {
+                    labels[labels.length - 1].end = x + width;
+                }
+                context.fillStyle = color;
+                context.fillRect(x, horizontal ? 0 : laneHeight - 2 * dpr, width, 2 * dpr);
+            }
+            previous = chord;
+        }
+        // Keep every label inside its own time interval, with newer labels taking priority.
+        let nextStart = rollWidth;
+        const maxTextWidth = Math.max(1, (horizontal ? this.canvas.width : rollWidth) - 2 * padding);
+        for (let index = labels.length - 1; index >= 0; index--) {
+            const label = labels[index];
+            const metrics = context.measureText(label.chord);
+            const scale = Math.min(1, maxTextWidth / metrics.width);
+            const textLeft = -(metrics.actualBoundingBoxLeft ?? (horizontal ? metrics.width : 0)) * scale - dpr;
+            const textRight = (metrics.actualBoundingBoxRight ?? (horizontal ? 0 : metrics.width)) * scale + dpr;
+            const ascent = (metrics.actualBoundingBoxAscent ?? MULTI_F0_CHORD_FONT_SIZE * dpr / 2) + dpr;
+            const descent = (metrics.actualBoundingBoxDescent ?? MULTI_F0_CHORD_FONT_SIZE * dpr / 2) + dpr;
+            const extent = horizontal ? ascent + descent : textRight - textLeft + 2 * padding;
+            // Match the outer top ink inset to the right inset without padding each chord interval.
+            let start = Math.max(horizontal ? padding - textRight + dpr : 0, label.x);
+            const end = Math.min(label.end, rollWidth, nextStart);
+            if (horizontal) {
+                const left = this.canvas.width - 1.5 * padding + textLeft;
+                const right = this.canvas.width - padding / 2 + textRight;
+                for (const item of obstacles) {
+                    if (left < item.x + item.width && right > item.x &&
+                        start < item.y + item.height && start + extent > item.y) {
+                        start = item.y + item.height;
+                    }
+                }
+            }
+            if (start + extent > end) continue;
+            nextStart = start;
+            context.save();
+            context.translate(horizontal ? start + ascent : start + padding - textLeft,
+                horizontal ? padding + dpr : laneHeight / 2);
+            if (horizontal) context.rotate(-Math.PI / 2);
+            context.fillStyle = label.color;
+            this._drawChordKeyText(context, label.chord, 0, 0, maxTextWidth, outline);
+            context.restore();
+        }
+        for (const target of targets) target.restore();
+    }
+
+    _layoutKey(context, width, height) {
+        if (!this.ck || !Number.isInteger(this.localKey) || this.localKey < 0 || this.localKey >= 24) return null;
+        const dpr = this.graphDpr || 1;
+        const padding = 6 * dpr, lineHeight = MULTI_F0_CHORD_LANE_HEIGHT * dpr;
+        const label = `Key: ${multiF0KeyName(this.localKey)}`;
+        const font = `bold ${MULTI_F0_CHORD_FONT_SIZE * dpr}px Arial`;
+        const x = padding * 2, y = height - lineHeight / 2 - padding;
+        const maxTextWidth = Math.max(1, width - 4 * padding);
+        context.save();
+        context.font = font;
+        context.textAlign = 'left';
+        context.textBaseline = 'middle';
+        const metrics = context.measureText(label);
+        context.restore();
+        const scale = Math.min(1, maxTextWidth / metrics.width);
+        const left = x - (metrics.actualBoundingBoxLeft ?? 0) * scale;
+        const right = x + (metrics.actualBoundingBoxRight ?? metrics.width) * scale;
+        const ascent = metrics.actualBoundingBoxAscent ?? MULTI_F0_CHORD_FONT_SIZE * dpr / 2;
+        const descent = metrics.actualBoundingBoxDescent ?? MULTI_F0_CHORD_FONT_SIZE * dpr / 2;
+        return { label, font, x, y, maxTextWidth,
+            bounds: { x: left - dpr, y: y - ascent - dpr, width: right - left + 2 * dpr, height: ascent + descent + 2 * dpr } };
+    }
+
+    _drawKeys(context, width = this.canvas.width, height = this.canvas.height, outline) {
+        const layout = this._layoutKey(context, width, height);
+        if (!layout) return;
+        const { label, font, x, y, maxTextWidth } = layout;
+        const targets = outline ? [context, outline] : [context];
+        for (const target of targets) {
+            target.save();
+            target.beginPath();
+            target.rect(0, 0, width, height);
+            target.clip();
+        }
+        context.font = font;
+        context.textAlign = 'left';
+        context.textBaseline = 'middle';
+        context.fillStyle = this._chordKeyColor(this.localKey % 12);
+        this._drawChordKeyText(context, label, x, y, maxTextWidth, outline);
+        for (const target of targets) target.restore();
+    }
+
     drawGraph(now = performance.now()) {
         if (this.displayOptions?.deferDraw) return;
         if (this._timbreColorsDirty) {
@@ -1965,7 +2248,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             let labelWidth = 0, labelHeight = 0;
             for (let midi = Math.ceil(this.mn / 12) * 12; midi <= this.mx; midi += 12) {
                 if (horizontal && midi > 96) continue;
-                const metrics = context.measureText(`C${midi / 12 - 1}`);
+                const metrics = context.measureText(multiF0NoteName(midi, this.notationNames));
                 labelWidth = Math.max(labelWidth, metrics.width);
                 labelHeight = Math.max(labelHeight, metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent);
             }
@@ -2014,7 +2297,7 @@ class NoteSpectrogramPlugin extends PluginBase {
             const octave = midi / 12 - 1;
             if (showPitchLabels && isC && (!horizontal || octave <= 7)) {
                 const drawLabel = () => {
-                    const label = `C${octave}`;
+                    const label = multiF0NoteName(midi, this.notationNames);
                     const x = showKeyboard ? rollWidth + blackKeyDepth + (gutter - blackKeyDepth) / 2 : width - 2 * dpr;
                     const y = height - ((midi - this.mn) * rowHeight +
                         0.5 * 12 * rowHeight / 7);
@@ -2051,7 +2334,13 @@ class NoteSpectrogramPlugin extends PluginBase {
                 else drawLabel();
             }
         }
+        const drawChordLane = (target, outline) => this._drawChordLane(target, rollWidth, columnWidth, scrollPhase, horizontal, outline);
+        if (this.displayOptions?.drawChordKey) this.displayOptions.drawChordKey(context, drawChordLane);
+        else drawChordLane(context);
         if (horizontal) context.restore();
+        const drawKey = (target, outline) => this._drawKeys(target, horizontal ? height : rollWidth, horizontal ? rollWidth : height, outline);
+        if (this.displayOptions?.drawChordKey) this.displayOptions.drawChordKey(context, drawKey);
+        else drawKey(context);
         this._drawTimbreLegend(context, horizontal ? height : rollWidth, horizontal ? rollWidth : height);
         this._graphReadout?.refresh();
     }
@@ -2064,12 +2353,11 @@ class NoteSpectrogramPlugin extends PluginBase {
         const { horizontal, canvasWidth, rollWidth, rowHeight, columnWidth, scrollPhase } = frame;
         const u = horizontal ? y : x;
         const v = horizontal ? canvasWidth - x : y;
-        const frequency = midi => 440 * 2 ** ((midi - 69) / 12);
         if (u >= rollWidth) {
             const axis = window.FrequencyAxis;
             const key = axis?.hitKey(axis.noteAxisKeys(this.mn, this.mx, frame.height),
                 frame.height - v, u - rollWidth, frame.gutter, frame.blackKeyDepth);
-            return key ? { cursor: format.note(frequency(key.midi), 440), rows: [], crosshair: 'none' } : null;
+            return key ? { cursor: this._noteReadout(key.midi), rows: [], crosshair: 'none' } : null;
         }
         const latestStart = rollWidth - (1 + scrollPhase) * columnWidth;
         const column = u >= latestStart
@@ -2111,9 +2399,14 @@ class NoteSpectrogramPlugin extends PluginBase {
             label: 'Level',
             value: format.db(matched ? this.volumeLevelHistory[historyOffset + levelPitch] : NaN)
         };
-        const cursor = `${format.note(frequency(cellMidi), 440)} · ${
+        const cursor = `${this._noteReadout(cellMidi)} · ${
             format.time(-(rollWidth - u) / columnWidth * this.columnPeriod * 1000)}`;
         const rows = [row, levelRow];
+        if (this.ck) {
+            const chord = this.confirmedChords[column];
+            if (chord !== null) rows.push({ ...row, label: 'Chord',
+                value: chord ? multiF0DisplayChordName(chord, this.notationNames) : 'No chord' });
+        }
         const probabilities = matched && this.timbreEnabled() ? this._timbreForColumn(column, midi)?.probabilities : null;
         if (this.timbreEnabled() && !probabilities) {
             rows.push({ label: 'Instrument', color: `rgb(${MULTI_F0_TIMBRE_UNCLASSIFIED_COLOR.join(', ')})`, // theme-allow: Fixed neutral instrument color.
@@ -2170,6 +2463,7 @@ class NoteSpectrogramPlugin extends PluginBase {
         this.volumeFrameEnds = null;
         this.frameRecords = null;
         this.columnFrames = null;
+        this.confirmedChords = null;
         this.timbreNotes?.clear();
         this.timbreByPitch = null;
         this.timbreDirtyRanges = null;

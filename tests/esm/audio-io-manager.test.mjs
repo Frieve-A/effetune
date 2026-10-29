@@ -6,6 +6,7 @@ import {
   MIC_DENIED_PREFIX
 } from '../../js/audio/audio-io-manager.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../../js/audio/audio-device-constants.js';
+import { PipelineProcessor } from '../../js/audio/pipeline-processor.js';
 import { flushMicrotasks, withGlobals } from '../helpers/global-test-utils.mjs';
 
 class FakeNode {
@@ -514,7 +515,98 @@ test('audio input handles saved-device permission failures and non-permission fa
   });
 });
 
-test('desktop output is always direct, including fresh installs and old saved preferences', async () => {
+test('multichannel media output preserves four channels without connecting the stereo destination', async () => {
+  const warnings = [];
+  const stream = createStream('quad-output');
+  await withAudioIO({
+    context: { audioContext: { contextSetSinkId: true, destinationStream: stream } },
+    window: {
+      electron: true,
+      electronAPI: { platform: 'linux' },
+      app: { setStartupWarning: message => warnings.push(message) },
+      preferences: { outputDeviceId: 'quad-device', outputChannels: 4 }
+    }
+  }, async ({ manager, contextManager, calls }) => {
+    contextManager.outputChannelCount = 4;
+    contextManager.useMediaStreamOutput = true;
+    manager.sourceNode = new FakeNode('source', calls);
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.directOutputMode, false);
+    assert.equal(manager.audioContextSinkMode, false);
+    assert.equal(manager.destinationNode.channelCount, 4);
+    assert.equal(manager.destinationNode.channelCountMode, 'explicit');
+    assert.equal(manager.destinationNode.channelInterpretation, 'discrete');
+    assert.equal(manager.audioElement.sinkId, 'quad-device');
+    assert.equal(manager.audioElement.srcObject, stream);
+    assert.equal(await manager.connectAudioNodes(), '');
+    assert.deepEqual(manager.outputGainNode.connections, [manager.destinationNode]);
+    assert.equal(calls.some(call => call[0] === 'ctx.setSinkId'), false);
+    manager.audioElement.dispatch('error');
+    assert.equal(manager.audioElement.paused, true);
+    assert.equal(manager.defaultDestinationConnection, null);
+    assert.match(warnings[0], /4.channel.*output/i);
+    const retiredElement = manager.audioElement;
+    manager.cleanupAudio();
+    assert.equal(stream.tracks[0].stopped, true);
+    assert.equal(await manager.initAudioOutput(), '');
+    retiredElement.dispatch('error');
+    assert.equal(manager.audioElement.paused, false);
+    assert.equal(warnings.length, 1);
+    manager.cleanupAudio();
+  });
+});
+
+test('failed multichannel output stays disconnected when the startup pipeline is rebuilt', async () => {
+  for (const failure of [
+    { audio: { rejectSinkId: true } },
+    { audio: { playReject: true } },
+    { audio: { noSinkId: true } },
+    { context: { audioContext: { failMediaDestination: true } } }
+  ]) {
+    await withAudioIO({
+      ...failure,
+      window: {
+        electron: true,
+        preferences: { outputDeviceId: 'quad-device', outputChannels: 4 }
+      }
+    }, async ({ manager, contextManager, calls, windowRef }) => {
+      contextManager.outputChannelCount = 4;
+      contextManager.useMediaStreamOutput = true;
+      const result = await manager.initAudioOutput();
+      assert.match(result, /Audio Error:/);
+      assert.equal(manager.defaultDestinationConnection, null);
+      assert.equal(manager.destinationNode, null);
+      assert.equal(manager.audioElement, null);
+      assert.equal(calls.some(call => call[0] === 'saveAudioPreferences'), false);
+      assert.equal((await windowRef.electronIntegration.loadAudioPreferences()).outputDeviceId, 'quad-device');
+      assert.equal(calls.some(call => call[0] === 'audio.setSinkId' && call[1] === 'default'), false);
+      manager.sourceNode = new FakeNode('source', calls);
+      contextManager.workletNode.port = { postMessage() {} };
+      const processor = new PipelineProcessor(contextManager, manager);
+      assert.match(await processor.rebuildPipeline(true), /Audio Error:.*[Mm]ultichannel/);
+      assert.equal(manager.defaultDestinationConnection, null);
+      assert.equal(calls.some(call => call[0] === 'connect' && call[2] === 'destination'), false);
+      manager.cleanupAudio();
+    });
+  }
+});
+
+test('multichannel media output supports the selected default device and reports failed playback recovery', async () => {
+  await withAudioIO({
+    window: { electron: true, preferences: { outputDeviceId: 'default', outputChannels: 4 } }
+  }, async ({ manager, contextManager }) => {
+    contextManager.outputChannelCount = 4;
+    contextManager.useMediaStreamOutput = true;
+    assert.equal(await manager.initAudioOutput(), '');
+    assert.equal(manager.currentOutputDeviceId, 'default');
+    manager.audioElement.play = async () => { throw new Error('device unavailable'); };
+    assert.equal(await manager.reapplyOutputDevice('quad-device'), false);
+    assert.equal(manager.defaultDestinationConnection, null);
+    manager.cleanupAudio();
+  });
+});
+
+test('desktop output uses the context when no multichannel bridge is required', async () => {
   for (const preferences of [null, { outputDeviceId: 'default' },
     { outputDeviceId: 'speaker', outputChannels: 2, lowLatencyOutput: false },
     { outputDeviceId: 'speaker', outputChannels: 2, lowLatencyOutput: true },

@@ -6,6 +6,7 @@ const test = require('node:test');
 const { RemoteControlHost } = require('../../electron/remote-control-host.cjs');
 const { NetworkMusicHost } = require('../../electron/network-music-host.cjs');
 const { dispatchMusic } = require('../../electron/remote-music-dispatcher.cjs');
+const { PWA_ORIGIN } = require('../../electron/pwa-network-host.cjs');
 
 const current = () => true;
 const state = () => ({ playerId: 'target', transportState: 'Playing', currentId: 7, position: 3,
@@ -48,6 +49,95 @@ test('music hello and replies work without a renderer and do not change pipeline
   await host.onMessage(ws, JSON.stringify({ op: 'listMusicDevices', seq: 3 }));
   assert.equal(sent.find(reply => reply.op === 'musicResult' && reply.seq === 3)?.error.code, 'unauthorized');
   assert.equal(networkMusic.calls.filter(call => call === 'getState').length, 1);
+});
+
+test('music1 queue authorization survives controller disconnect but expires when the token changes', async () => {
+  const networkMusic = music();
+  const host = new RemoteControlHost({ app: { getVersion: () => '1.0' }, getMainWindow: () => null,
+    networkMusic, env: { EFFETUNE_REMOTE_TOKEN: 'queue-token' }, argv: [], log() {} });
+  const ws = new EventEmitter(); ws.readyState = 1; ws.send = () => {}; ws.close = () => {};
+  host.wss = { clients: new Set([ws]) }; host.listening = true;
+  host.onConnection(ws, { url: '/?t=queue-token', socket: { remoteAddress: '127.0.0.1' } });
+  await host.onMessage(ws, JSON.stringify({ op: 'playMusic', seq: 1, playerId: 'target', items: [{ serverId: 'source', trackId: 'track' }] }));
+  const command = networkMusic.calls.find(call => call[0] === 'playerCommand')[1];
+  assert.equal(command.isCurrent(), true); assert.equal(command.isAuthorized(), true);
+  ws.readyState = 3;
+  assert.equal(command.isCurrent(), false); assert.equal(command.isAuthorized(), true);
+  host.token = 'revoked'; assert.equal(command.isAuthorized(), false);
+});
+
+test('PWA effects sockets deny music1 before dispatch when gateway access is absent or revoked while native music1 remains available', async t => {
+  for (const initiallyAllowed of [false, true]) await t.test(initiallyAllowed ? 'gateway permission revoked' : 'gateway permission never granted', async t => {
+    const networkMusic = Object.assign(new EventEmitter(), music());
+    networkMusic.gatewayPermissions = { libraries: initiallyAllowed, players: initiallyAllowed };
+    const localPlayer = { id: 'local', controlId: 'local:local', name: 'Local player',
+      host: { setLocalControlEnabled() {}, cancelStaleLocalActions() {} } };
+    const host = new RemoteControlHost({ app: { getVersion: () => 'test' }, getMainWindow: () => null,
+      networkMusic, localPlayer, env: { EFFETUNE_REMOTE_TOKEN: 'effects-token' }, argv: [], log() {} });
+    const effectCalls = [];
+    host.enqueue = async request => { effectCalls.push(request.op); return { ok: true, effects: [] }; };
+    t.after(async () => { host.wss = null; await host.dispose(); });
+    const connect = url => {
+      const sent = [];
+      const ws = new EventEmitter();
+      ws.readyState = 1; ws.send = value => sent.push(JSON.parse(value)); ws.close = () => {};
+      const request = { url, headers: { host: '127.0.0.1', origin: PWA_ORIGIN }, socket: { remoteAddress: '127.0.0.1' } };
+      return { ws, sent, request };
+    };
+    const pwa = connect('/pwa/v1/effects?t=effects-token');
+    host.wss = { clients: new Set([pwa.ws]) }; host.listening = true;
+    assert.equal(host.pwa.acceptsUpgrade(pwa.request), true, 'The real PWA upgrade accepts this effects endpoint');
+    host.onConnection(pwa.ws, pwa.request);
+    for (const rendererReady of [false, true]) {
+      host.rendererReady = rendererReady;
+      await host.onMessage(pwa.ws, JSON.stringify({ op: 'hello', v: 1, seq: rendererReady ? 2 : 1 }));
+      const greeting = pwa.sent.filter(reply => reply.op === 'state').at(-1);
+      assert.ok(greeting.features.includes('describe1'));
+      assert.equal(greeting.features.includes('music1'), false);
+    }
+    if (initiallyAllowed) {
+      networkMusic.gatewayPermissions = { libraries: false, players: false };
+      networkMusic.emit('state');
+    }
+    const operations = [
+      { op: 'listMusicDevices' },
+      { op: 'browseMusic', serverId: 'third-party-library' },
+      { op: 'getPlayback', playerId: 'third-party-player' },
+      { op: 'playMusic', playerId: 'third-party-player', items: [{ serverId: 'third-party-library', trackId: 'song' }] },
+      { op: 'queueMusic', playerId: 'third-party-player', items: [{ serverId: 'third-party-library', trackId: 'song' }] },
+      { op: 'controlPlayback', playerId: 'third-party-player', action: 'stop' },
+      { op: 'editPlaybackQueue', playerId: 'third-party-player', action: 'clear' }
+    ];
+    for (const [index, operation] of operations.entries()) {
+      const seq = index + 10;
+      await host.onMessage(pwa.ws, JSON.stringify({ ...operation, seq }));
+      assert.deepEqual(pwa.sent.at(-1), { op: 'ack', seq, ok: false, error: 'unauthorized' });
+    }
+    assert.deepEqual(networkMusic.calls, [], 'No music request from the effects socket reaches a host operation');
+    await host.onMessage(pwa.ws, JSON.stringify({ op: 'params', seq: 20, index: 0, params: { vl: -6 } }));
+    assert.equal(pwa.sent.at(-1).ok, true);
+    assert.ok(effectCalls.includes('params'), 'The PWA effects protocol remains available');
+    const native = connect('/?t=effects-token');
+    delete native.request.headers.origin;
+    host.wss.clients.add(native.ws); host.onConnection(native.ws, native.request);
+    await host.onMessage(native.ws, JSON.stringify({ op: 'hello', v: 1, seq: 30 }));
+    assert.equal(native.sent.find(reply => reply.op === 'state').features.includes('music1'), true);
+    for (const [index, operation] of [operations[1], operations[5]].entries()) {
+      const seq = index + 31;
+      await host.onMessage(native.ws, JSON.stringify({ ...operation, seq }));
+      assert.equal(native.sent.find(reply => reply.op === 'musicResult' && reply.seq === seq).ok, true);
+    }
+    assert.ok(networkMusic.calls.some(call => call[0] === 'browse' && call[1].serverId === 'third-party-library'));
+    assert.ok(networkMusic.calls.some(call => call[0] === 'playerCommand' && call[1].playerId === 'third-party-player' && call[1].action === 'stop'));
+    host.token = 'rotated-token';
+    assert.equal(pwa.ws.isCurrentPwaSession(), false);
+    const frameCount = pwa.sent.length; const callCount = networkMusic.calls.length;
+    pwa.ws.emit('message', Buffer.from(JSON.stringify({ ...operations[5], seq: 40 })), false);
+    assert.equal(pwa.sent.length, frameCount, 'The existing stale-session frame guard drops the message');
+    await host.onMessage(pwa.ws, JSON.stringify({ ...operations[5], seq: 41 }));
+    assert.deepEqual(pwa.sent.at(-1), { op: 'ack', seq: 41, ok: false, error: 'unauthorized' });
+    assert.equal(networkMusic.calls.length, callCount, 'An expired PWA session never falls back to native music1');
+  });
 });
 
 test('host validation rejects unknown fields, wrong values and arbitrary track payloads before effects', async () => {

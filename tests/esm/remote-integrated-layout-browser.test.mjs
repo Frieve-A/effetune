@@ -12,6 +12,13 @@ const origin = 'https://effetune.test';
 async function initializeLocalEditor(native) {
     const main = document.querySelector('.main-container');
     document.body.replaceChildren(main);
+    const player = document.createElement('div');
+    player.className = 'fixture-player';
+    player.style.height = '400px';
+    main.before(player);
+    const style = document.createElement('style');
+    style.textContent = 'body.layout-mobile .fixture-player { display: none; }';
+    document.head.append(style);
     document.documentElement.classList.remove('app-starting');
     if (native) window.electronIntegration = { isElectron: true };
     window.__EFFECTUNE_WASM_ONLY__ = true;
@@ -86,7 +93,7 @@ function geometry() {
         available: pipelineManager.core.columnManager.getAvailablePipelineWidth(),
         columns: document.querySelectorAll('.pipeline-column').length,
         mode: uiManager.layoutMode.mode,
-        main: rect(main), pipeline: rect(pipeline),
+        body: rect(document.body), main: rect(main), pipeline: rect(pipeline),
         items: [...document.querySelectorAll('.pipeline-item')].map(rect),
         overflow: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)
     };
@@ -141,7 +148,7 @@ for (const native of [true, false]) {
                 await page.waitForFunction(width => window.innerWidth === width, width);
             };
             const measurements = [];
-            for (const width of [2537, 2538, 1180, 1100, ...(native ? [] : [390])]) {
+            for (const width of [2537, 2538, 2560, 1180, 1100, ...(native ? [] : [390])]) {
                 await resize(width);
                 await page.reload();
                 await page.evaluate(initializeLocalEditor, native);
@@ -156,6 +163,15 @@ for (const native of [true, false]) {
             for (const measurement of measurements) {
                 const { width, local } = measurement;
                 await resize(width);
+                if (width === 390) {
+                    await page.evaluate(async () => {
+                        document.body.classList.remove('network-player-selected');
+                        const { MobileNav } = await import('./js/ui/mobile-nav.js');
+                        uiManager.mobileNav = new MobileNav(uiManager);
+                        uiManager.mobileNav.setView('effects');
+                    });
+                    assert.equal(await page.locator('body > .mobile-plugin-fab').isVisible(), true);
+                }
                 await page.evaluate(async () => {
                     document.body.classList.add('network-player-selected');
                     if (!effects.frame) await effects.selectPlayer({ id: 'bedroom', name: 'Bedroom PC' });
@@ -164,6 +180,9 @@ for (const native of [true, false]) {
                 await frame.waitForFunction(() => window.remoteClient?.session.status === 'open' && window.remoteClient.engine.confirmed, null, { timeout: 10000 });
                 await page.waitForTimeout(300);
                 await frame.waitForFunction(() => document.querySelector('.main-container').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'));
+                await frame.waitForFunction(() => uiManager.layoutMode.isMobile ||
+                    (document.documentElement.clientWidth === Math.ceil(document.querySelector('.main-container').getBoundingClientRect().width) &&
+                    document.documentElement.scrollWidth === document.documentElement.clientWidth));
                 const remote = await frame.evaluate(geometry);
                 measurement.remote = remote;
                 assert.ok(Math.abs(remote.available - local.available) < 0.01, `${kind} ${width}px: pipeline width budget ${remote.available} / ${local.available}`);
@@ -171,8 +190,20 @@ for (const native of [true, false]) {
                 assert.equal(remote.mode, local.mode, `${kind} ${width}px: layout mode`);
                 assert.equal(remote.pipeline.width, local.pipeline.width, `${kind} ${width}px: rendered pipeline width`);
                 assert.deepEqual(remote.items.map(item => item.width), local.items.map(item => item.width));
-                assert.equal(remote.overflow, local.overflow, `${kind} ${width}px: horizontal overflow`);
-                assert.equal(remote.columns, width >= 2538 ? 2 : 1);
+                const outer = await page.evaluate(() => {
+                    const frame = document.querySelector('iframe').getBoundingClientRect();
+                    const body = document.body.getBoundingClientRect();
+                    return { frameX: frame.x, frameWidth: frame.width, bodyWidth: body.width,
+                        overflow: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+                });
+                if (local.mode === 'desktop') {
+                    assert.equal(outer.frameWidth, local.main.width, `${kind} ${width}px: no extra space beside the editor`);
+                    assert.equal(outer.bodyWidth, local.body.width, `${kind} ${width}px: outer page width matches local`);
+                    assert.equal(outer.frameX + remote.pipeline.right, local.pipeline.right, `${kind} ${width}px: pipeline right edge matches local`);
+                    assert.equal(remote.overflow, 0, `${kind} ${width}px: no inner horizontal scrollbar`);
+                }
+                assert.equal(outer.overflow, local.overflow, `${kind} ${width}px: outer horizontal overflow`);
+                assert.equal(remote.columns, Math.max(1, Math.floor((local.available + 10) / 1074)));
                 const connectionRow = await frame.locator('.remote-bar').evaluate(element => {
                     const row = element.getBoundingClientRect();
                     const button = element.querySelector('button').getBoundingClientRect();
@@ -182,11 +213,69 @@ for (const native of [true, false]) {
                 assert.ok(connectionRow.visible && connectionRow.fits, `${kind} ${width}px: connection action fits the row`);
                 assert.match(connectionRow.text, /Connected[\s\S]*Bedroom PC[\s\S]*Change connection/);
                 assert.equal(await page.locator('.network-effects > .pipeline-header').count(), 0);
+                if (width === 390) {
+                    assert.equal(await page.locator('body > .mobile-plugin-fab').isVisible(), false);
+                    assert.ok(remote.items.every(item => item.width === remote.viewport));
+                    const rightEdges = await frame.evaluate(() => ({
+                        toolbar: document.getElementById('redoButton').getBoundingClientRect().right,
+                        effects: [...document.querySelectorAll('.pipeline-item-header > .delete-button')].map(button => button.getBoundingClientRect().right)
+                    }));
+                    assert.equal(rightEdges.toolbar, remote.viewport - 8);
+                    assert.ok(rightEdges.effects.length > 0 && rightEdges.effects.every(right => right === rightEdges.toolbar));
+                    const rowMargins = await frame.locator('.remote-bar').evaluate(element => {
+                        const rect = element.getBoundingClientRect();
+                        return [rect.left, document.documentElement.clientWidth - rect.right,
+                            element.firstElementChild.getBoundingClientRect().left,
+                            document.documentElement.clientWidth - element.querySelector('button').getBoundingClientRect().right];
+                    });
+                    assert.deepEqual(rowMargins, [0, 0, 8, 8]);
+                    await frame.evaluate(() => document.querySelector('.pipeline-item').style.minHeight = '2200px');
+                    await page.waitForFunction(() => document.querySelector('iframe').clientHeight > 2200);
+                    assert.equal(await frame.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight), false);
+                    await page.mouse.move(180, 300);
+                    await page.mouse.wheel(0, 500);
+                    await page.waitForFunction(() => window.scrollY > 0);
+                    assert.equal(await frame.evaluate(() => window.scrollY), 0);
+                    await frame.waitForFunction(() => {
+                        const frameTop = window.frameElement.getBoundingClientRect().top;
+                        const button = document.querySelector('.mobile-plugin-fab').getBoundingClientRect();
+                        return frameTop + button.top > 0 && frameTop + button.bottom < parent.innerHeight;
+                    });
+                    const addEffect = frame.locator('.mobile-plugin-fab');
+                    assert.equal(await addEffect.count(), 1);
+                    assert.equal(await addEffect.isVisible(), true);
+                    await addEffect.click();
+                    assert.equal(await frame.locator('#pluginList').evaluate(element => element.classList.contains('mobile-open')), true);
+                    await frame.locator('.mobile-plugin-list-close').click();
+                    await frame.evaluate(() => document.querySelector('.pipeline-item').style.removeProperty('min-height'));
+                    await page.evaluate(() => window.scrollTo(0, 0));
+                    await page.evaluate(() => document.body.classList.remove('network-player-selected'));
+                    assert.equal(await page.locator('body > .mobile-plugin-fab').isVisible(), true);
+                    await page.evaluate(() => document.body.classList.add('network-player-selected'));
+                }
                 if (process.env.EFFETUNE_LAYOUT_SCREENSHOTS && [2538, 1100, 390].includes(width)) {
                     await page.screenshot({ path: path.join(process.env.EFFETUNE_LAYOUT_SCREENSHOTS, `${kind}-remote-${width}.png`) });
                 }
             }
             const frame = page.frames().find(candidate => candidate.parentFrame());
+            await resize(2560);
+            await page.waitForTimeout(300);
+            await frame.waitForFunction(() => document.querySelector('.main-container').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'));
+            const shortHeight = await page.locator('iframe').evaluate(element => element.clientHeight);
+            await frame.evaluate(() => {
+                document.querySelector('.pipeline-item').style.minHeight = '2200px';
+            });
+            await page.waitForFunction(() => document.querySelector('iframe').clientHeight > 2200);
+            assert.equal(await frame.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight), false,
+                `${kind}: tall effects must not create an inner vertical scrollbar`);
+            assert.equal(await page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight), true);
+            const frameBox = await page.locator('iframe').boundingBox();
+            await page.mouse.move(frameBox.x + 500, frameBox.y + 200);
+            await page.mouse.wheel(0, 500);
+            await page.waitForFunction(() => window.scrollY > 0);
+            assert.equal(await frame.evaluate(() => window.scrollY), 0, `${kind}: wheel scroll belongs to the outer page`);
+            await frame.evaluate(() => document.querySelector('.pipeline-item').style.removeProperty('min-height'));
+            await page.waitForFunction(height => document.querySelector('iframe').clientHeight <= height, shortHeight);
             const identity = await page.evaluate(() => {
                 window.savedFrame = effects.frame;
                 window.savedPort = effects.port;

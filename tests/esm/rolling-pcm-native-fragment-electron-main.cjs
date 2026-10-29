@@ -1,4 +1,7 @@
 const { app, BrowserWindow } = require('electron');
+const { installTestWindowPolicy } = require('../helpers/electron-test-display.cjs');
+
+installTestWindowPolicy();
 
 app.whenReady().then(async () => {
   const window = new BrowserWindow({

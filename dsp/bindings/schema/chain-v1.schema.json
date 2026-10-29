@@ -591,6 +591,10 @@
             "timbreEnabled": {
               "type": "boolean",
               "default": false
+            },
+            "chordKeyEnabled": {
+              "type": "boolean",
+              "default": false
             }
           }
         }
@@ -768,6 +772,14 @@
             "metronomeClick": {
               "type": "boolean",
               "default": false
+            },
+            "displayMode": {
+              "type": "string",
+              "enum": [
+                "band",
+                "drums"
+              ],
+              "default": "band"
             }
           }
         }

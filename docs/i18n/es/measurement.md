@@ -43,6 +43,6 @@ Usa el icono de cámara (**Copiar imagen**) sobre cualquiera de los cuatro gráf
 
 Las nuevas mediciones utilizan un barrido sinusoidal exponencial (ESS). Empieza con un nivel de salida bajo y ajústalo sin llegar al recorte. La distorsión requiere datos armónicos válidos de esa medición: no puede obtenerse de un WAV importado ni de datos que solo contienen respuesta en frecuencia o una IR lineal. Si faltan datos, importa una medición que incluya las respuestas necesarias o realiza una nueva. El rango disponible también depende de la banda del barrido y la duración grabada. La longitud solicitada del barrido puede aumentar para separar los armónicos. Cada repetición incluye además 2,5 segundos de decaimiento. Con el límite de banda desactivado, ESS abarca de 20 Hz a 20 kHz dentro de los límites de la frecuencia de muestreo real.
 
-Para revisar las respuestas Frequency, Phase, Min Group Delay, Excess Group Delay e Impulse del pipeline activo, incluidas hasta cuatro salidas seleccionadas y, si quieres, respuestas de altavoz guardadas, consulta la [guía de Pipeline Analyzer](pipeline-analyzer.md).
+Para revisar la respuesta en frecuencia, la fase, el retardo de grupo, la respuesta al impulso, la distorsión y el decaimiento del pipeline activo, incluidas hasta cuatro salidas seleccionadas y, si quieres, respuestas de altavoz guardadas, consulta la [guía de Pipeline Analyzer](pipeline-analyzer.md).
 
 [← Volver al README](README.md)

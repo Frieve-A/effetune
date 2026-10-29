@@ -369,6 +369,7 @@ export class IrLibraryService {
     if (options.isCurrent?.() === false) throw new Error('The import was superseded.');
     const header = parseIrAudioHeader(bytes);
     const result = await this.store.importSingle({
+      beforeCommit: options.beforeCommit,
       bytes,
       fileName: file.name,
       metadata: {
@@ -397,6 +398,7 @@ export class IrLibraryService {
     const frames = Math.max(leftHeader.frames || 0, rightHeader.frames || 0) || null;
     const sampleRate = leftHeader.sampleRate;
     const result = await this.store.importPair({
+      beforeCommit: options.beforeCommit,
       left: { bytes: left.bytes, fileName: left.file.name },
       right: { bytes: right.bytes, fileName: right.file.name },
       metadata: {

@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "reference": "Frozen a64_p2F2_s0 CPU float32 model on quantized production planes",
+  "sampleRate": 48000,
+  "channels": 1,
+  "blockSize": 128,
+  "telemetryRate": 60,
+  "samples": 122880,
+  "tapId": 206,
+  "params": {
+    "mn": 28,
+    "mx": 91,
+    "te": false,
+    "ck": true
+  },
+  "frames": 127,
+  "maxScoreError": 7.62939453125e-06,
+  "marginThreshold": 1.52587890625e-05,
+  "restartFrame": 45,
+  "restart52Frame": 52,
+  "telemetryFrames": 126,
+  "inputSha256": "920251fdea1956644811da90ecda485facb655e3e2bf509d716c5b427b74ee29",
+  "planesSha256": "d5b2b7363cb1f55b5d6788ff991b9363f19bd2bc8363de4d54bd2e8bbe7428a2",
+  "scoresSha256": "af716518c86acce6515904c14dea09faa3201f74a77af3c5fcfbff857e6af8f6",
+  "referenceSha256": "a5a37423ec2e41958173375252d60f3a44ca22ecc5e9c8362656475ac5a16951",
+  "marginsSha256": "dd0e54dd5c6b4ba0cc19324d864f61b36dc21dc83429d3d77aeba17b027c5dca",
+  "restartReferenceSha256": "0d69be0d9c1a3f0ca2897a543841fbf7616adae03115d39352f63b5902faae2c",
+  "telemetrySha256": "a39cdd941517034a328594609c8c5d2e02c55f2b5afa667698c58d43207e4454",
+  "restart52ReferenceSha256": "43ed544daadd1495959d7152ccc5a4282c387387e6c5a4acb80d9fa565e7d481"
+}

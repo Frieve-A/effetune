@@ -8,6 +8,9 @@ const FINE_CENTER = 2;
 const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 const INTERVAL_NAMES = ['R', 'b2', '2', 'b3', '3', '4', 'b5', '5', 'b6', '6', 'b7', '7'];
+// Note Spectrogram's chord qualities, in telemetry order.
+const CHORD_INTERVALS = [[0, 4, 7], [0, 3, 7], [0, 3, 6], [0, 4, 8], [0, 4, 7, 11],
+    [0, 3, 7, 10], [0, 4, 7, 10], [0, 3, 6, 9], [0, 3, 6, 10], [0, 2, 7], [0, 5, 7]];
 const SINGLE_INLAYS = new Set([3, 5, 7, 9, 15, 17, 19, 21]);
 const DOUBLE_INLAYS = new Set([12, 24]);
 // Notes fade out when the source stops sending frames, e.g. while processing is suspended.
@@ -54,6 +57,7 @@ export class GuitarFretboardDisplay {
         this.shapeKey = null;
         this.shape = new Map();
         this.hand = null;
+        this.clearChordKey();
     }
 
     setParameters(changed) {
@@ -61,10 +65,31 @@ export class GuitarFretboardDisplay {
         // mn and mx also map the gradient palette over the playable range.
         Object.assign(this, guitarAnalysis(this.params));
         this.shapeKey = null;
+        this.chordShapeKey = null;
+    }
+
+    clearChordKey() {
+        this.chord = null;
+        this.overallKey = null;
+        this.lastChordKeyFrameIndex = null;
+        this.chordArrived = false;
+        this.chordTime = -Infinity;
+        this.chordShapeKey = null;
+        this.chordShape = [];
     }
 
     handleTelemetry(frame) {
         const Note = window.NoteSpectrogramPlugin;
+        if (frame?.frameType === 32) {
+            const snapshot = Note?.prototype.parseChordKeyTelemetryFrame(frame);
+            if (!snapshot || snapshot.generation !== this.activeGeneration || frame.source !== this.telemetrySource ||
+                (this.lastChordKeyFrameIndex !== null && !isNewer(snapshot.frameIndex, this.lastChordKeyFrameIndex))) return;
+            this.chord = snapshot.confirmed.name ? snapshot.confirmed : null;
+            this.overallKey = snapshot.overallKey;
+            this.lastChordKeyFrameIndex = snapshot.frameIndex;
+            this.chordArrived = true;
+            return;
+        }
         const snapshot = Note?.prototype.parseTelemetryFrame(frame);
         if (!snapshot) return;
         if (frame.source !== this.telemetrySource) {
@@ -72,6 +97,7 @@ export class GuitarFretboardDisplay {
             this.activeGeneration = null;
         }
         if (this.activeGeneration === null || isNewer(snapshot.generation, this.activeGeneration)) {
+            this.clearChordKey();
             this.activeGeneration = snapshot.generation;
             this.lastFrameIndex = null;
             this.recent = [];
@@ -231,10 +257,76 @@ export class GuitarFretboardDisplay {
         if (count) this.hand = sum / count;
     }
 
+    // Voice chord classes rather than the detector's individual pitches. Search
+    // four-fret windows, allowing open strings and a lowest-fret barre, at most
+    // four fingers, and the detected bass as the lowest sounding note.
+    solveChordShape(low, high) {
+        const chord = this.chord;
+        const key = chord ? `${chord.root}/${chord.quality}/${chord.bass}/${low}/${high}` : '';
+        if (key === this.chordShapeKey) return this.chordShape;
+        this.chordShapeKey = key;
+        this.chordShape = [];
+        if (!chord) return this.chordShape;
+        const { tn, cp } = this.params;
+        const classes = CHORD_INTERVALS[chord.quality].map(interval => pitchClass(chord.root + interval));
+        if (!classes.includes(chord.bass)) classes.push(chord.bass);
+        const required = classes.reduce((mask, note) => mask | (1 << note), 0);
+        let best = Infinity;
+        const chosen = [];
+        for (let position = Math.max(low, cp + 1); position <= Math.max(high, cp + 1); position++) {
+            const candidates = tn.map((open, string) => {
+                const stops = [];
+                for (let fret = low; fret <= high; fret++) {
+                    if (fret !== cp && (fret < position || fret > position + 3)) continue;
+                    const midi = open + fret;
+                    if (classes.includes(pitchClass(midi))) stops.push({ string, fret, midi });
+                }
+                return stops;
+            });
+            const search = (string, mask, bass, sum, lowest, highest) => {
+                if (string === tn.length) {
+                    if (mask !== required || pitchClass(bass) !== chord.bass) return;
+                    const fretted = chosen.filter(stop => stop.fret > cp);
+                    // A barre can cross higher-fretted strings, but not open or muted strings.
+                    const barre = fretted.filter(stop => stop.fret === lowest);
+                    const first = barre[0]?.string, last = barre.at(-1)?.string;
+                    const canBarre = chosen.filter(stop => stop.string >= first && stop.string <= last && stop.fret >= lowest).length === last - first + 1;
+                    const fingers = fretted.length - (canBarre && barre.length > 1 ? barre.length - 1 : 0);
+                    if (fingers > 4) return;
+                    const muted = tn.length - chosen.length;
+                    const gaps = chosen.at(-1).string - chosen[0].string + 1 - chosen.length;
+                    const cost = muted * 2 + gaps * 2 + (fretted.length ? highest - lowest + lowest * 0.6 : 0) + sum * 0.1;
+                    if (cost < best) {
+                        best = cost;
+                        this.chordShape = chosen.slice();
+                    }
+                    return;
+                }
+                for (const stop of candidates[string]) {
+                    chosen.push(stop);
+                    const fretted = stop.fret > cp;
+                    search(string + 1, mask | (1 << pitchClass(stop.midi)), Math.min(bass, stop.midi),
+                        sum + (fretted ? stop.fret : 0), fretted ? Math.min(lowest, stop.fret) : lowest,
+                        fretted ? Math.max(highest, stop.fret) : highest);
+                    chosen.pop();
+                }
+                search(string + 1, mask, bass, sum, lowest, highest);
+            };
+            search(0, 0, Infinity, 0, Infinity, -Infinity);
+        }
+        return this.chordShape;
+    }
+
     drawGraph(nowMs) {
         const params = this.params;
         if (!params?.tn) return;
         this.stepLevels(nowMs);
+        if (this.chordArrived) {
+            this.chordArrived = false;
+            this.chordTime = nowMs;
+        }
+        const chordMode = params.pm === 'chord';
+        const liveChord = nowMs - this.chordTime <= STALE_MS ? this.chord : null;
         const context = this.ctx, options = this.displayOptions, theme = options.themePalette;
         const { tn, fm, fx, cp, pm, lb, ly } = params;
         const width = this.canvas.width, height = this.canvas.height;
@@ -343,8 +435,9 @@ export class GuitarFretboardDisplay {
             else offNut.delete(midi);
         }
         const notes = [...sounding.keys()].sort((a, b) => a - b);
-        const root = params.ro >= 0 ? params.ro : notes.length ? pitchClass(notes[0]) : -1;
-        const names = lb === 'flat' ? FLAT_NAMES : SHARP_NAMES;
+        const root = params.ro >= 0 ? params.ro : chordMode ? liveChord?.root ?? -1 : notes.length ? pitchClass(notes[0]) : -1;
+        const names = lb === 'detected' ? window.NoteSpectrogramPlugin.noteNamesForKey(this.overallKey)
+            : lb === 'flat' ? FLAT_NAMES : SHARP_NAMES;
         const scaleSteps = params.ro >= 0 && params.sk !== 'none' ? GUITAR_SCALES[params.sk] : null;
         if (scaleSteps) {
             context.strokeStyle = context.fillStyle = theme.get('graph-label');
@@ -380,13 +473,19 @@ export class GuitarFretboardDisplay {
         }
 
         // The strongest notes keep a string when there are more notes than strings.
-        const shapeMode = pm !== 'all';
+        const shapeMode = pm === 'shape' || pm === 'shape-dim';
         if (shapeMode) {
             const strongest = notes.slice().sort((a, b) => sounding.get(b) - sounding.get(a));
             this.solveShape(strongest.slice(0, strings).sort((a, b) => a - b), { low, high: fx, offNut });
         }
         const marks = [];
-        for (const { pitch, level, size } of this.voices) {
+        if (chordMode && liveChord) {
+            for (const { midi, string, fret } of this.solveChordShape(low, fx)) {
+                marks.push({ midi, u: noteU(fret), v: stringV(string), radius: radiusAt(fret),
+                    alpha: 1, color: options.noteColor(midi, 1) });
+            }
+        }
+        for (const { pitch, level, size } of chordMode ? [] : this.voices) {
             const midi = Math.round(pitch);
             const placed = this.shape.get(midi);
             tn.forEach((open, string) => {

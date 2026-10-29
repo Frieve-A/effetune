@@ -21,19 +21,19 @@ export function levelDbToAmplitude(levelDb) {
 }
 
 export function normalizeMeasurementSettings(value = {}) {
-    const signalType = ['mls', 'tsp', 'impulse'].includes(value.signalType)
+    const signalType = ['ess', 'mls', 'tsp', 'impulse'].includes(value.signalType)
         ? value.signalType
-        : 'mls';
+        : 'ess';
     const levelDb = Number.isInteger(value.levelDb) && value.levelDb >= -60 && value.levelDb <= 0
         ? value.levelDb
         : -12;
-    // TSP and Unit Impulse share the power-of-two lengths; MLS needs its 2^n-1 periods.
+    // ESS, TSP and Unit Impulse share power-of-two requested lengths.
     const allowedLengths = signalType === 'mls'
         ? PIPELINE_ANALYZER_MLS_LENGTHS
         : PIPELINE_ANALYZER_TSP_LENGTHS;
     const sequenceLength = allowedLengths.includes(value.sequenceLength)
         ? value.sequenceLength
-        : signalType === 'mls' ? 65535 : 65536;
+        : signalType === 'ess' ? 131072 : signalType === 'mls' ? 65535 : 65536;
     const stabilizationPeriods = Number.isInteger(value.stabilizationPeriods) &&
         value.stabilizationPeriods >= 1 && value.stabilizationPeriods <= 32
         ? value.stabilizationPeriods

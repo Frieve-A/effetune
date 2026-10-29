@@ -770,7 +770,7 @@
   },
   "bundledPresetCorpus": {
     "comment": "The app's bundled presets/**.effetune_preset corpus. Both bindings import the same files; the listed ones describe more than one audio path and are rejected in both languages.",
-    "count": 18,
+    "count": 28,
     "multiBus": [
       "lofi/dsd_noise.effetune_preset",
       "lofi/vinyl.effetune_preset",

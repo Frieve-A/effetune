@@ -29,11 +29,73 @@ async function openPage(t, viewport = { width: 1200, height: 900 }) {
         const file = path.resolve(root, `.${pathname}`);
         const relative = path.relative(root, file);
         if (relative.startsWith('..') || path.isAbsolute(relative)) return route.fulfill({ status: 403, body: '' });
-        const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json5': 'application/json', '.json': 'application/json', '.wasm': 'application/wasm' };
+        const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json5': 'application/json', '.json': 'application/json', '.wasm': 'application/wasm' };
         await route.fulfill({ contentType: types[path.extname(file)], body: await fs.readFile(file) });
     });
     await page.goto(origin);
     return { page, errors };
+}
+
+for (const width of [390, 1280]) {
+    test(`remote editor hides unfinished markup during startup at ${width}px`, async t => {
+        const { page, errors } = await openPage(t, { width, height: 850 });
+        const scriptGate = Promise.withResolvers();
+        const pluginsGate = Promise.withResolvers();
+        const pluginsRequested = Promise.withResolvers();
+        t.after(() => { scriptGate.resolve(); pluginsGate.resolve(); });
+        await page.route('**/js/remote/remote-client.js', async route => {
+            await scriptGate.promise;
+            await route.fallback();
+        });
+        await page.route('**/plugins/plugins.txt', async route => {
+            pluginsRequested.resolve();
+            await pluginsGate.promise;
+            await route.fallback();
+        });
+        await page.evaluate(async () => {
+            const { IntegratedRemoteEffects } = await import('./js/remote/integrated-remote-effects.js');
+            const container = document.createElement('section');
+            document.body.replaceChildren(container);
+            let listener;
+            const api = {
+                getConnection: async () => ({ registered: true }),
+                onEvent: callback => { listener = callback; return () => {}; },
+                connect: async () => {
+                    listener({ type: 'open', connectionId: 'fixture' });
+                    return { ok: true, connectionId: 'fixture' };
+                },
+                send: async (connectionId, raw) => {
+                    const message = JSON.parse(raw);
+                    listener({ type: 'message', connectionId, data: JSON.stringify({ op: 'ack', seq: message.seq, ok: true }) });
+                    return true;
+                },
+                disconnect: async () => {}
+            };
+            window.uiManager = { layoutMode: { isMobile: innerWidth < 1159 } };
+            window.effects = new IntegratedRemoteEffects({ container, api });
+            await effects.selectPlayer({ id: 'fixture', name: 'Test player' });
+            Object.assign(effects.frame.style, { width: '100%', height: '750px', border: '0' });
+        });
+        const frame = page.frames().find(candidate => candidate.parentFrame());
+        await frame.locator('.remote-status').waitFor({ state: 'visible' });
+        assert.equal(await frame.locator('.main-container').isVisible(), false, 'before module execution');
+        assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        scriptGate.resolve();
+        await pluginsRequested.promise;
+        assert.equal(await frame.locator('.main-container').isVisible(), false, 'while plugins load');
+        assert.equal(await frame.locator('.remote-status').textContent(), 'Connecting…');
+        pluginsGate.resolve();
+        await frame.waitForFunction(() => window.remoteClient?.session.status === 'open');
+        assert.equal(await frame.locator('.main-container').isVisible(), true);
+        assert.equal(await frame.evaluate(() => uiManager.layoutMode.mode), width === 390 ? 'mobile' : 'desktop');
+        if (width === 390) {
+            assert.equal(await frame.locator('#pluginList').isVisible(), false);
+            assert.equal(await frame.locator('.mobile-plugin-fab').isVisible(), true);
+            assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        }
+        assert.deepEqual(errors, []);
+        await page.evaluate(() => effects.dispose());
+    });
 }
 
 async function openDialog(t, { language = 'en', viewport } = {}) {

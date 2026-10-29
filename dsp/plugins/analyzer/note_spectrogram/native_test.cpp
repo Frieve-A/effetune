@@ -10,8 +10,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -62,14 +64,16 @@ struct Harness {
   std::vector<std::uint8_t> bytes = std::vector<std::uint8_t>(512u * 1024u);
   effetune::TelemetryRing ring;
   std::uint32_t sequence = 0;
+  std::vector<std::uint8_t> chord_frames;
   explicit Harness(float rate, float minimum_midi = 21.0F, float maximum_midi = 108.0F,
-                   bool timbre_enabled = false) {
+                   bool timbre_enabled = false, bool chord_key_enabled = false) {
     CHECK(descriptor->objectSize <= storage.size());
-    CHECK(descriptor->paramsFloatCount == 3u);
+    CHECK(descriptor->paramsFloatCount == 4u);
     kernel = descriptor->construct(storage.data());
     kernel->prepare({rate, 4u, 1024u});
     CHECK(kernel->preparedSuccessfully());
-    const std::array params = {minimum_midi, maximum_midi, timbre_enabled ? 1.0F : 0.0F};
+    const std::array params = {minimum_midi, maximum_midi, timbre_enabled ? 1.0F : 0.0F,
+                               chord_key_enabled ? 1.0F : 0.0F};
     CHECK(kernel->stageParameters(params.data(), static_cast<std::uint32_t>(params.size()),
                                   descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
@@ -85,8 +89,20 @@ struct Harness {
     std::uint32_t dropped = 0;
     const auto size = ring.read(bytes.data(), static_cast<std::uint32_t>(bytes.size()), &dropped);
     CHECK(dropped == 0u);
-    CHECK(size % kFrameBytes == 0u);
-    for (auto offset = 0u; offset < size; offset += kFrameBytes) {
+    std::vector<std::uint8_t> pitch_frames;
+    for (auto offset = 0u; offset < size;) {
+      const auto frame_bytes = 16u + readU16(bytes.data() + offset + 12u);
+      if (readU16(bytes.data() + offset) == 32u) {
+        CHECK(frame_bytes == 48u);
+        chord_frames.insert(chord_frames.end(), bytes.begin() + offset + 16u,
+                            bytes.begin() + offset + frame_bytes);
+        offset += frame_bytes;
+        continue;
+      }
+      if (readU16(bytes.data() + offset) == 31u) {
+        offset += frame_bytes;
+        continue;
+      }
       CHECK(readU16(bytes.data() + offset) == 24u);
       CHECK(readU16(bytes.data() + offset + 2u) == 6u);
       CHECK(readU16(bytes.data() + offset + 12u) == kPayloadBytes);
@@ -114,8 +130,11 @@ struct Harness {
         CHECK(std::isfinite(revised) && revised >= 0.0F && revised <= 1.0F);
         CHECK(age != 0u || revised == 0.0F);
       }
+      pitch_frames.insert(pitch_frames.end(), bytes.begin() + offset,
+                          bytes.begin() + offset + frame_bytes);
+      offset += frame_bytes;
     }
-    return {bytes.begin(), bytes.begin() + size};
+    return pitch_frames;
   }
 };
 
@@ -1171,7 +1190,7 @@ void testTimbreToggle() {
   auto baseline = std::make_unique<effetune::plugins::analyzer::SpectralAnalysis>();
   for (auto *analysis : {actual.get(), baseline.get()}) {
     analysis->prepare({48000, 2, 128});
-    analysis->configure(21, 108);
+    analysis->configure(21, 108, false);
   }
   actual->setTimbreEnabled(true);
   unsigned resets = 0;
@@ -1221,8 +1240,8 @@ void testTimbreIsolation() {
   auto on = std::make_unique<SpectralAnalysis>();
   off->prepare({96000.0F, 2u, 128u});
   on->prepare({96000.0F, 2u, 128u});
-  off->configure(21u, 108u);
-  on->configure(21u, 108u);
+  off->configure(21u, 108u, false);
+  on->configure(21u, 108u, false);
   on->setTimbreEnabled(true);
   std::array<float, 256> a{}, b{};
   std::array<std::uint8_t, 65536> off_bytes{}, on_bytes{};
@@ -1336,7 +1355,7 @@ void testTimbreBlockSizes() {
   const auto render = [](std::uint32_t block_frames) {
     auto analysis = std::make_unique<SpectralAnalysis>();
     analysis->prepare({96000.0F, 1u, block_frames});
-    analysis->configure(21u, 108u);
+    analysis->configure(21u, 108u, false);
     analysis->setTimbreEnabled(true);
     std::array<std::uint8_t, 65536> storage{}, bytes{};
     effetune::TelemetryRing ring;
@@ -1378,6 +1397,416 @@ void testTimbreBlockSizes() {
   CHECK(expected == render(16u));
   CHECK(expected == render(1024u));
 }
+std::vector<std::uint8_t> readBinary(const std::string &path) {
+  std::ifstream stream(path, std::ios::binary | std::ios::ate);
+  if (!stream) {
+    CHECK(false);
+    return {};
+  }
+  std::vector<std::uint8_t> bytes(static_cast<std::size_t>(stream.tellg()));
+  stream.seekg(0);
+  stream.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+  CHECK(static_cast<bool>(stream));
+  return bytes;
+}
+int writeChordKeyFixture(const char *input_path, const char *directory) {
+  const auto input = readBinary(input_path);
+  if (input.empty() || input.size() % (128u * sizeof(float)))
+    return 2;
+  const auto path = std::string(directory) + "/";
+  std::ofstream planes(path + "chord-key-planes.bin", std::ios::binary);
+  std::ofstream scores(path + "chord-key-native-scores.f32", std::ios::binary);
+  std::ofstream telemetry(path + "chord-key-telemetry.bin", std::ios::binary);
+  auto analysis = std::make_unique<effetune::plugins::analyzer::SpectralAnalysis>();
+  analysis->prepare({48000.0F, 1u, 128u});
+  analysis->configure(28u, 91u, true);
+  analysis->reset(2u);
+  Harness harness(48000.0F, 28.0F, 91.0F, false, true);
+  harness.kernel->reset();
+  unsigned cadence = 0u, rows = 0u;
+  for (std::size_t offset = 0u; offset < input.size() / sizeof(float); offset += 128u) {
+    std::array<float, 128> audio{};
+    std::memcpy(audio.data(), input.data() + offset * sizeof(float), sizeof(audio));
+    analysis->process(audio.data(), 1u, 128u, {static_cast<double>(offset) / 48000.0});
+    harness.kernel->process(audio.data(), 1u, 128u, {static_cast<double>(offset) / 48000.0});
+    effetune::TelemetryWriter writer(harness.ring, 206u, harness.sequence);
+    analysis->writeTelemetry(writer);
+    std::uint32_t dropped = 0u;
+    const auto size = harness.ring.read(harness.bytes.data(),
+                                        static_cast<std::uint32_t>(harness.bytes.size()), &dropped);
+    CHECK(dropped == 0u);
+    for (auto at = 0u; at < size; at += 16u + readU16(harness.bytes.data() + at + 12u)) {
+      if (readU16(harness.bytes.data() + at) != 32u)
+        continue;
+      const auto &head = analysis->chordKeyHead();
+      CHECK(
+          std::equal(head.result().begin(), head.result().end(), harness.bytes.data() + at + 36u));
+      planes.write(reinterpret_cast<const char *>(head.planes().data()), head.planes().size());
+      scores.write(reinterpret_cast<const char *>(head.jointScores().data()), 457u * sizeof(float));
+      scores.write(reinterpret_cast<const char *>(head.keyScores().data()), 25u * sizeof(float));
+      ++rows;
+    }
+    cadence += 128u;
+    if (cadence >= 800u) {
+      cadence %= 800u;
+      harness.kernel->writeTelemetry(writer);
+      const auto count = harness.ring.read(
+          harness.bytes.data(), static_cast<std::uint32_t>(harness.bytes.size()), &dropped);
+      for (auto at = 0u; at < count; at += 16u + readU16(harness.bytes.data() + at + 12u))
+        if (readU16(harness.bytes.data() + at) == 32u)
+          telemetry.write(reinterpret_cast<const char *>(harness.bytes.data() + at), 48u);
+    }
+  }
+  std::printf("chord/key fixture rows: %u\n", rows);
+  CHECK(rows > 100u);
+  return planes && scores && telemetry && failures == 0 ? 0 : 1;
+}
+int testChordKeyFixture(const char *directory) {
+  using Head = effetune::plugins::analyzer::ChordKeyHead;
+  const auto path = std::string(directory) + "/";
+  const auto planes = readBinary(path + "chord-key-planes.bin");
+  const auto scores = readBinary(path + "chord-key-scores.f32");
+  const auto labels = readBinary(path + "chord-key-reference.bin");
+  const auto restart = readBinary(path + "chord-key-restart-reference.bin");
+  const auto restart52 = readBinary(path + "chord-key-restart52-reference.bin");
+  const auto margins = readBinary(path + "chord-key-margins.f32");
+  const auto metadata_bytes = readBinary(path + "chord-key.json");
+  const std::string metadata(metadata_bytes.begin(), metadata_bytes.end());
+  const auto margin_field = metadata.find("\"marginThreshold\"");
+  const auto margin_colon = metadata.find(':', margin_field);
+  CHECK(margin_colon != std::string::npos);
+  if (margin_colon == std::string::npos)
+    return 1;
+  const auto margin_threshold = std::strtof(metadata.c_str() + margin_colon + 1u, nullptr);
+  CHECK(margin_threshold > 0.0F && margin_threshold < .002F);
+  const auto rows = planes.size() / sizeof(Head::Planes);
+  CHECK(rows > 100u && scores.size() == rows * 482u * sizeof(float) && labels.size() == rows * 8u);
+  if (scores.size() != rows * 482u * sizeof(float) || labels.size() != rows * 8u ||
+      restart.size() != labels.size() || restart52.size() != labels.size() ||
+      margins.size() != rows * 8u)
+    return 1;
+  Head head, decoder, boundary_decoder, boundary52_decoder, restarted, fresh;
+  head.reset();
+  decoder.reset();
+  boundary_decoder.reset();
+  boundary52_decoder.reset();
+  restarted.reset();
+  fresh.reset();
+  auto max_error = 0.0F;
+  std::vector<std::array<std::uint8_t, 8>> actual;
+  std::vector<unsigned> actual_raw_keys, reference_raw_keys;
+  for (std::size_t row = 0u; row < rows; ++row) {
+    Head::Planes plane;
+    std::copy_n(planes.data() + row * plane.size(), plane.size(), plane.data());
+    head.foldPlanes(plane);
+    head.recurrent(0u, 12u);
+    head.decode();
+    CHECK(head.planes() == plane);
+    Head::ChordScores joint;
+    Head::KeyScores key;
+    std::memcpy(joint.data(), scores.data() + row * 482u * sizeof(float), sizeof(joint));
+    std::memcpy(key.data(), scores.data() + (row * 482u + 457u) * sizeof(float), sizeof(key));
+    for (auto i = 0u; i < 457u; ++i)
+      max_error = std::max(max_error, std::abs(joint[i] - head.jointScores()[i]));
+    for (auto i = 0u; i < 25u; ++i)
+      max_error = std::max(max_error, std::abs(key[i] - head.keyScores()[i]));
+    actual.push_back(head.result());
+    actual_raw_keys.push_back(
+        static_cast<unsigned>(std::max_element(head.keyScores().begin(), head.keyScores().end()) -
+                              head.keyScores().begin()));
+    reference_raw_keys.push_back(
+        static_cast<unsigned>(std::max_element(key.begin(), key.end()) - key.begin()));
+    decoder.decodeScores(joint, key);
+    CHECK(std::equal(decoder.result().begin(), decoder.result().end(), labels.data() + row * 8u));
+    if (row == 45u) {
+      boundary_decoder.reset();
+      restarted.reset();
+    }
+    boundary_decoder.decodeScores(joint, key);
+    CHECK(std::equal(boundary_decoder.result().begin(), boundary_decoder.result().end(),
+                     restart.data() + row * 8u));
+    if (row == 52u)
+      boundary52_decoder.reset();
+    boundary52_decoder.decodeScores(joint, key);
+    CHECK(std::equal(boundary52_decoder.result().begin(), boundary52_decoder.result().end(),
+                     restart52.data() + row * 8u));
+    restarted.foldPlanes(plane);
+    restarted.recurrent(0u, 12u);
+    restarted.decode();
+    if (row >= 45u) {
+      fresh.foldPlanes(plane);
+      fresh.recurrent(0u, 12u);
+      fresh.decode();
+      CHECK(restarted.jointScores() == fresh.jointScores());
+      CHECK(restarted.keyScores() == fresh.keyScores());
+      CHECK(restarted.result() == fresh.result());
+    }
+  }
+  CHECK(max_error < 1e-3F);
+  const auto audio_bytes = readBinary(path + "chord-key-input.f32");
+  auto analysis = std::make_unique<effetune::plugins::analyzer::SpectralAnalysis>();
+  analysis->prepare({48000.0F, 1u, 128u});
+  analysis->configure(28u, 91u, true);
+  analysis->reset(2u);
+  std::size_t plane_row = 0u;
+  unsigned plane_mismatches = 0u;
+  for (std::size_t offset = 0u; offset < audio_bytes.size() / sizeof(float); offset += 128u) {
+    std::array<float, 128> audio{};
+    std::memcpy(audio.data(), audio_bytes.data() + offset * sizeof(float), sizeof(audio));
+    analysis->process(audio.data(), 1u, 128u, {static_cast<double>(offset) / 48000.0});
+    if (analysis->view().count == 0u)
+      continue;
+    CHECK(plane_row < rows);
+    if (plane_row >= rows)
+      return 1;
+    const auto &actual_planes = analysis->chordKeyHead().planes();
+    Head copied;
+    copied.foldPlanes(actual_planes);
+    CHECK(copied.planes() == analysis->chordKeyHead().planes());
+    for (auto i = 0u; i < actual_planes.size(); ++i) {
+      const auto expected = planes[plane_row * actual_planes.size() + i];
+      const auto signed_level = i % 4u == 3u;
+      const auto actual_value =
+          static_cast<int>(actual_planes[i]) - (signed_level && actual_planes[i] >= 128u ? 256 : 0);
+      const auto expected_value =
+          static_cast<int>(expected) - (signed_level && expected >= 128u ? 256 : 0);
+      const auto difference = std::abs(actual_value - expected_value);
+      plane_mismatches += difference != 0 ? 1u : 0u;
+      CHECK(difference <= 1);
+    }
+    ++plane_row;
+  }
+  CHECK(plane_row == rows);
+  std::printf("chord/key plane differences: %u (at most one LSB)\n", plane_mismatches);
+  unsigned mismatches = 0u;
+  for (std::size_t row = 0u; row < rows; ++row) {
+    const auto *expected = labels.data() + row * 8u;
+    if (!std::equal(actual[row].begin(), actual[row].begin() + 3u, expected)) {
+      ++mismatches;
+      CHECK(readF32(margins.data() + row * 8u) < margin_threshold);
+    }
+    if (actual_raw_keys[row] != reference_raw_keys[row]) {
+      ++mismatches;
+      CHECK(readF32(margins.data() + row * 8u + 4u) < margin_threshold);
+    }
+  }
+  std::printf("chord/key maximum log-score error %.9g; immediate/raw-key mismatches %u\n",
+              max_error, mismatches);
+  return failures == 0 ? 0 : 1;
+}
+void testChordKeyHysteresis() {
+  using Head = effetune::plugins::analyzer::ChordKeyHead;
+  Head head;
+  Head::ChordScores chords;
+  chords.fill(-20.0F);
+  chords[0] = 0.0F;
+  Head::KeyScores key;
+  key.fill(-20.0F);
+  key[17] = 0.0F;
+  for (auto pass = 0u; pass < 2u; ++pass) {
+    head.reset();
+    for (auto row = 0u; row < 15u; ++row) {
+      head.decodeScores(chords, key);
+      CHECK(head.result()[6] == 255u && head.result()[7] == 255u);
+    }
+    head.decodeScores(chords, key);
+    CHECK(head.result()[6] == 17u && head.result()[7] == 17u);
+  }
+  key[0] = .25F;
+  for (auto row = 0u; row < 10u; ++row) {
+    head.decodeScores(chords, key);
+    CHECK(head.result()[6] == 17u);
+  }
+  CHECK(head.result()[7] == 0u); // Overall counts raw keys, including sub-margin observations.
+  key[0] = .3F;
+  for (auto row = 0u; row < 4u; ++row) {
+    head.decodeScores(chords, key);
+    CHECK(head.result()[6] == 17u);
+  }
+  auto invalid = key;
+  invalid[8] = std::numeric_limits<float>::quiet_NaN();
+  head.decodeScores(chords, invalid);
+  CHECK(head.result()[6] == 17u && head.result()[7] == 0u);
+  head.decodeScores(chords, key);
+  CHECK(head.result()[6] == 0u); // A NaN row preserves the pending streak.
+  key[24] = 1.0F;
+  for (auto row = 0u; row < 5u; ++row)
+    head.decodeScores(chords, key);
+  CHECK(head.result()[6] == 24u && head.result()[7] == 0u);
+  head.reset();
+  for (auto row = 0u; row < 20u; ++row)
+    head.decodeScores(chords, key);
+  CHECK(head.result()[6] == 24u && head.result()[7] == 255u);
+  key.fill(0.0F);
+  head.reset();
+  for (auto row = 0u; row < 16u; ++row)
+    head.decodeScores(chords, key);
+  CHECK(head.result()[6] == 0u && head.result()[7] == 0u);
+}
+
+void testChordHysteresis() {
+  using Head = effetune::plugins::analyzer::ChordKeyHead;
+  Head head;
+  Head::ChordScores scores;
+  scores.fill(-20.0F);
+  scores[0] = 0.0F;
+  Head::KeyScores key{};
+  head.reset();
+  head.decodeScores(scores, key);
+  scores[38] = 1.0F;
+  for (auto row = 0u; row < 10u; ++row) {
+    head.decodeScores(scores, key);
+    CHECK(head.result()[3] == 0u);
+  }
+  scores[38] = 1.5F;
+  for (auto row = 0u; row < 9u; ++row) {
+    head.decodeScores(scores, key);
+    CHECK(head.result()[0] == 1u && head.result()[3] == 0u);
+  }
+  head.decodeScores(scores, key);
+  CHECK(head.result()[3] == 1u);
+  head.reset();
+  head.decodeScores(scores, key);
+  CHECK(head.result()[3] == 1u);
+  scores[0] = scores[38];
+  head.reset();
+  head.decodeScores(scores, key);
+  CHECK(head.result()[0] == 0u && head.result()[3] == 0u);
+}
+void testConfirmedChordProbability() {
+  using Head = effetune::plugins::analyzer::ChordKeyHead;
+  constexpr auto delay = effetune::plugins::analyzer::chord_key_weights::kChordStreak - 1u;
+  Head head;
+  Head::KeyScores key;
+  key.fill(std::log(1.0F / 25.0F));
+  std::array<Head::ChordScores, 60> observations;
+  for (auto pass = 0u; pass < 2u; ++pass) {
+    head.reset();
+    CHECK(head.confirmedProbability() == 0.0F);
+    auto delayed_selection = false;
+    for (auto row = 0u; row < observations.size(); ++row) {
+      auto &scores = observations[row];
+      scores.fill(std::log(.00001F));
+      const auto best = row < 20u ? 0u : row < 40u ? 38u : 456u;
+      scores[best] = std::log(.6F + static_cast<float>(row % 7u) * .05F);
+      head.decodeScores(scores, key);
+      const auto &result = head.result();
+      const auto selected = result[3] == 255u ? 456u : result[3] * 38u;
+      CHECK(selected == 0u || selected == 38u || selected == 456u);
+      const auto historical_row = row > delay ? row - delay : 0u;
+      const auto expected = std::exp(observations[historical_row][selected]);
+      CHECK(std::abs(head.confirmedProbability() - expected) < 1e-6F);
+      CHECK(head.confirmedProbability() >= 0.0F && head.confirmedProbability() <= 1.0F);
+      delayed_selection = delayed_selection || selected != best;
+    }
+    CHECK(delayed_selection);
+    CHECK(head.result()[3] == 255u && head.confirmedProbability() > .5F);
+  }
+}
+
+void testChordKeyLifecycle() {
+  using Analysis = effetune::plugins::analyzer::SpectralAnalysis;
+  auto render = [](bool enabled, unsigned block, unsigned minimum, unsigned maximum, bool boundary,
+                   std::vector<std::uint8_t> *notes, std::vector<std::uint8_t> *timbre,
+                   std::vector<effetune::NoteAnalysisFrame> *views, float gain = 1.0F) {
+    auto analysis = std::make_unique<Analysis>();
+    analysis->prepare({48000.0F, 2u, 1024u});
+    analysis->configure(minimum, maximum, enabled);
+    analysis->setTimbreEnabled(true);
+    analysis->reset(3u);
+    std::vector<std::uint8_t> storage(512u * 1024u), bytes(storage.size()), chords;
+    effetune::TelemetryRing ring;
+    ring.adopt(storage.data(), static_cast<std::uint32_t>(storage.size()));
+    unsigned sequence = 0u;
+    for (auto offset = 0u; offset < 76800u; offset += block) {
+      if (boundary && offset == 30720u)
+        analysis->restartChordKey();
+      std::vector<float> audio(block * 2u);
+      for (auto i = 0u; i < block; ++i)
+        audio[i] = audio[block + i] =
+            gain * static_cast<float>(
+                       signal((offset + i) / 48000.0, {{48, .1, 1}, {64, .1, 1}, {67, .1, 1}}));
+      const auto original = audio;
+      analysis->process(audio.data(), 2u, block, {offset / 48000.0});
+      CHECK(audio == original);
+      if (views)
+        for (auto i = 0u; i < analysis->view().count; ++i)
+          views->push_back(analysis->view().frames[i]);
+      effetune::TelemetryWriter writer(ring, 206u, sequence);
+      analysis->writeTelemetry(writer);
+      unsigned dropped = 0u;
+      const auto size = ring.read(bytes.data(), static_cast<std::uint32_t>(bytes.size()), &dropped);
+      CHECK(dropped == 0u);
+      for (auto at = 0u; at < size; at += 16u + readU16(bytes.data() + at + 12u)) {
+        const auto type = readU16(bytes.data() + at), count = readU16(bytes.data() + at + 12u);
+        if (type == 32u) {
+          CHECK(count == 32u);
+          const auto probability = readF32(bytes.data() + at + 44u);
+          CHECK(std::isfinite(probability) && probability >= 0.0F && probability <= 1.0F);
+        }
+        auto *target = type == 32u ? &chords : type == 24u ? notes : timbre;
+        if (target)
+          target->insert(target->end(), bytes.begin() + at + 16u, bytes.begin() + at + 16u + count);
+      }
+    }
+    return chords;
+  };
+  for (auto minimum : {28u, 21u}) {
+    const auto maximum = minimum == 28u ? 91u : 108u;
+    std::vector<std::uint8_t> off_notes, on_notes, off_timbre, on_timbre;
+    std::vector<effetune::NoteAnalysisFrame> off_views, on_views;
+    CHECK(
+        render(false, 128u, minimum, maximum, false, &off_notes, &off_timbre, &off_views).empty());
+    const auto chords =
+        render(true, 128u, minimum, maximum, false, &on_notes, &on_timbre, &on_views);
+    CHECK(!chords.empty());
+    CHECK(off_notes == on_notes);
+    CHECK(off_timbre == on_timbre);
+    CHECK(off_views.size() == on_views.size());
+    for (std::size_t i = 0u; i < std::min(off_views.size(), on_views.size()); ++i) {
+      CHECK(off_views[i].sampleOffset == on_views[i].sampleOffset);
+      CHECK(off_views[i].probabilities == on_views[i].probabilities);
+      CHECK(off_views[i].levels == on_views[i].levels);
+      CHECK(off_views[i].onsets == on_views[i].onsets);
+    }
+    if (minimum == 28u) {
+      CHECK(chords == render(true, 16u, minimum, maximum, false, nullptr, nullptr, nullptr));
+      CHECK(chords == render(true, 1024u, minimum, maximum, false, nullptr, nullptr, nullptr));
+      std::vector<std::uint8_t> boundary_notes, boundary_timbre;
+      const auto restarted =
+          render(true, 128u, minimum, maximum, true, &boundary_notes, &boundary_timbre, nullptr);
+      CHECK(boundary_notes == on_notes);
+      CHECK(boundary_timbre == on_timbre);
+      unsigned empty = 0u;
+      for (std::size_t at = 32u * 30u; at < restarted.size(); at += 32u)
+        if (restarted[at + 27u] == 255u)
+          ++empty;
+      CHECK(empty >= 15u);
+    }
+  }
+  Harness harness(48000.0F, 28.0F, 91.0F, false, true);
+  const auto silence = render(true, 128u, 28u, 91u, false, nullptr, nullptr, nullptr, 0.0F);
+  CHECK(!silence.empty());
+  unsigned trusted_silence_run = 0u;
+  for (std::size_t at = 0u; at < silence.size(); at += 32u) {
+    CHECK(silence[at + 26u] == (at / 32u < 15u ? 255u : 24u));
+    CHECK(silence[at + 27u] == 255u);
+    trusted_silence_run = silence[at + 23u] == 255u && readF32(silence.data() + at + 28u) > .5F
+                              ? trusted_silence_run + 1u
+                              : 0u;
+  }
+  CHECK(trusted_silence_run >= 9u);
+  run(harness, 48000.0F, 38400u, {128u}, {48, 64, 67});
+  const auto first = harness.chord_frames;
+  harness.chord_frames.clear();
+  harness.kernel->reset();
+  run(harness, 48000.0F, 38400u, {128u}, {48, 64, 67});
+  CHECK(first.size() == harness.chord_frames.size());
+  for (std::size_t at = 0u; at < first.size(); at += 32u)
+    CHECK(std::equal(first.begin() + at + 16u, first.begin() + at + 32u,
+                     harness.chord_frames.begin() + at + 16u));
+}
+
 int writeTelemetryFixture(const char *input_path, const char *output_path) {
   std::ifstream input(input_path, std::ios::binary | std::ios::ate);
   if (!input || input.tellg() <= 0 || input.tellg() % (128u * sizeof(float)) != 0)
@@ -1437,9 +1866,31 @@ int writeTelemetryFixture(const char *input_path, const char *output_path) {
 }
 } // namespace
 int main(int argc, char **argv) {
+  if (argc == 2 && std::strcmp(argv[1], "--chord-schedule-weight") == 0) {
+    auto analysis = std::make_unique<effetune::plugins::analyzer::SpectralAnalysis>();
+    analysis->prepare({96000.0F, 2u, 128u});
+    analysis->configure(21u, 108u, false);
+    std::array<float, 3840> silence{};
+    analysis->process(silence.data(), 2u, 1920u, {});
+    std::printf("%.0f\n", analysis->scheduleWeight());
+    return 0;
+  }
+  if (argc == 4 && std::strcmp(argv[1], "--write-chord-key-fixture") == 0)
+    return writeChordKeyFixture(argv[2], argv[3]);
+  if (argc == 3 && std::strcmp(argv[1], "--chord-key-fixture") == 0)
+    return testChordKeyFixture(argv[2]);
+  if (argc == 2 && std::strcmp(argv[1], "--chord-key-only") == 0) {
+    testChordKeyHysteresis();
+    testChordHysteresis();
+    testConfirmedChordProbability();
+    testChordKeyLifecycle();
+    return failures == 0 ? 0 : 1;
+  }
   if (argc == 4 && std::strcmp(argv[1], "--write-telemetry-fixture") == 0)
     return writeTelemetryFixture(argv[2], argv[3]);
   if (argc == 3 && std::strcmp(argv[1], "--model-fixture") == 0) {
+    if (testChordKeyFixture(argv[2]) != 0)
+      return 1;
     if (testEventModel(argv[2]) != 0)
       return 1;
     if (testTimbreAudioFixture(argv[2]) != 0)
@@ -1465,6 +1916,10 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "usage: %s [--quality-report]\n", argv[0]);
     return 2;
   }
+  testChordKeyHysteresis();
+  testChordHysteresis();
+  testConfirmedChordProbability();
+  testChordKeyLifecycle();
   testTimbreHead();
   testTimbreObservations();
   testTimbreHistory();

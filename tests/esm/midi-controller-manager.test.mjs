@@ -100,6 +100,16 @@ test('saved physical MIDI mappings request access during initialization', async 
   manager.dispose();
 });
 
+test('native port keys retain a same-name slot when the renderer reconnects', async () => {
+  const { manager, input } = harness([{ source: { kind: 'cc' } }]);
+  input.name = 'Controller';
+  input.key = 'Controller\0' + '2';
+  await manager.initialize({});
+  assert.equal(manager.listInputs()[0].key, input.key);
+  assert.equal(manager.getDeviceDisplayName(input.key), 'Controller');
+  manager.dispose();
+});
+
 test('disposing during a pending MIDI permission request prevents runtime restart', async () => {
   let resolvePermission;
   const permission = new Promise(resolve => { resolvePermission = resolve; });

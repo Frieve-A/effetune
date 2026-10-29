@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { replaceGlobal } from '../helpers/global-test-utils.mjs';
 
 import { PipelineAnalyzerController } from '../../js/pipeline-analyzer/controller.js';
 import { MAX_OUTPUT_SLOTS, PipelineAnalyzerUI } from '../../js/pipeline-analyzer/ui.js';
@@ -67,7 +68,7 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-graph-shell\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-view-switcher\s*\{[^}]*position:\s*absolute;/s);
   assert.match(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend\s*\{[^}]*top:\s*5px;[^}]*right:\s*5px;[^}]*left:\s*auto;[^}]*font-size:\s*10px;/s);
-  assert.match(uiSource, /this\.graphSection\.append\(this\.viewGroup, this\.displayControl, this\.graphShell\)/);
+  assert.match(uiSource, /this\.graphSection\.append\(this\.viewGroup, this\.displayControl, this\.analysisControls, this\.graphShell, this\.analysisMessage\)/);
   assert.doesNotMatch(analyzerCss, /body\.layout-mobile \.pipeline-analyzer-legend-label(?:-short)?\s*\{/s);
   assert.match(mobileCss, /body\.layout-mobile \.pipeline-analyzer-panel input\[type='number'\],\s*body\.layout-mobile \.pipeline-analyzer-panel select,[\s\S]*?min-height:\s*var\(--et-mobile-control-height\);[\s\S]*?font-size:\s*16px;/s);
   assert.match(sharedCss, /\.pipeline-analyzer-panel select option,/);
@@ -76,7 +77,7 @@ uiTest('places one accessible Analyzer button directly after Share with dedicate
   assert.match(sharedCss, /\.pipeline-analyzer-panel input\[type="number"\],\s*\.pipeline-analyzer-panel select,/);
   assert.match(controlsCss, /\.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*padding:\s*4px;[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;/s);
   assert.match(controlsCss, /\.plugin-parameter-ui select,\s*\.pipeline-analyzer-panel select[^{}]*\{[^}]*background-color:\s*var\(--et-surface-17\);[^}]*border:\s*1px solid var\(--et-surface-23\);[^}]*color:\s*var\(--et-text-primary\);[^}]*border-radius:\s*4px;[^}]*padding:\s*4px;/s);
-  assert.match(controlsCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;/s);
+  assert.match(controlsCss, /body:not\(\.layout-mobile\) \.plugin-parameter-ui \.parameter-row input\[type="number"\],(?:\s*body:not\(\.layout-mobile\) \.multichannel-panel-ui input\[type="number"\],)?\s*body:not\(\.layout-mobile\) \.pipeline-analyzer-panel input\[type="number"\]\s*\{[^}]*padding:\s*4px;[^}]*font:\s*inherit;[^}]*line-height:\s*normal;/s);
   assert.match(controlsCss, /body:not\(\.layout-mobile\) :is\([^{}]*\.pipeline-analyzer-panel input\[type="number"\],[^{}]*\) \{[^}]*box-sizing: border-box;[^}]*height: 26px;[^}]*min-height: 26px;/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel input\[type='number'\]\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px)/s);
   assert.doesNotMatch(analyzerCss, /\.pipeline-analyzer-panel select\s*\{[^}]*(?:height:\s*30px|padding:\s*3px 7px|border-radius:\s*4px)/s);
@@ -135,6 +136,7 @@ class FakeElement {
     if (!this.parentNode) return null;
     return this.parentNode.children[this.parentNode.children.indexOf(this) + 1] || null;
   }
+  get parentElement() { return this.parentNode; }
   get previousSibling() {
     if (!this.parentNode) return null;
     const index = this.parentNode.children.indexOf(this);
@@ -147,6 +149,11 @@ class FakeElement {
     if (name === 'id') this.id = text;
   }
   getAttribute(name) { return this.attributes[name]; }
+  toggleAttribute(name, force) {
+    const present = force === undefined ? !Object.hasOwn(this.attributes, name) : Boolean(force);
+    if (present) this.setAttribute(name, ''); else delete this.attributes[name];
+    return present;
+  }
   append(...children) { for (const child of children) this.appendChild(child); }
   appendChild(child) {
     child.parentNode?.removeChild(child);
@@ -296,6 +303,34 @@ function setFormat(ui, channelCount = 2, sampleRate = 48000) {
   ui.setAudioFormat({ sampleRate, channelCount });
 }
 
+uiTest('notifies the host after Analyzer visibility and placement are applied', () => {
+  const fixture = createFixture();
+  const layouts = [];
+  const ui = new PipelineAnalyzerUI({
+    documentRef: fixture.documentRef,
+    windowRef: fixture.windowRef,
+    onLayoutChange: () => layouts.push({
+      hidden: fixture.panel.hidden,
+      inline: fixture.panel.parentNode === fixture.pipeline
+    })
+  });
+  ui.setOpen(true);
+  assert.deepEqual(layouts.at(-1), { hidden: false, inline: false });
+  const count = layouts.length;
+  ui.syncPlacement();
+  ui.setOpen(true);
+  assert.equal(layouts.length, count, 'observing unchanged placement must not reset the host layout');
+  fixture.setNarrow(true);
+  ui.syncPlacement();
+  assert.deepEqual(layouts.at(-1), { hidden: false, inline: true });
+  ui.setOpen(false);
+  assert.deepEqual(layouts.at(-1), { hidden: true, inline: true });
+  fixture.setNarrow(false);
+  ui.syncPlacement();
+  assert.deepEqual(layouts.at(-1), { hidden: true, inline: false });
+  ui.dispose();
+});
+
 uiTest('uses canonical measurement settings and keeps pending format non-destructive', () => {
   const fixture = createFixture();
   const changes = [];
@@ -309,7 +344,7 @@ uiTest('uses canonical measurement settings and keeps pending format non-destruc
   assert.equal(ui.inputCaption.textContent, 'Input');
   const defaults = ui.getConfiguration();
   assert.deepEqual(defaults.measurementSettings, {
-    signalType: 'mls', levelDb: -12, sequenceLength: 65535,
+    signalType: 'ess', levelDb: -12, sequenceLength: 131072,
     stabilizationPeriods: 12, averagingPeriods: 2
   });
   assert.deepEqual(defaults.displaySettings, { smoothingOct: 0.17, impulseRangeMs: 6 });
@@ -330,9 +365,10 @@ uiTest('uses canonical measurement settings and keeps pending format non-destruc
 
   setFormat(ui, 4, 48000);
   assert.equal(ui.inputSelect.disabled, false);
-  assert.match(ui.measurementTiming.children[0].textContent, /65535 samples/);
-  assert.match(ui.measurementTiming.children[1].textContent, /16\.4 s/);
-  assert.match(ui.measurementTiming.children[2].textContent, /19\.1 s/);
+  assert.match(ui.measurementTiming.children[0].textContent, /Requested sweep length: 131072 samples \(2\.73 s\)/);
+  assert.equal(ui.measurementTiming.children.length, 1);
+  assert.equal(ui.stabilizationInput.disabled, true);
+  assert.equal(ui.averagingInput.disabled, false);
 });
 
 uiTest('keeps both display controls mounted, enables only relevant settings, and synchronizes range fill', () => {
@@ -431,7 +467,7 @@ uiTest('Unit Impulse keeps its own capture length and disables only periodic con
     onConfigurationChange: configuration => changes.push(configuration)
   });
   setFormat(ui);
-  ui.sequenceSelect.value = '131071';
+  ui.sequenceSelect.value = '131072';
   ui.sequenceSelect.dispatch('change');
   ui.signalSelect.value = 'impulse';
   ui.signalSelect.dispatch('change');
@@ -462,10 +498,10 @@ uiTest('TSP uses matching power-of-two lengths and periodic controls', () => {
   const fixture = createFixture();
   const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
   setFormat(ui);
-  assert.deepEqual(ui.signalSelect.children.map(option => option.value), ['mls', 'tsp', 'impulse']);
+  assert.deepEqual(ui.signalSelect.children.map(option => option.value), ['ess', 'mls', 'tsp', 'impulse']);
   ui.signalSelect.value = 'tsp';
   ui.signalSelect.dispatch('change');
-  assert.equal(ui.sequenceSelect.value, '65536');
+  assert.equal(ui.sequenceSelect.value, '131072');
   assert.deepEqual(ui.sequenceSelect.children.map(option => Number(option.value)),
     [32768, 65536, 131072, 262144, 524288]);
   assert.equal(ui.sequenceSelect.disabled, false);
@@ -519,6 +555,216 @@ uiTest('adds distinct participating outputs to the device limit and never delete
   assert.equal(MAX_OUTPUT_SLOTS, 4);
 });
 
+uiTest('shows actual extended Log Sweep timing only for the matching measurement settings', () => {
+  const fixture = createFixture();
+  const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
+  setFormat(ui);
+  assert.equal(ui.signalSelect.children[0].textContent, 'Log Sweep');
+  assert.equal(ui.sequenceSelect.parentNode.children[0].textContent, 'Requested sweep length');
+  ui.setResult({
+    measurementSettings: ui.getConfiguration().measurementSettings,
+    measurement: { sweepSamples: 524288, durationSeconds: 524288 / 48000, totalStimulusSeconds: 24 },
+    views: {}
+  });
+  assert.equal(ui.measurementTiming.children[0].textContent, 'Sweep length: 524288 samples (10.9 s)');
+  assert.equal(ui.measurementTiming.children[1].textContent, 'Total stimulus time: 24.0 s');
+  ui.averagingInput.value = '3';
+  ui.averagingInput.dispatch('change');
+  assert.match(ui.measurementTiming.children[0].textContent, /^Requested sweep length:/);
+  assert.equal(ui.measurementTiming.children.length, 1);
+  ui.signalSelect.value = 'mls';
+  ui.signalSelect.dispatch('change');
+  assert.equal(ui.sequenceSelect.value, '131071');
+  assert.equal(ui.sequenceSelect.parentNode.children[0].textContent, 'Sequence Length');
+  assert.equal(ui.stabilizationInput.disabled, false);
+  assert.equal(ui.averagingInput.disabled, false);
+});
+
+uiTest('routes distortion and Waterfall controls to the shared plot without changing measurement settings', () => {
+  const fixture = createFixture();
+  const changes = [];
+  const ui = new PipelineAnalyzerUI({
+    documentRef: fixture.documentRef, windowRef: fixture.windowRef,
+    onConfigurationChange: configuration => changes.push(configuration)
+  });
+  const drawn = [];
+  let destroyed = false;
+  ui.analysisPlot = {
+    draw(state) { this.state = state; drawn.push(state); },
+    clear() { this.state = null; },
+    surface: { destroy() { destroyed = true; } }
+  };
+  const series = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(order => ({
+    order, label: order === 0 ? 'THD (2–3)' : `H${order}`, color: '#abcdef', points: [[20, 1], [1000, 2]]
+  }));
+  const afterWaterfall = { frequencies: [20, 1000], slices: [] };
+  const beforeWaterfall = { frequencies: [20, 1000], slices: [] };
+  const distortion = { available: true, plotState: {
+    type: 'distortion', xMin: 20, xMax: 20000, yMin: 0, yMax: 10, unit: '%', series
+  } };
+  const waterfallState = { type: 'waterfall', xMin: 20, xMax: 20000, yMin: -60, yMax: 0,
+    unit: 'dB', series: [], normalization: 'global', angle: 25, elevation: 28, zoom: 1 };
+  ui.setResult({ views: { distortion, waterfall: {
+    available: true,
+    plotState: { ...waterfallState, waterfall: afterWaterfall },
+    beforePlotState: { ...waterfallState, waterfall: beforeWaterfall }
+  } } });
+  const settings = ui.getConfiguration().measurementSettings;
+  ui.viewInputs.get('distortion').input.checked = true;
+  ui.viewInputs.get('distortion').input.dispatch('change');
+  assert.equal(ui.graphSvg.getAttribute('hidden'), '');
+  assert.equal(ui.hoverSvg.getAttribute('hidden'), '');
+  assert.equal(ui.legend.hidden, true);
+  assert.equal(ui.analysisMount.hidden, false);
+  assert.equal(ui.harmonicControls.hidden, false);
+  assert.equal(ui.waterfallControls.hidden, true);
+  assert.deepEqual(drawn.at(-1).series.map(item => item.order), [0, 2, 3]);
+  assert.equal(ui.displayControls.smoothingOct.range.disabled, true);
+  assert.equal(ui.displayControls.impulseRangeMs.range.disabled, true);
+  const changeCount = changes.length;
+  ui.harmonicInputs.get(8).checked = true;
+  ui.harmonicInputs.get(8).dispatch('change');
+  assert.deepEqual(drawn.at(-1).series.map(item => item.order), [0, 2, 3, 8]);
+  assert.equal(changes.length, changeCount);
+  ui.viewInputs.get('waterfall').input.checked = true;
+  ui.viewInputs.get('waterfall').input.dispatch('change');
+  assert.equal(ui.graphSvg.getAttribute('hidden'), '');
+  assert.equal(ui.hoverSvg.getAttribute('hidden'), '');
+  assert.equal(ui.harmonicControls.hidden, true);
+  assert.equal(ui.waterfallControls.hidden, false);
+  assert.equal(drawn.at(-1).waterfall, afterWaterfall);
+  ui.waterfallResponseSelect.value = 'before';
+  ui.waterfallResponseSelect.dispatch('change');
+  assert.equal(drawn.at(-1).waterfall, beforeWaterfall);
+  assert.equal(drawn.at(-1).normalization, 'global');
+  assert.equal(ui.analysisCanvas.getAttribute('aria-label'), 'Waterfall');
+  ui.setMeasuring(true);
+  assert.equal(ui.analysisCanvas.getAttribute('aria-busy'), 'true');
+  assert.deepEqual(ui.getConfiguration().measurementSettings, settings);
+  ui.viewInputs.get('frequency').input.checked = true;
+  ui.viewInputs.get('frequency').input.dispatch('change');
+  assert.equal(ui.analysisMount.hidden, true);
+  assert.equal(ui.analysisPlot.state, null);
+  assert.equal(ui.graphSvg.getAttribute('hidden'), undefined);
+  assert.equal(ui.hoverSvg.getAttribute('hidden'), undefined);
+  ui.dispose();
+  assert.equal(destroyed, true);
+});
+
+uiTest('explains unavailable or uncertain distortion without exposing internal reason codes', () => {
+  const fixture = createFixture();
+  const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
+  ui.analysisPlot = { draw() {}, clear() {} };
+  ui.setConfiguration({ ...ui.getConfiguration(), graphView: 'distortion' });
+  ui.setResult({ views: { distortion: { available: false, reason: 'no-response' } } });
+  assert.equal(ui.analysisMessage.hidden, false);
+  assert.equal(ui.analysisMessage.textContent,
+    'No measurable response was found. Check the selected input, output, and effect settings, then measure again.');
+  assert.doesNotMatch(ui.analysisMessage.textContent, /no-response/);
+  ui.signalSelect.value = 'tsp';
+  ui.signalSelect.dispatch('change');
+  assert.equal(ui.analysisMessage.textContent, 'Select Log Sweep to measure distortion.');
+  ui.signalSelect.value = 'ess';
+  ui.signalSelect.dispatch('change');
+  ui.setResult({ views: { distortion: { available: true, qualityWarning: true,
+    plotState: { type: 'distortion', series: [] } } } });
+  assert.equal(ui.analysisMessage.textContent,
+    'These distortion results may be inaccurate. Try a longer sweep or check effects that change over time.');
+});
+
+uiTest('keeps an available Before Waterfall accessible when After has no response', () => {
+  const fixture = createFixture();
+  const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
+  const drawn = [];
+  let cleared = 0;
+  ui.analysisPlot = { draw(state) { drawn.push(state); }, clear() { cleared += 1; } };
+  const beforePlotState = { type: 'waterfall', series: [], waterfall: { frequencies: [100], slices: [] } };
+  ui.setConfiguration({ ...ui.getConfiguration(), graphView: 'waterfall' });
+  ui.setResult({ views: { waterfall: {
+    available: true, beforeAvailable: true, afterAvailable: false,
+    beforePlotState, plotState: null
+  } } });
+  assert.equal(ui.waterfallResponseSelect.disabled, false);
+  assert.equal(ui.analysisMessage.textContent,
+    'No measurable response was found for this response. Select Before to view the available response.');
+  assert.ok(cleared > 0);
+  assert.equal(drawn.length, 0);
+  ui.waterfallResponseSelect.value = 'before';
+  ui.waterfallResponseSelect.dispatch('change');
+  assert.equal(drawn.at(-1).waterfall, beforePlotState.waterfall);
+  assert.equal(ui.analysisMessage.hidden, true);
+  ui.waterfallResponseSelect.value = 'after';
+  ui.waterfallResponseSelect.dispatch('change');
+  assert.equal(ui.analysisMessage.hidden, false);
+  ui.setResult({ views: { waterfall: {
+    available: false, beforeAvailable: false, afterAvailable: false,
+    beforePlotState: null, plotState: null
+  } } });
+  assert.equal(ui.waterfallResponseSelect.disabled, true);
+  assert.equal(ui.analysisMessage.textContent,
+    'No measurable response was found for this response. Check the selected input, output, and effect settings, then measure again.');
+});
+
+uiTest('draws the shared canvas and retains Waterfall gestures across response and graph changes', t => {
+  const fixture = createFixture();
+  let legend = [];
+  fixture.windowRef.ThemePalette = { get: () => '#888888' };
+  fixture.windowRef.GraphReadout = { attach: () => ({
+    clear() {}, refresh() {}, setLegend(items) { legend = items; }
+  }) };
+  t.after(replaceGlobal('window', fixture.windowRef));
+  const strokes = [];
+  const createElement = fixture.documentRef.createElement;
+  fixture.documentRef.createElement = name => {
+    const element = createElement(name);
+    if (name !== 'canvas') return element;
+    const context = {
+      setTransform() {}, fillRect() {}, clearRect() {}, setLineDash() {},
+      save() {}, restore() {}, rect() {}, clip() {}, beginPath() {}, moveTo() {}, lineTo() {},
+      stroke() { strokes.push(this.strokeStyle); }, fillText() {}, strokeText() {},
+      drawImage() {}, createLinearGradient: () => ({ addColorStop() {} }),
+      getImageData: () => ({ data: new Uint8ClampedArray(1024).fill(255) }),
+      createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+      putImageData() {}, measureText: text => ({ width: String(text).length * 6 })
+    };
+    element.getContext = () => context;
+    return element;
+  };
+  const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
+  t.after(() => ui.dispose());
+  const waterfallState = { type: 'waterfall', xMin: 100, xMax: 1000, yMin: -60, yMax: 0,
+    unit: 'dB', series: [], normalization: 'global', angle: 25, elevation: 28, zoom: 1,
+    waterfall: { frequencies: [100, 300, 1000], slices: [
+      { time: 0, levels: [0, -1, -2] }, { time: 0.1, levels: [-20, -21, -22] }
+    ] } };
+  ui.setResult({ views: {
+    distortion: { available: true, plotState: {
+      type: 'distortion', xMin: 100, xMax: 1000, yMin: 0, yMax: 10, unit: '%',
+      series: [{ order: 2, label: 'H2', color: '#123456', points: [[100, 1], [1000, 2]] }]
+    } },
+    waterfall: { available: true, plotState: waterfallState, beforePlotState: waterfallState }
+  } });
+  ui.setConfiguration({ ...ui.getConfiguration(), graphView: 'distortion' });
+  assert.ok(strokes.includes('#123456'));
+  assert.equal(legend[0].label, 'H2 (%)');
+  ui.setConfiguration({ ...ui.getConfiguration(), graphView: 'waterfall' });
+  assert.equal(ui.analysisPlot.surface.enabled, true);
+  ui.analysisCanvas.dispatch('keydown', { key: 'ArrowRight', shiftKey: true, preventDefault() {} });
+  assert.equal(ui.analysisPlot.state.angle, 30);
+  ui.waterfallResponseSelect.value = 'before';
+  ui.waterfallResponseSelect.dispatch('change');
+  assert.equal(ui.analysisPlot.state.angle, 30);
+  ui.analysisCanvas.dispatch('wheel', { deltaY: -50, preventDefault() {} });
+  assert.ok(ui.analysisPlot.state.zoom > 1);
+  ui.setConfiguration({ ...ui.getConfiguration(), graphView: 'frequency' });
+  assert.equal(ui.analysisPlot.surface.enabled, false);
+  ui.setConfiguration({ ...ui.getConfiguration(), graphView: 'waterfall' });
+  assert.equal(ui.analysisPlot.state.angle, 30);
+  ui.analysisCanvas.dispatch('keydown', { key: 'Home', shiftKey: true, preventDefault() {} });
+  assert.equal(ui.analysisPlot.state.angle, 25);
+  assert.equal(ui.analysisPlot.state.zoom, 1);
+});
+
 uiTest('keeps missing speaker IR references explicit and lets identity clear them', () => {
   const fixture = createFixture();
   const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
@@ -541,7 +787,7 @@ uiTest('keeps missing speaker IR references explicit and lets identity clear the
   assert.deepEqual(ui.getConfiguration().outputs[0], { channel: 0, measurementId: null, pointId: null });
 });
 
-uiTest('renders five two-curve graph views with synchronized hover and legend highlighting', () => {
+uiTest('retains five two-curve graph views with synchronized hover and legend highlighting', () => {
   const fixture = createFixture();
   const ui = new PipelineAnalyzerUI({ documentRef: fixture.documentRef, windowRef: fixture.windowRef });
   setFormat(ui);
@@ -572,7 +818,7 @@ uiTest('renders five two-curve graph views with synchronized hover and legend hi
       impulse: view
     }
   });
-  assert.equal(ui.viewInputs.size, 5);
+  assert.equal(ui.viewInputs.size, 7);
   assert.ok(ui.legend.parentNode === ui.graphShell, 'the legend must stay in the graph shell');
   assert.ok(ui.viewGroup.parentNode === ui.graphSection, 'the view group must stay outside the graph shell');
   assert.equal(ui.viewLabel.textContent, 'Graph:');

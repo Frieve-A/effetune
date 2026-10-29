@@ -452,7 +452,9 @@ test('initPluginList builds categorized plugin rows and loading state', async ()
 
     windowRef.uiManager = null;
     manager.initPluginList();
-    assert.equal(dom.pluginList.querySelectorAll('#effectCount').at(-1).textContent, '3 effects available');
+    assert.equal(dom.pluginList.querySelectorAll('#effectCount').length, 1);
+    assert.equal(dom.pluginList.children.at(-1).id, 'effectCount');
+    assert.equal(dom.pluginList.children.at(-1).textContent, '3 effects available');
   });
 });
 

@@ -41,6 +41,14 @@ Aucun mythe audiophile, juste de la science pure.
 
 ## Guide de configuration
 
+### Application Android
+
+Utilisez Android 10 ou une version ultérieure, avec Android System WebView à jour. Ouvrez des fichiers musicaux ou choisissez un dossier dans la bibliothèque musicale ; Android vous permet de sélectionner les fichiers et dossiers auxquels EffeTune peut accéder. Si un dossier devient inaccessible, sélectionnez-le à nouveau dans la bibliothèque. La lecture continue lorsque l’écran est éteint, et les commandes des notifications et de l’écran de verrouillage pilotent le même lecteur.
+
+Enregistrez ou partagez les fichiers exportés depuis les écrans de fichiers et de partage d’Android. Pour exporter plusieurs fichiers audio, choisissez un dossier de destination et gardez l’application ouverte. L’application Android et l’application web conservent leurs données séparément. Sauvegarde / Restauration permet d’échanger les préréglages, réponses impulsionnelles, mesures et données du visualiseur (jusqu’à 256 Mo) ; les fichiers musicaux, le catalogue musical, les identifiants de connexion et les réglages ne sont pas inclus. Les effets traitent le son lu ou reçu par EffeTune, sans remplacer celui des autres applications Android.
+
+Les commandes MIDI des paramètres et les changements programmés continuent lorsque l’écran est éteint. Gardez l’application ouverte pour utiliser le clavier ou une manette. Android accepte les entrées MIDI, mais n’envoie pas de retour aux faders motorisés ni aux LED. Touchez l’icône **Remote Control** dans la barre d’outils pour autoriser le contrôle à distance et copier un lien d’appairage. Gardez ce lien confidentiel.
+
 Choisissez la méthode de configuration adaptée à la source audio que vous souhaitez écouter.
 
 ### Configuration du lecteur de fichiers musicaux
@@ -327,9 +335,9 @@ Si vous rencontrez des problèmes audio (coupures, parasites) :
 
 ### Musique en réseau et télécommande
 
-**Application de bureau:** Parcourez les serveurs musicaux du réseau local, partagez les dossiers de votre choix et écoutez sur cet appareil ou un lecteur OpenHome. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md). Vous pouvez aussi activer la réception UPnP AV / DLNA et AirPlay pour écouter la musique envoyée par d’autres appareils avec les effets de cet ordinateur.
+**Application de bureau :** Parcourez les serveurs musicaux, dont Subsonic / OpenSubsonic, partagez les dossiers choisis et écoutez sur cet appareil, un lecteur OpenHome ou un lecteur UPnP AV / DLNA. Après appairage, les effets d’un lecteur EffeTune se modifient dans la même fenêtre. Le partage et l’accès par télécommande sont désactivés par défaut. Consultez [musique en réseau et télécommande](openhome.md). Vous pouvez aussi activer la réception UPnP AV / DLNA et AirPlay pour écouter la musique envoyée par d’autres appareils avec les effets de cet ordinateur.
 
-La PWA peut aussi lire la musique partagée d’un ordinateur EffeTune enregistré avec les effets de cet appareil, ou piloter un autre ordinateur enregistré. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour connaître les conditions de navigateur et de connexion.
+La PWA peut lire la musique partagée d’un ordinateur EffeTune enregistré et les bibliothèques réseau autorisées avec les effets de cet appareil, ou piloter un lecteur réseau autorisé. Les connexions Subsonic directes sont aussi disponibles. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour connaître les conditions de navigateur et de connexion.
 
 ### Piloter EffeTune avec un assistant IA (MCP)
 
@@ -393,7 +401,7 @@ Si le souci persiste, signalez-le sur [GitHub Issues](https://github.com/Frieve-
 | Analyzer  | Note Spectrogram | Affiche les hauteurs estimées au fil du temps sous forme de piano roll | [Détails](plugins/analyzer.md#note-spectrogram)      |
 | Analyzer  | Oscilloscope      | Visualisation en temps réel de la forme d'onde                           | [Détails](plugins/analyzer.md#oscilloscope)             |
 | Analyzer  | Pitch Meter | Suit une fréquence fondamentale et son accord au fil du temps | [Détails](plugins/analyzer.md#pitch-meter) |
-| Analyzer  | Rhythm Analyzer | Affiche le tempo, les coups temps par temps, et l'avance ou le retard de chaque partie | [Détails](plugins/analyzer.md#rhythm-analyzer) |
+| Analyzer  | Rhythm Analyzer | Affiche le tempo et les attaques par bande de fréquences ou catégorie de batterie | [Détails](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram       | Montre l'évolution du spectre de fréquences au fil du temps              | [Détails](plugins/analyzer.md#spectrogram)              |
 | Analyzer  | Spectrum Analyzer | Montre en temps réel l'intensité des graves, médiums et aigus            | [Détails](plugins/analyzer.md#spectrum-analyzer)        |
 | Analyzer  | Stereo Meter      | Visualise l'équilibre stéréo et la corrélation entre canaux              | [Détails](plugins/analyzer.md#stereo-meter)             |

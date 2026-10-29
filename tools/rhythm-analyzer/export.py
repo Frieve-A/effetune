@@ -141,6 +141,11 @@ def format_header(content, filename, executable):
 
 
 def main():
+    import sys
+    if "--drums" in sys.argv:
+        from drum_export import main as export_drums
+        export_drums([arg for arg in sys.argv[1:] if arg != "--drums"])
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--checkpoint", type=Path, help="Trusted frozen training checkpoint")

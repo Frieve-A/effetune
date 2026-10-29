@@ -7,7 +7,7 @@ const MAX_MESSAGE_BYTES = 256 * 1024;
 const MAX_OUTBOUND_QUEUE_BYTES = MAX_MESSAGE_BYTES * 2;
 const MAX_DIAGNOSTIC_LENGTH = 1024;
 const STARTUP_TIMEOUT_MS = 10000;
-const ALLOWED_SERVICES = new Set(['Product', 'Playlist', 'Info', 'Time', 'AVTransport', 'RenderingControl']);
+const ALLOWED_SERVICES = new Set(['Product', 'Playlist', 'Info', 'Time', 'Volume', 'AVTransport', 'RenderingControl']);
 
 class OpenHomeSidecarManager extends EventEmitter {
   constructor({

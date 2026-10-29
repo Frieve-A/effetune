@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import { adaptPipelineAnalysisResult } from '../../js/pipeline-analyzer/result-adapter.js';
 import { createLogFrequencyGrid } from '../../js/utils/measurement-dsp/smoothing.js';
+import { AnalysisPlot } from '../../features/measurement/ui/analysis-plot.js';
 
 function spectrum(magnitudeOffset = 0) {
     return {
@@ -18,7 +19,7 @@ function spectrum(magnitudeOffset = 0) {
     };
 }
 
-test('adapts Worker Before and After data into five normalized real-unit views', () => {
+test('adapts Worker Before and After data into normalized real-unit views', () => {
     const result = adaptPipelineAnalysisResult({
         sampleRate: 48000,
         reportedLatency: 64,
@@ -53,7 +54,9 @@ test('adapts Worker Before and After data into five normalized real-unit views',
         'phase',
         'minimumGroupDelay',
         'excessGroupDelay',
-        'impulse'
+        'impulse',
+        'distortion',
+        'waterfall'
     ]);
     assert.match(result.views.frequency.xLabel, /Hz/);
     assert.match(result.views.frequency.yLabel, /dB/);
@@ -91,6 +94,7 @@ test('adapts Worker Before and After data into five normalized real-unit views',
     assert.ok(Math.abs(result.views.frequency.curves[0].points[1].yValue + expectedNormalization) < 1e-5);
 
     for (const [name, view] of Object.entries(result.views)) {
+        if (!view.curves) continue;
         assert.equal(view.curves.length, 2);
         assert.ok(view.xTicks.length >= 2);
         assert.equal(view.yTicks.length, name === 'frequency' ? 7 : 5);
@@ -109,6 +113,68 @@ test('adapts Worker Before and After data into five normalized real-unit views',
     assert.match(result.views.impulse.curves[0].points[0].xLabel, /-0\.02 ms/);
     assert.match(result.views.impulse.curves[1].points[0].xLabel, /-1\.35 ms/);
     assert.ok(result.views.impulse.curves[1].points[0].x < result.views.impulse.curves[0].points[0].x);
+});
+
+test('measurement views preserve harmonic gaps, quality warnings, and both waterfall sources', () => {
+    const beforeWaterfall = { frequencies: [100, 1000], slices: [{ time: 0, levels: [0, -6] }] };
+    const afterWaterfall = { frequencies: [100, 1000], slices: [{ time: 0, levels: [-3, -9] }] };
+    const result = adaptPipelineAnalysisResult({
+        sampleRate: 48000, measurement: { signalType: 'ess', endFrequency: 20000 },
+        before: { impulse: new Float32Array([1, 0]), spectrum: spectrum(), waterfall: beforeWaterfall },
+        after: { impulse: new Float32Array([1, 0]), spectrum: spectrum(), waterfall: afterWaterfall,
+            distortion: { frequencies: [100, 1000], series: [{ order: 2, ratios: [0.01, null] }],
+                thd: [0.012, null], maxOrder: 3 },
+            distortionQuality: { valid: false, reasons: ['overlapping-tail'] } }
+    });
+    assert.equal(result.views.distortion.available, true);
+    assert.equal(result.views.distortion.qualityWarning, true);
+    assert.deepEqual(result.views.distortion.reasons, ['overlapping-tail']);
+    assert.deepEqual(result.views.distortion.plotState.series[1].points, [[100, 1], [1000, null]]);
+    assert.equal(result.views.distortion.plotState.series[0].label, 'THD (2–3)');
+    assert.equal(result.views.waterfall.plotState.waterfall, afterWaterfall);
+    assert.equal(result.views.waterfall.beforePlotState.waterfall, beforeWaterfall);
+    assert.equal(result.views.waterfall.plotState.normalization, 'global');
+});
+
+test('Waterfall availability is independent for Before and After', () => {
+    const waterfall = { frequencies: [100, 1000], slices: [{ time: 0, levels: [0, -6] }] };
+    for (const beforeAvailable of [false, true]) for (const afterAvailable of [false, true]) {
+        const result = adaptPipelineAnalysisResult({
+            sampleRate: 48000,
+            before: { impulse: new Float32Array([beforeAvailable ? 1 : 0, 0]), spectrum: spectrum(),
+                waterfall: beforeAvailable ? waterfall : undefined },
+            after: { impulse: new Float32Array([afterAvailable ? 1 : 0, 0]), spectrum: spectrum(),
+                waterfall: afterAvailable ? waterfall : undefined }
+        });
+        const view = result.views.waterfall;
+        assert.equal(view.available, beforeAvailable || afterAvailable);
+        assert.equal(view.beforeAvailable, beforeAvailable);
+        assert.equal(view.afterAvailable, afterAvailable);
+        assert.equal(Boolean(view.beforePlotState), beforeAvailable);
+        assert.equal(Boolean(view.plotState), afterAvailable);
+    }
+});
+
+test('Before and After waterfalls supply response metadata to the shared readout', () => {
+    const waterfall = { frequencies: [100, 1000], slices: [{ time: 0, levels: [0, -6] }] };
+    const result = adaptPipelineAnalysisResult({
+        sampleRate: 48000,
+        before: { impulse: new Float32Array([1]), spectrum: spectrum(), waterfall },
+        after: { impulse: new Float32Array([1]), spectrum: spectrum(), waterfall }
+    });
+    for (const [state, label, color] of [
+        [result.views.waterfall.beforePlotState, 'Before', 'var(--et-graph-trace-secondary)'],
+        [result.views.waterfall.plotState, 'After', 'var(--et-graph-trace)']
+    ]) {
+        const readout = AnalysisPlot.prototype.read.call({
+            state, plot: {}, hoveredSeries: null, dpr: 2,
+            surface: { read: () => ({ frequency: 1000, time: 0.01, level: -6, x: 12, y: 34 }) }
+        }, 12, 34);
+        assert.equal(state.series.length, 1);
+        assert.deepEqual(readout.rows, [{ label, color, value: '-6.00 dB' }]);
+        assert.match(readout.cursor, /1000\.0 Hz.*10\.00 ms/);
+        assert.deepEqual(readout.at, { x: 24, y: 68 });
+    }
 });
 
 test('impulse display uses the full-response peak and excludes samples outside its fixed range', () => {

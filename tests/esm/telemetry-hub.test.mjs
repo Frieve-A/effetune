@@ -137,6 +137,22 @@ test('hub dispatches by tap and frame type and returns the transferred packet', 
   assert.equal(hub.handleMessage({ type: 'other' }), false);
 });
 
+test('hub delivers cloned EOF packets without adding them to the transfer pool', () => {
+  const posts = [];
+  const hub = new TelemetryHub({ port: { postMessage: message => posts.push(message) } });
+  const received = [];
+  hub.subscribe(42, TelemetryFrameType.TAP_RHYTHM_ANALYZER, frame => received.push(frame.sequence));
+  const packet = createPacket([
+    { frameType: TelemetryFrameType.TAP_RHYTHM_ANALYZER, tapId: 42, sequence: 3, payload: new Uint8Array(0) }
+  ]);
+  hub.handleMessage({ type: 'dspTelemetry', packet, bytes: packet.byteLength, recycle: false });
+  assert.deepEqual(received, [3]);
+  assert.deepEqual(posts, []);
+  hub.handleMessage({ type: 'dspTelemetry', packet, bytes: packet.byteLength });
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].type, 'dspTelemetryReturn');
+});
+
 test('hub returns malformed packets and isolates packet-pool failures', () => {
   const posts = [];
   const warnings = [];

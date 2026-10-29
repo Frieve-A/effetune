@@ -1,7 +1,10 @@
 {
   "type": "NoteSpectrogramPlugin",
   "parityReference": "production-native-promoted-v1",
-  "tolerance": { "abs": 0.000001, "policy": "per-sample" },
+  "tolerance": {
+    "abs": 1e-06,
+    "policy": "per-sample"
+  },
   "fields": [
     {
       "name": "minimumMidi",
@@ -22,6 +25,12 @@
     {
       "name": "timbreEnabled",
       "key": "te",
+      "kind": "bool",
+      "default": false
+    },
+    {
+      "name": "chordKeyEnabled",
+      "key": "ck",
       "kind": "bool",
       "default": false
     }

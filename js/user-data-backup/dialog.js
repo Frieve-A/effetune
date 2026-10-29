@@ -96,7 +96,7 @@ function resultItems(result, key) {
   return Array.isArray(result?.[key]) ? result[key] : [];
 }
 
-export function openUserDataBackupDialog({ service, translate = fallbackTranslate, onRestored } = {}) {
+export function openUserDataBackupDialog({ service, translate = fallbackTranslate, onRestored, initialFile = null } = {}) {
   if (!service) throw new TypeError('User data backup service is required.');
   const t = (key, fallback, params) => translate(key, fallback, params || {});
   const previousFocus = document.activeElement;
@@ -676,7 +676,10 @@ export function openUserDataBackupDialog({ service, translate = fallbackTranslat
   document.body.appendChild(overlay);
   renderList();
   backupTab.focus();
-  void loadBackupCatalog();
+  if (initialFile) {
+    changeMode('restore');
+    void openFile(initialFile);
+  } else void loadBackupCatalog();
   return { element: overlay, close: finishClose };
 }
 

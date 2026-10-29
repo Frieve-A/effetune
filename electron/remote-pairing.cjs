@@ -29,7 +29,7 @@ class RemotePairingHost {
       discovery,
       getDescription: () => {
         const info = getInfo();
-        return info.running && info.playerId ? { id: this.id, targets: [REMOTE_CONTROL], location: address => `${info.secure ? 'https' : 'http'}://${address}:${info.port}${DESCRIPTION_PATH}` } : null;
+        return info.running && info.playerId ? { id: this.id, targets: [REMOTE_CONTROL], location: address => `${info.endpoint || `${info.secure ? 'https' : 'http'}://${address}:${info.port}`}${DESCRIPTION_PATH}` } : null;
       },
       onDiagnostic
     });
@@ -54,7 +54,7 @@ class RemotePairingHost {
     const address = req.socket.remoteAddress?.replace(/^::ffff:/, '');
     const info = this.getInfo();
     if (!info.running || !info.playerId) { reply(res, 503, { status: 'unavailable' }); return true; }
-    if (!isLanAddress(address || '') || !isAllowedHost(req.headers.host)) { reply(res, 403, { status: 'unavailable' }); return true; }
+    if (!isLanAddress(address || '') || !(info.allowedHost ? info.allowedHost(req.headers.host) : isAllowedHost(req.headers.host))) { reply(res, 403, { status: 'unavailable' }); return true; }
     if (route === DESCRIPTION_PATH) {
       if (req.method !== 'GET') { reply(res, 405, { status: 'unavailable' }); return true; }
       const body = `<?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:effetune="urn:effetune-org:remote-control"><device><deviceType>urn:effetune-org:device:RemoteControl:1</deviceType><friendlyName>${xml(info.name || 'EffeTune')}</friendlyName><manufacturer>EffeTune</manufacturer><UDN>${xml(this.id)}</UDN><effetune:playerId>${xml(info.playerId)}</effetune:playerId><serviceList><service><serviceType>${REMOTE_CONTROL}</serviceType><controlURL>${REQUEST_PATH}</controlURL></service></serviceList></device></root>`;

@@ -36,6 +36,7 @@ export async function createFrameWebSocket(win) {
     class FrameWebSocket {
         static get metadata() { return metadata; }
         static changeConnection() { port.postMessage({ type: 'change-connection' }); }
+        static setContentSize(width, height) { port.postMessage({ type: 'content-size', width, height }); }
         constructor() {
             active = this;
             this.readyState = 0;

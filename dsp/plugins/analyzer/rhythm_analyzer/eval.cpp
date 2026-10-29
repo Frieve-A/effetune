@@ -131,9 +131,10 @@ int main(int argc, char **argv) {
       return 2;
     auto *kernel = descriptor->construct(storage.data());
     kernel->prepare({static_cast<float>(rate), 1u, 128u});
-    const float params[3]{40.0f, 240.0f, 0.0f};
+    const float params[4]{40.0f, 240.0f, 0.0f,
+                          argc > 5 && std::strcmp(argv[5], "drums") == 0 ? 1.0f : 0.0f};
     if (!kernel->preparedSuccessfully() ||
-        kernel->stageParameters(params, 3u, descriptor->paramsHash) != ET_OK) {
+        kernel->stageParameters(params, 4u, descriptor->paramsHash) != ET_OK) {
       descriptor->destroy(kernel);
       return 2;
     }
@@ -143,6 +144,28 @@ int main(int argc, char **argv) {
     effetune::TelemetryRing ring;
     ring.adopt(ringBytes.data(), static_cast<std::uint32_t>(ringBytes.size()));
     std::uint32_t sequence = 0u;
+    auto emitTelemetry = [&]() {
+      effetune::TelemetryWriter telemetry(ring, 207u, sequence);
+      kernel->writeTelemetry(telemetry);
+      const auto bytes =
+          ring.read(packets.data(), static_cast<std::uint32_t>(packets.size()), nullptr);
+      for (std::uint32_t offset = 0u; offset + 2040u <= bytes; offset += 2040u) {
+        const auto *p = packets.data() + offset + 16u;
+        std::fprintf(output.get(),
+                     "{\"kind\":\"header\",\"tick\":%u,\"generation\":%u,\"epoch\":%u,"
+                     "\"period\":%.9g,\"shown\":%s,\"display_mode\":%u,\"drum_events\":%u}\n",
+                     readU32(p + 12u), readU32(p + 4u), readU32(p + 36u), readF32(p + 44u),
+                     readU32(p + 32u) ? "true" : "false", readU32(p + 1496u), readU32(p + 1500u));
+        for (std::uint32_t i = 0u; i < readU32(p + 1500u); ++i) {
+          const auto *event = p + 1512u + i * 32u;
+          const double time = (readU32(event) + static_cast<double>(readF32(event + 4u))) * kBeatDt;
+          std::fprintf(
+              output.get(),
+              "{\"kind\":\"drum\",\"lane\":%u,\"time\":%.17g,\"logit\":%.9g,\"annotation\":%u}\n",
+              event[28], time, readF32(event + 24u), event[29]);
+        }
+      }
+    };
     float audio[128];
     std::size_t count;
     std::uint64_t inputCount = 0u;
@@ -154,20 +177,12 @@ int main(int argc, char **argv) {
       kernel->process(audio, 1u, static_cast<std::uint32_t>(count),
                       {static_cast<double>(inputCount) / rate});
       inputCount += count;
-      effetune::TelemetryWriter telemetry(ring, 207u, sequence);
-      kernel->writeTelemetry(telemetry);
-      const auto bytes =
-          ring.read(packets.data(), static_cast<std::uint32_t>(packets.size()), nullptr);
-      if (bytes >= 1360u) {
-        const auto *p = packets.data() + 16u;
-        std::fprintf(output.get(),
-                     "{\"kind\":\"header\",\"tick\":%u,\"generation\":%u,\"epoch\":%u,"
-                     "\"period\":%.9g,\"shown\":%s}\n",
-                     readU32(p + 12u), readU32(p + 4u), readU32(p + 36u), readF32(p + 44u),
-                     readU32(p + 32u) ? "true" : "false");
-      }
+      emitTelemetry();
     }
-    flushRhythm(*kernel);
+    kernel->streamBoundary();
+    do {
+      emitTelemetry();
+    } while (kernel->streamBoundaryPending());
     descriptor->destroy(kernel);
   } else
     return 2;

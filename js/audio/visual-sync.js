@@ -88,6 +88,9 @@ const rules = {
     }),
     // Half the onset STFT window plus the staged hop and the one-frame peak look-ahead.
     RhythmAnalyzerPlugin: rule((p, rate) => {
+        // Reserve six future frames, peak confirmation and the maximum instance scheduling phase.
+        // Each telemetry frame reports its actual phase-inclusive age for delivery alignment.
+        if (p.dm === 'drums') return 0.07775 * rate + (rate === 44100 ? 0 : 191);
         const pow2 = (value, low, high) => 2 ** Math.round(Math.log2(clamp(value, low, high)));
         const hop = pow2(0.00267 * rate, 8, 4096);
         return Math.max(pow2(0.0213 * rate, 64, 32768), 4 * hop) / 2 + 2 * hop;
@@ -160,8 +163,19 @@ export function dropVisualSyncOverflow(queue, sameStream, limit = VISUAL_SYNC_QU
 }
 
 // These payloads record capture-end time on the worklet processing timeline.
-export function telemetryCaptureTiming(frame, contextFrameOffset) {
+export function telemetryCaptureTiming(frame, contextFrameOffset, hostSampleRate) {
     if (!Number.isFinite(contextFrameOffset)) return null;
+    // Rhythm's public sample rate describes band analysis, which may differ from the host.
+    // Its drum age includes the instance scheduling phase without shifting accepted hit times.
+    if (frame?.frameType === 28 && frame.formatVersion === 5 && frame.payload?.byteLength === 2024 &&
+        frame.payload.getUint32(1496, true) === 1) {
+        const time = frame.payload.getFloat32(16, true);
+        const age = frame.payload.getFloat32(1504, true);
+        // A reset can publish an empty snapshot before another block establishes its source time.
+        if (!Number.isFinite(hostSampleRate) || hostSampleRate <= 0 || !Number.isFinite(time) || time <= 0 ||
+            !Number.isFinite(age) || age < 0) return null;
+        return { endFrame: time * hostSampleRate + contextFrameOffset, generationFrames: age * hostSampleRate };
+    }
     // Note Spectrogram telemetry v6 (see plugins/analyzer/note_spectrogram.js).
     const note = frame?.frameType === 24 && frame.formatVersion === 6 && frame.payload?.byteLength === 9192;
     const spectrogram = frame?.frameType === 5 && frame.formatVersion === 1 && frame.payload?.byteLength === 268;

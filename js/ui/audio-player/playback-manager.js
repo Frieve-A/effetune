@@ -73,6 +73,10 @@ export class PlaybackManager {
     if (!files || files.length === 0) {
       return;
     }
+    if (append && this.audioPlayer.contextManager?.nativeQueueOwned) {
+      return this.audioPlayer.contextManager.insertNativeQueue({ tracks: files,
+        ...(Number.isInteger(insertAt) ? { index: insertAt } : {}) });
+    }
     if (append) this.pendingTransport.invalidate();
     this.audioPlayer.contextManager?.clearNextTrackBuffer?.();
     
@@ -184,7 +188,7 @@ export class PlaybackManager {
       });
     }
 
-    if (input instanceof File) {
+    if (input instanceof File || (typeof input?.androidUri === 'string' && typeof input.slice === 'function')) {
       return this.withImmutableEntryInstanceId({
         path: null,
         name: input.name,
@@ -212,6 +216,8 @@ export class PlaybackManager {
         ...(input.sourceKey && { sourceKey: input.sourceKey })
       };
       for (const key of [
+        'uri',
+        'headers',
         'byteLength',
         'fileSize',
         'mediaSource',
@@ -544,6 +550,9 @@ export class PlaybackManager {
     const sequence = descriptor instanceof CatalogSequence || descriptor instanceof CompositeCatalogSequence
       ? descriptor
       : new CatalogSequence(descriptor);
+    if (preservePlayback && this.audioPlayer.contextManager?.nativeQueueOwned) {
+      return this.audioPlayer.contextManager.replaceNativeQueue({ sequence, index: currentOrdinal, preservePlayback: true });
+    }
     const currentTrack = preservePlayback
       ? this.audioPlayer.stateManager?.getStateSnapshot?.().currentTrack ?? null
       : null;
@@ -1224,6 +1233,11 @@ export class PlaybackManager {
     if (operationKind !== 'playNext' && operationKind !== 'queue') {
       throw operationError('invalidOperationResult', 'Playback destination is invalid');
     }
+    if (this.audioPlayer.contextManager?.nativeQueueOwned && this.audioPlayer.stateManager.getStateSnapshot().playlistLength) {
+      const state = this.audioPlayer.stateManager.getStateSnapshot();
+      return this.audioPlayer.contextManager.insertNativeQueue({ sequence,
+        index: operationKind === 'playNext' ? state.currentTrackIndex + 1 : state.playlistLength });
+    }
     const currentSequence = this.catalogSequence ?? this.sequence;
     if (!currentSequence?.itemCount) {
       await this.loadCatalogSequence(sequence, { currentOrdinal: 0, autoPlay: false });
@@ -1611,6 +1625,7 @@ export class PlaybackManager {
     if (state.playbackMode === 'rollingPcm') {
       return contextManager.hasCurrentRollingPlayback?.() === true;
     }
+    if (state.playbackMode === 'native') return !!this.audioPlayer.audioManager?.snapshot?.playback?.source?.uri;
     if (state.playbackMode !== 'audioElement') return false;
 
     const audioElement = this.audioPlayer.audioElement;
@@ -1728,6 +1743,7 @@ export class PlaybackManager {
    * Enhanced playPrevious with seamless transition
    */
   async playPrevious(userInitiated = true, options = {}) {
+    if (this.audioPlayer.contextManager?.nativeQueueOwned) return this.audioPlayer.contextManager.command('previous');
     return this.runWithPlaybackPending(
       () => this.#playPrevious(userInitiated, options),
       userInitiated ? 2 : 1
@@ -1853,6 +1869,7 @@ export class PlaybackManager {
    * Enhanced playNext with seamless transition and proper error handling
    */
   async playNext(userInitiated = true, options = {}) {
+    if (this.audioPlayer.contextManager?.nativeQueueOwned) return this.audioPlayer.contextManager.command('next');
     return this.runWithPlaybackPending(
       () => this.#playNext(userInitiated, options),
       userInitiated ? 2 : 1
@@ -2328,6 +2345,7 @@ export class PlaybackManager {
     if (typeof enabled !== 'boolean') {
       throw new TypeError('Shuffle mode must be a boolean');
     }
+    if (this.audioPlayer.contextManager?.nativeQueueOwned) return this.audioPlayer.contextManager.queueMode({ shuffle: enabled });
 
     const state = this.audioPlayer.stateManager?.getStateSnapshot();
     if (state?.repeatMode === 'ONE' || state?.shuffleMode === enabled) return false;
@@ -2350,7 +2368,7 @@ export class PlaybackManager {
           this.enableShuffleModePreservingCurrentTrack(state);
         } else {
           if (this.audioPlayer.contextManager) {
-            this.audioPlayer.contextManager.stop();
+            await this.audioPlayer.contextManager.stop();
           }
           this.shufflePlaylistFromBeginning(isCurrentlyPlaying, userInitiated);
         }
@@ -2424,6 +2442,9 @@ export class PlaybackManager {
     if (repeatMode !== 'OFF' && repeatMode !== 'ALL' && repeatMode !== 'ONE') {
       throw new RangeError('Repeat mode must be OFF, ALL, or ONE');
     }
+    if (this.audioPlayer.contextManager?.nativeQueueOwned) return this.audioPlayer.contextManager.queueMode({
+      repeat: repeatMode.toLowerCase(), ...(repeatMode === 'ONE' ? { shuffle: false } : {})
+    });
 
     repeatMode = this.repeatModeNormalizer?.(repeatMode) ?? repeatMode;
     if (repeatMode !== 'OFF' && repeatMode !== 'ALL' && repeatMode !== 'ONE') {
@@ -2638,6 +2659,7 @@ export class PlaybackManager {
    * Load player state from storage
    */
   async loadPlayerState() {
+    if (this.audioPlayer.contextManager?.nativeQueueOwned) return;
     const windowRef = typeof window !== 'undefined' ? window : {};
     if (!windowRef.electronAPI || !windowRef.electronIntegration) {
       this.loadPlayerStateFromLocalStorage(windowRef);
@@ -2860,6 +2882,7 @@ function createResolvedSequenceTrack(entry, source) {
     if (typeof source === 'function') track.provider = source;
     if (source?.provider) track.provider = source.provider;
     if (Object.prototype.hasOwnProperty.call(source ?? {}, 'file')) track.file = source.file;
+    if (typeof source?.uri === 'string') track.uri = source.uri;
   }
   for (const key of [
     'startFrame',

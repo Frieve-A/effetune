@@ -7,7 +7,14 @@
  * @param {AudioUtils} audioUtils - AudioUtils instance 
  * @returns {Promise<Object>} - Object with inputs and outputs arrays
  */
+import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+
 async function enumerateDevices() {
+    if (isAndroidHost()) {
+        this.devices = await getAndroidBridge().request('audio.devices');
+        this.devices.inputs = this.devices.inputs.filter(device => Number(device.id) >= 0);
+        return this.devices;
+    }
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         
@@ -38,6 +45,16 @@ async function enumerateDevices() {
  * @param {string} channel - The input channel to use ('left', 'right', 'both')
  */
 async function startMicrophoneInput(deviceId = null, channel = 'left') {
+    if (isAndroidHost()) {
+        const nativeDeviceId = deviceId ? Number(deviceId) : 0;
+        if (!Number.isInteger(nativeDeviceId) || nativeDeviceId < 0) throw new Error('Choose a microphone for this measurement.');
+        await getAndroidBridge().request('audio.input', { deviceId: nativeDeviceId });
+        const devices = await getAndroidBridge().request('audio.devices');
+        this.nativeInputUnprocessed = devices.unprocessed === true;
+        this.selectedInputChannel = channel;
+        this.microphone = { native: true };
+        return;
+    }
     const useRightChannel = channel === 'right' || channel === 1;
     try {
         // Stop any existing microphone input
@@ -171,6 +188,13 @@ async function startMicrophoneInput(deviceId = null, channel = 'left') {
  * Stop microphone input
  */
 function stopMicrophoneInput() {
+    if (isAndroidHost()) {
+        if (this.microphone?.native) {
+            this.microphone = null;
+            void getAndroidBridge().request('audio.input', { deviceId: -1 }).catch(error => console.warn('Android input release failed:', error));
+        }
+        return;
+    }
     // Disconnect microphone
     if (this.microphone) {
         try {

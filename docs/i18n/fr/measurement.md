@@ -43,6 +43,6 @@ Utilisez l’icône d’appareil photo (**Copier l’image**) au-dessus de l’u
 
 Les nouvelles mesures utilisent un balayage sinusoïdal exponentiel (ESS). Commencez à faible niveau de sortie, puis ajustez-le sans écrêtage. La distorsion nécessite des données harmoniques valides issues de cette mesure ; un WAV importé ou des données limitées à la réponse en fréquence ou à l’IR linéaire ne suffisent pas. Si les données manquent, importez une mesure contenant les réponses nécessaires ou effectuez-en une nouvelle. La plage disponible dépend aussi de la bande balayée et de la durée enregistrée. La longueur de balayage demandée peut être augmentée pour séparer les harmoniques. Chaque répétition comprend aussi 2,5 secondes de décroissance. Sans limitation de bande, l’ESS couvre 20 Hz à 20 kHz dans les limites de la fréquence d’échantillonnage réelle.
 
-Pour examiner les réponses Frequency, Phase, Min Group Delay, Excess Group Delay et Impulse du pipeline actif, y compris jusqu’à quatre sorties sélectionnées et, si vous le souhaitez, des réponses d’enceintes enregistrées, consultez le [guide de Pipeline Analyzer](pipeline-analyzer.md).
+Pour examiner la réponse en fréquence, la phase, le retard de groupe, la réponse impulsionnelle, la distorsion et la décroissance du pipeline actif, y compris jusqu’à quatre sorties sélectionnées et, si vous le souhaitez, des réponses d’enceintes enregistrées, consultez le [guide de Pipeline Analyzer](pipeline-analyzer.md).
 
 [← Retour au README](README.md)

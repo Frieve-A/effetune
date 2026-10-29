@@ -41,6 +41,14 @@ EffeTuneは、音楽をもっと好みの音で楽しみたいオーディオ愛
 
 ## セットアップガイド
 
+### Androidアプリ
+
+Android 10以降と、最新のAndroid System WebViewを使用してください。音楽ファイルを開くか、音楽ライブラリでフォルダを選ぶと、EffeTuneにアクセスを許可するファイルやフォルダをAndroidの画面で選択できます。フォルダにアクセスできなくなった場合は、ライブラリで選び直してください。画面を消しても再生は続き、通知やロック画面から同じプレーヤーを操作できます。
+
+書き出したファイルは、Androidのファイル選択画面や共有画面で保存・共有できます。音声ファイルの一括書き出しでは保存先フォルダを選び、アプリを開いたまま処理します。Androidアプリとウェブアプリの保存データは別々です。「バックアップ / 復元」でプリセット、インパルス応答、測定データ、ビジュアライザーのデータを交換できます（最大256 MB）。音楽ファイル、音楽カタログ、接続の認証情報、設定は含まれません。エフェクトを適用できるのはEffeTuneで再生・入力する音声で、ほかのAndroidアプリの音声は置き換えません。
+
+MIDIによるパラメーター操作と時刻・タイマーによるパラメーター変更は、画面を消しても続きます。キーボードやゲームパッドで操作するときはアプリを開いてください。AndroidはMIDI入力に対応し、モーターフェーダーやLEDへのフィードバックは送信しません。ツールバーの **Remote Control** アイコンをタップすると、外部からの操作を許可してペアリングリンクをコピーできます。このリンクは他人に公開しないでください。
+
 聴きたい音声の再生元に合わせて、以下のセットアップ方法を選んでください。
 
 ### 音楽ファイルプレーヤーのセットアップ
@@ -188,6 +196,8 @@ Effect Pipelineヘッダーの **パイプラインプリセット** ボタン�
 
 既存の `.effetune_preset` ファイルの読み込み、書き出し、共有は、引き続きエフェクトチェーン全体のプリセットとして機能します。
 
+完成したステレオミックスには、**System Presets > Mastering**のジャンル別チェーン10種類を利用できます。強い圧縮をかける**J-Pop Dense**も含まれます。選び方、入力レベルの調整、処理済みファイルの書き出しは[マスタリングプリセット](mastering-presets.md)をご覧ください。
+
 ### エフェクトの共通操作
 
 - スライダーを細かく調整するには、Shiftキーを押しながらドラッグします。値は最小単位ずつ変化します。
@@ -327,9 +337,9 @@ Microsoft Store版の更新はMicrosoft Storeで管理されます。**設定 > 
 
 ### ネットワーク音楽とリモート操作
 
-**デスクトップ版:** LAN上の音楽サーバーを閲覧し、選んだ音楽フォルダーを共有して、この端末またはOpenHomeプレーヤーで再生できます。再生先がEffeTuneなら、ペアリング後は同じ画面でエフェクトも編集できます。共有と外部からのリモート操作は初期状態では無効です。[ネットワーク音楽とリモート操作](openhome.md)をご覧ください。 UPnP AV / DLNAとAirPlayの受信を有効にすると、他の端末から送った音楽をこのパソコンのエフェクトを通して聴けます。
+**デスクトップ版:** Subsonic / OpenSubsonicを含むネットワーク上の音楽サーバーを閲覧し、選んだ音楽フォルダーを共有して、この端末、OpenHomeプレーヤー、UPnP AV / DLNAプレーヤーで再生できます。再生先がEffeTuneなら、ペアリング後は同じ画面でエフェクトも編集できます。共有と外部からのリモート操作は初期状態では無効です。[ネットワーク音楽とリモート操作](openhome.md)をご覧ください。UPnP AV / DLNAとAirPlayの受信を有効にすると、他の端末から送った音楽をこのパソコンのエフェクトを通して聴けます。
 
-PWAでも、登録したEffeTuneパソコンの共有音楽をこの端末のエフェクトで聴いたり、別の登録済みパソコンを操作したりできます。ブラウザーと接続の条件は [PWAの設定と再生](openhome.md#pwa)を参照してください。
+PWAでも、登録したEffeTuneパソコンの共有音楽や、許可されたネットワークライブラリをこの端末のエフェクトで聴いたり、操作を許可されたネットワークプレーヤーを使ったりできます。Subsonicへの直接接続も利用できます。ブラウザーと接続の条件は [PWAの設定と再生](openhome.md#pwa)を参照してください。
 
 ### AIアシスタントから操作する（MCP）
 
@@ -398,7 +408,7 @@ https://github.com/Frieve-A/effetune/blob/main/mcp/README.md
 | Analyzer  | Note Spectrogram | 推定した音高を時間に沿ったピアノロールで表示                                       | [詳細](plugins/analyzer.md#note-spectrogram)       |
 | Analyzer  | Oscilloscope        | リアルタイムで波形を可視化                                                   | [詳細](plugins/analyzer.md#oscilloscope)              |
 | Analyzer  | Pitch Meter | 1つの基音とチューニングの変化を表示                                                    | [詳細](plugins/analyzer.md#pitch-meter)             |
-| Analyzer  | Rhythm Analyzer | テンポ、1拍ごとの発音、各パートの走り・もたりを表示 | [詳細](plugins/analyzer.md#rhythm-analyzer) |
+| Analyzer  | Rhythm Analyzer | テンポと発音のタイミングを周波数帯域別・ドラムの種類別に表示 | [詳細](plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram         | 時間経過に伴う周波数スペクトルの変化を表示                                         | [詳細](plugins/analyzer.md#spectrogram)               |
 | Analyzer  | Spectrum Analyzer   | 低域・中域・高域の強さをリアルタイムに表示                                                  | [詳細](plugins/analyzer.md#spectrum-analyzer)         |
 | Analyzer  | Stereo Meter        | ステレオバランスとチャンネル相関を可視化                                              | [詳細](plugins/analyzer.md#stereo-meter)              |

@@ -24,6 +24,7 @@ class SFZNotePlayerPlugin extends PluginBase {
         this.temporalCapability = 'reset-on-resume';
         this._generation = 0;
         this._pending = null;
+        this._nativeHydration = null;
         this._importing = false;
         this._name = '';
         this._missing = false;
@@ -110,7 +111,15 @@ class SFZNotePlayerPlugin extends PluginBase {
     get offlineDspAssetRequired() { return Boolean(this.sf || this._pending); }
     get offlineDspAssetErrorMessageKey() { return 'sfzNotePlayer.error.prepare'; }
 
+    getExternalAssetParameters() { return { sf: this.sf }; }
+
+    hydrateExternalAsset(_definition, mutationOptions) {
+        // Native playback already owns the bank; materialize samples only for offline rendering.
+        this._nativeHydration = mutationOptions;
+    }
+
     async resolveOfflineDspAssetRequirement() {
+        if (this._nativeHydration) this._loadBank(++this._generation, false, this._nativeHydration);
         while (this._pending) await this._pending;
         return { required: this.offlineDspAssetRequired };
     }
@@ -137,13 +146,14 @@ class SFZNotePlayerPlugin extends PluginBase {
                 new Float32Array(buffer.getChannelData(channel))) };
     }
 
-    _loadBank(generation = ++this._generation, manual = false) {
+    _loadBank(generation = ++this._generation, manual = false, mutationOptions) {
+        this._nativeHydration = null;
         this._stopPreview();
         this._resetLoadNotice();
         this._initialAssetLoad = manual;
         this._importing = false;
         const id = this.sf;
-        this.clearWasmAsset(0);
+        if (!mutationOptions?.nativeHydration) this.clearWasmAsset(0);
         this._clearVoiceDisplay();
         this._missing = false;
         this._error = '';
@@ -160,12 +170,16 @@ class SFZNotePlayerPlugin extends PluginBase {
                 const prepared = await service.prepare(id, {
                     decode: (bytes, rate) => this._decodeAudioData(bytes, rate)
                 });
-                if (generation !== this._generation) return;
+                if (generation !== this._generation || mutationOptions?.isCurrent?.() === false) return;
                 this._missing = !prepared;
                 if (prepared) {
                     this._name = prepared.name;
                     this._loadWarnings = this._warningMessage(prepared.warnings);
-                    this.setWasmAsset(0, { ...prepared.descriptor, externalAssetSignature: id });
+                    const commit = () => this.setWasmAsset(0, { ...prepared.descriptor,
+                        externalAssetSignature: id, externalAssetParameters: { sf: id } });
+                    if (mutationOptions && window.audioManager?.withMutationOptions) {
+                        await window.audioManager.withMutationOptions(mutationOptions, commit);
+                    } else commit();
                 } else {
                     this._errorVisible = Boolean(this._initialAssetLoad);
                     this._finishInitialAssetLoad(false);
@@ -530,9 +544,9 @@ class SFZNotePlayerPlugin extends PluginBase {
     }
 
     _sendPreview() {
-        if (this.audioHostActive === false || !window.workletNode) return;
-        const message = { type: 'updatePlugin', plugin: this.getWorkletPluginData() };
         const audio = window.pipelineManager?.audioManager || window.audioManager;
+        if (this.audioHostActive === false || (!window.workletNode && !audio?.isAndroid)) return;
+        const message = { type: 'updatePlugin', plugin: this.getWorkletPluginData() };
         if (audio?.commitPowerTopologyMutation) {
             audio.commitPowerTopologyMutation(message, { reason: 'sfz-note-preview' });
         } else window.workletNode.port.postMessage(message);
@@ -558,13 +572,15 @@ class SFZNotePlayerPlugin extends PluginBase {
         };
         const listeners = {
             pointerdown: event => {
+                const audio = window.pipelineManager?.audioManager || window.audioManager;
+                const ready = audio?.hasNativePluginAsset?.(this, 0) ??
+                    Boolean(window.workletNode && this.getWasmAssets().has(0));
                 if (event.defaultPrevented || event.button !== 0 || this._previewPointerId !== null ||
                     !this.enabled || this._sectionEnabled === false || this.hasLocalAudio === false ||
-                    this.audioHostActive === false || !window.workletNode || !this.getWasmAssets().has(0)) return;
+                    this.audioHostActive === false || !ready) return;
                 event.preventDefault();
                 this._previewPointerId = event.pointerId;
                 canvas.setPointerCapture(event.pointerId);
-                const audio = window.pipelineManager?.audioManager || window.audioManager;
                 const power = audio?.powerPolicyController;
                 if (power?.started) this._releasePreviewLease = power.acquireLease('sfz-note-preview', { mode: 'force-active' });
                 this._previewAt(event);

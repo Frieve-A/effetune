@@ -24,6 +24,8 @@ Si solo vas a usar el reproductor, ajusta **Dispositivo de entrada:** en **Ningu
 
 El reproductor de escritorio también muestra [música en red y AirPlay](openhome.md). Durante AirPlay, los detalles de la pista, la carátula y el tiempo aparecen cuando los envía el emisor; pasa el puntero por el título para ver más información. Controla la reproducción y el volumen en el dispositivo emisor. Cerrar el reproductor con **×**, o usar **Detener**, finaliza esa sesión, pero el receptor sigue habilitado y disponible para otra conexión.
 
+El deslizador de volumen y el botón de silencio permiten ajustar el sonido del reproductor antes de que pase por los efectos. Los cambios realizados a distancia también se reflejan aquí, de modo que puedes comprobar el volumen y desactivar el silencio desde el dispositivo que reproduce la música.
+
 ## Reproducción sin pausas
 
 **Reproducción sin pausas**, en **Configuración de audio**, está activada de forma predeterminada y reproduce sin pausa las pistas locales compatibles; su compatibilidad está limitada por el formato del archivo y por el entorno del navegador o de la aplicación. Los formatos no compatibles y algunos entornos móviles usan un modo alternativo seguro que ahorra memoria, por lo que puede quedar una pausa breve. Al desactivarla se da prioridad a un menor uso de memoria y a la estabilidad, a costa de una posible pausa breve; el cambio no interrumpe la pista actual. La reproducción sin pausas solo funciona a velocidad 1x; si cambias la velocidad durante la reproducción sin pausas, la pista se reanuda desde la misma posición tras una breve interrupción.
@@ -40,5 +42,13 @@ Fuera de Mini Player, puedes usar estos gestos sobre el vídeo o sus bordes negr
 - **Pantalla táctil:** Toca para mostrar los controles. Con el vídeo ampliado, toca dos veces la mitad izquierda para retroceder 10 segundos o la derecha para avanzar 10 segundos. El doble toque en la vista previa pequeña no cambia la posición de reproducción.
 
 Los botones y deslizadores mantienen su funcionamiento habitual.
+
+## Reproducir en otro dispositivo
+
+Usa el selector de dispositivos de la parte superior para elegir **This device**, un reproductor OpenHome o uno UPnP AV / DLNA. La biblioteca y el destino se eligen por separado. Cambiar de reproductor no detiene el anterior ni mueve su cola. Se muestran la pista, la cola, la posición y los controles compatibles, incluidos **Volumen** y **Silenciar** cuando estén disponibles. También se reflejan los cambios de otros controladores.
+
+Se transmite el audio original, sin los efectos del ordenador de origen. Un destino EffeTune aplica sus propios efectos. El servidor y el reproductor deben poder comunicarse. La cola propia de OpenHome puede continuar al desconectar el controlador; una secuencia gestionada por EffeTune o una conexión a través de un ordenador EffeTune requiere que ese ordenador siga encendido.
+
+[música en red y control remoto](openhome.md)
 
 [← Volver al README](README.md)

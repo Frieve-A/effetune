@@ -6,6 +6,8 @@ import {
     snapshotOfflineOutputSettings
 } from '../../audio/offline-output-settings.js';
 import { loadClassicScript } from '../../utils/classic-script-loader.js';
+import { isAndroidHost } from '../../android/bridge.js';
+import { AndroidDocuments } from '../../android/documents.js';
 
 const OFFLINE_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
 const OFFLINE_AUDIO_ACCEPT = OFFLINE_AUDIO_EXTENSIONS.map(ext => `.${ext}`).join(',');
@@ -653,6 +655,20 @@ export class FileProcessor {
             this.showProgress();
             await this._processFilesToElectronFolder(files, result.filePaths[0], outputSettings);
 
+        } else if (isAndroidHost()) {
+            const documents = new AndroidDocuments();
+            let directory;
+            try { directory = await documents.pick({ kind: 'tree' }); }
+            catch (error) { if (error.name === 'AbortError') return; throw error; }
+            this.showProgress();
+            await this._processFilesToDirectory(files, async (name, blob) => {
+                const file = await documents.bridge.request('documents.create', {
+                    uri: directory.uri, name, mimeType: blob.type || 'application/octet-stream'
+                });
+                await documents.write(file.uri, blob, { signal: { throwIfAborted: () => {
+                    if (this.isCancelled) throw new DOMException('Processing cancelled', 'AbortError');
+                } } });
+            }, outputSettings);
         } else if ('showDirectoryPicker' in window) {
             let dirHandle;
             try {
@@ -729,6 +745,22 @@ export class FileProcessor {
      * @param {FileSystemDirectoryHandle} dirHandle
      */
     async _processFilesToFSADirectory(files, dirHandle, outputSettings = this._getOutputSettingsSnapshot()) {
+        return this._processFilesToDirectory(files, async (name, blob) => {
+            const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+            const writable = await fileHandle.createWritable();
+            try {
+                await writable.write(blob);
+                await writable.close();
+            } catch (error) {
+                await writable.abort?.().catch(abortError => {
+                    console.warn('Failed to discard an incomplete offline output write:', abortError);
+                });
+                throw error;
+            }
+        }, outputSettings);
+    }
+
+    async _processFilesToDirectory(files, writeOutput, outputSettings) {
         const totalFiles = files.length;
         let savedCount = 0;
 
@@ -748,17 +780,7 @@ export class FileProcessor {
                 }
                 this._validateEncodedOutput(output, outputSettings);
                 const processedName = this.getProcessedFileName(files[i].name, output.extension);
-                const fileHandle = await dirHandle.getFileHandle(processedName, { create: true });
-                const writable = await fileHandle.createWritable();
-                try {
-                    await writable.write(output.blob);
-                    await writable.close();
-                } catch (error) {
-                    await writable.abort?.().catch(abortError => {
-                        console.warn('Failed to discard an incomplete offline output write:', abortError);
-                    });
-                    throw error;
-                }
+                await writeOutput(processedName, output.blob);
                 savedCount++;
             } catch (error) {
                 window.uiManager.setError('error.failedToProcessFile', true,

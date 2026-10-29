@@ -7,6 +7,63 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../../css/effetune-theme.css') +
   read('../../css/effetune.css').replace('@import url("effetune-theme.css");', '');
 
+test('volume stays compact beside mute and mini player controls fit the fixed window', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const width of [320, 390, 420]) {
+      const mini = width === 420;
+      const page = await browser.newPage({ viewport: { width, height: mini ? 120 : 850 } });
+      await page.setContent(`<body class="${mini ? 'layout-mini-player' : 'layout-mobile view-player'}">
+        <div class="audio-player" data-mini-player="${mini}">
+          <h2>Player</h2><div class="player-artwork"></div>
+          <div class="track-name-container"><div class="track-name">Artist - Title</div></div>
+          <div class="player-controls">
+            <input type="range" class="seek-bar"><div class="time-display">03:45 / 10:00</div>
+            ${['play-pause', 'stop', 'prev', 'next', 'repeat', 'shuffle', 'speed'].map(name =>
+              `<button class="player-button ${name}-button">${name === 'speed' ? '1x' : '▶'}</button>`).join('')}
+            <input type="range" class="player-volume"><button class="player-button player-mute">M</button>
+            <span class="player-volume-value">100</span>
+            ${['mini-player', 'restore', 'pin', 'expand', 'close'].map(name =>
+              `<button class="player-button ${name}-button">▶</button>`).join('')}
+            <div class="player-playlist"></div>
+          </div>
+        </div></body>`);
+      await page.addStyleTag({ content: css + read('../../css/effetune-mobile.css') });
+      const layout = await page.evaluate(() => {
+        const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+        return {
+          volume: rect('.player-volume'), mute: rect('.player-mute'), seek: rect('.seek-bar'),
+          volumeValue: rect('.player-volume-value'),
+          controls: [...document.querySelectorAll('.player-controls > *')]
+            .filter(element => element.getBoundingClientRect().width > 0)
+            .map(element => ({ name: element.className, ...element.getBoundingClientRect().toJSON() })),
+          drag: getComputedStyle(document.querySelector('.player-volume')).webkitAppRegion
+        };
+      });
+      assert.equal(layout.volume.width, mini ? 48 : 120);
+      assert.ok(layout.volume.width < layout.seek.width);
+      assert.ok(Math.abs(layout.volume.y + layout.volume.height / 2 - layout.mute.y - layout.mute.height / 2) < 1);
+      if (mini) {
+        assert.equal(layout.volumeValue.width, 0, 'volume value is mobile-only');
+        assert.ok(layout.mute.left - layout.volume.right >= 0 && layout.mute.left - layout.volume.right <= 8);
+        assert.equal(layout.drag, 'no-drag');
+        for (const control of layout.controls) {
+          assert.ok(control.left >= 0 && control.right <= width, `${control.name} must fit horizontally`);
+          assert.ok(control.top >= 0 && control.bottom <= 120, `${control.name} must fit vertically`);
+        }
+      } else {
+        assert.equal(layout.volumeValue.width, layout.mute.width);
+        assert.equal(layout.volumeValue.left - layout.volume.right, 8);
+        assert.equal(layout.volumeValue.top, layout.mute.top);
+        assert.equal(layout.volume.left - layout.mute.right, 8);
+        assert.ok(Math.abs((layout.volume.left + layout.volume.right) / 2 -
+          (layout.seek.left + layout.seek.right) / 2) < 1, 'the volume slider itself must be centered');
+      }
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
 test('expanded video hides both document scrollbars and restores scrolling on every exit', async () => {
   const browser = await chromium.launch({ headless: true, ignoreDefaultArgs: ['--hide-scrollbars'] });
   try {

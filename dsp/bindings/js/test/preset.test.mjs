@@ -79,7 +79,7 @@ test('legacy Note Spectrogram discards display settings and preserves analysis s
     const document = importLegacyPreset(preset);
     assert.equal(document.chain[0].type, 'NoteSpectrogram');
     assert.deepEqual(document.chain[0].parameters, {
-      minimumMidi: 36, maximumMidi: 84, timbreEnabled: false
+      minimumMidi: 36, maximumMidi: 84, timbreEnabled: false, chordKeyEnabled: false
     });
   }
   assert.equal(parameters.cl, 'Rainbow');
@@ -132,7 +132,7 @@ test('legacy Rhythm Analyzer validates and discards its beat-grid display settin
     pipeline: [{ name: 'Rhythm Analyzer', parameters: { mn: 60, mx: 180, sp: 12 } }]
   });
   assert.equal(document.chain[0].type, 'RhythmAnalyzer');
-  assert.deepEqual(document.chain[0].parameters, { minimumBpm: 60, maximumBpm: 180, metronomeClick: false });
+  assert.deepEqual(document.chain[0].parameters, { minimumBpm: 60, maximumBpm: 180, metronomeClick: false, displayMode: 'band' });
   for (const parameters of [{ sp: 5 }, { sp: '8' }, { sp: 3 }, { sp: 8.5 }]) {
     assert.throws(() => importLegacyPreset({
       pipeline: [{ name: 'Rhythm Analyzer', parameters }]
@@ -145,7 +145,7 @@ test('legacy Rhythm Analyzer validates and discards its panel-toggle display set
     pipeline: [{ name: 'Rhythm Analyzer', parameters: { mn: 60, mx: 180, vt: false, vm: true, ve: false, vl: true } }]
   });
   assert.equal(document.chain[0].type, 'RhythmAnalyzer');
-  assert.deepEqual(document.chain[0].parameters, { minimumBpm: 60, maximumBpm: 180, metronomeClick: false });
+  assert.deepEqual(document.chain[0].parameters, { minimumBpm: 60, maximumBpm: 180, metronomeClick: false, displayMode: 'band' });
   for (const key of ['vt', 'vm', 've', 'vl']) {
     for (const value of [0, 1, '0', 'true', null]) {
       assert.throws(() => importLegacyPreset({

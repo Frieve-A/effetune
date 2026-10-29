@@ -1114,6 +1114,22 @@ test('loadPreset suppresses reconstruction history before allowing one explicit 
   });
 });
 
+test('revoked deferred preset load leaves a concurrent local edit unchanged', async () => {
+  await withPresetGlobals({}, async () => {
+    const pipelineManager = createPipelineManager();
+    const manager = await createInitializedManager(pipelineManager);
+    const pending = createDeferred();
+    manager.getPresets = () => pending.promise;
+    const loading = manager.loadPreset('Remote', { beforeCommit: () => { throw new Error('revoked'); } });
+    const local = { name: 'Local edit' };
+    pipelineManager.audioManager.pipeline = [local];
+    pending.resolve({ Remote: { plugins: [{ nm: 'Alpha', en: true }] } });
+    assert.equal(await loading, false);
+    assert.deepEqual(pipelineManager.audioManager.pipeline, [local]);
+    assert.equal(pipelineManager.createdPlugins.length, 0);
+  });
+});
+
 test('getCurrentPresetData uses currentPresetName and an export fallback', async () => {
   await withPresetGlobals({}, async () => {
     const pipelineManager = createPipelineManager();

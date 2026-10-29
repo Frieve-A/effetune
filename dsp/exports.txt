@@ -25,6 +25,7 @@
   "_et_rhythm_analyzer_warm_up",
   "_et_instance_destroy",
   "_et_instance_reset",
+  "_et_instance_stream_boundary",
   "_et_instance_latency",
   "_et_instance_set_tap",
   "_et_instance_set_analysis_source",

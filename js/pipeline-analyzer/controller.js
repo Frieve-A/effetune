@@ -21,16 +21,18 @@ const GRAPH_VIEWS = new Set([
     'phase',
     'minimumGroupDelay',
     'excessGroupDelay',
-    'impulse'
+    'impulse',
+    'distortion',
+    'waterfall'
 ]);
 const MAX_OUTPUTS = 4;
 const MLS_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_MLS_LENGTHS);
 // TSP and Unit Impulse share the power-of-two lengths; MLS needs its 2^n-1 periods.
 const POWER_OF_TWO_SEQUENCE_LENGTHS = new Set(PIPELINE_ANALYZER_TSP_LENGTHS);
 const DEFAULT_MEASUREMENT_SETTINGS = Object.freeze({
-    signalType: 'mls',
+    signalType: 'ess',
     levelDb: -12,
-    sequenceLength: 65535,
+    sequenceLength: 131072,
     stabilizationPeriods: 12,
     averagingPeriods: 2
 });
@@ -85,9 +87,9 @@ function normalizeDisplaySettings(value) {
 }
 
 function normalizeMeasurementSettings(value) {
-    const signalType = ['mls', 'tsp', 'impulse'].includes(value?.signalType)
+    const signalType = ['ess', 'mls', 'tsp', 'impulse'].includes(value?.signalType)
         ? value.signalType
-        : 'mls';
+        : 'ess';
     const allowedLengths = signalType === 'mls'
         ? MLS_SEQUENCE_LENGTHS
         : POWER_OF_TWO_SEQUENCE_LENGTHS;
@@ -96,7 +98,7 @@ function normalizeMeasurementSettings(value) {
         levelDb: clampInteger(value?.levelDb, -60, 0, DEFAULT_MEASUREMENT_SETTINGS.levelDb),
         sequenceLength: allowedLengths.has(value?.sequenceLength)
             ? value.sequenceLength
-            : signalType === 'mls' ? DEFAULT_MEASUREMENT_SETTINGS.sequenceLength : 65536,
+            : signalType === 'ess' ? 131072 : signalType === 'mls' ? 65535 : 65536,
         stabilizationPeriods: clampInteger(
             value?.stabilizationPeriods,
             1,

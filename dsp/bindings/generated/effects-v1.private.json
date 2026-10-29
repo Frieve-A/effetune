@@ -138,8 +138,8 @@
     },
     "NoteSpectrogram": {
       "internalType": "NoteSpectrogramPlugin",
-      "layoutHash": 2948988679,
-      "floatCount": 3,
+      "layoutHash": 3092351299,
+      "floatCount": 4,
       "packedParameters": [
         {
           "publicName": "minimumMidi",
@@ -172,6 +172,18 @@
             "te"
           ],
           "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "chordKeyEnabled",
+          "field": "chordKeyEnabled",
+          "keys": [
+            "ck"
+          ],
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -318,8 +330,8 @@
     },
     "RhythmAnalyzer": {
       "internalType": "RhythmAnalyzerPlugin",
-      "layoutHash": 3135264869,
-      "floatCount": 3,
+      "layoutHash": 4166305157,
+      "floatCount": 4,
       "packedParameters": [
         {
           "publicName": "minimumBpm",
@@ -352,6 +364,18 @@
             "ck"
           ],
           "offset": 2,
+          "count": 1,
+          "transform": {
+            "kind": "identity"
+          }
+        },
+        {
+          "publicName": "displayMode",
+          "field": "displayMode",
+          "keys": [
+            "dm"
+          ],
+          "offset": 3,
           "count": 1,
           "transform": {
             "kind": "identity"
@@ -10875,5 +10899,5 @@
     "dsp/plugins/spatial/spatial_mapper/params.json": "dsp/plugins/spatial/spatial_mapper/golden/index.json",
     "dsp/plugins/spatial/stereo_blend/params.json": "dsp/plugins/spatial/stereo_blend/golden/index.json"
   },
-  "contractDigest": "c304b1221b7ce4f1d2957412dcd30dfe46db2b7486e0d441bd04ba6a079441fa"
+  "contractDigest": "a71ea2079d079c7eb144627e7ccc7586e33f51235f84420ee46c85fbc80a353f"
 }

@@ -42,8 +42,9 @@ const IPV6_HOST = /^\[[0-9a-f:.]+\]$/i;
 const LOCAL_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+local$/i;
 
 // Returns the lower-cased "host[:port]" if `header` is acceptable, else null.
-function parseAllowedHost(header) {
+function parseAllowedHost(header, trustedHosts = []) {
   if (typeof header !== 'string' || header.length === 0 || header.length > 270) return null;
+  if (trustedHosts.includes(header.toLowerCase())) return header.toLowerCase();
   let host = header;
   let port = '';
   const bracket = host.startsWith('[') ? host.indexOf(']') : -1;
@@ -64,18 +65,21 @@ function parseAllowedHost(header) {
   return ok ? lower + port : null;
 }
 
-function isAllowedHost(header) {
-  return parseAllowedHost(header) !== null;
+function isAllowedHost(header, trustedHosts = []) {
+  return parseAllowedHost(header, trustedHosts) !== null;
 }
 
 // An http(s) Origin must be this very server (same-origin page). A missing
 // Origin is a non-browser client (native apps, tests) and is allowed; the
 // literal "null" (sandboxed iframe, file:) and any other scheme are not.
-function isAllowedOrigin(origin, hostHeader, secure = false) {
+function isAllowedOrigin(origin, hostHeader, secure = false, trustedHosts = []) {
   if (origin === undefined) return true;
   if (typeof origin !== 'string') return false;
-  const host = parseAllowedHost(hostHeader);
-  return host !== null && origin.toLowerCase() === `${secure ? 'https' : 'http'}://${host}`;
+  const host = parseAllowedHost(hostHeader, trustedHosts);
+  if (host === null) return false;
+  const expected = `${secure ? 'https' : 'http'}://${host}`;
+  try { return origin.toLowerCase() === expected || origin.toLowerCase() === new URL(expected).origin; }
+  catch { return false; }
 }
 
 function loadAllowlist(root) {
@@ -106,7 +110,7 @@ function resolveRelativePath(rawUrl) {
   return { rel: rel === '' ? ENTRY : rel };
 }
 
-function createStaticHandler({ root, log = () => {}, secure = false }) {
+function createStaticHandler({ root, log = () => {}, secure = false, trustedHosts = [] }) {
   const allowed = loadAllowlist(root);
   if (!allowed.has(ENTRY)) log(`[remote] ${ENTRY} is missing from the precache list; the browser client is unavailable`);
 
@@ -120,7 +124,7 @@ function createStaticHandler({ root, log = () => {}, secure = false }) {
   }
 
   const handler = (req, res) => {
-    const host = parseAllowedHost(req.headers.host);
+    const host = parseAllowedHost(req.headers.host, trustedHosts);
     if (!host) { reply(res, 403, { 'Content-Type': 'text/plain' }, 'Forbidden\n'); return; }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       reply(res, 405, { 'Content-Type': 'text/plain', Allow: 'GET, HEAD' }, 'Method Not Allowed\n');

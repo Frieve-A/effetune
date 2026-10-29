@@ -68,7 +68,7 @@
   "author": "Frieve",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.0.0",
+    "electron": "^45.1.0",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
@@ -210,7 +210,8 @@
       "extraResources": [
         {
           "from": "out/native/airplay-receiver/win32-x64",
-          "to": "airplay"
+          "to": "airplay",
+          "filter": ["**/*", "!source{,/**/*}"]
         },
         {
           "from": "out/native/openhome-sidecar/win32-x64/effetune-openhome-sidecar.exe",
@@ -255,7 +256,8 @@
       "extraResources": [
         {
           "from": "out/native/airplay-receiver/darwin-${arch}",
-          "to": "airplay"
+          "to": "airplay",
+          "filter": ["**/*", "!source{,/**/*}"]
         },
         {
           "from": "out/native/openhome-sidecar/darwin-${arch}/effetune-openhome-sidecar",
@@ -276,7 +278,8 @@
       "extraResources": [
         {
           "from": "out/native/airplay-receiver/linux-${arch}",
-          "to": "airplay"
+          "to": "airplay",
+          "filter": ["**/*", "!source{,/**/*}"]
         },
         {
           "from": "out/native/openhome-sidecar/linux-${arch}/effetune-openhome-sidecar",
@@ -319,10 +322,10 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "@mediabunny/flac-encoder": "1.62.1",
+    "@mediabunny/flac-encoder": "1.63.0",
     "electron-updater": "6.8.11",
-    "mediabunny": "1.62.1",
-    "music-metadata": "^12.3.0",
+    "mediabunny": "1.63.0",
+    "music-metadata": "^12.3.2",
     "qrcode-generator": "^2.0.4",
     "ws": "^8.22.0"
   },

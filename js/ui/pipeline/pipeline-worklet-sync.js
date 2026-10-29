@@ -29,13 +29,15 @@ export class PipelineWorkletSync {
     }
 
     getAudioSampleRate() {
-        return this.audioManager?.contextManager?.audioContext?.sampleRate ??
+        return this.audioManager?.getNativeSampleRate?.() ??
+            this.audioManager?.contextManager?.audioContext?.sampleRate ??
             this.audioManager?.audioContext?.sampleRate ??
             null;
     }
 
     getAudioOutputChannelCount() {
-        const value = this.audioManager?.contextManager?.audioContext?.destination?.channelCount ??
+        const value = this.audioManager?.getOutputChannelCount?.() ??
+            this.audioManager?.contextManager?.audioContext?.destination?.channelCount ??
             this.audioManager?.audioContext?.destination?.channelCount;
         return Number.isInteger(value) && value >= 1 && value <= 16 ? value : 2;
     }
@@ -249,6 +251,7 @@ export class PipelineWorkletSync {
      * @returns {boolean} Whether the worklet is available
      */
     isWorkletAvailable() {
+        if (this.audioManager.isAndroid) return this.audioManager.isDspReady();
         const active = this.audioManager.getActivePowerWorklets?.();
         if (Array.isArray(active)) return active.some(node => node?.port);
         return !!(this.audioManager.contextManager?.workletNode?.port ||

@@ -10,10 +10,11 @@ struct NoteSpectrogramPluginParams {
   float minimumMidi;
   float maximumMidi;
   float timbreEnabled;
-  static constexpr std::uint32_t kHash = 0xafc5ff07u;
-  static constexpr std::uint32_t kFloatCount = 3u;
+  float chordKeyEnabled;
+  static constexpr std::uint32_t kHash = 0xb8518943u;
+  static constexpr std::uint32_t kFloatCount = 4u;
 };
-static_assert(3u == 0u || sizeof(NoteSpectrogramPluginParams) == sizeof(float) * 3u);
+static_assert(4u == 0u || sizeof(NoteSpectrogramPluginParams) == sizeof(float) * 4u);
 
 } // namespace effetune::generated
 

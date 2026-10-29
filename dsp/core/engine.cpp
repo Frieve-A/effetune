@@ -447,6 +447,24 @@ et_status Engine::resetInstance(et_instance instance) noexcept {
   return ET_OK;
 }
 
+et_status Engine::streamBoundaryInstance(et_instance instance) noexcept {
+  auto *slot = findInstance(instance);
+  if (slot == nullptr)
+    return ET_ERR_ARGS;
+  if (slot->graphOwned)
+    return ET_ERR_STATE;
+  slot->kernel->streamBoundary();
+  if (slot->kernel->streamBoundaryPending()) {
+    if (telemetry_rate_hz_ <= 0.0F || telemetry_.capacity() == 0u) {
+      slot->kernel->reset();
+    } else {
+      TelemetryWriter writer(telemetry_, slot->tapId, slot->telemetrySequence);
+      slot->kernel->writeTelemetry(writer);
+    }
+  }
+  return slot->kernel->streamBoundaryPending() ? ET_ERR_STATE : ET_OK;
+}
+
 std::uint32_t Engine::instanceLatency(et_instance instance) const noexcept {
   const InstanceSlot *slot = findInstance(instance);
   return slot == nullptr ? 0u : slot->kernel->latencySamples();

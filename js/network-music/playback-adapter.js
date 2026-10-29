@@ -11,11 +11,8 @@ export class NetworkPlaybackAdapter {
     this.stateManager = new StateManager(this);
     this.contextManager = {
       getCurrentState: () => this.stateManager.getStateSnapshot(),
-      getCurrentPlaybackTime: () => this.stateManager.getStateSnapshot().currentTrackPosition,
-      seek: value => {
-        const seconds = Number(value);
-        return this.command('seek', { seconds: Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0 });
-      }
+      getCurrentPlaybackTime: () => this.getCurrentPlaybackTime(),
+      seek: value => this.seek(value)
     };
     this.playbackManager = {
       runPlaybackCommand: command => this.run(command),
@@ -45,11 +42,77 @@ export class NetworkPlaybackAdapter {
   stop() { return this.command('stop'); }
   playPrevious() { return this.command('previous'); }
   playNext() { return this.command('next'); }
-  setVolume(value) { return this.command('volume', { value }); }
+  seek(value) {
+    const seconds = Number(value);
+    this.pendingSeek = {
+      seconds: Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0,
+      trackId: this.remoteState?.currentId
+    };
+    this.sync();
+    if (!this.seekCommand) {
+      this.seekCommand = this.run(async () => {
+        try {
+          // Keep the latest destination visible through the command's fresh-state read.
+          while (this.pendingSeek) {
+            const seek = this.pendingSeek;
+            await this.controller.command('seek', { seconds: seek.seconds }, this.playerId);
+            if (this.pendingSeek === seek) this.pendingSeek = null;
+          }
+        } finally {
+          this.pendingSeek = null;
+          this.seekCommand = null;
+          this.sync();
+        }
+      });
+    }
+    return this.seekCommand;
+  }
+  setVolume(value) {
+    this.pendingVolume = value;
+    this.sync();
+    if (!this.volumeCommand) {
+      this.volumeCommand = this.run(async () => {
+        try {
+          // Serialize writes and coalesce intermediate inputs while keeping the
+          // latest requested value visible until its fresh state is received.
+          while (this.pendingVolume !== undefined) {
+            const volume = this.pendingVolume;
+            await this.controller.command('volume', { value: volume }, this.playerId);
+            if (this.pendingVolume === volume) this.pendingVolume = undefined;
+          }
+        } finally {
+          this.pendingVolume = undefined;
+          this.volumeCommand = null;
+          this.sync();
+        }
+      });
+    }
+    return this.volumeCommand;
+  }
+  setMute(value) { return this.command('mute', { value }); }
   close() { this.ui.removeUI(); }
+
+  getCurrentPlaybackTime() {
+    if (this.pendingSeek) return this.pendingSeek.seconds;
+    const state = this.stateManager.getStateSnapshot();
+    const elapsed = state.isPlaying ? Math.max(0, performance.now() - this.positionReceivedAt) / 1000 : 0;
+    const position = state.currentTrackPosition + elapsed;
+    return state.currentTrackDuration > 0 ? Math.min(position, state.currentTrackDuration) : position;
+  }
 
   sync() {
     const remote = this.controller.playerStates.get(this.playerId);
+    if (this.pendingSeek && (remote?.available === false || remote?.currentId !== this.pendingSeek.trackId)) {
+      this.pendingSeek = null;
+    }
+    const previous = this.stateManager.getStateSnapshot();
+    // Re-rendering the same snapshot must not restart the interpolation clock.
+    if (remote !== this.remoteState || remote?.position !== previous.currentTrackPosition ||
+        remote?.transportState !== this.positionTransport || remote?.currentId !== this.positionTrackId) {
+      this.positionReceivedAt = remote?.positionReceivedAt ?? performance.now();
+      this.positionTransport = remote?.transportState;
+      this.positionTrackId = remote?.currentId;
+    }
     this.remoteState = remote;
     const queue = remote?.queue ?? [];
     const signature = JSON.stringify(queue);
@@ -75,7 +138,7 @@ export class NetworkPlaybackAdapter {
       currentTrackName: currentTrack ? [currentTrack.artist, currentTrack.title].filter(Boolean).join(' - ') :
         !remote ? 'Connecting' : !available ? 'Unavailable' : '',
       currentTrackDuration: remote?.duration || 0,
-      currentTrackPosition: remote?.position || 0,
+      currentTrackPosition: this.pendingSeek?.seconds ?? remote?.position ?? 0,
       artworkUrl,
       isPlaying: playing,
       isPaused: paused,
@@ -84,11 +147,12 @@ export class NetworkPlaybackAdapter {
       shuffleMode: remote?.shuffle === true,
       controlsEnabled: available,
       seekBarEnabled: available && remote?.capabilities?.seek === true && remote?.duration > 0,
-      volume: remote?.volume ?? 0,
+      volume: this.pendingVolume ?? remote?.volume ?? 0,
       volumeMax: remote?.volumeMax ?? 100,
+      volumeStep: remote?.volumeStep ?? 1,
+      mute: remote?.mute === true,
       transportCapabilities: remote?.capabilities ?? {}
     };
-    const previous = this.stateManager.getStateSnapshot();
     this.stateManager.updateState(Object.fromEntries(Object.entries(updates).filter(([key, value]) => previous[key] !== value)), 'network_player');
   }
 }

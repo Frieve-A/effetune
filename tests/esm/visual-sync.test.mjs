@@ -133,3 +133,34 @@ test('Chroma Spiral automatic HQ capture age matches fixed sample-rate contracts
     }
   }
 });
+
+
+test('Drum visual sync reserves future frames, scheduling and the active resampler delay', () => {
+  for (const rate of [44100, 48000, 96000, 192000]) {
+    const actual = rules.RhythmAnalyzerPlugin.generationFrames({ dm: 'drums' }, rate, 'wasm');
+    assert.ok(Math.abs(actual / rate - (0.07775 + (rate === 44100 ? 0 : 191 / rate))) < 1e-10);
+  }
+});
+
+
+test('Drum telemetry delivery uses its actual scheduling age and host sample clock', () => {
+  const payload = new DataView(new ArrayBuffer(2024));
+  payload.setFloat32(0, 48000, true);
+  payload.setFloat32(16, 2, true);
+  payload.setUint32(1496, 1, true);
+  payload.setFloat32(1504, .07225, true);
+  const frame = { frameType: 28, formatVersion: 5, payload };
+  const timing = telemetryCaptureTiming(frame, 128, 44100);
+  assert.equal(timing.endFrame, 2 * 44100 + 128);
+  assert.equal(timing.generationFrames, payload.getFloat32(1504, true) * 44100);
+  assert.ok(timing.generationFrames < rules.RhythmAnalyzerPlugin.generationFrames({ dm: 'drums' }, 44100));
+  assert.equal(telemetryCaptureTiming(frame, 128), null, 'Band analysis rate cannot replace the missing host rate');
+  payload.setFloat32(1504, NaN, true);
+  assert.equal(telemetryCaptureTiming(frame, 128, 44100), null);
+  payload.setFloat32(1504, .07225, true);
+  payload.setFloat32(16, 0, true);
+  assert.equal(telemetryCaptureTiming(frame, 128, 44100), null, 'An empty reset snapshot has no source capture time');
+  payload.setFloat32(16, 2, true);
+  payload.setUint32(1496, 0, true);
+  assert.equal(telemetryCaptureTiming(frame, 128, 44100), null, 'Band mode retains its existing timing rule');
+});

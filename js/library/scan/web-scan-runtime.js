@@ -475,7 +475,10 @@ export class WebCatalogScanRuntime {
     const match = findLyricsFileName(await filesystem.listFileNames(directory), names);
     if (!match) return null;
     const relativePath = directory ? `${directory}/${match.fileName}` : match.fileName;
-    return { file: await filesystem.getFile(relativePath), index: match.index };
+    const file = await filesystem.getFile(relativePath);
+    return { file: file.androidUri ? { kind: 'android-document', uri: file.androidUri,
+      name: file.name, mimeType: file.type, size: file.size, lastModified: file.lastModified } : file,
+    index: match.index };
   }
 
   async #runFolder({ scanId, folder, source, scanReason, resume, languageHints, includeVideo }) {

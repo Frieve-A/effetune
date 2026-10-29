@@ -350,6 +350,24 @@ test('IR store persists v1 originals, filenames, analysis, and reuses duplicates
   );
 });
 
+test('IR import checks captured remote authority at its deferred commit without affecting local imports', async () => {
+  const backend = new MemoryBackend();
+  const store = await new IrLibraryStore(backend, { onDiagnostic() {} }).open();
+  let release, entered;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const importing = store.importSingle({ bytes: encode('revoked original'), fileName: 'Remote.wav',
+    beforeCommit: async () => { entered(); await gate; throw new Error('unauthorized'); } });
+  await waiting;
+  const before = backend.writes.length;
+  release();
+  await assert.rejects(importing);
+  assert.equal(store.list().length, 0);
+  assert.equal(backend.writes.length, before);
+  await store.importSingle({ bytes: encode('local original'), fileName: 'Local.wav' });
+  assert.equal(store.list().length, 1);
+});
+
 test('IR library change listeners hear new and removed entries but not duplicates', async () => {
   const store = await new IrLibraryStore(new MemoryBackend(), { onDiagnostic() {} }).open();
   let heard = 0;

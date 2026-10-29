@@ -283,6 +283,23 @@ test('SFZ assets carry the bank signature and pending loads remain required offl
   assert.equal(plugin.getWasmAssets().size, 0);
 });
 
+test('native SFZ hydration keeps playback resident and lazily resolves samples for offline use', async () => {
+  const id = 'a'.repeat(24); let calls = 0, committed = false;
+  const plugin = createPlugin({ prepare: async () => {
+    calls++; return { name: 'Native bank', descriptor: { payload: new ArrayBuffer(32), footprintBytes: 32 } };
+  } }, undefined, { audioManager: { withMutationOptions(options, commit) {
+    assert.equal(options.nativeHydration, true); committed = true; return commit();
+  } } });
+  plugin.hasLocalAudio = false; plugin.setParameters({ sf: id }); delete plugin.hasLocalAudio;
+  plugin.hydrateExternalAsset({}, { nativeHydration: true, isCurrent: () => true });
+  assert.equal(calls, 0); assert.equal(plugin.getWasmAssets().size, 0);
+  const requirement = await plugin.resolveOfflineDspAssetRequirement();
+  assert.equal(requirement.required, true); assert.equal(calls, 1); assert.equal(committed, true);
+  assert.equal(plugin.getWasmAssets().get(0).externalAssetParameters.sf, id);
+  await plugin.resolveOfflineDspAssetRequirement(); assert.equal(calls, 1);
+  plugin.cleanup();
+});
+
 test('SFZ missing and capacity failures use plain SFZ messages', async () => {
   const missing = createPlugin({ list: async () => [], prepare: async () => null });
   missing.createUI();
@@ -479,6 +496,30 @@ test('SFZ pointer preview holds a key, switches notes only on key changes, and u
   assert.equal(messages.at(-1).plugin.parameters.pv, 100);
   await canvas.dispatchEvent('pointercancel', { pointerId: 1 });
   assert.equal(messages.at(-1).plugin.parameters.pm, -1);
+  plugin.cleanup();
+});
+
+test('Android SFZ preview uses the resident native bank without materializing local samples', async () => {
+  const messages = [];
+  const plugin = createPlugin({}, createDocument(), { audioManager: {
+    isAndroid: true, hasNativePluginAsset: () => true,
+    commitPowerTopologyMutation: message => messages.push(message)
+  } });
+  plugin.mn = 60; plugin.mx = 71; plugin.createUI();
+  const canvas = plugin.canvas;
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: canvas.width, height: canvas.height });
+  const { edge, gutter, keys } = plugin._graphLayout();
+  const key = keys.find(value => value.midi === 60);
+  for (const [y, velocity] of [[edge + gutter * .9, 100], [edge * (1 - 64 / 127), 64]]) {
+    await canvas.dispatchEvent('pointerdown', { pointerId: 1, button: 0,
+      clientX: (key.start + key.end) / 2, clientY: y, preventDefault() {} });
+    assert.equal(messages.at(-1).plugin.parameters.pm, 60);
+    assert.equal(messages.at(-1).plugin.parameters.pv, velocity);
+    await canvas.dispatchEvent('pointerup', { pointerId: 1 });
+    assert.equal(messages.at(-1).plugin.parameters.pm, -1);
+  }
+  assert.equal(plugin.getWasmAssets().size, 0);
+  assert.equal(Object.hasOwn(plugin.getParameters(), 'pm'), false);
   plugin.cleanup();
 });
 

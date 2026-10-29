@@ -257,17 +257,14 @@ test('a client that cannot keep up misses pushes and receives the latest state o
   host.wss = null;
 });
 
-test('upgrade applies the Host rule only to browser requests (those with an Origin)', async () => {
+test('upgrade refuses unregistered Host names for both native and browser requests', async () => {
   const { host } = makeHost('tok-static');
   try {
     assert.equal(await host.start(), true);
     const port = host.port;
     const hostHeader = `mypc:${port}`;
-    // Native-client style: any host name the user typed, no Origin.
     const native = await connect(port, { hostHeader });
-    assert.equal(native.opened, true);
-    native.ws.close();
-    // Browser-style: same Host name, but with an Origin -> DNS-rebinding defence applies.
+    assert.equal(native.status, 403);
     const browser = await connect(port, { hostHeader, origin: `http://mypc:${port}` });
     assert.equal(browser.status, 403);
   } finally {

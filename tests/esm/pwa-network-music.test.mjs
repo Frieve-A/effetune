@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { SELECTABLE_LANGUAGE_CODES } from '../../js/language-options.js';
+import { parseCommentedJSON } from '../../js/utils/parse-commented-json.js';
 import { parsePwaPairingLink, validatePwaMediaUrl } from '../../js/network-music/pwa-connection.js';
 import { PwaNetworkMusicTransport } from '../../js/network-music/pwa-transport.js';
 import { createPwaPlaybackTrack } from '../../js/network-music/pwa-playback-provider.js';
+import { createRequire } from 'node:module';
+import { EventEmitter } from 'node:events';
 import { normalizePlaybackSourceDescriptor, choosePlaybackMode } from '../../js/ui/audio-player/playback-source-policy.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { NetworkMusicController } from '../../js/network-music/controller.js';
@@ -61,6 +66,55 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+test('PWA device registration displays labels and connection results in the selected language', async t => {
+  for (const locale of SELECTABLE_LANGUAGE_CODES) {
+    const translations = parseCommentedJSON(readFileSync(new URL(`../../js/locales/${locale}.json5`, import.meta.url), 'utf8'));
+    const text = key => translations[`networkMusic.pwa.${key}`];
+    const { registration, form, submit, setHandle } = registrationFixture(t);
+    registration.uiManager.t = key => translations[key] ?? key;
+    registration.open();
+    assert.equal(registration.dialog.children[0].textContent, text('addDeviceTitle'));
+    assert.equal(registration.dialog.children[1].textContent, text('setup'));
+    assert.equal(form().children[0].textContent, text('pairingLinkLabel'));
+    assert.equal(registration.input.getAttribute('aria-label'), text('pairingLinkLabel'));
+    assert.equal(registration.input.title, text('pairingLink'));
+    assert.deepEqual(form().children[1].children.map(button => button.textContent),
+      ['connect', 'scan'].map(text));
+    const footer = registration.dialog.children.at(-1);
+    assert.equal(footer.className, 'pwa-device-footer');
+    assert.equal(registration.dialog.children.at(-2), registration.savedDevices);
+    assert.equal(footer.children[0].textContent, text('close'));
+    assert.equal(registration.stopScanButton.textContent, text('stopCamera'));
+    assert.equal(form().children.at(-1).textContent, text('openEditor'));
+
+    const pending = deferred();
+    setHandle(() => pending.promise);
+    registration.input.value = `${originA}/?t=localized-device`;
+    const connecting = submit();
+    assert.equal(registration.status.textContent, translations['networkMusic.connecting']);
+    pending.resolve(info());
+    await connecting;
+    assert.equal(registration.status.textContent, text('connected'));
+    assert.equal(registration.savedDevices.children[0].textContent, text('savedDevices'));
+    const row = registration.savedDevices.children[1];
+    assert.deepEqual(row.children.map(element => element.textContent), ['Desktop a', text('update'), text('remove')]);
+    await row.children[1].dispatchEvent('click');
+    assert.equal(registration.dialog.children[0].textContent, `${text('update')} · Desktop a`);
+    assert.equal(form().children[1].children[0].textContent, text('update'));
+    assert.equal(form().children[1].children[0].title, text('update'));
+
+    for (const key of ['invalidPairingLink', 'connectionFailed', 'registrationExpired', 'differentDevice',
+      'pwaUnsupported', 'deviceLimit', 'cameraUnavailable', 'cameraDenied', 'sessionOnly', 'updated', 'storageRemoveFailed']) {
+      registration.showStatus(key);
+      assert.equal(registration.status.textContent, text(key));
+      assert.equal(registration.status.title, text(key));
+    }
+    await registration.savedDevices.children[1].children[2].dispatchEvent('click');
+    assert.equal(registration.status.textContent, text('removed'));
+    assert.equal(registration.savedDevices.children.length, 0);
+  }
+});
 
 function effectsSockets(api, readyState = 1) {
   const sockets = [];
@@ -291,7 +345,7 @@ test('late PWA registration success or failure cannot update a closed or replace
     if (replacement) {
       registration.open('pwa:b:player');
       registration.input.value = `${originB}/?t=replacement`;
-    } else await form().children[1].children[2].dispatchEvent('click');
+    } else await registration.dialog.children.at(-1).children[0].dispatchEvent('click');
     if (succeeds) resolve(info('a'));
     else reject(new Error('Connection lost'));
     await operation;
@@ -481,10 +535,12 @@ test('PWA browse references retain their source while codec and sharing availabi
   assert.equal(controller.state.libraries.length, 0);
 });
 
-test('PWA pairing validates LAN links before sending credentials and rejects external media', () => {
+test('PWA pairing accepts explicit HTTPS hostnames and keeps media on the registered origin', () => {
   assert.deepEqual(parsePwaPairingLink(`${originA}/?t=token-123`), { origin: originA, token: 'token-123' });
   assert.equal(parsePwaPairingLink('wss://192.168.1.21:47300/?t=token-123').origin, originB);
-  for (const link of ['https://example.com:47300/?t=token-123', `${originA}/evil?t=token-123`, `${originA}/?t=token-123#x`,
+  assert.equal(parsePwaPairingLink('https://music.example.com/?t=token-123').origin, 'https://music.example.com');
+  assert.equal(parsePwaPairingLink('https://music.example.com:47300/?t=token-123').origin, 'https://music.example.com:47300');
+  for (const link of ['http://music.example.com:47300/?t=token-123', 'https://8.8.8.8/?t=token-123', `${originA}/evil?t=token-123`, `${originA}/?t=token-123#x`,
     'http://user:password@192.168.1.20:47300/?t=token-123', `${originA}/?t=first&t=second`, 'file:///remote.html?t=token-123']) {
     assert.throws(() => parsePwaPairingLink(link), { code: 'invalidPairingLink' });
   }
@@ -515,6 +571,39 @@ test('registration persists stable identity, refreshes capabilities and sends no
   api.dispose(); restored.dispose();
 });
 
+test('PWA gateway devices keep source and target identities separate and never inherit effects access', async t => {
+  const { api, calls, setHandle } = fixture();
+  t.after(() => api.dispose());
+  const gateway = info('a', { capabilities: { playback: true, effects: true, sharing: false },
+    libraries: [{ id: 'dlna-library', name: 'NAS', available: true, searchSupported: true }],
+    players: [{ id: 'dlna-player', name: 'Speakers', available: true, isEffeTune: true }] });
+  setHandle(url => url.pathname.endsWith('/info') ? gateway : url.pathname.endsWith('/browse')
+    ? { items: [{ id: 'song', title: 'Music' }] } : url.pathname.endsWith('/resolve')
+      ? { uri: media, title: 'Music' } : { queue: [], protocolInfo: 'http-get:*:audio/flac:*' });
+  await api.register(`${originA}/?t=token-123`);
+  const state = await api.networkMusicGetState();
+  assert.equal(state.libraries.length, 1, 'a gateway source does not require local folder sharing');
+  assert.equal(state.players.find(player => player.id === 'pwa:a:player').capabilities.effects, true);
+  const library = state.libraries[0], player = state.players.find(item => item.name.startsWith('Speakers'));
+  assert.equal(player.isEffeTune, false);
+  const page = await api.networkMusicBrowse({ serverId: library.id, objectId: '0' });
+  assert.equal(page.items[0].serverId, library.id);
+  assert.equal(JSON.parse(calls.at(-1).init.body).serverId, 'dlna-library');
+  await api.networkMusicGetPlayerState({ playerId: player.id });
+  assert.equal(calls.at(-1).url.searchParams.get('playerId'), 'dlna-player');
+  await api.networkMusicPlayerCommand({ playerId: player.id, action: 'replace', items: [{ serverId: library.id, trackId: 'song' }] });
+  const resolution = calls.findLast(call => call.url.pathname.endsWith('/resolve'));
+  assert.deepEqual(JSON.parse(resolution.init.body).target, { origin: originA, hostId: 'a', playerId: 'dlna-player', protocolInfo: 'http-get:*:audio/flac:*' });
+  assert.equal(JSON.parse(calls.at(-1).init.body).playerId, 'dlna-player');
+  await assert.rejects(api.connectEffects(player.id), { code: 'unavailable' });
+  assert.equal((await api.remoteClient.getConnection(player.id)).registered, false);
+  gateway.libraries = [];
+  gateway.capabilities.effects = false;
+  await api.networkMusicDiscover();
+  assert.equal((await api.networkMusicGetState()).players[0].capabilities.effects, false);
+  await assert.rejects(api.networkMusicBrowse({ serverId: library.id }), { code: 'unavailable' });
+});
+
 test('restricted storage allows session use and removal without claiming persistence', async () => {
   const api = new PwaNetworkMusicTransport({ windowRef: null, storage: { getItem() { throw Error(); }, setItem() { throw Error(); } }, fetchImpl: async () => response(info()) });
   assert.equal((await api.register(`${originA}/?t=token-123`)).persistent, false);
@@ -537,6 +626,20 @@ test('expired authorization disables operations without an automatic credential 
   assert.equal(requests, count);
   assert.equal((await api.networkMusicGetState()).players[0].available, false);
   api.dispose();
+});
+
+test('revoked gateway permission refreshes capabilities without expiring the paired host', async t => {
+  let commands = 0;
+  const api = new PwaNetworkMusicTransport({ windowRef: null, fetchImpl: async (_url, init) => {
+    if (init.method === 'POST') { commands++; return response({ error: { code: 'forbidden' } }, 403); }
+    return response(info());
+  } });
+  t.after(() => api.dispose());
+  await api.register(`${originA}/?t=token-123`);
+  await assert.rejects(api.networkMusicPlayerCommand({ playerId: 'pwa:a:player', action: 'mute', value: true }), { code: 'forbidden' });
+  assert.equal(api.records.get('a').authorizationRequired, undefined);
+  assert.equal(api.records.get('a').available, true);
+  assert.equal(commands, 1);
 });
 
 test('A to B sends only resolved music to B and cancels a delayed operation after target changes', async () => {
@@ -569,12 +672,75 @@ test('A to B sends only resolved music to B and cancels a delayed operation afte
   api.dispose();
 });
 
+test('same-host catalog playback sends one compact command for 4096 tracks', async t => {
+  const { api, calls, setHandle } = fixture();
+  t.after(() => api.dispose());
+  setHandle(() => ({ ...info(), capabilities: { ...info().capabilities, catalogPlayback: true } }));
+  await api.register(`${originA}/?t=token-A`);
+  calls.length = 0;
+  setHandle(() => ({}));
+  const items = Array.from({ length: 4096 }, (_, index) => ({ serverId: 'pwa:a:library', trackId: `track:${index}` }));
+  await api.networkMusicPlayerCommand({ playerId: 'pwa:a:player', action: 'replace', items, play: true, startIndex: 2048 });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url.pathname, '/pwa/v1/player');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { action: 'replace', play: true, startIndex: 2048,
+    playerId: 'native-player-a', items: items.map(({ trackId }) => ({ trackId })) });
+});
+
+test('a full remote queue resolves with bounded HTTP concurrency and preserves the clicked index', async t => {
+  const { api, calls, setHandle } = fixture();
+  t.after(() => api.dispose());
+  await api.register(`${originA}/?t=token-A`);
+  let active = 0, peak = 0;
+  setHandle(async (url, init) => {
+    if (url.pathname !== '/pwa/v1/resolve') return {};
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      assert.ok(active <= 4, 'large queues must not exhaust browser HTTP resources');
+      await new Promise(resolve => setImmediate(resolve));
+      const { trackId } = JSON.parse(init.body);
+      return { uri: `${originA}/music/${trackId}`, title: trackId };
+    } finally { active--; }
+  });
+  const items = Array.from({ length: 4096 }, (_, index) => ({ serverId: 'pwa:a:library', trackId: `track-${index}` }));
+  await api.networkMusicPlayerCommand({ playerId: 'pwa:a:player', action: 'replace', items, play: true, startIndex: 2048 });
+  assert.equal(peak, 4);
+  const command = JSON.parse(calls.at(-1).init.body);
+  assert.equal(command.startIndex, 2048);
+  assert.deepEqual(command.tracks.map(track => track.title), items.map(item => item.trackId));
+});
+
+test('cancelled or failed remote queue resolution stops scheduling more tracks and never changes the player', async t => {
+  for (const failure of [false, true]) {
+    const { api, calls, setHandle } = fixture();
+    t.after(() => api.dispose());
+    await api.register(`${originA}/?t=token-A`);
+    let current = true;
+    setHandle(async url => {
+      assert.equal(url.pathname, '/pwa/v1/resolve');
+      await new Promise(resolve => setImmediate(resolve));
+      if (failure) throw new Error('offline');
+      current = false;
+      return { uri: `${originA}/music/track` };
+    });
+    const pending = api.networkMusicPlayerCommand({ playerId: 'pwa:a:player', action: 'replace',
+      items: Array.from({ length: 100 }, (_, index) => ({ serverId: 'pwa:a:library', trackId: `track-${index}` })),
+      isCurrent: () => current });
+    if (failure) await assert.rejects(pending);
+    else assert.deepEqual(await pending, { accepted: false });
+    assert.equal(calls.filter(call => call.url.pathname === '/pwa/v1/resolve').length, 4);
+    assert.equal(calls.filter(call => call.url.pathname === '/pwa/v1/player').length, 0);
+  }
+});
+
 test('PWA providers preserve shared references and stream through the existing media policy without materializing bytes', async () => {
   const requests = [];
   const track = createPwaPlaybackTrack({ networkMusicResolveTrack: async request => { requests.push(request); return { uri: media, title: 'Song', playable: true }; } },
     { serverId: 'pwa:a:library', trackId: 'shared-track', title: 'Song' });
   const first = await track.provider();
   const second = await track.provider();
+  assert.deepEqual(track.meta.networkLibrary, { serverId: 'pwa:a:library', trackId: 'shared-track' });
   assert.equal(requests.length, 2);
   assert.deepEqual(requests[0], { serverId: 'pwa:a:library', trackId: 'shared-track', localPlayback: true });
   assert.equal(first.mediaSource, second.mediaSource);
@@ -586,6 +752,40 @@ test('PWA providers preserve shared references and stream through the existing m
   AudioContextManager.prototype.setAudioElementSource.call(manager, element, media);
   AudioContextManager.prototype.setAudioElementSource.call(manager, element, 'blob:local-file');
   assert.deepEqual(order, [['cors', 'anonymous'], ['src', media], ['remove', 'crossorigin'], ['src', 'blob:local-file']]);
+});
+
+test('browsed mixed-format tracks resolve the browser-supported resource through the playback provider', async t => {
+  const require = createRequire(import.meta.url);
+  const { PwaNetworkHost } = require('../../electron/pwa-network-host.cjs');
+  const { supportsProtocol } = require('../../electron/network-music-host.cjs');
+  const resources = [
+    { uri: 'http://nas.example/song.aiff', protocolInfo: 'http-get:*:audio/aiff:*' },
+    { uri: 'http://nas.example/song.mp3', protocolInfo: 'http-get:*:audio/mpeg:*' }
+  ];
+  const item = { id: 'song', trackId: 'song', title: 'Song', playable: true, resources };
+  const music = Object.assign(new EventEmitter(), { id: 'a', sharing: {}, gatewayPermissions: { libraries: true },
+    discovery: { devices: new Map([['nas', { available: true }]]) }, resolveTrack: async () => item, supportsProtocol });
+  const host = new PwaNetworkHost({ music, remote: { token: 'token-123', listening: true, endpointOrigin: () => originA }, player: {} });
+  const { api, setHandle } = fixture();
+  t.after(() => { api.dispose(); host.dispose(); });
+  api.windowRef = { document: { removeEventListener() {}, createElement: () => ({ canPlayType: type => type === 'audio/mpeg' ? 'probably' : '' }) }, removeEventListener() {} };
+  setHandle((url, init) => url.pathname.endsWith('/info') ? info('a', { libraries: [{ id: 'nas', available: true }] }) :
+    url.pathname.endsWith('/browse') ? { items: [host.browserGatewayTrack('nas', item, {})] } : host.gatewayTrack(JSON.parse(init.body), {}));
+  await api.register(`${originA}/?t=token-123`);
+  const state = await api.networkMusicGetState();
+  const serverId = state.libraries.find(library => library.id.endsWith(':nas')).id;
+  const page = await api.networkMusicBrowse({ serverId });
+  assert.equal(api.canPlayItem(page.items[0], 'local'), true);
+  const playback = await createPwaPlaybackTrack(api, page.items[0]).provider();
+  assert.equal(host.grants.get(playback.mediaSource.split('/').at(-1)).track.uri, resources[1].uri);
+  const queued = await host.gatewayTrack({ serverId: 'nas', trackId: 'song', audience: 'player', target: { hostId: 'destination-gateway', playerId: 'uuid:destination-player' } }, {});
+  assert.ok(queued.uri.split('/').at(-1).length > 128);
+  assert.equal(validatePwaMediaUrl(queued.uri, originA), queued.uri);
+  assert.equal(validatePwaMediaUrl(queued.uri.replace('/media/', '/artwork/'), originA), queued.uri.replace('/media/', '/artwork/'));
+  assert.throws(() => validatePwaMediaUrl(`${originA}/pwa/v1/media/${'a'.repeat(8193)}`, originA), { code: 'invalidMediaSource' });
+  api.audioProbe = { canPlayType: () => '' };
+  assert.equal(api.canPlayItem(page.items[0], 'local'), false);
+  await assert.rejects(createPwaPlaybackTrack(api, page.items[0]).provider(), { code: 'unsupportedFormat' });
 });
 
 test('PWA local playback preserves initial This Device selections and begins resume before source work', async () => {

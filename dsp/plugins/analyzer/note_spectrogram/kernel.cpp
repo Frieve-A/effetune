@@ -12,6 +12,10 @@ public:
     reset();
   }
   bool preparedSuccessfully() const noexcept override { return analysis_ && analysis_->ready(); }
+  void streamBoundary() noexcept override {
+    if (analysis_)
+      analysis_->restartChordKey();
+  }
   void reset() noexcept override {
     if (++generation_ == 0u)
       ++generation_;
@@ -52,7 +56,8 @@ private:
     const auto maximum = std::max(minimum, bounded(params_.maximumMidi, 91));
     analysis_->setTimbreEnabled(params_.timbreEnabled != 0.0F);
     if (!analysis_->configure(static_cast<std::uint32_t>(minimum),
-                              static_cast<std::uint32_t>(maximum))) {
+                              static_cast<std::uint32_t>(maximum),
+                              params_.chordKeyEnabled != 0.0F)) {
       if (initial)
         analysis_->reset(generation_);
       return;

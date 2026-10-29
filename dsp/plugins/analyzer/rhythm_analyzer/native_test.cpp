@@ -1,4 +1,5 @@
 #include "allocation_guard.h"
+#include "drum_decoder.h"
 #include "effetune/kernel.h"
 #include "rd6_clock.h"
 #include "rd6_decoder.h"
@@ -10,6 +11,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <vector>
 #if defined(_M_X64) || defined(__x86_64__)
@@ -43,7 +46,7 @@ struct Harness {
   effetune::PluginKernel *kernel = descriptor->construct(storage.data());
   std::array<std::uint8_t, 16384> ringStorage{}, packets{};
   effetune::TelemetryRing ring;
-  std::array<float, 3> params{40.0f, 240.0f, 0.0f};
+  std::array<float, 4> params{40.0f, 240.0f, 0.0f, 0.0f};
   std::uint32_t sequence = 0u;
   explicit Harness(float rate) {
     CHECK(descriptor->objectSize <= storage.size());
@@ -54,7 +57,7 @@ struct Harness {
   }
   ~Harness() { descriptor->destroy(kernel); }
   void apply() {
-    CHECK(kernel->stageParameters(params.data(), 3u, descriptor->paramsHash) == ET_OK);
+    CHECK(kernel->stageParameters(params.data(), 4u, descriptor->paramsHash) == ET_OK);
     kernel->applyPendingParameters();
   }
   const std::uint8_t *take() {
@@ -69,9 +72,10 @@ struct Harness {
     CHECK(dropped == 0u);
     if (bytes == 0u)
       return nullptr;
-    CHECK(bytes == 1512u && packets[0] == 28u && packets[2] == 4u);
+    CHECK(bytes == 2040u && packets[0] == 28u && packets[2] == 5u);
     const auto *p = packets.data() + 16u;
     CHECK(u32(p + 28u) <= 16u);
+    CHECK(u32(p + 1500u) <= 16u);
     CHECK(u32(p + 24u) == 0u);
     CHECK(u32(p + 1344u) <= 12u);
     CHECK(std::isfinite(f32(p + 1348u)) && f32(p + 1348u) >= 0.0f);
@@ -430,7 +434,7 @@ void provisionalTransport() {
     consume(p, 10.0);
   CHECK(kinds[0] > 20u && kinds[3] > 20u && replacements > 20u);
   CHECK(kinds[2] > 0u && kinds[4] > 0u && kinds[5] > 10u && batchedAnalysis > 0u);
-  std::printf("{\"transport_v4\":true,\"committed_lanes\":%u,\"invalid_lanes\":%u,"
+  std::printf("{\"transport_v5\":true,\"committed_lanes\":%u,\"invalid_lanes\":%u,"
               "\"shown_forward\":%u,\"provisional_lanes\":%u,\"hidden_forward\":%u,"
               "\"committed_beats\":%u,\"matched_replacements\":%u,\"multi_beat_packets\":%u}\n",
               kinds[0], kinds[1], kinds[2], kinds[3], kinds[4], kinds[5], replacements,
@@ -456,8 +460,13 @@ void coldSilenceContract() {
 }
 void benchmark() {
   for (bool click : {false, true}) {
+    const auto prepareStart = std::chrono::steady_clock::now();
     Harness h(96000.0f);
+    const double prepareMs =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - prepareStart)
+            .count();
     h.params[2] = click ? 1.0f : 0.0f;
+    h.params[3] = 1.0f;
     h.apply();
     constexpr std::uint32_t frames = 128u, blocks = 15000u;
     std::array<float, frames * 2u> audio{};
@@ -482,11 +491,318 @@ void benchmark() {
       total += us;
     }
     std::sort(durations.begin(), durations.end());
-    std::printf(
-        "{\"click\":%s,\"sample_rate\":96000,\"duration_s\":20,\"cpu_percent\":%.6f,\"block_mean_"
-        "us\":%.6f,\"block_p95_us\":%.6f,\"block_p99_us\":%.6f,\"block_max_us\":%.6f}\n",
-        click ? "true" : "false", total / 200000.0, total / blocks, durations[blocks * 95u / 100u],
-        durations[blocks * 99u / 100u], durations.back());
+    std::printf("{\"click\":%s,\"sample_rate\":96000,\"duration_s\":20,\"prepare_ms\":%.6f,\"cpu_"
+                "percent\":%.6f,\"block_mean_"
+                "us\":%.6f,\"block_p95_us\":%.6f,\"block_p99_us\":%.6f,\"block_max_us\":%.6f}\n",
+                click ? "true" : "false", prepareMs, total / 200000.0, total / blocks,
+                durations[blocks * 95u / 100u], durations[blocks * 99u / 100u], durations.back());
+  }
+}
+template <class T> std::vector<T> drumFixture(const char *name) {
+  const auto path = std::filesystem::path(__FILE__).parent_path() / "fixtures" / name;
+  std::ifstream stream(path, std::ios::binary | std::ios::ate);
+  CHECK(stream.good());
+  if (!stream.good())
+    return {};
+  const auto size = static_cast<std::size_t>(stream.tellg());
+  CHECK(size % sizeof(T) == 0u);
+  std::vector<T> result(size / sizeof(T));
+  stream.seekg(0);
+  stream.read(reinterpret_cast<char *>(result.data()), static_cast<std::streamsize>(size));
+  CHECK(stream.good());
+  return result;
+}
+void drumReferenceContract(bool quiet = false) {
+  using namespace effetune::plugins::analyzer::drum;
+  const auto audio = drumFixture<float>("drum-input.f32");
+  const auto features =
+      drumFixture<float>(quiet ? "drum-minus20-features.f32" : "drum-features.f32");
+  const auto logits = drumFixture<float>(quiet ? "drum-minus20-logits.f32" : "drum-logits.f32");
+  const auto expected =
+      drumFixture<std::uint32_t>(quiet ? "drum-minus20-events.u32" : "drum-events.u32");
+  if (audio.empty() || features.empty() || logits.empty() || expected.empty())
+    return;
+  struct State {
+    Inference inference;
+    Decoder decoder;
+    const float *features = nullptr, *logits = nullptr;
+    const std::uint32_t *events = nullptr;
+    std::size_t frame = 0u, eventCount = 0u, expectedCount = 0u;
+    float featureError = 0.0f, logitError = 0.0f;
+    static void accepted(void *context, unsigned cls, std::int64_t frame, float) {
+      auto &s = *static_cast<State *>(context);
+      CHECK(s.eventCount < s.expectedCount);
+      if (s.eventCount < s.expectedCount) {
+        CHECK(s.events[s.eventCount * 2u] == cls);
+        CHECK(s.events[s.eventCount * 2u + 1u] == static_cast<std::uint32_t>(frame));
+      }
+      ++s.eventCount;
+    }
+    static void feature(void *context, const float *values) {
+      auto &s = *static_cast<State *>(context);
+      for (unsigned i = 0u; i < 128u; ++i)
+        s.featureError =
+            std::max(s.featureError, std::fabs(values[i] - s.features[s.frame * 128u + i]));
+      float out[5];
+      s.inference.push(values, out);
+      for (unsigned i = 0u; i < 5u; ++i)
+        s.logitError = std::max(s.logitError, std::fabs(out[i] - s.logits[s.frame * 5u + i]));
+      s.decoder.push(out, &s, &accepted);
+      ++s.frame;
+    }
+  };
+  auto state = std::make_unique<State>();
+  state->features = features.data();
+  state->logits = logits.data();
+  state->events = expected.data();
+  state->expectedCount = expected.size() / 2u;
+  Frontend frontend;
+  frontend.prepare(44100.0);
+  state->inference.prepare();
+  state->decoder.reset();
+  for (unsigned repeat = 0u; repeat < 2u; ++repeat) {
+    frontend.reset();
+    state->inference.reset();
+    state->decoder.reset();
+    state->frame = state->eventCount = 0u;
+    {
+      const effetune::allocation_guard::Scope guard;
+      for (float sample : audio)
+        frontend.push(quiet ? sample * .1f : sample, state.get(), &State::feature);
+      frontend.finish(state.get(), &State::feature);
+      state->decoder.finish(state.get(), &State::accepted);
+      frontend.finish(state.get(), &State::feature);
+      state->decoder.finish(state.get(), &State::accepted);
+    }
+    CHECK(state->frame == features.size() / 128u);
+    CHECK(state->eventCount == state->expectedCount);
+  }
+  std::printf("{\"gain_db\":%d,\"drum_reference_events\":%zu,\"max_feature_error\":%.9g,\"max_"
+              "logit_error\":%.9g}\n",
+              quiet ? -20 : 0, state->eventCount, state->featureError, state->logitError);
+}
+void drumPeakContract() {
+  using namespace effetune::plugins::analyzer::drum;
+  Decoder decoder;
+  decoder.reset();
+  struct Events {
+    unsigned count = 0;
+    static void accept(void *context, unsigned, std::int64_t, float) {
+      ++static_cast<Events *>(context)->count;
+    }
+  } events;
+  for (unsigned n = 0u; n < 20u; ++n) {
+    float logits[5];
+    for (float &value : logits)
+      value = n == 7u || n == 8u || n == 10u || n == 13u ? 3.0f : -10.0f;
+    decoder.push(logits, &events, &Events::accept);
+  }
+  decoder.finish(&events, &Events::accept);
+  // Right edge of plateau at raw8, raw10 rejected by refractory, raw13 accepted, all classes.
+  CHECK(events.count == 10u);
+  decoder.reset();
+  events.count = 0u;
+  for (unsigned n = 0u; n < 9u; ++n) {
+    float logits[5];
+    for (float &value : logits)
+      value = n == 8u ? 3.0f : -10.0f;
+    decoder.push(logits, &events, &Events::accept);
+  }
+  CHECK(events.count == 0u);
+  decoder.finish(&events, &Events::accept);
+  CHECK(events.count == 5u);
+}
+void drumSchedulingContract() {
+  using namespace effetune::plugins::analyzer::drum;
+  const auto audio = drumFixture<float>("drum-input.f32");
+  struct Capture {
+    struct Hit {
+      double time;
+      float logit;
+      unsigned lane, arrival;
+    };
+    std::array<Hit, 256> hits{};
+    unsigned count = 0u, input = 0u;
+    static void event(void *context, double time, float logit, unsigned lane) {
+      auto &self = *static_cast<Capture *>(context);
+      CHECK(self.count < self.hits.size());
+      if (self.count < self.hits.size())
+        self.hits[self.count++] = {time, logit, lane, self.input};
+    }
+  } immediate, staggered;
+  auto first = std::make_unique<Detector>(), second = std::make_unique<Detector>();
+  first->prepare(44100.0);
+  second->prepare(44100.0);
+  second->setInstanceSalt(31u);
+  first->context = &immediate;
+  second->context = &staggered;
+  first->event = second->event = &Capture::event;
+  const unsigned delay = static_cast<unsigned>(44100.0 * 31.0 / 4000.0);
+  CHECK(std::fabs(second->latency() - first->latency() - delay / 44100.0) < 1e-12);
+  {
+    const effetune::allocation_guard::Scope guard;
+    for (unsigned i = 0u; i < audio.size(); ++i) {
+      immediate.input = staggered.input = i;
+      first->push(audio[i]);
+      second->push(audio[i]);
+    }
+    first->finish();
+    second->finish();
+  }
+  CHECK(immediate.count > 0u && immediate.count == staggered.count);
+  for (unsigned i = 0u; i < std::min(immediate.count, staggered.count); ++i) {
+    CHECK(immediate.hits[i].time == staggered.hits[i].time);
+    CHECK(immediate.hits[i].logit == staggered.hits[i].logit);
+    CHECK(immediate.hits[i].lane == staggered.hits[i].lane);
+    CHECK(staggered.hits[i].arrival - immediate.hits[i].arrival == delay);
+  }
+  // Finish immediately after each feature arrives, before the scheduled inference slot.
+  for (auto *detector : {first.get(), second.get()})
+    detector->reset();
+  immediate.count = staggered.count = 0u;
+  {
+    const effetune::allocation_guard::Scope guard;
+    for (unsigned i = 0u; i < 44100u; ++i) {
+      first->push(audio[i]);
+      second->push(audio[i]);
+    }
+    first->finish();
+    second->finish();
+  }
+  CHECK(immediate.count == staggered.count);
+  for (unsigned i = 0u; i < std::min(immediate.count, staggered.count); ++i) {
+    CHECK(immediate.hits[i].time == staggered.hits[i].time);
+    CHECK(immediate.hits[i].logit == staggered.hits[i].logit);
+  }
+}
+void drumRateContract() {
+  using namespace effetune::plugins::analyzer::drum;
+  for (unsigned rate : {8000u, 11025u, 16000u, 22050u, 24000u, 32000u, 44100u, 48000u, 64000u,
+                        88200u, 96000u, 176400u, 192000u, 352800u, 384000u}) {
+    Frontend frontend;
+    frontend.prepare(rate);
+    struct Frames {
+      unsigned count = 0u;
+      static void receive(void *context, const float *features) {
+        ++static_cast<Frames *>(context)->count;
+        for (unsigned i = 0u; i < 128u; ++i)
+          CHECK(std::isfinite(features[i]) && features[i] >= 0.0f);
+      }
+    } frames;
+    const unsigned samples = rate / 10u + 1u;
+    const auto outputSamples = (static_cast<std::uint64_t>(samples) * 44100u + rate - 1u) / rate;
+    for (unsigned repeat = 0u; repeat < 2u; ++repeat) {
+      frontend.reset();
+      frames.count = 0u;
+      const effetune::allocation_guard::Scope guard;
+      for (unsigned i = 0u; i < samples; ++i)
+        frontend.push(i == samples / 2u ? 1.0f : 0.0f, &frames, &Frames::receive);
+      frontend.finish(&frames, &Frames::receive);
+      CHECK(frames.count == (outputSamples + 440u) / 441u);
+    }
+  }
+}
+void drumKernelContract() {
+  const auto fixture = drumFixture<float>("drum-input.f32");
+  const auto expected = drumFixture<std::uint32_t>("drum-events.u32");
+  if (fixture.empty() || expected.empty())
+    return;
+  struct Hit {
+    unsigned lane;
+    double time;
+    float logit;
+  };
+  for (unsigned rate : {44100u, 48000u, 96000u}) {
+    std::vector<Hit> baseline;
+    for (unsigned frames : {128u, 37u}) {
+      Harness harness(static_cast<float>(rate));
+      harness.params[3] = 1.0f;
+      harness.apply();
+      std::vector<Hit> hits;
+      hits.reserve(256u);
+      auto collect = [&](const std::uint8_t *p) {
+        CHECK(u32(p + 1496u) == 1u);
+        CHECK(std::fabs(f32(p + 1504u) - (.07 + (rate == 44100u ? 0.0 : 191.0 / rate))) < 1e-7);
+        for (unsigned i = 0u; i < u32(p + 1500u); ++i) {
+          const auto *slot = p + 1512u + i * 32u;
+          const double time = (u32(slot) + static_cast<double>(f32(slot + 4u))) * kBeatDt;
+          const unsigned lane = slot[28];
+          CHECK(lane < 5u && std::isfinite(f32(slot + 24u)));
+          const auto known = std::find_if(hits.begin(), hits.end(), [&](const Hit &hit) {
+            return hit.lane == lane && std::fabs(hit.time - time) < 1e-8;
+          });
+          if (known == hits.end())
+            hits.push_back({lane, time, f32(slot + 24u)});
+          else
+            CHECK(known->logit == f32(slot + 24u));
+        }
+      };
+      const unsigned length = static_cast<unsigned>((fixture.size() * rate + 44099u) / 44100u);
+      std::array<float, 512> audio{}, original{};
+      for (unsigned at = 0u; at < length; at += frames) {
+        const unsigned count = std::min(frames, length - at);
+        for (unsigned i = 0u; i < count; ++i) {
+          const double position = static_cast<double>(at + i) * 44100.0 / rate;
+          const auto index = static_cast<std::size_t>(position);
+          const float left = index < fixture.size() ? fixture[index] : 0.0f;
+          const float right = index + 1u < fixture.size() ? fixture[index + 1u] : 0.0f;
+          const float value = static_cast<float>(left + (right - left) * (position - index));
+          // Four-channel average equals the mono fixture; channels beyond stereo must be read.
+          audio[i] = frames == 128u ? value : 0.0f;
+          audio[count + i] = frames == 128u ? value : 0.0f;
+          audio[2u * count + i] = frames == 128u ? value : 2.0f * value;
+          audio[3u * count + i] = frames == 128u ? value : 2.0f * value;
+        }
+        original = audio;
+        {
+          const effetune::allocation_guard::Scope guard;
+          harness.kernel->process(audio.data(), 4u, count, {static_cast<double>(at) / rate});
+        }
+        CHECK(audio == original);
+        if (const auto *p = harness.take())
+          collect(p);
+      }
+      // Refused writes must preserve the final partial hop and events until the consumer drains.
+      harness.kernel->streamBoundary();
+      std::array<std::uint8_t, 64> smallStorage{};
+      effetune::TelemetryRing smallRing;
+      smallRing.adopt(smallStorage.data(), static_cast<std::uint32_t>(smallStorage.size()));
+      std::uint32_t sequence = 0u;
+      effetune::TelemetryWriter refused(smallRing, 207u, sequence);
+      harness.kernel->writeTelemetry(refused);
+      CHECK(harness.kernel->streamBoundaryPending());
+      effetune::TelemetryWriter writer(harness.ring, 207u, harness.sequence);
+      harness.kernel->writeTelemetry(writer);
+      CHECK(!harness.kernel->streamBoundaryPending());
+      const unsigned bytes = harness.ring.read(
+          harness.packets.data(), static_cast<unsigned>(harness.packets.size()), nullptr);
+      for (unsigned offset = 0u; offset + 2040u <= bytes; offset += 2040u)
+        collect(harness.packets.data() + offset + 16u);
+      CHECK(!hits.empty());
+      if (frames == 128u)
+        baseline = hits;
+      else {
+        CHECK(hits.size() == baseline.size());
+        for (std::size_t i = 0u; i < std::min(hits.size(), baseline.size()); ++i) {
+          CHECK(hits[i].lane == baseline[i].lane);
+          CHECK(hits[i].time == baseline[i].time);
+          CHECK(hits[i].logit == baseline[i].logit);
+        }
+      }
+      if (rate == 44100u) {
+        std::size_t display = 0u;
+        for (std::size_t i = 0u; i < expected.size(); i += 2u) {
+          const auto cls = expected[i];
+          CHECK(display < hits.size());
+          if (display < hits.size()) {
+            CHECK(hits[display].lane == (cls == 3u ? 4u : cls == 4u ? 3u : cls));
+            CHECK(std::fabs(hits[display].time - (expected[i + 1u] + 1u) / 100.0) < 1e-7);
+          }
+          ++display;
+        }
+        CHECK(display == hits.size());
+      }
+    }
   }
 }
 } // namespace
@@ -494,6 +810,12 @@ int main(int argc, char **argv) {
   if (argc > 1 && std::strcmp(argv[1], "--benchmark") == 0)
     benchmark();
   else {
+    drumReferenceContract();
+    drumReferenceContract(true);
+    drumPeakContract();
+    drumSchedulingContract();
+    drumRateContract();
+    drumKernelContract();
     halfContract();
     provisionalClockContract();
     decoderContract();

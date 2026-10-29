@@ -17,6 +17,182 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test('remote album preparation survives a library redraw but respects cancellation and device changes', async () => {
+  for (const change of ['redraw', 'cancel', 'library', 'player']) {
+    const browse = deferred();
+    const commands = [];
+    const controller = {
+      selectedLibraryId: 'library-a', selectedPlayerId: 'player-a',
+      libraryGeneration: 0, playerGeneration: 0, queueTracksMax: 4096,
+      api: { isPwa: true, networkMusicBrowse: () => browse.promise },
+      canPlayItem: () => true,
+      playItems: async (...args) => { commands.push(args); return { accepted: true }; }
+    };
+    const view = new NetworkMusicView({ controller, uiManager: { t: key => key } });
+    const pending = view.playLibraryContainer({ id: 'album-a' });
+    if (change === 'redraw') view.libraryRenderToken++;
+    if (change === 'cancel') view.playbackPreparation.cancelled = true;
+    if (change === 'library') controller.libraryGeneration++;
+    if (change === 'player') controller.playerGeneration++;
+    browse.resolve({ items: [{ id: 'track-a', playable: true }], total: 1 });
+    await pending;
+    clearTimeout(view.playbackToastTimer);
+    assert.equal(commands.length, change === 'redraw' ? 1 : 0, change);
+    if (change === 'redraw') {
+      assert.equal(view.playbackPreparation.state.terminalKind, 'succeeded');
+      assert.equal(commands[0][0][0].trackId, 'track-a');
+    }
+  }
+});
+
+test('remote navigation counts use unfiltered totals, cache requests, and refresh independently of browsing', async () => {
+  const requests = [];
+  const pages = {
+    tracks: { total: 17935, items: [{}] }, albums: { total: 1200, items: [{}] },
+    artists: { total: 0, items: [] }, genres: { total: 0, items: [{}] }
+  };
+  const server = { id: 'server-a', browseViews: ['tracks', 'albums', 'artists', 'genres', 'recent'].map(id => ({ id, objectId: id })) };
+  const controller = { selectedLibraryId: server.id, api: { networkMusicBrowse: async request => {
+    requests.push(request);
+    return pages[request.objectId];
+  } } };
+  const view = new NetworkMusicView({ controller, uiManager: { t: key => key } });
+  const elements = server.browseViews.map(() => ({ hidden: true, textContent: '' }));
+  const buttons = server.browseViews.map((entry, index) => ({ dataset: { view: entry.id }, querySelector: () => elements[index] }));
+  view.libraryNav = { querySelectorAll: selector => selector === '.library-count' ? elements : buttons };
+  const location = { objectId: 'album-1', query: 'search', start: 100 };
+  await view.updateLibraryNavCounts(server, location, 0);
+  assert.deepEqual(elements.map(element => [element.hidden, element.textContent]), [
+    [false, '17935'], [false, '1200'], [false, '0'], [true, ''], [true, '']
+  ]);
+  assert.deepEqual(requests, server.browseViews.slice(0, 4).map(entry => ({
+    serverId: server.id, objectId: entry.objectId, start: 0, count: 1
+  })));
+  await view.updateLibraryNavCounts(server, location, 0);
+  assert.equal(requests.length, 4);
+  pages.tracks = { total: 18000, items: [{}] };
+  location.navCounts = null;
+  await view.updateLibraryNavCounts(server, location, 0);
+  assert.equal(elements[0].textContent, '18000');
+  assert.equal(requests.length, 8);
+});
+
+test('late remote navigation counts cannot overwrite a newly rendered library', async () => {
+  const pending = deferred();
+  const controller = { selectedLibraryId: 'server-a', api: { networkMusicBrowse: () => pending.promise } };
+  const view = new NetworkMusicView({ controller, uiManager: { t: key => key } });
+  const element = { hidden: true, textContent: '' };
+  view.libraryNav = { querySelectorAll: selector => selector === '.library-count' ? [element] : [
+    { dataset: { view: 'tracks' }, querySelector: () => element }
+  ] };
+  const update = view.updateLibraryNavCounts({ id: 'server-a', browseViews: [{ id: 'tracks', objectId: 'tracks' }] }, {}, 0);
+  view.libraryRenderToken++;
+  controller.selectedLibraryId = 'server-b';
+  element.textContent = '42';
+  pending.resolve({ total: 17935, items: [{}] });
+  await update;
+  assert.equal(element.textContent, '42');
+});
+
+test('remote playback interpolates from receipt time and resets for pause, seek, track changes and loss of connection', async () => {
+  let now = 1000;
+  await withGlobals({ performance: { now: () => now } }, async () => {
+    const controller = { playerStates: new Map([['remote', {
+      position: 10, positionReceivedAt: 1000, duration: 100, currentId: 1,
+      available: true, transportState: 'Playing'
+    }]]) };
+    const adapter = new NetworkPlaybackAdapter(controller, 'remote', {});
+    now = 1500;
+    assert.equal(adapter.contextManager.getCurrentPlaybackTime(), 10.5);
+    adapter.sync();
+    now = 1800;
+    assert.equal(adapter.contextManager.getCurrentPlaybackTime(), 10.8);
+    const receive = patch => {
+      controller.playerStates.set('remote', { ...controller.playerStates.get('remote'), ...patch, positionReceivedAt: now });
+      adapter.sync();
+    };
+    receive({ position: 11, transportState: 'Paused' });
+    now += 1000;
+    assert.equal(adapter.contextManager.getCurrentPlaybackTime(), 11);
+    receive({ position: 60, transportState: 'Playing' });
+    now += 250;
+    assert.equal(adapter.contextManager.getCurrentPlaybackTime(), 60.25);
+    receive({ position: 0, currentId: 2, duration: 2 });
+    now += 3000;
+    assert.equal(adapter.contextManager.getCurrentPlaybackTime(), 2);
+    receive({ position: 1, available: false });
+    now += 1000;
+    assert.equal(adapter.contextManager.getCurrentPlaybackTime(), 1);
+  });
+});
+
+test('remote volume retains the latest input while older commands and snapshots settle', async () => {
+  const commands = [];
+  const controller = {
+    playerStates: new Map([['remote', { available: true, volume: 20 }]]),
+    command: (action, args, playerId) => {
+      const completion = deferred();
+      commands.push({ action, args, playerId, completion });
+      return completion.promise;
+    },
+    reportError: error => { throw error; }
+  };
+  const adapter = new NetworkPlaybackAdapter(controller, 'remote', {});
+  const pending = adapter.setVolume(40);
+  await Promise.resolve();
+  adapter.setVolume(50);
+  adapter.setVolume(60);
+  await Promise.resolve();
+  assert.equal(commands.length, 1, 'only one volume command may be in flight');
+  adapter.sync();
+  assert.equal(adapter.stateManager.state.volume, 60, 'a stale poll must not replace the latest input');
+  controller.playerStates.get('remote').volume = 40;
+  commands[0].completion.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(commands.length, 2);
+  assert.deepEqual(commands[1].args, { value: 60 });
+  assert.equal(adapter.stateManager.state.volume, 60);
+  controller.playerStates.get('remote').volume = 60;
+  commands[1].completion.resolve();
+  await pending;
+  controller.playerStates.get('remote').volume = 25;
+  adapter.sync();
+  assert.equal(adapter.stateManager.state.volume, 25, 'external changes resume after confirmation');
+});
+
+test('a completed volume command reads fresh state and discards an older in-flight poll', async () => {
+  const oldPoll = deferred();
+  let reads = 0;
+  const { controller } = fixture({
+    networkMusicGetPlayerState: () => ++reads === 1 ? oldPoll.promise : Promise.resolve({ volume: 60 })
+  });
+  controller.selectedPlayerId = 'player-b';
+  const polling = controller.refreshPlayer();
+  await controller.command('volume', { value: 60 });
+  assert.equal(reads, 2);
+  assert.equal(controller.playerStates.get('player-b').volume, 60);
+  oldPoll.resolve({ volume: 20 });
+  await polling;
+  assert.equal(controller.playerStates.get('player-b').volume, 60);
+});
+
+test('a rejected volume write restores observed volume and allows the next adjustment', async () => {
+  const errors = [];
+  const failure = new Error('Unavailable');
+  const controller = {
+    playerStates: new Map([['remote', { available: true, volume: 20 }]]),
+    command: async () => { throw failure; },
+    reportError: error => errors.push(error)
+  };
+  const adapter = new NetworkPlaybackAdapter(controller, 'remote', {});
+  await adapter.setVolume(60);
+  assert.deepEqual(errors, [failure]);
+  assert.equal(adapter.stateManager.state.volume, 20);
+  controller.command = async (action, args) => { controller.playerStates.get('remote').volume = args.value; };
+  await adapter.setVolume(45);
+  assert.equal(adapter.stateManager.state.volume, 45);
+});
+
 test('network seek converts the common seek bar position to nonnegative whole seconds', async () => {
   const commands = [];
   const controller = {
@@ -33,6 +209,89 @@ test('network seek converts the common seek bar position to nonnegative whole se
   ]);
 });
 
+for (const transportState of ['Playing', 'Paused']) {
+  test(`remote seek holds the latest destination until fresh state arrives while ${transportState}`, async () => {
+    const commands = [];
+    const controller = {
+      playerStates: new Map([['remote', { available: true, currentId: 1, position: 10, duration: 200, transportState }]]),
+      command: (action, args) => {
+        const completion = deferred();
+        commands.push({ action, args, completion });
+        return completion.promise;
+      },
+      reportError: error => { throw error; }
+    };
+    const adapter = new NetworkPlaybackAdapter(controller, 'remote', {});
+    const pending = adapter.contextManager.seek(60);
+    assert.equal(adapter.stateManager.state.currentTrackPosition, 60);
+    assert.equal(adapter.getCurrentPlaybackTime(), 60);
+    await Promise.resolve();
+    adapter.contextManager.seek(90);
+    controller.playerStates.get('remote').position = 11;
+    adapter.sync();
+    assert.equal(adapter.stateManager.state.currentTrackPosition, 90);
+    assert.equal(adapter.getCurrentPlaybackTime(), 90);
+    controller.playerStates.get('remote').position = 60;
+    adapter.sync();
+    commands[0].completion.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(commands.length, 2);
+    assert.deepEqual(commands[1].args, { seconds: 90 });
+    assert.equal(adapter.getCurrentPlaybackTime(), 90);
+    controller.playerStates.get('remote').position = 90;
+    adapter.sync();
+    commands[1].completion.resolve();
+    await pending;
+    assert.equal(adapter.stateManager.state.currentTrackPosition, 90);
+    controller.playerStates.get('remote').position = 95;
+    adapter.sync();
+    assert.equal(adapter.stateManager.state.currentTrackPosition, 95);
+  });
+}
+
+test('remote seek releases its preview after failure, track change or disconnection', async () => {
+  for (const change of ['failure', 'track', 'disconnect']) {
+    const completion = deferred();
+    const errors = [];
+    const controller = {
+      playerStates: new Map([['remote', { available: true, currentId: 1, position: 10, duration: 200, transportState: 'Paused' }]]),
+      command: () => completion.promise,
+      reportError: error => errors.push(error)
+    };
+    const adapter = new NetworkPlaybackAdapter(controller, 'remote', {});
+    const pending = adapter.contextManager.seek(60);
+    await Promise.resolve();
+    if (change === 'failure') {
+      completion.reject(new Error('Unavailable'));
+    } else {
+      Object.assign(controller.playerStates.get('remote'), change === 'track' ? { currentId: 2 } : { available: false });
+      adapter.sync();
+      assert.equal(adapter.getCurrentPlaybackTime(), 10);
+      completion.resolve();
+    }
+    await pending;
+    assert.equal(adapter.stateManager.state.currentTrackPosition, 10);
+    assert.equal(errors.length, change === 'failure' ? 1 : 0);
+  }
+});
+
+test('a completed seek discards a stale poll before releasing its preview', async () => {
+  const oldPoll = deferred();
+  let reads = 0;
+  const { controller } = fixture({
+    networkMusicGetPlayerState: () => ++reads === 1 ? oldPoll.promise : Promise.resolve({ position: 60 })
+  });
+  controller.selectedPlayerId = 'player-b';
+  const polling = controller.refreshPlayer();
+  const adapter = new NetworkPlaybackAdapter(controller, 'player-b', {});
+  await adapter.contextManager.seek(60);
+  assert.equal(reads, 2);
+  oldPoll.resolve({ position: 10 });
+  await polling;
+  adapter.sync();
+  assert.equal(adapter.stateManager.state.currentTrackPosition, 60);
+});
+
 function fixture(overrides = {}) {
   const calls = [];
   const state = { libraries: [{ id: 'server-a', name: 'Library A' }], players: [{ id: 'player-b', name: 'Player B' }, { id: 'player-c', name: 'Player C' }], sharing: { enabled: false, folderIds: [], folders: [] } };
@@ -43,6 +302,7 @@ function fixture(overrides = {}) {
     ...overrides
   };
   const uiManager = {
+    t: key => key,
     audioPlayer: { activateOpenHomePlaybackAdapter: () => ({ playNetworkTracks: async (...args) => calls.push(['networkQueue', ...args]) }) },
     beginPlaybackSelectionGestureResume: () => calls.push(['resume'])
   };
@@ -50,6 +310,17 @@ function fixture(overrides = {}) {
   controller.applyState(state);
   return { controller, api, uiManager, calls, state };
 }
+
+test('an uncertain player command refreshes observed state without repeating the mutation', async () => {
+  const calls = [];
+  const { controller } = fixture({
+    networkMusicPlayerCommand: async () => { calls.push('command'); throw Object.assign(new Error('Failed'), { outcome: 'unknown' }); },
+    networkMusicGetPlayerState: async () => { calls.push('state'); return { queue: [], available: true }; }
+  });
+  controller.selectedPlayerId = 'player-b';
+  await assert.rejects(controller.command('replace'), { outcome: 'unknown' });
+  assert.deepEqual(calls, ['command', 'state']);
+});
 
 test('library and player selection remain independent and never issue transport commands', async () => {
   const { controller, calls, uiManager } = fixture();
@@ -68,6 +339,35 @@ test('library and player selection remain independent and never issue transport 
   assert.equal(controller.selectedLibraryId, 'server-a');
   assert.equal(calls.some(([kind]) => kind === 'command' || kind === 'loadFiles'), false);
   assert.deepEqual(menuTargets, ['player-b', 'local']);
+});
+
+test('web remote player selection switches a local library to an available playable remote source', () => {
+  const { controller, calls } = fixture({ isPwa: true,
+    canPlayItem: item => item.serverId !== 'browser-only' });
+  controller.state.libraries.unshift({ id: 'offline', available: false }, { id: 'browser-only' });
+  const generation = controller.libraryGeneration;
+  const observed = [];
+  controller.subscribe(() => observed.push(controller.selectedLibraryId));
+  controller.selectPlayer('player-b');
+  assert.equal(controller.selectedLibraryId, 'server-a');
+  assert.equal(controller.libraryGeneration, generation + 1);
+  assert.equal(observed[0], 'server-a');
+  controller.selectLibrary('other-server');
+  controller.selectPlayer('player-c');
+  assert.equal(controller.selectedLibraryId, 'other-server');
+  controller.selectPlayer('local');
+  assert.equal(controller.selectedLibraryId, 'other-server');
+  assert.equal(calls.some(([kind]) => kind === 'command'), false);
+});
+
+test('native players and web players without a usable remote library preserve the local library', () => {
+  for (const isPwa of [false, true]) {
+    const { controller } = fixture({ isPwa });
+    if (isPwa) controller.state.libraries = [{ id: 'offline', available: false }];
+    controller.selectPlayer('player-b');
+    assert.equal(controller.selectedLibraryId, 'local');
+    assert.equal(controller.libraryGeneration, 0);
+  }
 });
 
 test('native preset user entries cannot mutate or export the hidden local pipeline', async () => {
@@ -191,6 +491,35 @@ test('unavailable target keeps its identity and never falls back to local playba
   assert.equal(controller.selectedPlayer.name, 'Player B');
   assert.equal(controller.playerStates.get('player-b').available, false);
   assert.equal(calls.length, 0);
+});
+
+test('the effects region follows EffeTune effect capability and excludes third-party gateway players', async () => {
+  const { controller, uiManager } = fixture();
+  controller.applyState({ ...controller.state, players: [
+    { id: 'effetune', name: 'Desktop', isEffeTune: true, capabilities: { effects: true } },
+    { id: 'dlna', name: 'DLNA speaker', isEffeTune: false },
+    { id: 'pwa:gateway:player:third-party', name: 'Gateway speaker', isEffeTune: false, capabilities: { effects: true } }
+  ] });
+  const view = new NetworkMusicView({ controller, uiManager });
+  const selected = [];
+  view.effectsContainer = { hidden: true };
+  view.effects = { selectPlayer: async player => selected.push(player?.id ?? null), updatePlayerName() {} };
+  view.updateSelect = () => {};
+  view.bindPlaybackTarget = async () => {};
+  await withGlobals({ document: { body: { classList: { toggle() {} } }, querySelector: () => null } }, async () => {
+    for (const id of ['effetune', 'dlna', 'pwa:gateway:player:third-party', 'effetune']) {
+      controller.selectedPlayerId = id;
+      view.render();
+      assert.equal(view.effectsContainer.hidden, id !== 'effetune');
+    }
+    controller.state.players[0].capabilities.effects = false;
+    view.render();
+    assert.equal(view.effectsContainer.hidden, true, 'capability loss on the same player closes effect editing');
+    controller.selectedPlayerId = 'local';
+    view.render();
+    assert.equal(view.effectsContainer.hidden, true);
+  });
+  assert.deepEqual(selected, ['effetune', null, null, 'effetune', null, null]);
 });
 
 test('external queue commands preserve source identity and target the player captured at activation', async () => {
@@ -338,6 +667,25 @@ function libraryPlaybackFixture(items, { total = items.length, pageSize = 100 } 
   return { controller, view, requests, commands };
 }
 
+test('unavailable remote tracks explain rejected row and collection playback without queuing audio', async () => {
+  const track = { id: 'cue', playable: false, resources: [] };
+  const { view, controller, commands } = libraryPlaybackFixture([track]);
+  const notifications = [];
+  view.uiManager.setError = (...args) => notifications.push(args);
+  view.libraryRows = [{ item: track, sourceOrdinal: 0 }];
+  for (const action of ['play', 'playNext', 'queue']) {
+    assert.deepEqual(view.playLibrarySelection('server-a', action, 0, true), { accepted: false });
+  }
+  await view.playLibraryContext({ objectId: 'album' });
+  await view.playLibraryContext({ objectId: 'album' }, 0);
+  assert.deepEqual(notifications, Array(5).fill(['networkMusic.noPlayableResource', true]));
+  assert.deepEqual(commands, []);
+  assert.equal(controller.unavailableItemKey({ sourceKind: 'cue-track' }), 'networkMusic.cueUnsupported');
+  controller.selectedPlayerId = 'player-b';
+  assert.equal(controller.unavailableItemKey({ requiresGateway: true }), 'networkMusic.settings.gatewayRequired');
+  assert.equal(controller.unavailableItemKey({ playable: false }), 'networkMusic.unsupported');
+});
+
 test('row playback preserves the complete paged search order and clicked occurrence after filtering', async () => {
   const items = Array.from({ length: 205 }, (_, index) => ({ id: index === 202 ? 'track-2' : `track-${index}` }));
   items[0] = { id: 'folder', isContainer: true };
@@ -347,7 +695,84 @@ test('row playback preserves the complete paged search order and clicked occurre
   assert.deepEqual(requests.map(request => request.start), [0, 73, 146, 205]);
   assert.ok(requests.every(request => request.objectId === '0' && request.query === 'Music' && request.sortCriteria === '-dc:title'));
   assert.equal(commands.length, 1);
-  assert.deepEqual(commands[0], [items.slice(2).map(item => ({ serverId: 'server-a', trackId: item.id })), 'play', 200]);
+  assert.deepEqual(commands[0].slice(0, 3), [items.slice(2).map(item => ({ serverId: 'server-a', trackId: item.id })), 'play', 200]);
+});
+
+test('remote list preparation publishes progress immediately and cancellation prevents late playback', async () => {
+  const { controller, view, commands } = libraryPlaybackFixture([]);
+  const page = deferred();
+  let requests = 0;
+  controller.api.networkMusicBrowse = () => { requests++; return page.promise; };
+  const states = [];
+  view.renderPlaybackPreparation = () => states.push({ ...view.playbackPreparation.state });
+  const pending = view.playLibraryContext({ objectId: 'tracks' }, 0);
+  assert.equal(states[0].phase, 'SNAPSHOTTING');
+  assert.equal(states[0].canCancel, true);
+  assert.equal(states[0].processed, 0);
+  assert.deepEqual(await view.playLibraryContext({ objectId: 'tracks' }, 0), { accepted: false });
+  view.playbackPreparation.cancelled = true;
+  page.resolve({ items: [{ id: 'late' }], total: 500 });
+  assert.deepEqual(await pending, { accepted: false });
+  assert.equal(requests, 1);
+  assert.equal(commands.length, 0);
+  clearTimeout(view.playbackToastTimer);
+});
+
+test('remote preparation reports collected tracks and disables cancellation when applying the queue', async () => {
+  const { controller, view } = libraryPlaybackFixture(Array.from({ length: 205 }, (_, index) => ({ id: String(index) })));
+  controller.selectPlayer('player-b');
+  const commit = deferred();
+  const reached = deferred();
+  const states = [];
+  view.renderPlaybackPreparation = () => states.push({ ...view.playbackPreparation.state });
+  controller.playItems = async (_items, _kind, _index, preparation) => {
+    preparation.onCommit(); reached.resolve(); await commit.promise;
+  };
+  const pending = view.playLibraryContext({ objectId: 'tracks' }, 0);
+  await reached.promise;
+  assert.deepEqual(states.filter(state => state.phase === 'SNAPSHOTTING').map(state => state.processed), [0, 100, 200, 205]);
+  assert.equal(states.at(-1).phase, 'PREPARING_PLAYER');
+  assert.equal(states.at(-1).canCancel, false);
+  commit.resolve(); await pending;
+  assert.equal(states.at(-1).terminalKind, 'succeeded');
+  clearTimeout(view.playbackToastTimer);
+});
+
+test('row playback in a large remote library includes the tapped occurrence within queue capacity', async () => {
+  const items = Array.from({ length: 17935 }, (_, index) => ({ id: `track-${index}` }));
+  for (const maximum of [500, 4096]) {
+    for (const ordinal of [0, 10000, items.length - 1]) {
+      const { controller, view, requests, commands } = libraryPlaybackFixture(items);
+      controller.state.queueTracksMax = maximum;
+      await view.playLibraryContext({ objectId: 'tracks' }, ordinal);
+      const first = Math.max(0, ordinal - Math.floor(maximum / 2));
+      assert.deepEqual(commands.map(args => args.slice(0, 3)), [[items.slice(first, first + maximum).map(item => ({ serverId: 'server-a', trackId: item.id })), 'play', ordinal - first]]);
+      assert.equal(requests[0].start, first);
+      assert.ok(requests.every(request => request.count > 0 && request.count <= 100));
+    }
+  }
+});
+
+test('whole-list selection includes other pages, retains exclusions and starts at the chosen occurrence', async () => {
+  const items = Array.from({ length: 205 }, (_, index) => ({ id: `track-${index}` }));
+  const { controller, view, commands } = libraryPlaybackFixture(items);
+  controller.libraryLocations.set('server-a', { objectId: 'album', start: 100 });
+  view.libraryRows = items.slice(100, 200).map((item, index) => ({ item, sourceOrdinal: 100 + index }));
+  view.librarySelection = new Set([102]);
+  view.librarySelectionAll = true;
+  assert.equal(view.isLibraryTrackSelected(2), false);
+  assert.equal(view.isLibraryTrackSelected(3), true);
+  await view.playLibrarySelection('server-a', 'play', 3);
+  assert.equal(commands[0][0].length, 204);
+  assert.equal(commands[0][0][commands[0][2]].trackId, 'track-103');
+  assert.ok(commands[0][0].every(item => item.trackId !== 'track-102'));
+  await view.playLibrarySelection('server-a', 'playNext');
+  assert.equal(commands[1][1], 'playNext');
+  assert.equal(commands[1][0].length, 204);
+  view.librarySelectionAll = false;
+  view.librarySelection = new Set([1, 103]);
+  await view.playLibrarySelection('server-a', 'queue');
+  assert.deepEqual(commands[2][0].map(item => item.trackId), ['track-1', 'track-103']);
 });
 
 test('collection playback accepts 301 tracks and stops at the shared queue capacity', async () => {
@@ -388,7 +813,7 @@ test('context gathering cannot play after its library view or destination change
     const pending = deferred();
     controller.api.networkMusicBrowse = () => pending.promise;
     const operation = view.playLibraryContainer({ id: 'album' });
-    if (change === 'view') view.libraryRenderToken += 1;
+    if (change === 'view') { view.libraryRenderToken += 1; view.librarySelectionKey = 'another-library-view'; }
     else if (change === 'source') controller.selectLibrary('local');
     else controller.selectPlayer('player-b');
     pending.resolve({ items: [{ id: 'song' }], total: 1 });

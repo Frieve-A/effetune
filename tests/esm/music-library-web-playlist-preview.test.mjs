@@ -53,6 +53,90 @@ function createRepository() {
   };
 }
 
+test('Web playlist additions preserve selection order and never publish an incomplete selection', async () => {
+  const cases = [
+    { selection: { mode: 'explicit', trackUids: ['c', 'a'] }, expected: ['c', 'a'] },
+    { selection: { mode: 'range', startUid: 'a', endUid: 'c', exclusions: ['b'], inclusions: ['d'] }, expected: ['a', 'c', 'd'] },
+    { selection: { mode: 'explicit', trackUids: ['a', 'missing'] }, expected: null },
+    { selection: { mode: 'range', startUid: 'a', endUid: 'missing', exclusions: [], inclusions: [] }, expected: null }
+  ];
+  for (const { selection, expected } of cases) {
+    const repository = createRepository();
+    const staged = [], appended = [], published = [], events = [];
+    let terminal, sealed;
+    const complete = repository.completeOperation.bind(repository);
+    Object.assign(repository, {
+      async getOperationStatus() { return { result: terminal }; },
+      async completeOperation(operationId, result) {
+        terminal = result;
+        return complete(operationId, result);
+      },
+      async queryTracks({ contextToken, cursor }) {
+        assert.equal(contextToken, 'selection-context');
+        return { catalogVersion: 7,
+          rows: (cursor ? ['c', 'd'] : ['a', 'b']).map(trackUid => ({ trackUid })),
+          nextCursor: cursor ? null : 'second-page' };
+      },
+      async createOperationSnapshot(request) {
+        assert.equal(request.snapshotKind, 'operation-selection');
+        return { kind: 'created' };
+      },
+      async appendOperationSnapshotItems({ trackUids }) { staged.push(...trackUids); },
+      async sealOperationSnapshot(request) { sealed = request; },
+      async queryOperationSnapshot({ ordinal, limit }) {
+        return { items: staged.slice(ordinal, ordinal + limit).map(trackUid => ({ trackUid })) };
+      },
+      async appendPlaylistItems({ playlistId, items }) {
+        assert.equal(playlistId, 'existing-playlist');
+        appended.push(...items.map(item => item.trackUid));
+        return { kind: 'appended' };
+      },
+      async publishPlaylist(request) {
+        published.push(request);
+        return { kind: 'published', version: 4 };
+      }
+    });
+    let id = 0;
+    const coordinator = new WebLibraryServiceCoordinator({
+      repository, idFactory: () => `selection-${++id}`, now: () => 1000,
+      onEvent: event => events.push(event)
+    });
+    try {
+      const receipt = await coordinator.start({
+        clientRequestId: 'add-selection', operationKind: 'addToPlaylist',
+        selectionDescriptor: { ...selection, contextToken: 'selection-context' },
+        target: { playlistId: 'existing-playlist' }, expectedTargetVersion: 3, options: {}
+      });
+      const status = await coordinator.waitForTerminal(receipt.operationId);
+      if (expected) {
+        assert.deepEqual(staged, expected);
+        assert.deepEqual(appended, expected);
+        assert.equal(sealed.itemCount, expected.length);
+        assert.equal(typeof sealed.orderDigest, 'string');
+        assert.equal(typeof sealed.membershipDigest, 'string');
+        assert.equal(published.length, 1);
+        assert.equal(published[0].expectedVersion, 3);
+        assert.deepEqual(status.result.result, {
+          playlistId: 'existing-playlist', version: 4, itemCount: expected.length
+        });
+        assert.equal(status.result.state, 'succeeded');
+        assert.deepEqual(repository.calls.filter(call => call[0] === 'transition').map(call => call[2]),
+          ['SNAPSHOTTING', 'READY', 'COMMITTING']);
+      } else {
+        assert.equal(status.result.state, 'failed');
+        assert.equal(status.result.code, 'selectionChanged');
+        assert.equal(sealed, undefined);
+        assert.deepEqual(appended, []);
+        assert.deepEqual(published, []);
+      }
+      assert.equal(events.at(-1).kind, 'terminal');
+      assert.equal(events.at(-1).result.state, expected ? 'succeeded' : 'failed');
+    } finally {
+      coordinator.close();
+    }
+  }
+});
+
 test('Web manual playlist import stages a bounded preview before explicit publish', async () => {
   const repository = createRepository();
   let id = 0;

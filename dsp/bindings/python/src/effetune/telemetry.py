@@ -17,6 +17,7 @@ class TelemetryFrame:
         "level",
         "noteSpectrogram",
         "noteTimbre",
+        "noteChordKey",
         "oscilloscope",
         "pitch",
         "rhythmAnalyzer",
@@ -142,6 +143,26 @@ class NoteTimbreTelemetryFrame(TelemetryFrame):
 
 
 @dataclass(frozen=True, slots=True)
+class NoteChordKeyTelemetryFrame(TelemetryFrame):
+    """Immediate and confirmed chords, local key, and accumulated overall key."""
+
+    sample_rate: float
+    time_seconds: float
+    hop_seconds: float
+    generation: int
+    frame_index: int
+    immediate_root: int | None
+    immediate_quality: int | None
+    immediate_bass: int | None
+    confirmed_root: int | None
+    confirmed_quality: int | None
+    confirmed_bass: int | None
+    confirmed_probability: float
+    local_key: int | None
+    overall_key: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class PitchMeterTelemetryFrame(TelemetryFrame):
     sample_rate: float
     time_seconds: float
@@ -182,6 +203,26 @@ class RhythmAnalyzerTelemetryBeat:
 
 
 @dataclass(frozen=True, slots=True)
+class RhythmAnalyzerDrumTelemetryEvent:
+    """Accepted drum onset; lanes 0–4 are Kick, Snare, Hi-hat, Cymbals and Tom.
+
+    Beat annotations never change its class or audio time.
+    """
+
+    frame: int
+    fraction: float
+    audio_time_seconds: float
+    lock_epoch: int
+    beat_index: int
+    beat_fraction: float
+    period_seconds: float
+    logit: float
+    lane: int
+    flags: Literal[0, 1, 3]
+    unlocked: bool
+
+
+@dataclass(frozen=True, slots=True)
 class RhythmAnalyzerTelemetryFrame(TelemetryFrame):
     sample_rate: float
     generation: int
@@ -202,6 +243,9 @@ class RhythmAnalyzerTelemetryFrame(TelemetryFrame):
     events: tuple[RhythmAnalyzerTelemetryEvent, ...]
     preview_period_seconds: float = 0.0
     preview_beats: tuple[RhythmAnalyzerTelemetryBeat, ...] = ()
+    display_mode: Literal["band", "drums"] = "band"
+    drum_latency_seconds: float = 0.0
+    drum_events: tuple[RhythmAnalyzerDrumTelemetryEvent, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,7 +331,7 @@ _ANALYZER_FRAMES = {
     "NoteSpectrogram": (24, (6,)),
     "Oscilloscope": (3, (2, 3)),
     "PitchMeter": (26, (1,)),
-    "RhythmAnalyzer": (28, (1, 3, 4)),
+    "RhythmAnalyzer": (28, (1, 3, 4, 5)),
     "SpectrumAnalyzer": (4, (1, 2)),
     "Spectrogram": (5, (1, 2)),
     "StereoMeter": (6, (2,)),
@@ -663,6 +707,46 @@ def _decode_multires_hq(
     )
 
 
+def _decode_note_chord_key(
+    payload: memoryview,
+    node: tuple[str, str | None, int],
+    sequence: int,
+    dropped: int,
+) -> TelemetryFrame | None:
+    if len(payload) != 32:
+        return None
+    sample_rate, time_seconds, hop_seconds, generation, frame_index = struct.unpack_from("<fffII", payload)
+    chords = []
+    for offset in (20, 23):
+        root, quality, bass = struct.unpack_from("3B", payload, offset)
+        if (root, quality, bass) == (255, 255, 255):
+            chords.extend((None, None, None))
+        elif root < 12 and quality < 11 and bass < 12:
+            chords.extend((root, quality, bass))
+        else:
+            return None
+    local_key, overall_key = struct.unpack_from("2B", payload, 26)
+    confirmed_probability = struct.unpack_from("<f", payload, 28)[0]
+    if (
+        not math.isfinite(sample_rate) or sample_rate <= 0
+        or not math.isfinite(time_seconds) or time_seconds < 0
+        or not math.isfinite(hop_seconds) or hop_seconds <= 0 or generation == 0
+        or (local_key > 24 and local_key != 255) or (overall_key > 23 and overall_key != 255)
+        or not math.isfinite(confirmed_probability) or not 0 <= confirmed_probability <= 1
+    ):
+        return None
+    return NoteChordKeyTelemetryFrame(
+        **_common("noteChordKey", node, sequence, dropped),
+        sample_rate=sample_rate, time_seconds=time_seconds, hop_seconds=hop_seconds,
+        generation=generation, frame_index=frame_index,
+        immediate_root=chords[0], immediate_quality=chords[1], immediate_bass=chords[2],
+        confirmed_root=chords[3], confirmed_quality=chords[4], confirmed_bass=chords[5],
+        confirmed_probability=confirmed_probability,
+        local_key=None if local_key == 255 else local_key,
+        overall_key=None if overall_key == 255 else overall_key,
+    )
+
+
 def _decode_note_timbre(
     payload: memoryview,
     node: tuple[str, str | None, int],
@@ -911,7 +995,7 @@ def _decode_rhythm_analyzer(
     dropped: int,
     version: int = 1,
 ) -> TelemetryFrame | None:
-    if len(payload) != (1496 if version == 4 else _RHYTHM_ANALYZER_PAYLOAD_BYTES):
+    if len(payload) != (2024 if version == 5 else 1496 if version == 4 else _RHYTHM_ANALYZER_PAYLOAD_BYTES):
         return None
     (
         sample_rate,
@@ -1018,7 +1102,7 @@ def _decode_rhythm_analyzer(
         )
     preview_beats = []
     preview_period_seconds = 0.0
-    if version == 4:
+    if version >= 4:
         count, preview_period_seconds = struct.unpack_from("<If", payload, 1344)
         if (count > 12 or not math.isfinite(preview_period_seconds) or preview_period_seconds < 0
                 or (count > 0 and preview_period_seconds == 0)):
@@ -1032,6 +1116,28 @@ def _decode_rhythm_analyzer(
             )):
                 return None
             preview_beats.append(RhythmAnalyzerTelemetryBeat(frame, fraction, beat_index))
+    display_mode = 0
+    drum_latency_seconds = 0.0
+    drum_events = []
+    if version == 5:
+        display_mode, count, drum_latency_seconds, reserved = struct.unpack_from("<IIfI", payload, 1496)
+        if (display_mode > 1 or count > _RHYTHM_ANALYZER_MAX_EVENTS
+                or not math.isfinite(drum_latency_seconds) or drum_latency_seconds < 0 or reserved != 0):
+            return None
+        for index in range(count):
+            (frame, fraction, event_epoch, beat_index, beat_fraction, event_period,
+             logit, lane, flags, reserved) = struct.unpack_from("<IfIifffBBH", payload, 1512 + index * 32)
+            if (not 0 <= fraction < 1 or not 0 <= beat_fraction < 1
+                    or not math.isfinite(event_period) or event_period < 0 or not math.isfinite(logit)
+                    or lane > 4 or flags not in (0, 1, 3) or (flags != 1 and event_period == 0)
+                    or reserved != 0):
+                return None
+            drum_events.append(RhythmAnalyzerDrumTelemetryEvent(
+                frame=frame, fraction=fraction,
+                audio_time_seconds=(frame + fraction) * (256 / 24000),
+                lock_epoch=event_epoch, beat_index=beat_index, beat_fraction=beat_fraction,
+                period_seconds=event_period, logit=logit, lane=lane, flags=flags, unlocked=flags == 1,
+            ))
     return RhythmAnalyzerTelemetryFrame(
         **_common("rhythmAnalyzer", node, sequence, dropped),
         sample_rate=sample_rate,
@@ -1053,6 +1159,9 @@ def _decode_rhythm_analyzer(
         events=tuple(events),
         preview_period_seconds=preview_period_seconds,
         preview_beats=tuple(preview_beats),
+        display_mode="drums" if display_mode == 1 else "band",
+        drum_latency_seconds=drum_latency_seconds,
+        drum_events=tuple(drum_events),
     )
 
 
@@ -1195,6 +1304,7 @@ _DECODERS = {
     28: _decode_rhythm_analyzer,
     29: _decode_tonal_balance,
     31: _decode_note_timbre,
+    32: _decode_note_chord_key,
 }
 
 
@@ -1219,7 +1329,7 @@ def _decode_telemetry_packet(
         node = nodes_by_tap.get(tap_id)
         expected = _ANALYZER_FRAMES.get(node[0]) if node else None
         if ((expected and expected[0] == frame_type and version in expected[1])
-                or (node and node[0] == "NoteSpectrogram" and frame_type == 31 and version == 1)):
+                or (node and node[0] == "NoteSpectrogram" and frame_type in (31, 32) and version == 1)):
             payload = view[offset + 16 : offset + 16 + payload_bytes]
             decoded = (
                 _decode_multires_hq(
@@ -1250,9 +1360,11 @@ __all__ = [
     "NoteSpectrogramTelemetryFrame",
     "NoteSpectrogramRevision",
     "NoteTimbreTelemetryFrame",
+    "NoteChordKeyTelemetryFrame",
     "OscilloscopeTelemetryFrame",
     "PitchMeterTelemetryFrame",
     "RhythmAnalyzerTelemetryEvent",
+    "RhythmAnalyzerDrumTelemetryEvent",
     "RhythmAnalyzerTelemetryBeat",
     "RhythmAnalyzerTelemetryFrame",
     "SpectrogramTelemetryFrame",

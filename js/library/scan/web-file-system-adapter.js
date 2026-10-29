@@ -6,9 +6,12 @@ import {
 } from '../constants.js';
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
 import { assertDirectoryHandle } from './web-folder-handle-store.js';
+import { isAndroidDirectory, requestAndroidDocument } from '../../android/library-io.js';
+import { AndroidLibraryFilesystem } from '../../android/library-filesystem.js';
 
 export class WebFileSystemScanAdapter {
   constructor({ rootHandle, onPlaylistFile = () => {}, includeVideo = false }) {
+    if (isAndroidDirectory(rootHandle)) return new AndroidLibraryFilesystem({ rootHandle, onPlaylistFile, includeVideo });
     this.rootHandle = assertDirectoryHandle(rootHandle);
     if (typeof onPlaylistFile !== 'function') throw new TypeError('onPlaylistFile must be a function');
     this.onPlaylistFile = onPlaylistFile;
@@ -104,6 +107,10 @@ export class WebFileSystemScanAdapter {
 export async function queryFolderPermission(handle) {
   assertDirectoryHandle(handle);
   try {
+    if (isAndroidDirectory(handle)) {
+      const result = await requestAndroidDocument('documents.permission', { uri: handle.androidUri });
+      return result.granted ? 'granted' : 'needs-permission';
+    }
     if (typeof handle.queryPermission !== 'function') return 'granted';
     const permission = await handle.queryPermission({ mode: 'read' });
     return permission === 'granted' ? 'granted' : 'needs-permission';
@@ -123,6 +130,12 @@ export async function isSameFolderRoot(candidateHandle, existingHandle) {
 export async function compareFolderRoots(candidateHandle, existingHandle) {
   assertDirectoryHandle(candidateHandle);
   assertDirectoryHandle(existingHandle);
+  if (isAndroidDirectory(candidateHandle) && isAndroidDirectory(existingHandle)) {
+    const result = await requestAndroidDocument('documents.compareRoots', {
+      left: candidateHandle.androidUri, right: existingHandle.androidUri
+    });
+    return result.relation;
+  }
   if (candidateHandle === existingHandle) return 'same';
   try {
     if (typeof candidateHandle.isSameEntry === 'function' &&

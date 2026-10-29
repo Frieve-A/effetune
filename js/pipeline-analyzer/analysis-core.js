@@ -738,36 +738,50 @@ export function buildAnalysisResult({
     const afterImpulse = sumAlignedImpulseResponses(afterRoutes);
     const beforeTimeOriginSamples = identitySpeakerResponse ? 0 : placed.timeOriginSamples;
     const afterTimeOriginSamples = placed.timeOriginSamples - safeReportedLatency;
-    const responseFftSize = nextPowerOfTwo(Math.max(
-        4,
-        beforeImpulse.length,
-        afterImpulse.length
-    ));
-    return {
+    return buildCombinedAnalysisResult({
+        before: { impulse: beforeImpulse, timeOriginSamples: beforeTimeOriginSamples },
+        after: { impulse: afterImpulse, timeOriginSamples: afterTimeOriginSamples },
         sampleRate,
         reportedLatency: safeReportedLatency,
         captureLength: pipelineResponses.reduce(
             (maximum, response) => response.length > maximum ? response.length : maximum,
             0
         ),
+        truncated,
+        measurement,
+        warnings
+    });
+}
+
+export function buildCombinedAnalysisResult({
+    before, after, sampleRate, reportedLatency = 0, captureLength,
+    truncated = false, measurement = null, warnings = []
+}) {
+    const responseFftSize = nextPowerOfTwo(Math.max(
+        4,
+        before.impulse.length,
+        after.impulse.length
+    ));
+    return {
+        sampleRate,
+        reportedLatency,
+        captureLength,
         truncated: truncated === true,
         measurement,
         warnings: Array.isArray(warnings) ? warnings : [],
         before: {
-            impulse: beforeImpulse,
-            spectrum: deriveFrequencyResponse(beforeImpulse, sampleRate, {
+            ...before,
+            spectrum: deriveFrequencyResponse(before.impulse, sampleRate, {
                 fftSize: responseFftSize,
-                timeOriginSamples: beforeTimeOriginSamples
-            }),
-            timeOriginSamples: beforeTimeOriginSamples
+                timeOriginSamples: before.timeOriginSamples
+            })
         },
         after: {
-            impulse: afterImpulse,
-            spectrum: deriveFrequencyResponse(afterImpulse, sampleRate, {
+            ...after,
+            spectrum: deriveFrequencyResponse(after.impulse, sampleRate, {
                 fftSize: responseFftSize,
-                timeOriginSamples: afterTimeOriginSamples
-            }),
-            timeOriginSamples: afterTimeOriginSamples
+                timeOriginSamples: after.timeOriginSamples
+            })
         }
     };
 }

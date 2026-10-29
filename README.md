@@ -43,6 +43,14 @@ No audiophile myths, Just pure science.
 
 ## Setup Guide
 
+### Android app
+
+Use Android 10 or later with an up-to-date Android System WebView. Open music files or select a folder in Music Library; Android asks which files and folders EffeTune may use. If a folder becomes unavailable, select it again in the library. Playback continues with the screen off, and notification and lock-screen controls operate the same player.
+
+Save or share exported files through Android's file and sharing screens. Batch audio export asks for an output folder and runs while the app is open. The Android app and the web app keep separate data. Use Backup / Restore to exchange presets, impulse responses, measurements, and visualizer data (up to 256 MB); music files, the music catalog, connection credentials, and settings are not included. Effects process audio played or received by EffeTune; they do not replace the sound of other Android apps.
+
+MIDI parameter mappings and scheduled parameter changes continue with the screen off. Keyboard and gamepad controls require the app to be open. Android supports MIDI input; motor-fader and LED feedback are not sent. Tap the **Remote Control** toolbar icon to allow incoming control and copy a pairing link. Keep that link private.
+
 Choose the setup below that matches the audio source you want to listen to.
 
 ### Music File Player Setup
@@ -190,6 +198,8 @@ Each effect also has its own **Effect Presets** button. It opens system presets 
 
 The existing `.effetune_preset` file import, export, and sharing features continue to use complete effect-chain presets.
 
+For finished stereo mixes, **System Presets > Mastering** offers ten genre-based chains, including a heavily compressed **J-Pop Dense** preset. See [Mastering Presets](docs/mastering-presets.md) for choosing a chain, adjusting input level, and exporting processed audio.
+
 ### Common Effect Controls
 
 - For fine slider adjustment, hold Shift while dragging; the value changes by one minimum step at a time
@@ -329,9 +339,9 @@ If you experience audio issues (dropouts, glitches):
 
 ### Network Music and Remote Control
 
-**Desktop app:** Browse music on local-network servers, share selected music folders, and choose this device or an OpenHome player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md). UPnP AV / DLNA and AirPlay reception can also be enabled to listen to music sent from other devices through this computer’s effects.
+**Desktop app:** Browse network music servers, including Subsonic / OpenSubsonic, share selected music folders, and choose this device, an OpenHome player, or a UPnP AV / DLNA player for playback. An EffeTune player's effects can be edited in the same window after pairing. Sharing and incoming remote control start disabled. See [network music and remote control](docs/openhome.md). UPnP AV / DLNA and AirPlay reception can also be enabled to listen to music sent from other devices through this computer’s effects.
 
-The PWA can also play a registered EffeTune computer’s shared music through this device’s effects or control another registered computer. See [PWA setup and playback](docs/openhome.md#pwa) for browser and connection requirements.
+The PWA can play a registered EffeTune computer’s shared music and permitted network libraries through this device’s effects, or control a permitted network player. Direct Subsonic connections are also available. See [PWA setup and playback](docs/openhome.md#pwa) for browser and connection requirements.
 
 ### Control EffeTune with an AI Assistant (MCP)
 
@@ -395,7 +405,7 @@ If the problem persists, report it through [GitHub Issues](https://github.com/Fr
 | Analyzer  | Note Spectrogram | Shows estimated pitches over time as a scrolling piano roll | [Details](docs/plugins/analyzer.md#note-spectrogram) |
 | Analyzer  | Oscilloscope | Real-time waveform visualization | [Details](docs/plugins/analyzer.md#oscilloscope) |
 | Analyzer  | Pitch Meter | Tracks one fundamental pitch and its tuning over time | [Details](docs/plugins/analyzer.md#pitch-meter) |
-| Analyzer  | Rhythm Analyzer | Shows the tempo, the hits beat by beat, and how early or late each part plays | [Details](docs/plugins/analyzer.md#rhythm-analyzer) |
+| Analyzer  | Rhythm Analyzer | Shows tempo and hit timing by frequency band or drum class | [Details](docs/plugins/analyzer.md#rhythm-analyzer) |
 | Analyzer  | Spectrogram | Shows frequency spectrum changes over time | [Details](docs/plugins/analyzer.md#spectrogram) |
 | Analyzer  | Spectrum Analyzer | Shows the strength of bass, mids, and treble in real time | [Details](docs/plugins/analyzer.md#spectrum-analyzer) |
 | Analyzer  | Stereo Meter | Visualizes stereo balance and channel correlation | [Details](docs/plugins/analyzer.md#stereo-meter) |

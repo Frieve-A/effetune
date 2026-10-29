@@ -27,6 +27,7 @@ import {
   DETAIL_VIEW_BY_TYPE,
   ICONS,
   LIBRARY_SEARCH_DEBOUNCE_MS,
+  PAGED_DEFAULT_SELECT_ALL_LIMIT,
   PAGED_SEARCH_ENTITY_TYPES,
   createFolderDirKey,
   decodeFolderDirKey,
@@ -54,7 +55,6 @@ const PAGED_PLAYLIST_ITEM_DRAG_TYPE = 'application/x-effetune-playlist-item-key'
 const DESKTOP_LIBRARY_MIN_HEIGHT_PX = 360;
 const DESKTOP_LIBRARY_BOTTOM_GAP_PX = 20;
 const PAGED_ACTION_TOAST_DELAY_MS = 750;
-const PAGED_DEFAULT_SELECT_ALL_LIMIT = 300;
 const PAGED_DEFAULT_SELECT_ALL_SCOPE_KEYS = Object.freeze([
   'albumKey', 'artistKey', 'genreKey', 'subfolderKey', 'playlistId', 'folderDirKey'
 ]);
@@ -114,6 +114,7 @@ const PAGED_ACTION_PHASE_KEYS = Object.freeze({
   READY: 'library.job.phase.ready',
   CANCEL_REQUESTED: 'library.job.phase.cancel_requested',
   COMMITTING: 'library.job.phase.committing',
+  PREPARING_PLAYER: 'library.job.phase.preparing_player',
   STARTING_PLAYBACK: 'library.job.phase.starting_playback'
 });
 const CUE_SCAN_WARNING_KEYS = Object.freeze({
@@ -2571,7 +2572,7 @@ export class LibraryView {
     return region;
   }
 
-  updatePagedActionToast(region, state = this.pagedActionController?.state) {
+  updatePagedActionToast(region, state = this.pagedActionController?.state, cancel = () => this.pagedActionController.cancel()) {
     const action = this.t(`library.job.action.${state.operationKind || 'operation'}`);
     const networkError = state.result?.error?.networkMusic === true
       ? this.uiManager?.networkMusic?.errorKey(state.result.error) : null;
@@ -2600,7 +2601,7 @@ export class LibraryView {
       <strong>${escapeHtml(action)}</strong>
       ${state.targetName ? `<span>${escapeHtml(state.targetName)}</span>` : ''}
       ${statusText ? `<span class="library-paged-action-toast-state">${escapeHtml(statusText)}</span>` : ''}
-      ${operationPhase ? `<span class="library-paged-action-toast-phase">${escapeHtml(operationPhase)}</span>` : ''}
+      ${operationPhase ? `<span class="library-paged-action-toast-phase">${state.phase === 'PREPARING_PLAYER' ? '<span class="library-paged-action-spinner" aria-hidden="true"></span>' : ''}${escapeHtml(operationPhase)}</span>` : ''}
       ${progress ? `<span class="library-paged-action-toast-progress">${escapeHtml(progress)}</span>` : ''}
       ${state.canCancel ? `<button type="button" class="library-button library-paged-action-toast-cancel">${escapeHtml(this.t('library.action.cancel'))}</button>` : ''}
     `;
@@ -2608,7 +2609,7 @@ export class LibraryView {
     region.innerHTML = markup;
     region.querySelector('.library-paged-action-toast-cancel')?.addEventListener('click', event => {
       event.currentTarget.disabled = true;
-      return this.runLibraryCommand(() => this.pagedActionController.cancel(), {
+      return this.runLibraryCommand(cancel, {
         logMessage: 'Music Library operation cancellation failed:'
       });
     });
@@ -3881,6 +3882,7 @@ function fallbackText(key, params = {}) {
     'library.job.phase.ready': 'Ready to commit',
     'library.job.phase.cancel_requested': 'Cancellation requested',
     'library.job.phase.committing': 'Committing',
+    'library.job.phase.preparing_player': 'Preparing the queue on the playback device. Large queues may take a while. Please wait.',
     'library.job.phase.starting_playback': 'Starting playback',
     'library.job.terminal.succeeded': 'Completed',
     'library.job.terminal.failed': 'Failed',

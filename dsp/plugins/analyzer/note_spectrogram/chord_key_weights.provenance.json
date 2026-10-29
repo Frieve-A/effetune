@@ -1,0 +1,54 @@
+{
+  "run": "a64_p2F2_s0",
+  "format": "float32 hexadecimal literals; matrices transposed to input-major rows",
+  "generation": "CPU export of the frozen model state dictionary and root-relative chord vocabulary.",
+  "checkpointSha256": "d254960617ea2941ad17b37dc92f1399d20da012a4fbb18db67ab8b61deaa4ec",
+  "vocabularySha256": "8557fba337f5f132e5fc75b52c96935093c3f0f37199f1f2b252f2c17207c323",
+  "metadataSha256": "f27fe240cf7441b8626d13ababd2eff37bda7931e9690aa682a7ee97d18e49a3",
+  "tensors": {
+    "conv.weight": [
+      64,
+      18,
+      12
+    ],
+    "conv.bias": [
+      64
+    ],
+    "gru.weight_ih_l0": [
+      192,
+      64
+    ],
+    "gru.weight_hh_l0": [
+      192,
+      64
+    ],
+    "gru.bias_ih_l0": [
+      192
+    ],
+    "gru.bias_hh_l0": [
+      192
+    ],
+    "head.weight": [
+      12,
+      64
+    ],
+    "head.bias": [
+      12
+    ],
+    "nhead.weight": [
+      3,
+      64
+    ],
+    "nhead.bias": [
+      3
+    ],
+    "khead.weight": [
+      2,
+      64
+    ],
+    "khead.bias": [
+      2
+    ]
+  },
+  "headerSha256": "23d340f36ee76628ccc346fb3bf0e8df9b452bed9bc8a6caeac93e0bedaf60b9"
+}

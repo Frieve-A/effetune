@@ -13,6 +13,8 @@ import { subscribeIrLibraryChanges } from '../ir-library/ir-library-store.js';
 import { initRemoteControlButton } from './remote-control-button.js';
 import { ID_PATTERN } from './sync-ops.mjs';
 import { describeEffects } from './effect-describe.js';
+import { isAndroidHost } from '../android/bridge.js';
+import { createAndroidRemoteApi } from '../android/remote.js';
 import {
     applyMasterBypass,
     applyOpsToPipeline,
@@ -42,7 +44,7 @@ function extensionOf(fileName) {
 }
 
 export async function startRemoteControl(win = window) {
-    const api = win.electronAPI?.remoteV1;
+    const api = win.electronAPI?.remoteV1 || (isAndroidHost(win) ? createAndroidRemoteApi() : null);
     if (!api || win.remoteControlController) return win.remoteControlController || null;
     const controller = new RemoteControl(win, api);
     win.remoteControlController = controller;
@@ -73,7 +75,7 @@ class RemoteControl {
 
     async start() {
         this.disposeRequestListener = this.api.onRequest(request => {
-            void this.handleRequest(request);
+            return this.handleRequest(request);
         });
         let status;
         try {
@@ -125,7 +127,8 @@ class RemoteControl {
             epoch: this.epoch,
             audio: {
                 sampleRate: audioManager?.audioContext?.sampleRate || 48000,
-                channelCount: audioManager?.audioContext?.destination?.channelCount || 2,
+                channelCount: audioManager?.getOutputChannelCount?.() ??
+                    audioManager?.audioContext?.destination?.channelCount ?? 2,
                 routingChannelCount: audioManager?.outputChannelCount ?? 16
             }
         };
@@ -213,7 +216,18 @@ class RemoteControl {
         if (typeof requestId !== 'string') return;
         let response;
         try {
-            const result = await this.execute(request.message || {});
+            const options = request.mutationOptions || {};
+            await options.beforeCommit?.();
+            const execute = () => this.execute(request.message || {}, options);
+            const result = await (this.win.audioManager?.withMutationOptions
+                ? this.win.audioManager.withMutationOptions(options, execute) : execute());
+            if (options.remoteRequestId) {
+                const message = request.message || {};
+                const pipeline = this.win.audioManager?.pipeline || [];
+                const affected = message.op === 'params' ? [pipeline[message.index]]
+                    : ['chain', 'loadPreset'].includes(message.op) ? pipeline : [];
+                await Promise.all(affected.map(plugin => plugin?._assetResolutionPromise));
+            }
             response = { requestId, ok: true, ...result };
         } catch (error) {
             response = { requestId, ok: false, error: String(error?.message || error) };
@@ -230,7 +244,7 @@ class RemoteControl {
         }
     }
 
-    async execute(msg) {
+    async execute(msg, options = {}) {
         switch (msg.op) {
             case 'hello':
                 // The effects this app can load (nm), so a client can tell what it must not send.
@@ -238,7 +252,7 @@ class RemoteControl {
             case 'get':
                 return {};
             case 'chain':
-                return this.opChain(msg);
+                return this.opChain(msg, options);
             case 'params':
                 return this.opParams(msg);
             case 'bypass':
@@ -254,23 +268,23 @@ class RemoteControl {
             case 'presets':
                 return this.opPresets();
             case 'loadPreset':
-                return this.opLoadPreset(msg);
+                return this.opLoadPreset(msg, options);
             case 'deletePreset':
-                return this.opDeletePreset(msg);
+                return this.opDeletePreset(msg, options);
             case 'listPresets':
                 return this.opListPresets();
             case 'getPreset':
                 return this.opGetPreset(msg);
             case 'savePreset':
-                return this.opSavePreset(msg);
+                return this.opSavePreset(msg, options);
             case 'listIRs':
                 return this.opListIRs(msg);
             case 'selectIR':
-                return this.opSelectIR(msg);
+                return this.opSelectIR(msg, options);
             case 'getIR':
                 return this.opGetIR(msg);
             case 'putIR':
-                return this.opPutIR(msg);
+                return this.opPutIR(msg, options);
             case 'describeEffects':
                 return this.opDescribeEffects();
             default:
@@ -299,17 +313,21 @@ class RemoteControl {
         return items;
     }
 
-    async opChain(msg) {
+    async opChain(msg, options = {}) {
         const { audioManager, pipelineManager } = this.requireApp();
         const items = this.validatePipelineItems(msg.pipeline);
         const previousBypass = !!audioManager.masterBypass;
         const ok = await pipelineManager.presetManager.loadPreset({
             name: 'Remote Control',
             plugins: items.map(item => ({ ...item }))
-        });
+        }, options);
         if (ok === false) throw new Error('chain rejected by preset loader');
         // loadPreset forces master bypass OFF; put the previous state back.
-        if (previousBypass) this.setBypass(true);
+        if (previousBypass) {
+            await options.beforeCommit?.();
+            const restore = () => this.setBypass(true);
+            if (audioManager.withMutationOptions) await audioManager.withMutationOptions(options, restore); else restore();
+        }
         return {};
     }
 
@@ -439,18 +457,18 @@ class RemoteControl {
     }
 
     // As if the host user picked the preset: toast, preset name, history entry.
-    async opLoadPreset(msg) {
+    async opLoadPreset(msg, options = {}) {
         const { pipelineManager } = this.requireApp();
         if (typeof msg.name !== 'string' || !msg.name) throw new Error('name must be a string');
-        const ok = await pipelineManager.presetManager.loadPreset(msg.name);
+        const ok = await pipelineManager.presetManager.loadPreset(msg.name, options);
         if (ok === false) throw new Error('preset load failed: ' + msg.name);
         return {};
     }
 
-    async opDeletePreset(msg) {
+    async opDeletePreset(msg, options = {}) {
         const { pipelineManager } = this.requireApp();
         if (typeof msg.name !== 'string' || !msg.name) throw new Error('name must be a string');
-        const ok = await pipelineManager.presetManager.deletePreset(msg.name);
+        const ok = await pipelineManager.presetManager.deletePreset(msg.name, options);
         if (ok === false) throw new Error('preset not found: ' + msg.name);
         return {};
     }
@@ -500,7 +518,7 @@ class RemoteControl {
     }
     // Same storage and format as the preset dialog's save ({ plugins: [short items] }),
     // but with the pipeline supplied by the client instead of the live one.
-    async opSavePreset(msg) {
+    async opSavePreset(msg, options = {}) {
         const { pipelineManager } = this.requireApp();
         const presetManager = pipelineManager.presetManager;
         if (presetManager.externalHost) throw new Error('preset storage unavailable');
@@ -512,6 +530,7 @@ class RemoteControl {
         const plugins = JSON.parse(JSON.stringify(items));
         await presetManager.enqueuePresetMutation(async () => {
             const presets = await presetManager.getPresets({ strict: true });
+            await options.beforeCommit?.();
             Object.defineProperty(presets, name, {
                 value: { plugins }, enumerable: true, configurable: true, writable: true
             });
@@ -553,7 +572,7 @@ class RemoteControl {
         return { items };
     }
 
-    async opSelectIR(msg) {
+    async opSelectIR(msg, options = {}) {
         if (msg.slot !== 'A' && msg.slot !== 'B') throw new Error('invalid slot');
         this.requireCurrentPipeline(msg);
         if (typeof msg.ir !== 'string' || !IR_ID_PATTERN.test(msg.ir)) throw new Error('invalid id');
@@ -565,7 +584,7 @@ class RemoteControl {
         }
         const entry = service.get(msg.ir);
         if (!entry) throw new Error('ir not found');
-        if (await plugin.loadLibraryEntry(entry) === false) throw new Error('ir load failed');
+        if (await plugin.loadLibraryEntry(entry, undefined, { mutationOptions: options }) === false) throw new Error('ir load failed');
         plugin.syncUIControls?.();
         this.win.uiManager?.updateURL?.();
         this.scheduleHistorySave();
@@ -589,7 +608,7 @@ class RemoteControl {
     }
 
     // Imports through the same service call as the library's "Import files" button.
-    async opPutIR(msg) {
+    async opPutIR(msg, options = {}) {
         if (typeof msg.id !== 'string' || !IR_ID_PATTERN.test(msg.id)) throw new Error('invalid id');
         const bytes = msg.data;
         if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0) throw new Error('missing data');
@@ -601,7 +620,8 @@ class RemoteControl {
         if (!isSupportedIrFileName(fileName)) throw new Error('unsupported file type: ' + ext);
         const service = await this.irLibrary();
         const file = new File([bytes], fileName);
-        const result = await service.importFiles([file]);
+        await options.beforeCommit?.();
+        const result = await service.importFiles([file], { isCurrent: options.isCurrent, beforeCommit: options.beforeCommit });
         const entry = result.imported.find(candidate => candidate.irId === msg.id);
         if (!entry) {
             const codes = result.failureCodes?.length ? ' (' + result.failureCodes.join(', ') + ')' : '';

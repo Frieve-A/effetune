@@ -12,6 +12,7 @@ import {
   saveAudioPreferences
 } from './audio-preference-store.js';
 import { NO_AUDIO_INPUT_DEVICE_ID } from '../audio/audio-device-constants.js';
+import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
 export { isGaplessPlaybackOnlyChange, loadAudioPreferences, saveAudioPreferences };
 
 /**
@@ -20,6 +21,12 @@ export { isGaplessPlaybackOnlyChange, loadAudioPreferences, saveAudioPreferences
  * @returns {Promise<Array>} List of audio devices
  */
 export async function getAudioDevices(isElectron) {
+  if (isAndroidHost()) {
+    const devices = await getAndroidBridge().request('audio.devices');
+    return ['inputs', 'outputs'].flatMap(key => devices[key].map(device => ({
+      deviceId: String(device.id), label: device.label, kind: key === 'inputs' ? 'audioinput' : 'audiooutput'
+    })));
+  }
   try {
     // First try to get devices from Electron's main process
     if (isElectron) {
@@ -74,6 +81,7 @@ export async function getAudioDevices(isElectron) {
 }
 
 function getOutputDeviceSupport(isElectron) {
+  if (isAndroidHost()) return { supported: true, reason: '' };
   if (isElectron) {
     return { supported: true, reason: '' };
   }
@@ -196,6 +204,7 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
 
     // Get current sample rate preference or default to 96000
     const currentSampleRate = audioPreferences?.sampleRate || 96000;
+    const nativeAudio = isAndroidHost() ? await getAndroidBridge().request('snapshot.get') : null;
     
     // Get translation function from UIManager
     if (!window.uiManager) {
@@ -359,14 +368,14 @@ export async function showAudioConfigDialog(isElectron, audioPreferences, callba
     replaceOptions(outputSelect, outputDevices, audioPreferences?.outputDeviceId || 'default');
     replaceValueOptions(
       document.getElementById('output-channels'),
-      [2, 4, 6, 8, 10, 12, 14, 16],
+      nativeAudio ? [nativeAudio.channelCount] : [2, 4, 6, 8, 10, 12, 14, 16],
       audioPreferences?.outputChannels || 2,
       value => value === 2 ? t('dialog.audioConfig.outputChannels.stereoDefault') : String(value)
     );
     replaceValueOptions(
       document.getElementById('sample-rate'),
-      [44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000],
-      currentSampleRate,
+      nativeAudio ? [nativeAudio.sampleRate] : [44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000],
+      nativeAudio?.sampleRate || currentSampleRate,
       value => ({
         44100: '44.1 kHz',
         48000: '48 kHz',

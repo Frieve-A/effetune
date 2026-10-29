@@ -13,20 +13,31 @@ TLS to protect the pairing token and commands in transit.
 
 ## Encrypted connections
 
-Set `EFFETUNE_REMOTE_TLS_CERT` to a PEM certificate-chain file and `EFFETUNE_REMOTE_TLS_KEY`
-to its PEM private-key file before starting the desktop app. Keep the private key outside the
-application's public asset folders and restrict access to your account. Enable Remote Control
-as usual; its pairing links and QR codes then use HTTPS/WSS on the same remote-control port.
+Use **Settings > Config... > Network > HTTPS connection** to select a PEM certificate-chain
+file and its private key, and optionally set an **HTTPS endpoint** such as
+`https://music.example.com:47300`. Saving restarts the remote listener. The endpoint is an
+origin only, with no path, query, or fragment; omitting its port selects 443. It names the
+direct TLS listener, including one reached over an already configured VPN. Reverse-proxy path
+prefixes and forwarded-header discovery are not supported. The configured endpoint is used
+for pairing links, PWA media, and effects connections. A fixed endpoint does not fall back to
+another port.
 
-The certificate must cover the IP address in the pairing link, and each connecting browser,
+Alternatively, set `EFFETUNE_REMOTE_TLS_CERT` and `EFFETUNE_REMOTE_TLS_KEY` to those files
+before starting the desktop app. `EFFETUNE_REMOTE_ENDPOINT` selects the HTTPS origin, and
+`EFFETUNE_REMOTE_PORT` selects the listener port; when both are set, their ports must agree.
+Setting any of these four environment variables makes the environment configuration take
+precedence as a whole and makes the GUI connection settings read-only. Keep the private key
+outside the application's public asset folders and restrict access to your account.
+
+The certificate must cover the IP address or hostname in the pairing link, and each connecting browser,
 desktop client or MCP runtime must trust its issuer. For a private CA, install that CA in the
 client's trust store; Node-based MCP clients can use `NODE_EXTRA_CA_CERTS`. Do not disable
 certificate verification. Renew the certificate before it expires and restart EffeTune after
 replacing it.
 
-Both files are required. An unreadable, invalid or mismatched certificate/key prevents the
+Both files are required for TLS. An unreadable, invalid or mismatched certificate/key prevents the
 remote server from starting; it never silently falls back to plaintext. With neither variable
-set, existing HTTP/WS connections continue to work. TLS mode requires HTTPS/WSS clients;
+set and no GUI TLS configuration, HTTP/WS connections remain available. TLS mode requires HTTPS/WSS clients;
 HTTP/WS is not also exposed on another port.
 
 ## Enabling
@@ -79,7 +90,7 @@ A browser opens it as is. A native client that speaks WebSocket takes the same l
 `t` (see Connection). The Remote Control dialog does not ask which kind of client will connect.
 **Copy link** puts this link on the system clipboard.
 
-The address is the computer's private IPv4 address (192.168.x, 10.x, 172.16-31.x). Virtual
+Without a configured HTTPS endpoint, the address is the computer's private IPv4 address (192.168.x, 10.x, 172.16-31.x). Virtual
 adapters (VirtualBox, Hyper-V, VMware, WSL, Docker, Tailscale's 100.64/10, VPNs) are left out
 where they can be recognised by name or MAC prefix. If several addresses remain, the window
 offers a choice between them.
@@ -255,7 +266,7 @@ available, while frequency audition is unavailable from the remote editor.
   They are public application code, so they need no token; the WebSocket still does, unchanged.
 - `Host` header (static files, and WebSocket upgrades that carry an `Origin`): an IPv4 literal,
   `localhost`, `[ipv6]` or `*.local`, optionally with a port. Anything else gets 403 (DNS-rebinding
-  defence). A WebSocket upgrade without `Origin` is not a browser request, so its `Host` is not
+  defence), except the exact hostname and port of a configured HTTPS endpoint. A WebSocket upgrade without `Origin` is not a browser request, so its `Host` is not
   checked: native clients and scripts may connect through any host name (NetBIOS, MagicDNS).
 - `Origin` header (WebSocket upgrade only): an `http:`/`https:` origin must be exactly
   `http://<Host>` in plaintext mode or `https://<Host>` in TLS mode. A missing `Origin`
@@ -485,7 +496,7 @@ Each accepted request below takes a `seq` and receives an ack followed by a `mus
 | `getPlayback` | Optional `playerId`, `start` and `count`: returns playback state and a page of queue entries. |
 | `playMusic` | Optional `playerId`, ordered `items:[{"serverId":"...","trackId":"..."}]`, optional `startIndex`: replaces the queue and starts playback at the selected occurrence. Duplicate tracks retain their positions. |
 | `queueMusic` | Optional `playerId`, ordered `items`, optional `position:"end"` or `"afterCurrent"`: inserts tracks without starting playback. |
-| `controlPlayback` | Optional `playerId` and required `action` (`play`, `pause`, `stop`, `next`, `previous`, `seek`, `seekId`, `repeat`, `shuffle`, `volume`), with the action's `seconds`, queue-entry `id`, or `value` as needed. `seekId` also starts playback; volume needs player support. |
+| `controlPlayback` | Optional `playerId` and required `action` (`play`, `pause`, `stop`, `next`, `previous`, `seek`, `seekId`, `repeat`, `shuffle`, `volume`, `mute`), with the action's `seconds`, queue-entry `id`, or `value` as needed. `seekId` also starts playback; `volume` takes a number and `mute` a boolean, each requiring player support. |
 | `editPlaybackQueue` | Optional `playerId` and `action:"delete"` with a queue-entry `id`, or `action:"clear"`. A queue-entry ID is distinct from a source track's `trackId`. |
 
 Without `serverId`, a blank query browses the local catalog only. Its root `objectId:"0"`
@@ -513,6 +524,15 @@ after the operation; they do not guarantee audible output. An in-band failure af
 has begun may carry `"outcome":"unknown"` and a refreshed `playback` snapshot. If the socket
 closes before the reply, no `musicResult` arrives; a sent change may still have been partly
 applied. Read the player's state before retrying rather than repeating the change automatically.
+
+Playback results include `volume`, `volumeMax`, `mute`, and per-action `capabilities`. An
+unsupported volume or mute value is `null`; clients must use the corresponding capability
+before enabling a control. Player volume and mute affect music playback on that destination,
+independently of system volume, effect gain, and AirPlay sender volume. OpenHome players use
+their native queues. AVTransport-only players use a queue held by the gateway, which must
+remain running for automatic advancement. Subsonic sources use their own `serverId` and opaque
+track IDs through the same browsing and playback operations; login credentials and stream URLs
+are not part of `music1` results.
 
 ## Limitations
 

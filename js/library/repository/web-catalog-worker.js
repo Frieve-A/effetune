@@ -1,4 +1,5 @@
 import { LibraryRepositoryError } from './contract-errors.js';
+import { receiveAndroidDocumentReply } from '../../android/library-io.js';
 import { WebSqliteCatalogRepository } from './web-catalog-repository.js';
 import { WebCatalogScanRuntime } from '../scan/web-scan-runtime.js';
 import { WebLibraryServiceCoordinator } from '../operations/web-library-service-coordinator.js';
@@ -165,6 +166,7 @@ export function installWebCatalogWorker(scope = globalThis, {
   };
   const handleMessage = async event => {
     const request = event.data;
+    if (receiveAndroidDocumentReply(request)) return;
     let requestByteLength = Number.POSITIVE_INFINITY;
     try {
       requestByteLength = measureWebCatalogMessageBytes(request);

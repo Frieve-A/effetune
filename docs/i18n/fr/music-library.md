@@ -137,12 +137,22 @@ Pour parcourir la bibliothèque d’un autre EffeTune, utilisez **Tracks**, **Al
 
 Les autres serveurs musicaux affichent les catégories et l’arborescence qu’ils publient ; la recherche et le tri ne sont disponibles que si le serveur les prend en charge.
 
+<a id="subsonic"></a>
+
+### Serveurs Subsonic / OpenSubsonic
+
+Sur l’ordinateur, ouvrez **Paramètres > Configuration... > Réseau > Subsonic / OpenSubsonic**. Renseignez **Nom**, **URL du serveur**, **Identifiant** et **Mot de passe**, puis choisissez **Ajouter**. Sélectionnez le serveur dans **Library** pour parcourir albums, morceaux et playlists du serveur, rechercher, lire ou ajouter à la file du lecteur choisi. L’ordre et les morceaux répétés sont conservés ; modifiez les playlists sur le serveur. **Tester la connexion** vérifie une connexion enregistrée et **Retirer** la déconnecte.
+
+Dans la PWA, choisissez **Library > Ajouter un serveur musical…** pour une connexion HTTPS directe. Le serveur doit autoriser l’accès du navigateur (CORS) ; la connexion et l’identification ne durent que pendant la session. Pour lire sur un autre appareil, ou si l’accès direct échoue, ajoutez le serveur sur un ordinateur EffeTune enregistré et autorisez-y la consultation des autres serveurs. Choisissez la bibliothèque proposée par cet ordinateur ; consultez la [configuration PWA](openhome.md#pwa).
+
+L’audio original est privilégié. Un flux converti par le serveur peut être utilisé si le lecteur en a besoin ; son format et sa qualité peuvent différer du fichier stocké. EffeTune n’ajoute pas de codecs et ne convertit pas le son. Les formats et le déplacement dans les morceaux dépendent du serveur et du lecteur.
+
 Pour lire des pistes de Music Library sur un autre lecteur, partagez d’abord son dossier dans **Paramètres > Configuration... > Réseau > Partage de la bibliothèque**. Les formats et effets disponibles dépendent de la destination ; les segments CUE ne sont pas disponibles comme pistes réseau distinctes. Consultez [musique en réseau et télécommande](openhome.md) pour la configuration, l’appairage des effets et le dépannage des connexions.
 
 Pour lire des fichiers locaux individuels sans activer le partage de la bibliothèque, choisissez un autre lecteur et utilisez **Open music files**. EffeTune rend uniquement les fichiers sélectionnés accessibles à ce lecteur ; laissez l’application ouverte sur l’ordinateur source.
 
 ## Musique partagée dans la PWA
 
-La PWA peut parcourir la bibliothèque partagée d’un ordinateur EffeTune enregistré et la lire avec les effets de cet appareil ou sur un autre ordinateur enregistré. Les fichiers locaux de la PWA ne peuvent pas être envoyés à un autre lecteur. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour ajouter un appareil et connaître les autorisations du navigateur et les conditions de connexion.
+La PWA peut lire la musique partagée d’un ordinateur EffeTune enregistré et les bibliothèques réseau autorisées avec les effets de cet appareil, ou piloter un lecteur réseau autorisé. Les connexions Subsonic directes sont aussi disponibles. Les fichiers locaux de la PWA ne peuvent pas être envoyés à un autre lecteur. Consultez la [configuration et la lecture depuis la PWA](openhome.md#pwa) pour ajouter un appareil et connaître les autorisations du navigateur et les conditions de connexion.
 
 [← Retour au README](README.md)

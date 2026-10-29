@@ -60,12 +60,11 @@ async function loadPlugin(globals = {}) {
 // Type-28 v3: all forward and committed beats are separate from the onset slots.
 function buildFrame({
     generation = 1, frameCount, anchorFrame = frameCount, gateOpen = true, analysisEpoch = 1, period = PERIOD,
-    anchorIndex = 0, anchorFraction = 0, strongestBpm = 120, confidence = 0.3, events = [], size = 1344,
+    anchorIndex = 0, anchorFraction = 0, strongestBpm = 120, confidence = 0.3, events = [], size = 2024,
     sampleRate = 48000, hop = 480, automaticAnchor = true, preview = null, previewPeriod = period
 }) {
-    if (preview !== null && size === 1344) size = 1496;
     const payload = new DataView(new ArrayBuffer(size));
-    if (![1344, 1496].includes(size)) return { frameType: 28, formatVersion: 3, payload };
+    if (size !== 2024) return { frameType: 28, formatVersion: 5, payload };
     payload.setFloat32(0, sampleRate, true);
     payload.setUint32(4, generation, true);
     payload.setUint32(8, hop, true);
@@ -108,7 +107,7 @@ function buildFrame({
             payload.setInt32(base + 8, beat.index, true);
         });
     }
-    return { frameType: 28, formatVersion: size === 1496 ? 4 : 3, payload };
+    return { frameType: 28, formatVersion: 5, payload };
 }
 
 // Feeds one frame per tracker beat (0.5 s), each carrying the onsets of the beat that just ended.
@@ -466,7 +465,7 @@ test('span snaps to the nearest supported value', async () => {
         assert.equal(plugin.sp, expected, `sp ${input}`);
         plugin.setParameters({ sp: 8 });
     }
-    same(Object.keys(plugin.getParameters()), ['type', 'enabled', 'mn', 'mx', 'ck', 'sp', 'vt', 'vm', 've', 'vl']);
+    same(Object.keys(plugin.getParameters()), ['type', 'enabled', 'mn', 'mx', 'ck', 'dm', 'sp', 'vt', 'vm', 've', 'vl']);
 });
 
 test('Max BPM stays at least 1.25 x Min BPM and only a changed range restarts the analysis', async () => {
@@ -530,7 +529,7 @@ test('a new telemetry source restarts the generation fence', async () => {
 test('the click and the panel toggles default as specified and keep the history', async () => {
     const { plugin } = await loadPlugin();
     same(plugin.getParameters(), {
-        type: 'RhythmAnalyzerPlugin', enabled: true, mn: 40, mx: 240, ck: false, sp: 8, vt: false, vm: true, ve: false, vl: true
+        type: 'RhythmAnalyzerPlugin', enabled: true, mn: 40, mx: 240, ck: false, dm: 'band', sp: 8, vt: false, vm: true, ve: false, vl: true
     });
     const bare = Object.create(Object.getPrototypeOf(plugin));
     bare.initializeDisplayState();
@@ -1062,4 +1061,109 @@ test('in a small portrait item the narrow panel minimums leave the timing lanes 
     // The tempogram's minimum is only for its labels, so without them it keeps just its share.
     const { strip } = drawOnce(plugin, 240, 320, fakeContext(), false);
     assert.ok(strip.height < 60, `unlabelled tempogram ${strip.height.toFixed(1)} px`);
+});
+
+
+function buildDrumFrame(events, options = {}) {
+    const frame = buildFrame({ frameCount: 100, confidence: 0, period: 0,
+        strongestBpm: 0, automaticAnchor: false, ...options });
+    frame.payload.setUint32(1496, 1, true);
+    frame.payload.setUint32(1500, events.length, true);
+    frame.payload.setFloat32(1504, 0.07, true);
+    events.forEach((event, i) => {
+        const base = 1512 + i * 32;
+        frame.payload.setUint32(base, event.frame ?? 90, true);
+        frame.payload.setUint32(base + 8, 1, true);
+        frame.payload.setInt32(base + 12, event.index ?? 0, true);
+        frame.payload.setFloat32(base + 20, event.period ?? 0, true);
+        frame.payload.setFloat32(base + 24, event.logit ?? 0, true);
+        frame.payload.setUint8(base + 28, event.band);
+        frame.payload.setUint8(base + 29, event.flags ?? 1);
+    });
+    return frame;
+}
+
+test('Drum telemetry retains five classes while Rhythm displays four without beat confidence', async () => {
+    const { plugin } = await loadPlugin();
+    plugin.setParameters({ dm: 'drums' });
+    const frame = buildDrumFrame([0, 1, 2, 3, 4].map(band => ({ band, logit: band - 1 })));
+    const snapshot = plugin.parseTelemetryFrame(frame);
+    same(snapshot.events.map(event => event.band), [0, 1, 2, 3, 4]);
+    assert.equal(snapshot.displayMode, 'drums');
+    assert.equal(snapshot.events[1].strength, 0.5);
+    assert.equal(snapshot.events[0].logit, -1);
+    plugin.handleTelemetry(frame);
+    assert.equal(plugin.eventSerial, 4);
+    assert.equal(plugin.onsetOpacity, 1);
+    same(Array.from(plugin.eventTime.slice(0, 4)), [0.96, 0.96, 0.96, 0.96]);
+    same(plugin.lanes.names, ['Kick', 'Snare', 'Hi-hat', 'Cymbals']);
+    const view = { left: 0, top: 0, width: 400, height: 400, uRight: 2, span: 4, dpr: 1 };
+    const points = [0, 1, 2, 3].map(index => plugin._eventPoint(index, view));
+    same(points.map(point => point.y), [350, 250, 150, 50]);
+    const beat = plugin.beatClock;
+    plugin.setParameters({ dm: 'band' });
+    assert.equal(plugin.getParameters().dm, 'band');
+    assert.equal(plugin.eventSerial, 0);
+    assert.equal(plugin.beatClock, beat);
+    assert.equal(plugin.activeGeneration, 1);
+    plugin.handleTelemetry(frame);
+    assert.equal(plugin.eventSerial, 0, 'A delayed drum frame cannot repopulate band lanes');
+});
+
+test('Drum telemetry rejects malformed modes, lanes, logits and annotations', async () => {
+    const { plugin } = await loadPlugin();
+    for (const [offset, type, value] of [[1496, 'Uint32', 2], [1500, 'Uint32', 17],
+        [1504, 'Float32', -1], [1508, 'Uint32', 1], [1540, 'Uint8', 5],
+        [1541, 'Uint8', 2], [1536, 'Float32', NaN]]) {
+        const frame = buildDrumFrame([{ band: 0 }]);
+        frame.payload[`set${type}`](offset, value, true);
+        assert.equal(plugin.parseTelemetryFrame(frame), null, String(offset));
+    }
+});
+
+test('Drum lane layouts use four rows across landscape and portrait panels', async () => {
+    const { plugin } = await loadPlugin();
+    plugin.setParameters({ ...ALL_PANELS, dm: 'drums' });
+    plugin.handleTelemetry(buildDrumFrame([0, 1, 2, 3].map(band => ({ band }))));
+    for (const [width, height] of [[900, 600], [375, 700]]) {
+        const context = fakeContext();
+        const frame = drawOnce(plugin, width, height, context);
+        for (const panel of frame.panels) {
+            assert.ok(panel.left >= 0 && panel.top >= 0 && panel.left + panel.width <= width &&
+                panel.top + panel.height <= height);
+        }
+        const topToBottom = ['Cymbals', 'Hi-hat', 'Snare', 'Kick'];
+        const labels = context.texts.filter(text => topToBottom.includes(text.value) &&
+            text.x <= frame.main.left + frame.main.width && text.y >= frame.main.top && text.y <= frame.main.top + frame.main.height);
+        same(topToBottom.map(name => labels.find(text => text.value === name)).sort((a, b) => a.y - b.y).map(text => text.value), topToBottom);
+        for (const view of frame.views) {
+            const points = [3, 2, 1, 0].map(index => plugin._eventPoint(index, view));
+            assert.ok(points.every((point, i) => i === 0 || points[i - 1].y < point.y),
+                view.echo ? 'echo class order' : 'timing class order');
+        }
+        plugin.setParameters({ vt: false, vm: false, ve: false });
+        const lensContext = fakeContext();
+        const lensFrame = drawOnce(plugin, width, height, lensContext);
+        const lensLabels = lensContext.texts.filter(text => topToBottom.includes(text.value) &&
+            text.y >= lensFrame.lens.top && text.y <= lensFrame.lens.top + lensFrame.lens.height);
+        same(topToBottom.map(name => lensLabels.find(text => text.value === name)).sort((a, b) => a.y - b.y).map(text => text.value), topToBottom);
+        plugin.setParameters(ALL_PANELS);
+        assert.ok(!context.texts.some(text => /^(TT|Toms|High|Mid|Low)$/.test(text.value)));
+    }
+});
+
+
+test('Drum wire time uses the fixed tick across unsupported band rates and annotation replacements', async () => {
+    const { plugin } = await loadPlugin();
+    const first = buildDrumFrame([{ band: 3, frame: 90, logit: -0.2 }], { sampleRate: 44100, hop: 470 });
+    const original = plugin.parseTelemetryFrame(first).events[0];
+    const replacement = buildDrumFrame([{ band: 3, frame: 90, logit: -0.2, flags: 0, period: 0.5, index: 2 }],
+        { sampleRate: 44100, hop: 470, period: 0.5 });
+    const annotated = plugin.parseTelemetryFrame(replacement).events[0];
+    assert.equal(original.time, 0.96);
+    assert.equal(annotated.time, original.time);
+    assert.equal(annotated.band, original.band);
+    assert.equal(annotated.identity, original.identity);
+    assert.equal(annotated.logit, original.logit);
+    assert.equal(annotated.annotated, true);
 });

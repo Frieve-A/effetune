@@ -4,6 +4,8 @@ import { MidiMappingEngine } from './midi-mapping-engine.js';
 import { LocalInputSources } from './local-input-sources.js';
 import { McuProtocol } from './mcu-protocol.js';
 import { AutomationScheduler } from './automation-scheduler.js';
+import { isAndroidHost, getAndroidBridge } from '../android/bridge.js';
+import { requestAndroidMidiAccess, prepareAndroidMidiConfiguration, subscribeAndroidMidiActions } from '../android/midi.js';
 
 const DUPLICATE_DEVICE_SEPARATOR = '\0';
 
@@ -25,7 +27,8 @@ function portSlot(port, registry) {
     const ordinal = slots.length;
     slot = {
       name,
-      key: ordinal === 0 ? name : `${name}${DUPLICATE_DEVICE_SEPARATOR}${ordinal + 1}`
+      key: typeof port.key === 'string' && port.key ? port.key :
+        ordinal === 0 ? name : `${name}${DUPLICATE_DEVICE_SEPARATOR}${ordinal + 1}`
     };
     slots.push(slot);
     registry.slotsByName.set(name, slots);
@@ -118,6 +121,7 @@ export class MidiControllerManager {
     this.learnCallback = null;
     this.disposed = false;
     this.changeListeners = new Set();
+    if (isAndroidHost(this.window)) this.unsubscribeNativeActions = subscribeAndroidMidiActions(this.window);
     this.handleStateChange = () => {
       if (this.disposed) return;
       this.bindInputs();
@@ -126,8 +130,11 @@ export class MidiControllerManager {
     };
     this.unsubscribeStore = this.store.subscribe(() => {
       if (this.disposed) return;
-      this.automationScheduler.sync(this.store.mappings);
-      void this.syncRuntime();
+      this.automationScheduler.sync(isAndroidHost(this.window) ? [] : this.store.mappings);
+      void this.syncRuntime().catch(error => {
+        console.error('Controller mapping activation failed:', error);
+        this.window?.uiManager?.setError?.('error.controllerMappingSaveFailed', true);
+      });
     });
   }
 
@@ -135,13 +142,13 @@ export class MidiControllerManager {
     if (this.disposed) return this;
     await this.store.initialize(initialConfig);
     if (this.disposed) return this;
-    this.automationScheduler.sync(this.store.mappings);
+    this.automationScheduler.sync(isAndroidHost(this.window) ? [] : this.store.mappings);
     await this.syncRuntime();
     return this;
   }
 
   isSupported() {
-    return typeof this.navigator?.requestMIDIAccess === 'function';
+    return isAndroidHost(this.window) || typeof this.navigator?.requestMIDIAccess === 'function';
   }
 
   listInputs() {
@@ -186,6 +193,10 @@ export class MidiControllerManager {
 
   async syncRuntime() {
     if (this.disposed) return;
+    if (isAndroidHost(this.window)) {
+      await this.syncNativeConfiguration();
+      if (this.disposed) return;
+    }
     this.localInputs.syncSubscriptions(this.store.mappings, {
       dialogOpen: this.dialogOpen || this.learnActive
     });
@@ -195,6 +206,14 @@ export class MidiControllerManager {
     this.setMidiRuntimeActive(this.hasMidiMappings() || this.learnActive);
     this.mcu.startFeedbackPoller();
     this.emitChange();
+  }
+
+  syncNativeConfiguration() {
+    const config = prepareAndroidMidiConfiguration(this.store, this.adapter, this.learnActive);
+    const pending = (this.nativeConfigPromise || Promise.resolve()).catch(() => {}).then(() =>
+      getAndroidBridge().request('midi.configure', config));
+    this.nativeConfigPromise = pending;
+    return pending;
   }
 
   async ensureMidiAccess() {
@@ -207,7 +226,8 @@ export class MidiControllerManager {
     if (this.midiAccessStalled) return null;
     let request;
     try {
-      request = Promise.resolve(this.navigator.requestMIDIAccess({ sysex: false }));
+      request = isAndroidHost(this.window) ? requestAndroidMidiAccess()
+        : Promise.resolve(this.navigator.requestMIDIAccess({ sysex: false }));
     } catch (error) {
       request = Promise.reject(error);
     }
@@ -332,6 +352,7 @@ export class MidiControllerManager {
       }
       return;
     }
+    if (event.nativeConsumed) return;
     if (protocol === 'mcu') {
       if (decoded.kind === 'mcuTouch') {
         this.mcu.setTouched(deviceKey, decoded.channel, decoded.pressed);
@@ -381,8 +402,12 @@ export class MidiControllerManager {
   }
 
   cancelLearn() {
+    const wasLearning = this.learnActive;
     this.learnCallback = null;
     this.learnActive = false;
+    if (wasLearning && !this.disposed && isAndroidHost(this.window)) {
+      void this.syncNativeConfiguration().catch(error => console.error('Android MIDI learn cleanup failed:', error));
+    }
     this.localInputs.cancelLearn();
     if (!this.disposed) {
       this.localInputs.syncSubscriptions(this.store.mappings, { dialogOpen: this.dialogOpen });
@@ -422,12 +447,14 @@ export class MidiControllerManager {
     }
     this.cancelLearn();
     this.unsubscribeStore?.();
+    this.unsubscribeNativeActions?.();
     this.automationScheduler.dispose();
     this.localInputs.dispose();
     this.engine.dispose();
     this.mcu.dispose();
     if (this.midiAccess) {
       this.setMidiRuntimeActive(false);
+      this.midiAccess.close?.();
     }
     this.changeListeners.clear();
   }

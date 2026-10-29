@@ -10,7 +10,7 @@ const CHANNELS = 2;
 const BLOCK_SIZE = 128;
 const TELEMETRY_BYTES = 256 * 1024;
 const TAP_ID = 213;
-const PAYLOAD_BYTES = 1496;
+const PAYLOAD_BYTES = 2024;
 const BEAT_SECONDS = 0.5;
 const DURATION_SECONDS = 10;
 const READ_EVERY_BLOCKS = 32;
@@ -48,7 +48,7 @@ function readFrames(binding, packet) {
   assert.equal(parseTelemetryPacket(packet, bytes, frame => frames.push(frame)).ok, true);
   return frames.map(frame => {
     assert.equal(frame.frameType, TelemetryFrameType.TAP_RHYTHM_ANALYZER);
-    assert.equal(frame.formatVersion, 4);
+    assert.equal(frame.formatVersion, 5);
     assert.equal(frame.tapId, TAP_ID);
     assert.equal(frame.payloadBytes, PAYLOAD_BYTES);
     checkFrame(frame.payload);
@@ -58,6 +58,17 @@ function readFrames(binding, packet) {
 
 // Gate state and committed analysis are independent. Shown-beat confidence may be zero.
 function checkFrame(payload) {
+  assert.ok(payload.getUint32(1496, true) <= 1);
+  assert.ok(payload.getUint32(1500, true) <= 16);
+  assert.ok(Number.isFinite(payload.getFloat32(1504, true)));
+  assert.equal(payload.getUint32(1508, true), 0);
+  for (let i = 0; i < payload.getUint32(1500, true); i++) {
+    const slot = 1512 + i * 32;
+    assert.ok(payload.getUint8(slot + 28) < 5);
+    assert.ok([0, 1, 3].includes(payload.getUint8(slot + 29)));
+    assert.ok(Number.isFinite(payload.getFloat32(slot + 24, true)));
+    assert.equal(payload.getUint16(slot + 30, true), 0);
+  }
   const previewCount = payload.getUint32(1344, true);
   assert.ok(previewCount <= 12);
   const previewPeriod = payload.getFloat32(1348, true);
@@ -243,7 +254,7 @@ async function runGroove(artifact, params, body, sampleRate = 48000) {
 }
 
 for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
-  test(`Rhythm Analyzer in ${artifact} publishes immediate and committed positions through v4 telemetry`, async () => {
+  test(`Rhythm Analyzer in ${artifact} publishes immediate and committed positions through v5 telemetry`, async () => {
     await runGroove(artifact, { mn: 40, mx: 240, ck: false }, ({ binding, instanceId, arena, packet, states, clicks }) => {
       assert.equal(clicks.length, 0);
       assert.ok(states.length > 100);
@@ -341,6 +352,60 @@ for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
           `click ${clicks[i]} must occur at the beat or the next available output sample`);
       }
     });
+  });
+}
+
+for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+  test(`Rhythm Analyzer drums in ${artifact} match frozen events through finite EOF`, async () => {
+    const fixtureRoot = new URL('../../dsp/plugins/analyzer/rhythm_analyzer/fixtures/', import.meta.url);
+    const inputBytes = fs.readFileSync(new URL('drum-input.f32', fixtureRoot));
+    const input = new Float32Array(inputBytes.buffer, inputBytes.byteOffset, inputBytes.byteLength / 4);
+    const reference = JSON.parse(fs.readFileSync(new URL('drum-reference.json', fixtureRoot), 'utf8'));
+    const binding = await instantiateDsp(fs.readFileSync(new URL(`../../plugins/dsp/${artifact}`, import.meta.url)));
+    try {
+      assert.notEqual(binding.createEngine(), 0);
+      assert.equal(binding.prepare(44100, 1, BLOCK_SIZE, TELEMETRY_BYTES), 0);
+      assert.equal(binding.setTelemetryRate(60), 0);
+      const instanceId = binding.createInstance('RhythmAnalyzerPlugin');
+      assert.equal(binding.instanceSetTap(instanceId, TAP_ID), 0);
+      const packer = DSP_PARAM_PACKERS.get('RhythmAnalyzerPlugin');
+      assert.equal(binding.instanceSetParams(instanceId, packer.pack({ dm: 'drums' }), packer.hash), 0);
+      const packet = new ArrayBuffer(TELEMETRY_BYTES);
+      const arena = binding.getArenaViews();
+      const events = new Map();
+      const collect = () => {
+        for (const payload of readFrames(binding, packet)) {
+          assert.equal(payload.getUint32(1496, true), 1);
+          assert.ok(Math.abs(payload.getFloat32(1504, true) - 0.07) < 1e-7);
+          for (let i = 0; i < payload.getUint32(1500, true); i++) {
+            const slot = 1512 + 32 * i;
+            const lane = payload.getUint8(slot + 28);
+            const time = (payload.getUint32(slot, true) + payload.getFloat32(slot + 4, true)) * 256 / 24000;
+            const logit = payload.getFloat32(slot + 24, true);
+            const key = `${lane}:${time}`;
+            if (events.has(key)) assert.equal(events.get(key).logit, logit, 'annotation preserves the recognized event');
+            else events.set(key, { lane, time, logit });
+          }
+        }
+      };
+      for (let at = 0; at < input.length; at += BLOCK_SIZE) {
+        const count = Math.min(BLOCK_SIZE, input.length - at);
+        arena.combined.set(input.subarray(at, at + count));
+        assert.equal(binding.instanceProcess(instanceId, arena.offsets.combined, 1, count, at / 44100), 0);
+        collect();
+      }
+      assert.equal(binding.streamBoundaryInstance(instanceId), 0);
+      collect();
+      const actual = [...events.values()];
+      const expected = reference.events;
+      assert.equal(actual.length, expected.length);
+      for (let i = 0; i < expected.length; i++) {
+        assert.equal(actual[i].lane, expected[i].class === 3 ? 4 : expected[i].class === 4 ? 3 : expected[i].class);
+        assert.ok(Math.abs(actual[i].time - expected[i].time) < 1e-7);
+      }
+    } finally {
+      binding.close();
+    }
   });
 }
 

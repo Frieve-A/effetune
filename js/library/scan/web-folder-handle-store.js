@@ -1,4 +1,5 @@
 import { assertRepositoryContract, createRepositoryError } from '../repository/contract-errors.js';
+import { isAndroidDirectory } from '../../android/library-io.js';
 
 export const WEB_FOLDER_HANDLE_DATABASE_NAME = 'effetune_music_library_v3_handles';
 export const WEB_FOLDER_HANDLE_DATABASE_VERSION = 1;
@@ -150,7 +151,7 @@ export class WebFolderHandleStore {
 
 export function assertDirectoryHandle(handle) {
   assertRepositoryContract(
-    handle && handle.kind === 'directory' && typeof handle.values === 'function',
+    isAndroidDirectory(handle) || (handle && handle.kind === 'directory' && typeof handle.values === 'function'),
     'invalidFolderHandle',
     'A FileSystemDirectoryHandle is required'
   );

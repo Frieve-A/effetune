@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider android:name="com.frieve.effetune.WorkflowDocumentsProvider"
+            android:authorities="com.frieve.effetune.workflow.test.documents" android:exported="true"
+            android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
+        </provider>
+        <activity android:name="com.frieve.effetune.WorkflowDocumentsProvider$Picker" android:exported="true" />
+        <activity android:name="com.frieve.effetune.WorkflowDocumentsProvider$ShareReceiver" android:exported="true" />
+        <activity android:name="com.frieve.effetune.WorkflowDocumentsProvider$ShareSender" android:exported="true" />
+    </application>
+</manifest>

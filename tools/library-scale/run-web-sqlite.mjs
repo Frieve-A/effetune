@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { browserTestLaunchOptions } from '../../tests/helpers/browser-test-display.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const host = '127.0.0.1';
@@ -31,9 +32,9 @@ async function main() {
   let browser;
   let memorySampler;
   try {
-    browser = await chromium.launch({
+    browser = await chromium.launch(await browserTestLaunchOptions({
       headless: process.env.LIBRARY_SQLITE_HEADED !== '1'
-    });
+    }));
     const context = await browser.newContext();
     const page = await context.newPage();
     page.on('console', message => {

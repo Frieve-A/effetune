@@ -3302,6 +3302,608 @@
       }
     ]
   },
+  "Groove Lounge": {
+    "aspect": "4:3",
+    "graphScale": 1,
+    "background": {
+      "color": "#10191c",
+      "image": null,
+      "effects": []
+    },
+    "items": [
+      {
+        "id": "groove-lounge-cover",
+        "type": "artwork",
+        "rect": {
+          "x": 0.04666666666666667,
+          "y": 0.06222222222222222,
+          "w": 0.26666666666666666,
+          "h": 0.35555555555555557
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#40dfff"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          }
+        },
+        "params": {},
+        "style": {
+          "rounded": true
+        },
+        "effects": [
+          {
+            "type": "backplate",
+            "enabled": true,
+            "amount": 1,
+            "fill": "#090f11",
+            "fillOpacity": 0.5,
+            "border": "#52615c",
+            "borderWidth": 0.5,
+            "radius": 17,
+            "margin": 5,
+            "palette": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#40dfff"
+                }
+              ],
+              "motion": {
+                "mode": "none",
+                "speed": 0.25
+              }
+            },
+            "mod": {
+              "source": "none",
+              "depth": 0,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "groove-lounge-title",
+        "type": "title",
+        "rect": {
+          "x": 0.35333333333333333,
+          "y": 0.07111111111111111,
+          "w": 0.6,
+          "h": 0.08888888888888889
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#eee9de"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#eee9de"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 44.8,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-artist",
+        "type": "artist",
+        "rect": {
+          "x": 0.35333333333333333,
+          "y": 0.17555555555555555,
+          "w": 0.6,
+          "h": 0.044444444444444446
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#aebbb8"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#aebbb8"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 27.733333333333334,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-album",
+        "type": "album",
+        "rect": {
+          "x": 0.35333333333333333,
+          "y": 0.23333333333333334,
+          "w": 0.6,
+          "h": 0.03333333333333333
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#859b98"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#859b98"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 19.2,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-chord",
+        "type": "chord",
+        "rect": {
+          "x": 0.04666666666666667,
+          "y": 0.49777777777777776,
+          "w": 0.2733333333333333,
+          "h": 0.10666666666666667
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#d7b77e"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#d7b77e"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 76.8,
+          "fontFamily": "system-ui",
+          "bold": true,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-key",
+        "type": "key",
+        "rect": {
+          "x": 0.04666666666666667,
+          "y": 0.62,
+          "w": 0.2733333333333333,
+          "h": 0.04888888888888889
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#83c7b7"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#83c7b7"
+        },
+        "params": {},
+        "style": {
+          "fontSize": 27.733333333333334,
+          "fontFamily": "system-ui",
+          "bold": false,
+          "italic": false,
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-drums",
+        "type": "drums",
+        "rect": {
+          "x": 0.35333333333333333,
+          "y": 0.3333333333333333,
+          "w": 0.6,
+          "h": 0.43333333333333335
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#7ddcc4"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#7ddcc4"
+        },
+        "params": {
+          "yaw": 21,
+          "elevation": 28,
+          "shellColor": "#305650",
+          "cymbalColor": "#c4a56e",
+          "hardwareColor": "#a6b6b2",
+          "headColor": "#dcd9cd"
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-spectrum",
+        "type": "spectrum",
+        "rect": {
+          "x": 0.04666666666666667,
+          "y": 0.7933333333333333,
+          "w": 0.9066666666666666,
+          "h": 0.06
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#2f554f"
+            },
+            {
+              "pos": 0.65,
+              "color": "#6baa9c"
+            },
+            {
+              "pos": 1,
+              "color": "#c5ddd0"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "gradient",
+          "color": "#83c7b7",
+          "direction": "intensity"
+        },
+        "params": {
+          "dr": -78,
+          "pt": 12,
+          "sc": "log-hq",
+          "kb": false,
+          "kl": 100,
+          "mf": 22000,
+          "dm": "bar",
+          "quantizeBars": false,
+          "bc": 64,
+          "ds": 0,
+          "orientation": "horizontal",
+          "cf": 0.35,
+          "pk": false,
+          "ph": 0,
+          "pf": 1,
+          "sm": 0.35,
+          "gainDb": 0,
+          "showAxes": false,
+          "showAxisNumbers": false
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-seek",
+        "type": "seek-bar",
+        "rect": {
+          "x": 0.04666666666666667,
+          "y": 0.8711111111111111,
+          "w": 0.9066666666666666,
+          "h": 0.03111111111111111
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#83c7b7"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#83c7b7"
+        },
+        "params": {
+          "thickness": 3.2,
+          "rounding": true,
+          "trackColor": "#9baba5",
+          "trackOpacity": 0.2,
+          "showThumb": true,
+          "thumbSize": 8.533333333333333,
+          "thumbColor": "#eee9de",
+          "thumbShape": "circle",
+          "thumbBorderWidth": 0,
+          "thumbBorderColor": "#182331"
+        },
+        "style": {},
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-previous",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.4033333333333333,
+          "y": 0.9066666666666666,
+          "w": 0.04666666666666667,
+          "h": 0.06222222222222222
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#eee9de"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#eee9de"
+        },
+        "params": {
+          "action": "previous",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#83c7b7",
+          "fillOpacity": 0,
+          "border": "#71859b",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 48,
+          "depth": 0,
+          "activeColor": "#83c7b7"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-play-pause",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.47,
+          "y": 0.8977777777777778,
+          "w": 0.06,
+          "h": 0.08
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#10191c"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#10191c"
+        },
+        "params": {
+          "action": "play-pause",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#83c7b7",
+          "fillOpacity": 1,
+          "border": "#71859b",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 42,
+          "depth": 0,
+          "activeColor": "#83c7b7"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-next",
+        "type": "playback-control",
+        "rect": {
+          "x": 0.55,
+          "y": 0.9066666666666666,
+          "w": 0.04666666666666667,
+          "h": 0.06222222222222222
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#eee9de"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#eee9de"
+        },
+        "params": {
+          "action": "next",
+          "display": "icon",
+          "label": "",
+          "shape": "ellipse",
+          "fill": "#83c7b7",
+          "fillOpacity": 0,
+          "border": "#71859b",
+          "borderWidth": 0,
+          "radius": 18,
+          "iconSize": 48,
+          "depth": 0,
+          "activeColor": "#83c7b7"
+        },
+        "style": {
+          "fontSize": 36,
+          "fontFamily": "sans-serif",
+          "bold": false,
+          "italic": false,
+          "align": "center"
+        },
+        "effects": []
+      },
+      {
+        "id": "groove-lounge-counter",
+        "type": "counter",
+        "rect": {
+          "x": 0.8533333333333334,
+          "y": 0.9177777777777778,
+          "w": 0.1,
+          "h": 0.04
+        },
+        "channel": null,
+        "flipX": false,
+        "flipY": false,
+        "palette": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#aebbb8"
+            }
+          ],
+          "motion": {
+            "mode": "none",
+            "speed": 0.25
+          },
+          "mode": "solid",
+          "color": "#aebbb8"
+        },
+        "params": {
+          "counterIndex": false,
+          "counterHours": false,
+          "counterMinutes": true,
+          "counterSeconds": true,
+          "counterFraction": false,
+          "counterSubsecond": "milliseconds",
+          "counterFps": 30,
+          "counterDigits": 3,
+          "counterTimeSeparator": ":",
+          "counterFractionSeparator": ".",
+          "counterIndexSeparator": " ",
+          "counterMotion": "static",
+          "counterDuration": 150,
+          "counterWholeDigits": 2,
+          "counterZeroPad": true,
+          "counterBackgroundGlyphs": "none",
+          "counterBackgroundOpacity": 0.05,
+          "counterBackgroundColor": "#808080",
+          "counterBoxes": false,
+          "counterBoxColor": "#808080",
+          "counterBoxWidth": 1,
+          "counterBoxFill": "#000000",
+          "counterBoxOpacity": 0,
+          "counterBoxRadius": 0,
+          "counterWindowShading": false
+        },
+        "style": {
+          "fontSize": 21.333333333333332,
+          "fontFamily": "monospace",
+          "bold": false,
+          "italic": false,
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "effects": []
+      }
+    ]
+  },
   "Meter Bridge": {
     "aspect": "4:3",
     "graphScale": 1,

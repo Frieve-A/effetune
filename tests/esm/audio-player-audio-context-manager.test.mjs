@@ -999,10 +999,170 @@ function captureStreamBoundaries(harness) {
   const frames = [];
   harness.audioManager.workletNode.port = {
     postMessage(message) {
-      if (message.type === 'streamBoundary') frames.push(message.frame);
+      if (message.type === 'streamBoundary' && Object.hasOwn(message, 'frame')) frames.push(message.frame);
     }
   };
   return frames;
+}
+
+test('finite buffer EOF is announced exactly before a delayed final-track callback', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const { audioContext, audioManager, audioPlayer, manager, state } = createHarness();
+    const calls = [];
+    state.isStopped = false;
+    state.isTransitioning = false;
+    state.isPlaying = true;
+    state.isPaused = false;
+    state.playbackMode = 'bufferSource';
+    manager.nextBuffer = null;
+    manager.activeRegion = null;
+    audioManager.workletNode.port = { postMessage: message => calls.push(message) };
+    audioPlayer.playbackManager.onTrackEnded = () => calls.push('stopped');
+    manager.currentBufferSource = {};
+    manager.bufferStartTime = audioContext.currentTime;
+    manager.bufferDuration = 11026 / audioContext.sampleRate;
+    const endFrame = Math.round(manager.bufferStartTime * audioContext.sampleRate) + 11026;
+    manager.setupBufferMonitoring();
+    manager.notifyStreamBoundary(null);
+    audioContext.currentTime += manager.bufferDuration + 0.1;
+    manager.handleTrackEnded();
+    manager.cancelFiniteStreamEnd();
+    manager.clearBufferMonitoring();
+    assert.deepEqual(calls, [
+      { type: 'streamBoundary', endFrame },
+      { type: 'streamBoundary', frame: null },
+      'stopped'
+    ]);
+  });
+});
+
+test('rolling EOF uses the source anchor and finite-end cancellation preserves start reservations', async () => {
+  await withAudioContextGlobals({}, async () => {
+    const { audioContext, audioManager, manager, state } = createHarness();
+    Object.assign(state, { isPlaying: true, isPaused: false, isStopped: false, playbackMode: 'rollingPcm' });
+    const messages = [];
+    audioManager.workletNode.port = { postMessage: message => messages.push(message) };
+    manager.rollingTransport = {
+      playing: true, anchorContextTime: audioContext.currentTime, anchorFrame: 100,
+      metadata: { totalFrames: 11126, sampleRate: audioContext.sampleRate }
+    };
+    manager.announceFiniteStreamEnd();
+    manager.notifyStreamBoundary(audioContext.currentTime + 1);
+    manager.cancelFiniteStreamEnd();
+    assert.deepEqual(messages, [
+      { type: 'streamBoundary', endFrame: Math.round(audioContext.currentTime * audioContext.sampleRate) + 11026 },
+      { type: 'streamBoundary', frame: Math.round((audioContext.currentTime + 1) * audioContext.sampleRate) },
+      { type: 'streamBoundary', endFrame: null }
+    ]);
+  });
+});
+
+test('ordinary media EOF uses its playback-rate anchor before the ended callback', async () => {
+  await withAudioContextGlobals({ audioElements: [{ paused: false, currentTime: 1, duration: 3 }] }, async () => {
+    const audioElement = new Audio();
+    audioElement.playbackRate = 2;
+    const h = createHarness({ isPlaying: true, isStopped: false, playbackMode: 'audioElement', audioElement });
+    const messages = [];
+    h.audioManager.workletNode.port = { postMessage: message => messages.push(message) };
+    h.manager.armRegionBoundaryTimer();
+    assert.deepEqual(messages, [{ type: 'streamBoundary',
+      endFrame: Math.round((h.audioContext.currentTime + 1) * h.audioContext.sampleRate) }]);
+    h.audioContext.currentTime += 1.2;
+    audioElement.currentTime = 3;
+    h.manager.handleTrackEnded();
+    assert.equal(messages.length, 1);
+  });
+});
+
+for (const regionPlayback of [false, true]) {
+  test(`${regionPlayback ? 'region' : 'ordinary'} media waiting cancels EOF until actual playing reanchors it`, async () => {
+    await withAudioContextGlobals({ audioElements: [{ paused: false, currentTime: 5, duration: 10 }] }, async () => {
+      const audioElement = new Audio();
+      audioElement.playbackRate = 1;
+      const track = { name: 'Waiting source', path: 'https://example.test/waiting.flac',
+        ...(regionPlayback ? { startFrame: 0, endFrame: 750, durationSec: 10, physicalSourceKey: 'waiting' } : {}) };
+      const h = createHarness({ currentTrack: track, playlist: [track], currentTrackIndex: 0,
+        isPlaying: true, isStopped: false, playbackMode: 'audioElement', audioElement });
+      h.audioContext.currentTime = 100;
+      h.manager.activeSourceGeneration = 1;
+      if (regionPlayback) h.manager.setValidatedActiveRegion(track, 1);
+      const messages = [];
+      h.audioManager.workletNode.port = { postMessage: message => messages.push(message) };
+      h.manager.setupEventHandlers();
+      h.manager.armRegionBoundaryTimer();
+      h.manager.notifyStreamBoundary(110);
+      const rate = h.audioContext.sampleRate;
+      assert.deepEqual(messages, [
+        { type: 'streamBoundary', endFrame: 105 * rate },
+        { type: 'streamBoundary', frame: 110 * rate }
+      ]);
+
+      h.audioContext.currentTime = 103;
+      audioElement.currentTime = 8;
+      audioElement.dispatch('waiting');
+      assert.deepEqual(messages.at(-1), { type: 'streamBoundary', endFrame: null });
+      assert.equal(h.manager.regionBoundaryTimer, null);
+
+      h.audioContext.currentTime = 105;
+      audioElement.dispatch('timeupdate');
+      audioElement.dispatch('ratechange');
+      h.manager.armRegionBoundaryTimer();
+      h.manager.announceFiniteStreamEnd();
+      assert.equal(messages.length, 3, 'timer and other rearm callers cannot restore EOF while media is waiting');
+      assert.equal(h.manager.regionBoundaryTimer, null);
+
+      audioElement.dispatch('playing');
+      assert.deepEqual(messages.at(-1), { type: 'streamBoundary', endFrame: 107 * rate });
+      assert.equal(messages.filter(message => Object.hasOwn(message, 'frame')).length, 1,
+        'waiting and playing must preserve the independent start reservation');
+      if (regionPlayback) assert.notEqual(h.manager.regionBoundaryTimer, null);
+
+      audioElement.dispatch('waiting');
+      h.manager.removeAudioElementEventHandlers(audioElement);
+      assert.equal(h.manager.waitingAudioElement, null);
+      assert.equal(audioElement.listeners.get('waiting').length, 0);
+      assert.equal(audioElement.listeners.get('playing').length, 0);
+      h.manager.clearRegionBoundaryTimer();
+    });
+  });
+}
+
+for (const nextKind of ['final', 'noncontiguous', 'contiguous']) {
+  test(`${nextKind} region retains its preannounced EOF without a late duplicate`, async () => {
+    await withAudioContextGlobals({ audioElements: [{ paused: false, currentTime: 0.5, duration: 3 }] }, async () => {
+      const track = { name: 'Region', path: 'https://example.test/album.flac', startFrame: 0,
+        endFrame: 75, durationSec: 1, physicalSourceKey: 'album' };
+      const nextTrack = { ...track, name: 'Next', startFrame: nextKind === 'contiguous' ? 75 : 150,
+        endFrame: nextKind === 'contiguous' ? 150 : 225 };
+      const audioElement = new Audio();
+      audioElement.playbackRate = 1;
+      const h = createHarness({ currentTrack: track, playlist: [track], currentTrackIndex: 0,
+        isPlaying: true, isStopped: false, playbackMode: 'audioElement', audioElement });
+      h.manager.activeSourceGeneration = 1;
+      h.manager.sourceGenerationSequence = 1;
+      const active = h.manager.setValidatedActiveRegion(track, 1);
+      const messages = [];
+      h.audioManager.workletNode.port = { postMessage: message => messages.push(message) };
+      const plan = nextKind === 'final' ? null : { nextTrack, nextOrdinal: 1, preparedRequest: {} };
+      active.transportPlan = plan;
+      h.audioPlayer.playbackManager.isPlannedRegionMoveCurrent = value => value === plan && plan !== null;
+      h.audioPlayer.playbackManager.isPlannedAutomaticMoveCurrent = value => value === plan && plan !== null;
+      h.audioPlayer.playbackManager.commitPlannedRegionMove = () => true;
+      h.manager.prepareRegionTransportPlan = () => {};
+      h.manager.transitionPreparedAutomaticMove = () => true;
+      h.manager.armRegionBoundaryTimer();
+      const expectedEnd = Math.round((h.audioContext.currentTime + 0.5) * h.audioContext.sampleRate);
+      assert.deepEqual(messages, [{ type: 'streamBoundary', endFrame: expectedEnd }]);
+      audioElement.currentTime = 1.1;
+      h.audioContext.currentTime += 0.6;
+      assert.equal(h.manager.commitRegionBoundary(1), true);
+      assert.equal(messages.some(message => Object.hasOwn(message, 'frame')), false);
+      assert.equal(messages.filter(message => message.endFrame === expectedEnd).length, 1);
+      if (nextKind === 'contiguous') assert.equal(messages.length, 2, 'the next region gets its own finite end');
+      else assert.equal(messages.length, 1);
+      h.manager.clearRegionBoundaryTimer();
+    });
+  });
 }
 
 test('track starts and cancelled reservations reach both active A/B pipelines', async () => {
@@ -8594,7 +8754,7 @@ test('automatic move keeps Repeat ONE, wraps ordered Repeat ALL, and delegates s
   });
 });
 
-test('automatic plan resolves provider capabilities once and reuses the exact snapshot', async () => {
+test('automatic plan reuses its provider snapshot and sends one boundary at the media commit time', async () => {
   await withAudioContextGlobals({
     electronIntegration: { audioPreferences: { useInputWithPlayer: true } }
   }, async ({ calls }) => {
@@ -8678,7 +8838,10 @@ test('automatic plan resolves provider capabilities once and reuses the exact sn
       if (testCase.name === 'readBytes') assert.equal(counters.reads, 1);
 
       if (testCase.expectedMode === 'media') {
+        const boundaryFrames = captureStreamBoundaries(harness);
+        harness.audioContext.currentTime = 12.75;
         assert.equal(await harness.manager.transitionPreparedAutomaticMove(prepared), true);
+        assert.deepEqual(boundaryFrames, [Math.round(12.75 * harness.audioContext.sampleRate)]);
         assert.equal(counters.resolves, 1);
         assert.equal(harness.state.currentTrack, prepared.automaticMovePlan.nextTrack);
         assert.equal(metadataTrack, prepared.automaticMovePlan.nextTrack);

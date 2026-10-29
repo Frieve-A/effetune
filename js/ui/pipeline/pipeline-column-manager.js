@@ -104,12 +104,22 @@ export class PipelineColumnManager {
         const sidebarStyle = getComputedStyle(pluginList);
         const pixels = value => parseFloat(value) || 0;
         // Reserve the full effect list even when collapsed or in a hidden view.
-        const reservedWidth = pixels(bodyStyle.paddingLeft) + pixels(bodyStyle.paddingRight) +
+        let reservedWidth = pixels(bodyStyle.paddingLeft) + pixels(bodyStyle.paddingRight) +
             pixels(sidebarStyle.width) + pixels(containerStyle.columnGap) +
             pixels(pipelineStyle.paddingLeft) + pixels(pipelineStyle.paddingRight) +
             pixels(pipelineStyle.borderLeftWidth) + pixels(pipelineStyle.borderRightWidth);
+        const analyzer = document.getElementById('pipelineAnalyzerPanel');
+        if (analyzer && !analyzer.hidden && analyzer.parentElement === pipeline.parentElement) {
+            const analyzerStyle = getComputedStyle(analyzer);
+            // Reserve only the minimum width, so an expanded Analyzer cannot
+            // prevent adding columns or restoring the effect list. The basis
+            // also remains available while the effects view is hidden.
+            reservedWidth += pixels(analyzerStyle.flexBasis) +
+                pixels(containerStyle.columnGap);
+        }
         const zoom = pixels(bodyStyle.zoom) || 1;
-        return document.documentElement.clientWidth / zoom - reservedWidth;
+        const viewportWidth = window.uiManager?.layoutViewportWidth ?? document.documentElement.clientWidth / zoom;
+        return viewportWidth - reservedWidth;
     }
 
     canFitWithPluginList() {

@@ -7,8 +7,8 @@ on:
         description: Platform stage to build
         required: true
         type: string
-      openhome_source_bundle:
-        description: Include exact Linux libnl source artifacts for a desktop release
+      third_party_source_bundle:
+        description: Collect corresponding sources for the unified desktop release archive
         required: false
         default: false
         type: boolean
@@ -102,7 +102,7 @@ jobs:
           npm run clean
           node scripts/prepare-ecs.mjs
           npm run build:openhome-sidecar -- --no-publish-development
-          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
+          if [[ '${{ inputs.third_party_source_bundle }}' == 'true' ]]; then
             npm run collect:openhome-linux-provenance -- --with-source
           else
             npm run verify:openhome-linux-provenance
@@ -135,7 +135,7 @@ jobs:
           ldd "$sidecar" | grep -F "$PWD/dist/linux-unpacked/resources/openhome/libnl-genl-3.so."
 
       - name: Require complete Linux OpenHome source artifacts for release
-        if: inputs.openhome_source_bundle
+        if: inputs.third_party_source_bundle
         run: npm run verify:openhome-linux-provenance -- --require-source
 
       - name: Sign and verify Linux AppImage
@@ -200,7 +200,6 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           appimage="EffeTune-${version}.AppImage"
           release_zip="EffeTune-${version}-Linux-AppImage.zip"
-          source_zip="EffeTune-${version}-OpenHome-Linux-Source.zip"
 
           # Keep the executable mode inside the release ZIP because the outer
           # Actions artifact ZIP does not preserve Unix file permissions.
@@ -212,16 +211,19 @@ jobs:
             stored_mode="$(zipinfo -l "${release_zip}" "${appimage}" | awk -v file="${appimage}" '$NF == file { print $1 }')"
             test "${stored_mode}" = "-rwxr-xr-x"
           )
-          if [[ '${{ inputs.openhome_source_bundle }}' == 'true' ]]; then
-            runtime_root="out/native/openhome-sidecar/linux-x64"
-            test -f "${runtime_root}/libnl-runtime-manifest.json"
-            test -d "${runtime_root}/libnl-source"
-            (
-              cd "$runtime_root"
-              zip -9 -r "$GITHUB_WORKSPACE/dist/${source_zip}" \
-                libnl-runtime-manifest.json libnl-source
-            )
-          fi
+
+      - name: Collect corresponding sources
+        if: inputs.third_party_source_bundle
+        run: node scripts/collect-desktop-sources.mjs
+
+      - name: Upload corresponding sources
+        if: inputs.third_party_source_bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-sources-linux-x64
+          path: out/desktop-sources/
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -229,7 +231,6 @@ jobs:
           name: ${{ inputs.release_artifacts && 'linux-release-artifacts' || 'linux-artifacts' }}
           path: |
             dist/*-Linux-AppImage.zip
-            dist/*-OpenHome-Linux-Source.zip
           if-no-files-found: error
           compression-level: 0
 
@@ -407,6 +408,19 @@ jobs:
               [System.IO.Compression.CompressionLevel]::Optimal)
           } finally { $setupZip.Dispose() }
 
+      - name: Collect corresponding sources
+        if: inputs.third_party_source_bundle
+        run: node scripts/collect-desktop-sources.mjs
+
+      - name: Upload corresponding sources
+        if: inputs.third_party_source_bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-sources-win32-x64
+          path: out/desktop-sources/
+          if-no-files-found: error
+          compression-level: 0
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -537,6 +551,19 @@ jobs:
 
       - name: Verify packaged AirPlay artifacts
         run: npm run smoke:airplay-package
+
+      - name: Collect corresponding sources
+        if: inputs.third_party_source_bundle
+        run: node scripts/collect-desktop-sources.mjs
+
+      - name: Upload corresponding sources
+        if: inputs.third_party_source_bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-sources-darwin-${{ matrix.arch }}
+          path: out/desktop-sources/
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

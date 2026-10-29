@@ -137,12 +137,22 @@ Ao explorar a biblioteca de outro EffeTune, use **Tracks**, **Albums**, **Artist
 
 Outros servidores de música mostram as categorias e a estrutura de pastas que disponibilizam; a busca e a ordenação só ficam disponíveis quando o servidor oferece suporte.
 
+<a id="subsonic"></a>
+
+### Servidores Subsonic / OpenSubsonic
+
+No desktop, abra **Configurações > Configuração... > Rede > Subsonic / OpenSubsonic**. Preencha **Nome**, **URL do servidor**, **Usuário** e **Senha**, e escolha **Adicionar**. Selecione o servidor em **Library** para explorar álbuns, faixas e playlists do servidor, pesquisar e reproduzir ou adicionar músicas à fila do destino escolhido. A ordem e as faixas repetidas são preservadas; edite playlists no servidor. **Testar conexão** verifica uma conexão salva e **Remover** a desconecta.
+
+Na PWA, escolha **Library > Adicionar servidor de música…** para conectar diretamente por HTTPS. O servidor deve permitir acesso pelo navegador (CORS); conexão e login duram apenas durante a sessão. Para reproduzir em outro dispositivo, ou se o acesso direto falhar, adicione o servidor em um computador EffeTune cadastrado e permita acessar outros servidores nele. Escolha a biblioteca oferecida por esse computador; veja a [configuração da PWA](openhome.md#pwa).
+
+O áudio original tem preferência. Quando necessário para o destino, pode ser usado um fluxo convertido pelo servidor, cujo formato e qualidade podem diferir do arquivo armazenado. O EffeTune não adiciona codecs nem converte o áudio. Os formatos e a busca dentro da faixa dependem do servidor e do reprodutor.
+
 Para tocar faixas da Music Library em outro reprodutor, primeiro compartilhe sua pasta em **Configurações > Configuração... > Rede > Compartilhamento da biblioteca**. Os formatos e efeitos disponíveis dependem do destino; trechos CUE não estão disponíveis como faixas de rede separadas. Consulte [música em rede e controle remoto](openhome.md) para configurar, parear os efeitos e solucionar problemas de conexão.
 
 Para reproduzir arquivos locais individuais sem ativar o compartilhamento da biblioteca, escolha outro reprodutor e use **Open music files**. O EffeTune disponibiliza apenas os arquivos selecionados para esse reprodutor; mantenha o aplicativo aberto no computador de origem.
 
 ## Música compartilhada na PWA
 
-A PWA pode explorar a biblioteca compartilhada de um computador EffeTune cadastrado e reproduzi-la com os efeitos deste dispositivo ou em outro computador cadastrado. Arquivos locais da PWA não podem ser enviados a outro reprodutor. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para adicionar dispositivos e conhecer as permissões do navegador e os requisitos de conexão.
+A PWA reproduz músicas compartilhadas de um computador EffeTune cadastrado e bibliotecas de rede autorizadas com os efeitos deste dispositivo, ou controla um reprodutor de rede autorizado. Também é possível conectar diretamente ao Subsonic. Arquivos locais da PWA não podem ser enviados a outro reprodutor. Consulte [configuração e reprodução pela PWA](openhome.md#pwa) para adicionar dispositivos e conhecer as permissões do navegador e os requisitos de conexão.
 
 [← Voltar para o README](README.md)

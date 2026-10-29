@@ -5,6 +5,7 @@ const test = require('node:test');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const http = require('node:http');
 const { EventEmitter } = require('node:events');
 const { Readable, Writable } = require('node:stream');
 const { Discovery, CONTENT, PLAYLIST, parseXml, parseDidl, didl, didlItem, xml, service } = require('../../electron/network-music-upnp.cjs');
@@ -74,6 +75,91 @@ test('SSDP discovery uses stable UDNs, same-host services, and byebye availabili
   assert.equal(discovery.devices.get('uuid:two').available, false);
   await discovery.receive(packet, { address: '192.168.1.6' });
   assert.equal(requests, 1, 'A LAN advertisement cannot redirect description requests to a different host');
+});
+
+test('explicit discovery refresh reloads unchanged description URLs and marks unreachable devices unavailable', async t => {
+  let port = 12685;
+  let reachable = true;
+  let requests = 0;
+  const discovery = new Discovery({ fetchXml: async () => {
+    requests++;
+    if (!reachable) throw new Error('Fixture device is offline');
+    return parseXml(`<root><device><UDN>uuid:player</UDN><friendlyName>Room ${port}</friendlyName><serviceList><service><serviceType>${PLAYLIST}</serviceType><controlURL>http://192.168.1.5:${port}/playlist</controlURL></service></serviceList></device></root>`);
+  } });
+  const diagnostics = [];
+  discovery.on('diagnostic', error => diagnostics.push(error));
+  const packet = Buffer.from('HTTP/1.1 200 OK\r\nUSN: uuid:player\r\nLOCATION: http://192.168.1.5:1234/device.xml\r\n\r\n');
+  await discovery.receive(packet, { address: '192.168.1.5' });
+  port = 6520;
+  await discovery.receive(packet, { address: '192.168.1.5' });
+  assert.equal(requests, 1, 'Routine advertisements still use the descriptor cache');
+  discovery.start = async () => {};
+  const { host } = fixture({ discovery });
+  t.after(() => host.dispose());
+  const state = await host.discover();
+  assert.equal(requests, 2);
+  assert.equal(state.players[0].name, 'Room 6520', 'Refresh waits for the updated description');
+  assert.equal(service(discovery.devices.get('uuid:player'), 'Playlist').control, 'http://192.168.1.5:6520/playlist');
+  assert.equal(discovery.manualLocations.size, 0, 'Refreshing discovered devices does not save manual entries');
+  reachable = false;
+  assert.equal((await host.discover()).players[0].available, false);
+  assert.equal(diagnostics.length, 1);
+  reachable = true;
+  assert.equal((await host.discover()).players[0].available, true);
+});
+
+test('normal discovery rechecks saved manual endpoints without expiring reachable players or repeating SSDP descriptor reads', async t => {
+  let reachable = true; let requests = 0;
+  const location = 'http://renderer.example/device.xml';
+  const discovery = new Discovery({ fetchXml: async () => {
+    requests++;
+    if (!reachable) throw new Error('Fixture device is offline');
+    return Object.assign(parseXml(`<root><device><UDN>uuid:manual</UDN><serviceList><service><serviceType>${PLAYLIST}</serviceType><controlURL>/playlist</controlURL></service><service><serviceType>${PLAYLIST}</serviceType><controlURL>http://other.example/playlist</controlURL></service></serviceList></device></root>`), { connectionAddress: '192.168.1.8' });
+  } });
+  discovery.setManualLocations([location]);
+  const diagnostics = []; discovery.on('diagnostic', error => diagnostics.push(error));
+  t.after(() => discovery.close());
+  await discovery.search();
+  const player = discovery.devices.get('uuid:manual');
+  assert.equal(player.address, '192.168.1.8');
+  assert.equal(player.descriptorHostname, 'renderer.example');
+  assert.equal(service(player, 'Playlist').control, 'http://renderer.example/playlist');
+  player.expires = Date.now() - 1;
+  const unavailable = [];
+  discovery.on('change', () => { if (!player.available) unavailable.push(true); });
+  await discovery.search();
+  assert.equal(requests, 2);
+  assert.equal(discovery.devices.get(player.id), player, 'A healthy refresh preserves the current player identity');
+  assert.equal(player.available, true);
+  assert.ok(player.expires > Date.now());
+  assert.equal(unavailable.length, 0, 'A reachable manual player is not transiently expired');
+  reachable = false;
+  await discovery.search();
+  assert.equal(player.available, false);
+  assert.equal(diagnostics.length, 1);
+  reachable = true;
+  await discovery.search();
+  assert.equal(player.available, true);
+  discovery.unregister(location);
+  const before = requests;
+  await discovery.search();
+  assert.equal(requests, before, 'Removing a manual endpoint stops its unicast checks');
+  assert.equal(player.available, false);
+});
+
+test('manual hostname registration cannot bind private media to an unverified address or a removed late result', async () => {
+  const location = 'http://renderer.example/device.xml';
+  const description = () => parseXml(`<root><device><UDN>player</UDN><serviceList><service><serviceType>${PLAYLIST}</serviceType><controlURL>/playlist</controlURL></service></serviceList></device></root>`);
+  const unverified = new Discovery({ fetchXml: async () => description() });
+  await assert.rejects(unverified.register(location), /address could not be verified/);
+  assert.equal(unverified.devices.size, 0);
+  let release;
+  const discovery = new Discovery({ fetchXml: () => new Promise(resolve => { release = resolve; }) });
+  const pending = discovery.register(location);
+  discovery.unregister(location);
+  release(Object.assign(description(), { connectionAddress: '192.168.1.8' }));
+  await assert.rejects(pending, /unavailable/);
+  assert.equal(discovery.devices.size, 0);
 });
 
 test('the shared SSDP advertiser preserves MediaServer targets and stops answering when sharing stops', async t => {
@@ -624,6 +710,75 @@ test('opened files use explicit grants and private destination-bound URLs withou
   await host.dispose();
   assert.equal(host.fileSources.size, 0); assert.equal(host.fileServer.tokens.size, 0);
   assert.equal(host.fileServer.enabled, false); assert.equal(host.fileServer.server, null);
+});
+
+test('manual hostname OpenHome and AVTransport file handoff binds media to the verified socket IP', { timeout: 10000 }, async t => {
+  for (const kind of ['OpenHome', 'AVTransport']) await t.test(kind, async t => {
+    const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'effetune-manual-player-')));
+    const file = path.join(directory, 'selected.flac'); await fs.writeFile(file, '0123456789'); fileAccess.grantRead(file);
+    let host;
+    t.after(async () => { await host?.dispose(); fileAccess.clear(); await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
+    const type = kind === 'OpenHome' ? PLAYLIST : 'urn:schemas-upnp-org:service:AVTransport:1';
+    const description = `<root><device><UDN>player</UDN><serviceList><service><serviceType>${type}</serviceType><controlURL>/control</controlURL></service></serviceList></device></root>`;
+    let descriptionRequests = 0; let reachable = true;
+    t.mock.method(http, 'request', (url, _options, callback) => {
+      assert.equal(url.hostname, 'renderer.example');
+      const request = new EventEmitter();
+      request.end = () => {
+        descriptionRequests++;
+        if (!reachable) { queueMicrotask(() => request.emit('error', new Error('Fixture renderer is offline'))); return; }
+        const response = Readable.from([Buffer.from(description)]);
+        response.statusCode = 200; response.socket = { remoteAddress: '::ffff:127.0.0.1' };
+        response.on('end', () => { response.socket = null; });
+        callback(response);
+      };
+      return request;
+    });
+    const discovery = new Discovery();
+    const routes = [];
+    if (kind === 'OpenHome') {
+      ({ host } = playerFixture({ discovery, getRouteAddress: async address => { routes.push(address); return '127.0.0.1'; } }));
+    } else {
+      let currentUri = '';
+      ({ host } = fixture({ discovery, getRouteAddress: async address => { routes.push(address); return '127.0.0.1'; }, invoke: async (_endpoint, action, args = {}) => {
+        if (action === 'GetTransportInfo') return { CurrentTransportState: currentUri ? 'PLAYING' : 'NO_MEDIA_PRESENT', CurrentTransportStatus: 'OK' };
+        if (action === 'GetPositionInfo') return { TrackURI: currentUri, TrackDuration: '0:03:00', RelTime: '0:00:01' };
+        if (action === 'GetMediaInfo') return { CurrentURI: currentUri };
+        if (action === 'GetCurrentTransportActions') return { Actions: 'Play,Stop' };
+        if (action === 'SetAVTransportURI') currentUri = args.CurrentURI;
+        return {};
+      } }));
+    }
+    await host.configure({ manualDevice: { action: 'add', url: 'http://renderer.example/device.xml' } });
+    assert.equal(discovery.devices.get('player').address, '127.0.0.1');
+    assert.equal(discovery.devices.get('player').descriptorHostname, 'renderer.example');
+    const state = await host.playFiles({ playerId: 'player', filePaths: [file] });
+    const uri = new URL(state.queue[0].uri);
+    assert.deepEqual(routes, ['127.0.0.1']);
+    assert.equal(host.fileServer.resourceTargets.get(uri.pathname.split('/').at(-1)), '127.0.0.1');
+    const response = await fetch(uri, { headers: { Range: 'bytes=2-5' } });
+    assert.equal(response.status, 206);
+    assert.equal(await response.text(), '2345');
+    assert.equal((await responseFor(host.fileServer, uri.pathname, { remote: '192.168.1.6' })).status, 403);
+    assert.throws(() => host.fileServer.resource('unverified', '127.0.0.1', 'renderer.example'), /address could not be verified/);
+    const original = discovery.devices.get('player'); original.expires = Date.now() - 1;
+    await discovery.search();
+    assert.equal(descriptionRequests, 2);
+    assert.equal(discovery.devices.get('player'), original);
+    assert.equal(original.available, true);
+    assert.equal(host.fileSources.size, 1);
+    if (kind === 'AVTransport') {
+      assert.equal(host.avPlayers.owners.size, 1, 'A healthy periodic refresh retains the AV queue');
+      reachable = false;
+      await discovery.search();
+      assert.equal(original.available, false);
+      assert.equal(host.avPlayers.owners.size, 0, 'Failed manual revalidation relinquishes the host queue');
+      reachable = true;
+      await discovery.search();
+      assert.equal(original.available, true);
+      assert.equal(host.avPlayers.owners.size, 0, 'Rediscovery does not restore or resend the old queue');
+    }
+  });
 });
 
 test('passive discovery state never opens the catalog and restore never sends playback commands', async () => {

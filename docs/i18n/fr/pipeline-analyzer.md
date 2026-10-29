@@ -1,6 +1,6 @@
 ---
 title: "Pipeline Analyzer - Réponse en fréquence et en phase de la chaîne d’effets - EffeTune"
-description: "Pipeline Analyzer mesure la réponse en fréquence, la phase, le retard de groupe et la réponse impulsionnelle de l’Effect Pipeline actif sans modifier l’audio écouté."
+description: "Pipeline Analyzer mesure la réponse en fréquence, la phase, le retard de groupe, la réponse impulsionnelle, la distorsion et la décroissance de l’Effect Pipeline actif sans modifier l’audio écouté."
 lang: fr
 ---
 
@@ -27,11 +27,11 @@ Comme les mesures de haut-parleur séparées sont alignées sur leur attaque dé
 
 Ouvrez **Measurement settings** pour régler la façon dont le pipeline est mesuré :
 
-- **Signal** : **MLS** (par défaut), **TSP** ou **Unit Impulse**. MLS et TSP utilisent des signaux de test périodiques (`2^n - 1` et `2^n` échantillons), tandis qu’**Unit Impulse** capture directement la réponse impulsionnelle dans le domaine temporel (`2^n` échantillons).
+- **Signal** : **Log Sweep** (par défaut), **MLS**, **TSP** ou **Unit Impulse**. Utilisez **Log Sweep** pour examiner aussi la distorsion harmonique. Le balayage couvre de 20 Hz à 20 kHz dans les limites de la fréquence d’échantillonnage. **MLS** et **TSP** utilisent des signaux périodiques ; **Unit Impulse** capture directement la réponse impulsionnelle.
 - **Level** : niveau crête du signal de test (`-12 dBFS` par défaut). Les filtres linéaires donnent la même mesure à tout niveau, alors que les compresseurs, saturateurs et autres effets dépendants du niveau changent selon **Level**.
-- **Sequence Length** : longueur de la fenêtre de mesure. Augmentez-la pour mesurer une réverbération, un délai ou des filtres graves raides à longue résonance, en particulier lorsque l’analyseur recommande une longueur plus grande.
-- **Stabilization Periods** : nombre de périodes jouées avant la capture (`12` par défaut, utilisé par MLS et TSP) pour laisser les effets à évolution lente se stabiliser.
-- **Averages** : nombre de périodes capturées moyennées ensemble (`2` par défaut, utilisé par MLS et TSP) pour réduire les variations.
+- **Requested sweep length** (**Log Sweep**) / **Sequence Length** (autres signaux) : **Log Sweep** utilise `131072` échantillons par défaut et peut allonger le balayage pour séparer les harmoniques ; les valeurs réelles de **Sweep length** et **Total stimulus time** s’affichent après la mesure. La réponse ne couvre que les 1,5 seconde suivant le pic principal de l’impulsion, même si vous allongez le balayage. Pour examiner des queues de réverbération, des délais ou des résonances plus longs, choisissez **MLS**, **TSP** ou **Unit Impulse**, puis augmentez **Sequence Length** si nécessaire.
+- **Stabilization Periods** : nombre de périodes jouées avant la capture (`12` par défaut, utilisé par MLS et TSP) pour laisser les effets à évolution lente se stabiliser. Ce réglage n’est pas disponible avec **Log Sweep** ni **Unit Impulse**.
+- **Averages** : nombre de captures dont la moyenne est calculée (`2` par défaut, utilisé par **Log Sweep**, MLS et TSP) pour réduire les variations.
 
 ## Lire les graphiques
 
@@ -42,11 +42,13 @@ Utilisez le sélecteur **Graph** au-dessus du tracé pour changer de vue sans re
 - **Min Group Delay** : retard de groupe impliqué par la réponse en amplitude à phase minimale.
 - **Excess Group Delay** : retard de groupe restant après retrait de la partie à phase minimale (le tracé est limité à ±100 ms, tandis que les valeurs lues au curseur indiquent la valeur réelle), ce qui permet de repérer facilement un retard pur et le comportement temporel d’un filtre à phase linéaire ou passe-tout.
 - **Impulse** : réponse impulsionnelle dans le domaine temporel, de `-2 ms` jusqu’à **Impulse Range (ms)**, normalisée sur sa crête.
+- **Distortion** : avec **Log Sweep**, affiche la distorsion harmonique en pourcentage de la fondamentale selon la fréquence. H2, H3 et THD (ordres 2 à 3) sont affichés au départ ; vous pouvez ajouter H4 à H10 sans refaire la mesure. Plus la valeur est élevée, plus la distorsion est importante. Si ce graphique est indisponible avec un autre signal, sélectionnez **Log Sweep**. Une sortie silencieuse ou sans données valides ne permet pas de calculer la distorsion. Les réponses de haut-parleur enregistrées apportent leur réponse linéaire, pas la distorsion propre au haut-parleur.
+- **Waterfall** : affiche la fréquence, le niveau relatif (dB) et le temps de décroissance (ms). Dans **Response**, choisissez **After** (par défaut) ou **Before** pour examiner la sortie du pipeline ou les réponses de haut-parleur sélectionnées avant traitement. Chaque vue est normalisée sur sa propre crête : comparez la forme de la décroissance, pas les niveaux absolus. Faites glisser le graphique 3D pour le tourner et utilisez la molette ou le pincement pour zoomer.
 
-Survolez le graphique pour lire les valeurs **Before** et **After** sous le curseur ; survolez l’étiquette **Before** de la légende pour masquer temporairement **After**. Utilisez **Smoothing (oct)** pour les graphiques de fréquence, de phase et de retard de groupe, et **Impulse Range (ms)** pour le graphique d’impulsion.
+Sur les graphiques de fréquence, de phase, de retard de groupe et d’impulsion, survolez le tracé pour lire les valeurs **Before** et **After** sous le curseur ; survolez l’étiquette **Before** de la légende pour masquer temporairement **After**. Utilisez **Smoothing (oct)** pour les graphiques de fréquence, de phase et de retard de groupe, et **Impulse Range (ms)** pour le graphique d’impulsion.
 
 ## Fonctionnement de la mesure
 
-Pipeline Analyzer capture le pipeline actif, son routage et les réponses de haut-parleur sélectionnées, puis compense automatiquement sur **After** la latence déclarée par le pipeline. Si une queue de réverbération ou la résonance prolongée d’un filtre dépasse **Sequence Length**, augmentez **Sequence Length** pour éviter le repliement (MLS/TSP) ou la troncature (**Unit Impulse**). Pour les effets non linéaires, modulés ou aléatoires, considérez le tracé comme un instantané aux réglages et au **Level** actuels.
+Pipeline Analyzer capture le pipeline actif, son routage et les réponses de haut-parleur sélectionnées, puis compense automatiquement sur **After** la latence déclarée par le pipeline. Pour les effets non linéaires, modulés ou aléatoires, considérez le tracé comme un instantané aux réglages et au **Level** actuels.
 
 [← Retour au README](README.md)

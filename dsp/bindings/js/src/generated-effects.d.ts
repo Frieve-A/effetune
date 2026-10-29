@@ -59,6 +59,7 @@ export interface NoteSpectrogramOptions extends CommonEffectOptions {
   readonly minimumMidi?: number;
   readonly maximumMidi?: number;
   readonly timbreEnabled?: boolean;
+  readonly chordKeyEnabled?: boolean;
   readonly assets?: never;
 }
 
@@ -105,6 +106,7 @@ export interface RhythmAnalyzerOptions extends CommonEffectOptions {
   readonly minimumBpm?: number;
   readonly maximumBpm?: number;
   readonly metronomeClick?: boolean;
+  readonly displayMode?: "band" | "drums";
   readonly assets?: never;
 }
 

@@ -17,6 +17,11 @@ export class IntegratedRemoteEffects {
         this.unsubscribeLayoutMode = this.window.uiManager?.layoutMode?.onChange?.(() => this.updateFrameMetadata());
         this.onMessage = event => this.acceptFrame(event);
         this.window.addEventListener('message', this.onMessage);
+        this.onResize = () => this.updateFrameMetadata();
+        this.window.addEventListener('resize', this.onResize);
+        this.window.addEventListener('scroll', this.onResize, { passive: true });
+        this.viewportObserver = new this.window.ResizeObserver(this.onResize);
+        this.viewportObserver.observe(container.ownerDocument.documentElement);
     }
 
     text(key, fallback) { return this.translate(`ui.network.${key}`, fallback); }
@@ -24,7 +29,20 @@ export class IntegratedRemoteEffects {
     get playerTitle() { return `Effect Pipeline · ${this.player.name}`; }
 
     get frameMetadata() {
-        return { playerName: this.player.name, layoutMode: this.window.uiManager?.layoutMode?.isMobile ? 'mobile' : 'desktop' };
+        const style = this.window.getComputedStyle(this.container.ownerDocument.body);
+        const zoom = parseFloat(style.zoom) || 1;
+        const bounds = this.frame?.getBoundingClientRect?.();
+        return {
+            playerName: this.player.name,
+            layoutMode: this.window.uiManager?.layoutMode?.isMobile ? 'mobile' : 'desktop',
+            viewportHeight: this.window.innerHeight / zoom,
+            visibleTop: Math.max(0, -(bounds?.top ?? 0)) / zoom,
+            visibleBottom: Math.max(0, (bounds?.bottom ?? this.window.innerHeight) - this.window.innerHeight) / zoom,
+            bottomControls: (parseFloat(style.getPropertyValue('--et-bottom-nav-height')) || 0) +
+                (parseFloat(style.getPropertyValue('--et-mini-player-height')) || 0),
+            viewportWidth: this.container.ownerDocument.documentElement.clientWidth / zoom -
+                (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)
+        };
     }
 
     updateFrameMetadata() {
@@ -203,7 +221,13 @@ export class IntegratedRemoteEffects {
         });
         port.onmessage = async ({ data }) => {
             if (generation !== this.generation) return;
-            if (data.type === 'change-connection') {
+            if (data.type === 'content-size') {
+                if (Number.isFinite(data.height) && data.height > 0) this.frame.style.height = `${Math.ceil(data.height)}px`;
+                else if (data.height === null) this.frame.style.removeProperty('height');
+                if (Number.isFinite(data.width) && data.width > 0) this.frame.style.width = `${Math.ceil(data.width)}px`;
+                else if (data.width === null) this.frame.style.removeProperty('width');
+                this.updateFrameMetadata();
+            } else if (data.type === 'change-connection') {
                 this.changeConnection();
             } else if (data.type === 'connect') {
                 const currentAttempt = ++attempt;
@@ -256,6 +280,9 @@ export class IntegratedRemoteEffects {
         this.generation += 1;
         this.clearConnection();
         this.window.removeEventListener('message', this.onMessage);
+        this.window.removeEventListener('resize', this.onResize);
+        this.window.removeEventListener('scroll', this.onResize);
+        this.viewportObserver.disconnect();
         this.unsubscribeLayoutMode?.();
         this.container.replaceChildren();
     }

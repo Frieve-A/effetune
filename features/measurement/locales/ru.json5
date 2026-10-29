@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "Это устройство не предоставляет необработанный сигнал микрофона. Автоматическая обработка звука может повлиять на измерение.",
   "analysis:normalization": "Нормировка",
   "analysis:normalizationNone": "Нет",
   "analysis:normalizationGlobal": "Общий пик = 0 дБ",

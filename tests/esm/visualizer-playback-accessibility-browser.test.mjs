@@ -6,6 +6,54 @@ import { chromium } from 'playwright';
 const script = path => readFileSync(new URL(path, import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
 
+test('Canvas playback accepts touch release before click without activating drags or cancelled touches', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage({ hasTouch: true, viewport: { width: 600, height: 400 } });
+        await page.addScriptTag({ content: 'class VisualizerRenderer {}' });
+        await page.addScriptTag({ content: script('../../js/visualizer/visualizer-view.js') });
+        await page.addScriptTag({ content: script('../../js/visualizer/visualizer-feed.js') });
+        await page.evaluate(() => {
+            window.commands = [];
+            window.events = [];
+            const view = Object.assign(Object.create(VisualizerView.prototype), {
+                editor: { open: false }, layout: {},
+                playback: () => ({ available: true }),
+                createPlaybackControls() {}, beginCounterPointer() {}, counterAt: () => null,
+                runPlaybackAction: action => commands.push(action)
+            });
+            window.open = () => window;
+            window.feed = new VisualizerFeed(view);
+            feed.canvas.style.cssText = 'position:absolute;left:0;top:0;width:300px;height:200px';
+            feed.renderer.playbackItemAt = () => ({ id: 'play', action: 'play-pause' });
+            for (const type of ['pointerdown', 'pointerup', 'pointerleave', 'click']) {
+                feed.canvas.addEventListener(type, () => events.push(type));
+            }
+        });
+        await page.touchscreen.tap(100, 100);
+        assert.deepEqual(await page.evaluate(() => events), ['pointerdown', 'pointerup', 'pointerleave', 'click']);
+        assert.deepEqual(await page.evaluate(() => commands), ['play-pause']);
+        await page.mouse.click(100, 100);
+        assert.equal(await page.evaluate(() => commands.length), 2, 'Mouse click still activates once');
+        await page.mouse.move(100, 100);
+        await page.mouse.down();
+        await page.mouse.move(120, 100);
+        await page.mouse.up();
+        assert.equal(await page.evaluate(() => commands.length), 2, 'Dragging does not activate');
+        await page.evaluate(() => {
+            for (const type of ['pointerdown', 'pointercancel', 'pointerleave', 'click']) {
+                feed.canvas.dispatchEvent(new PointerEvent(type, {
+                    pointerType: 'touch', pointerId: 5, clientX: 100, clientY: 100,
+                    button: 0, buttons: type === 'pointerdown' ? 1 : 0
+                }));
+            }
+        });
+        assert.equal(await page.evaluate(() => commands.length), 2, 'Cancelled touch cannot activate');
+    } finally {
+        await browser.close();
+    }
+});
+
 test('Playback controls preserve native keyboard activation, dynamic labels, and focus across redraws', async () => {
     const browser = await chromium.launch({ headless: true });
     try {

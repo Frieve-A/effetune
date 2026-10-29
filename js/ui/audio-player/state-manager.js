@@ -154,7 +154,7 @@ export class StateManager {
     }
     
     // Validate playback mode
-    if (!['audioElement', 'bufferSource', 'rollingPcm'].includes(this.state.playbackMode)) {
+    if (!['audioElement', 'bufferSource', 'rollingPcm', 'native'].includes(this.state.playbackMode)) {
       console.warn('[StateManager] Invalid playback mode:', this.state.playbackMode);
       this.state.playbackMode = 'audioElement';
     }

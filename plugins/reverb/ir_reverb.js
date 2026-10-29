@@ -377,22 +377,31 @@ class IRReverbPlugin extends PluginBase {
 
     _queuePreparation(kind, delayMs, generation = ++this._generation) {
         this._cancelPreparationTimer();
-        if (delayMs > 0) {
-            this._preparationTimer = setTimeout(() => {
+        // Capture a remote operation while its synchronous edit is active.
+        const mutationOptions = window.audioManager?.getMutationOptions?.();
+        let resolvePreparation;
+        const preparation = new Promise(resolve => { resolvePreparation = resolve; });
+        this._preparationResolve = resolvePreparation;
+        const prepare = () => {
+            if (this._preparationResolve === resolvePreparation) {
                 this._preparationTimer = null;
-                if (kind === 'restage') this._restagePrepared(generation);
-                else this._prepareAndStage(generation);
-            }, delayMs);
-            return;
-        }
-        Promise.resolve().then(() => kind === 'restage'
-            ? this._restagePrepared(generation)
-            : this._prepareAndStage(generation));
+                this._preparationResolve = null;
+            }
+            if (generation !== this._generation) { resolvePreparation(false); return; }
+            if (mutationOptions) this._requestedAssetDefinitionFor(generation).mutationOptions = mutationOptions;
+            resolvePreparation(kind === 'restage' ? this._restagePrepared(generation) : this._prepareAndStage(generation));
+        };
+        if (delayMs > 0) {
+            this._preparationTimer = setTimeout(prepare, delayMs);
+        } else Promise.resolve().then(prepare);
+        return this._trackAssetResolution(preparation, generation);
     }
 
     _cancelPreparationTimer() {
         if (this._preparationTimer !== null) clearTimeout(this._preparationTimer);
         this._preparationTimer = null;
+        this._preparationResolve?.(false);
+        this._preparationResolve = null;
     }
 
     async _prepareAndStage(generation) {
@@ -476,6 +485,10 @@ class IRReverbPlugin extends PluginBase {
             );
         } catch (error) {
             if (generation !== this._generation) return false;
+            if (error?.code === 'unauthorized') {
+                if (this._requestedAssetDefinition === requested) this._requestedAssetDefinition = null;
+                throw error;
+            }
             if (controlsChanged()) return restartForControls();
             console.error('IR Reverb preparation failed:', error);
             this._settleRequestedAssetFailure(requested);
@@ -524,6 +537,10 @@ class IRReverbPlugin extends PluginBase {
             );
         } catch (error) {
             if (generation !== this._generation) return false;
+            if (error?.code === 'unauthorized') {
+                if (this._requestedAssetDefinition === requested) this._requestedAssetDefinition = null;
+                throw error;
+            }
             if (controlsChanged()) return restartForControls();
             console.error('IR Reverb re-staging failed:', error);
             this._settleRequestedAssetFailure(requested);
@@ -618,6 +635,9 @@ class IRReverbPlugin extends PluginBase {
             return requested.controlRestartPromise || this._prepareAndStage(generation);
         }
         requested ||= this._requestedAssetDefinitionFor(generation);
+        await requested?.mutationOptions?.beforeCommit?.();
+        if (generation !== this._generation || requested?.mutationOptions?.isCurrent?.() === false) return false;
+        const commit = () => {
         if (!this._applyRequestedAssetDefinition(requested)) return false;
         const replacementBaseline = this._replacementBaseline;
         const previousCandidate = this._pendingAssetCandidate;
@@ -628,7 +648,8 @@ class IRReverbPlugin extends PluginBase {
             : 'restage';
         const operationRevision = this.setWasmAsset(runtime.IR_ASSET_SLOT, {
             ...result.descriptor,
-            externalAssetSignature: requested.externalAssetSignature
+            externalAssetSignature: requested.externalAssetSignature,
+            externalAssetParameters: { ir: requested.ir, ...requested.controls }
         });
         this._assetClearPending = false;
         this._replacementBaseline = null;
@@ -663,6 +684,9 @@ class IRReverbPlugin extends PluginBase {
                 'IR Reverb requires WASM audio processing. Wet output is unavailable; output follows Dry and Dry Level.'), 'error');
         }
         return true;
+        };
+        return requested?.mutationOptions && window.audioManager?.withMutationOptions
+            ? window.audioManager.withMutationOptions(requested.mutationOptions, commit) : commit();
     }
 
     async createOfflineDspState({ sampleRate, outputChannelCount }) {
@@ -820,6 +844,7 @@ class IRReverbPlugin extends PluginBase {
             sampleRate: options.sampleRate,
             outputChannelCount: options.outputChannelCount,
             propagateFailure: options.propagateFailure,
+            mutationOptions: options.mutationOptions,
             serializedResolution: true
         });
         this._setStatus(this._t('irReverb.status.preparing', 'Preparing the impulse response…'), 'preparing');
@@ -834,7 +859,8 @@ class IRReverbPlugin extends PluginBase {
                 propagateFailure: requested.propagateFailure,
                 controls: requested.controls,
                 sampleRate: requested.sampleRate,
-                outputChannelCount: requested.outputChannelCount
+                outputChannelCount: requested.outputChannelCount,
+                mutationOptions: requested.mutationOptions
             });
         } catch (error) {
             console.error('IR library resolution failed:', error);
@@ -859,7 +885,8 @@ class IRReverbPlugin extends PluginBase {
         readyNotice = null,
         controls = null,
         sampleRate,
-        outputChannelCount
+        outputChannelCount,
+        mutationOptions
     } = {}) {
         if (!entry || generation !== this._generation) return false;
         this._replacementBaseline = this._residentBaseline();
@@ -876,6 +903,7 @@ class IRReverbPlugin extends PluginBase {
             controls,
             sampleRate,
             outputChannelCount,
+            mutationOptions,
             libraryEntry: entry
         });
         this._setStatus(this._t('irReverb.status.preparing', 'Preparing the impulse response…'), 'preparing');
@@ -919,8 +947,16 @@ class IRReverbPlugin extends PluginBase {
         }
         requested.pcm = pcm;
         requested.hostPreparedByRate.clear();
-        if (!this._applyRequestedAssetDefinition(requested)) return false;
-        this.updateParameters();
+        await requested.mutationOptions?.beforeCommit?.();
+        if (generation !== this._generation || requested.mutationOptions?.isCurrent?.() === false) return false;
+        const commit = () => {
+            if (!this._applyRequestedAssetDefinition(requested)) return false;
+            this.updateParameters();
+            return true;
+        };
+        const committed = requested.mutationOptions && window.audioManager?.withMutationOptions
+            ? await window.audioManager.withMutationOptions(requested.mutationOptions, commit) : commit();
+        if (!committed) return false;
         return this._prepareAndStage(generation);
     }
 
@@ -935,6 +971,21 @@ class IRReverbPlugin extends PluginBase {
             dt: this.dt,
             tr: this.tr
         };
+    }
+
+    getExternalAssetParameters() {
+        return { ir: this.ir, ...this._captureAssetControls() };
+    }
+
+    hydrateExternalAsset(definition, mutationOptions) {
+        const signature = JSON.parse(definition.externalAssetSignature);
+        if (!Array.isArray(signature) || signature.length !== 12 || signature[0] !== 1) {
+            throw new Error('Invalid IR asset definition');
+        }
+        const { ir, ...controls } = definition.externalAssetParameters;
+        return this._trackAssetResolution(this._resolveSerializedIr(true, {
+            ir, controls, sampleRate: signature[10], outputChannelCount: signature[11], mutationOptions
+        }));
     }
 
     _applyAssetControls(controls) {
@@ -953,6 +1004,10 @@ class IRReverbPlugin extends PluginBase {
 
     _updateRequestedAssetControls(requested, controls) {
         if (!requested || requested.generation !== this._generation || !controls) return false;
+        // A real edit takes ownership of preparation; only the original restore is local-only.
+        if (requested.mutationOptions?.nativeHydration) {
+            requested.mutationOptions = window.audioManager?.getMutationOptions?.();
+        }
         const previous = requested.controls;
         if (previous.cr !== controls.cr || previous.dc !== controls.dc ||
             previous.co !== controls.co || previous.dt !== controls.dt || previous.tr !== controls.tr) {
@@ -1118,6 +1173,7 @@ class IRReverbPlugin extends PluginBase {
             : new Map(this._hostPreparedByRate);
         return {
             generation,
+            mutationOptions: overrides.mutationOptions || window.audioManager?.getMutationOptions?.(),
             ir,
             fileLabel,
             missingIr,
@@ -1181,7 +1237,7 @@ class IRReverbPlugin extends PluginBase {
         this._applyAssetControls(requested.controls);
         this._syncAssetControlUi(requested.controls);
         this._requestedAssetDefinition = null;
-        this._clearIrAsset(true);
+        if (!requested.mutationOptions?.nativeHydration) this._clearIrAsset(true);
         window.uiManager?.queueMissingExternalAssetSummary?.();
         return true;
     }
@@ -1339,6 +1395,10 @@ class IRReverbPlugin extends PluginBase {
     _settleRequestedAssetFailure(requested) {
         if (!requested || requested.generation !== this._generation) return false;
         this._pendingReadyNotice = null;
+        if (requested.mutationOptions?.nativeHydration) {
+            this._requestedAssetDefinition = null;
+            return true;
+        }
         if (!this._restoreReplacementBaseline()) {
             const rollbackControls = this._captureAssetControls();
             this._clearPreparedAsset();

@@ -43,6 +43,6 @@ lang: zh
 
 新测量采用指数正弦扫频（ESS）。请从较低输出电平开始，在不发生削波的范围内调整。失真分析需要该次测量中有效的谐波数据；导入的 WAV，以及只有频率响应或线性 IR 的测量，都不能提供这些数据。如果数据不可用，请导入包含所需响应的测量文件，或重新测量。可用范围也取决于扫频频段和录音时长。 为分离谐波，实际扫频可能比请求的长度更长。每次重复还包括等待衰减的 2.5 秒。关闭频段限制时，ESS 在实际采样率允许的范围内使用 20 Hz～20 kHz。
 
-如需查看当前效果链的 Frequency、Phase、Min Group Delay、Excess Group Delay 和 Impulse 响应（可包含最多四个选定输出，以及可选的已保存扬声器响应），请参阅 [Pipeline Analyzer 指南](pipeline-analyzer.md)。
+如需查看当前效果链的频率响应、相位、群延迟、脉冲响应、失真和衰减（可包含最多四个选定输出，以及可选的已保存扬声器响应），请参阅 [Pipeline Analyzer 指南](pipeline-analyzer.md)。
 
 [← 返回 README](README.md)

@@ -33,6 +33,12 @@ const nativePackageBuildContracts = [
   }
 ];
 
+const assetCopyContracts = [{
+  producer: 'scripts/build-android-assets.mjs',
+  output: path.posix.join('out/android/assets/licenses', 'pffft-LICENSE.txt'),
+  input: 'dsp/vendor/pffft/LICENSE.txt'
+}];
+
 // A shipped file must never depend on a path that happens to exist on the
 // developer's machine but would be absent from a clean checkout. Such a
 // dependency leaves every local run green while every CI job fails, and because
@@ -171,9 +177,10 @@ function existingRepositoryFile(relativePath) {
   }
 }
 
-function isNativeGeneratedPackageReference(file, candidate) {
+function isGeneratedBuildOutputReference(file, candidate) {
   return nativePackageBuildContracts.some(contract => candidate === contract.output &&
-    (file === 'package.json' || file === contract.producer));
+    (file === 'package.json' || file === contract.producer)) ||
+    assetCopyContracts.some(contract => file === contract.producer && candidate === contract.output);
 }
 
 test('review-visible scripts, tools, and tests reference no hidden repository file', () => {
@@ -189,7 +196,7 @@ test('review-visible scripts, tools, and tests reference no hidden repository fi
     readSource: file => fs.readFileSync(path.join(repoRoot, file), 'utf8'),
     fileExists: existingRepositoryFile,
     isTracked: candidate => reviewable.has(candidate),
-    isGeneratedOutput: isNativeGeneratedPackageReference
+    isGeneratedOutput: isGeneratedBuildOutputReference
   });
   assert.deepEqual(
     violations,
@@ -204,6 +211,18 @@ test('review-visible scripts, tools, and tests reference no hidden repository fi
       false,
       `${reference} is now tracked; drop it from ABSENCE_ONLY_REFERENCES`
     );
+  }
+});
+
+test('generated asset copies use review-visible inputs and their declared producer', () => {
+  const reviewable = gitReviewableFiles();
+  for (const contract of assetCopyContracts) {
+    assert.ok(reviewable.has(contract.producer));
+    assert.ok(reviewable.has(contract.input));
+    assert.equal(reviewable.has(contract.output), false);
+    const producer = fs.readFileSync(path.join(repoRoot, contract.producer), 'utf8');
+    assert.ok(producer.includes(`await cp(path.join(root, '${contract.input}'), path.join(root, '${contract.output}'));`),
+      `${contract.producer} must copy its declared input to its declared output`);
   }
 });
 
@@ -249,11 +268,13 @@ test('the generated-output exemption is limited to its package and producer', ()
   const generated = openHomeSidecarBuildContract.output;
   const airPlayGeneratedFile = `${nativePackageBuildContracts[1].output}/runtime-manifest.json`;
   const unrelatedOutput = 'out/native/unrelated/hidden.json';
-  const present = new Set([generated, airPlayGeneratedFile, unrelatedOutput]);
+  const assetCopy = assetCopyContracts[0];
+  const present = new Set([generated, airPlayGeneratedFile, unrelatedOutput, assetCopy.output]);
   const sources = new Map([
     ['package.json', `{"from":"${generated}"}`],
     [openHomeSidecarBuildContract.producer, `const output = '${generated}';`],
-    ['tools/unrelated.mjs', `const hiddenInput = '${generated}'; const airPlay = '${airPlayGeneratedFile}'; const unrelated = '${unrelatedOutput}';`]
+    [assetCopy.producer, `const output = '${assetCopy.output}';`],
+    ['tools/unrelated.mjs', `const hiddenInput = '${generated}'; const airPlay = '${airPlayGeneratedFile}'; const unrelated = '${unrelatedOutput}'; const asset = '${assetCopy.output}';`]
   ]);
 
   const violations = findUntrackedReferences({
@@ -261,10 +282,10 @@ test('the generated-output exemption is limited to its package and producer', ()
     readSource: file => sources.get(file),
     fileExists: candidate => present.has(candidate),
     isTracked: () => false,
-    isGeneratedOutput: isNativeGeneratedPackageReference
+    isGeneratedOutput: isGeneratedBuildOutputReference
   });
 
-  assert.deepEqual(violations, [generated, airPlayGeneratedFile, unrelatedOutput]
+  assert.deepEqual(violations, [generated, airPlayGeneratedFile, unrelatedOutput, assetCopy.output]
     .map(candidate => `tools/unrelated.mjs -> ${candidate}`).sort());
 });
 

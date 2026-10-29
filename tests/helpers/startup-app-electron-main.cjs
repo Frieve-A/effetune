@@ -1,5 +1,8 @@
 const { app, ipcMain } = require('electron');
 const path = require('node:path');
+const { installTestWindowPolicy } = require('./electron-test-display.cjs');
+
+installTestWindowPolicy();
 
 app.setAppPath(path.resolve(__dirname, '../..'));
 app.setPath('userData', process.env.EFFETUNE_STARTUP_TEST_PROFILE);
@@ -11,12 +14,6 @@ process.on('message', message => {
 });
 app.on('browser-window-created', (_event, window) => {
   window.webContents.setAudioMuted(true);
-  // Exercise native presentation without interrupting the user's desktop.
-  if (process.platform === 'win32' || process.platform === 'darwin') {
-    window.setOpacity(0);
-    window.setFocusable(false);
-    window.setSkipTaskbar(true);
-  }
   const record = { id: window.id, url: '', loads: 0, shows: [], closed: false };
   globalThis.startupWindows.push(record);
   window.webContents.on('did-finish-load', () => {

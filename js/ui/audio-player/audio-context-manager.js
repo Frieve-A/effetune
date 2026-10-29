@@ -96,8 +96,11 @@ export class AudioContextManager {
       timeupdate: null,
       error: null,
       loadedmetadata: null,
-      ratechange: null
+      ratechange: null,
+      waiting: null,
+      playing: null
     };
+    this.waitingAudioElement = null;
     
     // Store original source node for restoration
     const canonicalInputSource = audioManager.ioManager?.inputSourceNode || audioManager.sourceNode;
@@ -113,6 +116,7 @@ export class AudioContextManager {
     this.scheduledBufferTransition = null;
     this.bufferStartTime = 0;
     this.bufferDuration = 0;
+    this.finiteStreamEndFrame = null;
     this.sourceGenerationSequence = 0;
     this.partialDecodeFallbackAuthorities = new WeakMap();
     this.partialDecodeBufferReservations = new WeakMap();
@@ -992,11 +996,13 @@ export class AudioContextManager {
       state.isTransitioning !== true &&
       state.isPlaying === true &&
       state.isPaused !== true &&
-      state.isStopped !== true;
+      state.isStopped !== true &&
+      this.waitingAudioElement !== this.audioPlayer.audioElement;
   }
 
   armRegionBoundaryTimer() {
     this.clearRegionBoundaryTimer();
+    this.announceFiniteStreamEnd();
     const activeRegion = this.activeRegion;
     const audioElement = this.audioPlayer.audioElement;
     const endTime = getRegionEndTime(activeRegion?.region);
@@ -1058,7 +1064,6 @@ export class AudioContextManager {
         }) === true) {
       const nextSourceGeneration = ++this.sourceGenerationSequence;
       this.activeSourceGeneration = nextSourceGeneration;
-      this.notifyStreamBoundary();
       this.activeRegion = {
         region: nextRegion,
         track: nextTrack,
@@ -1239,7 +1244,9 @@ export class AudioContextManager {
       ['timeupdate', this.eventHandlers.timeupdate],
       ['error', this.eventHandlers.error],
       ['loadedmetadata', this.eventHandlers.loadedmetadata],
-      ['ratechange', this.eventHandlers.ratechange]
+      ['ratechange', this.eventHandlers.ratechange],
+      ['waiting', this.eventHandlers.waiting],
+      ['playing', this.eventHandlers.playing]
     ];
 
     handlers.forEach(([eventName, handler]) => {
@@ -1257,8 +1264,11 @@ export class AudioContextManager {
       timeupdate: null,
       error: null,
       loadedmetadata: null,
-      ratechange: null
+      ratechange: null,
+      waiting: null,
+      playing: null
     };
+    if (this.waitingAudioElement === audioElement) this.waitingAudioElement = null;
   }
 
   detachAudioElement(audioElement, { clearSource = false, clearPlayerReference = false } = {}) {
@@ -1794,8 +1804,8 @@ export class AudioContextManager {
       this.loadMetadata(playableTrack, null, this.getCurrentState()?.currentTrackIndex);
       if (this.activeRegion) {
         this.prepareRegionTransportPlan(this.activeRegion);
-        this.armRegionBoundaryTimer();
       }
+      this.armRegionBoundaryTimer();
       return true;
     } finally {
       if (preflight && !candidate?.committed) {
@@ -2396,11 +2406,27 @@ export class AudioContextManager {
       this.updateState({
         currentTrackDuration: audioElement.duration || 0
       }, 'Metadata loaded');
+      this.armRegionBoundaryTimer();
       this.updateTrackNameFromMetadata();
     };
 
     this.eventHandlers.ratechange = (event) => {
       if (!isCurrentAudioElementEvent(event)) return;
+      this.armRegionBoundaryTimer();
+    };
+
+    this.eventHandlers.waiting = (event) => {
+      if (!isCurrentAudioElementEvent(event)) return;
+      this.waitingAudioElement = audioElement;
+      if (this.getCurrentState()?.playbackMode !== 'audioElement') return;
+      this.clearRegionBoundaryTimer();
+      this.cancelFiniteStreamEnd();
+    };
+
+    this.eventHandlers.playing = (event) => {
+      if (!isCurrentAudioElementEvent(event)) return;
+      this.waitingAudioElement = null;
+      if (this.pendingMediaActivation?.element === audioElement) return;
       this.armRegionBoundaryTimer();
     };
     
@@ -2409,6 +2435,8 @@ export class AudioContextManager {
     audioElement.addEventListener('error', this.eventHandlers.error);
     audioElement.addEventListener('loadedmetadata', this.eventHandlers.loadedmetadata);
     audioElement.addEventListener('ratechange', this.eventHandlers.ratechange);
+    audioElement.addEventListener('waiting', this.eventHandlers.waiting);
+    audioElement.addEventListener('playing', this.eventHandlers.playing);
   }
   
   /**
@@ -2835,6 +2863,7 @@ export class AudioContextManager {
    */
   async pause() {
     this.cancelVideoNaturalEnd();
+    this.cancelFiniteStreamEnd();
     this.pauseRequestToken++;
     if (this.pendingPause) return this.pendingPause;
     this.rollingSeekRequestToken++;
@@ -2967,6 +2996,7 @@ export class AudioContextManager {
    */
   async stop({ preserveVideoTail = false } = {}) {
     if (!preserveVideoTail) this.cancelVideoNaturalEnd();
+    this.cancelFiniteStreamEnd();
     const graphRebuildRequest = this.getCurrentGraphRebuildRequest();
     this.invalidatePendingPlaybackOperationsForStop();
     if (graphRebuildRequest) {
@@ -3093,6 +3123,7 @@ export class AudioContextManager {
       return;
     }
 
+    this.cancelFiniteStreamEnd();
     await this.dispatchPlaybackBackend('seek', time);
   }
 
@@ -3328,6 +3359,7 @@ export class AudioContextManager {
   }
 
   rearmPreparedAutomaticMove() {
+    this.announceFiniteStreamEnd();
     const prepared = this.nextBuffer;
     const playbackManager = this.audioPlayer.playbackManager;
     const state = this.getCurrentState();
@@ -3359,6 +3391,7 @@ export class AudioContextManager {
    * Stop current playback (internal method)
    */
   async stopCurrentPlayback() {
+    this.cancelFiniteStreamEnd();
     this.cancelScheduledBufferTransition();
     if (this.pendingBufferSource) {
       this.releasePipelineSource(this.pendingBufferSource, true);
@@ -3378,6 +3411,7 @@ export class AudioContextManager {
    */
   setupBufferMonitoring() {
     this.clearBufferMonitoring();
+    this.announceFiniteStreamEnd();
     
     this.bufferMonitoringInterval = setInterval(() => {
       const state = this.getCurrentState();
@@ -3737,6 +3771,8 @@ export class AudioContextManager {
           : {}
       ),
       ...(resolved?.file ? { file: resolved.file } : {}),
+      ...(resolved?.uri ? { uri: resolved.uri } : {}),
+      ...(resolved?.headers ? { headers: resolved.headers } : {}),
       ...(resolved?.path ? { path: resolved.path } : {}),
       ...(resolved?.mediaSource !== undefined ? { mediaSource: resolved.mediaSource } : {}),
       ...(typeof resolved?.readBytes === 'function' ? { readBytes: resolved.readBytes } : {}),
@@ -4720,6 +4756,7 @@ export class AudioContextManager {
       this.releasePipelineSource(previousSource);
     }
     this.loadMetadata(scheduled.track, null, scheduled.plan.nextOrdinal);
+    this.announceFiniteStreamEnd();
     this.prepareNextTrackBufferWithRepeatMode();
     return true;
   }
@@ -4743,8 +4780,8 @@ export class AudioContextManager {
     return true;
   }
 
-  // Tells the pipeline when the next track starts, in context seconds (now when omitted, null to cancel a
-  // reserved start), so its analyses restart with the track.
+  // Start reservations and finite ends are independent: cancelling the next track
+  // must not cancel the current track's final analyzer delivery.
   notifyStreamBoundary(time = this.audioPlayer.audioContext?.currentTime) {
     const sampleRate = this.audioPlayer.audioContext?.sampleRate;
     if (!sampleRate) return;
@@ -4752,6 +4789,44 @@ export class AudioContextManager {
       type: 'streamBoundary',
       frame: time === null ? null : Math.round(time * sampleRate)
     });
+  }
+
+  announceFiniteStreamEnd() {
+    const context = this.audioPlayer.audioContext;
+    const state = this.getCurrentState();
+    if (!context?.sampleRate || !state?.isPlaying || state.isPaused || state.isStopped) return;
+    let endTime;
+    if (state.playbackMode === 'bufferSource' && this.currentBufferSource) {
+      endTime = this.bufferStartTime + this.bufferDuration;
+    } else if (state.playbackMode === 'rollingPcm') {
+      const transport = this.rollingTransport;
+      if (!transport?.playing || !transport.metadata) return;
+      endTime = transport.anchorContextTime +
+        (transport.metadata.totalFrames - transport.anchorFrame) / transport.metadata.sampleRate;
+    } else if (state.playbackMode === 'audioElement') {
+      const element = this.audioPlayer.audioElement;
+      if (!element || element === this.waitingAudioElement || element.paused || !(element.playbackRate > 0)) return;
+      const mediaEnd = getRegionEndTime(this.activeRegion?.region) ?? element.duration;
+      const remaining = mediaEnd - element.currentTime;
+      // HTML media exposes a media-time anchor, not its physical source frame.
+      // Keep an announced endpoint when an ended/timer callback arrives late.
+      if (!(remaining > 0)) return;
+      endTime = context.currentTime + remaining / element.playbackRate;
+    }
+    if (!Number.isFinite(endTime)) return;
+    const endFrame = Math.round(endTime * context.sampleRate);
+    if (endFrame === this.finiteStreamEndFrame) return;
+    this.finiteStreamEndFrame = endFrame;
+    this.audioManager.broadcastToActiveWorklets({ type: 'streamBoundary', endFrame });
+  }
+
+  cancelFiniteStreamEnd() {
+    const context = this.audioPlayer.audioContext;
+    if (this.finiteStreamEndFrame === null || !context?.sampleRate) return;
+    // A due source end may still be travelling through analyzer input delay.
+    if (this.finiteStreamEndFrame <= Math.round(context.currentTime * context.sampleRate)) return;
+    this.finiteStreamEndFrame = null;
+    this.audioManager.broadcastToActiveWorklets({ type: 'streamBoundary', endFrame: null });
   }
   
   /**
@@ -5356,6 +5431,7 @@ export class AudioContextManager {
 
   teardownCommittedBackendForTransition(candidate) {
     this.audioPlayer.airPlayPlayback?.releaseForUrl();
+    this.cancelFiniteStreamEnd();
     this.cancelScheduledBufferTransition();
     this.clearBufferMonitoring();
     this.clearRegionBoundaryTimer();
@@ -5543,6 +5619,7 @@ export class AudioContextManager {
       this.armRegionBoundaryTimer();
     } else {
       this.prepareNextTrackBufferWithRepeatMode();
+      if (startPlayback) this.armRegionBoundaryTimer();
     }
     this.audioPlayer.ui?.updatePlayerUIState?.();
     return true;
@@ -5759,26 +5836,7 @@ export class AudioContextManager {
       }, 'Disconnected and reset');
       
       if (this.audioPlayer.audioElement) {
-        if (this.eventHandlers.ended) {
-          this.audioPlayer.audioElement.removeEventListener('ended', this.eventHandlers.ended);
-          this.eventHandlers.ended = null;
-        }
-        if (this.eventHandlers.timeupdate) {
-          this.audioPlayer.audioElement.removeEventListener('timeupdate', this.eventHandlers.timeupdate);
-          this.eventHandlers.timeupdate = null;
-        }
-        if (this.eventHandlers.error) {
-          this.audioPlayer.audioElement.removeEventListener('error', this.eventHandlers.error);
-          this.eventHandlers.error = null;
-        }
-        if (this.eventHandlers.loadedmetadata) {
-          this.audioPlayer.audioElement.removeEventListener('loadedmetadata', this.eventHandlers.loadedmetadata);
-          this.eventHandlers.loadedmetadata = null;
-        }
-        if (this.eventHandlers.ratechange) {
-          this.audioPlayer.audioElement.removeEventListener('ratechange', this.eventHandlers.ratechange);
-          this.eventHandlers.ratechange = null;
-        }
+        this.removeAudioElementEventHandlers(this.audioPlayer.audioElement);
         
         const silentDataUrl = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
         this.setAudioElementSource(this.audioPlayer.audioElement, silentDataUrl);

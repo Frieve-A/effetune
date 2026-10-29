@@ -3,6 +3,8 @@
  */
 
 import FFT from './fft.js';
+import { isAndroidHost, getAndroidBridge } from '../../../js/android/bridge.js';
+import { startAndroidNoise } from '../../../js/android/measurement.js';
 import { createEssSignal } from '../../../js/utils/measurement-dsp/ess.js';
 import { resolveSweepBand } from '../measurement-model.js';
 import {
@@ -37,6 +39,60 @@ function createBandMask(length, sampleRate, minFreq, maxFreq) {
         mask[length - k] = weight;
     }
     return mask;
+}
+
+function createWhiteNoiseBuffer(audioContext, channel, minFreq, maxFreq, outputBands, outputChannels) {
+    // Use a power-of-two buffer length (~2 seconds) so we can FFT-band-limit in place.
+    // AudioBufferSourceNode loops any length seamlessly; FFT treats the buffer as
+    // periodic, so the band-limited result is continuous across loop boundaries.
+    const sampleRate = audioContext.sampleRate;
+    const separateBands = channel === 'all' && Array.isArray(outputBands);
+    const bufferChannels = separateBands ? outputChannels : 1;
+    const bufferSize = 1 << Math.ceil(Math.log2(Math.max(2 * sampleRate, 2)));
+    const noiseBuffer = audioContext.createBuffer(
+        bufferChannels, bufferSize, sampleRate
+    );
+
+    // Determine the band-limit range. Apply Sinc-equivalent brick-wall
+    // band-limiting only when the user actually requested a narrower band.
+    const nyquist = sampleRate / 2;
+    const nyquistLimit = Math.max(2, Math.floor(nyquist) - 1);
+    const fLo = Math.max(1, Math.min(minFreq ?? 1, nyquistLimit - 1));
+    const fHi = Math.max(fLo + 1, Math.min(maxFreq ?? nyquistLimit, nyquistLimit));
+    const needsBandlimit = fLo > 1 || fHi < nyquistLimit;
+
+    const noise = new Float32Array(bufferSize);
+    for (let i = 0; i < bufferSize; i++) noise[i] = Math.random() * 2 - 1;
+    if (needsBandlimit || separateBands) {
+        const fft = new FFT(bufferSize);
+        const real = new Float32Array(bufferSize);
+        const imag = new Float32Array(bufferSize);
+        const filteredReal = new Float32Array(bufferSize);
+        const filteredImag = new Float32Array(bufferSize);
+        const tdImag = new Float32Array(bufferSize);
+        fft.transform(real, imag, noise, tdImag);
+        let peak = 0;
+        for (let ch = 0; ch < bufferChannels; ch++) {
+            const band = separateBands ? outputBands[ch] : { minFreq: fLo, maxFreq: fHi };
+            const mask = createBandMask(bufferSize, sampleRate, band.minFreq, band.maxFreq);
+            for (let k = 0; k < bufferSize; k++) {
+                filteredReal[k] = real[k] * mask[k];
+                filteredImag[k] = imag[k] * mask[k];
+            }
+            const data = noiseBuffer.getChannelData(ch);
+            fft.inverseTransform(data, tdImag, filteredReal, filteredImag);
+            for (const sample of data) peak = Math.max(peak, Math.abs(sample));
+        }
+        // Share one gain across outputs so their relative levels are preserved.
+        const norm = peak > 1e-9 ? 0.9 / peak : 1;
+        for (let ch = 0; ch < bufferChannels; ch++) {
+            const data = noiseBuffer.getChannelData(ch);
+            for (let i = 0; i < bufferSize; i++) data[i] *= norm;
+        }
+    } else {
+        noiseBuffer.getChannelData(0).set(noise);
+    }
+    return noiseBuffer;
 }
 
 function nextWhiteNoiseOperationToken(audioState) {
@@ -146,6 +202,26 @@ async function prepareSerializedWhiteNoiseOutputRoute(
  */
 async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'all', minFreq = 1, maxFreq = null, outputBands = null, outputChannelCount) {
     validateSignalOutputChannel(channel);
+    if (isAndroidHost()) {
+        if (!['all', 'both', 'left', 'right', '0', '1'].includes(String(channel)) || outputChannelCount > 2) {
+            throw new MeasurementOutputError('Choose an available output channel.');
+        }
+        const token = nextWhiteNoiseOperationToken(this);
+        this.isWhiteNoisePending = true;
+        const buffer = createWhiteNoiseBuffer(this.audioContext, channel, minFreq, maxFreq, outputBands, 2);
+        try {
+            const pending = (this.whiteNoiseRouteOperation || Promise.resolve()).catch(() => {}).then(() =>
+                startAndroidNoise(buffer, { levelDb: level, outputDeviceId, channel,
+                    isCurrent: () => token === this.whiteNoiseOperationToken }));
+            this.whiteNoiseRouteOperation = pending;
+            await pending;
+            this.isWhiteNoiseActive = token === this.whiteNoiseOperationToken;
+            return this.isWhiteNoiseActive;
+        } catch (error) {
+            if (error.name === 'AbortError') return false;
+            throw error;
+        } finally { this.isWhiteNoisePending = false; }
+    }
     const operationToken = nextWhiteNoiseOperationToken(this);
     this.whiteNoiseDesiredActive = true;
     this.isWhiteNoisePending = true;
@@ -190,59 +266,11 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
             return false;
         }
         const outputChannels = outputRoute.outputChannels;
+        const separateBands = channel === 'all' && Array.isArray(outputBands);
         console.log(`Using ${outputChannels}-channel ${outputRoute.mode} measurement output`);
 
-        // Use a power-of-two buffer length (~2 seconds) so we can FFT-band-limit in place.
-        // AudioBufferSourceNode loops any length seamlessly; FFT treats the buffer as
-        // periodic, so the band-limited result is continuous across loop boundaries.
-        const sampleRate = this.audioContext.sampleRate;
-        const separateBands = channel === 'all' && Array.isArray(outputBands);
-        const bufferChannels = separateBands ? outputChannels : 1;
-        const bufferSize = 1 << Math.ceil(Math.log2(Math.max(2 * sampleRate, 2)));
-        const noiseBuffer = this.audioContext.createBuffer(
-            bufferChannels, bufferSize, sampleRate
-        );
+        const noiseBuffer = createWhiteNoiseBuffer(this.audioContext, channel, minFreq, maxFreq, outputBands, outputChannels);
 
-        // Determine the band-limit range. Apply Sinc-equivalent brick-wall
-        // band-limiting only when the user actually requested a narrower band.
-        const nyquist = sampleRate / 2;
-        const nyquistLimit = Math.max(2, Math.floor(nyquist) - 1);
-        const fLo = Math.max(1, Math.min(minFreq ?? 1, nyquistLimit - 1));
-        const fHi = Math.max(fLo + 1, Math.min(maxFreq ?? nyquistLimit, nyquistLimit));
-        const needsBandlimit = fLo > 1 || fHi < nyquistLimit;
-
-        const noise = new Float32Array(bufferSize);
-        for (let i = 0; i < bufferSize; i++) noise[i] = Math.random() * 2 - 1;
-        if (needsBandlimit || separateBands) {
-            const fft = new FFT(bufferSize);
-            const real = new Float32Array(bufferSize);
-            const imag = new Float32Array(bufferSize);
-            const filteredReal = new Float32Array(bufferSize);
-            const filteredImag = new Float32Array(bufferSize);
-            const tdImag = new Float32Array(bufferSize);
-            fft.transform(real, imag, noise, tdImag);
-            let peak = 0;
-            for (let ch = 0; ch < bufferChannels; ch++) {
-                const band = separateBands ? outputBands[ch] : { minFreq: fLo, maxFreq: fHi };
-                const mask = createBandMask(bufferSize, sampleRate, band.minFreq, band.maxFreq);
-                for (let k = 0; k < bufferSize; k++) {
-                    filteredReal[k] = real[k] * mask[k];
-                    filteredImag[k] = imag[k] * mask[k];
-                }
-                const data = noiseBuffer.getChannelData(ch);
-                fft.inverseTransform(data, tdImag, filteredReal, filteredImag);
-                for (const sample of data) peak = Math.max(peak, Math.abs(sample));
-            }
-            // Share one gain across outputs so their relative levels are preserved.
-            const norm = peak > 1e-9 ? 0.9 / peak : 1;
-            for (let ch = 0; ch < bufferChannels; ch++) {
-                const data = noiseBuffer.getChannelData(ch);
-                for (let i = 0; i < bufferSize; i++) data[i] *= norm;
-            }
-        } else {
-            noiseBuffer.getChannelData(0).set(noise);
-        }
-        
         // Create audio source from buffer
         resources.node = this.audioContext.createBufferSource();
         resources.node.buffer = noiseBuffer;
@@ -313,6 +341,13 @@ async function startWhiteNoise(level = -12, outputDeviceId = null, channel = 'al
  * Stop white noise playback
  */
 function stopWhiteNoise() {
+    if (isAndroidHost()) {
+        nextWhiteNoiseOperationToken(this);
+        this.isWhiteNoisePending = false;
+        this.isWhiteNoiseActive = false;
+        void getAndroidBridge().request('measurement.noise.stop').catch(error => console.warn('Android test signal stop failed:', error));
+        return;
+    }
     try {
         nextWhiteNoiseOperationToken(this);
         this.whiteNoiseDesiredActive = false;
@@ -341,6 +376,10 @@ async function waitForWhiteNoiseRouteIdle() {
  * @returns {boolean} Whether the level was successfully set
  */
 function setNoiseLevel(levelDb) {
+    if (isAndroidHost()) {
+        void getAndroidBridge().request('measurement.noise.level', { levelDb }).catch(error => console.warn('Android test signal level failed:', error));
+        return true;
+    }
     try {
         if (!this.whiteNoiseGain) {
             return false;

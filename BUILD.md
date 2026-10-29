@@ -8,6 +8,35 @@ lang: en
 
 This document provides instructions for setting up the development environment, validating the web app, and building the EffeTune desktop application using Electron.
 
+## Android builds
+
+The Android application uses the shared Web UI and the same C++ DSP core. Its Service owns realtime audio; foreground file conversion uses the existing offline Web/WASM processors. Install JDK 17, Android SDK platform 37, Build Tools 36.0.0, NDK 28.2.13676358, and CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME` to those installations (or set `sdk.dir` in the untracked `android/local.properties`). The Gradle wrapper pins Gradle 9.6; the project pins Android Gradle Plugin 9.4.0, Oboe 1.10.0, and AndroidX WebKit 1.15.0.
+
+Android 10 (API 29) is the minimum, and API 37 is the target. Use an updated Android System WebView with `WEB_MESSAGE_LISTENER` support; an old system-image WebView is not sufficient even when native audio tests pass. The supported APK ABIs are `arm64-v8a` and `x86_64`.
+
+From the repository root:
+
+```sh
+node scripts/build-android-assets.mjs
+cd android
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest
+./gradlew -Pcandidate=true :app:assembleRelease :app:bundleRelease
+cd ..
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs
+```
+
+On Windows use `gradlew.bat`. Build the Web assets again after changing shared UI, plugin, measurement, or documentation inputs. Assets are generated under `out/android/assets/web`; the bundled page opens at `/assets/web/effetune.html`. Android does not register the PWA service worker. WebView storage belongs to the application's bundled HTTPS origin and is separate from the public PWA's storage.
+
+Set `ANDROID_SERIAL` to the intended device (PowerShell: `$env:ANDROID_SERIAL='emulator-5554'`). The device runner retains installed packages and detects JUnit failures even when adb exits successfully; use `--class` for focused classes and `--arg upgradePhase=seed` or `--arg upgradePhase=verify` for the upgrade test. AGP's connected-test task removes test installations, so use the retained runner when checking MCP connections or upgrade storage continuity.
+
+Debug packages use the `.development` application ID suffix. Candidate Release APK/AAB packages use `.candidate` and the development signing key; they are for validation and do not establish a production signing identity. For a normally signed Release, set `EFFETUNE_ANDROID_KEYSTORE`, `EFFETUNE_ANDROID_STORE_PASSWORD`, `EFFETUNE_ANDROID_KEY_ALIAS`, and `EFFETUNE_ANDROID_KEY_PASSWORD`; without a keystore, an ordinary Release is unsigned. Keep credentials outside the repository. Inspect the resulting APK/AAB, validate 16 KB native-library alignment and signatures, and test installation and data retention when updating a package signed with the same key. Run instrumentation with the minimum and target Android versions and current WebViews. Emulator checks cover software behavior; they do not establish device-specific microphone calibration, USB/Bluetooth routing, latency, or OEM background-power behavior.
+
+Focused host contract tests are in `tests/esm/android-host.test.mjs`. Existing file-export, library, MIDI, measurement, and remote protocol tests also apply to the corresponding shared paths. Native checks use `tools/android/verify-native.mjs` and `android/app/src/main/cpp/native_engine_test.cpp`; instrumentation lives under `android/app/src/androidTest`. Keep Android build outputs and local SDK/toolchain installations untracked. Bundled third-party dependency notices must accompany distributed packages.
+
+For the API 37 local-network permission check, run `node tools/android/test-lan.mjs` with the same `ANDROID_HOME` and `ANDROID_SERIAL`. This test owns a temporary gateway peer, resets only the development app's local-network permission, and verifies denial, approval, and an authenticated request through the emulator's non-loopback host address. It closes its peer when finished.
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
@@ -91,12 +120,29 @@ results, failure recovery, and resource cleanup instead of testing unreachable
 defensive paths or duplicating existing integration assertions to raise a number.
 
 Keep test subprocesses in the background on Windows with `windowsHide: true`.
-Browser tests use headless Chromium. The desktop parameter-inspection test keeps
-its real windows transparent, unfocusable, and off the taskbar on Windows/macOS;
-the Windows startup-geometry test also avoids taking focus. Desktop browser tests
-that verify native keyboard focus, window activation, or screen capture still
-need visible windows. Do not hide those windows if doing so changes the behavior
-being tested.
+Browser tests use headless Chromium by default. Electron fixtures keep windows
+hidden when native presentation is not under test. Fixtures that exercise native
+show, maximize, restore, or minimize use `tests/helpers/electron-test-display.cjs`
+to keep those operations real while making windows transparent, unfocusable, and
+absent from the taskbar on Windows/macOS. Do not explicitly focus a window when
+the test only needs a visibility change.
+
+Desktop Browser tests need visible windows for native input and screen capture.
+Their fixture installs the same helper with `visible: true`: it positions windows
+on a non-primary monitor before presentation, including newly opened popups, and
+preserves logical dimensions across Windows monitors with different DPI. Capture
+tests remain unfocusable on Windows/macOS unless they explicitly request
+`nativeInput: true` to exercise native key or mouse events. With one monitor,
+visible tests use that monitor. On Linux, native presentation tests
+also use the secondary monitor when available; use a virtual display in CI.
+
+Use `browserTestLaunchOptions` from `tests/helpers/browser-test-display.mjs` for
+Chromium runners with a headed mode. It keeps headless runs independent of the
+Electron runtime and queries monitors without creating a window when a display
+is needed. The extension audio smoke requires headed Chromium for tab audio;
+it and explicitly requested headed Web tests open on the non-primary monitor
+when available. Keep native focus and capture tests visible rather than changing
+the behavior they verify.
 
 Desktop startup loads `effetune.html` once while the splash is visible. The main
 window is presented when the renderer finishes its initial pipeline and view
@@ -295,6 +341,24 @@ The RD6 decoder derives its state topology and transition constants during
 `rd6_decoder.provenance.json` records the decoder source and Python reference
 hashes and the derivation settings.
 
+Rhythm Analyzer's drum display uses `drum_weights.h`, a frozen EMA CRNN with
+three causal convolution layers and two unidirectional GRU layers. The 566,669
+parameters are stored as binary16 (1,133,338 bytes) and expanded to float32 during
+prepare; frontend features and recurrent state remain float32. `drum_calibration.h`
+holds the fixed five-class logit thresholds, while `drum_weights.provenance.json`
+records the checkpoint and shipped-artifact digests. The frontend uses 44.1 kHz,
+a 2048-sample periodic Hann window, a 441-sample hop and 128 HTK mel bands.
+A causal broadband AGC scales mel power before log compression using a
+bias-corrected EMA of total mel power; its state clears at stream start and reset.
+`tools/rhythm-analyzer/export.py --drums` exports the weights and the deterministic
+10-second reference fixture from explicit offline inputs, including an optional
+`--thresholds` JSON file with `thresholds` (five-class logit thresholds) and
+`selection` (selection information copied unchanged to provenance
+`threshold_selection`). Normal builds use only
+the committed artifacts. Native and WASM checks compare event classes and frames
+exactly; reference-versus-product logit differences are reported separately.
+Byte-identical fixture reproduction requires running the export with the default BLAS thread settings; limiting `*_NUM_THREADS` to 1 changes the feature fixture bit patterns.
+
 Each shipped model and generated header has adjacent provenance describing its
 artifact digest, dataset-level training information or derived-constant method,
 and numerical or runtime contract. Update that provenance with the artifact;
@@ -383,6 +447,13 @@ Open `http://127.0.0.1:8000/effetune.html`. This mode serves the working tree di
 with development cache suppression and uses the existing DSP artifacts. Ruby and
 Jekyll are not required. Documentation pages are not rendered in this mode.
 Add `--port 8080` to use another port. Stop the server with Ctrl+C.
+
+Network features can be tested from either development mode using an HTTP origin on
+`127.0.0.1` or `localhost`, including a custom port. The desktop app hosting the network
+connection must also include the development-origin support; restart it with the updated
+code before connecting from the web app. Its PWA API and effects WebSocket accept these
+local origins while still requiring the connection token and validating the destination
+Host. LAN-address origins and other websites are not allowed by this development exception.
 
 The standalone measurement helper, `python features/measurement/server.py`, listens only on
 `127.0.0.1:8000` and serves the measurement page and public app assets from this checkout,
@@ -837,10 +908,20 @@ npm run verify:openhome-linux-provenance -- --require-source
 This downloads the exact Debian source package set referenced by the installed
 libnl binaries, verifies the `.dsc` SHA-256 list and `dpkg-source` extraction,
 and fails the release if the upstream source or distribution patch/build
-archive is missing. The Linux release artifact contains both
-`EffeTune-<version>-Linux-AppImage.zip` and
-`EffeTune-<version>-OpenHome-Linux-Source.zip`; the latter contains the source
-files and the same provenance manifest shipped inside the AppImage.
+archive is missing. The unified `EffeTune-<version>-ThirdParty-Source.zip`
+contains these files and the same provenance manifest shipped inside the
+AppImage under `openhome/linux-x64/`. It also contains AirPlay corresponding
+sources for Windows x64, Linux x64, and macOS x64/arm64 under `airplay/`.
+
+Each platform build verifies and uploads its sources with
+`node scripts/collect-desktop-sources.mjs`. The desktop release `sources` job
+requires all platform jobs to succeed, downloads their source artifacts,
+checks all four AirPlay slices and the OpenHome source hashes, and produces
+one public ZIP. Publish that ZIP alongside the application downloads in the
+same GitHub Release, with a clearly labeled corresponding-source link in the
+release description. The platform source artifacts are intermediate inputs;
+only `third-party-source-release-artifacts` supplies the public source ZIP.
+Do not publish the application downloads without the matching source ZIP.
 
 Use `npm run pack:win` for an unpacked Windows package and smoke check, or
 `npm run build:linux` for the Linux AppImage. The macOS commands above produce
@@ -879,9 +960,11 @@ npm run build:airplay-receiver
 ```
 
 The resource directory is `out/native/airplay-receiver/<platform>-<arch>/`.
-Package that directory intact as `resources/airplay/`, including the receiver,
-its runtime libraries and audio plugins, `runtime-manifest.json`,
-`THIRD_PARTY_NOTICES.txt`, licenses, and corresponding source/build material.
+Package that directory as `resources/airplay/`, excluding `source/` but keeping
+the receiver, runtime libraries and audio plugins, `runtime-manifest.json`,
+`THIRD_PARTY_NOTICES.txt`, and licenses. The build output retains `source/`
+for hash verification and the unified third-party source release archive.
+The installed notice directs users to that archive in the matching release.
 Do not replace it with an executable found on the developer's PATH. Build the
 matching slice for Windows x64, macOS x64/arm64, or Linux x64; do not reuse a
 different architecture's resources.

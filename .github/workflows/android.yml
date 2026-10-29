@@ -1,0 +1,121 @@
+name: Android
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: &android-paths
+      - '.github/workflows/android.yml'
+      - 'android/**'
+      - 'tools/android/**'
+      - 'tools/dsp-parity/**'
+      - 'tools/test-android-remote.mjs'
+      - 'mcp/**'
+      - 'scripts/**'
+      - 'dsp/**'
+      - 'plugins/**'
+      - 'js/**'
+      - 'css/**'
+      - 'features/measurement/**'
+      - 'docs/**'
+      - 'electron/remote-music-dispatcher.cjs'
+      - 'electron/network-music-*.cjs'
+      - 'effetune.html'
+      - 'package*.json'
+      - 'LICENSE'
+  push:
+    branches: [main]
+    paths: *android-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - name: Install verified toolchain
+        run: |
+          sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.31.6'
+          sudo chmod a+rw /dev/kvm
+          npm ci --ignore-scripts
+          node scripts/build-android-assets.mjs
+          chmod +x android/gradlew
+      - name: Build both ABIs and candidate packages
+        run: |
+          android/gradlew -p android :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease -Pcandidate=true --no-daemon
+          for variant in Debug RelWithDebInfo; do
+            "$ANDROID_HOME/cmake/3.31.6/bin/cmake" --build "$(find "android/app/.cxx/$variant" -type d -name x86_64 -print -quit)" --target android_runtime_test android_dsp_parity --parallel 4
+          done
+      - name: Inspect candidate package
+        run: |
+          curl --fail --location --output out/android/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+          echo 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  out/android/bundletool.jar' | sha256sum --check
+          python3 tools/android/verify-package.py android/app/build/outputs/apk/release/app-release.apk --bundle android/app/build/outputs/bundle/release/app-release.aab --bundletool out/android/bundletool.jar
+      - name: Latest Android and Release native acceptance
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: '37.0'
+          arch: x86_64
+          target: default
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb pull /product/app/webview/webview.apk out/android/current-webview.apk
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell pm grant com.frieve.effetune.development android.permission.RECORD_AUDIO
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs
+            ANDROID_SERIAL=emulator-5554 node tools/test-android-remote.mjs --instrument
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-lan.mjs
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --class com.frieve.effetune.AndroidUpgradeTest --arg upgradePhase=seed
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --class com.frieve.effetune.AndroidUpgradeTest --arg upgradePhase=verify
+            ANDROID_SERIAL=emulator-5554 ANDROID_NATIVE_DIR="$(dirname "$(find android/app/build/intermediates/cxx/RelWithDebInfo -path '*/obj/x86_64/android_runtime_test' -print -quit)")" node --expose-gc tools/android/verify-native.mjs --all
+            java -jar out/android/bundletool.jar build-apks --bundle=android/app/build/outputs/bundle/release/app-release.aab --output=out/android/candidate.apks --ks="$HOME/.android/debug.keystore" --ks-key-alias=androiddebugkey --ks-pass=pass:android --key-pass=pass:android --overwrite
+            java -jar out/android/bundletool.jar install-apks --apks=out/android/candidate.apks --device-id=emulator-5554
+      - name: Minimum Android with supported WebView and Debug native acceptance
+        if: ${{ !cancelled() }}
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: '29'
+          arch: x86_64
+          target: default
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r out/android/current-webview.apk
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell pm grant com.frieve.effetune.development android.permission.RECORD_AUDIO
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs
+            ANDROID_SERIAL=emulator-5554 node tools/test-android-remote.mjs --instrument
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --class com.frieve.effetune.AndroidUpgradeTest --arg upgradePhase=seed
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            ANDROID_SERIAL=emulator-5554 node tools/android/test-device.mjs --class com.frieve.effetune.AndroidUpgradeTest --arg upgradePhase=verify
+            ANDROID_SERIAL=emulator-5554 ANDROID_NATIVE_DIR="$(dirname "$(find android/app/build/intermediates/cxx/Debug -path '*/obj/x86_64/android_runtime_test' -print -quit)")" node --expose-gc tools/android/verify-native.mjs --all
+      - name: Retain packages and focused test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-candidate
+          path: |
+            android/app/build/outputs/apk/
+            android/app/build/outputs/bundle/
+            android/app/build/reports/tests/
+            android/app/build/outputs/androidTest-results/
+            out/android/acceptance/

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { browserTestLaunchOptions } from '../../tests/helpers/browser-test-display.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const host = '127.0.0.1';
@@ -81,10 +82,10 @@ async function main(argv = process.argv.slice(2)) {
   try {
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('Reference server address is unavailable');
-    browser = await chromium.launch({
+    browser = await chromium.launch(await browserTestLaunchOptions({
       headless: process.env.LIBRARY_SCALE_HEADED !== '1',
       args: ['--autoplay-policy=no-user-gesture-required']
-    });
+    }));
     const page = await browser.newPage();
     page.on('console', message => process.stderr.write(`[reference-browser:${message.type()}] ${message.text()}\n`));
     page.on('pageerror', error => process.stderr.write(`${error.stack || error.message}\n`));

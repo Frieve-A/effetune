@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "Cet appareil ne fournit pas d’entrée microphone sans traitement. Le traitement automatique du son peut influencer la mesure.",
   "analysis:normalization": "Normalisation",
   "analysis:normalizationNone": "Aucune",
   "analysis:normalizationGlobal": "Pic global = 0 dB",

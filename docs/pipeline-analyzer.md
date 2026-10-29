@@ -1,6 +1,6 @@
 ---
 title: "Pipeline Analyzer - Effect Chain Frequency & Phase Response - EffeTune"
-description: "Pipeline Analyzer measures the frequency response, phase, group delay, and impulse response of the active Effect Pipeline without changing the audio you hear."
+description: "Pipeline Analyzer measures the frequency response, phase, group delay, impulse response, distortion, and decay of the active Effect Pipeline without changing the audio you hear."
 lang: en
 ---
 
@@ -27,11 +27,11 @@ Because separate speaker measurements are aligned at their detected onsets and d
 
 Open **Measurement settings** to adjust how the pipeline is measured:
 
-- **Signal:** **MLS** (default), **TSP**, or **Unit Impulse**. MLS and TSP use periodic test signals (`2^n - 1` and `2^n` samples), while **Unit Impulse** directly captures the time-domain impulse response (`2^n` samples).
+- **Signal:** **Log Sweep** (default), **MLS**, **TSP**, or **Unit Impulse**. Use **Log Sweep** to inspect harmonic distortion as well as the pipeline's response. Its sweep covers 20 Hz–20 kHz within the sample rate's limits. **MLS** and **TSP** use periodic signals; **Unit Impulse** captures the impulse response directly.
 - **Level:** Peak test-signal level (default `-12 dBFS`). Linear filters measure the same at any level, whereas compressors, saturators, and other level-dependent effects change with **Level**.
-- **Sequence Length:** Measurement window length. Increase it when measuring reverb, delay, or steep low-frequency filters with long ringing, especially when the analyzer recommends a longer length.
-- **Stabilization Periods:** Number of periods played before capture (default `12`, used by MLS and TSP) so slow-moving effects can settle.
-- **Averages:** Number of captured periods averaged together (default `2`, used by MLS and TSP) to reduce variation.
+- **Requested sweep length** (**Log Sweep**) / **Sequence Length** (other signals): The default requested length for **Log Sweep** is `131072` samples. It may use a longer sweep to separate harmonics; the actual **Sweep length** and **Total stimulus time** appear after measurement. Its response covers up to 1.5 seconds after the main peak regardless of sweep length. To inspect longer reverb tails, delays, or filter ringing, select **MLS**, **TSP**, or **Unit Impulse** and increase **Sequence Length** as needed.
+- **Stabilization Periods:** Number of periods played before capture (default `12`, used by MLS and TSP) so slow-moving effects can settle. This setting is unavailable with **Log Sweep** and **Unit Impulse**.
+- **Averages:** Number of captures averaged together (default `2`, used by **Log Sweep**, MLS, and TSP) to reduce variation.
 
 ## Reading the graphs
 
@@ -42,11 +42,13 @@ Use the **Graph** selector above the plot to switch views without remeasuring:
 - **Min Group Delay:** Group delay implied by the minimum-phase magnitude response.
 - **Excess Group Delay:** Remaining group delay after removing the minimum-phase part (the plot is limited to ±100 ms, while cursor readouts show the actual value), making pure delay and linear-phase or all-pass timing easy to spot.
 - **Impulse:** Time-domain impulse response from `-2 ms` to **Impulse Range (ms)**, normalized to its peak.
+- **Distortion:** With **Log Sweep**, shows harmonic distortion as a percentage of the fundamental across frequency. H2, H3, and THD (orders 2–3) are shown initially; H4–H10 can be added without remeasuring. Larger values mean more distortion. Select **Log Sweep** if this graph is unavailable with another signal. A silent or otherwise invalid measured output cannot provide distortion data. Saved speaker responses contribute their linear response, not any distortion from the speaker itself.
+- **Waterfall:** Shows frequency, relative level (dB), and decay time (ms). Choose **After** (default) or **Before** under **Response** to inspect the pipeline output or the selected speaker responses before processing. Each view is normalized to its own peak, so compare the decay shape rather than absolute levels. Drag to rotate the 3D plot; use the mouse wheel or pinch to zoom.
 
-Hover over the graph to read **Before** and **After** values at the cursor; hover over the **Before** legend label to temporarily hide **After**. Use **Smoothing (oct)** for the frequency, phase, and group-delay plots, and **Impulse Range (ms)** for the impulse plot.
+On the frequency, phase, group-delay, and impulse graphs, hover to read **Before** and **After** values at the cursor; hover over the **Before** legend label to temporarily hide **After**. Use **Smoothing (oct)** for the frequency, phase, and group-delay plots, and **Impulse Range (ms)** for the impulse plot.
 
 ## How the measurement works
 
-Pipeline Analyzer captures the active pipeline, its routing, and any selected speaker responses, and automatically compensates **After** for latency reported by the pipeline. If a reverb tail or filter ringing extends past **Sequence Length**, increase **Sequence Length** to avoid wraparound (MLS/TSP) or truncation (**Unit Impulse**). For nonlinear, modulated, or random effects, treat the plot as a snapshot at the current settings and **Level**.
+Pipeline Analyzer captures the active pipeline, its routing, and any selected speaker responses, and automatically compensates **After** for latency reported by the pipeline. For nonlinear, modulated, or random effects, treat the plot as a snapshot at the current settings and **Level**.
 
 [← Back to README](../README.md)

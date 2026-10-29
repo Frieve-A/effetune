@@ -112,14 +112,16 @@ function peakIndex(data, start, end) {
 
 export function analyzeEssRecording(recording, sweep, {
     repetitions = 1, playbackOffsetSamples = Math.round(sweep.sampleRate * 0.55),
-    outputTimeReference = 'unknown', levelDb = 0, overloaded = false, calibration = null
+    outputTimeReference = 'unknown', levelDb = 0, overloaded = false, calibration = null,
+    detectClipping = true
 } = {}) {
     if (!(recording instanceof Float32Array) || !recording.every(Number.isFinite) || !Number.isFinite(levelDb) ||
         !Number.isSafeInteger(playbackOffsetSamples) || playbackOffsetSamples < 0) throw new TypeError('Invalid ESS capture');
     const sampleRate = sweep.sampleRate;
     const plan = createEssCapturePlan(sweep, repetitions);
     const reasons = new Set();
-    if (overloaded || recording.some(sample => Math.abs(sample) >= 0.999)) reasons.add('clipping');
+    // Offline floating-point pipelines can exceed full scale without an ADC clipping.
+    if (overloaded || (detectClipping && recording.some(sample => Math.abs(sample) >= 0.999))) reasons.add('clipping');
     const referenceGain = 10 ** (levelDb / 20);
     if (!Number.isFinite(referenceGain) || referenceGain <= 0) throw new RangeError('Invalid ESS reference gain');
     const pre = Math.round(Math.min(0.025, sweep.sweepConstant * Math.log(4 / 3) / 3) * sampleRate);

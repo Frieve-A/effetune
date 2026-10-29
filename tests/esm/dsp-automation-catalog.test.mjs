@@ -100,13 +100,13 @@ test('production schemas expose the audited automation population', async () => 
     },
     analyzerOnly: {
       AnalogMeterPlugin: ['mode', 'integration', 'attack', 'release', 'detector', 'needleResponse', 'overshoot'],
-      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi', 'timbreEnabled'],
+      NoteSpectrogramPlugin: ['minimumMidi', 'maximumMidi', 'timbreEnabled', 'chordKeyEnabled'],
       OscilloscopePlugin: [
         'displayTime', 'triggerMode', 'triggerLevel', 'triggerEdge', 'holdoff',
         'displayLevel', 'verticalOffset'
       ],
       PitchMeterPlugin: ['referenceA4', 'minimumMidi', 'maximumMidi'],
-      RhythmAnalyzerPlugin: ['minimumBpm', 'maximumBpm', 'metronomeClick'],
+      RhythmAnalyzerPlugin: ['minimumBpm', 'maximumBpm', 'metronomeClick', 'displayMode'],
       SpectrogramPlugin: ['dBRange', 'points', 'highQualityLog'],
       SpectrumAnalyzerPlugin: ['dBRange', 'points', 'highQualityLog'],
       StereoMeterPlugin: ['windowTime']

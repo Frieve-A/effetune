@@ -90,10 +90,12 @@ export class HistoryManager {
     }
 
     get canUndo() {
+        if (this.audioManager.isAndroid) return this.audioManager.snapshot?.canUndo === true;
         return this.historyIndex > 0;
     }
 
     get canRedo() {
+        if (this.audioManager.isAndroid) return this.audioManager.snapshot?.canRedo === true;
         return this.historyIndex < this.history.length - 1;
     }
 
@@ -196,6 +198,7 @@ export class HistoryManager {
      * Undo the last operation
      */
     undo() {
+        if (this.audioManager.isAndroid) return this.audioManager.nativePipelineCommand('undo');
         this.endOperation();
         if (this.historyIndex <= 0) {
             return; // Nothing to undo
@@ -210,6 +213,7 @@ export class HistoryManager {
      * Redo the last undone operation
      */
     redo() {
+        if (this.audioManager.isAndroid) return this.audioManager.nativePipelineCommand('redo');
         this.endOperation();
         if (this.historyIndex >= this.history.length - 1) {
             return; // Nothing to redo

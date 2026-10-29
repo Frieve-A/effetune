@@ -71,7 +71,7 @@
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-res {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: calc(2 * var(--et-parameter-row-margin));
     padding: 8px;
     border-radius: 4px;
     background-color: color-mix(in srgb, var(--et-surface-13), var(--et-graph-bg-deep) 25%);
@@ -110,7 +110,7 @@
 
 .earphone-cable-sim-plugin-ui .earphone-cable-sim-row-input {
     width: 48px;
-    padding: 2px 4px;
+    padding: 4px;
     background-color: var(--et-surface-5);
     color: var(--et-surface-81);
     border: 1px solid var(--et-surface-20);

@@ -1,4 +1,5 @@
 import { LIBRARY_STYLESHEET, PIPELINE_ANALYZER_STYLESHEET } from './utils/app-stylesheets.js';
+import { getAndroidBridge } from './android/bridge.js';
 import { parseCommentedJSON } from './utils/parse-commented-json.js';
 import { normalizeThemeId, getThemePreset } from './theme-registry.mjs';
 import { PluginListManager } from './ui/plugin-list-manager.js';
@@ -772,6 +773,11 @@ export class UIManager {
                     this.pipelineAnalyzerBootstrapHandler = null;
                     this.pipelineAnalyzerUI = new PipelineAnalyzerUI({
                         onOpenChange: open => this.setPipelineAnalyzerOpen(open),
+                        onLayoutChange: () => {
+                            if (this.pipelineManager.core.columnManager.isAutomatic()) {
+                                this.pluginListManager.checkWindowWidthAndAdjust();
+                            }
+                        },
                         onConfigurationChange: (configuration, meta) =>
                             this.pipelineAnalyzerController?.setConfiguration(configuration, meta),
                         onRefreshMeasurements: () => this.pipelineAnalyzerController?.refreshMeasurements()
@@ -1012,8 +1018,9 @@ export class UIManager {
 
         const sleepModeText = this.t('ui.sleepMode');
         
-        // Get current channel count from audio context destination
+        // Show the effective DSP output width, including MediaStream output.
         const channelCount = this.debugChannelCount ??
+            this.audioManager.getOutputChannelCount?.() ??
             (this.audioManager.audioContext.destination.channelCount || 2);
         const showChannelCount = channelCount > 2;
 
@@ -1050,8 +1057,9 @@ export class UIManager {
             // Get the current sample rate from the audio context
             const currentSampleRate = this.audioManager.audioContext.sampleRate;
             
-            // Get current channel count from audio context destination
+            // Show the effective DSP output width, including MediaStream output.
             const channelCount = this.debugChannelCount ??
+                this.audioManager.getOutputChannelCount?.() ??
                 (this.audioManager.audioContext.destination.channelCount || 2);
 
             // Preserve sleep mode indicator if present
@@ -1637,6 +1645,18 @@ export class UIManager {
 
         if (this.openMusicButton) {
             this.openMusicButton.addEventListener('click', async () => {
+                if (this.audioManager.isAndroid) {
+                    try {
+                        const selected = await getAndroidBridge().request('documents.pick', { kind: 'file', mimeType: '*/*', multiple: true });
+                        const { AndroidDocumentFile } = await import('./android/library-io.js');
+                        await this.openWebPlaybackSelection((selected.files || []).map(record => new AndroidDocumentFile(record)), true);
+                    } catch (error) {
+                        if (error.name === 'AbortError') return;
+                        console.error('Android music selection failed:', error);
+                        this.setError('error.musicSelectionUnavailable', true);
+                    }
+                    return;
+                }
                 // Check if running in Electron environment
                 const isElectron = window.electronIntegration && window.electronIntegration.isElectronEnvironment();
 
@@ -2551,9 +2571,14 @@ export class UIManager {
                 apply(status);
                 return this.updateOpenHomeRendererPlayer();
             };
-            this[key] = bridge.onStatus?.(status => Promise.resolve(applyStatus(status)).catch(error => {
-                console.warn('Network playback control could not be updated:', error);
-            }));
+            this[key] = bridge.onStatus?.(async status => {
+                try {
+                    // contextBridge copies callback results; the player must stay in the renderer.
+                    await applyStatus(status);
+                } catch (error) {
+                    console.warn('Network playback control could not be updated:', error);
+                }
+            });
             const revision = statusRevision;
             try {
                 const status = await bridge.getStatus();

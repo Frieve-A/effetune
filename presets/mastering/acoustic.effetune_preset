@@ -1,0 +1,116 @@
+{
+  "pipeline": [
+    {
+      "name": "Volume",
+      "enabled": true,
+      "parameters": {
+        "vl": 0
+      }
+    },
+    {
+      "name": "Tonal Balance EQ",
+      "enabled": true,
+      "parameters": {
+        "tg": "All",
+        "am": 35,
+        "rg": 2,
+        "sm": 1,
+        "at": 10,
+        "lo": 40,
+        "hi": 16000,
+        "sp": 83,
+        "ts": -6,
+        "tc": 250,
+        "ea0": true,
+        "ta0": "pk",
+        "fa0": 100,
+        "ga0": 0,
+        "qa0": 0.7,
+        "ea1": true,
+        "ta1": "pk",
+        "fa1": 316,
+        "ga1": 0,
+        "qa1": 0.7,
+        "ea2": true,
+        "ta2": "pk",
+        "fa2": 1000,
+        "ga2": 0,
+        "qa2": 0.7,
+        "ea3": true,
+        "ta3": "pk",
+        "fa3": 3160,
+        "ga3": 0,
+        "qa3": 0.7,
+        "ea4": true,
+        "ta4": "pk",
+        "fa4": 10000,
+        "ga4": 0,
+        "qa4": 0.7
+      }
+    },
+    {
+      "name": "Multiband Compressor",
+      "enabled": true,
+      "parameters": {
+        "f1": 100,
+        "f2": 400,
+        "f3": 2000,
+        "f4": 8000,
+        "bands": [
+          {
+            "t": -24,
+            "r": 1.4,
+            "a": 52,
+            "rl": 234,
+            "k": 6,
+            "g": 1
+          },
+          {
+            "t": -27,
+            "r": 1.4,
+            "a": 40,
+            "rl": 198.00000000000003,
+            "k": 6,
+            "g": 1
+          },
+          {
+            "t": -29,
+            "r": 1.4,
+            "a": 32,
+            "rl": 180,
+            "k": 6,
+            "g": 1
+          },
+          {
+            "t": -31,
+            "r": 1.4,
+            "a": 20,
+            "rl": 144,
+            "k": 6,
+            "g": 1
+          },
+          {
+            "t": -34,
+            "r": 1.4,
+            "a": 12,
+            "rl": 125.99999999999999,
+            "k": 6,
+            "g": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "Brickwall Limiter",
+      "enabled": true,
+      "parameters": {
+        "th": 0,
+        "rl": 180,
+        "la": 5,
+        "os": 4,
+        "ig": 2,
+        "sm": -1
+      }
+    }
+  ]
+}

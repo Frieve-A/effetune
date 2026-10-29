@@ -130,7 +130,7 @@ test('Rhythm Analyzer worker warm-up leaves first audio-worklet creation short a
                         frame => { pristine ??= frame; }).ok, true);
                     assert.ok(pristine, 'the live instance emits a pristine telemetry snapshot');
                     assert.equal(pristine.frameType, 28);
-                    assert.equal(pristine.formatVersion, 4);
+                    assert.equal(pristine.formatVersion, 5);
                     assert.equal(pristine.payload.getUint32(12, true), 0, 'no decoder tick or silence reset has run');
                     assert.equal(pristine.payload.getUint32(32, true), 0, 'no shown beat reaches the live instance');
                     assert.equal(pristine.payload.getFloat32(40, true), 0, 'no warm-up confidence reaches the live instance');

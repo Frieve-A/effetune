@@ -1056,7 +1056,7 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
       if (Object.hasOwn(stored, 'browser')) current.browser = stored.browser;
       else delete current.browser;
       // Network hosts own their independently saved permissions and identities.
-      for (const key of ['networkMusicDeviceId', 'networkMusicSharing', 'upnpAvRemoteControl', 'upnpAvDeviceId', 'airPlayReceiver']) {
+      for (const key of ['networkMusicDeviceId', 'networkMusicSharing', 'networkMusicSources', 'networkMusicGateway', 'networkMusicManualDevices', 'upnpAvRemoteControl', 'upnpAvDeviceId', 'airPlayReceiver', 'remoteControlConnection']) {
         if (Object.hasOwn(stored, key)) current[key] = stored[key];
         else delete current[key];
       }
@@ -1088,7 +1088,8 @@ function registerIpcHandlers({ onConfigSaved, alacPlaybackSource } = {}) {
   ipcMain.handle('load-config', async () => {
     try {
       const cfg = config.loadConfig();
-      return { success: true, config: cfg };
+      const { remoteControlConnection: _connection, networkMusicSources: _sources, ...publicConfig } = cfg;
+      return { success: true, config: publicConfig };
     } catch (error) {
       console.error('Error loading config:', error);
       return { success: false, error: error.message };

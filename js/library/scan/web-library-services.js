@@ -1,6 +1,7 @@
 import { createRepositoryError } from '../repository/contract-errors.js';
 import { normalizeRelativePath } from '../constants.js';
 import { WebFolderHandleStore } from './web-folder-handle-store.js';
+import { isAndroidHost, getAndroidBridge } from '../../android/bridge.js';
 
 const STORAGE_PERSIST_TIMEOUT_MS = 2_000;
 
@@ -163,6 +164,11 @@ function selectionFrom(options = {}) {
 async function pickLibraryFolder(windowRef, options = {}) {
   const supplied = selectionFrom(options);
   if (supplied) return supplied;
+  if (isAndroidHost(windowRef)) {
+    const result = await runUserInteraction(options, () => getAndroidBridge().request('documents.pick', { kind: 'tree' }));
+    if (!result?.uri) return null;
+    return { handle: { kind: 'directory', androidUri: result.uri, name: result.name }, displayName: result.name };
+  }
   if (typeof windowRef?.showDirectoryPicker === 'function') {
     const handle = await pickDirectory(windowRef, options);
     return handle ? { handle, displayName: handle.name } : null;

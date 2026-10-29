@@ -81,6 +81,381 @@ function noteFrame(index = 1) {
     return { frameType: 24, formatVersion: 6, payload };
 }
 
+function chordKeyFrame(index, localKey = 7, overallKey = 5, confirmedProbability = 1) {
+    const payload = new DataView(new ArrayBuffer(32));
+    payload.setFloat32(0, 48000, true);
+    payload.setFloat32(4, index * .01, true);
+    payload.setFloat32(8, .01, true);
+    payload.setUint32(12, 1, true);
+    payload.setUint32(16, index, true);
+    [10, 0, 2, 10, 0, 2, localKey, overallKey].forEach((value, offset) => payload.setUint8(20 + offset, value));
+    payload.setFloat32(28, confirmedProbability, true);
+    return { frameType: 32, formatVersion: 1, payload };
+}
+
+test('Standalone Key and Chord items share analysis and render confirmed names with text styling', async () => {
+    const env = runtime(), subscriptions = new Map();
+    let published = [];
+    await withGlobals(env, () => {
+        const sources = new VisualizerSources({
+            telemetryHub: { subscribe(tapId, type, callback) {
+                const key = `${tapId}:${type}`;
+                subscriptions.set(key, callback);
+                return () => subscriptions.delete(key);
+            } },
+            setVisualizerSources(value) { published = value; }
+        });
+        const layout = createDefaultLayout();
+        layout.items = ['key', 'chord'].map(type => createItem(type, type));
+        sources.setLayout(layout);
+        sources.setVisible(true);
+        assert.equal(published.length, 1);
+        assert.deepEqual(published[0].params, { mn: 28, mx: 91, ck: true });
+        const tap = published[0].tapId;
+        const renderer = new VisualizerRenderer(canvas());
+        const draw = () => renderer.draw(layout, sources, {}, 1);
+        draw();
+        const labels = id => renderer.layers.get(id).canvas.context.calls
+            .filter(([method]) => method === 'fillText').map(([, text]) => text);
+        const clear = () => { for (const state of renderer.layers.values()) state.canvas.context.calls.length = 0; };
+        assert.deepEqual(labels('key'), []);
+        assert.deepEqual(labels('chord'), []);
+        const send = frame => subscriptions.get(`${published[0].tapId}:${frame.frameType}`)(frame, {});
+        send(noteFrame(1));
+        send(chordKeyFrame(1, 255, 255));
+        clear(); draw();
+        assert.deepEqual(labels('key'), [], 'The local key is unavailable during warm-up');
+        assert.deepEqual(labels('chord'), ['A#/D'], 'Key warm-up does not discard a confirmed chord');
+        clear();
+        send(noteFrame(20));
+        const frame = chordKeyFrame(20);
+        frame.payload.setUint8(20, 0); // The provisional chord must not replace the confirmed B-flat/D.
+        send(frame);
+        draw();
+        assert.deepEqual(labels('key'), ['G major']);
+        assert.deepEqual(labels('chord'), ['B♭/D']);
+        assert.deepEqual(env.counts(), [0, 0], 'Text views do not construct pipeline plugins');
+
+        const chord = layout.items[1];
+        Object.assign(chord.style, { fontFamily: 'serif', fontSize: 64, bold: true, italic: true,
+            align: 'right', outlineWidth: 2, outlineColor: '#123456' });
+        chord.palette.mode = 'gradient';
+        chord.palette.direction = 'radial';
+        sources.setLayout(layout);
+        assert.equal(published[0].tapId, tap, 'Appearance edits retain analysis');
+        clear(); draw();
+        const context = renderer.layers.get('chord').canvas.context;
+        assert.equal(context.font, 'italic bold 40px serif');
+        assert.equal(context.textAlign, 'right');
+        assert.ok(context.calls.some(([method, value]) => method === 'strokeText' && value === 'B♭/D'));
+        assert.ok(context.calls.some(([method, value]) => method === 'strokeStyle' && value === '#123456'));
+        assert.equal(renderer.layers.get('chord').display.spatialPalette, null, 'Text gradients keep decorations separate');
+
+        layout.items.push(createItem('notes', 'notes'));
+        layout.items.at(-1).params.ck = true;
+        sources.setLayout(layout);
+        assert.equal(published.length, 1, 'Notes shares matching analysis with both text items');
+        layout.items.pop();
+        sources.setLayout(layout);
+        const unknown = chordKeyFrame(21, 24, 255);
+        [23, 24, 25].forEach(offset => unknown.payload.setUint8(offset, 255));
+        send(unknown);
+        clear(); draw();
+        assert.deepEqual(labels('key'), []);
+        assert.deepEqual(labels('chord'), []);
+
+        renderer.dispose();
+        sources.dispose();
+        assert.equal(subscriptions.size, 0);
+    });
+});
+
+test('Key and Chord reject stale telemetry and clear when their channel or analysis generation changes', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        for (const type of ['key', 'chord']) {
+            const item = createItem(type, type), target = canvas();
+            const display = createAnalyzerDisplay(item, target, env.sources), source = {};
+            const send = frame => env.subscribers.get(type)({ ...frame, source });
+            const labels = () => {
+                target.context.calls.length = 0;
+                display.draw(item, 1, 800);
+                return target.context.calls.filter(([method]) => method === 'fillText').map(([, text]) => text);
+            };
+            send(chordKeyFrame(20));
+            assert.deepEqual(labels(), [], 'Chord telemetry needs the matching pitch generation');
+            send(noteFrame(20)); send(chordKeyFrame(20));
+            const expected = type === 'key' ? ['G major'] : ['B♭/D'];
+            assert.deepEqual(labels(), expected);
+            send(chordKeyFrame(19, 24, 255));
+            const wrongGeneration = chordKeyFrame(21, 24, 255);
+            wrongGeneration.payload.setUint32(12, 2, true);
+            send(wrongGeneration);
+            env.subscribers.get(type)({ ...chordKeyFrame(21, 24, 255), source: {} });
+            assert.deepEqual(labels(), expected);
+            const nextGeneration = noteFrame(1);
+            nextGeneration.payload.setUint32(24, 2, true);
+            send(nextGeneration);
+            assert.deepEqual(labels(), []);
+            const current = chordKeyFrame(1);
+            current.payload.setUint32(12, 2, true);
+            send(current);
+            assert.deepEqual(labels(), expected);
+            item.channel = 'R';
+            assert.deepEqual(labels(), [], 'Channel edits clear the previous channel immediately');
+            display.dispose();
+        }
+    });
+});
+
+test('Visualizer Notes receives aligned chord/key telemetry on a shared Guitar source', async () => {
+    const env = runtime(), subscriptions = new Map();
+    let published = [];
+    env.document.hidden = false;
+    const manager = {
+        telemetryHub: { subscribe(tapId, type, callback) {
+            const key = `${tapId}:${type}`;
+            subscriptions.set(key, callback);
+            return () => subscriptions.delete(key);
+        } },
+        setVisualizerSources(sources) { published = sources; }
+    };
+    await withGlobals(env, () => {
+        const notes = createItem('notes', 'notes'), guitar = createItem('guitar', 'guitar');
+        Object.assign(notes.params, { mn: 40, mx: 76, ck: true });
+        guitar.params.pm = 'chord';
+        notes.palette.mode = 'note-colors';
+        const sources = new VisualizerSources(manager), target = canvas();
+        sources.setLayout({ items: [guitar, notes] });
+        sources.setVisible(true);
+        assert.equal(published.length, 1, 'Guitar and Notes retain their shared detector');
+        const tap = published[0].tapId;
+        assert.equal(subscriptions.size, 2);
+        const display = createAnalyzerDisplay(notes, target, sources);
+        const guitarDisplay = createAnalyzerDisplay(guitar, canvas(), sources);
+        const send = frame => subscriptions.get(`${published[0].tapId}:${frame.frameType}`)(frame, {});
+        for (let index = 1; index <= 20; index++) {
+            send(noteFrame(index));
+            send(chordKeyFrame(index));
+        }
+        const plugin = display.plugin;
+        assert.equal(plugin.localKey, 7);
+        assert.equal(plugin.overallKey, 5);
+        const confirmed = Array.from(plugin.columnFrames).flatMap((frame, column) => frame === 8 ? [column] : []);
+        assert.ok(confirmed.length > 0);
+        assert.ok(confirmed.every(column => plugin.confirmedChords[column] !== null));
+        assert.equal(sources.getFrame(notes.id).frameIndex, 20, 'Auxiliary frames preserve the pitch snapshot');
+        assert.equal(guitarDisplay.plugin.lastFrameIndex, 20);
+        display.draw(notes, 1, 800);
+        const labels = target.context.calls.filter(([method]) => method === 'fillText').map(([, label]) => label);
+        assert.ok(labels.includes('Key: G major'));
+        assert.ok(labels.includes('B♭/D'));
+        assert.ok(!labels.some(label => label.includes('Overall')));
+        let textColor;
+        const colors = new Map();
+        for (const [method, value] of target.context.calls) {
+            if (method === 'fillStyle') textColor = value;
+            if (method === 'fillText') colors.set(value, textColor);
+        }
+        for (const [label, root] of [['B♭/D', 10], ['Key: G major', 7]]) {
+            assert.equal(colors.get(label).replaceAll(' ', ''),
+                `rgb(${env.window.NoteSpectrogramPlugin.noteColor(root).join(',')})`);
+        }
+        send(noteFrame(21));
+        send(chordKeyFrame(21, 24));
+        target.context.calls.length = 0;
+        display.draw(notes, 1, 800);
+        assert.ok(!target.context.calls.some(([method, label]) => method === 'fillText' && label.startsWith('Key:')),
+            'An unknown local key hides the key label');
+        notes.params.ck = false;
+        sources.setLayout({ items: [guitar, notes] });
+        assert.equal(published.length, 2, 'Notes no longer requests the chord analysis used by Guitar');
+        assert.equal(published.find(source => source.params.ck).tapId, tap, 'Guitar retains its requested analysis');
+        target.context.calls.length = 0;
+        display.draw(notes, 1, 800);
+        assert.equal(plugin.localKey, 24);
+        assert.ok(!target.context.calls.some(([method, label]) => method === 'fillText' && label.startsWith('Key:')));
+        notes.params.ck = true;
+        sources.setLayout({ items: [guitar, notes] });
+        assert.equal(published.length, 1, 'Enabled Notes rejoins the matching Guitar analysis');
+        display.draw(notes, 1, 800);
+        send(noteFrame(22));
+        send(chordKeyFrame(22, 24, 255));
+        assert.equal(plugin.overallKey, null);
+        target.context.calls.length = 0;
+        display.draw(notes, 1, 800);
+        assert.ok(!target.context.calls.some(([method, label]) => method === 'fillText' && label.startsWith('Key:')));
+        const oldChord = subscriptions.get(`${tap}:32`);
+        sources.setVisible(false);
+        sources.setVisible(true);
+        assert.notEqual(published[0].tapId, tap);
+        assert.equal(subscriptions.size, 2, 'Both streams replace their previous subscriptions');
+        send(noteFrame(1));
+        oldChord(chordKeyFrame(22), {});
+        assert.equal(plugin.localKey, 24, 'The retired source cannot update the current key');
+        send(chordKeyFrame(1, 7, 7));
+        assert.equal(plugin.localKey, 7);
+        assert.equal(plugin.overallKey, 7);
+        display.dispose();
+        guitarDisplay.dispose();
+        sources.dispose();
+        assert.equal(subscriptions.size, 0);
+    });
+});
+
+test('Notes chord/key annotations preserve background outlines with full-strength and spatial palettes', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('notes', 'notes'), target = canvas();
+        item.params.ck = true;
+        Object.assign(item.palette, { mode: 'gradient', direction: 'intensity', color: '#00ff00',
+            mapping: 'range', stops: [{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }] });
+        const display = createAnalyzerDisplay(item, target, env.sources);
+        for (let index = 1; index <= 40; index++) {
+            env.subscribers.get('notes')(noteFrame(index), {});
+            env.subscribers.get('notes')(chordKeyFrame(index), {});
+        }
+        const overlayColors = context => {
+            let color;
+            const colors = new Map();
+            for (const [method, value] of context.calls) {
+                if (method === 'fillStyle') color = value;
+                if (method === 'fillText') colors.set(value, color);
+            }
+            return colors;
+        };
+        display.draw(item, 1, 800);
+        for (const label of ['B♭/D', 'Key: G major']) {
+            assert.equal(overlayColors(target.context).get(label).replaceAll(' ', ''), 'rgb(0,0,255)',
+                'Categorical annotations use the full-strength intensity color');
+        }
+        item.palette.direction = 'frequency';
+        target.context.calls.length = 0;
+        display.draw(item, 1, 800);
+        const options = display.plugin.displayOptions;
+        const noteColor = options.noteColor, inputs = [];
+        options.noteColor = (midi, intensity) => { inputs.push([midi, intensity]); return noteColor(midi, intensity); };
+        const keyColor = options.chordKeyColor(7), chordColor = options.chordKeyColor(10);
+        assert.deepEqual(inputs, [[55, 1], [58, 1]], 'Roots use the octave nearest the visible MIDI range center');
+        assert.notDeepEqual(keyColor, chordColor);
+        for (const [label, color] of [['B♭/D', chordColor], ['Key: G major', keyColor]]) {
+            assert.equal(overlayColors(target.context).get(label).replaceAll(' ', ''), `rgb(${color.join(',')})`);
+        }
+        item.palette.direction = 'radial';
+        display.draw(item, 1, 800);
+        const mask = display.paletteLayer.context, signal = display.signalCanvas.context, gradients = [], paints = [], outlines = [];
+        for (const context of [mask, signal]) for (const method of ['createRadialGradient', 'createLinearGradient']) {
+            context[method] = (...coordinates) => {
+                const gradient = { context, coordinates, transform: context.getTransform(), stops: [],
+                    addColorStop(position, color) { this.stops.push([position, color]); } };
+                gradients.push(gradient);
+                return gradient;
+            };
+        }
+        mask.fillRect = function(...args) {
+            if (gradients.includes(this.fillStyle)) paints.push({ gradient: this.fillStyle, transform: this.getTransform() });
+            this.calls.push(['fillRect', ...args]);
+        };
+        signal.strokeText = function(label, ...args) {
+            outlines.push({ label, color: this.strokeStyle, width: this.lineWidth, join: this.lineJoin, alpha: this.globalAlpha });
+            this.calls.push(['strokeText', label, ...args]);
+        };
+        // Track the native Horizontal rotation so the layer transfer is checked
+        // against an actual non-identity transform rather than the canvas stub.
+        const identity = () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+        for (const context of [target.context, mask, signal]) {
+            let matrix = identity();
+            const stack = [];
+            context.getTransform = () => ({ ...matrix });
+            const methods = {
+                save: () => stack.push({ ...matrix }),
+                restore: () => { matrix = stack.pop(); },
+                setTransform: value => { matrix = { ...value }; },
+                resetTransform: () => { matrix = identity(); },
+                translate: (x, y) => { matrix.e += matrix.a * x + matrix.c * y; matrix.f += matrix.b * x + matrix.d * y; },
+                scale: (x, y) => { matrix.a *= x; matrix.b *= x; matrix.c *= y; matrix.d *= y; },
+                rotate: angle => {
+                    const { a, b, c, d } = matrix, cosine = Math.cos(angle), sine = Math.sin(angle);
+                    Object.assign(matrix, { a: a * cosine + c * sine, b: b * cosine + d * sine,
+                        c: c * cosine - a * sine, d: d * cosine - b * sine });
+                }
+            };
+            for (const [name, method] of Object.entries(methods)) context[name] = (...args) => {
+                context.calls.push([name, ...args]);
+                method(...args);
+            };
+        }
+        const transfers = [];
+        const drawChordKey = options.drawChordKey;
+        options.drawChordKey = (context, draw) => {
+            const incoming = context.getTransform(), start = signal.calls.length;
+            drawChordKey(context, draw);
+            transfers.push({ incoming, calls: signal.calls.slice(start), font: signal.font });
+        };
+        target.context.calls.length = 0;
+        mask.calls.length = 0;
+        signal.calls.length = 0;
+        display.draw(item, 1, 400, { 'graph-bg-deep': '#f8f7f6' });
+        for (const label of ['B♭/D', 'Key: G major']) {
+            assert.equal(overlayColors(target.context).has(label), false, 'Spatial annotations join the signal layer');
+            assert.equal(overlayColors(mask).get(label).replaceAll(' ', ''), 'rgb(255,255,255)',
+                'Glyph fills join the existing spatial mask');
+            assert.equal(overlayColors(signal).has(label), false);
+            assert.equal(mask.calls.some(([method, value]) => method === 'strokeText' && value === label), false,
+                'The mask must not recolor the text outline');
+            const stroke = outlines.find(outline => outline.label === label);
+            assert.equal(stroke.color, options.themePalette.get('graph-bg-deep'));
+            assert.equal(stroke.width, 4);
+            assert.equal(stroke.join, 'round');
+            const strokeIndex = signal.calls.findIndex(([method, value]) => method === 'strokeText' && value === label);
+            assert.ok(signal.calls.slice(strokeIndex + 1).some(([method, source]) =>
+                method === 'drawImage' && source === display.paletteLayer), 'The masked glyph fills composite over their outlines');
+        }
+        assert.deepEqual(gradients.at(-1).stops[0], [0, 'rgb(255,0,0)']);
+        assert.deepEqual(gradients.at(-1).stops.at(-1), [1, 'rgb(0,0,255)']);
+        assert.equal(mask.globalCompositeOperation, 'source-in');
+        assert.ok(display.signalCanvas.context.calls.some(([method, source]) => method === 'drawImage' && source === display.paletteLayer));
+        assert.equal(transfers.length, 2);
+        assert.equal(transfers[0].incoming.b, 1);
+        assert.equal(transfers[0].incoming.c, -1);
+        assert.equal(transfers[0].incoming.e, 800);
+        assert.deepEqual(transfers[1].incoming, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+        for (const [index, transfer] of transfers.entries()) {
+            assert.deepEqual(transfer.calls.find(([method]) => method === 'setTransform')[1], transfer.incoming);
+            assert.deepEqual(transfer.calls.find(([method]) => method === 'rect'),
+                index === 0 ? ['rect', 0, 0, 400, 800] : ['rect', 0, 0, 800, 400]);
+            assert.equal(transfer.font, 'bold 56px Arial', 'The signal layer retains the 28 CSS-pixel annotation size at DPR 2');
+        }
+        const assertMatchingGradients = () => {
+            assert.ok(paints.length >= 3, 'The note signal and both annotation groups use the existing palette mask');
+            assert.ok(gradients.every(gradient => gradient.context === mask), 'No gradient is painted under a translated text transform');
+            const reference = paints[0];
+            for (const paint of paints) {
+                assert.deepEqual(paint.transform, reference.transform, 'Palette transforms must agree at PAINT time');
+                for (const property of ['coordinates', 'stops']) assert.deepEqual(paint.gradient[property], reference.gradient[property]);
+            }
+        };
+        assertMatchingGradients();
+        Object.assign(item.palette, { direction: 'linear', angle: 37 });
+        Object.assign(item.palette.motion, { mode: 'scroll', speed: .7 });
+        for (const [layout, flipX, flipY, cssWidth] of [
+            ['Horizontal', true, false, 800], ['Horizontal', false, true, 400],
+            ['Vertical', true, true, 800], ['Vertical', false, false, 400]
+        ]) {
+            Object.assign(item, { flipX, flipY });
+            item.params.ly = layout;
+            gradients.length = paints.length = outlines.length = 0;
+            display.draw(item, 2.3, cssWidth);
+            assertMatchingGradients();
+            assert.ok(outlines.length >= 2);
+            assert.ok(outlines.every(outline => outline.width === 2 * 800 / cssWidth));
+            assert.deepEqual(paints[0].transform, { a: flipX ? -1 : 1, b: flipX ? -0 : 0, c: flipY ? -0 : 0, d: flipY ? -1 : 1,
+                e: flipX ? 800 : 0, f: flipY ? 400 : 0 });
+        }
+        display.dispose();
+    });
+});
+
 test('Notes and HQ Spectrum accept the first frame after returning to Visualizer', async () => {
     const env = runtime(), subscriptions = new Map();
     let published = [];
@@ -345,7 +720,7 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
         const item = createItem('rhythm-analyzer', 'rhythm');
         const target = canvas();
         const display = createAnalyzerDisplay(item, target, env.sources);
-        const payload = new DataView(new ArrayBuffer(1496));
+        const payload = new DataView(new ArrayBuffer(2024));
         const source = {};
         [[0, 48000, 'Float32'], [4, 1, 'Uint32'], [8, 480, 'Uint32'], [12, 100, 'Uint32'], [16, 1, 'Float32'],
             [28, 2, 'Uint32'], [32, 1, 'Uint32'], [36, 1, 'Uint32'], [40, .8, 'Float32'], [44, .5, 'Float32'],
@@ -380,7 +755,7 @@ test('Rhythm Analyzer draws the Groove view from a Visualizer telemetry frame', 
                 payload.setInt32(1352 + 12 * i, payload.getUint32(48, true) + 50 * i, true);
                 payload.setInt32(1360 + 12 * i, payload.getInt32(56, true) + i, true);
             }
-            env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 4, payload, source }, source);
+            env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 5, payload, source }, source);
         };
         send();
         assert.equal(display.plugin.activeGeneration, 1);
@@ -485,7 +860,7 @@ test('Visualizer revises pending Rhythm Analyzer dots on each fresh display path
     await withGlobals(env, () => {
         const item = createItem('rhythm-analyzer', 'rhythm'), target = canvas();
         const display = createAnalyzerDisplay(item, target, env.sources);
-        const payload = new DataView(new ArrayBuffer(1496));
+        const payload = new DataView(new ArrayBuffer(2024));
         for (const [offset, value, kind] of [[0, 48000, 'Float32'], [4, 1, 'Uint32'], [8, 480, 'Uint32'],
             [12, 150, 'Uint32'], [16, 1.5, 'Float32'], [28, 1, 'Uint32'], [32, 1, 'Uint32'],
             [36, 1, 'Uint32'], [40, .8, 'Float32'], [44, .5, 'Float32'], [48, 50, 'Uint32'],
@@ -499,7 +874,7 @@ test('Visualizer revises pending Rhythm Analyzer dots on each fresh display path
             payload.setInt32(1360 + 12 * i, i, true);
         }
         const source = {};
-        const send = () => env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 4, payload, source }, source);
+        const send = () => env.subscribers.get('rhythm')({ frameType: 28, formatVersion: 5, payload, source }, source);
         send();
         display.draw(item, 1, 400);
         const before = display.plugin.displayedEvent(0, env.clock.now).u;
@@ -888,6 +1263,107 @@ test('Guitar marks every fret of a detected note in range, or one playable shape
     });
 });
 
+test('Guitar Chord draws a detected voicing and shares Note Spectrogram key spelling', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        Object.assign(item.params, { pm: 'chord', lb: 'detected', sn: false, fn: false });
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        const send = env.subscribers.get(item.id);
+        const labels = (time = 1) => {
+            target.context.calls.length = 0;
+            display.draw(item, time, 800);
+            return target.context.calls.filter(([method]) => method === 'fillText').map(([, text]) => text);
+        };
+        send(noteFrame(1)); // Only C4 is detected as a pitch; the chord has different tones and voicing.
+        assert.deepEqual(labels(), []);
+        send(chordKeyFrame(16, 7, 5)); // B-flat/D, in F major.
+        assert.deepEqual([...new Set(labels())].sort(), ['B♭', 'D', 'F']);
+        assert.strictEqual(env.window.NoteSpectrogramPlugin.noteNamesForKey(5)[10], 'B♭');
+        send(chordKeyFrame(17, 7, 6)); // F-sharp major also spells the F pitch class as E-sharp.
+        assert.deepEqual([...new Set(labels())].sort(), ['A#', 'D', 'E#']);
+        item.params.lb = 'flat';
+        assert.deepEqual([...new Set(labels())].sort(), ['Bb', 'D', 'F'], 'Explicit spelling remains independent of the detected key');
+        item.params.lb = 'detected';
+        send(chordKeyFrame(18, 24, 255));
+        assert.deepEqual([...new Set(labels())].sort(), ['A#', 'D', 'F'], 'Unknown key uses Note Spectrogram sharp fallback');
+        assert.deepEqual(labels(1.501), [], 'Stale chord telemetry stops showing a fingering');
+        send(chordKeyFrame(19));
+        assert.ok(labels(1.6).length > 0);
+        const noChord = chordKeyFrame(20);
+        for (let offset = 23; offset < 26; offset++) noChord.payload.setUint8(offset, 255);
+        send(noChord);
+        assert.deepEqual(labels(1.6), [], 'No-chord output clears marks even while detected pitch voices remain');
+        item.params.pm = 'all';
+        send(noteFrame(6));
+        assert.ok(labels(1.6).includes('C'), 'Pitch position modes continue using detected individual notes');
+        display.dispose();
+    });
+});
+
+test('Guitar follows confirmed chords without adding a duration or probability gate', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        Object.assign(item.params, { pm: 'chord', sn: false, fn: false });
+        const target = canvas(), display = createAnalyzerDisplay(item, target, env.sources);
+        const send = env.subscribers.get(item.id);
+        send(noteFrame(1));
+        let index = 0;
+        const labels = (confirmed, probability, localKey = 24) => {
+            const frame = chordKeyFrame(++index, localKey, 255, probability);
+            // The immediate lane deliberately disagrees with the confirmed lane.
+            [7, 0, 7, ...confirmed].forEach((value, offset) => frame.payload.setUint8(20 + offset, value));
+            send(frame);
+            target.context.calls.length = 0;
+            display.draw(item, 1, 800);
+            return [...new Set(target.context.calls.filter(([method]) => method === 'fillText').map(([, text]) => text))].sort();
+        };
+        const cMajor = [0, 0, 0], dMajor = [2, 0, 2], none = [255, 255, 255];
+        assert.deepEqual(labels(cMajor, .1, 255), ['C', 'E', 'G'], 'Key warm-up does not discard a confirmed chord');
+        assert.deepEqual(labels(dMajor, .36), ['A', 'D', 'F#'], 'A confirmed change takes effect on its first frame');
+        assert.deepEqual(labels(cMajor, .9), ['C', 'E', 'G']);
+        assert.deepEqual(labels(none, .1), [], 'Confirmed no-chord clears the fingering immediately');
+        assert.deepEqual(labels(dMajor, 0), ['A', 'D', 'F#'], 'Consumers do not reinterpret the model probability');
+        display.dispose();
+    });
+});
+
+test('Guitar rejects unrelated, invalid and out-of-order chord telemetry and resets with its pitch source', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('guitar', 'guitar');
+        const display = createAnalyzerDisplay(item, canvas(), env.sources), plugin = display.plugin;
+        const source = {}, send = frame => env.subscribers.get(item.id)({ ...frame, source });
+        send(chordKeyFrame(1));
+        assert.equal(plugin.chord, null, 'Wait for a matching pitch generation');
+        send(noteFrame(1));
+        send(chordKeyFrame(17));
+        const chord = plugin.chord;
+        assert.ok(chord);
+        const wrongGeneration = chordKeyFrame(18, 7, 7);
+        wrongGeneration.payload.setUint32(12, 2, true);
+        const malformed = chordKeyFrame(18, 7, 7);
+        malformed.payload.setUint8(21, 254);
+        for (const frame of [chordKeyFrame(1, 7, 7), chordKeyFrame(17, 7, 7), wrongGeneration, malformed]) send(frame);
+        env.subscribers.get(item.id)({ ...chordKeyFrame(18, 7, 7), source: {} });
+        assert.strictEqual(plugin.chord, chord);
+        assert.equal(plugin.overallKey, 5);
+        const restart = noteFrame(1);
+        restart.payload.setUint32(24, 2, true);
+        send(restart);
+        assert.equal(plugin.chord, null);
+        assert.equal(plugin.overallKey, null);
+        send(wrongGeneration);
+        assert.equal(plugin.overallKey, 7);
+        assert.equal(plugin.chord.name, chord.name, 'A new generation accepts its first confirmed chord');
+        env.subscribers.get(item.id)({ ...noteFrame(1), source: {} });
+        assert.equal(plugin.chord, null);
+        assert.equal(plugin.overallKey, null);
+        display.dispose();
+    });
+});
+
 test('Guitar scale guide rings every scale position, fills the roots, and draws the capo and fretboard fill', async () => {
     const env = runtime();
     await withGlobals(env, () => {
@@ -1072,8 +1548,14 @@ test('Notes use the keyboard space for history and hide its meters until the key
             env.subscribers.get('notes')(noteFrame(), {});
             const plugin = display.plugin, history = plugin.history, column = plugin.writeColumn;
             plugin.meterCurrent.fill(-24);
+            const textAlignments = [];
+            target.context.fillText = function(...args) {
+                textAlignments.push(this.textAlign);
+                this.calls.push(['fillText', ...args]);
+            };
             const draw = themeColors => {
                 target.context.calls.length = 0;
+                textAlignments.length = 0;
                 display.draw(item, 1, 800, themeColors);
                 return target.context.calls.slice();
             };
@@ -1099,7 +1581,7 @@ test('Notes use the keyboard space for history and hide its meters until the key
             assert.equal(target.context.fillStyle, '#111');
             item.params.kb = false;
             item.params.showAxisNumbers = true;
-            const labels = draw();
+            const labels = draw(), labelAlignments = textAlignments.slice();
             assert.equal(labels.some(call => call[0] === 'fillRect'), false);
             assert.ok(labels.some(call => call[0] === 'fillText'), 'Pitch labels are independent');
             assert.equal(target.context.fillStyle, 'rgb(102,102,102)');
@@ -1110,7 +1592,7 @@ test('Notes use the keyboard space for history and hide its meters until the key
             item.params.showAxisNumbers = true;
             assert.equal(extent(labels), fullExtent);
             if (ly === 'Vertical') {
-                assert.equal(target.context.textAlign, 'right');
+                assert.ok(labelAlignments.length > 0 && labelAlignments.every(align => align === 'right'));
                 assert.ok(labels.filter(call => call[0] === 'fillText').every(call => call[2] === target.width - 2));
             }
             item.params.showAxisNumbers = false;
@@ -2056,5 +2538,85 @@ test('Stereo peak contour holds and then falls at the Peak Fall Time rate', asyn
         display.stepStereo(new Float32Array(360).fill(1), defaults, 0);
         assert.ok(Math.abs(db(display.stepStereo(new Float32Array(360).fill(10 ** -.5), defaults, .5)) + 10) < 1e-4);
         display.dispose();
+    });
+});
+
+
+test('Visualizer Rhythm keeps four lanes when shared drum telemetry includes toms', async () => {
+    const env = runtime();
+    await withGlobals(env, () => {
+        const item = createItem('rhythm-analyzer', 'drums');
+        item.params.dm = 'drums';
+        const display = createAnalyzerDisplay(item, canvas(), env.sources);
+        const payload = new DataView(new ArrayBuffer(2024));
+        for (const [offset, value, kind] of [[0, 44100, 'Float32'], [4, 1, 'Uint32'], [8, 470, 'Uint32'],
+            [12, 100, 'Uint32'], [16, 1, 'Float32'], [1496, 1, 'Uint32'], [1500, 5, 'Uint32']]) {
+            payload[`set${kind}`](offset, value, true);
+        }
+        for (let lane = 0; lane < 5; lane++) {
+            const base = 1512 + lane * 32;
+            payload.setUint32(base, 90, true);
+            payload.setFloat32(base + 24, 0, true);
+            payload.setUint8(base + 28, lane);
+            payload.setUint8(base + 29, 1);
+        }
+        const source = {};
+        env.subscribers.get('drums')({ frameType: 28, formatVersion: 5, payload, source }, source);
+        display.draw(item, 1, 400);
+        assert.equal(display.plugin.eventSerial, 4);
+        assert.equal(display.plugin.eventTime[3], 0.96);
+        assert.equal(display.plugin.eventStrength[3], 0.5);
+        assert.equal(display.plugin.lanes.names[3], 'Cymbals');
+        assert.equal(display.plugin.onsetOpacity, 1);
+        const generation = display.plugin.activeGeneration;
+        item.params.dm = 'band';
+        display.draw(item, 1, 400);
+        assert.equal(display.plugin.eventSerial, 0);
+        assert.equal(display.plugin.activeGeneration, generation);
+        assert.equal(display.plugin.laneCount, 3);
+        display.dispose();
+    });
+});
+
+test('Drums consumes real telemetry, composites its 3D image, and releases graphics on removal', async () => {
+    const env = runtime();
+    await withGlobals({ ...env, performance: { now: () => 1000 } }, () => {
+        const item = createItem('drums', 'kit');
+        item.palette.color = '#123456';
+        const surface = canvas();
+        const display = createAnalyzerDisplay(item, surface, env.sources);
+        const image = canvas(), renders = [];
+        let disposed = false;
+        display.plugin.renderer = {
+            render(...args) { renders.push(args); return image; },
+            dispose() { disposed = true; }
+        };
+        const payload = new DataView(new ArrayBuffer(2024));
+        payload.setFloat32(0, 44100, true);
+        payload.setUint32(4, 1, true);
+        payload.setUint32(8, 470, true);
+        payload.setFloat32(16, 1, true);
+        payload.setUint32(1496, 1, true);
+        payload.setUint32(1500, 5, true);
+        for (let lane = 0; lane < 5; lane++) {
+            const base = 1512 + lane * 32;
+            payload.setUint32(base, 90, true);
+            payload.setUint8(base + 28, lane);
+            payload.setUint8(base + 29, 1);
+        }
+        env.subscribers.get('kit')({ frameType: 28, formatVersion: 5, payload, source: {} });
+        display.draw(item, 1, 400);
+        assert.deepEqual([...renders.at(-1)[3]], [.5, .5, .5, .5, .5]);
+        assert.deepEqual(renders.at(-1)[4], [18, 52, 86]);
+        assert.ok(surface.context.calls.some(([method, source]) => method === 'drawImage' && source === image));
+        item.params.yaw = 100;
+        display.draw(item, 1.1, 400);
+        assert.equal(renders.at(-1)[2].yaw, 100);
+        item.channel = 'L';
+        display.draw(item, 1.1, 400);
+        assert.deepEqual([...renders.at(-1)[3]], [0, 0, 0, 0, 0]);
+        display.dispose();
+        assert.equal(disposed, true);
+        assert.equal(env.subscribers.size, 0);
     });
 });

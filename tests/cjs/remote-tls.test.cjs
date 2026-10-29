@@ -7,6 +7,8 @@ const path = require('node:path');
 const test = require('node:test');
 const { WebSocket } = require('ws');
 const { RemoteControlHost } = require('../../electron/remote-control-host.cjs');
+const { normalizeEndpoint, resolveConnection, validateConnection } = require('../../electron/remote-connection.cjs');
+const { isAllowedOrigin } = require('../../electron/remote-static-server.cjs');
 
 function hostFor(env) {
   return new RemoteControlHost({
@@ -14,6 +16,39 @@ function hostFor(env) {
     env: { EFFETUNE_REMOTE: '1', EFFETUNE_REMOTE_TOKEN: 'tls-test-token', ...env }, argv: [], log: () => {}
   });
 }
+
+test('HTTPS endpoint parsing preserves exact origins and rejects downgrade, credentials and proxy paths', () => {
+  assert.equal(normalizeEndpoint('https://Music.example:443/'), 'https://music.example');
+  assert.equal(normalizeEndpoint('https://music.example:47443'), 'https://music.example:47443');
+  for (const value of ['http://music.example', 'https://user:secret@music.example', 'https://music.example/proxy',
+    'https://music.example/?url=http://other.example', 'https://*.example', 'https://music.example/#fragment', 'https://music.example:0']) {
+    assert.throws(() => normalizeEndpoint(value));
+  }
+  assert.equal(resolveConnection({ remoteControlConnection: { endpoint: 'https://music.example' } }, {}, 47300).port, 443);
+  assert.throws(() => resolveConnection({}, { EFFETUNE_REMOTE_ENDPOINT: 'https://music.example', EFFETUNE_REMOTE_PORT: '47443' }, 47300));
+});
+
+test('configured hostname and port are shared by settings, pairing and exact Host/Origin checks', async t => {
+  let saved = { remoteControlConnection: { endpoint: 'https://music.example' } };
+  const host = new RemoteControlHost({
+    app: { getVersion: () => 'test' }, getMainWindow: () => null, env: {}, argv: [], log: () => {},
+    config: { loadConfig: () => saved, saveConfig: value => { saved = value; return true; } }
+  });
+  t.after(() => host.dispose());
+  assert.equal(host.getStatus().webUrl, `https://music.example/?t=${host.token}`);
+  assert.equal(host.isAllowedHost('music.example'), true);
+  assert.equal(host.isAllowedHost('music.example:443'), true);
+  assert.equal(host.isAllowedHost('music.example:47443'), false);
+  assert.equal(host.isAllowedHost('other.example'), false);
+  assert.equal(isAllowedOrigin('https://music.example', 'music.example:443', true, host.trustedHosts()), true);
+  assert.equal(isAllowedOrigin('http://music.example', 'music.example', true, host.trustedHosts()), false);
+  const result = await host.testConnection();
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'missing-certificate');
+  assert.equal(host.server, null);
+  assert.equal('certificatePath' in host.getStatus().connection, false);
+  assert.equal('keyPath' in host.getStatus().connection, false);
+});
 
 test('invalid or incomplete TLS configuration fails closed without opening HTTP', async () => {
   for (const env of [{ EFFETUNE_REMOTE_TLS_CERT: 'missing.pem' },
@@ -44,9 +79,35 @@ test('TLS serves the client, verifies certificates and enforces secure WebSocket
   let host;
   try {
     execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-      '-config', config, '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+      '-config', config, '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:music.example',
       '-keyout', key, '-out', cert], { stdio: 'ignore', windowsHide: true });
     host = hostFor({ EFFETUNE_REMOTE_TLS_CERT: cert, EFFETUNE_REMOTE_TLS_KEY: key });
+    const connection = { secure: true, certificatePath: cert, keyPath: key, endpoint: 'https://music.example' };
+    assert.ok(validateConnection(connection));
+    assert.throws(() => validateConnection({ ...connection, endpoint: 'https://other.example' }), { code: 'certificate-hostname' });
+    assert.throws(() => validateConnection({ ...connection, keyPath: cert }), { code: 'invalid-certificate' });
+    assert.throws(() => validateConnection(connection, Date.now() + 3 * 24 * 3600 * 1000), { code: 'certificate-expired' });
+    let settings = {};
+    const configured = new RemoteControlHost({
+      app: { getVersion: () => 'test' }, getMainWindow: () => null, env: {}, argv: [], log: () => {},
+      config: { loadConfig: () => settings, saveConfig: value => { settings = value; return true; } },
+      dialog: { showOpenDialog: async (_window, options) => ({ canceled: false, filePaths: [options.title.includes('private') ? key : cert] }) }
+    });
+    try {
+      const certificateSelection = await configured.selectConnectionFile('certificate');
+      const keySelection = await configured.selectConnectionFile('key');
+      assert.deepEqual(Object.keys(keySelection).sort(), ['fileName', 'selectionId']);
+      await assert.rejects(configured.setConnection({ endpoint: 'https://music.example', certificateSelection: 'fake' }));
+      const status = await configured.setConnection({ endpoint: 'https://music.example', certificateSelection: certificateSelection.selectionId, keySelection: keySelection.selectionId });
+      assert.equal(status.connection.certificateName, 'cert.pem');
+      assert.equal(status.connection.keyName, 'key.pem');
+      assert.equal(status.running, false);
+      assert.equal((await configured.testConnection()).ok, true);
+      assert.equal(settings.remoteControlConnection.keyPath, key);
+      await assert.rejects(configured.setConnection({ endpoint: 'https://music.example', keySelection: keySelection.selectionId }));
+      await configured.setConnection({ endpoint: '', clearTls: true });
+      assert.equal(configured.secure, false);
+    } finally { await configured.dispose(); }
     host.bindWithFallback = server => new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(0, '127.0.0.1', () => resolve(server.address().port));

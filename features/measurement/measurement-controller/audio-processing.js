@@ -15,6 +15,8 @@ import {
     releaseMeasurementOutputRoute
 } from '../audio-utils/output-routing.js';
 import { createEssCapturePlan, analyzeEssRecording } from '../../../js/utils/measurement-dsp/ess.js';
+import { isAndroidHost } from '../../../js/android/bridge.js';
+import { captureAndroidSweep } from '../../../js/android/measurement.js';
 
 const SWEEP_START_DELAY_SECONDS = 0.05;
 
@@ -116,6 +118,27 @@ const AudioProcessing = {
      * @returns {Object} Measurement result with impulse response and overload flag
      */
     async playAndRecordSweep(sweepBuffer, outputChannel = this.measurementConfig.outputChannel, explicitOutputChannels) {
+        if (isAndroidHost()) {
+            const abort = new AbortController();
+            this.nativeMeasurementAbort = abort;
+            const averagingCount = Number(this.measurementConfig.averaging);
+            const levelDb = Number(document.getElementById('noiseLevel').value);
+            try {
+                const capture = await captureAndroidSweep(sweepBuffer, { repetitions: averagingCount,
+                    levelDb, channel: audioUtils.selectedInputChannel, signal: abort.signal });
+                abort.signal.throwIfAborted();
+                const hasOverload = capture.recording.some(sample => Math.abs(sample) >= 0.999);
+                const processed = await this.processRecordedBuffer(capture.recording, sweepBuffer,
+                    averagingCount, capture.sampleRate, { levelDb });
+                abort.signal.throwIfAborted();
+                return this.createSweepMeasurementResult(processed, {
+                    frequencyResponse: processed.frequencyResponse, hasOverload,
+                    fullRecording: null, sampleRate: capture.sampleRate
+                });
+            } finally {
+                if (this.nativeMeasurementAbort === abort) this.nativeMeasurementAbort = null;
+            }
+        }
         return new Promise(async (resolve, reject) => {
             const operation = {
                 settled: false,
@@ -639,6 +662,7 @@ const AudioProcessing = {
      * This is used to clean up active sweep playback when measurement is cancelled
      */
     stopSweepPlayback(operation) {
+        if (this.nativeMeasurementAbort) { this.nativeMeasurementAbort.abort(new SweepCancelledError()); return true; }
         const elements = this.activeSweepElements;
         if (!operation || this.activeSweepOperation !== operation ||
             elements?.operation !== operation) return false;

@@ -14,7 +14,8 @@
   "params": {
     "mn": 40,
     "mx": 240,
-    "ck": false
+    "ck": false,
+    "dm": "band"
   },
   "events": [],
   "tolerance": {
@@ -22,7 +23,7 @@
     "policy": "per-sample"
   },
   "referenceEngine": "production-native-promoted-v1",
-  "referenceHash": "sha256:baed8cb7219f0e9d9542ec729afa374501f983b60424f60790155c36ad54e27b",
+  "referenceHash": "sha256:9e3e1c8628132f69e8d59dc606cb46de2f3f3d8f4541ca7299dc2cadee1b3cda",
   "generationCommand": "node tools/dsp-parity/generate.mjs --type RhythmAnalyzerPlugin --promote-production-native",
   "outputFloats": 773,
   "byteLength": 3092,

@@ -4,6 +4,7 @@
 #include "DvAvOpenhomeOrgPlaylist1.h"
 #include "DvAvOpenhomeOrgProduct1.h"
 #include "DvAvOpenhomeOrgTime1.h"
+#include "DvAvOpenhomeOrgVolume1.h"
 
 #include <OpenHome/Net/Cpp/DvInvocation.h>
 #include <OpenHome/Net/Cpp/DvProvider.h>
@@ -27,13 +28,14 @@ using OpenHome::Net::DvProviderAvOpenhomeOrgInfo1Cpp;
 using OpenHome::Net::DvProviderAvOpenhomeOrgPlaylist1Cpp;
 using OpenHome::Net::DvProviderAvOpenhomeOrgProduct1Cpp;
 using OpenHome::Net::DvProviderAvOpenhomeOrgTime1Cpp;
+using OpenHome::Net::DvProviderAvOpenhomeOrgVolume1Cpp;
 using OpenHome::Net::IDvInvocationStd;
 
 constexpr std::string_view kSourceXml =
     "<SourceList><Source><SystemName>Playlist</SystemName>"
     "<Type>Playlist</Type><Name>Playlist</Name><Visible>true</Visible>"
     "</Source></SourceList>";
-constexpr std::string_view kAttributes = "Info Time Playlist";
+constexpr std::string_view kAttributes = "Info Time Playlist Volume";
 
 [[noreturn]] void ReportActionError(IDvInvocationStd &invocation,
                                     std::uint32_t code,
@@ -195,6 +197,8 @@ struct SnapshotValues {
   std::string codecName;
   std::uint32_t trackToken = 0;
   std::uint32_t detailsToken = 0;
+  std::uint32_t volume = 100;
+  bool mute = false;
 };
 
 std::optional<SnapshotValues> ParseSnapshot(const JsonValue &value) {
@@ -228,6 +232,10 @@ std::optional<SnapshotValues> ParseSnapshot(const JsonValue &value) {
   auto decodedIds = DecodeBase64(*idArray);
   if (!decodedIds || decodedIds->size() % 4 != 0)
     return std::nullopt;
+  const auto *volumeState = value.Find("volume");
+  if (!volumeState || !volumeState->GetUInt32("volume") ||
+      *volumeState->GetUInt32("volume") > 100 || !volumeState->GetBool("mute"))
+    return std::nullopt;
   return SnapshotValues{std::string(*transportState),
                         *repeat,
                         *shuffle,
@@ -244,8 +252,105 @@ std::optional<SnapshotValues> ParseSnapshot(const JsonValue &value) {
                         *lossless,
                         std::string(*codecName),
                         *trackToken,
-                        *detailsToken};
+                        *detailsToken,
+                        *volumeState->GetUInt32("volume"),
+                        *volumeState->GetBool("mute")};
 }
+
+class VolumeProvider final : public DvProviderAvOpenhomeOrgVolume1Cpp {
+public:
+  VolumeProvider(DvDeviceStd &device, ProtocolBridge &bridge)
+      : DvProviderAvOpenhomeOrgVolume1Cpp(device), bridge_(bridge) {
+    EnablePropertyVolume();
+    EnablePropertyMute();
+    EnablePropertyBalance();
+    EnablePropertyFade();
+    EnablePropertyVolumeLimit();
+    EnablePropertyVolumeMax();
+    EnablePropertyVolumeUnity();
+    EnablePropertyVolumeSteps();
+    EnablePropertyVolumeMilliDbPerStep();
+    EnablePropertyBalanceMax();
+    EnablePropertyFadeMax();
+    EnableActionCharacteristics();
+    EnableActionSetVolume();
+    EnableActionVolumeInc();
+    EnableActionVolumeDec();
+    EnableActionVolume();
+    EnableActionSetMute();
+    EnableActionMute();
+    EnableActionVolumeLimit();
+    EnableActionSetBalance();
+    EnableActionBalanceInc();
+    EnableActionBalanceDec();
+    EnableActionBalance();
+    EnableActionSetFade();
+    EnableActionFadeInc();
+    EnableActionFadeDec();
+    EnableActionFade();
+    SetPropertyVolume(100);
+    SetPropertyMute(false);
+    SetPropertyBalance(0);
+    SetPropertyFade(0);
+    SetPropertyVolumeLimit(100);
+    SetPropertyVolumeMax(100);
+    SetPropertyVolumeUnity(100);
+    SetPropertyVolumeSteps(100);
+    // The Player gain is linear amplitude; a constant decibel step is unavailable.
+    SetPropertyVolumeMilliDbPerStep(0);
+    SetPropertyBalanceMax(0);
+    SetPropertyFadeMax(0);
+  }
+
+  void Apply(const SnapshotValues &values) {
+    AutoPropertyLock lock(*this);
+    SetPropertyVolume(values.volume);
+    SetPropertyMute(values.mute);
+  }
+
+private:
+  void Characteristics(IDvInvocationStd &, std::uint32_t &maximum,
+                       std::uint32_t &unity, std::uint32_t &steps,
+                       std::uint32_t &milliDbPerStep, std::uint32_t &balanceMax,
+                       std::uint32_t &fadeMax) override {
+    maximum = unity = steps = 100;
+    milliDbPerStep = balanceMax = fadeMax = 0;
+  }
+  void SetVolume(IDvInvocationStd &invocation, std::uint32_t value) override {
+    if (value > 100) ReportActionError(invocation, 811, "Volume is out of range.");
+    Invoke(invocation, bridge_, "Volume", "SetVolume", UintArg("volume", value));
+  }
+  void VolumeInc(IDvInvocationStd &invocation) override {
+    Invoke(invocation, bridge_, "Volume", "VolumeInc");
+  }
+  void VolumeDec(IDvInvocationStd &invocation) override {
+    Invoke(invocation, bridge_, "Volume", "VolumeDec");
+  }
+  void Volume(IDvInvocationStd &invocation, std::uint32_t &value) override {
+    value = RequireUint(invocation, Snapshot(invocation, bridge_, "Volume"), "volume");
+  }
+  void SetMute(IDvInvocationStd &invocation, bool value) override {
+    Invoke(invocation, bridge_, "Volume", "SetMute", BoolArg("mute", value));
+  }
+  void Mute(IDvInvocationStd &invocation, bool &value) override {
+    value = RequireBool(invocation, Snapshot(invocation, bridge_, "Volume"), "mute");
+  }
+  void VolumeLimit(IDvInvocationStd &, std::uint32_t &value) override { value = 100; }
+  void SetBalance(IDvInvocationStd &invocation, std::int32_t value) override {
+    if (value != 0) ReportActionError(invocation, 812, "Balance is unavailable.");
+  }
+  void BalanceInc(IDvInvocationStd &) override {}
+  void BalanceDec(IDvInvocationStd &) override {}
+  void Balance(IDvInvocationStd &, std::int32_t &value) override { value = 0; }
+  void SetFade(IDvInvocationStd &invocation, std::int32_t value) override {
+    if (value != 0) ReportActionError(invocation, 813, "Fade is unavailable.");
+  }
+  void FadeInc(IDvInvocationStd &) override {}
+  void FadeDec(IDvInvocationStd &) override {}
+  void Fade(IDvInvocationStd &, std::int32_t &value) override { value = 0; }
+
+  ProtocolBridge &bridge_;
+};
 
 class ProductProvider final : public DvProviderAvOpenhomeOrgProduct1Cpp {
 public:
@@ -682,12 +787,13 @@ class OpenHomeProviders::Impl {
 public:
   Impl(DvDeviceStd &device, ProtocolBridge &bridge, std::string friendlyName)
       : product(device, std::move(friendlyName)), playlist(device, bridge),
-        info(device, bridge), time(device, bridge) {}
+        info(device, bridge), time(device, bridge), volume(device, bridge) {}
 
   ProductProvider product;
   PlaylistProvider playlist;
   InfoProvider info;
   TimeProvider time;
+  VolumeProvider volume;
 };
 
 OpenHomeProviders::OpenHomeProviders(DvDeviceStd &device,
@@ -704,6 +810,7 @@ bool OpenHomeProviders::ApplySnapshot(const JsonValue &snapshot) {
   impl_->playlist.Apply(*values);
   impl_->info.Apply(*values);
   impl_->time.Apply(*values);
+  impl_->volume.Apply(*values);
   return true;
 }
 

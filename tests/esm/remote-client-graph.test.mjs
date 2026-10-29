@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -42,9 +43,27 @@ test('the remote client page imports nothing that needs audio, Electron or a sec
         const rel = path.relative(root, file).split(path.sep).join('/');
         assert.ok(!forbiddenModules.includes(rel), `${rel} must not be reachable`);
         for (const pattern of forbiddenApis) {
+            // This request-only API is behind the Android origin/transport constructor guard.
+            if (rel === 'js/android/bridge.js' && pattern.source === 'crypto\\.randomUUID') continue;
             assert.ok(!pattern.test(text), `${rel} uses ${pattern}`);
         }
     }
+});
+
+test('the Android bridge imports safely and rejects construction on plain HTTP origins', () => {
+    const bridgeUrl = new URL('../../js/android/bridge.js', import.meta.url).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+        import assert from 'node:assert/strict';
+        Object.defineProperty(globalThis, 'crypto', { get() { throw new Error('Secure API accessed'); } });
+        for (const origin of ['http://192.168.1.9:8080', 'http://127.0.0.1:8080']) {
+            globalThis.window = { location: { origin }, effetuneAndroid: { postMessage() {} } };
+            const { AndroidBridge, isAndroidHost } = await import(${JSON.stringify(bridgeUrl)});
+            assert.equal(isAndroidHost(), false);
+            assert.throws(() => new AndroidBridge(), /Android host is unavailable/);
+            assert.equal(window.effetuneAndroid.onmessage, undefined);
+        }
+    `], { encoding: 'utf8', windowsHide: true });
+    assert.equal(result.status, 0, result.stderr);
 });
 
 test('the remote client does not import from the Chrome extension folder', () => {

@@ -124,6 +124,8 @@ ET_EXPORT void et_instance_destroy(et_engine engine, et_instance instance);
 ET_EXPORT et_status et_instance_reset(et_engine engine, et_instance instance);
 ET_EXPORT uint32_t et_instance_latency(et_engine engine, et_instance instance);
 /* App-internal note-analysis reuse; producer 0 clears the link. */
+// App-internal temporal boundary; does not reset the instance or telemetry.
+ET_EXPORT et_status et_instance_stream_boundary(et_engine engine, et_instance instance);
 ET_EXPORT et_status et_instance_set_analysis_source(et_engine engine, et_instance consumer,
                                                     et_instance producer);
 ET_EXPORT et_status et_instance_set_tap(et_engine engine, et_instance instance, uint32_t tap_id);

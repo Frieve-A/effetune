@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { browserTestLaunchOptions } from '../tests/helpers/browser-test-display.mjs';
 
 export const POWER_SMOKE_FIXTURE_PATH = '/__power-policy-smoke__/index.html';
 export const CUE_REGION_SMOKE_FIXTURE_PATH = '/__cue-region-smoke__/index.html';
@@ -796,6 +797,7 @@ export async function startIsolatedStaticServer() {
   const logs = [];
   const child = fork(modulePath, ['--serve'], {
     cwd: repoRoot,
+    windowsHide: true,
     env: { ...process.env, NODE_ENV: 'test' },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc']
   });
@@ -939,14 +941,14 @@ export async function runPowerBrowserSmoke() {
   let browser = null;
   try {
     try {
-      browser = await chromium.launch({
+      browser = await chromium.launch(await browserTestLaunchOptions({
         headless: process.env.POWER_BROWSER_HEADED !== '1',
         args: [
           '--autoplay-policy=no-user-gesture-required',
           '--use-fake-device-for-media-stream',
           '--use-fake-ui-for-media-stream'
         ]
-      });
+      }));
     } catch (error) {
       throw new Error(
         'Chromium could not start for the power browser smoke. ' +

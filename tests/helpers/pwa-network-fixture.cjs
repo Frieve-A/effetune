@@ -42,29 +42,51 @@ async function createPwaNetworkFixture({ origin = PWA_ORIGIN, env = {} } = {}) {
       }
       if (channel !== PLAYER.action) return;
       actions.push(request);
-      queueMicrotask(() => {
+      queueMicrotask(async () => {
         const args = request.args; let result = {};
-        switch (request.action) {
-          case 'Snapshot': result = snapshot(); break;
-          case 'ReadList': result = { tracks: args.idList.map(id => queue.find(track => track.id === id)).filter(Boolean) }; break;
-          case 'Insert': {
-            const track = { id: nextId++, uri: args.uri, metadata: args.metadata };
-            const index = args.afterId ? queue.findIndex(entry => entry.id === args.afterId) + 1 : 0;
-            queue.splice(index, 0, track); revision++; result = { newId: track.id }; break;
+        try {
+          switch (request.action) {
+            case 'PlayItems': {
+              const tracks = await Promise.all(args.items.map(async item => {
+                const track = await library.serverHost.resolveTrack(item);
+                return { id: nextId++, uri: track.uri, metadata: track.metadata,
+                  ...(item.serverId === 'local' ? { libraryTrackId: item.trackId } : {}) };
+              }));
+              if (args.operationKind === 'play') queue.length = 0;
+              const index = args.operationKind === 'playNext'
+                ? Math.max(0, queue.findIndex(track => track.id === state.currentId) + 1) : queue.length;
+              queue.splice(index, 0, ...tracks);
+              revision++;
+              if (args.operationKind === 'play') {
+                state.currentId = tracks[args.startIndex].id;
+                state.transportState = 'Playing';
+              }
+              break;
+            }
+            case 'Snapshot': result = snapshot(); break;
+            case 'ReadList': result = { tracks: args.idList.map(id => queue.find(track => track.id === id)).filter(Boolean) }; break;
+            case 'Insert': {
+              const track = { id: nextId++, uri: args.uri, metadata: args.metadata };
+              const index = args.afterId ? queue.findIndex(entry => entry.id === args.afterId) + 1 : 0;
+              queue.splice(index, 0, track); revision++; result = { newId: track.id }; break;
+            }
+            case 'DeleteAll': queue.length = 0; state.currentId = 0; revision++; break;
+            case 'DeleteId': { const index = queue.findIndex(track => track.id === args.id); if (index >= 0) queue.splice(index, 1); revision++; break; }
+            case 'SeekId': state.currentId = args.id; break;
+            case 'SeekSecondAbsolute': state.seconds = args.seconds; break;
+            case 'Play': state.transportState = 'Playing'; break;
+            case 'Pause': state.transportState = 'Paused'; break;
+            case 'Stop': state.transportState = 'Stopped'; break;
+            case 'SetRepeat': state.repeat = args.repeat; break;
+            case 'SetShuffle': state.shuffle = args.shuffle; break;
+            default: break;
           }
-          case 'DeleteAll': queue.length = 0; state.currentId = 0; revision++; break;
-          case 'DeleteId': { const index = queue.findIndex(track => track.id === args.id); if (index >= 0) queue.splice(index, 1); revision++; break; }
-          case 'SeekId': state.currentId = args.id; break;
-          case 'SeekSecondAbsolute': state.seconds = args.seconds; break;
-          case 'Play': state.transportState = 'Playing'; break;
-          case 'Pause': state.transportState = 'Paused'; break;
-          case 'Stop': state.transportState = 'Stopped'; break;
-          case 'SetRepeat': state.repeat = args.repeat; break;
-          case 'SetShuffle': state.shuffle = args.shuffle; break;
-          default: break;
+          playerHost.handleRendererResponse({ requestId: request.requestId, ok: true, result });
+          playerHost.publishState(snapshot());
+          } catch (error) {
+          playerHost.handleRendererResponse({ requestId: request.requestId, ok: false,
+            error: { code: error.code || 'unavailable', message: error.message } });
         }
-        playerHost.handleRendererResponse({ requestId: request.requestId, ok: true, result });
-        playerHost.publishState(snapshot());
       });
     } } };
     playerHost = new OpenHomeControlHost({ sidecar, gateway, getMainWindow: () => window, loadConfig: () => config, saveConfig: value => { config = value; return true; }, setAppConfig() {} });

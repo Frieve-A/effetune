@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { browserTestLaunchOptions } from '../helpers/browser-test-display.mjs';
 
 const FIXTURE_PATH = '/tests/browser/audio-gesture-smoke.fixture.html';
 
 export async function runAudioGestureBrowserSmoke({ baseURL }) {
   // Do not inherit the DSP suite's autoplay exemption or fake microphone grant.
-  const browser = await chromium.launch({
+  const browser = await chromium.launch(await browserTestLaunchOptions({
     headless: process.env.POWER_BROWSER_HEADED !== '1',
     args: ['--autoplay-policy=document-user-activation-required']
-  });
+  }));
   try {
     for (const cold of [true, false]) {
       const context = await browser.newContext({ hasTouch: true, isMobile: true });

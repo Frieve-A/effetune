@@ -445,9 +445,11 @@ test('speaker IR convolution retains signed Before and After data across all fiv
     'phase',
     'minimumGroupDelay',
     'excessGroupDelay',
-    'impulse'
+    'impulse',
+    'distortion',
+    'waterfall'
   ]);
-  for (const view of Object.values(adapted.views)) {
+  for (const view of Object.values(adapted.views).filter(view => view.curves)) {
     assert.deepEqual(view.curves.map(curve => curve.id), ['before', 'after']);
   }
   assert.equal(adapted.views.impulse.curves.at(-1).points.some(point => point.yLabel === '-0.50'), true);

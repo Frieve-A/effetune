@@ -4,7 +4,9 @@ const http = require('node:http');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const path = require('node:path');
+const net = require('node:net');
 const { pipeline } = require('node:stream');
+const { serveRemoteResource } = require('./network-music-resource.cjs');
 const { CONTENT, CONNECTION, SsdpAdvertisement, xml, parseXml, descendants, value, didl, didlItem, interfaces, isLanAddress, networkUrl } = require('./network-music-upnp.cjs');
 const { SEARCH_CAPS, SORT_CAPS, parseSearch, parseSort } = require('./network-music-content.cjs');
 
@@ -59,19 +61,33 @@ class MusicServer {
   base(address) { return `http://${address || interfaces()[0]}:${this.port}`; }
   targets() { return ['upnp:rootdevice', this.id, 'urn:schemas-upnp-org:device:MediaServer:1', CONTENT, CONNECTION]; }
   resource(trackUid, address, targetAddress = null) {
+    if (targetAddress !== null) {
+      targetAddress = targetAddress.replace(/^::ffff:/, '');
+      if (!net.isIP(targetAddress)) throw new Error('The playback device address could not be verified');
+    }
     let token = this.trackTokens.get(trackUid);
     if (!token) { token = crypto.randomBytes(24).toString('base64url'); this.trackTokens.set(trackUid, token); this.tokens.set(token, trackUid); }
     if (targetAddress) this.resourceTargets.set(token, targetAddress);
     return { uri: `${this.base(address)}/media/${token}`, artwork: `${this.base(address)}/artwork/${token}` };
   }
+  rendererResource(trackUid) {
+    this.resource(trackUid, '127.0.0.1', '127.0.0.1');
+    const token = this.trackTokens.get(trackUid);
+    const base = `${this.base('127.0.0.1')}/openhome-media/`;
+    return { uri: `${base}${token}`, artwork: `${base}artwork/${token}` };
+  }
   revokeSource(uid) {
     const token = this.trackTokens.get(uid);
     this.trackTokens.delete(uid); this.tokens.delete(token); this.resourceTargets.delete(token);
+    for (const response of this.resourceResponses?.get(uid) || []) response.destroy();
+    this.resourceResponses?.delete(uid);
   }
   revoke() {
     this.tokens.clear(); this.trackTokens.clear(); this.resourceTargets.clear(); this.updateId = (this.updateId + 1) >>> 0;
     for (const stream of this.streams) stream.destroy();
     this.streams.clear();
+    for (const responses of this.resourceResponses?.values() || []) for (const response of responses) response.destroy();
+    this.resourceResponses?.clear();
     for (const subscription of this.subscribers.values()) this.notify(subscription);
   }
   async close() {
@@ -88,7 +104,17 @@ class MusicServer {
     const remote = req.socket.remoteAddress?.replace(/^::ffff:/, '');
     if (!this.enabled || !isLanAddress(remote ?? '')) { res.writeHead(403); res.end(); return; }
     const route = req.url?.split('?')[0];
-    if (!this.advertise && !route?.startsWith('/media/')) { res.writeHead(404); res.end(); return; }
+    const rendererRoute = route?.startsWith('/openhome-media/');
+    if (rendererRoute) {
+      if (remote !== '127.0.0.1') { res.writeHead(403); res.end(); return; }
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, { 'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS', 'Access-Control-Allow-Headers': 'Range' });
+        res.end(); return;
+      }
+    }
+    if (!this.advertise && !route?.startsWith('/media/') && !route?.startsWith('/artwork/') && !rendererRoute) { res.writeHead(404); res.end(); return; }
     if (route?.startsWith('/event/')) { this.subscription(req, res, route.slice(7), remote); return; }
     if (req.method === 'POST' && route?.startsWith('/control/')) { await this.control(req, res, route.slice(9)); return; }
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return; }
@@ -96,16 +122,23 @@ class MusicServer {
       const body = route === '/device.xml' ? this.description() : scpd(route.slice(1, -4));
       res.writeHead(200, { 'Content-Type': 'text/xml; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }); res.end(req.method === 'HEAD' ? undefined : body); return;
     }
-    const match = /^\/(media|artwork)\/([a-zA-Z0-9_-]{32})$/.exec(route ?? '');
+    const match = rendererRoute
+      ? /^\/openhome-media\/(?:(artwork)\/)?([a-zA-Z0-9_-]{32})$/.exec(route)
+      : /^\/(media|artwork)\/([a-zA-Z0-9_-]{32})$/.exec(route ?? '');
     const uid = match && this.tokens.get(match[2]);
     if (!uid) { res.writeHead(404); res.end(); return; }
     if (this.resourceTargets.has(match[2]) && this.resourceTargets.get(match[2]) !== remote) { res.writeHead(403); res.end(); return; }
-    await this.serveResource(req, res, uid, match[1], () => this.enabled && this.tokens.get(match[2]) === uid);
+    await this.serveResource(req, res, uid, match[1] || 'media', () => this.enabled && this.tokens.get(match[2]) === uid);
   }
   async serveResource(req, res, uid, kind, isCurrent) {
+    this.resourceResponses ||= new Map();
+    if (!this.resourceResponses.has(uid)) this.resourceResponses.set(uid, new Set());
+    const responses = this.resourceResponses.get(uid); responses.add(res);
+    res.once('close', () => { responses.delete(res); if (!responses.size) this.resourceResponses.delete(uid); });
     let source;
     try { source = await this.resolveSource(uid); } catch { res.writeHead(404); res.end(); return; }
     if (!isCurrent()) { res.writeHead(404); res.end(); return; }
+    if (source.remote) return serveRemoteResource(req, res, await source.resource(kind), () => isCurrent() && source.isCurrent(), kind, this.streams);
     if (kind === 'artwork') {
       const artwork = await this.getArtwork(uid);
       const bytes = artwork?.bytes ? Buffer.from(artwork.bytes) : null;

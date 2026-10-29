@@ -8,6 +8,69 @@ const nodes = new Map([[2, {
   effectType: 'NoteSpectrogram', effectId: 'notes', effectIndex: 0
 }]]);
 
+function chordPacket() {
+  const packet = new Uint8Array(48);
+  const view = new DataView(packet.buffer);
+  view.setUint16(0, 32, true);
+  view.setUint16(2, 1, true);
+  view.setUint32(4, 2, true);
+  view.setUint16(12, 32, true);
+  view.setFloat32(16, 48000, true);
+  view.setFloat32(20, 1, true);
+  view.setFloat32(24, .02, true);
+  view.setUint32(28, 7, true);
+  view.setUint32(32, 54, true);
+  packet.set([0, 4, 4, 255, 255, 255, 21, 255], 36);
+  view.setFloat32(44, .75, true);
+  return packet;
+}
+
+test('Note Chord Key decodes chord triples, absent chords and both key states', () => {
+  const packet = chordPacket();
+  const { frames } = decodeTelemetryPacket(packet, packet.length, nodes);
+  const frame = frames[0];
+  assert.equal(frame.kind, 'noteChordKey');
+  assert.equal(frame.confirmedProbability, .75);
+  assert.deepEqual([frame.generation, frame.frameIndex], [7, 54]);
+  assert.deepEqual([frame.immediateRoot, frame.immediateQuality, frame.immediateBass], [0, 4, 4]);
+  assert.deepEqual([frame.confirmedRoot, frame.confirmedQuality, frame.confirmedBass], [null, null, null]);
+  assert.deepEqual([frame.localKey, frame.overallKey], [21, null]);
+  packet.set([24, 3], 42);
+  packet.set([0, 4, 4], 39);
+  new DataView(packet.buffer).setFloat32(44, 1, true);
+  const next = decodeTelemetryPacket(packet, packet.length, nodes).frames[0];
+  assert.deepEqual([next.localKey, next.overallKey], [24, 3]);
+  assert.equal(next.confirmedProbability, 1);
+  assert.equal(frame.confirmedProbability, .75);
+  assert.equal(frame.overallKey, null, 'decoded values are independent of packet reuse');
+  packet.set([255, 255], 42);
+  const unavailable = decodeTelemetryPacket(packet, packet.length, nodes).frames[0];
+  assert.deepEqual([unavailable.localKey, unavailable.overallKey], [null, null]);
+  assert.equal(unavailable.confirmedRoot, 0, 'unavailable keys preserve the chord result');
+});
+
+test('Note Chord Key rejects malformed triples, key values and versions', () => {
+  for (const [offset, value] of [[36, 12], [37, 11], [38, 255], [40, 0], [42, 25], [43, 24], [2, 2]]) {
+    const packet = chordPacket();
+    packet[offset] = value;
+    const decoded = decodeTelemetryPacket(packet, packet.length, nodes, 3);
+    assert.equal(decoded.frames.length, 0, `invalid byte ${offset}`);
+    assert.equal(decoded.pendingDropped, 3);
+  }
+});
+
+test('Note Chord Key validates probability range and exact payload size', () => {
+  for (const value of [0, 1, -.01, 1.01, NaN, Infinity]) {
+    const packet = chordPacket();
+    new DataView(packet.buffer).setFloat32(44, value, true);
+    assert.equal(decodeTelemetryPacket(packet, packet.length, nodes).frames.length,
+      Number(value === 0 || value === 1));
+  }
+  const packet = chordPacket().slice(0, 44);
+  new DataView(packet.buffer).setUint16(12, 28, true);
+  assert.equal(decodeTelemetryPacket(packet, packet.length, nodes).frames.length, 0);
+});
+
 function timbrePacket(event = 2) {
   const packet = new Uint8Array(96);
   const view = new DataView(packet.buffer);

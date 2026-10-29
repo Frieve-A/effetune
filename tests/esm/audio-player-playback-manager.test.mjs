@@ -1531,7 +1531,7 @@ test('shuffle off preserves the playing duplicate entry while shuffle on resumes
     manager.loadFiles(['duplicate.wav', 'middle.wav', 'duplicate.wav']);
     audioPlayer.calls.length = 0;
 
-    manager.toggleShuffleMode();
+    await manager.toggleShuffleMode();
 
     const resumeIndex = audioPlayer.calls.findIndex(call =>
       call[0] === 'resumeAudioContextInGesture'
@@ -1553,7 +1553,7 @@ test('shuffle off preserves the playing duplicate entry while shuffle on resumes
     audioPlayer.state.currentTrackPosition = 37;
     audioPlayer.calls.length = 0;
 
-    manager.toggleShuffleMode();
+    await manager.toggleShuffleMode();
 
     assert.deepEqual(
       manager.playlist.map(track => track.name),
@@ -1571,6 +1571,34 @@ test('shuffle off preserves the playing duplicate entry while shuffle on resumes
     assert.equal(audioPlayer.calls.some(call => call[0] === 'contextStop'), false);
     assert.equal(audioPlayer.calls.some(call => call[0] === 'contextLoadTrack'), false);
     assert.equal(audioPlayer.calls.some(call => call[0] === 'seamlessTransition'), false);
+  });
+});
+
+test('enabling shuffle keeps playback running after asynchronous stop cleanup', async () => {
+  await withPlaybackGlobals({}, async () => {
+    const audioPlayer = createAudioPlayer({ isPlaying: true, repeatMode: 'ALL' });
+    const manager = makeManager(audioPlayer);
+    setPlaylist(manager);
+    let finishStop;
+    const cleanup = new Promise(resolve => { finishStop = resolve; });
+    audioPlayer.contextManager.stop = async () => {
+      await cleanup;
+      Object.assign(audioPlayer.state, { isPlaying: false, isStopped: true });
+    };
+    audioPlayer.contextManager.seamlessTransition = async () => {
+      Object.assign(audioPlayer.state, { isPlaying: true, isStopped: false });
+    };
+
+    const enabling = manager.toggleShuffleMode();
+    await flushMicrotasks();
+    finishStop();
+    await enabling;
+    await flushMicrotasks();
+
+    assert.equal(audioPlayer.state.shuffleMode, true);
+    assert.equal(audioPlayer.state.repeatMode, 'ALL');
+    assert.equal(audioPlayer.state.isPlaying, true);
+    assert.equal(audioPlayer.state.isStopped, false);
   });
 });
 
@@ -1627,7 +1655,7 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
     const audioPlayer = createAudioPlayer({ shuffleMode: false, isPlaying: true });
     const manager = makeManager(audioPlayer);
     setPlaylist(manager);
-    manager.toggleShuffleMode();
+    await manager.toggleShuffleMode();
     const shuffleResumeIndex = audioPlayer.calls.findIndex(call =>
       call[0] === 'resumeAudioContextInGesture'
     );
@@ -1650,7 +1678,7 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
     const resumeCountBeforeDisable = audioPlayer.calls.filter(call =>
       call[0] === 'resumeAudioContextInGesture'
     ).length;
-    manager.toggleShuffleMode();
+    await manager.toggleShuffleMode();
     assert.equal(
       audioPlayer.calls.filter(call => call[0] === 'resumeAudioContextInGesture').length,
       resumeCountBeforeDisable
@@ -1660,7 +1688,7 @@ test('shuffle, repeat, seek, clear, and dispose update playback state consistent
       [manager.playlist.map(track => track.name), restoredTrackIndex]
     );
     audioPlayer.state.repeatMode = 'ONE';
-    manager.toggleShuffleMode();
+    await manager.toggleShuffleMode();
 
     for (const repeatMode of ['OFF', 'ALL', 'ONE', 'BAD', undefined]) {
       audioPlayer.state.repeatMode = repeatMode;

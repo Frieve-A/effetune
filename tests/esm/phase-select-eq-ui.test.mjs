@@ -750,7 +750,9 @@ test('UI reuses standard control rows and the shared effect tab surface', async 
   const standardRowRule = controlsCss.match(
     /\.plugin-parameter-ui \.parameter-row\s*\{([^}]*)\}/)?.[1] || '';
   const standardMargin = standardRowRule.match(/\bmargin:\s*([^;]+);/)?.[1];
-  assert.equal(standardMargin, '2px 0');
+  assert.match(controlsCss,
+    /\.plugin-parameter-ui\s*\{[^}]*--et-parameter-row-margin:\s*2px;/s);
+  assert.equal(standardMargin, 'var(--et-parameter-row-margin) 0');
   assert.doesNotMatch(pluginUiRule, /\bgap\s*:/);
   assert.doesNotMatch(editorRule, /\bmargin-(?:top|bottom)\s*:/);
   const axisSpacingRule = css.match(

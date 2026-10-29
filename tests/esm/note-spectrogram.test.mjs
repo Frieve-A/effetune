@@ -8,6 +8,7 @@ import { frequencyAxisSource } from '../helpers/spectrum-overlay-harness.mjs';
 import { fileURLToPath } from 'node:url';
 import { TelemetryHub, TELEMETRY_HEADER_BYTES } from '../../js/audio/telemetry-hub.js';
 import { audibleFrameTime, audibleContextTime } from '../../js/audio/visual-sync.js';
+import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const pluginPath = path.join('plugins', 'analyzer', 'note_spectrogram.js');
@@ -26,7 +27,7 @@ const historyWidth = 1024;
 
 // Canvas calls used only by the shaded piano keys.
 const keyShadingStubs = {
-    save() {}, restore() {}, rect() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} })
+    save() {}, restore() {}, rect() {}, clip() {}, fill() {}, createLinearGradient: () => ({ addColorStop() {} })
 };
 
 // Canvas calls used only by the Volume history bar shapes.
@@ -393,11 +394,11 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.processor, 'return data;');
     assert.equal(plugin.constructor.executionCapabilities.requiresWasm, true);
     assert.deepEqual(JSON.parse(JSON.stringify(plugin.getParameters())), {
-        type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', hl: 'None', pr: 'Semitone', ly: 'Horizontal', vl: true, os: false, ts: 2,
+        type: 'NoteSpectrogramPlugin', enabled: true, cl: 'Normal', hl: 'None', pr: 'Semitone', ly: 'Horizontal', vl: true, os: false, ck: false, ts: 2,
         mn: 28, mx: 91
     });
     plugin.setParameters({
-        cl: 'Rainbow', pr: 'High', ly: 'Horizontal', vl: false, os: true, ts: 100,
+        cl: 'Rainbow', pr: 'High', ly: 'Horizontal', vl: false, os: true, ck: true, ts: 100,
         md: 'Classic', cf: 1, dr: -48
     });
     assert.equal(plugin.ts, 10);
@@ -408,6 +409,8 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(restored.ly, 'Horizontal');
     assert.equal(restored.vl, false);
     assert.equal(restored.os, true);
+    assert.equal(restored.ck, true);
+    assert.equal(restored.getWorkletPluginData().parameters.ck, true);
     assert.equal(restored.md, undefined);
     assert.equal(restored.cf, undefined);
     assert.equal(restored.dr, undefined);
@@ -422,6 +425,7 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(legacy.pr, 'Semitone');
     assert.equal(legacy.vl, true);
     assert.equal(legacy.os, false);
+    assert.equal(legacy.ck, false);
     legacy.setParameters({ cl: 'Normal', rb: true });
     assert.equal(legacy.cl, 'Normal');
     plugin.reset();
@@ -430,6 +434,11 @@ test('Note Spectrogram restores display preferences and defaults to a horizontal
     assert.equal(plugin.ly, 'Horizontal');
     assert.equal(plugin.vl, true);
     assert.equal(plugin.os, false);
+    assert.equal(plugin.ck, false);
+    assert.equal(plugin.getWorkletPluginData().parameters.ck, false);
+    const packer = DSP_PARAM_PACKERS.get('NoteSpectrogramPlugin');
+    assert.equal(packer.pack({})[3], 0);
+    assert.equal(packer.pack({ ck: true })[3], 1);
     assert.equal(plugin.ts, 2);
     assert.equal(plugin.mn, 28);
     assert.equal(plugin.mx, 91);
@@ -1011,10 +1020,10 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     plugin.drawGraph = () => {};
     plugin.createUI();
     assert.deepEqual(rows.map(row => row.label), [
-        'Color', 'Highlight', 'Pitch Resolution', 'Layout', 'Volume', 'Onsets', 'Time Span',
+        'Color', 'Highlight', 'Pitch Resolution', 'Layout', 'Volume', 'Onsets', 'Chords & Key', 'Time Span',
         'Lowest Note', 'Highest Note'
     ]);
-    const [color, highlight, resolution, layout, volume, onsets, timeSpan, lowestNote, highestNote] = rows;
+    const [color, highlight, resolution, layout, volume, onsets, chords, timeSpan, lowestNote, highestNote] = rows;
     assert.deepEqual(JSON.parse(JSON.stringify(color.options)), [
         { value: 'Normal', label: 'Normal' },
         { value: 'Rainbow', label: 'Note Colors' },
@@ -1046,6 +1055,12 @@ test('Note Spectrogram exposes display and note range controls', async () => {
     assert.equal(volume.modelKey, 'vl');
     volume.setter(false);
     assert.equal(plugin.vl, false);
+    assert.equal(chords.value, false);
+    assert.equal(chords.modelKey, 'ck');
+    chords.setter(true);
+    assert.equal(plugin.ck, true);
+    chords.setter(false);
+    assert.equal(plugin.ck, false);
     assert.equal(onsets.value, false);
     assert.equal(onsets.modelKey, 'os');
     onsets.setter(true);
@@ -1140,6 +1155,13 @@ test('Note Spectrogram note range controls use sliders with read-only note names
     plugin.syncUIControls();
     assert.equal(slider.value, 108);
     assert.equal(noteName.value, 'C8');
+
+    plugin.setParameters({ mn: 70 });
+    plugin._setNotationKey(5);
+    assert.equal(noteName.value, 'B♭4', 'a new cumulative key refreshes the displayed range note');
+    assert.equal(plugin.mn, 70, 'spelling does not alter the selected MIDI note');
+    plugin.clearHistory();
+    assert.equal(noteName.value, 'A#4', 'history reset restores the initial spelling');
 });
 
 test('Note Spectrogram validates its version 6 telemetry payload', async () => {
@@ -1701,7 +1723,7 @@ test('Note Spectrogram subscribes once and releases its telemetry callback', asy
     plugin._setupMessageHandler();
     plugin.getParameters();
 
-    assert.equal(subscriptions.length, 2);
+    assert.equal(subscriptions.length, 3);
     assert.deepEqual(
         { tapId: subscriptions[0].tapId, frameType: subscriptions[0].frameType },
         { tapId: 31, frameType: 24 }
@@ -1712,7 +1734,7 @@ test('Note Spectrogram subscribes once and releases its telemetry callback', asy
 
     plugin.cleanup();
     assert.equal(plugin.volumeLevelHistory, null);
-    assert.equal(unsubscribeCount, 2);
+    assert.equal(unsubscribeCount, 3);
     assert.equal(plugin.cleanedUp, true);
 });
 
@@ -1742,7 +1764,7 @@ test('a replacement AudioWorklet starts a fresh telemetry epoch without resubscr
     audioContext.currentTime = 10;
     plugin._nextMessageHandlerWorkletNode = replacementWorkletNode;
     plugin._setupMessageHandler();
-    assert.equal(subscriptions.length, 2);
+    assert.equal(subscriptions.length, 3);
     assert.equal(plugin.activeGeneration, null);
     assert.equal(plugin.lastFrameIndex, null);
     assert.equal(plugin.writeColumn, 0);
@@ -2227,7 +2249,7 @@ test('layouts rotate the same piano keyboard while keeping labels upright', asyn
         origin[0] + x * Math.cos(angle) - y * Math.sin(angle),
         origin[1] + x * Math.sin(angle) + y * Math.cos(angle)
     ];
-    plugin.setParameters({ pr: 'High', ly: 'Vertical', vl: false, mn: 21, mx: 108 });
+    plugin.setParameters({ pr: 'High', ly: 'Vertical', vl: false, mn: 21, mx: 108, ck: false });
     plugin.canvas = { width: 880, height: 440 };
     plugin.imageData = { data: new Uint8ClampedArray(historyWidth * pitchCount * 4) };
     plugin.tempCtx = { putImageData() {} };

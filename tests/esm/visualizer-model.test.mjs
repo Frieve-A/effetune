@@ -7,6 +7,38 @@ import { ASPECTS, ASPECT_FILES, FONT_FAMILIES, TEXT_DECORATION_DEFAULTS, METER_A
 import { encodePipelineState } from '../../js/utils/pipeline-state-codec.js';
 import { withGlobals } from '../helpers/global-test-utils.mjs';
 
+test('Key and Chord retain their channels, typography, palettes and effects in shared layouts', () => {
+    const items = ['key', 'chord'].map(type => {
+        const item = createItem(type, type);
+        item.channel = 'R';
+        Object.assign(item.style, { fontFamily: 'serif', fontSize: 64, bold: true, italic: true,
+            align: 'center', verticalAlign: 'bottom', outlineWidth: 2, shadowBlur: 4 });
+        item.palette.mode = 'gradient';
+        item.palette.direction = 'radial';
+        item.effects = [normalizeEffect({ type: 'glow' })];
+        assert.deepEqual(item.params, {});
+        return item;
+    });
+    const layout = { ...createDefaultLayout(), items };
+    assert.equal(validateLayout(layout), true);
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items, items);
+});
+
+test('Drums retains its view and material controls in shared layouts', () => {
+    const item = createItem('drums', 'kit');
+    assert.equal(item.params.yaw, 0);
+    assert.equal(normalizeParams('drums', { yaw: -24 }).yaw, -24);
+    assert.equal(item.params.elevation, 25);
+    item.params = normalizeParams('drums', { yaw: 210, elevation: -10, shellColor: '#123456',
+        cymbalColor: 'invalid', hardwareColor: '#345678', headColor: '#abcdef' });
+    assert.equal(item.params.yaw, 180);
+    assert.equal(item.params.elevation, 5);
+    assert.equal(item.params.cymbalColor, '#d8af58');
+    const layout = normalizeLayout({ items: [item] });
+    assert.deepEqual(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params, item.params);
+    assert.deepEqual(paletteModesForType('drums'), ['solid']);
+});
+
 test('Lyrics parameters normalize and persist with text styling in layout shares', () => {
     const item = createItem('lyrics', 'lyrics');
     assert.deepEqual(item.params, { lyricsView: 'list', lyricsNext: true, lyricsMotion: 'step', lyricsStepDuration: 0.18,
@@ -110,7 +142,7 @@ test('original analyzer parameters and optional note octave mapping normalize in
     assert.deepEqual(normalizeLayout({ ...createDefaultLayout(), items: [stereo] }).items[0].params,
         normalizeParams('stereo', { showCorrelation: false, showBalance: false }));
     assert.deepEqual(normalizeParams('notes', { pr: 'High', ly: 'Vertical', vl: false, ts: 9, mn: 90, mx: 40 }),
-        { pr: 'High', ly: 'Vertical', kb: false, kl: 100, vl: false, ts: 9, mn: 90, mx: 90, showAxes: false, showAxisNumbers: false });
+        { pr: 'High', ly: 'Vertical', kb: false, kl: 100, vl: false, ck: false, ts: 9, mn: 90, mx: 90, showAxes: false, showAxisNumbers: false });
     const notes = createItem('notes', 'notes');
     assert.equal(notes.params.kb, false);
     assert.equal(notes.palette.mode, 'solid');
@@ -382,15 +414,15 @@ test('Saved meter hub switches migrate to an editable size', () => {
 
 test('Rhythm Analyzer defaults and bounds follow the Rhythm Analyzer effect', () => {
     const rhythm = createItem('rhythm-analyzer', 'rhythm');
-    assert.deepEqual(rhythm.params, { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: true, showAxisNumbers: true });
+    assert.deepEqual(rhythm.params, { mn: 40, mx: 240, dm: 'band', sp: 8, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 250, mx: 60.4, sp: 5 }),
-        { mn: 192, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: true, showAxisNumbers: true });
+        { mn: 192, mx: 240, dm: 'band', sp: 8, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 10, mx: 900, sp: 12, showAxes: false }),
-        { mn: 40, mx: 240, sp: 12, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: false, showAxisNumbers: true });
+        { mn: 40, mx: 240, dm: 'band', sp: 12, showBeat: true, showBpm: true, vt: false, vm: true, ve: false, vl: true, showAxes: false, showAxisNumbers: true });
     assert.deepEqual(normalizeParams('rhythm-analyzer', { mn: 40, mx: 240, sp: 8, vt: false, vm: false, ve: false, vl: false }),
-        { mn: 40, mx: 240, sp: 8, showBeat: true, showBpm: true, vt: false, vm: false, ve: false, vl: false, showAxes: true, showAxisNumbers: true });
+        { mn: 40, mx: 240, dm: 'band', sp: 8, showBeat: true, showBpm: true, vt: false, vm: false, ve: false, vl: false, showAxes: true, showAxisNumbers: true });
     assert.deepEqual(paletteModesForType('rhythm-analyzer'), ['solid', 'gradient']);
-    rhythm.params = { mn: 60, mx: 180, sp: 12, showBeat: false, showBpm: true, vt: true, vm: false, ve: true, vl: false, showAxes: true, showAxisNumbers: true };
+    rhythm.params = { mn: 60, mx: 180, dm: 'band', sp: 12, showBeat: false, showBpm: true, vt: true, vm: false, ve: true, vl: false, showAxes: true, showAxisNumbers: true };
     rhythm.palette.mode = 'gradient';
     const layout = { ...createDefaultLayout(), items: [rhythm] };
     assert.equal(validateLayout(layout), true);
@@ -515,6 +547,22 @@ test('released Notes layouts migrate only valid retired note counts on restore a
     const guitar = { ...createDefaultLayout(), items: [createItem('guitar', 'guitar')] };
     guitar.items[0].params.nc = 8;
     assert.equal(validateLayout(guitar), false, 'the retired field applies only to Notes');
+});
+
+test('Notes chord/key analysis starts off and preserves explicit choices in saved and shared layouts', () => {
+    const layout = { ...createDefaultLayout(), items: [createItem('notes', 'notes')] };
+    assert.equal(layout.items[0].params.ck, false);
+    for (const enabled of [true, false]) {
+        layout.items[0].params.ck = enabled;
+        assert.equal(validateLayout(layout), true);
+        assert.equal(normalizeLayout(layout).items[0].params.ck, enabled);
+        assert.equal(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params.ck, enabled);
+    }
+    delete layout.items[0].params.ck;
+    assert.equal(validateLayout(layout), true);
+    assert.equal(normalizeLayout(layout).items[0].params.ck, false);
+    layout.items[0].params.ck = 'false';
+    assert.equal(validateLayout(layout), false);
 });
 
 test('Fall time, peak toggle, peak fall time, and smoothing normalize per type', () => {
@@ -726,7 +774,7 @@ test('system presets retain valid layouts for every aspect ratio', () => {
     let count = 0;
     const types = new Set();
     const names = ['Mastering Console', 'Spectral Studio', 'Harmony Lab', 'Phosphor Scope', 'Hi-Fi Deck', 'Vintage VU',
-        'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala'];
+        'Now Playing', 'Neon Pulse', 'Phase Galaxy', 'Chroma Mandala', 'Groove Lounge'];
     // Featured designs ship only in the aspect ratios they were composed for, after the shared set.
     const featured = { '21:9': ['Fretboard', 'Power Amp', 'Cinema Strip', 'Meter Bridge'], '16:9': ['Power Amp', 'Beat Stage', 'Lyric Stage', 'Counter Gallery', 'Listening Room'],
         '4:3': ['Meter Bridge'], '1:1': ['Round Dials'], '9:16': ['Fretboard', 'Round Dials', 'Beat Stage', 'Lyric Stage'] };
@@ -760,7 +808,17 @@ test('system presets retain valid layouts for every aspect ratio', () => {
             assert.equal(layoutsEqual(layout, edited), false);
         }
     }
-    assert.equal(count, 65);
-    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chroma', 'phase', 'guitar', 'rhythm-analyzer', 'oscilloscope', 'lyrics'])
+    assert.equal(count, 70);
+    for (const type of ['spectrum', 'spectrogram', 'stereo', 'level-meter', 'analog-meter', 'notes', 'chord', 'key', 'drums', 'chroma', 'phase', 'guitar', 'rhythm-analyzer', 'oscilloscope', 'lyrics'])
         assert.equal(types.has(type), true);
+});
+
+
+test('Rhythm drum display mode survives normalization and layout sharing', () => {
+    const rhythm = createItem('rhythm-analyzer', 'drums');
+    rhythm.params.dm = 'drums';
+    const layout = { ...createDefaultLayout(), items: [rhythm] };
+    assert.equal(validateLayout(layout), true);
+    assert.equal(decodeLayoutShare(encodeLayoutShare(layout)).items[0].params.dm, 'drums');
+    assert.equal(normalizeParams('rhythm-analyzer', { dm: 'invalid' }).dm, 'band');
 });

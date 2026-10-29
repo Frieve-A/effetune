@@ -84,6 +84,10 @@ function createFakeInstance(options = {}) {
       calls.push(['instanceReset', ...args]);
       return 0;
     },
+    et_instance_stream_boundary(...args) {
+      calls.push(['instanceStreamBoundary', ...args]);
+      return 0;
+    },
     et_instance_latency(...args) {
       calls.push(['instanceLatency', ...args]);
       return 32;
@@ -207,6 +211,32 @@ test('binding rejects missing ABI exports and invalid instances', () => {
   assert.ok(REQUIRED_FUNCTION_EXPORTS.includes('et_instance_runtime_event'));
 });
 
+test('instance spans preserve planar channels and sample times without touching the rest of a block', () => {
+  const fake = createFakeInstance();
+  const binding = new DspEngineBinding(fake.instance);
+  binding.createEngine();
+  assert.equal(binding.prepare(44100, 16, 128, 65536), 0);
+  const audio = new Float32Array(fake.memory.buffer, 4096, 16 * 128);
+  for (let channel = 0; channel < 16; channel++) {
+    for (let frame = 0; frame < 128; frame++) audio[channel * 128 + frame] = channel * 1000 + frame;
+  }
+  const times = [];
+  fake.exports.et_instance_process = (engine, instance, pointer, channels, frames, time) => {
+    times.push([frames, time]);
+    const values = new Float32Array(fake.memory.buffer, pointer, channels * frames);
+    for (let i = 0; i < values.length; i++) values[i] += 0.5;
+    return 0;
+  };
+  assert.equal(binding.instanceProcessSpan(11, 4096, 16, 128, 18, 110, 2), 0);
+  assert.deepEqual(times, [[64, 2 + 18 / 44100], [46, 2 + 82 / 44100]]);
+  for (let channel = 0; channel < 16; channel++) {
+    for (let frame = 0; frame < 128; frame++) {
+      assert.equal(audio[channel * 128 + frame], channel * 1000 + frame + (frame >= 18 ? 0.5 : 0));
+    }
+  }
+  binding.close();
+});
+
 test('binding discovers capabilities and drives engine and instance lifecycle', () => {
   const fake = createFakeInstance();
   const binding = new DspEngineBinding(fake.instance);
@@ -242,6 +272,9 @@ test('binding discovers capabilities and drives engine and instance lifecycle', 
   assert.equal(binding.live, true);
   assert.equal(binding.createInstance('VolumePlugin'), 11);
   assert.equal(binding.resetInstance(11), 0);
+  assert.equal(binding.streamBoundaryInstance(11), 0);
+  assert.deepEqual(fake.calls.find(call => call[0] === 'instanceStreamBoundary'),
+    ['instanceStreamBoundary', 7, 11]);
   assert.equal(binding.instanceLatency(11), 32);
   assert.equal(binding.instanceSetTap(11, 99), 0);
   assert.equal(binding.instanceSetAnalysisSource(11, 12), 0);

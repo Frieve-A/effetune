@@ -4,6 +4,10 @@ import {
     alignToQuantum,
     areRouteTailsSettled,
     buildAnalysisResult,
+    buildCombinedAnalysisResult,
+    convolveImpulseResponses,
+    placeSpeakerResponses,
+    sumAlignedImpulseResponses,
     calculatePeriodResidualDb,
     periodicResidualNeedsWarning,
     recoverMlsImpulseResponse,
@@ -17,6 +21,8 @@ import {
     PIPELINE_ANALYZER_TSP_LENGTHS
 } from './mls.js';
 import { generateTspSequence } from './tsp.js';
+import { createEssSignal, createEssCapturePlan, analyzeEssRecording } from '../utils/measurement-dsp/ess.js';
+import { analyzeDistortion, analyzeWaterfall } from '../utils/measurement-dsp/analysis.js';
 import '../../plugins/multires-spectrum.js';
 
 const PREPARATION_TIMEOUT_MS = 10000;
@@ -642,6 +648,123 @@ function measurePeriodic(host, snapshot, settings, reportedLatency, post, token)
     };
 }
 
+function measureEss(host, snapshot, settings, speakerResponses, reportedLatency, post, token) {
+    const { sampleRate } = snapshot;
+    const amplitude = levelDbToAmplitude(settings.levelDb);
+    const sweep = createEssSignal({ length: settings.sequenceLength, sampleRate,
+        startFrequency: 20, endFrequency: Math.min(20000, sampleRate * 0.49) });
+    const plan = createEssCapturePlan(sweep, settings.averagingPeriods);
+    const requestedSpeakers = speakerResponses ?? snapshot.outputChannels.map(() => null);
+    if (requestedSpeakers.length !== snapshot.outputChannels.length) {
+        throw new TypeError('Speaker response count must match route count');
+    }
+    const placed = placeSpeakerResponses(requestedSpeakers, sampleRate);
+    const speakerLength = Math.max(...placed.responses.map(response => response.length));
+    const recording = new Float32Array(plan.playbackSamples + speakerLength - 1);
+    const captures = snapshot.outputChannels.map(() => new Float32Array(plan.intervalSamples));
+    const input = Array.from({ length: snapshot.channelCount }, () => new Float32Array(ANALYSIS_QUANTUM_SIZE));
+    postProgress(post, token, 'measuring', 0, plan.playbackSamples);
+    for (let processed = 0; processed < plan.playbackSamples; processed += ANALYSIS_QUANTUM_SIZE) {
+        const selected = input[snapshot.inputChannel];
+        for (let frame = 0; frame < selected.length; frame++) {
+            const position = (processed + frame) % plan.intervalSamples;
+            selected[frame] = position < sweep.length ? sweep.signal[position] * amplitude : 0;
+        }
+        const output = host.processBlock(input);
+        const validFrames = Math.min(ANALYSIS_QUANTUM_SIZE, plan.playbackSamples - processed);
+        assertFiniteSelectedOutput(output, snapshot.outputChannels, validFrames);
+        for (let frame = 0; frame < validFrames; frame++) {
+            const absolute = processed + frame;
+            const position = absolute % plan.intervalSamples;
+            for (let route = 0; route < captures.length; route++) {
+                captures[route][position] = output[snapshot.outputChannels[route]][frame];
+            }
+            if (position !== plan.intervalSamples - 1) continue;
+            // Convolve one repetition at a time, bounding FFT memory independently of Averages.
+            const start = absolute + 1 - plan.intervalSamples;
+            for (let route = 0; route < captures.length; route++) {
+                const response = convolveImpulseResponses(captures[route], placed.responses[route]);
+                for (let i = 0; i < response.length; i++) recording[start + i] += response[i];
+            }
+        }
+        const completed = processed + validFrames;
+        if ((processed / ANALYSIS_QUANTUM_SIZE) % 128 === 0 || completed === plan.playbackSamples) {
+            postProgress(post, token, 'measuring', completed, plan.playbackSamples);
+        }
+    }
+    let response = null;
+    try {
+        response = analyzeEssRecording(recording, sweep, {
+            repetitions: settings.averagingPeriods, playbackOffsetSamples: 0,
+            outputTimeReference: 'audio-context', levelDb: settings.levelDb, detectClipping: false
+        });
+    } catch (error) {
+        // A silent or exactly cancelled output has a zero transfer and no measurable distortion.
+        if (!(error instanceof RangeError && error.message === 'No usable ESS response')) throw error;
+    }
+    const impulse = response?.data ?? new Float32Array(Math.ceil(1.5 * sampleRate));
+    const beforeSource = requestedSpeakers.every(value => value == null)
+        ? new Float32Array([1]) : sumAlignedImpulseResponses(placed.responses);
+    const beforeImpulse = new Float32Array(Math.max(beforeSource.length, impulse.length));
+    beforeImpulse.set(beforeSource);
+    const distortion = response ? analyzeDistortion(response.harmonicAnalysis, {
+        harmonicLimit: 10, maxOrder: 3, beforeSeconds: 0.002, afterSeconds: 0.02,
+        minFrequency: 20, maxFrequency: sweep.endFrequency, window: 'tukey'
+    }) : null;
+    const result = buildCombinedAnalysisResult({
+        before: { impulse: beforeImpulse,
+            timeOriginSamples: requestedSpeakers.every(value => value == null) ? 0 : placed.timeOriginSamples },
+        after: { impulse, timeOriginSamples: (response?.trimStartSamples ?? 0) +
+                placed.timeOriginSamples - reportedLatency,
+            onsetIndex: response?.onsetIndex ?? 0, distortion,
+            distortionQuality: response?.harmonicAnalysis.quality ?? null,
+            distortionUnavailableReason: response ? null : 'no-response' },
+        sampleRate, reportedLatency, captureLength: impulse.length,
+        // Test the recorded tail beyond the saved 1.5 s response, not inverse-filter ringing.
+        truncated: !areRouteTailsSettled([recording.subarray(0, plan.playbackSamples)],
+            Math.ceil(sampleRate), DENORMAL_NOISE_OUTPUT_LIMIT),
+        measurement: { ...settings, sweepSamples: sweep.length, durationSeconds: sweep.durationSeconds,
+            startFrequency: sweep.startFrequency, endFrequency: sweep.endFrequency,
+            stabilizationSeconds: 0, totalStimulusSeconds: plan.playbackSamples / sampleRate },
+        warnings: []
+    });
+    const linear = response?.harmonicAnalysis.orders[0];
+    if (linear) {
+        // The recovered response is only observed inside the faded sweep's usable band.
+        for (const spectrum of [result.after.spectrum, result.after.spectrum.smoothing]) {
+            for (let i = 0; i < spectrum.frequencies.length; i++) {
+                const frequency = spectrum.frequencies[i];
+                if (frequency >= linear.validMinFrequency && frequency <= linear.validMaxFrequency) continue;
+                spectrum.valid[i] = 0;
+                for (const key of ['magnitudeDb', 'phaseDegrees', 'unwrappedPhaseDegrees',
+                    'groupDelayMs', 'minimumGroupDelayMs', 'excessGroupDelayMs']) {
+                    if (spectrum[key]) spectrum[key][i] = Number.NaN;
+                }
+            }
+        }
+    }
+    return result;
+}
+
+function addWaterfallAnalysis(result) {
+    for (const source of [result.before, result.after]) {
+        if (!source.impulse.some(value => value !== 0)) continue;
+        const onsetIndex = Math.max(0, Math.min(source.impulse.length - 1,
+            source.onsetIndex ?? -source.timeOriginSamples));
+        const availableSeconds = (source.impulse.length - onsetIndex) / result.sampleRate;
+        if (source.impulse.length < 4 || availableSeconds < 4 / result.sampleRate) continue;
+        source.waterfall = analyzeWaterfall({ data: source.impulse, sampleRate: result.sampleRate,
+            onsetIndex, refScale: 1 }, {
+            startSeconds: 0, endSeconds: Math.min(0.3, availableSeconds),
+            windowSeconds: Math.min(0.1, availableSeconds / 2),
+            riseSeconds: Math.min(0.005, availableSeconds / 8, onsetIndex / result.sampleRate),
+            minFrequency: 20, maxFrequency: result.measurement?.endFrequency ?? Math.min(20000, result.sampleRate * 0.49),
+            smoothing: 0.1, window: 'tukey'
+        });
+    }
+    return result;
+}
+
 export async function runAnalysisRequest(request, post = () => {}) {
     const snapshot = request?.snapshot;
     validateSnapshot(snapshot);
@@ -661,11 +784,16 @@ export async function runAnalysisRequest(request, post = () => {}) {
 
     const reportedLatency = await queryReportedLatency(host);
     const settings = normalizeMeasurementSettings(snapshot.measurementSettings);
+    if (settings.signalType === 'ess') {
+        const result = measureEss(host, snapshot, settings, request.speakerResponses, reportedLatency, post, token);
+        result.warnings.unshift(...preparationWarnings);
+        return addWaterfallAnalysis(result);
+    }
     const measured = settings.signalType === 'impulse'
         ? measureImpulse(host, snapshot, settings, post, token)
         : measurePeriodic(host, snapshot, settings, reportedLatency, post, token);
 
-    return buildAnalysisResult({
+    return addWaterfallAnalysis(buildAnalysisResult({
         pipelineResponses: measured.pipelineResponses,
         speakerResponses: request.speakerResponses,
         outputChannels: snapshot.outputChannels,
@@ -674,7 +802,7 @@ export async function runAnalysisRequest(request, post = () => {}) {
         truncated: measured.truncated,
         measurement: measured.measurement,
         warnings: [...preparationWarnings, ...measured.warnings]
-    });
+    }));
 }
 
 function collectTransferBuffers(value, buffers = new Set()) {

@@ -867,7 +867,9 @@ test('Visualizer expand icon is centered and names both view-area actions', asyn
             let presetOpens = 0;
             view.openPresets = () => { presetOpens++; return Promise.resolve(); };
             view.presetButton.click();
-            const toolbarOrder = view.toolbar.children[0] === view.editButton &&
+            const title = view.toolbar.firstElementChild;
+            const toolbarOrder = title.matches('.pipeline-title.visualizer-title') && title.textContent === 'Visualizer' &&
+                title.nextElementSibling === view.editButton &&
                 [view.presetButton, view.shareButton, view.importButton, view.qualityLabel]
                     .every((control, index, controls) => !index || controls[index - 1].nextElementSibling === control) &&
                 view.qualityLabel === view.toolbar.lastElementChild;
@@ -1015,7 +1017,7 @@ test('Visualizer fills the available width on first display and after leaving ex
         assert.equal(sizes.effectsBodyDisplay, 'inline-block');
         assert.equal(sizes.libraryWidth, 1100);
         assert.equal(sizes.libraryBodyDisplay, 'inline-block');
-        assert.equal(sizes.mobile.hostWidth, 1264);
+        assert.equal(sizes.mobile.hostWidth, 1280);
         assert.equal(sizes.mobileOrder, true, JSON.stringify(sizes));
         assert.ok(Math.abs(sizes.mobileEditing.width / sizes.mobileEditing.height - 16 / 9) < .001);
         for (const size of [sizes.expanded, sizes.mini]) {
@@ -1991,6 +1993,7 @@ test('Visualizer Edit history and clipboard buttons keep Pipeline sizing and sho
                 return {
                     idle,
                     editing: { group: shown(group), importLink: shown(view.importButton) },
+                    titleVisible: shown(view.root.querySelector('.visualizer-title')),
                     reference: size(document.querySelector('#reference')),
                     sizes: [view.undoButton, view.redoButton, view.cutButton, view.copyButton, view.pasteButton].map(size),
                     fits: toolbar.scrollWidth <= toolbar.clientWidth + 1 &&
@@ -2002,6 +2005,7 @@ test('Visualizer Edit history and clipboard buttons keep Pipeline sizing and sho
             const result = await measure(width, mobile);
             assert.deepEqual(result.idle, { group: false, importLink: true });
             assert.deepEqual(result.editing, { group: true, importLink: false });
+            assert.equal(result.titleVisible, !mobile);
             assert.deepEqual(result.sizes, Array(5).fill(result.reference));
             assert.equal(result.fits, true, `toolbar fits at ${width}px`);
         }

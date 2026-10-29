@@ -965,7 +965,7 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
       }
     },
     {
-      effect: new NoteSpectrogram({ id: 'notes' }),
+      effect: new NoteSpectrogram({ id: 'notes', chordKeyEnabled: true }),
       kind: 'noteSpectrogram',
       verify(frame) {
         assert.equal(frame.sampleRate, 48000);
@@ -1061,7 +1061,10 @@ test('all analyzer telemetry decoders expose semantic observations', async t => 
         const output = await stream.process(input);
         assertDenormalProtectedAudio(output, input);
         assert.ok(received.length > 0);
-        const frame = received.at(-1);
+        const frame = received.findLast(frame => frame.kind === analyzer.kind);
+        if (analyzer.kind === 'noteSpectrogram') {
+          assert.ok(received.some(frame => frame.kind === 'noteChordKey'));
+        }
         assert.equal(frame.kind, analyzer.kind);
         assert.equal(frame.effectType, analyzer.effect.type);
         assert.equal(frame.effectId, analyzer.effect.id);

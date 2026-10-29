@@ -1,16 +1,16 @@
 {
   "abiVersion": 1,
-  "sourceDigest": "sha256:89d25ca4d6e0b49a7c9f6144bafdc7b9994e1c24f2e64e5fb414bc57cee48cc9",
+  "sourceDigest": "sha256:314d9e26ebcf527a2d990fbea086b18b9612b4d64d2a61a4911b6e2bc4cf5d65",
   "emsdkVersion": "6.0.13",
   "g726PerformanceInput": {
     "contract": "g726-production-performance-input-sha256-v2",
     "hashAlgorithm": "SHA-256 over the contract and ordered UTF-8 components as id\\0content\\0; CRLF and CR normalize to LF",
-    "digest": "sha256:76181f592a38101b26f7b9784ed5dadce850300dd8580d5d5a8ef0b65af4f781",
+    "digest": "sha256:d2395720a0a3eb755a1896bf831c35bca7c861756ec2e35c3834c20accfa3956",
     "inputs": [
       {
         "id": "dsp/core/abi.cpp",
         "kind": "file",
-        "sha256": "sha256:a34dcdcd6fe213ca337c451b9398055de32e645c42b39b126e65dc1c026c332e"
+        "sha256": "sha256:383c239ef46607fb49969ab3970ca4e598b7927f7670f81fcfbe9b01eb030080"
       },
       {
         "id": "dsp/core/allocation_guard.cpp",
@@ -35,12 +35,12 @@
       {
         "id": "dsp/core/engine.cpp",
         "kind": "file",
-        "sha256": "sha256:00a8700b218c1eb0bc760688f67045d055cf955a325bcfb22b3d6c301ee32c5f"
+        "sha256": "sha256:c586ec7fdac082fa860857fb30cf3649ed29179d2cbf8f55c84567e687eda14c"
       },
       {
         "id": "dsp/core/engine.h",
         "kind": "file",
-        "sha256": "sha256:6debcb7575c24bdbf16e5fc6e806110de1c8b256b6b84ece1e2a6fee50f891af"
+        "sha256": "sha256:87c0a3caf5ee4c59109ad936eaf5bb8070e148f6c9ab170fcc433d426a327f4a"
       },
       {
         "id": "dsp/core/registry.cpp",
@@ -65,7 +65,7 @@
       {
         "id": "dsp/exports.txt",
         "kind": "file",
-        "sha256": "sha256:10d19301b2193e844da94c322756fa908fd2864bbb425e8e150309969825ca25"
+        "sha256": "sha256:fbb21594356a6653c305ea148431c95669a1be8e16d96dd824153f32f1e3761b"
       },
       {
         "id": "dsp/generated/cpp/G726ADPCMSimulatorPluginParams.h",
@@ -75,7 +75,7 @@
       {
         "id": "dsp/include/effetune/abi.h",
         "kind": "file",
-        "sha256": "sha256:82fbaac1c39110967ae2619967888c12fdcff08af5ee46b61497eaf915f4b76c"
+        "sha256": "sha256:ac5163e1c16dbde2a1c23648985b5bc4209d1d527259bdbec06266c2423ef6b7"
       },
       {
         "id": "dsp/include/effetune/dsp/halfband.h",
@@ -95,7 +95,7 @@
       {
         "id": "dsp/include/effetune/kernel.h",
         "kind": "file",
-        "sha256": "sha256:9e536a29435d050d4e13acbcb96e46130dfe440c7476e84a296f5fae5356cfff"
+        "sha256": "sha256:753383c01b678bc76f0e89d12ace9ebd59a67d35a6eba1fdf315ad89eac6d200"
       },
       {
         "id": "dsp/include/effetune/telemetry.h",
@@ -130,7 +130,7 @@
       {
         "id": "js/audio/dsp-engine-binding.js",
         "kind": "file",
-        "sha256": "sha256:693347c27e0a9e7eb8d7e235426d75992d3ea0c7f21ad45355e1e43c7deab10f"
+        "sha256": "sha256:64652bebe362a34132cda6b7f74016e3eb61def73001cdd2a55b3ddf093272ce"
       },
       {
         "id": "production-build#g726-resolved-authority",
@@ -411,7 +411,7 @@
     },
     {
       "name": "NoteSpectrogramPlugin",
-      "hash": 2948988679,
+      "hash": 3092351299,
       "byteCapacity": 0,
       "assets": []
     },
@@ -429,7 +429,7 @@
     },
     {
       "name": "RhythmAnalyzerPlugin",
-      "hash": 3135264869,
+      "hash": 4166305157,
       "byteCapacity": 0,
       "assets": []
     },
@@ -1128,7 +1128,7 @@
     }
   ],
   "sizes": {
-    "baseline": 2693766,
-    "simd": 2864802
+    "baseline": 4034935,
+    "simd": 4207929
   }
 }

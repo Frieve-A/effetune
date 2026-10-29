@@ -11,6 +11,8 @@ import { instantiateDspBinding } from '../../js/audio/dsp-engine-binding.js';
 import { createReferenceSession } from '../../tools/dsp-parity/node-host.mjs';
 import { DSP_PARAM_PACKERS } from '../../js/audio/dsp-params.generated.js';
 import { analyzeTemporalCapabilities } from '../../js/audio/power-topology.js';
+import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
+import { decodeTelemetryPacket } from '../../dsp/bindings/js/src/telemetry.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const processorPath = path.join(repoRoot, 'plugins', 'audio-processor.js');
@@ -267,7 +269,7 @@ function createPreviewNoiseMath() {
 
 async function createWorkletHarness(options = {}) {
   const source = await fs.readFile(processorPath, 'utf8');
-  const injected = source.replace(
+  const injected = options.useInjectedBinding ? source : source.replace(
     /\/\/ __ETDSP_BINDING_INJECT_START__[\s\S]*?\/\/ __ETDSP_BINDING_INJECT_END__/,
     `// __ETDSP_BINDING_INJECT_START__
 async function instantiateDspBinding(payload, options) {
@@ -295,6 +297,7 @@ async function instantiateDspBinding(payload, options) {
     }
   }
   const sandbox = {
+    ...(options.useInjectedBinding ? { WebAssembly } : {}),
     ArrayBuffer,
     Math: options.math ?? Math,
     DataView,
@@ -7899,42 +7902,412 @@ test('gate: candidate plans mark new compensation lines without allocating them'
   assert.equal(processor.latencyPlansDiffer(adopted, candidate, true), true);
 });
 
-test('a stream boundary restarts each Rhythm Analyzer at the quantum nearest its input latency', async () => {
+test('skipped Rhythm instances consume finite boundaries and restore fused worklet processing', async () => {
+  for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+    for (const scenario of ['disabled', 'section-disabled', 'master-bypass', 'inactive-tap']) {
+      const label = `${artifact} ${scenario}`;
+      const wasm = await fs.readFile(path.join(repoRoot, 'plugins/dsp', artifact));
+      const binding = await instantiateDspBinding(wasm);
+      const h = await createWorkletHarness({ binding, sampleRate: 44100 });
+      const rhythm = DSP_PARAM_PACKERS.get('RhythmAnalyzerPlugin');
+      const volume = DSP_PARAM_PACKERS.get('VolumePlugin');
+      const parameters = { enabled: true, mn: 40, mx: 240, ck: false, dm: 'drums' };
+      const analyzer = pluginConfig({ type: 'RhythmAnalyzerPlugin', parameters,
+        wasmParams: rhythm.pack(parameters), wasmParamsHash: rhythm.hash });
+      const level = pluginConfig({ id: 8, parameters: { vl: 0 },
+        wasmParams: volume.pack({ vl: 0 }), wasmParamsHash: volume.hash });
+      const section = pluginConfig({ id: 9, type: 'SectionPlugin', enabled: false });
+      const tapId = 0xf0000000;
+      let fused = 0;
+      let finished = 0;
+      let frame = 0;
+      const pipelineProcess = binding.pipelineProcess.bind(binding);
+      binding.pipelineProcess = (...args) => { fused++; return pipelineProcess(...args); };
+      const streamBoundary = binding.streamBoundaryInstance.bind(binding);
+      binding.streamBoundaryInstance = (...args) => { finished++; return streamBoundary(...args); };
+      const run = (empty = false) => {
+        h.setContextFrame(frame);
+        const block = Float32Array.from({ length: 128 }, (_, i) => Math.sin((frame + i) * .1) * .1);
+        const output = [new Float32Array(128), new Float32Array(128)];
+        h.processor.process([empty ? [] : [block, block]], [output], {});
+        for (let i = 0; i < 128; i++) assert.ok(Math.abs(output[0][i] - (empty ? 0 : block[i])) < 1e-7, label);
+        frame += 128;
+      };
+      try {
+        await h.send({ type: 'updatePlugins', plugins: [level, analyzer], masterBypass: false });
+        await h.send({ type: 'dspEnableTypes', types: ['VolumePlugin', 'RhythmAnalyzerPlugin'] });
+        if (scenario === 'inactive-tap') {
+          await h.send({ type: 'setVisualizerSources', sources: [{ tapId, type: 'RhythmAnalyzerPlugin',
+            paramsHash: rhythm.hash, params: rhythm.pack(parameters), channel: null, gain: 1 }] });
+          await h.send({ type: 'updatePlugins', plugins: [level], masterBypass: false });
+        }
+        await h.send({ type: 'dspModule', module: {} });
+        run();
+        assert.equal(fused, 1, label);
+        const entry = scenario === 'inactive-tap'
+          ? h.processor.visualizerInstances.get(tapId) : h.processor.wasmInstances.get(7);
+        assert.ok(entry, label);
+        if (scenario === 'inactive-tap') {
+          h.processor.dspLatencyPlan.totalSamples = 128;
+        } else {
+          await h.send({ type: 'updatePlugins', masterBypass: scenario === 'master-bypass', plugins:
+            scenario === 'section-disabled' ? [level, section, analyzer]
+              : [level, { ...analyzer, enabled: scenario !== 'disabled' }] });
+        }
+        const empty = scenario === 'inactive-tap';
+        for (let reservation = 0; reservation < 3; reservation++) {
+          const endpoint = frame + 128;
+          await h.send({ type: 'streamBoundary', endFrame: endpoint });
+          run(empty);
+          if (empty) {
+            assert.equal(finished, reservation, 'input latency keeps the future tap boundary pending');
+            run(true);
+          }
+          assert.equal(finished, reservation + 1, label);
+          assert.equal(entry.lastStreamBoundaryFrame, endpoint, label);
+          assert.equal(h.processor.streamBoundaries.length, 0, label);
+          const before = fused;
+          run(empty);
+          if (!empty && scenario !== 'master-bypass') assert.equal(fused, before + 1, label);
+        }
+        if (empty) h.processor.dspLatencyPlan.totalSamples = 0;
+        await h.send({ type: 'updatePlugins', plugins: empty ? [level] : [level, analyzer], masterBypass: false });
+        const before = fused;
+        run();
+        run();
+        assert.equal(fused, before + 2, `${label}: enabling restores normal fusion`);
+        assert.equal(finished, 3, 'consumed endpoints never reset a later enabled generation');
+        assert.equal(h.processor.dspPipelineReady, true, label);
+      } finally { binding.close(); }
+    }
+  }
+});
+
+test('finite Rhythm endpoints split real worklet audio exactly before EOF and the next generation', async () => {
+  const fixture = await fs.readFile(path.join(repoRoot,
+    'dsp/plugins/analyzer/rhythm_analyzer/fixtures/drum-input.f32'));
+  const input = new Float32Array(fixture.buffer, fixture.byteOffset, fixture.byteLength / 4);
+  const packer = DSP_PARAM_PACKERS.get('RhythmAnalyzerPlugin');
+  for (const artifact of ['effetune-dsp.wasm', 'effetune-dsp.simd.wasm']) {
+    for (const scenario of [
+      { samples: 11026, emptyPool: true }, { samples: 22051 }, { samples: 11900, late: true },
+      { samples: 11026, gapless: true }, { samples: 11026, visualizer: true },
+      { samples: 11026, delay: 441 }, { samples: 11026, injected: true }
+    ]) {
+      const { samples, delay = 0 } = scenario;
+      const label = `${artifact} ${JSON.stringify(scenario)}`;
+      const wasm = await fs.readFile(path.join(repoRoot, 'plugins/dsp', artifact));
+      let binding = scenario.injected ? null : await instantiateDspBinding(wasm);
+      const h = await createWorkletHarness({ binding, sampleRate: 44100, useInjectedBinding: scenario.injected });
+      const observations = [];
+      const messages = [];
+      const processing = [];
+      const parameters = { enabled: true, mn: 40, mx: 240, ck: false, dm: 'drums' };
+      const tapId = scenario.visualizer ? 0xf0000000 : 7;
+      try {
+        if (scenario.visualizer) {
+          await h.send({ type: 'setVisualizerSources', sources: [{ tapId, type: 'RhythmAnalyzerPlugin',
+            paramsHash: packer.hash, params: packer.pack(parameters), channel: null, gain: 1 }] });
+        } else {
+          await h.send({ type: 'updatePlugins', plugins: [pluginConfig({ type: 'RhythmAnalyzerPlugin',
+            parameters, wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash })], masterBypass: false });
+        }
+        await h.send({ type: 'dspEnableTypes', types: ['RhythmAnalyzerPlugin'] });
+        await h.send({ type: 'dspModule', module: scenario.injected ? await WebAssembly.compile(wasm) : {} });
+        if (scenario.injected) {
+          for (let attempt = 0; attempt < 20 && !h.processor.dspLive; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+          }
+          binding = h.processor.dspBinding;
+          assert.ok(binding, label);
+        }
+        const processInstance = binding.instanceProcess.bind(binding);
+        binding.instanceProcess = (...args) => { processing.push([args[3], args[4]]); return processInstance(...args); };
+        if (delay) h.processor.dspLatencyPlan.tapPositions[7].input = delay;
+        h.processor.port.postMessage = message => {
+          if (message.type !== 'dspTelemetry') return;
+          const packet = new Uint8Array(message.packet);
+          observations.push(...decodeTelemetryPacket(packet, message.bytes,
+            new Map([[tapId, { effectType: 'RhythmAnalyzer' }]])).frames);
+          messages.push(message);
+          if (message.recycle !== false) h.processor.dspPacketPool.push(packet);
+        };
+        const hostMessages = [];
+        const host = {
+          audioPlayer: { audioContext: { sampleRate: 44100, currentTime: 0 },
+            playbackManager: { onTrackEnded() {} } },
+          audioManager: { broadcastToActiveWorklets(message) {
+            hostMessages.push(message); h.processor.port.onmessage({ data: message });
+          } },
+          currentBufferSource: {}, bufferStartTime: 0, bufferDuration: samples / 44100,
+          finiteStreamEndFrame: null,
+          getCurrentState: () => ({ isPlaying: true, isStopped: false, isTransitioning: false, playbackMode: 'bufferSource' }),
+          captureVideoNaturalEnd() {}, createPreparedAutomaticMove: () => null,
+          notifyStreamBoundary: AudioContextManager.prototype.notifyStreamBoundary,
+          announceFiniteStreamEnd: AudioContextManager.prototype.announceFiniteStreamEnd
+        };
+        host.announceFiniteStreamEnd();
+        if (scenario.gapless) host.notifyStreamBoundary(samples / 44100);
+        const endpoint = samples + delay;
+        const length = (scenario.gapless ? samples * 2 : endpoint) + 4410;
+        let replacedEnd = false;
+        for (let frame = 0; frame < length; frame += 128) {
+          h.setContextFrame(frame);
+          if (scenario.gapless && !replacedEnd && frame + 128 >= samples) {
+            await h.send({ type: 'streamBoundary', endFrame: samples * 2 });
+            replacedEnd = true;
+          }
+          if (scenario.emptyPool && frame + 128 >= endpoint) {
+            h.processor.dspPacketPool.length = 0;
+            h.processor.powerPolicy.enabled = true;
+            h.processor.powerPolicy.uiTelemetryEnabled = false;
+          }
+          const block = new Float32Array(128);
+          for (let i = 0; i < 128; i++) {
+            const at = frame + i - delay;
+            if (at >= 0 && at < samples) block[i] = input[at];
+            else if (scenario.gapless && at >= samples && at < samples * 2) block[i] = input[at - samples];
+          }
+          const output = [new Float32Array(128), new Float32Array(128)];
+          h.processor.process([[block, block]], [output], {});
+          for (let i = 0; i < 128; i++) {
+            assert.ok(Math.abs(output[0][i] - block[i]) <= 1e-18, label);
+            assert.equal(output[0][i], output[1][i], label);
+          }
+        }
+        if (scenario.late) {
+          host.audioPlayer.audioContext.currentTime = length / 44100;
+          AudioContextManager.prototype.handleTrackEnded.call(host);
+          assert.equal(hostMessages.length, 1, 'late UI end does not introduce a second boundary');
+        }
+        const events = observations.flatMap(item => item.drumEvents.map(event => ({ ...event, generation: item.generation })));
+        const firstGeneration = events[0]?.generation;
+        const first = events.filter(event => event.generation === firstGeneration);
+        assert.ok(first.some(event => event.lane === 0 && Math.abs(event.audioTimeSeconds - (.2 + delay / 44100)) < 1e-7), label);
+        assert.ok(first.some(event => event.lane === 2 && Math.abs(event.audioTimeSeconds - (samples === 22051 ? .45 : .2) - delay / 44100) < 1e-7), label);
+        if (samples !== 22051) assert.deepEqual([...new Set(first.map(event => event.audioTimeSeconds.toFixed(5)))], [(0.2 + delay / 44100).toFixed(5)], label);
+        if (scenario.gapless) {
+          const next = events.filter(event => event.generation !== firstGeneration);
+          assert.ok(next.some(event => event.lane === 0 && Math.abs(event.audioTimeSeconds - .2) < 1e-7), label);
+          assert.ok(next.some(event => event.lane === 2 && Math.abs(event.audioTimeSeconds - .2) < 1e-7), label);
+        }
+        if (scenario.emptyPool) {
+          assert.ok(messages.some(message => message.recycle === false), label);
+          assert.equal(h.processor.dspPacketPool.length, 0);
+        }
+        assert.ok(processing.some(([count, time]) => count === endpoint % 128 &&
+          Math.abs(time - Math.floor(endpoint / 128) * 128 / 44100) < 1e-12), label);
+        assert.ok(processing.some(([count, time]) => count === 128 - endpoint % 128 &&
+          Math.abs(time - endpoint / 44100) < 1e-12), label);
+      } finally { binding.close(); }
+    }
+  }
+});
+
+test('Visualizer Rhythm display mode updates preserve the instance and its beat tracker', async () => {
+  const binding = createBinding({ capabilities: { abiVersion: 1, simd: false, kernels: [
+    { name: 'RhythmAnalyzerPlugin', hash: 42, byteCapacity: 0, kernelIndex: 0 }
+  ] } });
+  const h = await createWorkletHarness({ binding });
+  const tapId = 0xf0000000;
+  const source = { tapId, type: 'RhythmAnalyzerPlugin', paramsHash: 42, channel: null, gain: 1 };
+  await h.send({ type: 'setVisualizerSources', sources: [
+    { ...source, params: Float32Array.of(40, 240, 0, 0) }
+  ] });
+  await h.send({ type: 'dspEnableTypes', types: ['RhythmAnalyzerPlugin'] });
+  await h.send({ type: 'dspModule', module: {} });
+  const instance = h.processor.visualizerInstances.get(tapId);
+  assert.ok(instance);
+  await h.send({ type: 'setVisualizerSources', sources: [
+    { ...source, params: Float32Array.of(40, 240, 0, 1) }
+  ] });
+  assert.equal(h.processor.visualizerInstances.get(tapId).id, instance.id);
+  assert.equal(h.processor.visualizerInstances.get(tapId).params[3], 1);
+  assert.equal(binding.calls.filter(call => call[0] === 'destroyInstance').length, 0);
+  await h.send({ type: 'setVisualizerSources', sources: [
+    { ...source, params: Float32Array.of(50, 240, 0, 1) }
+  ] });
+  assert.notEqual(h.processor.visualizerInstances.get(tapId).id, instance.id);
+});
+
+test('Rhythm EOF retries telemetry backpressure without completing or spinning on the boundary', async () => {
+  const h = await createWorkletHarness();
+  const processor = h.processor;
+  let writes = 0;
+  let reads = 0;
+  processor.plugins = [{ id: 7, type: 'RhythmAnalyzerPlugin' }];
+  const entry = { id: 17 };
+  processor.wasmInstances.set(7, entry);
+  processor.dspBinding = {
+    streamBoundaryInstance() { return ++writes < 3 ? -3 : 0; },
+    instanceProcessSpan() { return 0; }
+  };
+  processor.pumpDspTelemetry = () => reads++;
+  h.setContextFrame(1024);
+  await h.send({ type: 'streamBoundary', frame: 1024 });
+  assert.equal(processor.processRhythmStreamBlock(7, entry, 0, 2, 128, 1024 / 48000, 0), -2);
+  assert.equal(writes, 2, 'one retry per quantum keeps the audio thread bounded');
+  assert.equal(reads, 1);
+  assert.equal(processor.streamBoundaries.length, 1);
+  assert.equal(processor.streamBoundaries[0].done.has(7), false);
+  assert.equal(processor.processRhythmStreamBlock(7, entry, 0, 2, 128, 1024 / 48000, 0), 0);
+  processor.applyStreamBoundaries(128);
+  assert.equal(writes, 3);
+  assert.equal(processor.streamBoundaries.length, 0);
+
+  writes = 0;
+  h.setContextFrame(2048);
+  await h.send({ type: 'streamBoundary', endFrame: 2048 });
+  processor.applyStreamBoundaries(128);
+  assert.equal(writes, 0, 'pre-processing defers Rhythm to actual execution');
+  processor.applyStreamBoundaries(128, true);
+  assert.equal(writes, 2);
+  assert.equal(processor.streamBoundaries.length, 1, 'a skipped instance retains failed delivery');
+  assert.equal(processor.streamBoundaries[0].done.has(7), false);
+  h.setContextFrame(2176);
+  processor.applyStreamBoundaries(128, true);
+  assert.equal(writes, 3);
+  assert.equal(processor.streamBoundaries.length, 0);
+});
+
+test('real WASM Note Spectrogram starts a new overall key at a song boundary', async () => {
+  const sampleRate = 48000;
+  const blockSize = 128;
+  const cadence = (root, seconds) => {
+    const signal = new Float32Array(seconds * sampleRate);
+    const progression = [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]];
+    for (let frame = 0; frame < signal.length; frame++) {
+      const chord = progression[Math.floor(frame / sampleRate) % progression.length];
+      const time = frame / sampleRate;
+      let value = 0;
+      for (const interval of chord) {
+        const frequency = 440 * 2 ** ((48 + root + interval - 69) / 12);
+        for (let harmonic = 1; harmonic <= 4; harmonic++) {
+          value += Math.sin(2 * Math.PI * frequency * harmonic * time) / harmonic;
+        }
+      }
+      value += .8 * Math.sin(2 * Math.PI * 440 * 2 ** ((36 + root + chord[0] - 69) / 12) * time);
+      signal[frame] = .04 * value;
+    }
+    return signal;
+  };
+  const first = cadence(0, 16);
+  const signal = new Float32Array(24 * sampleRate);
+  signal.set(first);
+  signal.set(cadence(6, 8), first.length);
+  const wasm = await fs.readFile(path.join(repoRoot, 'plugins/dsp/effetune-dsp.simd.wasm'));
+  const packer = DSP_PARAM_PACKERS.get('NoteSpectrogramPlugin');
+  for (const withBoundary of [false, true]) {
+    const binding = await instantiateDspBinding(wasm);
+    const harness = await createWorkletHarness({ binding, sampleRate });
+    const observations = [];
+    let currentFrame = 0;
+    let resetFrame = null;
+    const reset = binding.streamBoundaryInstance.bind(binding);
+    binding.streamBoundaryInstance = id => {
+      resetFrame = currentFrame;
+      return reset(id);
+    };
+    harness.processor.port.postMessage = message => {
+      if (message.type !== 'dspTelemetry') return;
+      const packet = new Uint8Array(message.packet);
+      const decoded = decodeTelemetryPacket(packet, message.bytes,
+        new Map([[7, { effectType: 'NoteSpectrogram' }]])).frames;
+      for (const frame of decoded) {
+        if (frame.kind === 'noteChordKey') observations.push({ ...frame, processingFrame: currentFrame });
+      }
+      if (message.recycle !== false) harness.processor.dspPacketPool.push(packet);
+    };
+    try {
+      const parameters = { enabled: true, mn: 28, mx: 91, te: false, ck: true };
+      await harness.send({ type: 'updatePlugins', plugins: [pluginConfig({
+        type: 'NoteSpectrogramPlugin', parameters,
+        wasmParams: packer.pack(parameters), wasmParamsHash: packer.hash
+      })], masterBypass: false });
+      await harness.send({ type: 'dspEnableTypes', types: ['NoteSpectrogramPlugin'] });
+      await harness.send({ type: 'dspModule', module: {} });
+      assert.equal(harness.processor.dspPipelineReady, true);
+      const output = [new Float32Array(blockSize), new Float32Array(blockSize)];
+      for (; currentFrame + blockSize <= signal.length; currentFrame += blockSize) {
+        harness.setContextFrame(currentFrame);
+        if (withBoundary && currentFrame === first.length) {
+          await harness.send({ type: 'streamBoundary', frame: currentFrame });
+        }
+        const input = signal.subarray(currentFrame, currentFrame + blockSize);
+        assert.equal(harness.processor.process([[input, input]], [output], {}), true);
+      }
+      const tail = observations.filter(frame => frame.processingFrame >= 22 * sampleRate);
+      assert.ok(tail.length >= 90, 'the final two seconds contain key observations');
+      assert.ok(tail.every(frame => frame.overallKey === (withBoundary ? 6 : 0)),
+        withBoundary ? 'the second song establishes F# major' : 'without a boundary the longer first song keeps C major');
+      if (withBoundary) {
+        assert.equal(resetFrame, first.length);
+        const restarted = observations.filter(frame => frame.processingFrame >= resetFrame);
+        assert.ok(restarted.length > 15);
+        assert.ok(restarted.slice(0, 15).every(frame => frame.overallKey === null),
+          'the restarted head has no accumulated key for its first fifteen rows');
+      } else {
+        assert.equal(resetFrame, null);
+      }
+    } finally {
+      harness.processor.disableDspEngine();
+    }
+  }
+});
+
+test('a stream boundary delivers Rhythm EOF and only resets the Note Spectrogram head at their input latencies', async () => {
   const harness = await createWorkletHarness();
   const processor = harness.processor;
   const resets = [];
-  processor._resetTemporalPlugin = pluginId => resets.push(pluginId);
-  processor.dspBinding = { resetInstance: id => resets.push(`v${id}`) };
+  processor.dspBinding = {
+    streamBoundaryInstance: id => { resets.push(id); return 0; },
+    instanceProcessSpan: () => 0,
+    instanceProcess: () => 0
+  };
+  processor.wasmInstances.set(1, { id: 1 });
+  processor.wasmInstances.set(3, { id: 3 });
+  processor.wasmInstances.set(4, { id: 14 });
   processor.plugins = [
     { id: 1, type: 'RhythmAnalyzerPlugin' },
     { id: 2, type: 'VolumePlugin' },
-    { id: 3, type: 'RhythmAnalyzerPlugin' }
+    { id: 3, type: 'RhythmAnalyzerPlugin' },
+    { id: 4, type: 'NoteSpectrogramPlugin' }
   ];
-  processor.dspLatencyPlan = { tapPositions: { 1: { input: 0 }, 3: { input: 300 } }, totalSamples: 500 };
+  processor.dspLatencyPlan = { tapPositions: { 1: { input: 0 }, 3: { input: 300 }, 4: { input: 300 } }, totalSamples: 500 };
   processor.visualizerInstances = new Map([
     [0xf0000001, { id: 9, type: 'RhythmAnalyzerPlugin' }],
-    [0xf0000002, { id: 10, type: 'PitchMeterPlugin' }]
+    [0xf0000002, { id: 10, type: 'PitchMeterPlugin' }],
+    [0xf0000003, { id: 15, type: 'NoteSpectrogramPlugin' }]
   ]);
   const at = frame => {
     harness.setContextFrame(frame);
     processor.applyStreamBoundaries(128);
+    for (const id of [1, 3]) {
+      processor.processRhythmStreamBlock(id, processor.wasmInstances.get(id), 0, 2, 128,
+        frame / 48000, processor.dspLatencyPlan.tapPositions[id].input);
+    }
+    processor.processRhythmStreamBlock(0xf0000001, processor.visualizerInstances.get(0xf0000001),
+      0, 2, 128, frame / 48000, 500);
   };
 
   await harness.send({ type: 'streamBoundary', frame: 1000 });
   at(896);
-  assert.deepEqual(resets, []);
+  assert.deepEqual(resets, [1], 'Rhythm splits the block at exact sample 1000');
   at(1024);
   assert.deepEqual(resets, [1]);
   at(1280);
-  assert.deepEqual(resets, [1, 3], 'input latency 300 lands at 1300, nearest quantum start 1280');
+  assert.deepEqual(resets, [1, 14, 3], 'Note keeps its nearest-quantum reset; Rhythm splits at sample 1300');
   at(1408);
-  assert.deepEqual(resets, [1, 3]);
+  assert.deepEqual(resets, [1, 14, 3, 9], 'Visualizer Rhythm splits at sample 1500');
   at(1536);
-  assert.deepEqual(resets, [1, 3, 'v9'], 'the Visualizer taps the output, 500 samples after the boundary');
+  assert.deepEqual(resets, [1, 14, 3, 9, 15], 'Visualizer Note retains its existing boundary timing');
   assert.equal(processor.streamBoundaries.length, 0);
 
-  await harness.send({ type: 'streamBoundary', frame: 5000 });
+  await harness.send({ type: 'streamBoundary', frame: 5000, endFrame: 5000 });
+  assert.equal(processor.streamBoundaries.length, 1, 'identical start and end coalesce');
   await harness.send({ type: 'streamBoundary', frame: null });
+  assert.equal(processor.streamBoundaries.length, 1, 'next-start cancellation preserves the finite end');
+  await harness.send({ type: 'streamBoundary', endFrame: null });
   assert.equal(processor.streamBoundaries.length, 0, 'a cancelled boundary never fires');
 
   resets.length = 0;
@@ -7943,6 +8316,7 @@ test('a stream boundary restarts each Rhythm Analyzer at the quantum nearest its
   assert.deepEqual(resets, [1]);
   await harness.send({ type: 'streamBoundary', frame: 9000 });
   at(6656);
-  assert.deepEqual(resets, [1, 3, 'v9'], 'the next reservation keeps the delayed resets of a reached boundary');
+  assert.deepEqual(resets, [1, 14, 15, 3, 9], 'the next reservation keeps the delayed resets of a reached boundary');
+  at(6784);
   assert.deepEqual([...processor.streamBoundaries.map(boundary => boundary.frame)], [9000]);
 });

@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "この端末では未処理のマイク入力を使用できません。自動音声処理が測定結果に影響する場合があります。",
   "analysis:normalization": "正規化",
   "analysis:normalizationNone": "なし",
   "analysis:normalizationGlobal": "全体のピーク = 0 dB",

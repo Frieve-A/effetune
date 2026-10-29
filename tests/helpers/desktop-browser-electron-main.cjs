@@ -4,6 +4,10 @@ const { app, BrowserWindow, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { getMainWindow } = require('../../electron/constants.js');
+const { installTestWindowPolicy } = require('./electron-test-display.cjs');
+
+// Native input and tab capture require a visible window on the test display.
+installTestWindowPolicy({ visible: true, focusable: process.env.EFFETUNE_BROWSER_TEST_NATIVE_INPUT === '1' });
 
 const origin = process.env.EFFETUNE_BROWSER_FIXTURE_ORIGIN;
 if (!origin) throw new Error('The browser integration test requires its fixture origin.');

@@ -1,4 +1,5 @@
 const managers = new WeakMap();
+const TAP_MOVE_TOLERANCE = 10;
 
 function dispatchSelectEvent(select, type) {
   const EventConstructor = select.ownerDocument?.defaultView?.Event;
@@ -16,6 +17,7 @@ class StandardSelectManager {
     this.typeAhead = '';
     this.typeAheadTimer = null;
     this.pointerSelect = null;
+    this.pendingTouch = null;
     this.nextListId = 1;
     this.list = documentRef.createElement('div');
     this.list.className = 'standard-select-list';
@@ -28,6 +30,25 @@ class StandardSelectManager {
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleViewportChange = this.handleViewportChange.bind(this);
     documentRef.addEventListener('pointerdown', this.handlePointerDown, true);
+    documentRef.addEventListener('pointermove', event => {
+      const touch = this.pendingTouch;
+      if (touch?.pointerId === event.pointerId &&
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > TAP_MOVE_TOLERANCE) touch.moved = true;
+    }, { capture: true, passive: true });
+    documentRef.addEventListener('pointerup', event => {
+      const touch = this.pendingTouch;
+      if (touch?.pointerId !== event.pointerId) return;
+      this.pendingTouch = null;
+      if (touch.moved || event.target !== touch.select ||
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > TAP_MOVE_TOLERANCE) return;
+      event.preventDefault();
+      touch.select.focus({ preventScroll: true });
+      if (this.activeSelect === touch.select) this.close();
+      else this.open(touch.select);
+    }, true);
+    documentRef.addEventListener('pointercancel', event => {
+      if (this.pendingTouch?.pointerId === event.pointerId) this.pendingTouch = null;
+    }, true);
     documentRef.addEventListener('click', this.handleClick, true);
     documentRef.addEventListener('keydown', this.handleKeyDown, true);
     documentRef.addEventListener('focusin', event => this.enhance(event.target));
@@ -45,10 +66,16 @@ class StandardSelectManager {
   }
 
   handlePointerDown(event) {
+    this.pendingTouch = null;
+    this.pointerSelect = null;
     const select = this.enhance(event.target?.closest?.('select'));
     if (select && !select.disabled && event.button === 0) {
       event.preventDefault();
       this.pointerSelect = select;
+      if (event.pointerType === 'touch' && this.document.body.classList.contains('layout-mobile')) {
+        this.pendingTouch = { select, pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+        return;
+      }
       select.focus({ preventScroll: true });
       if (this.activeSelect === select) this.close();
       else this.open(select);
@@ -61,7 +88,7 @@ class StandardSelectManager {
     const select = this.enhance(event.target?.closest?.('select'));
     if (!select || select.disabled) return;
     event.preventDefault();
-    if (this.pointerSelect === select) {
+    if (this.pointerSelect === select && event.detail !== 0) {
       this.pointerSelect = null;
       return;
     }
@@ -305,6 +332,7 @@ class StandardSelectManager {
   }
 
   handleViewportChange() {
+    if (this.pendingTouch) this.pendingTouch.moved = true;
     if (!this.activeSelect) return;
     if (!this.activeSelect.isConnected) this.close();
     else this.position();

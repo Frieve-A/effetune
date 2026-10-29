@@ -1326,12 +1326,13 @@ export function packNoiseReductionPluginParams(params = {}) {
   return packed;
 }
 
-export const NoteSpectrogramPlugin_PARAMS_HASH = 0xafc5ff07;
+export const NoteSpectrogramPlugin_PARAMS_HASH = 0xb8518943;
 export function packNoteSpectrogramPluginParams(params = {}) {
-  const packed = new Float32Array(3);
+  const packed = new Float32Array(4);
   packed[0] = (() => { const value = params["mn"]; if (!(Number.isSafeInteger(value))) return 28; if (value < 21) return 21; if (value > 108) return 108; return value; })();
   packed[1] = (() => { const value = params["mx"]; if (!(Number.isSafeInteger(value))) return 91; if (value < 21) return 21; if (value > 108) return 108; return value; })();
   packed[2] = (params["te"] === true || params["te"] === 1 ? 1 : params["te"] === false || params["te"] === 0 ? 0 : 0);
+  packed[3] = (params["ck"] === true || params["ck"] === 1 ? 1 : params["ck"] === false || params["ck"] === 0 ? 0 : 0);
   return packed;
 }
 
@@ -1500,12 +1501,13 @@ export function packPowerAmpSagPluginParams(params = {}) {
   return packed;
 }
 
-export const RhythmAnalyzerPlugin_PARAMS_HASH = 0xbae05865;
+export const RhythmAnalyzerPlugin_PARAMS_HASH = 0xf854c585;
 export function packRhythmAnalyzerPluginParams(params = {}) {
-  const packed = new Float32Array(3);
+  const packed = new Float32Array(4);
   packed[0] = (() => { const value = params["mn"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 40; if (value < 40) return 40; if (value > 192) return 192; return value; })();
   packed[1] = (() => { const value = params["mx"]; if (!(typeof value === 'number' && Number.isFinite(value))) return 240; if (value < 50) return 50; if (value > 240) return 240; return value; })();
   packed[2] = (params["ck"] === true || params["ck"] === 1 ? 1 : params["ck"] === false || params["ck"] === 0 ? 0 : 0);
+  packed[3] = (() => { const index = ["band","drums"].indexOf(params["dm"]); return index < 0 ? 0 : index; })();
   return packed;
 }
 
@@ -2753,7 +2755,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   NarrowRangePlugin: Object.freeze({ hash: NarrowRangePlugin_PARAMS_HASH, floatCount: 4 }),
   NoiseBlenderPlugin: Object.freeze({ hash: NoiseBlenderPlugin_PARAMS_HASH, floatCount: 3 }),
   NoiseReductionPlugin: Object.freeze({ hash: NoiseReductionPlugin_PARAMS_HASH, floatCount: 5 }),
-  NoteSpectrogramPlugin: Object.freeze({ hash: NoteSpectrogramPlugin_PARAMS_HASH, floatCount: 3 }),
+  NoteSpectrogramPlugin: Object.freeze({ hash: NoteSpectrogramPlugin_PARAMS_HASH, floatCount: 4 }),
   OscillatorPlugin: Object.freeze({ hash: OscillatorPlugin_PARAMS_HASH, floatCount: 7 }),
   OscilloscopePlugin: Object.freeze({ hash: OscilloscopePlugin_PARAMS_HASH, floatCount: 7 }),
   PhaserPlugin: Object.freeze({ hash: PhaserPlugin_PARAMS_HASH, floatCount: 9 }),
@@ -2763,7 +2765,7 @@ export const DSP_PARAM_LAYOUTS = Object.freeze({
   PitchShifterPlugin: Object.freeze({ hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 }),
   PolarityInversionPlugin: Object.freeze({ hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 }),
   PowerAmpSagPlugin: Object.freeze({ hash: PowerAmpSagPlugin_PARAMS_HASH, floatCount: 4 }),
-  RhythmAnalyzerPlugin: Object.freeze({ hash: RhythmAnalyzerPlugin_PARAMS_HASH, floatCount: 3 }),
+  RhythmAnalyzerPlugin: Object.freeze({ hash: RhythmAnalyzerPlugin_PARAMS_HASH, floatCount: 4 }),
   RoomEqPlugin: Object.freeze({ hash: RoomEqPlugin_PARAMS_HASH, floatCount: 4 }),
   RotarySpeakerPlugin: Object.freeze({ hash: RotarySpeakerPlugin_PARAMS_HASH, floatCount: 9 }),
   RSReverbPlugin: Object.freeze({ hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 }),
@@ -2868,7 +2870,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["NarrowRangePlugin", Object.freeze({ pack: packNarrowRangePluginParams, hash: NarrowRangePlugin_PARAMS_HASH, floatCount: 4 })],
   ["NoiseBlenderPlugin", Object.freeze({ pack: packNoiseBlenderPluginParams, hash: NoiseBlenderPlugin_PARAMS_HASH, floatCount: 3 })],
   ["NoiseReductionPlugin", Object.freeze({ pack: packNoiseReductionPluginParams, hash: NoiseReductionPlugin_PARAMS_HASH, floatCount: 5 })],
-  ["NoteSpectrogramPlugin", Object.freeze({ pack: packNoteSpectrogramPluginParams, hash: NoteSpectrogramPlugin_PARAMS_HASH, floatCount: 3 })],
+  ["NoteSpectrogramPlugin", Object.freeze({ pack: packNoteSpectrogramPluginParams, hash: NoteSpectrogramPlugin_PARAMS_HASH, floatCount: 4 })],
   ["OscillatorPlugin", Object.freeze({ pack: packOscillatorPluginParams, hash: OscillatorPlugin_PARAMS_HASH, floatCount: 7 })],
   ["OscilloscopePlugin", Object.freeze({ pack: packOscilloscopePluginParams, hash: OscilloscopePlugin_PARAMS_HASH, floatCount: 7 })],
   ["PhaserPlugin", Object.freeze({ pack: packPhaserPluginParams, hash: PhaserPlugin_PARAMS_HASH, floatCount: 9 })],
@@ -2878,7 +2880,7 @@ export const DSP_PARAM_PACKERS = new Map([
   ["PitchShifterPlugin", Object.freeze({ pack: packPitchShifterPluginParams, hash: PitchShifterPlugin_PARAMS_HASH, floatCount: 4 })],
   ["PolarityInversionPlugin", Object.freeze({ pack: packPolarityInversionPluginParams, hash: PolarityInversionPlugin_PARAMS_HASH, floatCount: 0 })],
   ["PowerAmpSagPlugin", Object.freeze({ pack: packPowerAmpSagPluginParams, hash: PowerAmpSagPlugin_PARAMS_HASH, floatCount: 4 })],
-  ["RhythmAnalyzerPlugin", Object.freeze({ pack: packRhythmAnalyzerPluginParams, hash: RhythmAnalyzerPlugin_PARAMS_HASH, floatCount: 3 })],
+  ["RhythmAnalyzerPlugin", Object.freeze({ pack: packRhythmAnalyzerPluginParams, hash: RhythmAnalyzerPlugin_PARAMS_HASH, floatCount: 4 })],
   ["RoomEqPlugin", Object.freeze({ pack: packRoomEqPluginParams, hash: RoomEqPlugin_PARAMS_HASH, floatCount: 4 })],
   ["RotarySpeakerPlugin", Object.freeze({ pack: packRotarySpeakerPluginParams, hash: RotarySpeakerPlugin_PARAMS_HASH, floatCount: 9 })],
   ["RSReverbPlugin", Object.freeze({ pack: packRSReverbPluginParams, hash: RSReverbPlugin_PARAMS_HASH, floatCount: 9 })],

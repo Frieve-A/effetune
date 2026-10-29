@@ -714,9 +714,9 @@ test('three contiguous CUE regions consume one planned move per boundary without
       pause() { pauseCount += 1; this.paused = true; }
     };
     audioPlayer.audioElement = audioElement;
-    const boundaryFrames = [];
+    const boundaryMessages = [];
     Object.assign(audioPlayer.audioContext, { currentTime: 2, sampleRate: 48000 });
-    manager.audioManager.workletNode = { port: { postMessage: message => boundaryFrames.push(message.frame) } };
+    manager.audioManager.workletNode = { port: { postMessage: message => boundaryMessages.push(message) } };
     manager.loadMetadata = () => {};
     manager.activeSourceGeneration = 1;
     manager.sourceGenerationSequence = 1;
@@ -756,7 +756,10 @@ test('three contiguous CUE regions consume one planned move per boundary without
     assert.equal(audioElement.currentTime, 20);
 
     assert.equal(await manager.commitRegionBoundary(secondGeneration, secondArmToken), false);
-    assert.deepEqual(boundaryFrames, [96000, 96000], 'each committed region starts now');
+    assert.deepEqual(boundaryMessages, [
+      { type: 'streamBoundary', endFrame: 144000 },
+      { type: 'streamBoundary', endFrame: 576000 }
+    ], 'contiguous regions announce finite ends without restarting the physical stream');
     assert.equal(state.transportCommandGeneration, 2);
     assert.equal(stateManager.state.currentTrackDuration, 10);
     playbackManager.dispose();

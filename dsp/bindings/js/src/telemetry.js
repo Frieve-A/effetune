@@ -6,6 +6,7 @@ const SPECTROGRAM_FRAME = 5;
 const STEREO_FRAME = 6;
 const NOTE_SPECTROGRAM_FRAME = 24;
 const NOTE_TIMBRE_FRAME = 31;
+const NOTE_CHORD_KEY_FRAME = 32;
 const NOTE_SPECTROGRAM_REVISION_PLANES = [[2, 5312, 5316], [4, 7076, 7080], [8, 28, 3552]];
 const PITCH_METER_FRAME = 26;
 const ANALOG_METER_FRAME = 27;
@@ -35,7 +36,7 @@ const ANALYZER_FRAMES = Object.freeze({
   NoteSpectrogram: [NOTE_SPECTROGRAM_FRAME, [6]],
   Oscilloscope: [SCOPE_FRAME, [2, 3]],
   PitchMeter: [PITCH_METER_FRAME, [1]],
-  RhythmAnalyzer: [RHYTHM_ANALYZER_FRAME, [1, 3, 4]],
+  RhythmAnalyzer: [RHYTHM_ANALYZER_FRAME, [1, 3, 4, 5]],
   SpectrumAnalyzer: [SPECTRUM_FRAME, [1, 2]],
   Spectrogram: [SPECTROGRAM_FRAME, [1, 2]],
   StereoMeter: [STEREO_FRAME, [2]],
@@ -349,6 +350,33 @@ function decodeMultiresHq(payload, node, sequence, dropped, frameType) {
   };
 }
 
+function decodeNoteChordKey(payload, node, sequence, dropped) {
+  if (payload.byteLength !== 32) return null;
+  const sampleRate = payload.getFloat32(0, true);
+  const timeSeconds = payload.getFloat32(4, true);
+  const hopSeconds = payload.getFloat32(8, true);
+  const generation = payload.getUint32(12, true);
+  const frameIndex = payload.getUint32(16, true);
+  const chords = [];
+  for (const offset of [20, 23]) {
+    const root = payload.getUint8(offset), quality = payload.getUint8(offset + 1), bass = payload.getUint8(offset + 2);
+    if (root === 255 && quality === 255 && bass === 255) chords.push(null, null, null);
+    else if (root < 12 && quality < 11 && bass < 12) chords.push(root, quality, bass);
+    else return null;
+  }
+  const localKey = payload.getUint8(26), overallKey = payload.getUint8(27);
+  const confirmedProbability = payload.getFloat32(28, true);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Number.isFinite(timeSeconds) ||
+      timeSeconds < 0 || !Number.isFinite(hopSeconds) || hopSeconds <= 0 || generation === 0 ||
+      (localKey > 24 && localKey !== 255) || (overallKey > 23 && overallKey !== 255) ||
+      !Number.isFinite(confirmedProbability) || confirmedProbability < 0 || confirmedProbability > 1) return null;
+  const [immediateRoot, immediateQuality, immediateBass, confirmedRoot, confirmedQuality, confirmedBass] = chords;
+  return { ...common(node, 'noteChordKey', sequence, dropped), sampleRate, timeSeconds, hopSeconds,
+    generation, frameIndex, immediateRoot, immediateQuality, immediateBass,
+    confirmedRoot, confirmedQuality, confirmedBass, confirmedProbability,
+    localKey: localKey === 255 ? null : localKey, overallKey: overallKey === 255 ? null : overallKey };
+}
+
 function decodeNoteTimbre(payload, node, sequence, dropped) {
   if (payload.byteLength !== 80) return null;
   const sampleRate = payload.getFloat32(0, true);
@@ -546,7 +574,7 @@ function decodeAnalogMeter(payload, node, sequence, dropped) {
 }
 
 function decodeRhythmAnalyzer(payload, node, sequence, dropped, version) {
-  if (payload.byteLength !== (version === 4 ? 1496 : RHYTHM_ANALYZER_PAYLOAD_BYTES)) return null;
+  if (payload.byteLength !== (version === 5 ? 2024 : version === 4 ? 1496 : RHYTHM_ANALYZER_PAYLOAD_BYTES)) return null;
   const f32 = offset => payload.getFloat32(offset, true);
   const u32 = offset => payload.getUint32(offset, true);
   const sampleRate = f32(0);
@@ -619,8 +647,8 @@ function decodeRhythmAnalyzer(payload, node, sequence, dropped, version) {
     };
   }
   const previewBeats = [];
-  const previewPeriodSeconds = version === 4 ? f32(1348) : 0;
-  if (version === 4) {
+  const previewPeriodSeconds = version >= 4 ? f32(1348) : 0;
+  if (version >= 4) {
     const count = u32(1344);
     if (count > 12 || !Number.isFinite(previewPeriodSeconds) || previewPeriodSeconds < 0 ||
         (count > 0 && previewPeriodSeconds === 0)) return null;
@@ -632,6 +660,32 @@ function decodeRhythmAnalyzer(payload, node, sequence, dropped, version) {
       if (!(beat.fraction >= 0 && beat.fraction < 1) || (previous &&
           (beat.frame + beat.fraction <= previous.frame + previous.fraction || beat.beatIndex !== previous.beatIndex + 1))) return null;
       previewBeats.push(beat);
+    }
+  }
+  const displayMode = version === 5 ? u32(1496) : 0;
+  const drumLatencySeconds = version === 5 ? f32(1504) : 0;
+  const drumEvents = [];
+  if (version === 5) {
+    const count = u32(1500);
+    if (displayMode > 1 || count > RHYTHM_ANALYZER_MAX_EVENTS ||
+        !Number.isFinite(drumLatencySeconds) || drumLatencySeconds < 0 || u32(1508) !== 0) return null;
+    for (let index = 0; index < count; index++) {
+      const offset = 1512 + index * 32;
+      const fraction = f32(offset + 4);
+      const beatFraction = f32(offset + 16);
+      const periodSeconds = f32(offset + 20);
+      const logit = f32(offset + 24);
+      const lane = payload.getUint8(offset + 28);
+      const flags = payload.getUint8(offset + 29);
+      if (!(fraction >= 0 && fraction < 1) || !(beatFraction >= 0 && beatFraction < 1) ||
+          !Number.isFinite(periodSeconds) || periodSeconds < 0 || !Number.isFinite(logit) ||
+          lane > 4 || ![0, 1, 3].includes(flags) || (flags !== 1 && periodSeconds === 0) ||
+          payload.getUint16(offset + 30, true) !== 0) return null;
+      const frame = u32(offset);
+      drumEvents.push({ frame, fraction,
+        audioTimeSeconds: (frame + fraction) * (256 / 24000),
+        lockEpoch: u32(offset + 8), beatIndex: payload.getInt32(offset + 12, true),
+        beatFraction, periodSeconds, logit, lane, flags, unlocked: flags === 1 });
     }
   }
   return {
@@ -654,7 +708,10 @@ function decodeRhythmAnalyzer(payload, node, sequence, dropped, version) {
     tempogram,
     events,
     previewPeriodSeconds,
-    previewBeats
+    previewBeats,
+    displayMode: displayMode === 1 ? 'drums' : 'band',
+    drumLatencySeconds,
+    drumEvents
   };
 }
 
@@ -787,6 +844,8 @@ function decodePayload(frameType, formatVersion, payload, node, sequence, droppe
       return decodeNoteSpectrogram(payload, node, sequence, dropped);
     case NOTE_TIMBRE_FRAME:
       return decodeNoteTimbre(payload, node, sequence, dropped);
+    case NOTE_CHORD_KEY_FRAME:
+      return decodeNoteChordKey(payload, node, sequence, dropped);
     case PITCH_METER_FRAME:
       return decodePitchMeter(payload, node, sequence, dropped);
     case ANALOG_METER_FRAME:
@@ -821,7 +880,8 @@ export function decodeTelemetryPacket(packet, bytes, nodesByTap, initialDropped 
     const node = nodesByTap.get(tapId);
     const expected = node ? ANALYZER_FRAMES[node.effectType] : null;
     if ((expected?.[0] === frameType && expected[1].includes(formatVersion)) ||
-        (node?.effectType === 'NoteSpectrogram' && frameType === NOTE_TIMBRE_FRAME && formatVersion === 1)) {
+        (node?.effectType === 'NoteSpectrogram' &&
+          (frameType === NOTE_TIMBRE_FRAME || frameType === NOTE_CHORD_KEY_FRAME) && formatVersion === 1)) {
       const payload = new DataView(
         packet.buffer,
         packet.byteOffset + offset + HEADER_BYTES,

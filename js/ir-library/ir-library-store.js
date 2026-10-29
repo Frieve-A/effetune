@@ -385,7 +385,7 @@ export class IrLibraryStore {
         role: 'single',
         bytes,
         sha256: identity.sha256
-      }]);
+      }], request.beforeCommit);
       if (duplicate) return duplicate;
       const storageName = `${identity.irId}${extensionFor(request.fileName)}`;
       const analysisName = `${identity.irId}.analysis`;
@@ -410,10 +410,12 @@ export class IrLibraryStore {
         analysis: { storageName: analysisName, ...analysisSummary },
         importedAt: new Date().toISOString()
       };
+      await request.beforeCommit?.();
       await this.backend.writeAtomic(storageName, bytes);
       const analysisBytes = encodeIrAnalysisSidecar(request.analysis);
       requireBoundedIrBytes(analysisBytes, IR_LIBRARY_MAX_ANALYSIS_BYTES, 'IR analysis');
       await this.backend.writeAtomic(analysisName, analysisBytes);
+      await request.beforeCommit?.();
       this.index.entries[identity.irId] = entry;
       try {
         await this.#writeIndex();
@@ -437,7 +439,7 @@ export class IrLibraryStore {
       const duplicate = await this.#resolveDuplicate(identity.irId, 'pair', [
         { role: 'L', bytes: request.left.bytes, sha256: identity.leftSha256 },
         { role: 'R', bytes: request.right.bytes, sha256: identity.rightSha256 }
-      ]);
+      ], request.beforeCommit);
       if (duplicate) return duplicate;
       const leftName = `${identity.irId}.L${extensionFor(request.left.fileName)}`;
       const rightName = `${identity.irId}.R${extensionFor(request.right.fileName)}`;
@@ -467,10 +469,12 @@ export class IrLibraryStore {
         analysis: { storageName: analysisName, ...analysisSummary },
         importedAt: new Date().toISOString()
       };
+      await request.beforeCommit?.();
       for (const source of sources) await this.backend.writeAtomic(source.storageName, source.part.bytes);
       const analysisBytes = encodeIrAnalysisSidecar(request.analysis);
       requireBoundedIrBytes(analysisBytes, IR_LIBRARY_MAX_ANALYSIS_BYTES, 'IR analysis');
       await this.backend.writeAtomic(analysisName, analysisBytes);
+      await request.beforeCommit?.();
       this.index.entries[identity.irId] = entry;
       try {
         await this.#writeIndex();
@@ -568,7 +572,7 @@ export class IrLibraryStore {
     throw new Error('IR analysis revision capacity was exhausted.');
   }
 
-  async #resolveDuplicate(irId, composition, sources) {
+  async #resolveDuplicate(irId, composition, sources, beforeCommit) {
     const duplicate = this.index.entries[irId];
     if (!duplicate) return null;
     const originalsByRole = new Map(duplicate.originals.map(original => [original.role, original]));
@@ -593,6 +597,7 @@ export class IrLibraryStore {
       const valid = Boolean(stored) && stored.byteLength === original.byteLength &&
         await sha256IrBytes(stored) === original.sha256;
       if (!valid) {
+        await beforeCommit?.();
         await this.backend.writeAtomic(original.storageName, source.bytes);
         repaired = true;
       }

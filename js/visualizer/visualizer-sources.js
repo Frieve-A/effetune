@@ -1,6 +1,6 @@
 import { TelemetryFrameType } from '../audio/telemetry-hub.js';
 import { getDspRolloutConfig } from '../audio/dsp-rollout.js';
-import { guitarAnalysis } from './visualizer-model.js';
+import { guitarAnalysis, NOTE_TEXT_TYPES } from './visualizer-model.js';
 
 const SOURCE_TYPES = Object.freeze({
     spectrum: { type: 'SpectrumAnalyzerPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM,
@@ -15,8 +15,11 @@ const SOURCE_TYPES = Object.freeze({
         parse: 'parseDspLevelTelemetryFrame' },
     notes: { type: 'NoteSpectrogramPlugin', frameType: 24,
         parse: 'parseTelemetryFrame' },
+    ...Object.fromEntries(NOTE_TEXT_TYPES.map(type => [type, { type: 'NoteSpectrogramPlugin', frameType: 24,
+        parse: 'parseTelemetryFrame' }])),
     guitar: { type: 'NoteSpectrogramPlugin', frameType: 24,
         parse: 'parseTelemetryFrame' },
+    drums: { type: 'RhythmAnalyzerPlugin', frameType: 28, parse: 'parseTelemetryFrame' },
     chroma: { type: 'ChromaSpiralPlugin', frameType: TelemetryFrameType.TAP_SPECTRUM },
     phase: { type: 'PhaseSelectEqPlugin', frameType: 20 },
     'analog-meter': { type: 'AnalogMeterPlugin', frameType: TelemetryFrameType.TAP_ANALOG_METER },
@@ -58,6 +61,7 @@ function updateModulator(state, rms, type, now) {
 }
 
 function analysisSettings(type, input = {}) {
+    if (type === 'drums') return { params: { mn: 40, mx: 240, dm: 'drums' }, gainDb: 0 };
     // Chroma chooses its HQ resolution in the kernel; Level Meter and Phase Map
     // have no analysis controls. Their display settings do not affect source lifetime.
     if (type === 'chroma' || type === 'level-meter' || type === 'phase') return { params: {}, gainDb: 0 };
@@ -68,10 +72,12 @@ function analysisSettings(type, input = {}) {
         de: input.de ?? 'Average Rectified', nr: input.nr ?? 300, os: input.os ?? 1.25
     }, gainDb: 0 };
     // Only the BPM range affects analysis; the display settings never restart the source.
-    if (type === 'rhythm-analyzer') return { params: { mn: input.mn ?? 40, mx: input.mx ?? 240 }, gainDb: 0 };
+    if (type === 'rhythm-analyzer') return { params: { mn: input.mn ?? 40, mx: input.mx ?? 240, dm: input.dm === 'drums' ? 'drums' : 'band' }, gainDb: 0 };
     // The fretboard's tuning, fret range, and capo decide the detected notes.
-    if (type === 'guitar') return { params: guitarAnalysis(input), gainDb: 0 };
-    const gainDb = type === 'notes' ? 0 :
+    if (type === 'guitar') return { params: {
+        ...guitarAnalysis(input), ck: input.pm === 'chord' || input.lb === 'detected'
+    }, gainDb: 0 };
+    const gainDb = type === 'notes' || NOTE_TEXT_TYPES.includes(type) ? 0 :
         Number.isFinite(input.gainDb) ? Math.max(-24, Math.min(24, Math.round(input.gainDb))) : 0;
     if (type === 'spectrum' || type === 'spectrogram') {
         const hq = input.sc === 'log-hq';
@@ -84,7 +90,8 @@ function analysisSettings(type, input = {}) {
         dt: input.dt ?? 0.01, tm: input.tm ?? 'Auto', tl: input.tl ?? 0,
         te: input.te ?? 'Rising', ho: input.ho ?? 0.0001
     }, gainDb: 0 };
-    return { params: { mn: input.mn ?? 28, mx: input.mx ?? 91 }, gainDb: 0 };
+    return { params: { mn: input.mn ?? 28, mx: input.mx ?? 91,
+        ck: NOTE_TEXT_TYPES.includes(type) || input.ck === true }, gainDb: 0 };
 }
 
 const sourceKey = (type, channel, params, gainDb) =>
@@ -143,6 +150,19 @@ export class VisualizerSources {
             if (this.modulatorKeys[modulator] !== key) this.modulators[modulator] = createModulator();
             this.modulatorKeys[modulator] = key;
         }
+        // Reuse the beat tracker for a mode-only edit. Simultaneous band and drum
+        // views still have distinct sources so each receives its selected mode.
+        for (const [key, settings] of wanted) {
+            if (this.sources.has(key) || settings.definition.type !== 'RhythmAnalyzerPlugin') continue;
+            const previous = [...this.sources].find(([oldKey, source]) => !wanted.has(oldKey) &&
+                source.definition.type === settings.definition.type && source.channel === settings.channel &&
+                source.params.mn === settings.params.mn && source.params.mx === settings.params.mx);
+            if (!previous) continue;
+            const [oldKey, source] = previous;
+            this.sources.delete(oldKey);
+            Object.assign(source, { key, params: settings.params });
+            this.sources.set(key, source);
+        }
         this.itemKeys = itemKeys;
         for (const [key, source] of this.sources) {
             if (wanted.has(key)) continue;
@@ -183,10 +203,15 @@ export class VisualizerSources {
 
     _subscribe(source) {
         const tapId = source.tapId;
-        source.unsubscribe = this.audioManager.telemetryHub.subscribe(tapId,
-            source.definition.frameType, (frame, producer) => {
+        // Notes, Key, Chord and Guitar can share the same detector; keep both telemetry streams
+        // on that source's identity so delayed chords match its pitch history.
+        const frameTypes = source.definition.type === 'NoteSpectrogramPlugin'
+            ? [32, source.definition.frameType] : [source.definition.frameType];
+        const unsubscribe = frameTypes.map(frameType => this.audioManager.telemetryHub.subscribe(tapId,
+            frameType, (frame, producer) => {
                 if (source.tapId === tapId) this._receive(source, frame, producer);
-            });
+            }));
+        source.unsubscribe = () => unsubscribe.forEach(stop => stop());
     }
 
     _publish(workletRestarted = false) {

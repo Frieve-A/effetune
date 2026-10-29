@@ -4,9 +4,11 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { chromium } from 'playwright';
 import { ITEM_TYPES } from '../../js/visualizer/visualizer-model.js';
+import { analyzerDisplayDependencies } from '../helpers/visualizer-analyzer-script.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
-const moduleScript = path => read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
+const moduleScript = path => (path.endsWith('/visualizer-analyzer-display.js') ? analyzerDisplayDependencies : '')
+    + read(path).replace(/^import .*;\r?\n/gm, '').replace(/\bexport /g, '');
 const frequencyAxisScript = read('../../plugins/frequency-axis.js');
 const { FrequencyAxis } = (() => { const window = {}; vm.runInNewContext(frequencyAxisScript, { window }); return window; })();
 

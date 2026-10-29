@@ -128,6 +128,7 @@ export class PluginListManager {
         if (existingContent) {
             existingContent.remove();
         }
+        this.pluginList.querySelector('#effectCount')?.remove();
 
         // Add new content while preserving h2
         this.pluginList.appendChild(contentContainer);

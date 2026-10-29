@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "इस डिवाइस पर बिना प्रोसेसिंग वाला माइक्रोफ़ोन इनपुट उपलब्ध नहीं है। अपने-आप होने वाली ऑडियो प्रोसेसिंग माप को प्रभावित कर सकती है।",
   "analysis:normalization": "सामान्यीकरण",
   "analysis:normalizationNone": "कोई नहीं",
   "analysis:normalizationGlobal": "समग्र पीक = 0 dB",

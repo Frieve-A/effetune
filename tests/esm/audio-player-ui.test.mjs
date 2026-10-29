@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AudioPlayerUI } from '../../js/ui/audio-player/audio-player-ui.js';
+import { AudioPlayer } from '../../js/ui/audio-player.js';
 import { AudioContextManager } from '../../js/ui/audio-player/audio-context-manager.js';
 import { NetworkPlaybackAdapter } from '../../js/network-music/playback-adapter.js';
 import { StateManager } from '../../js/ui/audio-player/state-manager.js';
@@ -29,9 +30,10 @@ test('AirPlay uses reported time and metadata while keeping live controls read-o
       assert.equal(ui.seekBar.disabled, true);
       assert.equal(ui.playPauseButton.disabled, true);
       assert.equal(ui.stopButton.disabled, false);
-      assert.equal(ui.volumeSlider, null);
-      assert.equal(ui.container.querySelector('.player-volume'), null);
-      assert.doesNotMatch(ui.container.innerHTML, /class="player-volume"/);
+      assert.equal(ui.volumeSlider.hidden, false);
+      assert.equal(ui.muteButton.hidden, false);
+      assert.equal(ui.volumeSlider.disabled, true);
+      assert.equal(ui.muteButton.disabled, true);
       assert.match(ui.trackNameDisplay.title, /airPlay.information.composer: Composer/);
       assert.match(ui.trackNameDisplay.title, /airPlay.information.senderVolume: 0%/);
       assert.match(ui.trackNameDisplay.title, /airPlay.information.receiverFormat: 44.1 kHz \/ 16-bit \/ 2 ch/);
@@ -612,6 +614,14 @@ class FakeElement {
     this.id = '';
     this.attributes = new Map();
     this.dataset = {};
+    this.classList = this.classList.bind(this);
+    this.classList.contains = name => this.classList().includes(name);
+    this.classList.add = name => {
+      this.className = [...new Set([...this.classList(), name])].join(' ');
+    };
+    this.classList.remove = name => {
+      this.className = this.classList().filter(value => value !== name).join(' ');
+    };
   }
 
   set innerHTML(value) {
@@ -1122,7 +1132,7 @@ test('one Player view follows its selected destination while local playback and 
     controller.playerStates.get('remote').position = 46;
     remote.sync();
     assert.equal(ui.timeDisplay.textContent, '00:46 / 03:00', 'playing remote snapshots must update without a local animation clock');
-    assert.equal(Number(ui.seekBar.value), 46 / 180 * 100);
+    assert.ok(Math.abs(Number(ui.seekBar.value) - 46 / 180 * 100) < 0.1);
     assert.equal(ui.speedButton.hidden, true);
     assert.ok([...local.stateManager.listeners.values()].every(listeners => listeners.length === 0));
     local.stateManager.setState({ currentTrackName: 'Local next song' });
@@ -1133,6 +1143,11 @@ test('one Player view follows its selected destination while local playback and 
     assert.deepEqual(commands[0], ['pause', {}, 'remote']);
     ui.seekBar.value = 50;
     await Promise.all(ui.seekBar.dispatchEvent('input'));
+    controller.playerStates.get('remote').position = 48;
+    remote.sync();
+    ui.updateTimeDisplay();
+    assert.equal(Number(ui.seekBar.value), 50, 'incoming positions cannot move the thumb during a drag');
+    assert.equal(ui.timeDisplay.textContent, '01:30 / 03:00');
     await Promise.resolve();
     assert.equal(commands.length, 1, 'remote seek is sent once when the drag finishes');
     await Promise.all(ui.seekBar.dispatchEvent('change'));
@@ -1152,36 +1167,153 @@ test('one Player view follows its selected destination while local playback and 
   });
 });
 
-test('volume control belongs only to the remote target and is removed on return to the ordinary Player', async () => {
+test('built-in playback notifications restart feedback only on silent controls', async () => {
   await withAudioPlayerGlobals({}, async ({ calls }) => {
-    const local = createAudioPlayer(calls);
+    const player = createAudioPlayer(calls);
+    player.stateManager = new StateManager(player);
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    const controls = [ui.muteButton, ui.volumeSlider, ui.volumeValue];
+    const restarts = [0, 0, 0];
+    controls.forEach((control, index) => Object.defineProperty(control, 'offsetWidth', {
+      get() { restarts[index] += 1; return 20; }
+    }));
+    try {
+      for (const [playerMute, volume, expected] of [
+        [true, 70, [true, false, false]],
+        [false, 0, [false, true, true]],
+        [true, 0, [true, true, true]],
+        [false, 70, [false, false, false]]
+      ]) {
+        player.stateManager.updateState({ playerMute, volume });
+        for (const source of ['new-playback', 'resume', 'track-change', 'remote-command']) {
+          const before = [...restarts];
+          player.stateManager.updateState({ isPlaying: true, isPaused: false, isStopped: false }, source);
+          assert.deepEqual(controls.map(control => control.classList.contains('player-silence-feedback')), expected);
+          assert.deepEqual(restarts, before.map((count, index) => count + Number(expected[index])));
+        }
+        const before = [...restarts];
+        player.stateManager.updateState({ isPlaying: false, isPaused: true, isStopped: false });
+        assert.deepEqual(restarts, before, 'pausing does not restart feedback');
+      }
+      player.stateManager.updateState({ playerMute: true, volume: 0, liveInputActive: true });
+      const before = [...restarts];
+      player.stateManager.updateState({ isPlaying: true, isPaused: false, isStopped: false });
+      assert.deepEqual(restarts, before, 'live input does not use built-in player gain');
+      player.isRemote = true;
+      player.stateManager.updateState({ liveInputActive: false, isPlaying: true });
+      assert.deepEqual(restarts, before, 'remote player snapshots do not restart local feedback');
+    } finally { ui.removeUI(); }
+  });
+});
+
+test('volume controls follow the selected player and restore local volume and mute', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const local = createAudioPlayer(calls, { state: { volume: 70, playerMute: true } });
     local.setVolume = () => assert.fail('Remote volume must never change local source gain');
     const ui = new AudioPlayerUI(local);
     const container = ui.createPlayerUI();
     const commands = [];
-    const controller = { playerStates: new Map([['remote', { available: true, volume: 35, volumeMax: 100,
-      capabilities: { volume: true } }]]), command: async (...args) => commands.push(args),
+    const controller = { playerStates: new Map([['remote', { available: true, volume: 35, volumeMax: 80, volumeStep: 2, mute: false,
+      capabilities: { volume: true, mute: true } }]]), command: async (...args) => {
+      commands.push(args);
+      if (args[0] === 'volume') controller.playerStates.get(args[2]).volume = args[1].value;
+    },
     reportError: error => { throw error; } };
     const remote = new NetworkPlaybackAdapter(controller, 'remote', ui);
     try {
-      assert.equal(ui.volumeSlider, null);
-      assert.equal(container.querySelector('.player-volume'), null);
-      assert.doesNotMatch(container.innerHTML, /class="player-volume"/);
+      assert.equal(ui.volumeSlider.hidden, false);
+      assert.equal(Number(ui.volumeSlider.value), 70);
+      assert.equal(ui.muteButton.getAttribute('aria-pressed'), 'true');
       ui.setPlaybackTarget(remote);
       const remoteVolume = ui.volumeSlider;
       assert.equal(container.querySelector('.player-volume'), remoteVolume);
       assert.equal(remoteVolume.hidden, false);
       assert.equal(Number(remoteVolume.value), 35);
+      assert.equal(ui.volumeValue.textContent, '35');
+      assert.equal(Number(remoteVolume.max), 80);
+      assert.equal(Number(remoteVolume.step), 2);
+      const remoteMute = ui.muteButton;
+      assert.equal(remoteMute.hidden, false);
+      assert.match(remoteMute.innerHTML, /<svg width="16" height="16"/);
+      assert.equal(remoteMute.getAttribute('aria-label'), remoteMute.title);
+      assert.ok(remoteMute.title);
+      assert.equal(remoteMute.getAttribute('data-active'), 'false');
+      await Promise.all(remoteMute.dispatchEvent('click'));
+      assert.deepEqual(commands.shift(), ['mute', { value: true }, 'remote']);
+      controller.playerStates.get('remote').mute = true;
+      remote.sync();
+      assert.equal(remoteMute.getAttribute('aria-pressed'), 'true');
+      assert.equal(remoteMute.getAttribute('data-active'), 'true');
+      controller.playerStates.get('remote').mute = false;
+      remote.sync();
+      assert.equal(remoteMute.getAttribute('aria-pressed'), 'false');
+      assert.equal(remoteMute.getAttribute('data-active'), 'false');
       remoteVolume.value = '50';
-      await Promise.all(remoteVolume.dispatchEvent('change'));
+      await Promise.all(remoteVolume.dispatchEvent('input'));
+      assert.equal(ui.volumeValue.textContent, '50');
       assert.deepEqual(commands, [['volume', { value: 50 }, 'remote']]);
+      remoteVolume.value = '60';
+      await Promise.all(remoteVolume.dispatchEvent('input'));
+      assert.deepEqual(commands[1], ['volume', { value: 60 }, 'remote']);
+      await Promise.all(remoteVolume.dispatchEvent('change'));
+      assert.equal(commands.length, 2, 'releasing the slider does not send a duplicate command');
       ui.setPlaybackTarget(local);
       assert.equal(ui.container, container);
-      assert.equal(ui.volumeSlider, null);
-      assert.equal(container.querySelector('.player-volume'), null);
+      assert.equal(ui.volumeSlider.hidden, false);
+      assert.equal(Number(ui.volumeSlider.value), 70);
+      assert.equal(ui.muteButton.getAttribute('aria-pressed'), 'true');
       assert.equal(remoteVolume.parentNode, null);
-      await Promise.all(remoteVolume.dispatchEvent('change'));
-      assert.equal(commands.length, 1, 'detached remote controls no longer own a target');
+      assert.equal(remoteMute.parentNode, null);
+      await Promise.all(remoteVolume.dispatchEvent('input'));
+      assert.equal(commands.length, 2, 'detached remote controls no longer own a target');
+    } finally { ui.removeUI(); }
+  });
+});
+
+test('local volume controls reflect incoming changes and can release mute', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createAudioPlayer(calls);
+    player.stateManager = new StateManager(player);
+    const gain = { gain: { value: 1 } };
+    player.contextManager = {
+      audioPlayer: player, playerVolume: 100, playerMute: false, playerVolumeNodes: new Set([gain]),
+      setPlayerVolume: AudioContextManager.prototype.setPlayerVolume,
+      setPlayerMute: AudioContextManager.prototype.setPlayerMute,
+      applyPlayerVolume: AudioContextManager.prototype.applyPlayerVolume,
+      getPlayerVolume: AudioContextManager.prototype.getPlayerVolume,
+      updateState: (patch, source) => player.stateManager.updateState(patch, source)
+    };
+    player.setVolume = AudioPlayer.prototype.setVolume;
+    player.setMute = AudioPlayer.prototype.setMute;
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    try {
+      ui.volumeSlider.focus();
+      player.contextManager.setPlayerVolume(35);
+      player.contextManager.setPlayerMute(true);
+      assert.equal(Number(ui.volumeSlider.value), 35);
+      assert.equal(ui.volumeValue.textContent, '35');
+      assert.equal(ui.muteButton.getAttribute('aria-pressed'), 'true');
+      assert.equal(gain.gain.value, 0);
+      await Promise.all(ui.muteButton.dispatchEvent('click'));
+      assert.equal(gain.gain.value, 0.35);
+      assert.equal(ui.muteButton.getAttribute('aria-pressed'), 'false');
+      ui.volumeSlider.value = '80';
+      await Promise.all(ui.volumeSlider.dispatchEvent('input'));
+      assert.equal(gain.gain.value, 0.8);
+      assert.equal(player.contextManager.getPlayerVolume(), 80);
+      assert.equal(ui.volumeValue.textContent, '80');
+      player.stateManager.updateState({ liveInputActive: true });
+      assert.equal(ui.volumeSlider.hidden, false);
+      assert.equal(ui.volumeValue.hidden, false);
+      assert.equal(ui.muteButton.hidden, false);
+      assert.equal(ui.volumeSlider.disabled, true);
+      assert.equal(ui.muteButton.disabled, true);
+      player.stateManager.updateState({ liveInputActive: false });
+      assert.equal(ui.volumeSlider.hidden, false);
+      assert.equal(ui.volumeSlider.disabled, false);
+      assert.equal(ui.muteButton.disabled, false);
     } finally { ui.removeUI(); }
   });
 });
@@ -1916,6 +2048,35 @@ test('playback pending state selects the artwork overlay or compact track-name s
     player.stateManager.setState({ isPlaybackPending: false });
     player.stateManager.emit('isPlaybackPending', false);
     assert.equal(container.attributes.get('data-loading'), 'false');
+  });
+});
+
+test('failed artwork uses the no-artwork layout and allows the next image to display', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls }) => {
+    const player = createAudioPlayer(calls);
+    const ui = new AudioPlayerUI(player);
+    const container = ui.createPlayerUI();
+    const placeholder = container.querySelector('.player-artwork-placeholder');
+    try {
+      for (const mobile of [true, false]) {
+        window.uiManager.layoutMode = { isMobile: mobile };
+        ui.updateArtwork('https://example.com/missing-cover.jpg');
+        assert.equal(ui.artworkImage.hidden, false);
+        assert.equal(placeholder.hidden, true);
+
+        ui.artworkImage.dispatchEvent('error');
+        assert.equal(ui.artworkImage.hidden, true);
+        assert.equal(placeholder.hidden, false);
+        assert.equal(container.getAttribute('data-artwork-layout'), String(mobile));
+
+        ui.updateArtwork('https://example.com/next-cover.jpg');
+        assert.equal(ui.artworkImage.hidden, false);
+        assert.equal(placeholder.hidden, true);
+        assert.equal(ui.artworkImage.src, 'https://example.com/next-cover.jpg');
+      }
+    } finally {
+      ui.removeUI();
+    }
   });
 });
 
@@ -2810,6 +2971,44 @@ test('Save Queue passes the active disk-backed sequence descriptor without mater
     assert.equal(saves[0].name, 'Million Queue');
     assert.equal(saves[0].sequenceDescriptor, descriptor);
     assert.equal(saves[0].libraryManager, manager);
+  });
+});
+
+test('remote seek animation runs without a local audio context and respects dragging, visibility and pause', async () => {
+  await withAudioPlayerGlobals({}, async ({ calls, frames, documentRef }) => {
+    let position = 10;
+    const player = createAudioPlayer(calls, {
+      state: { isPlaying: true, currentTrackPosition: 10, currentTrackDuration: 100 },
+      contextManager: { getCurrentPlaybackTime: () => position }
+    });
+    player.isRemote = true;
+    const ui = new AudioPlayerUI(player);
+    ui.createPlayerUI();
+    try {
+      assert.ok(ui.positionRaf !== null);
+      position = 10.5;
+      frames[ui.positionRaf - 1]();
+      assert.equal(Number(ui.seekBar.value), 10.5);
+      ui.seekBar.dispatchEvent('pointerdown', { pointerId: 1 });
+      ui.seekBar.value = '70';
+      ui.seekBar.dispatchEvent('input');
+      position = 11;
+      frames[ui.positionRaf - 1]();
+      assert.equal(Number(ui.seekBar.value), 70);
+      ui.seekBar.dispatchEvent('pointercancel');
+      frames[ui.positionRaf - 1]();
+      assert.equal(Number(ui.seekBar.value), 11);
+      documentRef.hidden = true;
+      ui.refreshPowerUiScheduling();
+      assert.equal(ui.positionRaf, null);
+      documentRef.hidden = false;
+      ui.refreshPowerUiScheduling();
+      assert.ok(ui.positionRaf !== null);
+      player.stateManager.setState({ isPlaying: false, currentTrackPosition: 12 });
+      player.stateManager.emit('isPlaying', false);
+      assert.equal(ui.positionRaf, null);
+      assert.equal(Number(ui.seekBar.value), 12);
+    } finally { ui.removeUI(); }
   });
 });
 

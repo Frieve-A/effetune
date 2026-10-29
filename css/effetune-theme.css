@@ -1,4 +1,5 @@
 :root {
+    -webkit-tap-highlight-color: transparent;
     --et-color-scheme: dark;
     --et-base: #171717;
     --et-text-primary: #f6f8fb;

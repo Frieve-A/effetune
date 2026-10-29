@@ -1,4 +1,5 @@
 {
+  "warning:androidInputProcessing": "This device does not provide an unprocessed microphone input. Automatic audio processing may affect the measurement.",
   "analysis:normalization": "Normalization",
   "analysis:normalizationNone": "None",
   "analysis:normalizationGlobal": "Overall peak = 0 dB",
